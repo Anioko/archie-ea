@@ -87,20 +87,14 @@ class VendorCatalogManager {
             if (this.filters.tier) params.append('tier', this.filters.tier);
             if (this.filters.category) params.append('category', this.filters.category);
 
-            const response = await fetch(`/api/vendors?${params}`);
-            const data = await response.json();
+            const data = await Platform.fetch.get(`/api/vendors?${params}`, null, { silent: true });
 
-            if (data.success) {
-                this.vendors = data.vendors || [];
-                this.productFamilies = data.product_families || [];
-                this.products = data.products || [];
-                this.displayCatalog();
-                this.updateStatistics(data.total || 0);
-            } else {
-                this.showError('Failed to load vendor catalog: ' + data.error);
-            }
+            this.vendors = data.vendors || [];
+            this.productFamilies = data.product_families || [];
+            this.products = data.products || [];
+            this.displayCatalog();
+            this.updateStatistics(data.total || 0);
         } catch (error) {
-            console.error('Error loading vendor catalog:', error);
             this.showError('Error loading vendor catalog');
         } finally {
             this.showLoading(false);
@@ -109,28 +103,18 @@ class VendorCatalogManager {
 
     async loadCategories() {
         try {
-            const response = await fetch('/api/vendors/categories');
-            const data = await response.json();
-
-            if (data.success) {
-                this.populateCategoryFilter(data.categories || []);
-            }
+            const data = await Platform.fetch.get('/api/vendors/categories', null, { silent: true });
+            this.populateCategoryFilter(data.categories || []);
         } catch (error) {
-            console.error('Error loading categories:', error);
             this.showError('Error loading categories');
         }
     }
 
     async loadTiers() {
         try {
-            const response = await fetch('/api/vendors/tiers');
-            const data = await response.json();
-
-            if (data.success) {
-                this.populateTierFilter(data.tiers || []);
-            }
+            const data = await Platform.fetch.get('/api/vendors/tiers', null, { silent: true });
+            this.populateTierFilter(data.tiers || []);
         } catch (error) {
-            console.error('Error loading tiers:', error);
             this.showError('Error loading tiers');
         }
     }
@@ -310,18 +294,11 @@ class VendorCatalogManager {
         // Load vendor hierarchy
         try {
             this.showLoading(true);
-            const response = await fetch(`/api/vendors/${vendorId}/hierarchy`);
-            const data = await response.json();
-
-            if (data.success) {
-                this.productFamilies = data.hierarchy?.product_families || [];
-                this.products = [];
-                this.displayCatalog();
-            } else {
-                this.showError('Failed to load vendor hierarchy: ' + data.error);
-            }
+            const data = await Platform.fetch.get(`/api/vendors/${vendorId}/hierarchy`, null, { silent: true });
+            this.productFamilies = data.hierarchy?.product_families || [];
+            this.products = [];
+            this.displayCatalog();
         } catch (error) {
-            console.error('Error loading vendor hierarchy:', error);
             this.showError('Error loading vendor hierarchy');
         } finally {
             this.showLoading(false);
@@ -334,17 +311,10 @@ class VendorCatalogManager {
         // Load family products
         try {
             this.showLoading(true);
-            const response = await fetch(`/api/vendors/families/${familyId}/products`);
-            const data = await response.json();
-
-            if (data.success) {
-                this.products = data.products || [];
-                this.displayProducts();
-            } else {
-                this.showError('Failed to load family products: ' + data.error);
-            }
+            const data = await Platform.fetch.get(`/api/vendors/families/${familyId}/products`, null, { silent: true });
+            this.products = data.products || [];
+            this.displayProducts();
         } catch (error) {
-            console.error('Error loading family products:', error);
             this.showError('Error loading family products');
         } finally {
             this.showLoading(false);
@@ -354,16 +324,9 @@ class VendorCatalogManager {
     async viewProductDetails(productId) {
         try {
             this.showLoading(true);
-            const response = await fetch(`/api/vendors/products/${productId}`);
-            const data = await response.json();
-
-            if (data.success) {
-                this.showProductDetailsModal(data.product, data.applications);
-            } else {
-                this.showError('Failed to load product details: ' + data.error);
-            }
+            const data = await Platform.fetch.get(`/api/vendors/products/${productId}`, null, { silent: true });
+            this.showProductDetailsModal(data.product, data.applications);
         } catch (error) {
-            console.error('Error loading product details:', error);
             this.showError('Error loading product details');
         } finally {
             this.showLoading(false);
@@ -470,17 +433,10 @@ class VendorCatalogManager {
             if (this.filters.tier) params.append('tier', this.filters.tier);
             if (this.filters.category) params.append('category', this.filters.category);
 
-            const response = await fetch(`/api/vendors/search?${params}`, { signal });
-            const data = await response.json();
-
-            if (data.success) {
-                this.displaySearchResults(data.results || []);
-            } else {
-                this.showError('Search failed: ' + data.error);
-            }
+            const data = await Platform.fetch.get(`/api/vendors/search?${params}`, null, { signal, silent: true });
+            this.displaySearchResults(data.results || []);
         } catch (error) {
             if (error.name === 'AbortError') return; // superseded by a newer query
-            console.error('Error searching:', error);
             this.showError('Error searching');
         } finally {
             this.showLoading(false);
@@ -539,24 +495,11 @@ class VendorCatalogManager {
 
         try {
             this.showLoading(true);
-            const response = await fetch('/api/vendors/extract', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    application_description: input.value.trim()
-                })
-            });
-
-            const data = await response.json();
-            if (data.success) {
-                this.displayExtractionResults(data.extraction_result, data.alternatives, data.confidence);
-            } else {
-                this.showError('Extraction failed: ' + data.error);
-            }
+            const data = await Platform.fetch.post('/api/vendors/extract', {
+                application_description: input.value.trim()
+            }, { silent: true });
+            this.displayExtractionResults(data.extraction_result, data.alternatives, data.confidence);
         } catch (error) {
-            console.error('Error running AI extraction:', error);
             this.showError('Error running AI extraction');
         } finally {
             this.showLoading(false);

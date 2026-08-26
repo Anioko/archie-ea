@@ -105,14 +105,13 @@
                 this.loading = true;
                 this.loadError = false;
                 try {
-                    var resp = await fetch('/value-streams/' + this.valueStreamId + '/grid');
-                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
-                    var data = await resp.json();
+                    var data = await Platform.fetch('/value-streams/' + this.valueStreamId + '/grid');
                     this.stages = data.stages || [];
                     this.capabilities = data.capabilities || [];
                     this.cells = data.cells || {};
                 } catch (err) {
-                    console.error('Failed to load value stream grid', err);
+                    // Platform.fetch already shows a toast unless silent:true.
+                    // We also need to paint inline error state, so keep loadError true.
                     this.loadError = true;
                 } finally {
                     this.loading = false;
@@ -129,18 +128,16 @@
                 // resolving after a faster later one must not clobber it.
                 var requestId = (this._searchRequestId = (this._searchRequestId || 0) + 1);
                 try {
-                    var resp = await fetch(
-                        '/value-streams/' + this.valueStreamId + '/api/unmapped-capabilities?q=' + encodeURIComponent(q)
+                    var data = await Platform.fetch.get(
+                        '/value-streams/' + this.valueStreamId + '/api/unmapped-capabilities',
+                        { q: q },
+                        { silent: true } // We'll show our own toast on error
                     );
-                    // Unchecked, a 500 rendered as "no unmapped capabilities match" and
-                    // the user concluded the capability was already mapped.
-                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
-                    var data = await resp.json();
                     if (requestId !== this._searchRequestId) return; // stale response
                     this.capabilityResults = data.capabilities || [];
                 } catch (err) {
                     if (requestId !== this._searchRequestId) return; // stale response
-                    console.error('Capability search failed', err);
+                    // Platform.fetch threw; we must surface the failure to the user.
                     this.capabilityResults = [];
                     if (window.Platform && window.Platform.toast) {
                         window.Platform.toast.error('Capability search failed — this is a lookup failure, not an empty result.');
@@ -191,24 +188,17 @@
                 if (!this.activeCell) return;
                 this.saving = true;
                 try {
-                    var resp = await fetch('/value-streams/api/mapping', {
-                        method: 'POST',
-                        headers: jsonHeaders(),
-                        body: JSON.stringify({
-                            capability_id: this.activeCell.capabilityId,
-                            value_stream_id: this.valueStreamId,
-                            value_stream_stage_id: this.activeCell.stageId,
-                            support_type: this.cellForm.support_type,
-                            support_level: this.cellForm.support_level,
-                            capability_contribution: this.cellForm.capability_contribution,
-                            impact_level: this.cellForm.impact_level,
-                            stage_criticality: this.cellForm.stage_criticality
-                        })
+                    var data = await Platform.fetch.post('/value-streams/api/mapping', {
+                        capability_id: this.activeCell.capabilityId,
+                        value_stream_id: this.valueStreamId,
+                        value_stream_stage_id: this.activeCell.stageId,
+                        support_type: this.cellForm.support_type,
+                        support_level: this.cellForm.support_level,
+                        capability_contribution: this.cellForm.capability_contribution,
+                        impact_level: this.cellForm.impact_level,
+                        stage_criticality: this.cellForm.stage_criticality
                     });
-                    var data = await resp.json();
-                    if (!resp.ok || !data.success) {
-                        throw new Error(data.error || 'Save failed');
-                    }
+                    // Platform.fetch already threw on non‑ok, so data is the parsed success response.
                     this.cells[this.cellKey(this.activeCell.capabilityId, this.activeCell.stageId)] = {
                         mapping_id: data.mapping.id,
                         support_type: data.mapping.support_type,
@@ -224,7 +214,8 @@
                         window.Platform.modal.close('cell-edit-modal');
                     }
                 } catch (err) {
-                    console.error('Failed to save mapping cell', err);
+                    // Platform.fetch already shows a toast unless silent:true.
+                    // We keep the existing toast call for consistency, but the error is already visible.
                     if (window.Platform && window.Platform.toast) {
                         window.Platform.toast.error('Failed to save mapping: ' + err.message);
                     }
@@ -237,19 +228,12 @@
                 if (!this.activeCell) return;
                 this.saving = true;
                 try {
-                    var resp = await fetch('/value-streams/api/mapping', {
-                        method: 'DELETE',
-                        headers: jsonHeaders(),
-                        body: JSON.stringify({
-                            capability_id: this.activeCell.capabilityId,
-                            value_stream_id: this.valueStreamId,
-                            value_stream_stage_id: this.activeCell.stageId
-                        })
+                    var data = await Platform.fetch.delete('/value-streams/api/mapping', {
+                        capability_id: this.activeCell.capabilityId,
+                        value_stream_id: this.valueStreamId,
+                        value_stream_stage_id: this.activeCell.stageId
                     });
-                    var data = await resp.json();
-                    if (!resp.ok || !data.success) {
-                        throw new Error(data.error || 'Clear failed');
-                    }
+                    // Platform.fetch already threw on non‑ok, so data is the parsed success response.
                     delete this.cells[this.cellKey(this.activeCell.capabilityId, this.activeCell.stageId)];
                     if (window.Platform && window.Platform.toast) {
                         window.Platform.toast.success('Mapping cleared.');
@@ -258,7 +242,8 @@
                         window.Platform.modal.close('cell-edit-modal');
                     }
                 } catch (err) {
-                    console.error('Failed to clear mapping cell', err);
+                    // Platform.fetch already shows a toast unless silent:true.
+                    // We keep the existing toast call for consistency, but the error is already visible.
                     if (window.Platform && window.Platform.toast) {
                         window.Platform.toast.error('Failed to clear mapping: ' + err.message);
                     }
@@ -271,20 +256,15 @@
                 this.aiLoading = true;
                 this.aiError = null;
                 try {
-                    var resp = await fetch('/value-streams/api/' + this.valueStreamId + '/ai-suggest-mappings', {
-                        method: 'POST',
-                        headers: jsonHeaders()
-                    });
-                    var data = await resp.json();
-                    if (!resp.ok) {
-                        throw new Error(data.message || data.error || ('HTTP ' + resp.status));
-                    }
+                    var data = await Platform.fetch.post('/value-streams/api/' + this.valueStreamId + '/ai-suggest-mappings', null);
+                    // Platform.fetch already threw on non‑ok, so data is the parsed success response.
                     this.aiSummary = data.summary || null;
                     this.aiSuggestions = (data.suggestions || []).map(function (s) {
                         return Object.assign({}, s, { applied: false });
                     });
                 } catch (err) {
-                    console.error('AI mapping suggestions failed', err);
+                    // Platform.fetch already shows a toast unless silent:true.
+                    // We also need to paint inline error state, so set aiError.
                     this.aiError = err.message || 'AI mapping suggestions failed';
                 } finally {
                     this.aiLoading = false;
@@ -299,18 +279,23 @@
                 var existing = this.capabilities.find(function (c) { return c.name === name; });
                 if (existing) return existing;
                 try {
-                    var resp = await fetch(
-                        '/value-streams/' + this.valueStreamId + '/api/unmapped-capabilities?q=' + encodeURIComponent(name) + '&limit=10'
+                    var data = await Platform.fetch.get(
+                        '/value-streams/' + this.valueStreamId + '/api/unmapped-capabilities',
+                        { q: name, limit: 10 },
+                        { silent: true } // We'll handle errors via thrown exception
                     );
-                    if (!resp.ok) {
-                        throw new Error('Capability lookup failed (HTTP ' + resp.status + ')');
-                    }
-                    var data = await resp.json();
                     var results = data.capabilities || [];
                     var lower = name.trim().toLowerCase();
                     return results.find(function (c) { return (c.name || '').trim().toLowerCase() === lower; }) || null;
                 } catch (err) {
-                    console.error('Failed to resolve suggested capability', err);
+                    // Rethrow, and note that silent:true above means nothing has
+                    // told the user yet -- applySuggestion owns that toast.
+                    //
+                    // A null return from this helper is MEANINGFUL: it says the
+                    // named capability does not exist. Swallowing a lookup failure
+                    // here would return that same null and report a capability as
+                    // missing when the request simply failed, which the user cannot
+                    // tell apart and would act on.
                     throw err;
                 }
             },
@@ -354,24 +339,17 @@
                     // strength/impact fields are left at the system
                     // default until a human tunes them via the cell
                     // editor, same as any manually-added row.
-                    var resp = await fetch('/value-streams/api/mapping', {
-                        method: 'POST',
-                        headers: jsonHeaders(),
-                        body: JSON.stringify({
-                            capability_id: cap.id,
-                            value_stream_id: this.valueStreamId,
-                            value_stream_stage_id: stage.id,
-                            support_type: 'primary',
-                            support_level: 3,
-                            capability_contribution: 50,
-                            impact_level: 'medium',
-                            stage_criticality: 'medium'
-                        })
+                    var data = await Platform.fetch.post('/value-streams/api/mapping', {
+                        capability_id: cap.id,
+                        value_stream_id: this.valueStreamId,
+                        value_stream_stage_id: stage.id,
+                        support_type: 'primary',
+                        support_level: 3,
+                        capability_contribution: 50,
+                        impact_level: 'medium',
+                        stage_criticality: 'medium'
                     });
-                    var data = await resp.json();
-                    if (!resp.ok || !data.success) {
-                        throw new Error(data.error || 'Apply failed');
-                    }
+                    // Platform.fetch already threw on non‑ok, so data is the parsed success response.
                     this.cells[this.cellKey(cap.id, stage.id)] = {
                         mapping_id: data.mapping.id,
                         support_type: data.mapping.support_type,
@@ -385,7 +363,8 @@
                         window.Platform.toast.success('Mapping applied.');
                     }
                 } catch (err) {
-                    console.error('Failed to apply suggested mapping', err);
+                    // Platform.fetch already shows a toast unless silent:true.
+                    // We keep the existing toast call for consistency, but the error is already visible.
                     if (window.Platform && window.Platform.toast) {
                         window.Platform.toast.error('Failed to apply mapping: ' + err.message);
                     }

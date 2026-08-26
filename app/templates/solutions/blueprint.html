@@ -1350,12 +1350,7 @@ function entityAddModal() {
             if (!self.form.name || !self.form.name.trim()) { self.modal.error = 'Name is required'; return; }
             self.modal.saving = true;
             self.modal.error = '';
-            fetch('/solutions/' + self._sid + cfg.path, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': self._csrf },
-                body: JSON.stringify(self.form)
-            })
-            .then(function (r) { return r.json(); })
+            Platform.fetch.post('/solutions/' + self._sid + cfg.path, self.form, { silent: true })
             .then(function (d) {
                 if (d.success === false) { self.modal.error = d.error || d.message || 'Save failed'; return; }
                 self.modal.open = false;
@@ -1529,18 +1524,26 @@ function codegenModal() {
             const sid = (window.__BLUEPRINT_CONFIG__ || {}).solutionId;
             const csrf = (window.__BLUEPRINT_CONFIG__ || {}).csrfToken;
             try {
-                const r = await fetch('/solutions/' + sid + '/api/blueprint/' + self.sectionId + '/codegen', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrf},
-                    body: JSON.stringify({target: self.selectedTarget})
-                });
-                const text = await r.text();
                 let data;
-                try { data = JSON.parse(text); } catch(_) {
-                    // Non-JSON response (nginx 502/503/504 HTML page)
-                    throw new Error('Server error (' + r.status + '). The LLM service may be unavailable or timed out. Check Admin \u2192 API Settings to verify an LLM API key is configured.');
+                try {
+                    data = await Platform.fetch.post(
+                        '/solutions/' + sid + '/api/blueprint/' + self.sectionId + '/codegen',
+                        {target: self.selectedTarget},
+                        { silent: true });
+                } catch (httpErr) {
+                    // Non-JSON error body (nginx 502/503/504 HTML page): the wrapper
+                    // has no parsed body to quote, and bare statusText tells the user
+                    // nothing actionable about the real cause.
+                    if (httpErr.status && !httpErr.data) {
+                        throw new Error('Server error (' + httpErr.status + '). The LLM service may be unavailable or timed out. Check Admin \u2192 API Settings to verify an LLM API key is configured.');
+                    }
+                    throw httpErr;
                 }
-                if (!r.ok || !data.success) throw new Error(data.error || 'Generation failed (status ' + r.status + ')');
+                if (!data || typeof data !== 'object') {
+                    // 200 with a non-JSON body — same class of failure as above.
+                    throw new Error('Server error. The LLM service may be unavailable or timed out. Check Admin \u2192 API Settings to verify an LLM API key is configured.');
+                }
+                if (!data.success) throw new Error(data.error || 'Generation failed');
                 if (!data.code || !data.code.trim()) throw new Error('LLM returned an empty response. Please try again.');
                 self.code = data.code;
                 self.filename = data.filename;
@@ -1549,7 +1552,6 @@ function codegenModal() {
             } catch(e) {
                 self.errorMsg = e.message || 'Generation failed';
                 if (window.Platform && Platform.toast) Platform.toast.error(self.errorMsg);
-                console.error('[codegen]', e);
             } finally {
                 self.loading = false;
             }
@@ -1744,9 +1746,7 @@ function linkElementsPicker() {
         async loadLinked() {
             const sid = window.__BLUEPRINT_CONFIG__?.solutionId;
             try {
-                const res = await fetch(`/api/solutions/${sid}/archimate-elements`);
-                if (!res.ok) throw new Error('HTTP ' + res.status);
-                const json = await res.json();
+                const json = await Platform.fetch(`/api/solutions/${sid}/archimate-elements`, { silent: true });
                 const all = Object.values(json.elements_by_layer || {}).flat();
                 this.linked = all.map(e => e.id);
             } catch (err) {
@@ -1769,9 +1769,7 @@ function linkElementsPicker() {
             if (types.length) params.set('types', types.join(','));
             this.loading = true;
             try {
-                const res = await fetch(`/api/solutions/archimate/search?${params}`);
-                if (!res.ok) throw new Error('Element search failed (HTTP ' + res.status + ')');
-                const json = await res.json();
+                const json = await Platform.fetch(`/api/solutions/archimate/search?${params}`, { silent: true });
                 this.results = json.data || json.elements || [];
                 this.searchError = null;
             } catch (err) {
@@ -1789,32 +1787,26 @@ function linkElementsPicker() {
 
         async toggleLink(element) {
             const sid = window.__BLUEPRINT_CONFIG__?.solutionId;
-            const csrf = window.__BLUEPRINT_CONFIG__?.csrfToken;
-            const headers = { 'X-CSRFToken': csrf };
 
             if (this.isLinked(element.id)) {
                 try {
-                    await fetch(`/api/solutions/${sid}/archimate-elements/${element.id}`, {
-                        method: 'DELETE', headers
-                    });
+                    await Platform.fetch.delete(`/api/solutions/${sid}/archimate-elements/${element.id}`, { silent: true });
                     this.linked = this.linked.filter(id => id !== element.id);
                 } catch (err) {
-                    console.error('linkElementsPicker: unlink failed', err);
-                    if (window.Platform && Platform.toast) Platform.toast.error('Failed to unlink element');
+                    if (window.Platform && Platform.toast) Platform.toast.error('Failed to unlink element: ' + (err.message || 'request failed'));
                 }
             } else {
                 try {
-                    const res = await fetch(`/api/solutions/${sid}/archimate-elements/link`, {
-                        method: 'POST',
-                        headers: { ...headers, 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ archimate_element_id: element.id })
-                    });
-                    if (res.ok || res.status === 409) {
-                        this.linked.push(element.id);
-                    }
+                    await Platform.fetch.post(`/api/solutions/${sid}/archimate-elements/link`,
+                        { archimate_element_id: element.id }, { silent: true });
+                    this.linked.push(element.id);
                 } catch (err) {
-                    console.error('linkElementsPicker: link failed', err);
-                    if (window.Platform && Platform.toast) Platform.toast.error('Failed to link element');
+                    if (err.status === 409) {
+                        // 409 = already linked server-side; the desired end state either way.
+                        this.linked.push(element.id);
+                    } else if (window.Platform && Platform.toast) {
+                        Platform.toast.error('Failed to link element: ' + (err.message || 'request failed'));
+                    }
                 }
             }
             // Ask the blueprint page to reload this section's element list
@@ -1864,12 +1856,9 @@ document.getElementById('save-as-template-form')?.addEventListener('submit', asy
   status.className = 'mt-3 text-sm text-muted-foreground';
   status.classList.remove('hidden');
   try {
-    const resp = await fetch('/solutions/{{ solution.id }}/save-as-template', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-      body: JSON.stringify({ name, domain })
-    });
-    const data = await resp.json();
+    const data = await Platform.fetch.post('/solutions/{{ solution.id }}/save-as-template',
+      { name, domain },
+      { silent: true, headers: { 'X-Requested-With': 'XMLHttpRequest' } });
     if (data.success) {
       status.textContent = 'Template saved. It is now available in \u201cNew from Template\u201d.';
       status.className = 'mt-3 text-sm text-success-emphasis';
@@ -1879,7 +1868,8 @@ document.getElementById('save-as-template-form')?.addEventListener('submit', asy
       status.className = 'mt-3 text-sm text-destructive';
     }
   } catch(err) {
-    status.textContent = 'Request failed. Please try again.';
+    // Covers transport failures and non-ok responses alike now that the wrapper throws on both.
+    status.textContent = 'Error: ' + (err.message || 'Request failed. Please try again.');
     status.className = 'mt-3 text-sm text-destructive';
   }
 });
@@ -1919,9 +1909,7 @@ document.addEventListener('click', function(e) {
             this.loading = true;
             this.error = '';
             try {
-                const resp = await fetch('/archimate/api/elements/search?q=' + encodeURIComponent(this.query) + '&limit=20');
-                if (!resp.ok) throw new Error('Search unavailable (HTTP ' + resp.status + ')');
-                const json = await resp.json();
+                const json = await Platform.fetch('/archimate/api/elements/search?q=' + encodeURIComponent(this.query) + '&limit=20', { silent: true });
                 this.results = json.data || json.results || [];
             } catch (e) {
                 this.error = e.message || 'Search unavailable';
@@ -1932,22 +1920,20 @@ document.addEventListener('click', function(e) {
     },
     async select(element) {
         if (!this.linkEndpoint) { this.open = false; return; }
-        const meta = document.querySelector('meta[name=csrf-token]');
-        const csrf = meta ? meta.content : '';
         try {
-            const resp = await fetch(this.linkEndpoint, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
-                body: JSON.stringify({ element_id: element.id, layer: element.layer || element.layer_name || '' })
-            });
-            if (resp.ok || resp.status === 409) {
+            await Platform.fetch.post(this.linkEndpoint,
+                { element_id: element.id, layer: element.layer || element.layer_name || '' },
+                { silent: true });
+            this.open = false;
+            window.location.reload();
+        } catch (e) {
+            if (e.status === 409) {
+                // 409 = already linked server-side; the desired end state either way.
                 this.open = false;
                 window.location.reload();
-            } else {
-                this.error = 'Failed to link element (' + resp.status + ')';
+                return;
             }
-        } catch (e) {
-            this.error = 'Network error';
+            this.error = e.message || 'Failed to link element';
         }
     }
 }"
@@ -2033,13 +2019,10 @@ function blueprintDocIngestion(solutionId) {
 
         async loadProposals() {
             try {
-                let r = await fetch(base + '/proposals?status=proposed');
-                if (!r.ok) throw new Error('HTTP ' + r.status);
-                let d = await r.json();
+                let d = await Platform.fetch(base + '/proposals?status=proposed', { silent: true });
                 let items = (d.data ? d.data.proposals : null) || d.proposals || [];
                 this.proposals = items.filter(function(p) { return p.status === 'proposed'; });
             } catch(e) {
-                console.error('blueprintDocIngestion: failed to load proposals', e);
                 this.uploadError = 'Could not load pending document proposals — reload the page to try again.';
             }
         },
@@ -2056,13 +2039,8 @@ function blueprintDocIngestion(solutionId) {
             fd.append('files', file);
 
             try {
-                let r = await fetch(base + '/upload-documents', {
-                    method: 'POST',
-                    headers: { 'X-CSRFToken': csrf },
-                    body: fd
-                });
-                let d = await r.json();
-                if (r.ok && (d.data || d.proposals)) {
+                let d = await Platform.fetch.post(base + '/upload-documents', fd, { silent: true });
+                if (d && (d.data || d.proposals)) {
                     let items = d.data ? d.data.proposals : d.proposals;
                     this.proposals = (items || []).filter(function(p) { return p.status === 'proposed'; });
                     if (this.proposals.length === 0) {
@@ -2072,7 +2050,8 @@ function blueprintDocIngestion(solutionId) {
                     this.uploadError = d.error || 'Extraction failed. Please try again.';
                 }
             } catch(e) {
-                this.uploadError = 'Upload failed — please check your connection.';
+                // Covers transport failures and non-ok responses alike now that the wrapper throws on both.
+                this.uploadError = e.message || 'Upload failed — please try again.';
             } finally {
                 this.extracting = false;
                 event.target.value = '';
@@ -2084,10 +2063,7 @@ function blueprintDocIngestion(solutionId) {
             this.accepting = true;
             this.uploadError = null;
             try {
-                let r = await fetch(base + '/proposals/' + proposalId + '/accept', {
-                    method: 'POST', headers: { 'X-CSRFToken': csrf }
-                });
-                if (!r.ok) throw new Error('Accept failed: ' + r.status);
+                await Platform.fetch.post(base + '/proposals/' + proposalId + '/accept', undefined, { silent: true });
                 this.proposals = this.proposals.filter(function(p) { return p.id !== proposalId; });
                 if (this.proposals.length === 0) this.allDone = true;
                 // Refresh maturity score if available
@@ -2101,10 +2077,7 @@ function blueprintDocIngestion(solutionId) {
             this.accepting = true;
             this.uploadError = null;
             try {
-                let r = await fetch(base + '/proposals/' + proposalId + '/reject', {
-                    method: 'POST', headers: { 'X-CSRFToken': csrf }
-                });
-                if (!r.ok) throw new Error('Reject failed: ' + r.status);
+                await Platform.fetch.post(base + '/proposals/' + proposalId + '/reject', undefined, { silent: true });
                 this.proposals = this.proposals.filter(function(p) { return p.id !== proposalId; });
                 if (this.proposals.length === 0) this.allDone = true;
             } catch (e) {
@@ -2117,12 +2090,7 @@ function blueprintDocIngestion(solutionId) {
             this.uploadError = null;
             try {
                 let ids = this.proposals.map(function(p) { return p.id; });
-                let r = await fetch(base + '/proposals/batch-accept', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
-                    body: JSON.stringify({ proposal_ids: ids })
-                });
-                if (!r.ok) throw new Error('Accept all failed: ' + r.status);
+                await Platform.fetch.post(base + '/proposals/batch-accept', { proposal_ids: ids }, { silent: true });
                 this.proposals = [];
                 this.allDone = true;
                 if (typeof refreshMaturityScore === 'function') refreshMaturityScore();
@@ -2136,12 +2104,7 @@ function blueprintDocIngestion(solutionId) {
             this.uploadError = null;
             try {
                 let ids = this.proposals.map(function(p) { return p.id; });
-                let r = await fetch(base + '/proposals/batch-reject', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
-                    body: JSON.stringify({ proposal_ids: ids })
-                });
-                if (!r.ok) throw new Error('Reject all failed: ' + r.status);
+                await Platform.fetch.post(base + '/proposals/batch-reject', { proposal_ids: ids }, { silent: true });
                 this.proposals = [];
                 this.allDone = true;
             } catch (e) {

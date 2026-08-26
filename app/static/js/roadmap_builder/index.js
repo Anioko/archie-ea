@@ -85,72 +85,52 @@ let RoadmapBuilder = {
 
     loadWorkPackages: function() {
         let self = this;
-        return fetch('/api/roadmap-builder/work-packages')
-            .then(function(res) { return res.json(); })
+        return Platform.fetch('/api/roadmap-builder/work-packages')
             .then(function(data) {
-                if (data.success) {
-                    self.workPackages = data.data.work_packages || [];
-                    self.renderWorkPackagesList();
-                } else {
-                    self.showToast(data.error || 'Failed to load work packages', 'error');
-                }
+                self.workPackages = data.data.work_packages || [];
+                self.renderWorkPackagesList();
             })
             .catch(function(err) {
-                console.error('Error loading work packages:', err);
-                self.showToast('Error loading work packages. Please retry.', 'error');
+                self.showToast(err.message || 'Error loading work packages. Please retry.', 'error');
             });
     },
 
     loadPlateaus: function() {
         let self = this;
-        return fetch('/api/roadmap-builder/plateaus')
-            .then(function(res) { return res.json(); })
+        return Platform.fetch('/api/roadmap-builder/plateaus')
             .then(function(data) {
-                if (data.success) {
-                    self.plateaus = data.data.plateaus || [];
-                    self.renderPlateaus();
-                } else {
-                    self.showToast(data.error || 'Failed to load plateaus', 'error');
-                }
+                self.plateaus = data.data.plateaus || [];
+                self.renderPlateaus();
             })
             .catch(function(err) {
-                console.error('Error loading plateaus:', err);
-                self.showToast('Error loading plateaus. Please retry.', 'error');
+                self.showToast(err.message || 'Error loading plateaus. Please retry.', 'error');
             });
     },
 
     loadSummary: function() {
         let self = this;
-        return fetch('/api/roadmap-builder/summary')
-            .then(function(res) { return res.json(); })
+        return Platform.fetch('/api/roadmap-builder/summary')
             .then(function(data) {
-                if (data.success && data.data) {
+                if (data.data) {
                     document.getElementById('total-packages').textContent = data.data.total_work_packages || 0;
                     document.getElementById('completed-packages').textContent = data.data.completed_count || 0;
                     document.getElementById('total-plateaus').textContent = data.data.total_plateaus || 0;
                     document.getElementById('total-cost').textContent = '$' + (data.data.total_estimated_cost || 0).toLocaleString();
-                } else {
-                    self.showToast(data.error || 'Failed to load roadmap summary', 'error');
                 }
             })
             .catch(function(err) {
-                console.error('Error loading summary:', err);
-                self.showToast('Error loading roadmap summary. Please retry.', 'error');
+                self.showToast(err.message || 'Error loading roadmap summary. Please retry.', 'error');
             });
     },
 
     loadTimeline: function() {
         let self = this;
         let groupBy = document.getElementById('timeline-group-by').value;
-        fetch('/api/roadmap-builder/timeline?group_by=' + groupBy)
-            .then(function(res) { if (!res.ok) throw new Error('HTTP ' + res.status); return res.json(); })
+        Platform.fetch.get('/api/roadmap-builder/timeline', { group_by: groupBy }, { silent: true })
             .then(function(data) {
-                if (data.success) {
-                    self.renderTimeline(data.data);
-                }
+                self.renderTimeline(data.data);
             })
             .catch(function(err) {
-                console.error('Error loading timeline:', err);
                 safeHTML(document.getElementById('timeline-container'),
                     '<div class="flex items-center justify-center h-64 text-muted-foreground">' +
                         '<div class="text-center">' +
@@ -299,12 +279,11 @@ let RoadmapBuilder = {
 
     showCriticalPath: function() {
         let self = this;
-        fetch('/api/roadmap-builder/critical-path')
-            .then(function(res) { return res.json(); })
+        Platform.fetch('/api/roadmap-builder/critical-path')
             .then(function(data) {
                 let content = document.getElementById('critical-path-content');
 
-                if (data.success && data.data) {
+                if (data.data) {
                     let cp = data.data;
                     let pathHtml = (cp.critical_path || []).map(function(item, idx) {
                         return '<div class="flex items-center gap-2 p-3 bg-destructive/5 border border-destructive/20 rounded-md">' +
@@ -344,8 +323,7 @@ let RoadmapBuilder = {
                 lucide.createIcons();
             })
             .catch(function(err) {
-                console.error('Error loading critical path:', err);
-                self.showToast('Error loading critical path. Please retry.', 'error');
+                self.showToast(err.message || 'Error loading critical path. Please retry.', 'error');
             });
     },
 
@@ -366,28 +344,24 @@ let RoadmapBuilder = {
         let endpoint = isEdit
             ? '/api/roadmap-builder/work-packages/' + self.editingWorkPackageId
             : '/api/roadmap-builder/work-packages';
-        let method = isEdit ? 'PUT' : 'POST';
 
-        fetch(endpoint, {
-            method: method,
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
-        })
-        .then(function(res) { return res.json(); })
-        .then(function(result) {
-            if (result.success) {
+        let promise;
+        if (isEdit) {
+            promise = Platform.fetch.put(endpoint, data);
+        } else {
+            promise = Platform.fetch.post(endpoint, data);
+        }
+
+        promise
+            .then(function(result) {
                 self.hideDialog('add-wp-dialog');
                 self.resetWorkPackageForm();
                 self.loadData();
                 self.showToast(isEdit ? 'Work package updated' : 'Work package created', 'success');
-            } else {
-                self.showToast(result.error || (isEdit ? 'Failed to update work package' : 'Failed to create work package'), 'error');
-            }
-        })
-        .catch(function(err) {
-            console.error(isEdit ? 'Error updating work package:' : 'Error creating work package:', err);
-            self.showToast(isEdit ? 'Error updating work package' : 'Error creating work package', 'error');
-        });
+            })
+            .catch(function(err) {
+                self.showToast(err.message || (isEdit ? 'Error updating work package' : 'Error creating work package'), 'error');
+            });
     },
 
     createPlateau: function() {
@@ -401,26 +375,16 @@ let RoadmapBuilder = {
             business_value: document.getElementById('plateau-value').value || null
         };
 
-        fetch('/api/roadmap-builder/plateaus', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
-        })
-        .then(function(res) { return res.json(); })
-        .then(function(result) {
-            if (result.success) {
+        Platform.fetch.post('/api/roadmap-builder/plateaus', data)
+            .then(function(result) {
                 self.hideDialog('add-plateau-dialog');
                 document.getElementById('add-plateau-form').reset();
                 self.loadData();
                 self.showToast('Plateau created', 'success');
-            } else {
-                self.showToast(result.error || 'Failed to create plateau', 'error');
-            }
-        })
-        .catch(function(err) {
-            console.error('Error creating plateau:', err);
-            self.showToast('Error creating plateau', 'error');
-        });
+            })
+            .catch(function(err) {
+                self.showToast(err.message || 'Error creating plateau', 'error');
+            });
     },
 
     showWorkPackageDetail: function(id) {
@@ -429,14 +393,8 @@ let RoadmapBuilder = {
 
     editWorkPackage: function(id) {
         let self = this;
-        fetch('/api/roadmap-builder/work-packages/' + id)
-            .then(function(res) { return res.json(); })
+        Platform.fetch('/api/roadmap-builder/work-packages/' + id)
             .then(function(result) {
-                if (!result.success || !result.data) {
-                    self.showToast(result.error || 'Failed to load work package', 'error');
-                    return;
-                }
-
                 let wp = result.data;
                 self.editingWorkPackageId = id;
                 document.getElementById('add-wp-dialog-title').textContent = 'Edit Work Package';
@@ -452,8 +410,7 @@ let RoadmapBuilder = {
                 self.showDialog('add-wp-dialog');
             })
             .catch(function(err) {
-                console.error('Error loading work package:', err);
-                self.showToast('Error loading work package', 'error');
+                self.showToast(err.message || 'Error loading work package', 'error');
             });
     },
 
@@ -466,22 +423,14 @@ let RoadmapBuilder = {
             buttons: [
                 { text: 'Cancel', class: 'px-4 py-2 text-sm font-medium text-foreground bg-background border border-border rounded-md hover:bg-muted', action: 'cancel', handler: function() {} },
                 { text: 'Delete', class: 'px-4 py-2 text-sm font-medium text-destructive-foreground bg-destructive border border-transparent rounded-md hover:bg-destructive/90', action: 'delete', handler: function() {
-                    fetch('/api/roadmap-builder/work-packages/' + id, {
-                        method: 'DELETE'
-                    })
-                    .then(function(res) { return res.json(); })
-                    .then(function(result) {
-                        if (result.success) {
+                    Platform.fetch.delete('/api/roadmap-builder/work-packages/' + id)
+                        .then(function(result) {
                             self.loadData();
                             self.showToast('Work package deleted', 'success');
-                        } else {
-                            self.showToast(result.error || 'Failed to delete work package', 'error');
-                        }
-                    })
-                    .catch(function(err) {
-                        console.error('Error deleting work package:', err);
-                        self.showToast('Error deleting work package', 'error');
-                    });
+                        })
+                        .catch(function(err) {
+                            self.showToast(err.message || 'Error deleting work package', 'error');
+                        });
                 } }
             ]
         });
@@ -519,16 +468,12 @@ let RoadmapBuilder = {
 
     loadDependencyGraph: function() {
         let self = this;
-        fetch('/api/roadmap-builder/dependency-graph')
-            .then(function(res) { if (!res.ok) throw new Error('HTTP ' + res.status); return res.json(); })
+        Platform.fetch('/api/roadmap-builder/dependency-graph', { silent: true })
             .then(function(data) {
-                if (data.success) {
-                    self.renderDependencyGraph(data.data);
-                }
+                self.renderDependencyGraph(data.data);
             })
             .catch(function(err) {
-                console.error('Error loading dependency graph:', err);
-                self.showToast('Error loading dependency graph. Please retry.', 'error');
+                self.showToast(err.message || 'Error loading dependency graph. Please retry.', 'error');
             });
     },
 

@@ -464,7 +464,6 @@
 <script>
     lucide.createIcons();
 
-    const csrfToken = '{{ csrf_token() }}';
     let pollInterval = null;
     let kanbanPollInterval = null;
 
@@ -474,16 +473,8 @@
         btn.disabled = true;
         btn.textContent = 'Testing...';
 
-        fetch('{{ url_for("admin.jira_test_connection") }}', {
-            method: 'POST',
-            headers: {
-                'X-Requested-With': 'XMLHttpRequest',
-                'Content-Type': 'application/json',
-                'X-CSRFToken': csrfToken,
-            },
-            credentials: 'same-origin',
-        })
-        .then(r => r.json())
+        Platform.fetch.post('{{ url_for("admin.jira_test_connection") }}', undefined,
+            { silent: true, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
         .then(data => {
             btn.disabled = false;
             btn.innerHTML = '<i data-lucide="wifi" class="w-4 h-4"></i> Test Connection';
@@ -510,17 +501,8 @@
         btn.disabled = true;
         btn.textContent = 'Pushing...';
 
-        fetch('{{ url_for("admin.jira_trigger_push") }}', {
-            method: 'POST',
-            headers: {
-                'X-Requested-With': 'XMLHttpRequest',
-                'Content-Type': 'application/json',
-                'X-CSRFToken': csrfToken,
-            },
-            credentials: 'same-origin',
-            body: JSON.stringify({force: false}),
-        })
-        .then(r => r.json())
+        Platform.fetch.post('{{ url_for("admin.jira_trigger_push") }}', {force: false},
+            { silent: true, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
         .then(data => {
             btn.disabled = false;
             btn.innerHTML = '<i data-lucide="upload" class="w-4 h-4"></i> Push to Jira';
@@ -547,10 +529,8 @@
         btn.disabled = true;
         btn.textContent = 'Discovering...';
 
-        fetch('{{ url_for("admin.jira_field_discovery") }}', {
-            headers: {'X-Requested-With': 'XMLHttpRequest'},
-        })
-        .then(r => r.json())
+        Platform.fetch('{{ url_for("admin.jira_field_discovery") }}',
+            { silent: true, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
         .then(data => {
             btn.disabled = false;
             btn.innerHTML = '<i data-lucide="search" class="w-4 h-4"></i> Discover Jira Custom Fields';
@@ -574,14 +554,10 @@
     let kanbanStatusFailing = false;
     function refreshKanbanStatus() {
         const el = (id) => document.getElementById(id);
-        fetch('{{ url_for("admin.jira_kanban_push_status") }}', {
-            headers: {'X-Requested-With': 'XMLHttpRequest'},
-        })
-        .then(r => {
-            // fetch does not reject on 4xx/5xx.
-            if (!r.ok) throw new Error('kanban push status request failed: ' + r.status);
-            return r.json();
-        })
+        // Platform.fetch throws on a non-ok response, so the 4xx/5xx case that a
+        // bare request would silently resolve lands in the .catch below.
+        Platform.fetch('{{ url_for("admin.jira_kanban_push_status") }}',
+            { silent: true, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
         .then(data => {
             if (!data.success || !data.kanban_status) throw new Error(data.message || 'kanban status unavailable');
             const ks = data.kanban_status;
@@ -611,17 +587,8 @@
         btn.disabled = true;
         btn.textContent = 'Pushing...';
 
-        fetch('{{ url_for("admin.jira_trigger_kanban_push") }}', {
-            method: 'POST',
-            headers: {
-                'X-Requested-With': 'XMLHttpRequest',
-                'Content-Type': 'application/json',
-                'X-CSRFToken': csrfToken,
-            },
-            credentials: 'same-origin',
-            body: JSON.stringify({}),
-        })
-        .then(r => r.json())
+        Platform.fetch.post('{{ url_for("admin.jira_trigger_kanban_push") }}', {},
+            { silent: true, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
         .then(data => {
             btn.disabled = false;
             btn.innerHTML = '<i data-lucide="layers" class="w-4 h-4"></i> Push Kanban Tasks';
@@ -647,17 +614,8 @@
         btn.disabled = true;
         btn.textContent = 'Pushing...';
 
-        fetch('{{ url_for("admin.jira_push_epics") }}', {
-            method: 'POST',
-            headers: {
-                'X-Requested-With': 'XMLHttpRequest',
-                'Content-Type': 'application/json',
-                'X-CSRFToken': csrfToken,
-            },
-            credentials: 'same-origin',
-            body: JSON.stringify({}),
-        })
-        .then(r => r.json())
+        Platform.fetch.post('{{ url_for("admin.jira_push_epics") }}', {},
+            { silent: true, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
         .then(data => {
             btn.disabled = false;
             btn.innerHTML = '<i data-lucide="layers" class="w-4 h-4"></i> Push Phase Epics';
@@ -681,14 +639,8 @@
         const btn = this;
         btn.disabled = true;
         btn.textContent = 'Pushing...';
-        fetch('{{ url_for("admin.jira_push_dependencies") }}', {
-            method: 'POST',
-            headers: {
-                'X-CSRFToken': document.querySelector('input[name=csrf_token]')?.value || '',
-                'X-Requested-With': 'XMLHttpRequest',
-            },
-        })
-        .then(r => r.json())
+        Platform.fetch.post('{{ url_for("admin.jira_push_dependencies") }}', undefined,
+            { silent: true, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
         .then(data => {
             btn.disabled = false;
             btn.innerHTML = '<i data-lucide="git-merge" class="w-4 h-4"></i> Push Dependencies';
@@ -710,13 +662,10 @@
     let pushStatusFailing = false;
     function refreshPushStatus() {
         const el = (id) => document.getElementById(id);
-        fetch('{{ url_for("admin.jira_push_status") }}', {
-            headers: {'X-Requested-With': 'XMLHttpRequest'},
-        })
-        .then(r => {
-            if (!r.ok) { throw new Error('jira push status request failed: ' + r.status); }
-            return r.json();
-        })
+        // Platform.fetch throws on a non-ok response, so the 4xx/5xx case that a
+        // bare request would silently resolve lands in the .catch below.
+        Platform.fetch('{{ url_for("admin.jira_push_status") }}',
+            { silent: true, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
         .then(data => {
             const ps = data.push_status || {};
             // `?? '—'`, not `|| 0`: a counter the server did not send is
@@ -788,17 +737,8 @@
         btn.disabled = true;
         btn.textContent = 'Pushing...';
 
-        fetch('{{ url_for("admin.jira_push_applications") }}', {
-            method: 'POST',
-            headers: {
-                'X-Requested-With': 'XMLHttpRequest',
-                'Content-Type': 'application/json',
-                'X-CSRFToken': csrfToken,
-            },
-            credentials: 'same-origin',
-            body: JSON.stringify({}),
-        })
-        .then(r => r.json())
+        Platform.fetch.post('{{ url_for("admin.jira_push_applications") }}', {},
+            { silent: true, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
         .then(data => {
             btn.disabled = false;
             btn.innerHTML = '<i data-lucide="cpu" class="w-4 h-4"></i> Push Applications';
