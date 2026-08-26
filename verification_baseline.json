@@ -1,6 +1,6 @@
 {
   "_comment": "Ratchet baselines for scripts/verify.py. Lowering a number is routine (run --update-baseline after a cleanup). Raising one is a deliberate regression and must be justified in review.",
-  "_note": "updated 2026-08-21 (nav-verified gate)",
+  "_note": "updated 2026-08-26 (raw_fetch_sites 919 -> 895: rationalization.js migrated to Platform.fetch)",
   "ratchets": {
     "undefined_names": 0,
     "redefinitions": 0,
@@ -16,7 +16,7 @@
     "nav_coverage": 4,
     "design_tokens_extended": 12,
     "shell_conformance": 158,
-    "raw_fetch_sites": 919,
+    "raw_fetch_sites": 895,
     "ui_contract": 27,
     "nav_verified": 16
   }
