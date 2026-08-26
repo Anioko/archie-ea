@@ -972,6 +972,28 @@ def gate_js_syntax() -> Result:
     return Result("js-syntax", FAIL, output.strip()[-800:])
 
 
+def gate_console_reporting(baseline: int) -> Result:
+    """Ratchet on console.* calls in shipped JS and templates.
+
+    A console.error is a failure reported to NOBODY: the user sees a control
+    that did nothing, or a panel that stayed empty, and cannot tell a failure
+    from an empty result. That is the same harm as fabricated data, reached
+    from the other side. Each one is either a failure that belongs in
+    Platform.toast or an inline error state, or a diagnostic that should not
+    ship. console.log is already at zero; this freezes the rest.
+    """
+    proc = _run([sys.executable, "scripts/check_console_reporting.py", "--count"])
+    output = (proc.stdout + proc.stderr).strip()
+    if proc.returncode != 0:
+        return Result("console-reporting", FAIL, output[-400:])
+    try:
+        count = int(output.splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("console-reporting", FAIL, f"unparseable count: {output[-200:]}")
+    return Result("console-reporting", PASS if count <= baseline else FAIL,
+                  f"[{count} <= {baseline}]", count, baseline)
+
+
 def gate_vendor_integrity() -> Result:
     """Vendored assets match their recorded provenance.
 
@@ -1333,6 +1355,10 @@ def build_gates(baseline: dict) -> list[Gate]:
              gate_js_build,
              remediation="python scripts/build_js.py   and commit the result",
              tags=["static"]),
+        Gate("console-reporting", "console.* calls in shipped JS and templates", "ratchet",
+             lambda: gate_console_reporting(baseline["console_reporting"]),
+             remediation="surface the failure via Platform.toast or an inline error state, or delete the diagnostic",
+             tags=["static", "ui"]),
         Gate("js-syntax", "every shipped JS file parses in a real engine", "command",
              gate_js_syntax,
              remediation="fix the reported SyntaxError; the browser discards the whole file",

@@ -780,10 +780,19 @@ function jobDetail(jobId) {
                 this.loadJob(true);
             });
 
-            this.eventSource.onerror = (error) => {
-                console.error('SSE connection error:', error);
+            this.eventSource.onerror = () => {
+                // The live progress panel disappears when streaming flips false,
+                // and the job then only advances on the next poll. Saying nothing
+                // makes a dropped stream look like a stalled job, so tell the
+                // user which one it is. (console.error told nobody and is
+                // forbidden in shipped templates.)
                 this.stopStream();
                 this.loadJob(true);
+                if (window.Platform && Platform.toast) {
+                    Platform.toast.warning(
+                        'Live progress updates stopped. Refreshing job status instead.'
+                    );
+                }
             };
         },
 
