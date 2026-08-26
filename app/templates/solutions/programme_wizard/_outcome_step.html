@@ -1,0 +1,22 @@
+<section class="rounded-lg border border-border bg-card p-6" aria-labelledby="outcome-heading"
+         x-show="currentStep === 3" x-cloak data-testid="step-outcome">
+  <h2 id="outcome-heading" class="text-lg font-semibold text-foreground">Accountable outcome</h2>
+  <p class="mt-1 text-sm text-muted-foreground">State the change this programme is accountable for, and which way it should move.</p>
+  <div class="mt-4 grid gap-4 sm:grid-cols-2">
+    <label class="grid gap-2 text-sm font-medium text-foreground sm:col-span-2">
+      Outcome statement
+      <input class="h-9 rounded-md border border-border bg-background px-3 text-sm"
+             name="outcome" value="{{ programme_form.outcome }}"
+             x-model.trim="form.outcome.statement" required data-testid="field-outcome">
+    </label>
+    <label class="grid gap-2 text-sm font-medium text-foreground">
+      Improvement direction
+      <select class="h-9 rounded-md border border-border bg-background px-3 text-sm"
+              name="direction" x-model="form.outcome.direction" required data-testid="field-direction">
+        <option value="decrease"{% if programme_form.direction == 'decrease' %} selected{% endif %}>Decrease</option>
+        <option value="increase"{% if programme_form.direction == 'increase' %} selected{% endif %}>Increase</option>
+        <option value="maintain"{% if programme_form.direction == 'maintain' %} selected{% endif %}>Maintain</option>
+      </select>
+    </label>
+  </div>
+</section>
