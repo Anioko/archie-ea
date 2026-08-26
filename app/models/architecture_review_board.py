@@ -2119,9 +2119,28 @@ def ensure_arb_cycle_constraints(connection):
             )
 
 
-@event.listens_for(ARBReviewCycle.__table__, "after_create")
-@event.listens_for(ARBReviewItem.__table__, "after_create")
+@event.listens_for(db.metadata, "after_create")
 def _install_arb_cycle_constraints(_target, connection, **_kwargs):
+    """Install the typed ARB guards once, after create_all has finished.
+
+    This used to listen on ARBReviewCycle.__table__ and ARBReviewItem.__table__,
+    which broke `flask init-db` on a BRAND-NEW database -- so every fresh
+    install, which is the one path nobody re-runs to notice:
+
+        DuplicateObject: la restriccion «fk_arb_review_item_cycle»
+        para la relacion «arb_review_items» ya existe
+
+    ARBReviewItem.review_cycle_id declares its FK with use_alter=True, so
+    SQLAlchemy emits that constraint as a separate ALTER TABLE at the very END
+    of create_all, after every table exists (that is what use_alter is for --
+    the two tables reference each other). The per-table hook fired in the
+    middle of that process and added the same *named* constraint first, so
+    SQLAlchemy's own DDL then collided with it and create_all aborted.
+
+    Listening on the metadata fires once, after create_all has emitted
+    everything including its use_alter constraints, so the state check inside
+    ensure_arb_cycle_constraints sees them and skips what already exists.
+    """
     ensure_arb_cycle_constraints(connection)
 
 

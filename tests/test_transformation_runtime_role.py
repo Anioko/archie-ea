@@ -3383,6 +3383,33 @@ def test_session_termination_uses_timeout_and_fresh_proof_connection(
 
     role_database = guarded_runtime_database
     parsed = urlsplit(os.environ["TEST_DATABASE_URL"])
+
+    # pg_terminate_backend(pid, timeout) arrived in PostgreSQL 14, and
+    # configure_roles deliberately probes for it and falls back to the
+    # one-argument form on older servers -- a fallback its sibling
+    # test_session_termination_uses_legacy_one_argument_fallback pins.
+    # Asserting the overload unconditionally therefore fails on a server that
+    # is behaving exactly as the product intends, so probe the same way the
+    # product does rather than reporting supported behaviour as a defect.
+    with psycopg2.connect(
+        host=parsed.hostname,
+        port=parsed.port,
+        dbname=role_database.database_name,
+        user=parsed.username,
+        password=parsed.password,
+    ) as probe:
+        with probe.cursor() as probe_cursor:
+            probe_cursor.execute(
+                "SELECT to_regprocedure("
+                "'pg_catalog.pg_terminate_backend(integer,bigint)') IS NOT NULL"
+            )
+            has_timeout_overload = probe_cursor.fetchone()[0]
+    if not has_timeout_overload:
+        pytest.skip(
+            "server has no pg_terminate_backend(pid, timeout); the "
+            "one-argument fallback is covered by the sibling test"
+        )
+
     attacker = psycopg2.connect(
         host=parsed.hostname,
         port=parsed.port,
