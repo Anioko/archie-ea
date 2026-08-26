@@ -99,22 +99,17 @@ let ComposerGraph = (function() {
                 return;
             }
 
-            fetch('/archimate/api/relationships', {
-                method: 'POST', credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                body: JSON.stringify({
-                    source_element_id: self.relPickerSourceId,
-                    target_element_id: self.relPickerTargetId,
-                    relationship_type: relType,
-                    solution_id: self.solutionId || null,
-                    access_mode: relType === 'access' ? self.accessMode : undefined,
-                    flow_label: relType === 'flow' ? self.flowLabel : undefined,
-                    description: pendingLink.get('description') || undefined,
-                    custom_label: pendingLink.get('customLabel') || undefined,
-                }),
-            })
-            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
-            .then(function(data) {
+            Platform.fetch.post('/archimate/api/relationships', {
+                source_element_id: self.relPickerSourceId,
+                target_element_id: self.relPickerTargetId,
+                relationship_type: relType,
+                solution_id: self.solutionId || null,
+                access_mode: relType === 'access' ? self.accessMode : undefined,
+                flow_label: relType === 'flow' ? self.flowLabel : undefined,
+                description: pendingLink.get('description') || undefined,
+                custom_label: pendingLink.get('customLabel') || undefined,
+            }, { silent: true })
+                .then(function(data) {
                 if (data.id) {
                     let style = REL_STYLES[relType] || REL_STYLES.association;
                     let mp = markerPath(style.targetMarker);
@@ -276,16 +271,12 @@ let ComposerGraph = (function() {
             self.logAuditEvent('relationship_removed', 'relationship', relId, relType, srcName + ' → ' + tgtName, null);
 
             if (relId) {
-                fetch('/archimate/api/relationships/' + relId, {
-                    method: 'DELETE',
-                    credentials: 'same-origin',
-                    headers: { 'X-CSRFToken': csrfToken() },
-                }).catch(function(err) {
-                    console.warn('Failed to delete relationship ' + relId + ' from server:', err);
-                    /* The link is already gone from the canvas — the user needs to know the
-                       delete did NOT persist, or it will silently reappear on next reload. */
-                    _toast('error', 'Relationship removed on canvas but not saved — it may reappear on reload');
-                });
+                Platform.fetch.delete('/archimate/api/relationships/' + relId, { silent: true })
+                    .catch(function(err) {
+                        /* The link is already gone from the canvas — the user needs to know the
+                           delete did NOT persist, or it will silently reappear on next reload. */
+                        _toast('error', 'Relationship removed on canvas but not saved — it may reappear on reload');
+                    });
             }
         },
 
@@ -417,12 +408,8 @@ let ComposerGraph = (function() {
             // Wave 7: Propagate stale to downstream dependents
             if (elId && this.solutionId) {
                 let self = this;
-                fetch('/api/solutions/' + self.solutionId + '/elements/' + elId + '/propagate-stale', {
-                    method: 'POST', credentials: 'same-origin',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                    body: '{}',
-                }).then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
-                .then(function(data) {
+                Platform.fetch.post('/api/solutions/' + self.solutionId + '/elements/' + elId + '/propagate-stale', {})
+                    .then(function(data) {
                     if (data.stale_count > 0) {
                         self._staleElementIds = data.stale_ids || [];
                         self.staleCount = data.stale_count;
@@ -784,17 +771,10 @@ let ComposerGraph = (function() {
         /* BUG-CMP-002: Persist a single metadata field on a relationship via PUT */
         _persistRelMetadata: function(relId, payload) {
             if (!relId) return;
-            fetch('/archimate/api/relationships/' + relId, {
-                method: 'PUT', credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                body: JSON.stringify(payload),
-            })
-            .then(function(r) {
-                if (!r.ok) throw new Error('HTTP ' + r.status);
-            })
-            .catch(function(err) {
-                _toast('error', 'Failed to save relationship property: ' + (err.message || err));
-            });
+            Platform.fetch.put('/archimate/api/relationships/' + relId, payload, { silent: true })
+                .catch(function(err) {
+                    _toast('error', 'Failed to save relationship property: ' + (err.message || err));
+                });
         },
 
         /* GAP-INT-001: Persist connection specification to backend + update annotation */
@@ -984,11 +964,11 @@ let ComposerGraph = (function() {
             this.relPickerOpen = true;
 
             let self = this;
-            fetch('/archimate/api/valid-relationship-types?source_id=' + srcElementId + '&target_id=' + tgtElementId, {
-                credentials: 'same-origin',
-            })
-            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
-            .then(function(data) {
+            Platform.fetch.get('/archimate/api/valid-relationship-types', {
+                source_id: srcElementId,
+                target_id: tgtElementId,
+            }, { silent: true })
+                .then(function(data) {
                 let validDetailed = data.valid_types_detailed || [];
                 self.relPickerTypes = validDetailed.length > 0
                     ? validDetailed
@@ -1066,11 +1046,7 @@ let ComposerGraph = (function() {
                 self.statusText = 'Presentation: slide 1 of ' + slides.length;
             }
 
-            fetch('/archimate/api/saved-viewpoints', { credentials: 'same-origin' })
-                .then(function(r) {
-                    if (!r.ok) throw new Error('HTTP ' + r.status);
-                    return r.json();
-                })
+            Platform.fetch.get('/archimate/api/saved-viewpoints', {}, { silent: true })
                 .then(function(data) {
                     let vps = data.viewpoints || data || [];
                     let slides = vps.map(function(v) {
@@ -1586,14 +1562,11 @@ let ComposerGraph = (function() {
                 if (eid) cellMap[eid] = el;
             });
             self.statusText = 'Scanning for existing relationships...';
-            fetch('/archimate/api/relationships?per_page=200&element_ids=' + elementIds.join(','), {
-                credentials: 'same-origin',
-            })
-            .then(function(r) {
-                if (!r.ok) { throw new Error('relationships request failed: ' + r.status); }
-                return r.json();
-            })
-            .then(function(data) {
+            Platform.fetch.get('/archimate/api/relationships', {
+                per_page: 200,
+                element_ids: elementIds.join(','),
+            }, { silent: true })
+                .then(function(data) {
                 let rels = data.relationships || data.items || [];
                 let added = 0;
                 rels.forEach(function(rel) {
@@ -1657,14 +1630,11 @@ let ComposerGraph = (function() {
                 if (eid) cellMap[eid] = el;
             });
 
-            fetch('/archimate/api/relationships?per_page=200&element_ids=' + elementIds.join(','), {
-                credentials: 'same-origin',
-            })
-            .then(function(r) {
-                if (!r.ok) { throw new Error('relationships request failed: ' + r.status); }
-                return r.json();
-            })
-            .then(function(data) {
+            Platform.fetch.get('/archimate/api/relationships', {
+                per_page: 200,
+                element_ids: elementIds.join(','),
+            }, { silent: true })
+                .then(function(data) {
                 let rels = data.relationships || data.items || [];
                 let added = 0;
                 rels.forEach(function(rel) {
@@ -1741,14 +1711,11 @@ let ComposerGraph = (function() {
                 if (eid) cellMap[eid] = el;
             });
 
-            fetch('/archimate/api/relationships?per_page=200&element_ids=' + elementIds.join(','), {
-                credentials: 'same-origin',
-            })
-            .then(function(r) {
-                if (!r.ok) { throw new Error('relationships request failed: ' + r.status); }
-                return r.json();
-            })
-            .then(function(data) {
+            Platform.fetch.get('/archimate/api/relationships', {
+                per_page: 200,
+                element_ids: elementIds.join(','),
+            }, { silent: true })
+                .then(function(data) {
                 let rels = data.relationships || data.items || [];
                 let added = 0;
                 rels.forEach(function(rel) {
@@ -1803,13 +1770,13 @@ let ComposerGraph = (function() {
                 return;
             }
             self.bulkImportLoading = true;
-            let url = '/archimate/api/elements/search?limit=100';
-            if (q.length > 0) url += '&q=' + encodeURIComponent(q);
-            if (self.bulkImportLayerFilter) url += '&layer=' + encodeURIComponent(self.bulkImportLayerFilter);
-            if (self.solutionId) url += '&solution_id=' + encodeURIComponent(self.solutionId);
-            fetch(url, { credentials: 'same-origin' })
-            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
-            .then(function(data) {
+            Platform.fetch.get('/archimate/api/elements/search', {
+                limit: 100,
+                q: q.length > 0 ? q : undefined,
+                layer: self.bulkImportLayerFilter || undefined,
+                solution_id: self.solutionId || undefined,
+            }, { silent: true })
+                .then(function(data) {
                 const items = data.elements || data.items || data.results || [];
                 /* Mark items already on canvas as disabled */
                 items.forEach(function(el) {

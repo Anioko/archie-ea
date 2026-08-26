@@ -139,18 +139,13 @@ function businessContextApp() {
         // Save context
         async saveContext() {
             try {
-                let response = await fetch('/api/architecture-assistant/business-context', {
-                    method: 'POST',
-                    headers: this._csrfHeaders(),
-                    body: JSON.stringify({
-                        name: this.context.name,
-                        description: this.context.description,
-                        organization: this.context.organization,
-                        industry: this.context.industry
-                    })
+                let result = await Platform.fetch.post('/api/architecture-assistant/business-context', {
+                    name: this.context.name,
+                    description: this.context.description,
+                    organization: this.context.organization,
+                    industry: this.context.industry
                 });
 
-                let result = await response.json();
                 if (result.success) {
                     this.context.id = result.data.id;
                     Platform.toast.success('Business context saved successfully!');
@@ -165,7 +160,6 @@ function businessContextApp() {
                     Platform.toast.error('Error saving context: ' + result.error);
                 }
             } catch (error) {
-                console.error('Error:', error);
                 Platform.toast.error('Error saving context');
             }
         },
@@ -177,23 +171,16 @@ function businessContextApp() {
                 let driver = this.context.drivers[i];
                 if (!driver.saved) {
                     try {
-                        let response = await fetch('/api/architecture-assistant/business-context/' + this.context.id + '/drivers', {
-                            method: 'POST',
-                            headers: this._csrfHeaders(),
-                            body: JSON.stringify({
-                                name: driver.name,
-                                description: driver.description,
-                                category: driver.category,
-                                impact_level: driver.impact_level,
-                                timeframe: driver.timeframe,
-                                stakeholders: driver.stakeholders
-                            })
+                        await Platform.fetch.post('/api/architecture-assistant/business-context/' + this.context.id + '/drivers', {
+                            name: driver.name,
+                            description: driver.description,
+                            category: driver.category,
+                            impact_level: driver.impact_level,
+                            timeframe: driver.timeframe,
+                            stakeholders: driver.stakeholders
                         });
-
-                        if (!response.ok) throw new Error('HTTP ' + response.status);
                         driver.saved = true;
                     } catch (error) {
-                        console.error('Error saving driver:', error);
                         failed++;
                     }
                 }
@@ -210,24 +197,17 @@ function businessContextApp() {
                 let objective = this.context.objectives[i];
                 if (!objective.saved) {
                     try {
-                        let response = await fetch('/api/architecture-assistant/business-context/' + this.context.id + '/objectives', {
-                            method: 'POST',
-                            headers: this._csrfHeaders(),
-                            body: JSON.stringify({
-                                name: objective.name,
-                                description: objective.description,
-                                priority: objective.priority,
-                                timeframe: objective.timeframe,
-                                owner: objective.owner,
-                                kpis: objective.kpis,
-                                dependencies: objective.dependencies
-                            })
+                        await Platform.fetch.post('/api/architecture-assistant/business-context/' + this.context.id + '/objectives', {
+                            name: objective.name,
+                            description: objective.description,
+                            priority: objective.priority,
+                            timeframe: objective.timeframe,
+                            owner: objective.owner,
+                            kpis: objective.kpis,
+                            dependencies: objective.dependencies
                         });
-
-                        if (!response.ok) throw new Error('HTTP ' + response.status);
                         objective.saved = true;
                     } catch (error) {
-                        console.error('Error saving objective:', error);
                         failed++;
                     }
                 }
@@ -244,22 +224,15 @@ function businessContextApp() {
                 let constraint = this.context.constraints[i];
                 if (!constraint.saved) {
                     try {
-                        let response = await fetch('/api/architecture-assistant/business-context/' + this.context.id + '/constraints', {
-                            method: 'POST',
-                            headers: this._csrfHeaders(),
-                            body: JSON.stringify({
-                                name: constraint.name,
-                                description: constraint.description,
-                                type: constraint.type,
-                                impact: constraint.impact,
-                                mitigation_strategy: constraint.mitigation_strategy
-                            })
+                        await Platform.fetch.post('/api/architecture-assistant/business-context/' + this.context.id + '/constraints', {
+                            name: constraint.name,
+                            description: constraint.description,
+                            type: constraint.type,
+                            impact: constraint.impact,
+                            mitigation_strategy: constraint.mitigation_strategy
                         });
-
-                        if (!response.ok) throw new Error('HTTP ' + response.status);
                         constraint.saved = true;
                     } catch (error) {
-                        console.error('Error saving constraint:', error);
                         failed++;
                     }
                 }
@@ -276,25 +249,18 @@ function businessContextApp() {
                 let metric = this.context.metrics[i];
                 if (!metric.saved) {
                     try {
-                        let response = await fetch('/api/architecture-assistant/business-context/' + this.context.id + '/metrics', {
-                            method: 'POST',
-                            headers: this._csrfHeaders(),
-                            body: JSON.stringify({
-                                name: metric.name,
-                                description: metric.description,
-                                metric_type: metric.metric_type,
-                                current_value: metric.current_value,
-                                target_value: metric.target_value,
-                                unit: metric.unit,
-                                measurement_frequency: metric.measurement_frequency,
-                                owner: metric.owner
-                            })
+                        await Platform.fetch.post('/api/architecture-assistant/business-context/' + this.context.id + '/metrics', {
+                            name: metric.name,
+                            description: metric.description,
+                            metric_type: metric.metric_type,
+                            current_value: metric.current_value,
+                            target_value: metric.target_value,
+                            unit: metric.unit,
+                            measurement_frequency: metric.measurement_frequency,
+                            owner: metric.owner
                         });
-
-                        if (!response.ok) throw new Error('HTTP ' + response.status);
                         metric.saved = true;
                     } catch (error) {
-                        console.error('Error saving metric:', error);
                         failed++;
                     }
                 }
@@ -311,28 +277,21 @@ function businessContextApp() {
                 let capability = this.context.capabilities[i];
                 if (!capability.saved) {
                     try {
-                        let response = await fetch('/api/architecture-assistant/business-context/' + this.context.id + '/capabilities', {
-                            method: 'POST',
-                            headers: this._csrfHeaders(),
-                            body: JSON.stringify({
-                                name: capability.name,
-                                description: capability.description,
-                                domain: capability.domain,
-                                level: capability.level,
-                                maturity: capability.maturity,
-                                strategic_importance: capability.strategic_importance,
-                                business_value: capability.business_value,
-                                current_state: capability.current_state,
-                                target_state: capability.target_state,
-                                gaps: capability.gaps,
-                                dependencies: capability.dependencies
-                            })
+                        await Platform.fetch.post('/api/architecture-assistant/business-context/' + this.context.id + '/capabilities', {
+                            name: capability.name,
+                            description: capability.description,
+                            domain: capability.domain,
+                            level: capability.level,
+                            maturity: capability.maturity,
+                            strategic_importance: capability.strategic_importance,
+                            business_value: capability.business_value,
+                            current_state: capability.current_state,
+                            target_state: capability.target_state,
+                            gaps: capability.gaps,
+                            dependencies: capability.dependencies
                         });
-
-                        if (!response.ok) throw new Error('HTTP ' + response.status);
                         capability.saved = true;
                     } catch (error) {
-                        console.error('Error saving capability:', error);
                         failed++;
                     }
                 }
@@ -356,25 +315,13 @@ function businessContextApp() {
                    the literal strings "Error generating problem statement"/"…scope
                    definition" sitting where the analysis should be — a failure
                    presented as an analysis result. */
-                let heatmapResponse = await fetch('/api/architecture-assistant/business-context/' + this.context.id + '/heatmap', {
-                    method: 'POST'
-                });
-                if (!heatmapResponse.ok) throw new Error('capability heatmap (HTTP ' + heatmapResponse.status + ')');
-                let heatmapResult = await heatmapResponse.json();
+                let heatmapResult = await Platform.fetch.post('/api/architecture-assistant/business-context/' + this.context.id + '/heatmap');
 
                 // Generate problem statement
-                let problemResponse = await fetch('/api/architecture-assistant/business-context/' + this.context.id + '/problem-statement', {
-                    method: 'POST'
-                });
-                if (!problemResponse.ok) throw new Error('problem statement (HTTP ' + problemResponse.status + ')');
-                let problemResult = await problemResponse.json();
+                let problemResult = await Platform.fetch.post('/api/architecture-assistant/business-context/' + this.context.id + '/problem-statement');
 
                 // Generate scope definition
-                let scopeResponse = await fetch('/api/architecture-assistant/business-context/' + this.context.id + '/scope', {
-                    method: 'POST'
-                });
-                if (!scopeResponse.ok) throw new Error('scope definition (HTTP ' + scopeResponse.status + ')');
-                let scopeResult = await scopeResponse.json();
+                let scopeResult = await Platform.fetch.post('/api/architecture-assistant/business-context/' + this.context.id + '/scope');
 
                 this.analysisResults = {
                     capability_heatmap: heatmapResult.success ? heatmapResult.data : null,
@@ -386,7 +333,6 @@ function businessContextApp() {
                 document.querySelector('[x-show="analysisResults"]').scrollIntoView({ behavior: 'smooth' });
 
             } catch (error) {
-                console.error('Error generating analysis:', error);
                 // Leave analysisResults untouched — a half-built result is worse than none.
                 Platform.toast.error('Could not generate the analysis — ' + ((error && error.message) || 'request failed') + '. Nothing was produced.');
             }
@@ -413,34 +359,16 @@ function businessContextApp() {
 
             this.submitting = true;
             try {
-                let response = await fetch('/api/architecture-assistant/business-context', {
-                    method: 'POST',
-                    headers: this._csrfHeaders(),
-                    body: JSON.stringify({
-                        name: this.form.project_name.trim(),
-                        organization: this.form.organization.trim(),
-                        industry: this.form.industry.trim(),
-                        description: this.form.business_problem.trim(),
-                        strategic_objectives: this.form.strategic_objectives.trim(),
-                        stakeholders: this.form.stakeholders.trim(),
-                        constraints: this.form.constraints.trim()
-                    })
-                });
+                let result = await Platform.fetch.post('/api/architecture-assistant/business-context', {
+                    name: this.form.project_name.trim(),
+                    organization: this.form.organization.trim(),
+                    industry: this.form.industry.trim(),
+                    description: this.form.business_problem.trim(),
+                    strategic_objectives: this.form.strategic_objectives.trim(),
+                    stakeholders: this.form.stakeholders.trim(),
+                    constraints: this.form.constraints.trim()
+                }, { silent: true });
 
-                if (!response.ok) {
-                    let errMsg = 'Failed to save business context.';
-                    try {
-                        let errBody = await response.json();
-                        errMsg = errBody.error || errMsg;
-                    } catch (_) {
-                        // Body wasn't JSON (e.g. an HTML 500 page) — fall back to the
-                        // generic message above; this.errorMsg is still set either way.
-                    }
-                    this.errorMsg = errMsg;
-                    return;
-                }
-
-                let result = await response.json();
                 if (result.context_id) {
                     sessionStorage.setItem('architecture_assistant_context_id', result.context_id);
                     this.context.id = result.context_id;
@@ -450,7 +378,6 @@ function businessContextApp() {
                 }
             } catch (err) {
                 this.errorMsg = 'Network error. Please try again.';
-                console.error('submitPhaseA error:', err);
             } finally {
                 this.submitting = false;
             }

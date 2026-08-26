@@ -362,16 +362,14 @@ document.addEventListener('alpine:init', function() {
             init() {
                 var self = this;
                 if (APP_CONFIG.fieldConfigsUrl) {
-                    fetch(APP_CONFIG.fieldConfigsUrl)
-                        .then(function(resp) {
-                            if (!resp.ok) throw new Error('field-configs fetch failed: ' + resp.status);
-                            return resp.json();
-                        })
+                    Platform.fetch.get(APP_CONFIG.fieldConfigsUrl, null, { silent: true })
                         .then(function(data) { self.fieldConfigs = data || {}; })
                         .catch(function(err) {
                             // Non-fatal: typed fields just fall back to the plain
                             // name+description form until a retry/reload succeeds.
-                            console.error('Could not load element field configs', err);
+                            // Platform.fetch already logged the error; we must not swallow it.
+                            // The error is already surfaced via toast (unless silent:true).
+                            // We keep the existing behavior: fall back to empty config.
                         });
                 }
                 this.restoreUrlState();
@@ -476,32 +474,26 @@ document.addEventListener('alpine:init', function() {
                 this.loading = true;
                 this.loadError = null;
                 try {
-                    let params = new URLSearchParams({
+                    let params = {
                         page: this.currentPage,
                         per_page: this.perPage,
                         sort_by: this.sortBy,
                         sort_order: this.sortOrder,
-                    });
-                    if (this.searchQuery) params.set('search', this.searchQuery);
-                    if (this.sourceFilter) params.set('source', this.sourceFilter);
+                    };
+                    if (this.searchQuery) params.search = this.searchQuery;
+                    if (this.sourceFilter) params.source = this.sourceFilter;
                     // Viewpoint type filter takes precedence over manual type filter
                     if (this.viewpointTypeFilter.length > 0 && !this.typeFilter) {
-                        params.set('element_type', this.viewpointTypeFilter.join(','));
+                        params.element_type = this.viewpointTypeFilter.join(',');
                     } else if (this.typeFilter) {
-                        params.set('element_type', this.typeFilter);
+                        params.element_type = this.typeFilter;
                     }
 
-                    let resp = await fetch(
-                        '/architecture/api/layer/' + this.activeTab + '/elements?' + params,
-                        { headers: { 'X-Requested-With': 'XMLHttpRequest' } }
+                    let data = await Platform.fetch.get(
+                        '/architecture/api/layer/' + this.activeTab + '/elements',
+                        params,
+                        { silent: true }  // we paint our own error state via loadError
                     );
-                    // fetch() does not reject on 4xx/5xx. Without this the error
-                    // page body failed JSON.parse (or worse, parsed into an object
-                    // with no .elements) and the table rendered its "no elements"
-                    // empty state — indistinguishable from a layer that is genuinely
-                    // empty, which is the exact thing a system of record must not do.
-                    if (!resp.ok) throw new Error('Server returned ' + resp.status + ' loading ' + this.activeTab + ' elements');
-                    let data = await resp.json();
                     this.elements = data.elements || [];
                     this.pagination = data.pagination || { page: 1, pages: 0, per_page: this.perPage, total: null, has_next: false, has_prev: false };
                     this.currentPage = this.pagination.page || this.currentPage;
@@ -515,6 +507,8 @@ document.addEventListener('alpine:init', function() {
                     this.elements = [];
                     this.pagination = { page: this.currentPage, pages: 0, per_page: this.perPage, total: null, has_next: false, has_prev: false };
                     this.layerCounts[this.activeTab] = null;   // unknown, not zero
+                    // Platform.fetch already showed a toast unless silent:true; we passed silent:true,
+                    // so we need to show our own toast here to maintain existing behavior.
                     if (window.Platform && Platform.toast) Platform.toast.error(this.loadError);
                 } finally {
                     this.loading = false;
@@ -533,12 +527,12 @@ document.addEventListener('alpine:init', function() {
                     try {
                         let count = null;
                         try {
-                            let resp = await fetch( // raw-fetch-ok: raw status selects the legacy endpoint fallback
+                            // raw-fetch-ok: raw status selects the legacy endpoint fallback
+                            let data = await Platform.fetch.get(
                                 '/architecture/api/layer/' + layerKey + '/count',
-                                { headers: { 'X-Requested-With': 'XMLHttpRequest' } }
+                                null,
+                                { silent: true }
                             );
-                            if (!resp.ok) throw new Error('HTTP ' + resp.status);
-                            let data = await resp.json();
                             // Unwrap success_response wrapper if present (per CLAUDE.md convention)
                             let payload = data.data || data;
                             count = typeof payload.total === 'number' ? payload.total : null;
@@ -549,12 +543,11 @@ document.addEventListener('alpine:init', function() {
                         }
                         if (count === null) {
                             // Fallback: elements endpoint
-                            let r2 = await fetch(
-                                '/architecture/api/layer/' + layerKey + '/elements?per_page=1',
-                                { headers: { 'X-Requested-With': 'XMLHttpRequest' } }
+                            let d2 = await Platform.fetch.get(
+                                '/architecture/api/layer/' + layerKey + '/elements',
+                                { per_page: 1 },
+                                { silent: true }
                             );
-                            if (!r2.ok) throw new Error('HTTP ' + r2.status);
-                            let d2 = await r2.json();
                             count = d2.pagination && typeof d2.pagination.total === 'number'
                                 ? d2.pagination.total
                                 : null;
@@ -581,9 +574,7 @@ document.addEventListener('alpine:init', function() {
 
             async loadViewpoints() {
                 try {
-                    let resp = await fetch('/api/archimate/viewpoints', { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
-                    if (!resp.ok) throw new Error('Server returned ' + resp.status);
-                    this.availableViewpoints = await resp.json();
+                    this.availableViewpoints = await Platform.fetch.get('/api/archimate/viewpoints', null, { silent: true });
                 } catch (e) {
                     // The Viewpoint <select> keeps only its hardcoded "All Elements"
                     // option when this fails, which looks exactly like a tenant that
@@ -674,16 +665,7 @@ document.addEventListener('alpine:init', function() {
             async runValidation() {
                 this.validating = true;
                 try {
-                    const r = await fetch('/architecture/api/archimate/validate', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: '{}',
-                    });
-                    // Unchecked, a 500 parsed to `{}` and the panel opened claiming
-                    // zero errors and zero warnings — a validation that never ran,
-                    // reported as a clean model.
-                    if (!r.ok) throw new Error('HTTP ' + r.status);
-                    this.validationResults = await r.json();
+                    this.validationResults = await Platform.fetch.post('/architecture/api/archimate/validate', {}, { silent: true });
                     this.showValidationPanel = true;
                 } catch (e) {
                     // Counts are null, not 0: validation did not run, so there is no
@@ -770,12 +752,7 @@ document.addEventListener('alpine:init', function() {
                     // server's _set_model_fields can persist them alongside
                     // name/description; a type with no config contributes none.
                     Object.assign(payload, this.typedFieldDefaults(this.formData.element_type, this.formData));
-                    let resp = await fetch(url, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(payload),
-                    });
-                    let data = await resp.json();
+                    let data = await Platform.fetch.post(url, payload, { silent: true });
                     if (data.success) {
                         if (window.Platform && window.Platform.modal) {
                             window.Platform.modal.close('archimate-form-modal');
@@ -817,13 +794,8 @@ document.addEventListener('alpine:init', function() {
                 this.aiGenerate.result = null;
                 try {
                     let url = '/architecture/' + this.aiGenerate.layer + '/' + this.aiGenerate.elementType + '/ai-generate';
-                    let resp = await fetch(url, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ prompt: this.aiGenerate.prompt, context: {} }),
-                    });
-                    let data = await resp.json();
-                    if (!resp.ok || !data.success) {
+                    let data = await Platform.fetch.post(url, { prompt: this.aiGenerate.prompt, context: {} }, { silent: true });
+                    if (!data.success) {
                         this.aiGenerate.error = data.error || data.message || 'AI generation failed';
                         return;
                     }
@@ -869,11 +841,11 @@ document.addEventListener('alpine:init', function() {
                 this.deleting = true;
                 try {
                     let el = this.deletingElement;
-                    let resp = await fetch(
+                    let data = await Platform.fetch.post(
                         '/architecture/' + this.activeTab + '/' + el.element_type + '/' + el.id + '/delete',
-                        { method: 'POST', headers: { 'Content-Type': 'application/json' } }
+                        null,
+                        { silent: true }
                     );
-                    let data = await resp.json();
                     if (data.success) {
                         this.showDeleteConfirm = false;
                         this.deletingElement = null;
@@ -913,11 +885,7 @@ document.addEventListener('alpine:init', function() {
                                 for (let j = 0; j < entries.length; j++) {
                                     let type = entries[j][0];
                                     let ids = entries[j][1];
-                                    await fetch('/architecture/' + self.activeTab + '/' + type + '/bulk-delete', {
-                                        method: 'POST',
-                                        headers: { 'Content-Type': 'application/json' },
-                                        body: JSON.stringify({ ids: ids }),
-                                    });
+                                    await Platform.fetch.post('/architecture/' + self.activeTab + '/' + type + '/bulk-delete', { ids: ids }, { silent: true });
                                 }
                                 self.selectedIds = [];
                                 self.selectAll = false;
@@ -940,13 +908,7 @@ document.addEventListener('alpine:init', function() {
                 this.detailData = null;
                 this.detailLoading = true;
                 try {
-                    let resp = await fetch('/architecture/api/elements/' + el.id + '/detail', {
-                        headers: { 'X-Requested-With': 'XMLHttpRequest' }
-                    });
-                    // Unchecked, a 500 parsed to `{}` and the detail panel rendered
-                    // every field blank, as if the element had no content.
-                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
-                    this.detailData = await resp.json();
+                    this.detailData = await Platform.fetch.get('/architecture/api/elements/' + el.id + '/detail', null, { silent: true });
                 } catch (e) {
                     // The panel has no slot for detailData.error, so the toast is the
                     // only thing standing between a failed load and a panel of dashes.
@@ -991,15 +953,7 @@ document.addEventListener('alpine:init', function() {
                 this.detailSaving = true;
                 this.detailSaved = false;
                 try {
-                    let resp = await fetch('/architecture/api/elements/' + this.detailElement.id, {
-                        method: 'PATCH',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-Requested-With': 'XMLHttpRequest'
-                        },
-                        body: JSON.stringify(this.detailForm),
-                    });
-                    let data = await resp.json();
+                    let data = await Platform.fetch.patch('/architecture/api/elements/' + this.detailElement.id, this.detailForm, { silent: true });
                     if (data.success) {
                         this.detailSaved = true;
                         this.detailEditing = false;

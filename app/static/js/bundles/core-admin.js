@@ -1347,7 +1347,29 @@
         return { message: String(reason), stack: null };
     }
 
+    // Alpine rejects a transition promise with {isFromCancelledTransition: true}
+    // whenever one transition supersedes another -- a toast replacing a toast, an
+    // x-show toggled twice before the first finished. That is Alpine's internal
+    // "superseded" signal, not a failure: nothing went wrong and there is nothing
+    // for anyone to act on. Reporting it as [Platform][error] invents an error
+    // that did not happen, which is the same sin as inventing data, and it buries
+    // real rejections in noise that scales with how much the UI is used.
+    function _isCancelledAlpineTransition(reason) {
+        return Boolean(reason)
+            && typeof reason === 'object'
+            && reason.isFromCancelledTransition === true;
+    }
+
     global.window.addEventListener('unhandledrejection', function (event) {
+        if (_isCancelledAlpineTransition(event.reason)) {
+            // Always prevented, dev included. The usual reason to let a rejection
+            // through in dev is so devtools still shows it -- but there is nothing
+            // here worth showing, and leaving it unprevented surfaces a bare
+            // "Object" in the console and in Playwright's pageerror channel, which
+            // is what made the browser gates fail on pages that merely animate.
+            event.preventDefault();
+            return;
+        }
         const serialised = _serialiseRejectionReason(event.reason);
         log.error(
             'Unhandled promise rejection: ' + serialised.message,

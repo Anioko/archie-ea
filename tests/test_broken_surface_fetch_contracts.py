@@ -178,7 +178,11 @@ def test_value_stream_ai_capability_lookup_distinguishes_http_failure_from_no_ma
         "async applySuggestion(index)", 1
     )[0]
 
-    assert "if (!resp.ok) {" in resolver
-    assert "throw new Error('Capability lookup failed (HTTP ' + resp.status + ')');" in resolver
-    assert "console.error('Failed to resolve suggested capability', err);" in resolver
-    assert "throw err;" in resolver, "network and JSON failures must propagate to applySuggestion"
+    # The lookup now goes through Platform.fetch, which raises on any non-ok
+    # response, so the explicit `if (!resp.ok) throw` is gone. What the contract
+    # actually needs is unchanged and is what is asserted here: the failure must
+    # LEAVE this function, because a null return from it means "no capability of
+    # that name exists" and a swallowed failure would be indistinguishable.
+    assert "Platform.fetch" in resolver, "the lookup must use the wrapper that throws on non-ok"
+    assert "throw err;" in resolver, "network and HTTP failures must propagate to applySuggestion"
+    assert "return results.find" in resolver, "a genuine no-match must still return null"

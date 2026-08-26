@@ -637,21 +637,17 @@ function jobDetail(jobId) {
             this.refreshing = !silent;
 
             try {
-                const response = await fetch(`/api/batch-import/jobs/${this.jobId}`);
-                const data = await response.json();
-
-                if (data.success) {
-                    this.job = data.job || data.data || null;
-                    this.$nextTick(() => {
-                        if (typeof lucide !== 'undefined') {
-                            lucide.createIcons();
-                        }
-                    });
-                }
+                const data = await Platform.fetch(`/api/batch-import/jobs/${this.jobId}`, { silent: true });
+                if (!data.success) throw new Error(data.error || data.message || 'Failed to load job details');
+                this.job = data.job || data.data || null;
+                this.$nextTick(() => {
+                    if (typeof lucide !== 'undefined') {
+                        lucide.createIcons();
+                    }
+                });
             } catch (error) {
-                console.error('Failed to load job:', error);
                 if (!silent) {
-                    this.showToast('Failed to load job details', 'error');
+                    this.showToast(error.message || 'Failed to load job details', 'error');
                 }
             } finally {
                 this.loading = false;
@@ -663,16 +659,12 @@ function jobDetail(jobId) {
             if (!silent) this.loadingBatches = true;
 
             try {
-                const response = await fetch(`/api/batch-import/jobs/${this.jobId}/batches`);
-                const data = await response.json();
-
-                if (data.success) {
-                    this.batches = data.batches || data.data || [];
-                }
+                const data = await Platform.fetch(`/api/batch-import/jobs/${this.jobId}/batches`, { silent: true });
+                if (!data.success) throw new Error(data.error || data.message || 'Failed to load batches');
+                this.batches = data.batches || data.data || [];
             } catch (error) {
-                console.error('Failed to load batches:', error);
                 if (!silent) {
-                    this.showToast('Failed to load batches', 'error');
+                    this.showToast(error.message || 'Failed to load batches', 'error');
                 }
             } finally {
                 this.loadingBatches = false;
@@ -687,11 +679,7 @@ function jobDetail(jobId) {
         async startJob() {
             try {
                 // First, mark the job as started
-                const response = await fetch(`/api/batch-import/jobs/${this.jobId}/start`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
-                });
-                const data = await response.json();
+                const data = await Platform.fetch.post(`/api/batch-import/jobs/${this.jobId}/start`, undefined, { silent: true });
 
                 if (data.success) {
                     this.showToast('Job started - connecting to progress stream...', 'success');
@@ -702,8 +690,7 @@ function jobDetail(jobId) {
                     this.showToast(data.message || data.error || 'Failed to start job', 'error');
                 }
             } catch (error) {
-                console.error('Failed to start job:', error);
-                this.showToast('Failed to start job', 'error');
+                this.showToast(error.message || 'Failed to start job', 'error');
             }
         },
 
@@ -822,11 +809,7 @@ function jobDetail(jobId) {
 
         async pauseJob() {
             try {
-                const response = await fetch(`/api/batch-import/jobs/${this.jobId}/pause`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
-                });
-                const data = await response.json();
+                const data = await Platform.fetch.post(`/api/batch-import/jobs/${this.jobId}/pause`, undefined, { silent: true });
 
                 if (data.success) {
                     this.showToast('Job paused', 'success');
@@ -836,18 +819,13 @@ function jobDetail(jobId) {
                     this.showToast(data.message || data.error || 'Failed to pause job', 'error');
                 }
             } catch (error) {
-                console.error('Failed to pause job:', error);
-                this.showToast('Failed to pause job', 'error');
+                this.showToast(error.message || 'Failed to pause job', 'error');
             }
         },
 
         async resumeJob() {
             try {
-                const response = await fetch(`/api/batch-import/jobs/${this.jobId}/resume`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
-                });
-                const data = await response.json();
+                const data = await Platform.fetch.post(`/api/batch-import/jobs/${this.jobId}/resume`, undefined, { silent: true });
 
                 if (data.success) {
                     this.showToast('Job resumed - connecting to progress stream...', 'success');
@@ -858,18 +836,13 @@ function jobDetail(jobId) {
                     this.showToast(data.message || data.error || 'Failed to resume job', 'error');
                 }
             } catch (error) {
-                console.error('Failed to resume job:', error);
-                this.showToast('Failed to resume job', 'error');
+                this.showToast(error.message || 'Failed to resume job', 'error');
             }
         },
 
         async cancelJob() {
             try {
-                const response = await fetch(`/api/batch-import/jobs/${this.jobId}/cancel`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
-                });
-                const data = await response.json();
+                const data = await Platform.fetch.post(`/api/batch-import/jobs/${this.jobId}/cancel`, undefined, { silent: true });
 
                 if (data.success) {
                     this.showToast('Job cancelled', 'success');
@@ -878,8 +851,7 @@ function jobDetail(jobId) {
                     this.showToast(data.message || data.error || 'Failed to cancel job', 'error');
                 }
             } catch (error) {
-                console.error('Failed to cancel job:', error);
-                this.showToast('Failed to cancel job', 'error');
+                this.showToast(error.message || 'Failed to cancel job', 'error');
             } finally {
                 this.showCancelModal = false;
             }
@@ -891,12 +863,7 @@ function jobDetail(jobId) {
             this.previewLoading = true;
             this.previewData = null;
             try {
-                const response = await fetch(`/api/batch-import/jobs/${this.jobId}/preview`, {
-                    headers: {
-                        'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''
-                    }
-                });
-                const data = await response.json();
+                const data = await Platform.fetch(`/api/batch-import/jobs/${this.jobId}/preview`, { silent: true });
                 if (data.success) {
                     this.previewData = data.data;
                     this.conflicts = data.data.duplicates || [];
@@ -913,8 +880,7 @@ function jobDetail(jobId) {
                     this.showToast(data.error || 'Failed to generate preview', 'error');
                 }
             } catch (error) {
-                console.error('Failed to load preview:', error);
-                this.showToast('Failed to load import preview', 'error');
+                this.showToast(error.message || 'Failed to load import preview', 'error');
             } finally {
                 this.previewLoading = false;
                 this.$nextTick(() => {
@@ -942,30 +908,26 @@ function jobDetail(jobId) {
                 return;
             }
             try {
-                const response = await fetch(`/api/batch-import/jobs/${this.jobId}/resolve-conflicts`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''
-                    },
-                    body: JSON.stringify({ resolutions: resolutionsList })
-                });
-                const data = await response.json();
+                const data = await Platform.fetch.post(`/api/batch-import/jobs/${this.jobId}/resolve-conflicts`,
+                    { resolutions: resolutionsList }, { silent: true });
                 if (data.success) {
                     this.showToast(data.message || 'Resolutions saved', 'success');
                 } else {
                     this.showToast(data.error || 'Failed to save resolutions', 'error');
                 }
             } catch (error) {
-                console.error('Failed to save resolutions:', error);
-                this.showToast('Failed to save conflict resolutions', 'error');
+                this.showToast(error.message || 'Failed to save conflict resolutions', 'error');
             }
         },
 
         showToast(message, type = 'info') {
             if (window.showToast) {
                 window.showToast(message, type);
-            } else {
+            } else if (window.Platform && Platform.toast) {
+                // The empty branch that used to be here dropped every failure
+                // message on any page where the legacy global is not defined.
+                const fn = Platform.toast[type] || Platform.toast.info;
+                fn.call(Platform.toast, message);
             }
         }
     };

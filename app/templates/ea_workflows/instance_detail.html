@@ -2208,10 +2208,14 @@ function artifactsPanel(instanceId) {
         async loadArtifacts() {
             this.loading = true;
             try {
-                const resp = await fetch('/api/ea-workflows/instances/' + instanceId + '/artifacts');
-                const data = await resp.json();
-                if (data.success) this.artifacts = data.artifacts || [];
-            } catch (e) { this.artifacts = []; }
+                const data = await Platform.fetch('/api/ea-workflows/instances/' + instanceId + '/artifacts', { silent: true });
+                if (!data.success) throw new Error(data.error || 'Could not load artifacts');
+                this.artifacts = data.artifacts || [];
+            } catch (e) {
+                // A checklist that failed to load must not read as "nothing produced".
+                this.artifacts = [];
+                if (window.Platform && Platform.toast) Platform.toast.error(e.message || 'Could not load the artifact list');
+            }
             this.loading = false;
         },
         matchedArtifact(name) {
@@ -2425,8 +2429,7 @@ function instancePage() {
 
         async _loadRunHistory() {
             try {
-                const resp = await fetch('/api/ea-workflows/instances/' + instanceId + '/run-history');
-                const data = await resp.json();
+                const data = await Platform.fetch('/api/ea-workflows/instances/' + instanceId + '/run-history', { silent: true });
                 if (data.success && (data.avg_duration || data.total_runs > 1)) {
                     this.runHistory = data;
                 }
@@ -2442,7 +2445,7 @@ function instancePage() {
 
         async pollStatus() {
             try {
-                const data = await (await fetch('/api/ea-workflows/instances/' + instanceId)).json();
+                const data = await Platform.fetch('/api/ea-workflows/instances/' + instanceId, { silent: true });
                 if (!data.success) return;
                 const newStatus = data.instance.status;
 
@@ -2481,16 +2484,13 @@ function instancePage() {
         async toggleWatch() {
             try {
                 const method = this.isWatching ? 'DELETE' : 'POST';
-                const data = await (await fetch('/api/ea-workflows/instances/' + instanceId + '/watch', {
-                    method,
-                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken }
-                })).json();
+                const data = await Platform.fetch('/api/ea-workflows/instances/' + instanceId + '/watch', { method, silent: true });
                 if (data.success) {
                     this.isWatching = data.watching;
                     if (window.Platform && Platform.toast) Platform.toast.success(data.watching ? 'Watching this run' : 'Stopped watching');
                 }
             } catch (e) {
-                if (window.Platform && Platform.toast) Platform.toast.error('Failed to update watch status');
+                if (window.Platform && Platform.toast) Platform.toast.error(e.message || 'Failed to update watch status');
             }
         },
 
@@ -2498,11 +2498,7 @@ function instancePage() {
             try {
                 const payload = {};
                 if (approvedItems && Array.isArray(approvedItems)) payload.approved_items = approvedItems;
-                const data = await (await fetch('/api/ea-workflows/instances/' + instanceId + '/resume', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
-                    body: JSON.stringify(payload)
-                })).json();
+                const data = await Platform.fetch.post('/api/ea-workflows/instances/' + instanceId + '/resume', payload, { silent: true });
                 if (data.success) {
                     if (window.Alpine && Alpine.store('announcer')) Alpine.store('announcer').announce('Workflow approved');
                     location.reload();
@@ -2510,7 +2506,7 @@ function instancePage() {
                 else if (window.Platform && Platform.toast) Platform.toast.error(data.error || 'Failed');
             } catch (e) {
                 if (window.Alpine && Alpine.store('announcer')) Alpine.store('announcer').announce('Workflow approval failed', 'assertive');
-                if (window.Platform && Platform.toast) Platform.toast.error('Network error');
+                if (window.Platform && Platform.toast) Platform.toast.error(e.message || 'Workflow approval failed');
             }
         },
         openRejectDialog() {
@@ -2520,14 +2516,10 @@ function instancePage() {
         async submitReject() {
             if (!this.rejectReason.trim()) return;
             try {
-                const data = await (await fetch('/api/ea-workflows/instances/' + instanceId + '/reject', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
-                    body: JSON.stringify({ reason: this.rejectReason })
-                })).json();
+                const data = await Platform.fetch.post('/api/ea-workflows/instances/' + instanceId + '/reject', { reason: this.rejectReason }, { silent: true });
                 if (data.success) { if (window.Platform && Platform.modal) Platform.modal.close('reject-workflow'); location.reload(); }
                 else if (window.Platform && Platform.toast) Platform.toast.error(data.error || 'Failed');
-            } catch (e) { if (window.Platform && Platform.toast) Platform.toast.error('Network error'); }
+            } catch (e) { if (window.Platform && Platform.toast) Platform.toast.error(e.message || 'Rejection failed'); }
         },
         openCancelDialog() {
             this.cancelReason = '';
@@ -2536,44 +2528,32 @@ function instancePage() {
         async submitCancel() {
             if (!this.cancelReason.trim()) return;
             try {
-                const data = await (await fetch('/api/ea-workflows/instances/' + instanceId + '/cancel', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
-                    body: JSON.stringify({ reason: this.cancelReason })
-                })).json();
+                const data = await Platform.fetch.post('/api/ea-workflows/instances/' + instanceId + '/cancel', { reason: this.cancelReason }, { silent: true });
                 if (data.success) { if (window.Platform && Platform.modal) Platform.modal.close('cancel-workflow'); location.reload(); }
                 else if (window.Platform && Platform.toast) Platform.toast.error(data.error || 'Cancellation failed');
-            } catch (e) { if (window.Platform && Platform.toast) Platform.toast.error('Network error'); }
+            } catch (e) { if (window.Platform && Platform.toast) Platform.toast.error(e.message || 'Cancellation failed'); }
         },
         async retryWorkflow() {
             try {
-                const data = await (await fetch('/api/ea-workflows/instances/' + instanceId + '/retry', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken }
-                })).json();
+                const data = await Platform.fetch.post('/api/ea-workflows/instances/' + instanceId + '/retry', undefined, { silent: true });
                 if (data.success) {
                     if (window.Alpine && Alpine.store('announcer')) Alpine.store('announcer').announce('Workflow retry started');
                     location.reload();
                 }
                 else if (window.Platform && Platform.toast) Platform.toast.error(data.error || 'Failed');
-            } catch (e) { if (window.Platform && Platform.toast) Platform.toast.error('Network error'); }
+            } catch (e) { if (window.Platform && Platform.toast) Platform.toast.error(e.message || 'Retry failed'); }
         },
         async openInSolutionComposer() {
             this.composerLoading = true;
             try {
-                const resp = await fetch('/api/solution-composer/canvas/from-adm/' + instanceId, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
-                    body: JSON.stringify({})
-                });
-                const data = await resp.json();
+                const data = await Platform.fetch.post('/api/solution-composer/canvas/from-adm/' + instanceId, {}, { silent: true });
                 if (data.success && data.data && data.data.canvas_id) {
                     window.location.href = '/solutions/composer/?canvas=' + data.data.canvas_id;
                 } else {
                     if (window.Platform && Platform.toast) Platform.toast.error(data.error || 'Failed to create canvas');
                 }
             } catch (e) {
-                if (window.Platform && Platform.toast) Platform.toast.error('Network error');
+                if (window.Platform && Platform.toast) Platform.toast.error(e.message || 'Failed to create canvas');
             } finally {
                 this.composerLoading = false;
             }

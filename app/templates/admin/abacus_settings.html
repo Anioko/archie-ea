@@ -654,7 +654,6 @@
 <script>
     lucide.createIcons();
 
-    const csrfToken = document.querySelector('meta[name=csrf-token]')?.content || '';
 
     // ── Relationship mapping Alpine component ────────────────────────
     function relationshipMappings() {
@@ -675,12 +674,10 @@
                 this.loading = true;
                 this.loadError = false;
                 try {
-                    const resp = await fetch('/admin/abacus-settings/relationship-mappings');
-                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
-                    const data = await resp.json();
+                    const data = await Platform.fetch('/admin/abacus-settings/relationship-mappings', { silent: true });
                     this.mappings = data.mappings || {};
                 } catch (e) {
-                    console.error('Failed to load mappings:', e);
+                    // silent: loadError paints an inline banner in the panel.
                     this.loadError = true;
                 }
                 finally { this.loading = false; }
@@ -688,15 +685,15 @@
             async saveMappings() {
                 this.saving = true; this.saveMessage = '';
                 try {
-                    const resp = await fetch('/admin/abacus-settings/save-relationship-mappings', {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken},
-                        body: JSON.stringify({mappings: this.mappings})
-                    });
-                    const data = await resp.json();
+                    const data = await Platform.fetch.post('/admin/abacus-settings/save-relationship-mappings',
+                        {mappings: this.mappings}, { silent: true });
                     this.saveMessage = data.success ? `Saved ${data.saved_count} mappings` : (data.error || 'Save failed');
                     this.saveError = !data.success;
-                } catch (e) { this.saveMessage = 'Network error'; this.saveError = true; }
+                } catch (e) {
+                    // Covers transport failures and non-ok responses alike now that the wrapper throws on both.
+                    this.saveMessage = e.message || 'Save failed';
+                    this.saveError = true;
+                }
                 finally { this.saving = false; setTimeout(() => this.saveMessage = '', 5000); }
             }
         };
@@ -721,10 +718,7 @@
             async discoverTypes() {
                 this.typesLoading = true; this.typesError = '';
                 try {
-                    const resp = await fetch('/admin/abacus-settings/discover-types', {
-                        method: 'POST', headers: {'X-CSRFToken': csrfToken}
-                    });
-                    const data = await resp.json();
+                    const data = await Platform.fetch.post('/admin/abacus-settings/discover-types', undefined, { silent: true });
                     if (data.success) {
                         this.availableTypes = data.types;
                         this.typesLoaded = true;
@@ -769,8 +763,7 @@
             },
             async poll() {
                 try {
-                    const resp = await fetch('{{ url_for("admin.abacus_sync_status") }}');
-                    const data = await resp.json();
+                    const data = await Platform.fetch('{{ url_for("admin.abacus_sync_status") }}', { silent: true });
                     this.jobId = data.job_id;
                     this.status = data.status;
 
@@ -828,17 +821,12 @@
             },
             async clearStaleJobs() {
                 try {
-                    const resp = await fetch('/admin/abacus-settings/clear-stale-jobs', {
-                        method: 'POST', headers: {'X-CSRFToken': csrfToken}
-                    });
-                    const data = await resp.json();
-                    if (data.success) {
-                        this.isStale = false;
-                        this.poll();
-                    }
+                    const data = await Platform.fetch.post('/admin/abacus-settings/clear-stale-jobs', undefined, { silent: true });
+                    if (!data.success) throw new Error(data.error || data.message || 'Could not clear stale jobs.');
+                    this.isStale = false;
+                    this.poll();
                 } catch(e) {
-                    console.error('Failed to clear stale jobs:', e);
-                    if (window.Platform && Platform.toast) Platform.toast.error('Could not clear stale jobs.');
+                    if (window.Platform && Platform.toast) Platform.toast.error(e.message || 'Could not clear stale jobs.');
                 }
             }
         };
@@ -853,12 +841,7 @@
         if (!jobId) { Platform.toast.info('No job to cancel'); return; }
         if (!(await Platform.modal.confirm('Cancel job #' + jobId + '?'))) return;
 
-        fetch('/admin/abacus-settings/cancel-job/' + jobId, {
-            method: 'POST',
-            headers: {'X-CSRFToken': csrfToken, 'Content-Type': 'application/json'},
-            credentials: 'same-origin'
-        })
-        .then(r => r.json())
+        Platform.fetch.post('/admin/abacus-settings/cancel-job/' + jobId, undefined, { silent: true })
         .then(data => {
             if (data.success) location.reload();
             else Platform.toast.error('Failed: ' + data.message);
@@ -878,13 +861,10 @@
             appsProg: document.getElementById('apps-progress'),
             capsProg: document.getElementById('caps-progress'),
         });
-        fetch('/admin/abacus-settings/stats')
-        .then(r => {
-            // fetch does not reject on 4xx/5xx — an error page would otherwise
-            // fall through to the success handler as unparsable JSON.
-            if (!r.ok) throw new Error('stats request failed: ' + r.status);
-            return r.json();
-        })
+        // Platform.fetch throws on 4xx/5xx, so an error page can no longer fall
+        // through to the success handler as unparsable JSON.
+        // silent: the catch below already toasts once per outage, not once per tick.
+        Platform.fetch('/admin/abacus-settings/stats', { silent: true })
         .then(data => {
             if (!data.success) throw new Error(data.message || 'stats unavailable');
             const { appsEl, capsEl, appsProg, capsProg } = counts();
@@ -925,11 +905,7 @@
                 try {
                     const urlEl = document.getElementById('discover-filters-url');
                     if (!urlEl) { discoverBtn.textContent = 'Config error'; discoverBtn.disabled = false; return; }
-                    const r = await fetch(urlEl.value, {
-                        method: 'POST',
-                        headers: { 'X-CSRFToken': csrfToken }
-                    });
-                    const d = await r.json();
+                    const d = await Platform.fetch.post(urlEl.value, undefined, { silent: true });
                     if (d.success) {
                         const count = Object.keys(d.dimensions || {}).length;
                         discoverBtn.textContent = 'Discovered ' + count + ' dimensions! Reloading...';

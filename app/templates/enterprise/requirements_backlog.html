@@ -118,7 +118,8 @@
                 </div>
             </div>
         </template>
-        <p x-show="!epicLoading && epics.length===0" x-cloak class="text-sm text-muted-foreground">No epics found. Create a requirement with no parent to start an epic.</p>
+        <p x-show="!epicLoading && epicError" x-cloak class="text-sm text-destructive" x-text="epicError"></p>
+        <p x-show="!epicLoading && !epicError && epics.length===0" x-cloak class="text-sm text-muted-foreground">No epics found. Create a requirement with no parent to start an epic.</p>
     </div>
 
     <!-- Status summary chips -->
@@ -765,7 +766,7 @@
                                 type="checkbox"
                                 :id="'req-dod-' + activeReq.id"
                                 x-model="activeReq.dod_complete"
-                                @change="$fetch(`/api/enterprise/requirements/${activeReq.id}/enrich`, { method: 'PATCH', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dod_complete: activeReq.dod_complete }) })"
+                                @change="saveDodComplete()"
                                 class="h-4 w-4 rounded border-input"
                             >
                             <label :for="'req-dod-' + activeReq.id" class="text-xs font-medium">Definition of Done complete</label>
@@ -986,6 +987,7 @@ function requirementsBacklog() {
         showEpicTree: false,
         epics: [],
         epicLoading: false,
+        epicError: null,
         archiReqSearch: '',
         archiReqResults: [],
         archiReqDropdownOpen: false,
@@ -999,9 +1001,7 @@ function requirementsBacklog() {
         async loadTemplateLayers() {
             this.loadingPicker = true;
             try {
-                const r = await fetch('/api/enterprise/requirement-templates');
-                if (!r.ok) throw new Error('Could not load requirement templates (HTTP ' + r.status + ')');
-                const data = await r.json();
+                const data = await Platform.fetch('/api/enterprise/requirement-templates', { silent: true });
                 const templateGroups = data.templates || data.layers || {};
                 this.pickerLayers = Object.keys(templateGroups);
             } catch(e) {
@@ -1014,9 +1014,7 @@ function requirementsBacklog() {
         async loadTemplatesForLayer(layer) {
             this.pickerLayer = layer;
             try {
-                const r = await fetch('/api/enterprise/requirement-templates');
-                if (!r.ok) throw new Error('Could not load templates for ' + layer + ' (HTTP ' + r.status + ')');
-                const data = await r.json();
+                const data = await Platform.fetch('/api/enterprise/requirement-templates', { silent: true });
                 const templateGroups = data.templates || data.layers || {};
                 this.pickerTemplates = templateGroups[layer] || [];
                 this.pickerStep = 2;
@@ -1052,17 +1050,21 @@ function requirementsBacklog() {
                 return;
             }
             this.epicLoading = true;
-            fetch(`/api/enterprise/solutions/${this.solutionId}/requirements/epics`, { credentials: 'same-origin' })
-                .then(r => r.json())
+            this.epicError = null;
+            Platform.fetch(`/api/enterprise/solutions/${this.solutionId}/requirements/epics`, { silent: true })
                 .then(d => { this.epics = d; this.epicLoading = false; this.$nextTick(() => lucide.createIcons()); })
-                .catch(() => { this.epicLoading = false; });
+                .catch(e => {
+                    // An epic tree that failed to load must not look like an empty one.
+                    this.epics = [];
+                    this.epicError = e.message || 'Could not load the epic tree.';
+                    this.epicLoading = false;
+                    Platform.toast.error(this.epicError);
+                });
         },
 
         async loadUsers() {
             try {
-                const r = await fetch('/api/users', { credentials: 'same-origin' });
-                if (!r.ok) throw new Error('Could not load the users list (HTTP ' + r.status + ')');
-                const d = await r.json();
+                const d = await Platform.fetch('/api/users', { silent: true });
                 this.usersList = (d.users || []).map(u => ({ id: u.id, name: u.name }));
             } catch (e) {
                 this.usersList = [];
@@ -1073,9 +1075,11 @@ function requirementsBacklog() {
         async loadMotivationData() {
             try {
                 const [dr, go, st] = await Promise.all([
-                    fetch('/api/enterprise/motivation/drivers', { credentials: 'same-origin' }).then(r => { if (!r.ok) throw new Error('drivers request failed: ' + r.status); return r.json(); }),
-                    fetch('/api/enterprise/motivation/goals', { credentials: 'same-origin' }).then(r => { if (!r.ok) throw new Error('goals request failed: ' + r.status); return r.json(); }),
-                    fetch('/api/enterprise/motivation/stakeholders', { credentials: 'same-origin' }).then(r => { if (!r.ok) throw new Error('stakeholders request failed: ' + r.status); return r.json(); }),
+                    // silent: the shared catch below raises one toast for the trio
+                    // rather than three for the same failed page load.
+                    Platform.fetch('/api/enterprise/motivation/drivers', { silent: true }),
+                    Platform.fetch('/api/enterprise/motivation/goals', { silent: true }),
+                    Platform.fetch('/api/enterprise/motivation/stakeholders', { silent: true }),
                 ]);
                 this.motivationData.drivers = dr.data || [];
                 this.motivationData.goals = go.data || [];
@@ -1091,9 +1095,7 @@ function requirementsBacklog() {
             if (!this.archiReqSearch || this.archiReqSearch.length < 2) { this.archiReqResults = []; return; }
             try {
                 // Canonical element search (the old /architecture/decisions/api/element-search route no longer exists)
-                const r = await fetch(`/archimate/api/elements/search?q=${encodeURIComponent(this.archiReqSearch)}&type=Requirement&limit=10`, { credentials: 'same-origin' });
-                if (!r.ok) throw new Error('Search failed (HTTP ' + r.status + ')');
-                const d = await r.json();
+                const d = await Platform.fetch(`/archimate/api/elements/search?q=${encodeURIComponent(this.archiReqSearch)}&type=Requirement&limit=10`, { silent: true });
                 const all = Array.isArray(d) ? d : (d.elements || d.data || []);
                 this.archiReqResults = all.slice(0, 10).map(e => ({ id: e.id, title: e.name || e.title, element_type: e.element_type || e.type }));
                 this.archiReqDropdownOpen = true;
@@ -1113,9 +1115,7 @@ function requirementsBacklog() {
                 if (this.filters.status) params.set('status', this.filters.status);
                 if (this.filters.capability_id) params.set('capability_id', this.filters.capability_id);
                 if (this.solutionId) params.set('solution_id', this.solutionId);
-                const r = await fetch('/api/enterprise/requirements?' + params.toString(), { credentials: 'same-origin' });
-                if (!r.ok) throw new Error('Could not load requirements (HTTP ' + r.status + ')');
-                const d = await r.json();
+                const d = await Platform.fetch('/api/enterprise/requirements?' + params.toString(), { silent: true });
                 this.all = d.requirements || d.data || [];
                 this.applyFilters();
                 if (this.showEpicTree) this.loadEpics();
@@ -1163,12 +1163,7 @@ function requirementsBacklog() {
             if (!this.activeReq || this.acGenerating) return;
             this.acGenerating = true;
             try {
-                const r = await fetch(`/api/enterprise/requirements/${this.activeReq.id}/generate-ac`, {
-                    method: 'POST',
-                    credentials: 'same-origin',
-                });
-                if (!r.ok) throw new Error('Could not generate acceptance criteria (HTTP ' + r.status + ')');
-                const d = await r.json();
+                const d = await Platform.fetch.post(`/api/enterprise/requirements/${this.activeReq.id}/generate-ac`, undefined, { silent: true });
                 if (d.acceptance_criteria) {
                     this.activeReq.acceptance_criteria = d.acceptance_criteria;
                 } else {
@@ -1186,12 +1181,7 @@ function requirementsBacklog() {
             this.tcGenerating = true;
             this.tcResult = '';
             try {
-                const r = await fetch(`/api/enterprise/requirements/${this.activeReq.id}/generate-test-cases`, {
-                    method: 'POST',
-                    credentials: 'same-origin',
-                });
-                if (!r.ok) throw new Error('Could not generate test cases (HTTP ' + r.status + ')');
-                const d = await r.json();
+                const d = await Platform.fetch.post(`/api/enterprise/requirements/${this.activeReq.id}/generate-test-cases`, undefined, { silent: true });
                 if (d.test_cases) {
                     this.tcResult = d.test_cases;
                 } else {
@@ -1210,14 +1200,7 @@ function requirementsBacklog() {
             this.jiraPushing = true;
             this.jiraPushError = null;
             try {
-                const csrfMeta = document.querySelector('meta[name=csrf-token]');
-                const csrfToken = csrfMeta ? csrfMeta.getAttribute('content') : '';
-                const r = await fetch(`/api/enterprise/requirements/${this.activeReq.id}/push-to-jira`, {
-                    method: 'POST',
-                    credentials: 'same-origin',
-                    headers: { 'X-CSRFToken': csrfToken },
-                });
-                const d = await r.json();
+                const d = await Platform.fetch.post(`/api/enterprise/requirements/${this.activeReq.id}/push-to-jira`, undefined, { silent: true });
                 if (d.success) {
                     this.activeReq.jira_issue_key = d.jira_issue_key;
                     this.activeReq.jira_push_status = 'pushed';
@@ -1230,7 +1213,9 @@ function requirementsBacklog() {
                     this.jiraPushError = d.error || 'Push failed';
                 }
             } catch (e) {
-                this.jiraPushError = 'Network error: ' + e.message;
+                // Covers both transport failures and non-ok responses now that the
+                // wrapper throws on either, so the label can no longer say "Network".
+                this.jiraPushError = e.message || 'Push failed';
             } finally {
                 this.jiraPushing = false;
             }
@@ -1240,15 +1225,7 @@ function requirementsBacklog() {
             this.jiraSyncing = true;
             this.jiraSyncError = null;
             try {
-                const csrfMeta = document.querySelector('meta[name=csrf-token]');
-                const csrfToken = csrfMeta ? csrfMeta.getAttribute('content') : '';
-                const r = await fetch(`/api/enterprise/requirements/${this.activeReq.id}/sync-from-jira`, {
-                    method: 'POST',
-                    credentials: 'same-origin',
-                    headers: { 'X-CSRFToken': csrfToken },
-                });
-                if (!r.ok) throw new Error('Sync from Jira failed (HTTP ' + r.status + ')');
-                const d = await r.json();
+                const d = await Platform.fetch.post(`/api/enterprise/requirements/${this.activeReq.id}/sync-from-jira`, undefined, { silent: true });
                 if (d.jira_status) {
                     this.activeReq.jira_push_status = `synced:${d.jira_status}`;
                     const idx = this.all.findIndex(x => x.id === this.activeReq.id);
@@ -1265,22 +1242,11 @@ function requirementsBacklog() {
 
         async syncAllJira() {
             try {
-                const r = await fetch('/api/enterprise/requirements/sync-all-jira', { credentials: 'same-origin' });
-                if (!r.ok) throw new Error('Bulk Jira sync failed (HTTP ' + r.status + ')');
-                const d = await r.json();
+                const d = await Platform.fetch('/api/enterprise/requirements/sync-all-jira', { silent: true });
                 Platform.toast.info(`Bulk sync initiated for ${d.total} requirement(s).`);
             } catch (e) {
                 Platform.toast.error(e.message || 'Bulk Jira sync failed.');
             }
-        },
-
-        mutationHeaders() {
-            const csrfToken = document.querySelector('meta[name=csrf-token]')?.content || '';
-            const headers = { 'Content-Type': 'application/json' };
-            if (csrfToken) {
-                headers['X-CSRFToken'] = csrfToken;
-            }
-            return headers;
         },
 
         applyRequirementUpdate(updatedReq) {
@@ -1296,35 +1262,27 @@ function requirementsBacklog() {
 
         patchStatus(req, newStatus) {
             if (!req) return;
-            fetch(`/api/enterprise/requirements/${req.id}/status`, {
+            Platform.fetch(`/api/enterprise/requirements/${req.id}/status`, {
                 method: 'PATCH',
-                credentials: 'same-origin',
-                headers: this.mutationHeaders(),
-                body: JSON.stringify({ status: newStatus }),
+                body: { status: newStatus },
+                silent: true,
             })
-                .then(r => r.json())
                 .then(d => {
                     if (d.success && d.data) {
                         Object.assign(req, d.data);
                         this.applyRequirementUpdate(d.data);
                     } else {
-                        console.error('Failed to patch status', d.error);
+                        Platform.toast.error(d.error || 'Could not update the requirement status.');
                     }
                 })
-                .catch(e => console.error('Failed to patch status', e));
+                .catch(e => Platform.toast.error(e.message || 'Could not update the requirement status.'));
         },
 
         async createRequirement() {
             if (!this.newReq.requirement_name.trim() || this.creating) return;
             this.creating = true;
             try {
-                const r = await fetch('/api/enterprise/requirements', {
-                    method: 'POST',
-                    credentials: 'same-origin',
-                    headers: this.mutationHeaders(),
-                    body: JSON.stringify(this.newReq),
-                });
-                const d = await r.json();
+                const d = await Platform.fetch.post('/api/enterprise/requirements', this.newReq, { silent: true });
                 if (d.success) {
                     const req = d.requirement;
                     this.applyRequirementUpdate({
@@ -1350,12 +1308,10 @@ function requirementsBacklog() {
                     this.showCreateModal = false;
                     if (this.showEpicTree) this.loadEpics();
                 } else {
-                    console.error('Create failed', d.error);
                     Platform.toast.error(d.error || 'Could not create the requirement.');
                 }
             } catch (e) {
-                console.error('Create requirement error', e);
-                Platform.toast.error('Could not create the requirement.');
+                Platform.toast.error(e.message || 'Could not create the requirement.');
             } finally {
                 this.creating = false;
             }
@@ -1366,18 +1322,16 @@ function requirementsBacklog() {
             this.saving = true;
             try {
                 const id = this.activeReq.id;
-                const [r1, r2] = await Promise.all([
-                    fetch(`/api/enterprise/requirements/${id}/status`, {
+                const [d1, d2] = await Promise.all([
+                    Platform.fetch(`/api/enterprise/requirements/${id}/status`, {
                         method: 'PATCH',
-                        credentials: 'same-origin',
-                        headers: this.mutationHeaders(),
-                        body: JSON.stringify({ status: this.activeReq.status, owner: this.activeReq.owner }),
+                        silent: true,
+                        body: { status: this.activeReq.status, owner: this.activeReq.owner },
                     }),
-                    fetch(`/api/enterprise/requirements/${id}/enrich`, {
+                    Platform.fetch(`/api/enterprise/requirements/${id}/enrich`, {
                         method: 'PATCH',
-                        credentials: 'same-origin',
-                        headers: this.mutationHeaders(),
-                        body: JSON.stringify({
+                        silent: true,
+                        body: {
                             name: this.activeReq.name,
                             description: this.activeReq.description,
                             moscow_priority: this.activeReq.moscow_priority,
@@ -1394,11 +1348,9 @@ function requirementsBacklog() {
                             story_points: this.activeReq.story_points || null,
                             epic_parent_id: this.activeReq.epic_parent_id || null,
                             dod_complete: this.activeReq.dod_complete || false,
-                        }),
+                        },
                     }),
                 ]);
-                const d1 = await r1.json();
-                const d2 = await r2.json();
                 if (d1.success && d1.data) {
                     this.activeReq = { ...this.activeReq, ...d1.data };
                 }
@@ -1406,14 +1358,12 @@ function requirementsBacklog() {
                     this.applyRequirementUpdate({ ...this.activeReq, ...d2.data });
                     if (this.showEpicTree) this.loadEpics();
                 } else {
-                    console.error('Failed to save detail', d2.error);
                     Platform.toast.error(d2.error || 'Could not save changes.');
                     return;
                 }
                 this.activeReq = null;
             } catch (e) {
-                console.error('Failed to save', e);
-                Platform.toast.error('Could not save changes.');
+                Platform.toast.error(e.message || 'Could not save changes.');
             } finally {
                 this.saving = false;
             }
@@ -1422,14 +1372,11 @@ function requirementsBacklog() {
         async linkWorkPackage(req) {
             if (!req) return;
             try {
-                const r = await fetch(`/api/enterprise/requirements/${req.id}/link-work-package`, {
+                const d = await Platform.fetch(`/api/enterprise/requirements/${req.id}/link-work-package`, {
                     method: 'PATCH',
-                    credentials: 'same-origin',
-                    headers: this.mutationHeaders(),
-                    body: JSON.stringify({ work_package_id: req.work_package_id || null }),
+                    silent: true,
+                    body: { work_package_id: req.work_package_id || null },
                 });
-                if (!r.ok) throw new Error('Could not link the work package (HTTP ' + r.status + ')');
-                const d = await r.json();
                 if (d.id) {
                     req.work_package_id = d.work_package_id;
                     this.applyRequirementUpdate({ id: req.id, work_package_id: d.work_package_id });
@@ -1447,15 +1394,26 @@ function requirementsBacklog() {
             this.newDodItem = '';
             this.saveDod();
         },
-        saveDod() {
-            fetch(`/api/enterprise/requirements/${this.activeReq.id}/dod`, {
+        saveDodComplete() {
+            // Was an inline Alpine `$fetch` magic, which does not exist - the toggle
+            // threw and never persisted. Real request via the platform wrapper.
+            if (!this.activeReq) return;
+            const req = this.activeReq;
+            Platform.fetch(`/api/enterprise/requirements/${req.id}/enrich`, {
                 method: 'PATCH',
-                credentials: 'same-origin',
-                headers: this.mutationHeaders(),
-                body: JSON.stringify({dod_checklist: this.activeReq.dod_checklist})
-            }).then(r => {
-                if (!r.ok) throw new Error('save DoD checklist failed: ' + r.status);
-                return r.json();
+                silent: true,
+                body: { dod_complete: req.dod_complete },
+            }).catch(e => {
+                // Put the checkbox back: it must not show a state the server rejected.
+                req.dod_complete = !req.dod_complete;
+                Platform.toast.error(e.message || 'Could not save the definition-of-done state.');
+            });
+        },
+        saveDod() {
+            Platform.fetch(`/api/enterprise/requirements/${this.activeReq.id}/dod`, {
+                method: 'PATCH',
+                silent: true,
+                body: { dod_checklist: this.activeReq.dod_checklist }
             }).then(d => {
                 this.activeReq.dod_complete = d.dod_complete;
                 const idx = this.all.findIndex(x => x.id === this.activeReq.id);
@@ -1464,17 +1422,15 @@ function requirementsBacklog() {
                     this.all[idx].dod_checklist = d.dod_checklist;
                 }
             }).catch(e => {
-                console.error('Save DoD checklist error', e);
-                Platform.toast.error('Could not save the definition-of-done checklist.');
+                Platform.toast.error(e.message || 'Could not save the definition-of-done checklist.');
             });
         },
         saveScore() {
             if (!this.activeReq) return;
-            fetch(`/api/enterprise/requirements/${this.activeReq.id}/score`, {
+            Platform.fetch(`/api/enterprise/requirements/${this.activeReq.id}/score`, {
                 method: 'PATCH',
-                credentials: 'same-origin',
-                headers: this.mutationHeaders(),
-                body: JSON.stringify({
+                silent: true,
+                body: {
                     moscow_priority: this.activeReq.moscow_priority,
                     rice_reach: this.activeReq.rice_reach,
                     rice_impact: this.activeReq.rice_impact,
@@ -1483,10 +1439,7 @@ function requirementsBacklog() {
                     wsjf_cost_of_delay: this.activeReq.wsjf_cost_of_delay,
                     wsjf_job_duration: this.activeReq.wsjf_job_duration,
                     story_points: this.activeReq.story_points,
-                }),
-            }).then(r => {
-                if (!r.ok) throw new Error('Could not save the score (HTTP ' + r.status + ')');
-                return r.json();
+                },
             }).then(d => {
                 this.activeReq.rice_score = d.rice_score;
                 this.activeReq.wsjf_score = d.wsjf_score;

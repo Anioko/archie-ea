@@ -68,15 +68,17 @@ function planningApp() {
                 // indistinguishable from a real answer: the dossier came out blank
                 // and the evidence trail rendered a radar of four zeros, which reads
                 // as "we scored this application and every dimension came out at zero".
-                fetches = [
-                    fetch(baseUrl + '/decision-dossier/' + appId, { headers: { 'Accept': 'application/json' } }).then(function(r) { if (!r.ok) { throw new Error('HTTP ' + r.status); } return r.json(); }),
-                    fetch(baseUrl + '/evidence-trail/' + appId, { headers: { 'Accept': 'application/json' } }).then(function(r) { if (!r.ok) { throw new Error('HTTP ' + r.status); } return r.json(); })
-                ];
-                Promise.all(fetches).then(function(results) {
+                // We now use Platform.fetch which throws on non-ok responses, so we
+                // must catch and handle the error without inventing data.
+                Promise.all([
+                    Platform.fetch(baseUrl + '/decision-dossier/' + appId, { headers: { 'Accept': 'application/json' } }),
+                    Platform.fetch(baseUrl + '/evidence-trail/' + appId, { headers: { 'Accept': 'application/json' } })
+                ]).then(function(results) {
+                    const dossierResult = results[0];
                     const evidenceRaw = results[1] || {};
 
                     self.tabData.overview = {
-                        dossier_html: results[0].dossier_html || results[0].summary || JSON.stringify(results[0], null, 2),
+                        dossier_html: dossierResult.dossier_html || dossierResult.summary || JSON.stringify(dossierResult, null, 2),
                         evidence: evidenceRaw.dimensions || evidenceRaw.evidence || []
                     };
 
@@ -117,7 +119,8 @@ function planningApp() {
                 }).catch(function(err) {
                     self.tabLoading.overview = false;
                     self.tabLoaded.overview = true;
-                    self.tabData.overview = { dossier_html: '<p>Failed to load dossier.</p>', evidence: [] };
+                    // Do NOT invent data. Leave tabData.overview as null (or undefined) to signal failure.
+                    self.tabData.overview = null;
                     // evidenceData stays null: renderScoreRadar() bails on null, so no
                     // chart is drawn at all. A radar of zeros would be a score.
                     self.evidenceData = null;
@@ -125,25 +128,25 @@ function planningApp() {
                 });
 
             } else if (tab === 'options') {
-                fetch(baseUrl + '/arb-status/' + appId, { headers: { 'Accept': 'application/json' } })
+                Platform.fetch(baseUrl + '/arb-status/' + appId, { headers: { 'Accept': 'application/json' } })
                 // `r.ok ? r.json() : {}` turned every 4xx/5xx into an empty tab
                 // that reads as "this application has no ARB status", which is a
                 // statement about the record rather than about the request.
-                .then(function(r) { if (!r.ok) { throw new Error('HTTP ' + r.status); } return r.json(); })
+                // Platform.fetch throws on non-ok, so we catch and leave tabData.options undefined.
                 .then(function(data) {
                     self.tabData.options = data;
                     self.tabLoading.options = false;
                     self.tabLoaded.options = true;
                 }).catch(function(e) {
-                    self.tabLoading.options = false; self.tabLoaded.options = true; self.tabData.options = {};
+                    self.tabLoading.options = false; self.tabLoaded.options = true; self.tabData.options = undefined;
                     Platform.toast.error('Could not load ARB status: ' + (e.message || 'request failed') + '. This tab is empty because the load failed.');
                 });
 
             } else if (tab === 'replacement') {
-                fetch(baseUrl + '/replacement-plan/' + appId, { headers: { 'Accept': 'application/json' } })
+                Platform.fetch(baseUrl + '/replacement-plan/' + appId, { headers: { 'Accept': 'application/json' } })
                 // Same trap, and worse here: an empty response leaves the form's
                 // fields blank, so a failed load looks like "no plan captured yet".
-                .then(function(r) { if (!r.ok) { throw new Error('HTTP ' + r.status); } return r.json(); })
+                // Platform.fetch throws on non-ok, so we catch and do NOT populate the form.
                 .then(function(data) {
                     if (data && data.replacement_type) {
                         self.replacementForm.replacement_type = data.replacement_type || '';
@@ -157,6 +160,7 @@ function planningApp() {
                     self.tabLoaded.replacement = true;
                 }).catch(function(e) {
                     self.tabLoading.replacement = false; self.tabLoaded.replacement = true;
+                    // Do NOT populate the form with any data.
                     Platform.toast.error('Could not load the replacement plan: ' + (e.message || 'request failed') + '. The form below is blank because the load failed — do not treat it as the saved plan.');
                 });
 
@@ -165,28 +169,30 @@ function planningApp() {
                     // "No retirement blockers" is the most dangerous empty state in
                     // this screen — it is the answer to "is it safe to retire this?".
                     // It must never be what a failed request renders as.
-                    fetch(baseUrl + '/retirement-blockers/' + appId, { headers: { 'Accept': 'application/json' } }).then(function(r) { if (!r.ok) { throw new Error('HTTP ' + r.status); } return r.json(); }),
-                    fetch(baseUrl + '/dependency-impact/' + appId, { headers: { 'Accept': 'application/json' } }).then(function(r) { if (!r.ok) { throw new Error('HTTP ' + r.status); } return r.json(); })
+                    Platform.fetch(baseUrl + '/retirement-blockers/' + appId, { headers: { 'Accept': 'application/json' } }),
+                    Platform.fetch(baseUrl + '/dependency-impact/' + appId, { headers: { 'Accept': 'application/json' } })
                 ]).then(function(results) {
                     self.tabData.retirement = { blockers: results[0].blockers || [], impact: results[1] };
                     self.tabLoading.retirement = false;
                     self.tabLoaded.retirement = true;
                 }).catch(function(e) {
-                    self.tabLoading.retirement = false; self.tabLoaded.retirement = true; self.tabData.retirement = { blockers: [], impact: null };
+                    self.tabLoading.retirement = false; self.tabLoaded.retirement = true;
+                    // Do NOT invent data. Leave tabData.retirement undefined.
+                    self.tabData.retirement = undefined;
                     Platform.toast.error('Could not load retirement blockers or dependency impact: ' + (e.message || 'request failed') + '. An empty blocker list here does NOT mean this application is safe to retire.');
                 });
 
             } else if (tab === 'overrides') {
-                fetch(baseUrl + '/override/' + appId, { headers: { 'Accept': 'application/json' } })
+                Platform.fetch(baseUrl + '/override/' + appId, { headers: { 'Accept': 'application/json' } })
                 // An empty overrides tab reads as "no override recorded", which is
                 // a governance claim — not something a 500 gets to make.
-                .then(function(r) { if (!r.ok) { throw new Error('HTTP ' + r.status); } return r.json(); })
+                // Platform.fetch throws on non-ok, so we catch and leave tabData.overrides undefined.
                 .then(function(data) {
                     self.tabData.overrides = data;
                     self.tabLoading.overrides = false;
                     self.tabLoaded.overrides = true;
                 }).catch(function(e) {
-                    self.tabLoading.overrides = false; self.tabLoaded.overrides = true; self.tabData.overrides = {};
+                    self.tabLoading.overrides = false; self.tabLoaded.overrides = true; self.tabData.overrides = undefined;
                     Platform.toast.error('Could not load overrides: ' + (e.message || 'request failed') + '. This tab is empty because the load failed.');
                 });
             }
@@ -232,136 +238,102 @@ function planningApp() {
         scoreThisApp: function() {
             const self = this;
             self.isScoringApp = true;
-            fetch(baseUrl + '/score/' + appId, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken }
-            })
-            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
-            .then(function(data) {
-                if (data.success && data.score) {
-                    self.score = data.score;
-                    self.dataQuality = data.data_quality;
-                    // Reload overview tab to refresh breakdown
-                    self.tabLoaded.overview = false;
-                    self.loadTab('overview');
-                }
-            })
-            .catch(function(err) {
-                console.error('App scoring failed:', err);
-                Platform.toast.error('App scoring failed. Please try again.');
-            })
-            .finally(function() { self.isScoringApp = false; });
+            Platform.fetch.post(baseUrl + '/score/' + appId, {}, { headers: { 'Accept': 'application/json' } })
+                .then(function(data) {
+                    if (data.success && data.score) {
+                        self.score = data.score;
+                        self.dataQuality = data.data_quality;
+                        // Reload overview tab to refresh breakdown
+                        self.tabLoaded.overview = false;
+                        self.loadTab('overview');
+                    }
+                })
+                .catch(function(err) {
+                    Platform.toast.error('App scoring failed. Please try again.');
+                })
+                .finally(function() { self.isScoringApp = false; });
         },
 
         transitionReview: function(newStatus) {
             const self = this;
-            fetch(baseUrl + '/review/' + appId, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
-                body: JSON.stringify({ new_status: newStatus })
-            })
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-                if (data.success || data.status) {
-                    self.reviewStatus = newStatus;
-                } else {
-                    Platform.toast.error('Transition failed: ' + (data.error || 'Unknown error'));
-                }
-            })
-            .catch(function(err) {
-                console.error('Review transition error:', err);
-                Platform.toast.error('Review transition failed. Please try again.');
-            });
+            Platform.fetch.post(baseUrl + '/review/' + appId, { new_status: newStatus }, { headers: { 'Accept': 'application/json' } })
+                .then(function(data) {
+                    if (data.success || data.status) {
+                        self.reviewStatus = newStatus;
+                    } else {
+                        Platform.toast.error('Transition failed: ' + (data.error || 'Unknown error'));
+                    }
+                })
+                .catch(function(err) {
+                    Platform.toast.error('Review transition failed. Please try again.');
+                });
         },
 
         saveReplacementPlan: function() {
             const self = this;
             self.savingReplacement = true;
-            fetch(baseUrl + '/replacement-plan/' + appId, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
-                body: JSON.stringify(self.replacementForm)
-            })
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-                self.savingReplacement = false;
-                if (data.success || data.id) {
-                    Platform.toast.success('Replacement plan saved.');
-                } else {
-                    Platform.toast.error('Save failed: ' + (data.error || 'Unknown error'));
-                }
-            })
-            .catch(function(err) {
-                self.savingReplacement = false;
-                console.error('Save error:', err);
-                Platform.toast.error('Save failed. Please try again.');
-            });
+            Platform.fetch.post(baseUrl + '/replacement-plan/' + appId, self.replacementForm, { headers: { 'Accept': 'application/json' } })
+                .then(function(data) {
+                    self.savingReplacement = false;
+                    if (data.success || data.id) {
+                        Platform.toast.success('Replacement plan saved.');
+                    } else {
+                        Platform.toast.error('Save failed: ' + (data.error || 'Unknown error'));
+                    }
+                })
+                .catch(function(err) {
+                    self.savingReplacement = false;
+                    Platform.toast.error('Save failed. Please try again.');
+                });
         },
 
         submitToARB: function() {
             const self = this;
-            fetch(baseUrl + '/arb-submit/' + appId, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
-                body: JSON.stringify({})
-            })
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-                if (data.success) {
-                    self.tabLoaded.options = false;
-                    self.loadTab('options');
-                } else {
-                    Platform.toast.error('ARB submission failed: ' + (data.error || 'Unknown error'));
-                }
-            })
-            .catch(function(err) {
-                console.error('ARB submit error:', err);
-                Platform.toast.error('ARB submission failed. Please try again.');
-            });
+            Platform.fetch.post(baseUrl + '/arb-submit/' + appId, {}, { headers: { 'Accept': 'application/json' } })
+                .then(function(data) {
+                    if (data.success) {
+                        self.tabLoaded.options = false;
+                        self.loadTab('options');
+                    } else {
+                        Platform.toast.error('ARB submission failed: ' + (data.error || 'Unknown error'));
+                    }
+                })
+                .catch(function(err) {
+                    Platform.toast.error('ARB submission failed. Please try again.');
+                });
         },
 
         saveOverride: function() {
             const self = this;
-            fetch(baseUrl + '/override/' + appId, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
-                body: JSON.stringify(self.overrideForm)
-            })
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-                if (data.success) {
-                    self.tabLoaded.overrides = false;
-                    self.loadTab('overrides');
-                } else {
-                    Platform.toast.error('Override failed: ' + (data.error || 'Unknown error'));
-                }
-            })
-            .catch(function(err) {
-                console.error('Override error:', err);
-                Platform.toast.error('Override failed. Please try again.');
-            });
+            Platform.fetch.post(baseUrl + '/override/' + appId, self.overrideForm, { headers: { 'Accept': 'application/json' } })
+                .then(function(data) {
+                    if (data.success) {
+                        self.tabLoaded.overrides = false;
+                        self.loadTab('overrides');
+                    } else {
+                        Platform.toast.error('Override failed: ' + (data.error || 'Unknown error'));
+                    }
+                })
+                .catch(function(err) {
+                    Platform.toast.error('Override failed. Please try again.');
+                });
         },
 
         removeOverride: async function() {
             const self = this;
             if (!(await Platform.modal.confirm('Remove this disposition override?'))) return;
-            fetch(baseUrl + '/override/' + appId, {
-                method: 'DELETE',
-                headers: { 'X-CSRFToken': csrfToken }
-            })
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-                if (data.success) {
-                    self.tabLoaded.overrides = false;
-                    self.loadTab('overrides');
-                } else {
-                    Platform.toast.error('Remove override failed: ' + (data.error || 'Unknown error'));
-                }
-            })
-            .catch(function(err) {
-                console.error('Remove override error:', err);
-                Platform.toast.error('Remove override failed. Please try again.');
-            });
+            Platform.fetch.delete(baseUrl + '/override/' + appId, { headers: { 'Accept': 'application/json' } })
+                .then(function(data) {
+                    if (data.success) {
+                        self.tabLoaded.overrides = false;
+                        self.loadTab('overrides');
+                    } else {
+                        Platform.toast.error('Remove override failed: ' + (data.error || 'Unknown error'));
+                    }
+                })
+                .catch(function(err) {
+                    Platform.toast.error('Remove override failed. Please try again.');
+                });
         }
     };
 }

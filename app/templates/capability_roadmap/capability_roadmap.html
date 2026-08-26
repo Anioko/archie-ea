@@ -659,9 +659,7 @@
 
       async loadGaps() {
         try {
-          const r = await fetch('/capability-map/api/roadmap/gaps');
-          if (!r.ok) throw new Error('HTTP ' + r.status);
-          const d = await r.json();
+          const d = await Platform.fetch('/capability-map/api/roadmap/gaps', { silent: true });
           this.gaps = d.gaps || [];
           Alpine.store('rdm').gaps = this.gaps;
         } catch (e) {
@@ -673,9 +671,7 @@
 
       async loadPlateaus() {
         try {
-          const r = await fetch('/capability-map/api/roadmap/plateaus');
-          if (!r.ok) throw new Error('HTTP ' + r.status);
-          const d = await r.json();
+          const d = await Platform.fetch('/capability-map/api/roadmap/plateaus', { silent: true });
           this.plateaus = d.plateaus || [];
           Alpine.store('rdm').plateaus = this.plateaus;
         } catch (e) {
@@ -687,9 +683,7 @@
 
       async loadWorkPackages() {
         try {
-          const r = await fetch('/capability-map/api/roadmap/work-packages');
-          if (!r.ok) throw new Error('HTTP ' + r.status);
-          const d = await r.json();
+          const d = await Platform.fetch('/capability-map/api/roadmap/work-packages', { silent: true });
           this.workPackages = d.work_packages || [];
           Alpine.store('rdm').workPackages = this.workPackages;
         } catch (e) {
@@ -706,12 +700,8 @@
         this.isDetecting = true;
         this.errorMessage = '';
         try {
-          const r = await fetch('/capability-map/api/roadmap/gaps/detect', {
-            method: 'POST',
-            headers: { 'X-CSRFToken': CSRF(), 'Content-Type': 'application/json' },
-          });
-          const d = await r.json();
-          if (!r.ok || !d.success) throw new Error(d.error || 'Detection failed');
+          const d = await Platform.fetch.post('/capability-map/api/roadmap/gaps/detect', undefined, { silent: true });
+          if (!d.success) throw new Error(d.error || 'Detection failed');
           await this.loadGaps();
           Platform.alert(`Detection complete: ${d.created} gap(s) created, ${d.updated} updated.`);
         } catch (e) {
@@ -765,12 +755,8 @@
                 message: 'This cannot be undone.', confirmText: 'Delete',
                 variant: 'destructive' })) return;
         try {
-          const r = await fetch(`/capability-map/api/roadmap/gaps/${gap.id}`, {
-            method: 'DELETE',
-            headers: { 'X-CSRFToken': CSRF() },
-          });
-          const d = await r.json();
-          if (!r.ok || !d.success) throw new Error(d.error || 'Delete failed');
+          const d = await Platform.fetch.delete(`/capability-map/api/roadmap/gaps/${gap.id}`, { silent: true });
+          if (!d.success) throw new Error(d.error || 'Delete failed');
           this.gaps = this.gaps.filter(g => g.id !== gap.id);
           Alpine.store('rdm').gaps = this.gaps;
         } catch (e) {
@@ -783,12 +769,8 @@
                 message: 'This cannot be undone.', confirmText: 'Delete',
                 variant: 'destructive' })) return;
         try {
-          const r = await fetch(`/capability-map/api/roadmap/work-packages/${wp.id}`, {
-            method: 'DELETE',
-            headers: { 'X-CSRFToken': CSRF() },
-          });
-          const d = await r.json();
-          if (!r.ok || !d.success) throw new Error(d.error || 'Delete failed');
+          const d = await Platform.fetch.delete(`/capability-map/api/roadmap/work-packages/${wp.id}`, { silent: true });
+          if (!d.success) throw new Error(d.error || 'Delete failed');
           this.workPackages = this.workPackages.filter(w => w.id !== wp.id);
           Alpine.store('rdm').workPackages = this.workPackages;
         } catch (e) {
@@ -864,18 +846,17 @@
           ? `/capability-map/api/roadmap/gaps/${editing.id}`
           : '/capability-map/api/roadmap/gaps';
         try {
-          const r = await fetch(url, {
+          const d = await Platform.fetch(url, {
             method,
-            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF() },
-            body: JSON.stringify({
+            silent: true,
+            body: {
               name: this.form.name,
               gap_type: this.form.gap_type,
               priority: this.form.priority,
               description: this.form.description,
-            }),
+            },
           });
-          const d = await r.json();
-          if (!r.ok || (!d.success && !d.gap)) throw new Error(d.error || 'Save failed');
+          if (!d.success && !d.gap) throw new Error(d.error || 'Save failed');
           const saved = d.gap;
           const store = Alpine.store('rdm');
           if (editing) {
@@ -904,13 +885,8 @@
         if (!this.form.name || !this.form.sequence_order) return;
         this.isSubmitting = true;
         try {
-          const r = await fetch('/capability-map/api/roadmap/plateaus', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF() },
-            body: JSON.stringify(this.form),
-          });
-          const d = await r.json();
-          if (!r.ok || !d.success) throw new Error(d.error || 'Save failed');
+          const d = await Platform.fetch.post('/capability-map/api/roadmap/plateaus', this.form, { silent: true });
+          if (!d.success) throw new Error(d.error || 'Save failed');
           const store = Alpine.store('rdm');
           store.plateaus = [...store.plateaus, d.plateau].sort((a, b) => a.sequence_order - b.sequence_order);
           this.form = { name: '', sequence_order: store.plateaus.length + 1, target_date: '', description: '' };
@@ -977,10 +953,10 @@
               ? `/capability-map/api/roadmap/gaps/${this.form.gap_id}/work-packages`
               : '/capability-map/api/roadmap/work-packages');
         try {
-          const r = await fetch(url, {
+          const d = await Platform.fetch(url, {
             method,
-            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF() },
-            body: JSON.stringify({
+            silent: true,
+            body: {
               name: this.form.name,
               status: this.form.status,
               priority: this.form.priority,
@@ -990,10 +966,9 @@
               gap_id: this.form.gap_id,
               plateau_id: this.form.plateau_id,
               business_capability: 'Enterprise',
-            }),
+            },
           });
-          const d = await r.json();
-          if (!r.ok || (!d.success && !d.work_package)) throw new Error(d.error || 'Save failed');
+          if (!d.success && !d.work_package) throw new Error(d.error || 'Save failed');
           const saved = d.work_package;
           const store = Alpine.store('rdm');
           if (editing) {
@@ -1026,13 +1001,8 @@
           this.isLoading = true;
           this.preview = [];
           try {
-            const r = await fetch('/capability-map/api/roadmap/ai-generate', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF() },
-              body: JSON.stringify({ gap_ids: gapIds }),
-            });
-            const d = await r.json();
-            if (!r.ok || !d.success) throw new Error(d.error || 'Generation failed');
+            const d = await Platform.fetch.post('/capability-map/api/roadmap/ai-generate', { gap_ids: gapIds }, { silent: true });
+            if (!d.success) throw new Error(d.error || 'Generation failed');
             this.preview = d.preview || [];
           } catch (e) {
             Platform.alert(e.message || 'AI generation failed.');
@@ -1052,20 +1022,15 @@
             const url = item.gap_id
               ? `/capability-map/api/roadmap/gaps/${item.gap_id}/work-packages`
               : '/capability-map/api/roadmap/work-packages';
-            const r = await fetch(url, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF() },
-              body: JSON.stringify({
-                name: wp.name,
-                description: wp.description,
-                priority: wp.priority,
-                start_date: wp.estimated_start_date,
-                target_date: wp.target_resolution_date,
-                business_capability: 'Enterprise',
-                source_type: 'ai',
-              }),
-            });
-            const d = await r.json();
+            const d = await Platform.fetch.post(url, {
+              name: wp.name,
+              description: wp.description,
+              priority: wp.priority,
+              start_date: wp.estimated_start_date,
+              target_date: wp.target_resolution_date,
+              business_capability: 'Enterprise',
+              source_type: 'ai',
+            }, { silent: true });
             if (d.work_package || d.success) created.push(d.work_package);
           }
           const store = Alpine.store('rdm');
@@ -1232,15 +1197,17 @@
   /* --- data loading --- */
   async function loadAndRender() {
     try {
-      const [wpRes, gapRes, plateauRes] = await Promise.all([
-        fetch('/capability-map/api/roadmap/work-packages'),
-        fetch('/capability-map/api/roadmap/gaps'),
-        fetch('/capability-map/api/roadmap/plateaus'),
+      // silent: the catch below already paints an inline "could not load the
+      // timeline" card, so three toasts on top of it would be noise.
+      const [wpData, gapData, plateauData] = await Promise.all([
+        Platform.fetch('/capability-map/api/roadmap/work-packages', { silent: true }),
+        Platform.fetch('/capability-map/api/roadmap/gaps', { silent: true }),
+        Platform.fetch('/capability-map/api/roadmap/plateaus', { silent: true }),
       ]);
-      const workPackages = ((await wpRes.json()).work_packages || [])
+      const workPackages = (wpData.work_packages || [])
         .filter(wp => wp.start_date && (wp.end_date || wp.target_date));
-      const gaps    = (await gapRes.json()).gaps     || [];
-      const plateaus = (await plateauRes.json()).plateaus || [];
+      const gaps    = gapData.gaps     || [];
+      const plateaus = plateauData.plateaus || [];
 
       if (!workPackages.length) {
         document.getElementById('rdm-gantt-chart').innerHTML = `
