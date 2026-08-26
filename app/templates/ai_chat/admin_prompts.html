@@ -1,4 +1,5 @@
 {% extends 'layouts/admin_base.html' %}
+{% from 'macros/page_shell.html' import page_shell %}
 {% from 'components/modal.html' import modal %}
 
 {% block title %}AI Chat Persona Management{% endblock %}
@@ -6,14 +7,8 @@
 {% block content %}
 <div x-data="personaAdmin()" x-init="loadPersonas()">
     <!-- Page Header -->
-    <div class="flex items-center justify-between mb-6">
-        <div>
-            <h1 class="text-2xl font-bold tracking-tight text-foreground">AI Chat Persona Management</h1>
-            <p class="text-sm text-muted-foreground mt-1">
-                View and override AI chat persona configurations. Overrides are stored in the database and take precedence over defaults.
-            </p>
-        </div>
-        <div class="flex items-center gap-2">
+    {% macro _ps_actions() %}
+<div class="flex items-center gap-2">
             <span x-show="loading" x-cloak class="text-sm text-muted-foreground">Loading...</span>
             <button type="button" @click="loadPersonas()"
                     class="inline-flex items-center justify-center rounded-md text-sm font-medium
@@ -26,7 +21,8 @@
                 Refresh
             </button>
         </div>
-    </div>
+    {% endmacro %}
+    {{ page_shell(title='AI Chat Persona Management', subtitle='View and override AI chat persona configurations. Overrides are stored in the database and take precedence over defaults.', actions_caller=_ps_actions) }}
 
     <!-- Error banner -->
     <div x-show="errorMsg" x-cloak

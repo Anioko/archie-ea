@@ -136,7 +136,9 @@ async function acceptRecommendation(id) {
 }
 
 async function rejectRecommendation(id) {
-    const reason = prompt('Reason for rejection:');
+    const reason = await Platform.modal.promptText('Reason for rejection:', {
+        title: 'Reject recommendation', multiline: true, confirmLabel: 'Reject'
+    });
     if (!reason) return;
 
     try {

@@ -1,4 +1,5 @@
 {% extends "layouts/admin_base.html" %}
+{% from 'macros/page_shell.html' import page_shell %}
 {% block title %}ArchiMate Relationship Review Queue{% endblock %}
 
 {% block breadcrumb %}
@@ -11,13 +12,10 @@
 {% endblock %}
 {% block content %}
 <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8" x-data="reviewQueue()">
-    <div class="flex justify-between items-center mb-6">
-        <div>
-            <h1 class="text-2xl font-bold text-foreground">Relationship Review Queue</h1>
-            <p class="text-sm text-muted-foreground mt-1">Review AI-suggested ArchiMate relationships. Accept to add to the enterprise graph, reject to discard.</p>
-        </div>
-        <a href="/capability-map/" class="inline-flex items-center px-3 py-2 text-sm rounded-md border border-input bg-background hover:bg-accent">Back to Capabilities</a>
-    </div>
+    {% macro _ps_actions() %}
+<a href="/capability-map/" class="inline-flex items-center px-3 py-2 text-sm rounded-md border border-input bg-background hover:bg-accent">Back to Capabilities</a>
+    {% endmacro %}
+    {{ page_shell(title='Relationship Review Queue', subtitle='Review AI-suggested ArchiMate relationships. Accept to add to the enterprise graph, reject to discard.', actions_caller=_ps_actions) }}
     <div class="flex items-center gap-3 mb-4 p-3 rounded-lg border border-input bg-card">
         <button type="button" @click="bulkAccept(0.8)" :disabled="processing" class="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50">Accept all &gt; 80%</button>
         <button type="button" @click="bulkAccept(0.6)" :disabled="processing" class="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-md bg-secondary text-secondary-foreground hover:bg-secondary/80 disabled:opacity-50">Accept all &gt; 60%</button>

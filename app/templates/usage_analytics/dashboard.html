@@ -1,4 +1,5 @@
 {% extends "layouts/admin_base.html" %}
+{% from 'macros/page_shell.html' import page_shell %}
 {% import 'components/breadcrumb.html' as breadcrumb %}
 
 {% block title %}Usage Analytics Dashboard{% endblock %}
@@ -17,10 +18,7 @@
     {% endcall %}
 
     <!-- Page Header -->
-    <div>
-        <h1 class="text-3xl font-bold tracking-tight">Usage Analytics Dashboard</h1>
-        <p class="text-muted-foreground mt-1">Phase 0: Tracking usage of 32 PARTIAL features before committing to 278-hour completion roadmap</p>
-    </div>
+    {{ page_shell(title='Usage Analytics Dashboard', subtitle='Phase 0: Tracking usage of 32 PARTIAL features before committing to 278-hour completion roadmap') }}
 
     <!-- Summary Cards -->
     <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">

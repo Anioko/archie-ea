@@ -1,4 +1,5 @@
 {% extends 'layouts/admin_base.html' %}
+{% from 'macros/page_shell.html' import page_shell %}
 
 {% block title %}Application Rationalization{% endblock %}
 
@@ -53,12 +54,8 @@
   {# The layout's breadcrumb block already renders this trail - a second
      manual copy stacked two breadcrumb rows on the page. #}
   <!-- Page Header -->
-  <div class="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-6 mb-10">
-    <div class="space-y-2">
-      <h1 class="text-4xl font-bold tracking-tight">Application Rationalization</h1>
-      <p class="text-base text-muted-foreground">Identify duplicates, consolidate applications, and optimize your portfolio</p>
-    </div>
-    <div class="flex flex-wrap gap-3">
+  {% macro _ps_actions() %}
+<div class="flex flex-wrap gap-3">
       <!-- History Button -->
       <a href="{{ url_for('unified_duplicate.simple_dashboard') }}"
          class="inline-flex items-center justify-center h-10 px-4 rounded-md text-sm font-semibold border border-input bg-background hover:bg-accent hover:text-accent-foreground hover:border-accent-foreground/20 transition-all shadow-sm"
@@ -89,7 +86,8 @@
         <span class="hidden sm:inline" aria-hidden="true">Run Detection</span>
       </button>
     </div>
-  </div>
+  {% endmacro %}
+  {{ page_shell(title='Application Rationalization', subtitle='Identify duplicates, consolidate applications, and optimize your portfolio', actions_caller=_ps_actions) }}
 
   <!-- ── RAT-126: End-to-End Workflow Progress ── -->
   <div class="bg-background rounded-lg border border-border p-4 shadow-sm mb-6" x-data="workflowProgress()">

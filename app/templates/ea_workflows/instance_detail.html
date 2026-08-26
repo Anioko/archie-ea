@@ -2060,20 +2060,18 @@
                 </div>
                 <div class="flex flex-wrap gap-2">
                     {% for el in archimate_elements %}
-                    {# design-tokens-ok: layer_colors below needs 7 visually-distinct hues to tell
-                       ArchiMate layers apart at a glance; business/technology/implementation already
-                       ride tokens (primary/muted/destructive) but motivation/strategy/application/
-                       physical are left on raw families rather than collapsing them onto the smaller
-                       success/warning/info palette and losing that distinction. See --layer-* in
-                       shadcn_tokens.css for the canonical (differently-assigned) layer hues. #}
+                    {# ArchiMate layers must stay visually distinct at a glance, so this
+                       rides the canonical --layer-* tokens (see DESIGN.md) rather than
+                       collapsing seven layers onto the four-hue success/warning/info palette.
+                       The -emphasis twin is the legible text colour on a /10 tint. #}
                     {% set layer_colors = {
-                        'motivation': 'bg-amber-500/10 text-amber-700 border-amber-500/20',
-                        'strategy': 'bg-purple-500/10 text-purple-700 border-purple-500/20',
-                        'business': 'bg-primary/10 text-primary/90 border-primary/20',
-                        'application': 'bg-emerald-500/10 text-emerald-700 border-emerald-200',
-                        'technology': 'bg-muted text-foreground border-border',
-                        'physical': 'bg-orange-500/10 text-orange-700 border-orange-500/20',
-                        'implementation': 'bg-destructive/10 text-destructive border-destructive/20',
+                        'motivation': 'bg-layer-motivation/10 text-layer-motivation-emphasis border-layer-motivation/20',
+                        'strategy': 'bg-layer-strategy/10 text-layer-strategy-emphasis border-layer-strategy/20',
+                        'business': 'bg-layer-business/10 text-layer-business-emphasis border-layer-business/20',
+                        'application': 'bg-layer-application/10 text-layer-application-emphasis border-layer-application/20',
+                        'technology': 'bg-layer-technology/10 text-layer-technology-emphasis border-layer-technology/20',
+                        'physical': 'bg-layer-risk/10 text-layer-risk-emphasis border-layer-risk/20',
+                        'implementation': 'bg-layer-implementation/10 text-layer-implementation-emphasis border-layer-implementation/20',
                     } %}
                     {% set color = layer_colors.get((el.layer or '').lower(), 'bg-muted text-muted-foreground border-input') %}
                     <a href="{{ url_for('archimate_crud.dashboard') }}#element-{{ el.id }}"

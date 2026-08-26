@@ -4,7 +4,7 @@
 {% block title %}Options & Decision — {{ solution.name }}{% endblock %}
 
 {% block content %}
-<div class="container mx-auto px-4 sm:px-6 lg:px-8 py-6 max-w-5xl"
+<div class="p-6 space-y-6 mx-auto max-w-5xl"
      x-data="optionsAdvisor({{ solution.id }}, {{ (adr.id if adr else 'null') }})">
     {{ page_header(
         title='Options & Decision',

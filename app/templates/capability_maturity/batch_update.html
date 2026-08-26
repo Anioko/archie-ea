@@ -1,4 +1,5 @@
 {% extends "layouts/admin_base.html" %}
+{% from 'macros/page_shell.html' import page_shell %}
 
 {% block title %}Batch Update Maturity{% endblock %}
 
@@ -16,18 +17,15 @@
 <div class="mx-auto px-4 py-6">
     <!-- Header -->
     <div class="mb-8">
-        <div class="flex items-center justify-between">
-            <div>
-                <h1 class="text-3xl font-bold text-foreground mb-2">Batch Update Maturity</h1>
-                <p class="text-muted-foreground">Update maturity levels for multiple capabilities at once</p>
-            </div>
-            <div class="flex space-x-4">
+        {% macro _ps_actions() %}
+<div class="flex space-x-4">
                 <a href="{{ url_for('maturity_management.frameworks_overview') }}" 
                    class="inline-flex items-center gap-2 rounded-md border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground transition-colors">
                     ← Back to Dashboard
                 </a>
             </div>
-        </div>
+        {% endmacro %}
+        {{ page_shell(title='Batch Update Maturity', subtitle='Update maturity levels for multiple capabilities at once', actions_caller=_ps_actions) }}
     </div>
 
     <!-- Warning Notice -->

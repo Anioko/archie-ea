@@ -1,4 +1,5 @@
 {% extends 'layouts/admin_base.html' %}
+{% from 'macros/page_shell.html' import page_shell %}
 
 {% block title %}Governance Dashboard{% endblock %}
 
@@ -11,17 +12,11 @@
 {% endblock %}
 
 {% block content %}
-<div class="container mx-auto p-6 space-y-6" x-data="governanceDashboard()" x-cloak>
+<div class="p-6 space-y-6 mx-auto" x-data="governanceDashboard()" x-cloak>
     
     <!-- Header -->
-    <div class="flex items-center justify-between">
-        <div>
-            <h1 class="text-3xl font-bold">Architecture Governance</h1>
-            <p class="text-muted-foreground mt-2">
-                Central governance oversight &mdash; ARB reviews, compliance, and decision records
-            </p>
-        </div>
-        <div class="flex gap-2">
+    {% macro _ps_actions() %}
+<div class="flex gap-2">
             <a href="{{ url_for('governance.arb_reviews') }}"
                class="inline-flex items-center gap-2 px-3 py-2 text-sm border border-border rounded-md hover:bg-accent">
                 <i data-lucide="shield-check" class="h-4 w-4" aria-hidden="true"></i> ARB Reviews
@@ -35,7 +30,8 @@
                 <i data-lucide="alert-triangle" class="h-4 w-4" aria-hidden="true"></i> Risk Register
             </a>
         </div>
-    </div>
+    {% endmacro %}
+    {{ page_shell(title='Architecture Governance', subtitle='Central governance oversight — ARB reviews, compliance, and decision records', actions_caller=_ps_actions) }}
 
     <!-- Load failure is surfaced, never swallowed into zeros/empty tables -->
     <div x-show="loadError" x-cloak

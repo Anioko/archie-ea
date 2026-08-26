@@ -4,7 +4,7 @@
 {% block title %}{{ session.name }}{% endblock %}
 
 {% block content %}
-<div class="container mx-auto px-4 sm:px-6 lg:px-8 py-8 max-w-7xl" x-data="sessionDetail()">
+<div class="p-6 space-y-6 mx-auto max-w-7xl" x-data="sessionDetail()">
     {# Breadcrumbs #}
     <nav class="flex items-center gap-2 text-sm text-muted-foreground mb-6">
         <a href="{{ url_for('main.index') }}" class="hover:text-foreground transition-colors">Dashboard</a>

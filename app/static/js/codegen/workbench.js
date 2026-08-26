@@ -1912,7 +1912,9 @@
                 const selectedText = this.cmEditor.state.sliceDoc(from, to);
                 let instruction;
                 if (mode === 'edit') {
-                    instruction = prompt('What do you want to do with this code?', 'Add error handling');
+                    instruction = await Platform.modal.promptText('What do you want to do with this code?', {
+                        title: 'Edit with AI', defaultValue: 'Add error handling'
+                    });
                     if (!instruction) return;
                 } else if (mode === 'fix') {
                     instruction = 'Fix any errors or issues in this code snippet';
@@ -2152,7 +2154,9 @@
             },
 
             async createFile() {
-                const path = prompt('New file path (e.g. app/utils/helpers.py):');
+                const path = await Platform.modal.promptText('New file path (e.g. app/utils/helpers.py):', {
+                    title: 'New file'
+                });
                 if (!path || !path.trim()) return;
                 try {
                     const data = await this._fetch(`/solutions/${this.solutionId}/codegen/files/create`, {
@@ -2173,7 +2177,9 @@
             async renameFile(oldPath) {
                 const p = oldPath || this.selectedFile;
                 if (!p) return;
-                const newPath = prompt(`Rename / move "${p}" to:`, p);
+                const newPath = await Platform.modal.promptText(`Rename / move "${p}" to:`, {
+                    title: 'Rename file', defaultValue: p
+                });
                 if (!newPath || newPath.trim() === p) return;
                 try {
                     const data = await this._fetch(`/solutions/${this.solutionId}/codegen/files/rename`, {
@@ -2206,7 +2212,9 @@
                 const ext = p.includes('.') ? '.' + p.split('.').pop() : '';
                 const base = p.includes('.') ? p.slice(0, p.lastIndexOf('.')) : p;
                 const suggested = `${base}_copy${ext}`;
-                const dest = prompt(`Duplicate "${p}" to:`, suggested);
+                const dest = await Platform.modal.promptText(`Duplicate "${p}" to:`, {
+                    title: 'Duplicate file', defaultValue: suggested
+                });
                 if (!dest || !dest.trim()) return;
                 try {
                     const data = await this._fetch(`/solutions/${this.solutionId}/codegen/files/duplicate`, {
@@ -2225,7 +2233,9 @@
             },
 
             async searchFiles() {
-                const query = prompt('Search across all files:');
+                const query = await Platform.modal.promptText('Search across all files:', {
+                    title: 'Search files'
+                });
                 if (!query || !query.trim()) return;
                 try {
                     const data = await this._fetch(`/solutions/${this.solutionId}/codegen/files/search`, {

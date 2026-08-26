@@ -447,10 +447,13 @@
                 return recs;
             },
 
-            saveScenario() {
+            async saveScenario() {
                 if (!this.analysisResult || !this.selectedElement) return;
 
-                const scenarioName = prompt('Enter scenario name:', this.changeType + ' ' + this.selectedElement.name);
+                const scenarioName = await Platform.modal.promptText('Enter scenario name:', {
+                    title: 'Save scenario',
+                    defaultValue: this.changeType + ' ' + this.selectedElement.name
+                });
                 if (!scenarioName) return;
 
                 const scenario = {

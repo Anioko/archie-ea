@@ -56,6 +56,13 @@ All colors use CSS variables defined in `app/static/css/shadcn_tokens.css`. Refe
 | Implementation | sky (`--layer-implementation`) | Work Packages, Plateaus |
 | Risk | red (`--layer-risk`) | Assessments, Issues |
 
+Use them as Tailwind utilities: `bg-layer-<name>` / `border-layer-<name>` for the
+fill and border, and **`text-layer-<name>-emphasis`** for any text on a
+`bg-layer-<name>/10` tint. The base hue is picked for distinctness between the
+seven layers, not for contrast — as text it is under WCAG AA, exactly as
+`--info` is against `bg-info/10`. Never hand-roll the layer palette from raw
+`amber-*` / `violet-*` / `emerald-*` classes; a layer badge is these tokens.
+
 ### Forbidden Color Classes
 
 **Never** use raw Tailwind color scales — the pre-commit hook `check_token_migration.py` will block the commit.

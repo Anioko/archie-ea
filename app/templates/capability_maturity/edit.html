@@ -1,4 +1,5 @@
 {% extends "layouts/admin_base.html" %}
+{% from 'macros/page_shell.html' import page_shell %}
 
 {% block title %}Edit Capability Maturity{% endblock %}
 
@@ -16,18 +17,15 @@
 <div class="mx-auto px-4 py-6">
     <!-- Header -->
     <div class="mb-8">
-        <div class="flex items-center justify-between">
-            <div>
-                <h1 class="text-3xl font-bold text-foreground mb-2">Edit Capability Maturity</h1>
-                <p class="text-muted-foreground">Update maturity levels for: {{ capability.name }}</p>
-            </div>
-            <div class="flex space-x-4">
+        {% macro _ps_actions() %}
+<div class="flex space-x-4">
                 <a href="{{ url_for('maturity_management.search_capabilities') }}" 
                    class="inline-flex items-center gap-2 rounded-md border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground transition-colors">
                     ← Back to Search
                 </a>
             </div>
-        </div>
+        {% endmacro %}
+        {{ page_shell(title='Edit Capability Maturity', subtitle='Update maturity levels for: ' ~ (capability.name), actions_caller=_ps_actions) }}
     </div>
 
     <!-- Capability Details -->

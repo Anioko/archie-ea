@@ -1,4 +1,5 @@
 {% extends "layouts/admin_base.html" %}
+{% from 'macros/page_shell.html' import page_shell %}
 {% block title %}Unmapped Capabilities Analysis{% endblock %}
 
 {% block page_title %}Unmapped Capabilities Analysis{% endblock %}
@@ -6,10 +7,7 @@
 {% block content %}
 <div class="space-y-6">
     <!-- Header -->
-    <div class="mb-6">
-        <h1 class="text-3xl font-bold text-foreground mb-2">Unmapped Capabilities Analysis</h1>
-        <p class="text-muted-foreground">Identify capabilities that need application mapping to improve coverage</p>
-    </div>
+    {{ page_shell(title='Unmapped Capabilities Analysis', subtitle='Identify capabilities that need application mapping to improve coverage') }}
 
     <!-- Summary Statistics -->
     <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">

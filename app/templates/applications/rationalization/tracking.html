@@ -1,4 +1,5 @@
 {% extends "layouts/admin_base.html" %}
+{% from 'macros/page_shell.html' import page_shell %}
 {% block title %}Tracking — Rationalization{% endblock %}
 
 {% block content %}
@@ -11,12 +12,7 @@
         <span class="text-foreground font-medium">Tracking</span>
     </nav>
 
-    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-        <div>
-            <h1 class="text-2xl font-bold tracking-tight text-foreground">Portfolio Tracking</h1>
-            <p class="text-sm text-muted-foreground mt-1">Monitor savings realization, dependency risk, and retirement progress</p>
-        </div>
-    </div>
+    {{ page_shell(title='Portfolio Tracking', subtitle='Monitor savings realization, dependency risk, and retirement progress') }}
 
     {% include 'applications/rationalization/_sub_nav.html' %}
 

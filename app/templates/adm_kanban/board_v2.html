@@ -1,5 +1,6 @@
 {# app/templates/adm_kanban/board_v2.html #}
 {% extends "layouts/admin_base.html" %}
+{% from 'macros/page_shell.html' import page_shell %}
 
 {% block title %}ADM Kanban — Architect's Operating View{% endblock %}
 
@@ -19,12 +20,8 @@
 <div x-data="admKanbanV2()" x-init="init()" @adm-board-refresh.window="reload()" @adm-card-created.window="onCardCreated($event.detail)" x-cloak class="space-y-4">
 
     {# -- Header --------------------------------------------------------- #}
-    <div class="flex items-center justify-between">
-        <div>
-            <h1 class="text-xl font-semibold text-foreground">ADM Kanban</h1>
-            <p class="text-sm text-muted-foreground">Architecture work across all TOGAF ADM phases</p>
-        </div>
-        <div class="flex items-center gap-2">
+    {% macro _ps_actions() %}
+<div class="flex items-center gap-2">
             <select x-model="filters.assignee" @change="reload()"
                     class="h-8 px-2 text-xs bg-background border border-border rounded text-foreground" aria-label="Filter by Type">
                 <option value="all">All Assignees</option>
@@ -92,7 +89,8 @@
                 Roadmap
             </a>
         </div>
-    </div>
+    {% endmacro %}
+    {{ page_shell(title='ADM Kanban', subtitle='Architecture work across all TOGAF ADM phases', actions_caller=_ps_actions) }}
 
     {# -- Phase Tabs (flat mode only) ------------------------------------ #}
     <div x-show="viewMode === 'flat'" x-cloak class="flex flex-wrap gap-1 border-b border-border pb-2">

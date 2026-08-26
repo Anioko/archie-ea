@@ -1,13 +1,12 @@
 {% extends "layouts/admin_base.html" %}
+{% from 'macros/page_shell.html' import page_shell %}
 <!-- modal-a11y-ok -->
 
 {% block title %}Definition of Done Templates{% endblock %}
 
 {% block content %}
 <div class="p-6 max-w-4xl mx-auto" x-data="dodTemplates()" x-init="init()">
-  <div class="flex items-center justify-between mb-6">
-    <h1 class="text-2xl font-bold text-foreground">Definition of Done Templates</h1>
-  </div>
+  {{ page_shell(title='Definition of Done Templates') }}
 
   <!-- Scope Tabs -->
   <div class="flex border-b border-border mb-6" role="tablist" aria-label="DoD scope tabs">

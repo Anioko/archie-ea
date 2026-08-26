@@ -1,4 +1,5 @@
 {% extends "layouts/admin_base.html" %}
+{% from 'macros/page_shell.html' import page_shell %}
 {% import 'components/breadcrumb.html' as breadcrumb %}
 
 {% block title %}Flow Analytics — Throughput &amp; Cycle Time{% endblock %}
@@ -21,12 +22,8 @@
     {% endcall %}
 
     <!-- Page Header + Board Selector -->
-    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-            <h1 class="text-3xl font-bold tracking-tight">Flow Analytics</h1>
-            <p class="text-muted-foreground mt-1">Throughput, cycle time, and WIP metrics from Kanban card flow.</p>
-        </div>
-        <div>
+    {% macro _ps_actions() %}
+<div>
             {% if boards %}
             <label for="board-selector" class="sr-only">Select Board</label>
             <select id="board-selector"
@@ -44,7 +41,8 @@
             <span class="text-sm text-muted-foreground">No boards found</span>
             {% endif %}
         </div>
-    </div>
+    {% endmacro %}
+    {{ page_shell(title='Flow Analytics', subtitle='Throughput, cycle time, and WIP metrics from Kanban card flow.', actions_caller=_ps_actions) }}
 
     <!-- Metric Summary Cards -->
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

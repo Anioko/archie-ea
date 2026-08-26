@@ -1,4 +1,5 @@
 {% extends "layouts/admin_base.html" %}
+{% from 'macros/page_shell.html' import page_shell %}
 {% block title %}Data Enrichment — Rationalization{% endblock %}
 
 {% block content %}
@@ -16,12 +17,7 @@
     </nav>
 
     {# ── Page Header ──────────────────────────────────────────────── #}
-    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-        <div>
-            <h1 class="text-2xl font-bold tracking-tight text-foreground">Data Enrichment</h1>
-            <p class="text-sm text-muted-foreground mt-1">Add cost, ownership, and criticality data to improve rationalization scoring</p>
-        </div>
-    </div>
+    {{ page_shell(title='Data Enrichment', subtitle='Add cost, ownership, and criticality data to improve rationalization scoring') }}
 
     {# ── Sub-Navigation ───────────────────────────────────────────── #}
     {% include 'applications/rationalization/_sub_nav.html' %}

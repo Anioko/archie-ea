@@ -1,4 +1,5 @@
 {% extends 'layouts/admin_base.html' %}
+{% from 'macros/page_shell.html' import page_shell %}
 
 {% block title %}Data Entity Catalog — A.R.C.H.I.E.{% endblock %}
 
@@ -15,17 +16,14 @@
 {% block content %}
 <div class="space-y-6">
     {# Header #}
-    <div class="flex items-center justify-between">
-        <div>
-            <h1 class="text-2xl font-bold text-foreground">Data Entity Catalog</h1>
-            <p class="text-sm text-muted-foreground mt-1">{{ total_count }} data entities across the enterprise</p>
-        </div>
-        <a href="{{ url_for('data_architecture.create_data_entity') }}"
+    {% macro _ps_actions() %}
+<a href="{{ url_for('data_architecture.create_data_entity') }}"
            class="inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
             <i data-lucide="plus" class="w-4 h-4" aria-hidden="true"></i>
             Create Entity
         </a>
-    </div>
+    {% endmacro %}
+    {{ page_shell(title='Data Entity Catalog', subtitle=(total_count) ~ ' data entities across the enterprise', actions_caller=_ps_actions) }}
 
     {# Summary Cards #}
     <div class="grid grid-cols-2 md:grid-cols-4 gap-4">

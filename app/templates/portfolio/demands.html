@@ -1,4 +1,5 @@
 {% extends 'layouts/admin_base.html' %}
+{% from 'macros/page_shell.html' import page_shell %}
 
 {% block title %}Demand intake{% endblock %}
 
@@ -12,20 +13,15 @@
 {% endblock %}
 
 {% block content %}
-<div class="container mx-auto p-6 space-y-6">
+<div class="p-6 space-y-6 mx-auto">
 
-  <div class="flex items-center justify-between">
-    <div>
-      <h1 class="text-3xl font-bold">Demand intake</h1>
-      <p class="text-muted-foreground mt-2">
-        Requests awaiting a decision, longest-waiting first
-      </p>
-    </div>
-    <a href="{{ url_for('portfolio.demand_new') }}"
+  {% macro _ps_actions() %}
+<a href="{{ url_for('portfolio.demand_new') }}"
        class="inline-flex items-center gap-2 px-3 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90">
       <i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i> Submit demand
     </a>
-  </div>
+  {% endmacro %}
+  {{ page_shell(title='Demand intake', subtitle='Requests awaiting a decision, longest-waiting first', actions_caller=_ps_actions) }}
 
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% for category, message in messages %}
@@ -75,9 +71,9 @@
           <input type="text" name="decision_rationale" placeholder="Rationale (required to decline)"
                  class="flex-1 min-w-[16rem] h-9 rounded-md border border-input bg-background px-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                  aria-label="Decision rationale">
-          <button name="status" value="approved" class="h-9 px-3 rounded-md text-sm bg-success/10 text-success-emphasis hover:bg-success/20">Approve</button>
-          <button name="status" value="deferred" class="h-9 px-3 rounded-md text-sm bg-secondary text-secondary-foreground hover:bg-secondary/80">Defer</button>
-          <button name="status" value="declined" class="h-9 px-3 rounded-md text-sm bg-destructive/10 text-destructive-emphasis hover:bg-destructive/20">Decline</button>
+          <button type="submit" name="status" value="approved" class="h-9 px-3 rounded-md text-sm bg-success/10 text-success-emphasis hover:bg-success/20">Approve</button>
+          <button type="submit" name="status" value="deferred" class="h-9 px-3 rounded-md text-sm bg-secondary text-secondary-foreground hover:bg-secondary/80">Defer</button>
+          <button type="submit" name="status" value="declined" class="h-9 px-3 rounded-md text-sm bg-destructive/10 text-destructive-emphasis hover:bg-destructive/20">Decline</button>
         </form>
       </div>
       {% endfor %}

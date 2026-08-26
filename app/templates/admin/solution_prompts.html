@@ -1,4 +1,5 @@
 {% extends 'layouts/admin_base.html' %}
+{% from 'macros/page_shell.html' import page_shell %}
 {% from 'components/modal.html' import modal %}
 
 {% block title %}Solution AI Prompts{% endblock %}
@@ -6,15 +7,8 @@
 {% block content %}
 <div x-data="solutionPromptAdmin()" x-init="loadPrompts()">
     <!-- Page Header -->
-    <div class="flex items-center justify-between mb-6">
-        <div>
-            <h1 class="text-2xl font-bold tracking-tight text-foreground">Solution AI Prompts</h1>
-            <p class="text-sm text-muted-foreground mt-1">
-                Customize the prompts used by the Architecture Journey to generate ArchiMate elements.
-                Overrides are stored in the database and take precedence over defaults.
-            </p>
-        </div>
-        <div class="flex items-center gap-2">
+    {% macro _ps_actions() %}
+<div class="flex items-center gap-2">
             <span x-show="loading" x-cloak class="text-sm text-muted-foreground">Loading...</span>
             <button type="button" @click="loadPrompts()"
                     class="inline-flex items-center justify-center rounded-md text-sm font-medium
@@ -26,7 +20,8 @@
                 Refresh
             </button>
         </div>
-    </div>
+    {% endmacro %}
+    {{ page_shell(title='Solution AI Prompts', subtitle='Customize the prompts used by the Architecture Journey to generate ArchiMate elements. Overrides are stored in the database and take precedence over defaults.', actions_caller=_ps_actions) }}
 
     <!-- Error banner -->
     <div x-show="errorMsg" x-cloak

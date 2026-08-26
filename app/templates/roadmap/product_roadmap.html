@@ -1,4 +1,5 @@
 {% extends "layouts/admin_base.html" %}
+{% from 'macros/page_shell.html' import page_shell %}
 <!-- modal-a11y-ok -->
 
 {% block title %}Product Roadmap{% endblock %}
@@ -10,12 +11,8 @@
   x-init="init()"
 >
   <!-- Header -->
-  <div class="flex items-center justify-between mb-6">
-    <div>
-      <h1 class="text-2xl font-bold text-foreground">Product Roadmap</h1>
-      <p class="text-sm text-muted-foreground mt-1">Epics across Now &middot; Next &middot; Later horizons</p>
-    </div>
-    <div class="flex items-center gap-3">
+  {% macro _ps_actions() %}
+<div class="flex items-center gap-3">
       <span class="text-xs text-muted-foreground">On Track (Now):</span>
       <span
         class="px-3 py-1 rounded-full text-sm font-semibold"
@@ -24,7 +21,8 @@
       ></span>
       <span class="text-xs text-muted-foreground/60" x-text="'Total epics: ' + totalEpics"></span>
     </div>
-  </div>
+  {% endmacro %}
+  {{ page_shell(title='Product Roadmap', subtitle='Epics across Now · Next · Later horizons', actions_caller=_ps_actions) }}
 
   <!-- Error banner -->
   <div x-show="error" x-cloak class="mb-4 p-3 bg-destructive/5 border border-destructive/20 rounded text-destructive-emphasis text-sm" x-text="error"></div>

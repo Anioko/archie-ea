@@ -244,8 +244,10 @@ function activateExtension(extensionId) {
     });
 }
 
-function applyTemplate(templateId) {
-    let name = prompt('Enter configuration name:');
+async function applyTemplate(templateId) {
+    let name = await Platform.modal.promptText('Enter configuration name:', {
+        title: 'Apply template'
+    });
     if (!name) return;
 
     fetch('/framework-management/api/apply-template', {
