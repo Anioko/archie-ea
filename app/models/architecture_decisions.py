@@ -14,7 +14,18 @@ class ArchitectureDecision(db.Model):
     __table_args__ = {"extend_existing": True}
 
     id = db.Column(db.Integer, primary_key=True)
-    solution_id = db.Column(db.Integer, db.ForeignKey("solutions.id"), nullable=False, index=True)
+    # NULLABLE, and it must stay that way. This table is dual-mapped:
+    # app/models/architecture_decision.py declares the same column with
+    # ondelete="SET NULL", which is flatly incompatible with NOT NULL -- deleting
+    # a solution would try to write NULL into a non-nullable column. Both classes
+    # share one Table via extend_existing, so whichever imports last wins, and
+    # declaring NOT NULL here made the effective spec depend on import order.
+    # reconcile-schema issues no ALTER COLUMN either, so a fresh database would
+    # get NOT NULL while every existing one keeps NULL. Pinned by
+    # tests/test_schema_change_safety.py::test_no_column_became_non_nullable.
+    solution_id = db.Column(
+        db.Integer, db.ForeignKey("solutions.id"), nullable=True, index=True
+    )
     title = db.Column(db.String(200), nullable=False)
     status = db.Column(db.String(20), default="proposed")  # proposed, approved, rejected, superseded
     decision_type = db.Column(db.String(50))  # technology_choice, vendor_selection, pattern_selection, integration_approach
