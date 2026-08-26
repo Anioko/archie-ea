@@ -12,10 +12,15 @@ from typing import Any, Mapping, Protocol, runtime_checkable
 
 from app import db
 from app.models.adr import ArchitectureDecisionRecord
+from app.models.arb_submission_evidence import (
+    ARBSubmissionEvidenceSnapshot,
+    WorkbenchArtifactEvidence,
+)
 from app.models.architecture_review_board import ARBGovernanceStandard
 from app.models.models import ArchitectureModel
 from app.models.solution_models import Solution
 from app.models.transformation_decision import ARBSubjectEvidenceSnapshot
+from app.models.transformation_evidence import EvidenceRecord
 from app.models.user import User
 from app.modules.solutions_strategic.v2.services.arb_submission_service import (
     ARBReadinessResult,
@@ -438,41 +443,68 @@ class _SubjectSnapshotAdapter:
                     "actual": supplied_policy,
                 }
             )
+        evidence, evidence_blockers = self._supporting_evidence(
+            dossier, row.organization_id
+        )
+        for blocker in evidence_blockers:
+            reason_codes.append(blocker["code"])
+            missing.append(blocker)
+        verified_evidence_ids = {item["resource_id"] for item in evidence}
         standards = self._mandatory_standards()
         supplied_standards = dossier.get("standards") if isinstance(dossier, Mapping) else None
         supplied_standards = supplied_standards if isinstance(supplied_standards, list) else []
         satisfied_standard_ids = []
         standard_results = []
         for standard in standards:
-            satisfied = any(
-                isinstance(item, Mapping)
+            # A dossier is submitter-owned, so its ``satisfied`` flag is a claim,
+            # never a verdict.  The claim only counts when it names at least one
+            # citation that resolved against a server-held evidence row above.
+            claims = [
+                item
+                for item in supplied_standards
+                if isinstance(item, Mapping)
                 and item.get("standard_id") == standard.id
                 and item.get("standard_code") == standard.code
                 and item.get("satisfied") is True
-                for item in supplied_standards
+            ]
+            backing_ids = sorted(
+                {
+                    evidence_id
+                    for item in claims
+                    for evidence_id in (
+                        item.get("evidence_ids")
+                        if isinstance(item.get("evidence_ids"), list)
+                        else []
+                    )
+                    if evidence_id in verified_evidence_ids
+                },
+                key=str,
             )
+            satisfied = bool(claims) and bool(backing_ids)
             standard_results.append(
                 {
                     "standard_id": standard.id,
                     "standard_code": standard.code,
                     "satisfied": satisfied,
+                    "verified_evidence_ids": backing_ids,
                 }
             )
             if satisfied:
                 satisfied_standard_ids.append(standard.id)
-            else:
-                reason_codes.append("mandatory_standard_unsatisfied")
-                missing.append(
-                    {
-                        "code": "mandatory_standard_unsatisfied",
-                        "standard_id": standard.id,
-                        "standard_code": standard.code,
-                    }
-                )
-        evidence, evidence_blockers = self._supporting_evidence(dossier)
-        for blocker in evidence_blockers:
-            reason_codes.append(blocker["code"])
-            missing.append(blocker)
+                continue
+            code = (
+                "mandatory_standard_unverified"
+                if claims
+                else "mandatory_standard_unsatisfied"
+            )
+            reason_codes.append(code)
+            missing.append(
+                {
+                    "code": code,
+                    "standard_id": standard.id,
+                    "standard_code": standard.code,
+                }
+            )
         reason_codes = list(dict.fromkeys(reason_codes))
         subject_payload = _complete_payload(row)
         subject_hash = hashlib.sha256(
@@ -588,7 +620,68 @@ class _SubjectSnapshotAdapter:
                 applicable.append(row)
         return sorted(applicable, key=lambda row: (row.code, row.id))
 
-    def _supporting_evidence(self, dossier):
+    # Every citation must resolve to a row in one of these append-only,
+    # tenant-scoped, hash-bearing server stores.  A caller-supplied hash is
+    # never trusted: it is compared against the hash the server holds, and --
+    # where the store can recompute it -- against a freshly recomputed one.
+    _EVIDENCE_STORES = {
+        "evidence_record": (EvidenceRecord, "source_checksum"),
+        "workbench_artifact_evidence": (WorkbenchArtifactEvidence, "content_hash"),
+        "arb_submission_evidence_snapshot": (
+            ARBSubmissionEvidenceSnapshot,
+            "content_hash",
+        ),
+        "arb_subject_evidence_snapshot": (ARBSubjectEvidenceSnapshot, "content_hash"),
+    }
+
+    def _resolve_evidence_row(self, evidence_type, evidence_id, organization_id):
+        """Load one server-held evidence row, or None when it does not resolve.
+
+        Missing, wrong-type and other-tenant rows all return None so this stays
+        a non-oracle, exactly as ``_not_found`` does for subjects.
+        """
+        store = self._EVIDENCE_STORES.get(evidence_type)
+        if store is None:
+            return None
+        model, _hash_attribute = store
+        try:
+            row_id = int(evidence_id)
+        except (TypeError, ValueError):
+            return None
+        if row_id <= 0:
+            return None
+        return db.session.execute(
+            db.select(model).where(
+                model.id == row_id,
+                model.organization_id == organization_id,
+            )
+        ).scalar_one_or_none()
+
+    def _verify_evidence_row(self, evidence_type, row, claimed_hash):
+        """Return the server hash when it is authentic and matches the claim."""
+        _model, hash_attribute = self._EVIDENCE_STORES[evidence_type]
+        stored = getattr(row, hash_attribute, None)
+        if not isinstance(stored, str) or len(stored) != 64:
+            return None
+        recompute = getattr(row, "recompute_content_hash", None)
+        if callable(recompute) and hash_attribute == "content_hash":
+            if recompute() != stored:
+                return None
+        if stored.lower() != claimed_hash.lower():
+            return None
+        return stored.lower()
+
+    @staticmethod
+    def _server_expiry(row):
+        """Server-held expiry for stores that carry one, else None."""
+        expires_at = getattr(row, "freshness_expires_at", None)
+        if expires_at is None:
+            return None
+        if expires_at.tzinfo is None or expires_at.utcoffset() is None:
+            return expires_at.replace(tzinfo=timezone.utc)
+        return expires_at.astimezone(timezone.utc)
+
+    def _supporting_evidence(self, dossier, organization_id):
         raw = dossier.get("evidence") if isinstance(dossier, Mapping) else None
         if not isinstance(raw, list) or not raw:
             return [], [{"code": "supporting_evidence_required"}]
@@ -623,7 +716,29 @@ class _SubjectSnapshotAdapter:
             ):
                 blockers.append({"code": "supporting_evidence_invalid", "evidence_id": evidence_id})
                 continue
-            if expires_at <= now:
+            if evidence_type not in self._EVIDENCE_STORES:
+                blockers.append(
+                    {
+                        "code": "supporting_evidence_unverifiable",
+                        "evidence_id": evidence_id,
+                        "evidence_type": evidence_type,
+                    }
+                )
+                continue
+            row = self._resolve_evidence_row(evidence_type, evidence_id, organization_id)
+            if row is None:
+                blockers.append(
+                    {"code": "supporting_evidence_unresolved", "evidence_id": evidence_id}
+                )
+                continue
+            verified_hash = self._verify_evidence_row(evidence_type, row, content_hash)
+            if verified_hash is None:
+                blockers.append(
+                    {"code": "supporting_evidence_hash_mismatch", "evidence_id": evidence_id}
+                )
+                continue
+            server_expiry = self._server_expiry(row)
+            if expires_at <= now or (server_expiry is not None and server_expiry <= now):
                 blockers.append({"code": "supporting_evidence_stale", "evidence_id": evidence_id})
                 continue
             seen.add(evidence_id)
@@ -631,9 +746,10 @@ class _SubjectSnapshotAdapter:
                 {
                     "resource_type": evidence_type,
                     "resource_id": evidence_id,
-                    "content_hash": content_hash.lower(),
+                    "content_hash": verified_hash,
                     "captured_at": captured_at.isoformat(),
                     "expires_at": expires_at.isoformat(),
+                    "verified": True,
                 }
             )
         if not citations and not blockers:

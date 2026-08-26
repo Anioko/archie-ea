@@ -11,7 +11,10 @@ import pytest
 from app import db
 from app.models.adr import ArchitectureDecisionRecord
 from app.models.architecture_review_board import ARBGovernanceStandard, ARBReviewItem
-from app.models.arb_submission_evidence import ARBSubmissionEvidenceSnapshot
+from app.models.arb_submission_evidence import (
+    ARBSubmissionEvidenceSnapshot,
+    WorkbenchArtifactEvidence,
+)
 from app.models.audit_log import AuditLog
 from app.models.models import ArchitectureModel
 from app.models.solution_models import Solution
@@ -88,7 +91,7 @@ def _gate(*, allowed=True, blockers=()):
     )
 
 
-def _mandatory_standard_entries(review_type):
+def _mandatory_standard_entries(review_type, evidence_ids):
     rows = db.session.execute(
         db.select(ARBGovernanceStandard).where(
             ARBGovernanceStandard.status == "active",
@@ -104,21 +107,38 @@ def _mandatory_standard_entries(review_type):
                     "standard_id": row.id,
                     "standard_code": row.code,
                     "satisfied": True,
+                    "evidence_ids": list(evidence_ids),
                 }
             )
     return entries
 
 
-def _governance_dossier(policy_version, review_type, *, evidence_id=9001, expires_at=None):
+def _server_evidence(org, label):
+    """Persist a real, server-held, hash-bearing evidence row to cite."""
+    row = WorkbenchArtifactEvidence.capture(
+        organization_id=org.id,
+        workspace_id=None,
+        solution_id=None,
+        name=f"arb-{label}-{uuid.uuid4().hex[:8]}"[:80],
+        state="approved",
+        payload={"label": label},
+        actor_id=None,
+    )
+    db.session.flush()
+    return row
+
+
+def _governance_dossier(org, policy_version, review_type, *, label="doc", expires_at=None):
     expires_at = expires_at or datetime.now(timezone.utc) + timedelta(days=1)
+    record = _server_evidence(org, label)
     return {
         "policy_version": policy_version,
-        "standards": _mandatory_standard_entries(review_type),
+        "standards": _mandatory_standard_entries(review_type, [record.id]),
         "evidence": [
             {
-                "evidence_id": evidence_id,
-                "evidence_type": "arb_supporting_document",
-                "content_hash": "a" * 64,
+                "evidence_id": record.id,
+                "evidence_type": "workbench_artifact_evidence",
+                "content_hash": record.content_hash,
                 "captured_at": "2026-08-24T09:30:00+00:00",
                 "expires_at": expires_at.isoformat(),
             }
@@ -232,7 +252,7 @@ def test_model_adapter_load_evaluate_snapshot_and_url_are_tenant_bound(
         "elements": ["Payment API"],
         "relationships": [],
         "arb_readiness": _governance_dossier(
-            "architecture-model-arb-r2", "technology_selection"
+            org, "architecture-model-arb-r2", "technology_selection"
         ),
     }
     model = ArchitectureModel(
@@ -277,17 +297,34 @@ def test_model_adapter_load_evaluate_snapshot_and_url_are_tenant_bound(
         "technology_stack_id": None,
         "compliance_framework_id": None,
     }
-    assert snapshot.payload["readiness"]["evidence_ids"] == [9001]
+    cited = model_document["arb_readiness"]["evidence"][0]
+    assert snapshot.payload["readiness"]["evidence_ids"] == [cited["evidence_id"]]
     assert snapshot.citations == [
         {"resource_type": "architecture_model", "resource_id": model.id},
         {
-            "resource_type": "arb_supporting_document",
-            "resource_id": 9001,
-            "content_hash": "a" * 64,
+            "resource_type": "workbench_artifact_evidence",
+            "resource_id": cited["evidence_id"],
+            "content_hash": cited["content_hash"],
             "captured_at": "2026-08-24T09:30:00+00:00",
-            "expires_at": model_document["arb_readiness"]["evidence"][0]["expires_at"],
+            "expires_at": cited["expires_at"],
+            "verified": True,
         },
     ]
+    assert sorted(
+        snapshot.payload["governance_result"]["mandatory_standards"],
+        key=lambda entry: entry["standard_id"],
+    ) == sorted(
+        (
+            {
+                "standard_id": entry["standard_id"],
+                "standard_code": entry["standard_code"],
+                "satisfied": True,
+                "verified_evidence_ids": [cited["evidence_id"]],
+            }
+            for entry in model_document["arb_readiness"]["standards"]
+        ),
+        key=lambda entry: entry["standard_id"],
+    )
 
     with pytest.raises(NotFound, match="arb_subject_not_found"):
         adapter.load(_actor(foreign_user, foreign_org), model.id)
@@ -314,7 +351,7 @@ def test_adr_adapter_load_evaluate_snapshot_and_url_are_tenant_bound(
         created_by=actor_user.email,
         governance_blob={
             "arb_readiness": _governance_dossier(
-                "adr-arb-r2", "architecture_change", evidence_id=9002
+                org, "adr-arb-r2", "architecture_change", label="adr"
             )
         },
     )
@@ -340,9 +377,11 @@ def test_adr_adapter_load_evaluate_snapshot_and_url_are_tenant_bound(
     assert snapshot.payload["subject"]["rationale"] == adr.rationale
     assert snapshot.payload["subject"]["consequences"] == adr.consequences
     assert snapshot.payload["subject"]["created_at"] == adr.created_at.isoformat()
-    assert snapshot.payload["readiness"]["evidence_ids"] == [9002]
+    adr_cited = adr.governance_blob["arb_readiness"]["evidence"][0]
+    assert snapshot.payload["readiness"]["evidence_ids"] == [adr_cited["evidence_id"]]
     assert snapshot.citations[0] == {"resource_type": "adr", "resource_id": adr.id}
-    assert snapshot.citations[1]["resource_id"] == 9002
+    assert snapshot.citations[1]["resource_id"] == adr_cited["evidence_id"]
+    assert snapshot.citations[1]["verified"] is True
 
     with pytest.raises(NotFound, match="arb_subject_not_found"):
         adapter.load(_actor(foreign_user, foreign_org), adr.id)
@@ -455,7 +494,7 @@ def test_model_policy_rejects_invalid_json_and_absent_supporting_evidence(
 def test_adr_policy_rejects_terminal_state_and_wrong_policy_version(db_session, make_org):
     org = make_org("invalid-adr-policy")
     actor_user = _user(db_session, org)
-    dossier = _governance_dossier("adr-arb-r1", "architecture_change", evidence_id=9101)
+    dossier = _governance_dossier(org, "adr-arb-r1", "architecture_change", label="r1")
     adr = ArchitectureDecisionRecord(
         organization_id=org.id,
         adr_number=92,
@@ -493,7 +532,7 @@ def test_subject_policy_requires_every_applicable_mandatory_standard(db_session,
     db_session.add(standard)
     db_session.flush()
     dossier = _governance_dossier(
-        "architecture-model-arb-r2", "technology_selection", evidence_id=9102
+        org, "architecture-model-arb-r2", "technology_selection", label="std"
     )
     dossier["standards"] = []
     model = ArchitectureModel(
@@ -521,6 +560,152 @@ def test_subject_policy_requires_every_applicable_mandatory_standard(db_session,
     }
 
 
+def _model_with_dossier(db_session, org, actor_user, dossier, name):
+    model = ArchitectureModel(
+        organization_id=org.id,
+        name=name,
+        version="1.0",
+        user_id=actor_user.id,
+        model_data=json.dumps(
+            {"elements": [], "relationships": [], "arb_readiness": dossier}
+        ),
+    )
+    db_session.add(model)
+    db_session.flush()
+    return model
+
+
+def test_dossier_satisfied_claim_without_verified_evidence_never_satisfies_standard(
+    db_session, make_org
+):
+    """A submitter-owned ``satisfied: true`` is a claim, not a verdict."""
+    org = make_org("forged-standard")
+    actor_user = _user(db_session, org)
+    standard = ARBGovernanceStandard(
+        code=f"STD-FORGE-{uuid.uuid4().hex[:10]}",
+        name="Forgeable standard",
+        status="active",
+        mandatory=True,
+        applies_to_review_types=["technology_selection"],
+    )
+    db_session.add(standard)
+    db_session.flush()
+    dossier = _governance_dossier(
+        org, "architecture-model-arb-r2", "technology_selection", label="forge"
+    )
+    # Strip the server-verified backing while keeping the claim itself.
+    for entry in dossier["standards"]:
+        entry["evidence_ids"] = []
+    model = _model_with_dossier(db_session, org, actor_user, dossier, "Forged claim")
+    adapter = ArchitectureModelARBAdapter()
+    actor = _actor(actor_user, org)
+
+    readiness = adapter.evaluate(actor, adapter.load(actor, model.id), {"human_reviewed": True})
+
+    assert readiness.ready is False
+    assert "mandatory_standard_unverified" in readiness.reason_codes
+    assert standard.id in {
+        entry.get("standard_id") for entry in readiness.missing_evidence
+    }
+    assert all(
+        entry["satisfied"] is False
+        for entry in readiness.governance_result["mandatory_standards"]
+    )
+    with pytest.raises(BlockedByEvidence, match="arb_subject_not_ready"):
+        adapter.snapshot(actor, adapter.load(actor, model.id), readiness)
+
+
+@pytest.mark.parametrize(
+    ("mutate", "expected_code"),
+    (
+        (
+            lambda entry, org: entry.update({"evidence_id": 987654321}),
+            "supporting_evidence_unresolved",
+        ),
+        (
+            lambda entry, org: entry.update({"content_hash": "b" * 64}),
+            "supporting_evidence_hash_mismatch",
+        ),
+        (
+            lambda entry, org: entry.update({"evidence_type": "arb_supporting_document"}),
+            "supporting_evidence_unverifiable",
+        ),
+    ),
+)
+def test_citation_must_resolve_to_a_server_held_evidence_record(
+    db_session, make_org, mutate, expected_code
+):
+    org = make_org("unresolvable-evidence")
+    actor_user = _user(db_session, org)
+    dossier = _governance_dossier(
+        org, "architecture-model-arb-r2", "technology_selection", label="unresolvable"
+    )
+    mutate(dossier["evidence"][0], org)
+    model = _model_with_dossier(db_session, org, actor_user, dossier, "Unresolvable cite")
+    adapter = ArchitectureModelARBAdapter()
+    actor = _actor(actor_user, org)
+
+    readiness = adapter.evaluate(actor, adapter.load(actor, model.id), {"human_reviewed": True})
+
+    assert readiness.ready is False
+    assert expected_code in readiness.reason_codes
+    assert readiness.checks["evidence_citations"] == []
+    assert readiness.governance_result["supporting_evidence_count"] == 0
+    assert "mandatory_standard_unverified" in readiness.reason_codes
+
+
+def test_citation_to_another_tenants_evidence_is_indistinguishable_from_missing(
+    db_session, make_org
+):
+    """NotFound and NotAuthorised deliberately collapse into one reason code."""
+    org, foreign_org = make_org("cite-own"), make_org("cite-foreign")
+    actor_user = _user(db_session, org)
+    foreign_record = _server_evidence(foreign_org, "foreign")
+    dossier = _governance_dossier(
+        org, "architecture-model-arb-r2", "technology_selection", label="crossorg"
+    )
+    dossier["evidence"][0]["evidence_id"] = foreign_record.id
+    dossier["evidence"][0]["content_hash"] = foreign_record.content_hash
+    for entry in dossier["standards"]:
+        entry["evidence_ids"] = [foreign_record.id]
+    model = _model_with_dossier(db_session, org, actor_user, dossier, "Cross-org cite")
+    adapter = ArchitectureModelARBAdapter()
+    actor = _actor(actor_user, org)
+
+    readiness = adapter.evaluate(actor, adapter.load(actor, model.id), {"human_reviewed": True})
+
+    assert readiness.ready is False
+    assert "supporting_evidence_unresolved" in readiness.reason_codes
+    assert "supporting_evidence_unverifiable" not in readiness.reason_codes
+
+
+def test_legitimate_server_backed_dossier_still_reaches_a_pinned_snapshot(
+    db_session, make_org
+):
+    org = make_org("legitimate-dossier")
+    actor_user = _user(db_session, org)
+    dossier = _governance_dossier(
+        org, "architecture-model-arb-r2", "technology_selection", label="legit"
+    )
+    model = _model_with_dossier(db_session, org, actor_user, dossier, "Legitimate model")
+    adapter = ArchitectureModelARBAdapter()
+    actor = _actor(actor_user, org)
+    subject = adapter.load(actor, model.id)
+
+    readiness = adapter.evaluate(actor, subject, {"human_reviewed": True})
+    evidence = adapter.snapshot(actor, subject, readiness)
+    snapshot = db_session.get(ARBSubjectEvidenceSnapshot, evidence.evidence_id)
+
+    assert readiness.ready is True
+    assert readiness.reason_codes == []
+    assert readiness.checks["evidence_citations"][0]["verified"] is True
+    assert snapshot.content_hash == snapshot.recompute_content_hash()
+    assert all(
+        entry["verified_evidence_ids"]
+        for entry in snapshot.payload["governance_result"]["mandatory_standards"]
+    )
+
+
 @pytest.mark.parametrize("subject_kind", ("architecture_model", "adr"))
 def test_subject_snapshot_rejects_forged_and_changed_readiness(
     db_session, make_org, subject_kind
@@ -531,7 +716,7 @@ def test_subject_snapshot_rejects_forged_and_changed_readiness(
     if subject_kind == "architecture_model":
         adapter = ArchitectureModelARBAdapter()
         dossier = _governance_dossier(
-            "architecture-model-arb-r2", "technology_selection", evidence_id=9201
+            org, "architecture-model-arb-r2", "technology_selection", label="stale-model"
         )
         row = ArchitectureModel(
             organization_id=org.id,
@@ -545,7 +730,7 @@ def test_subject_snapshot_rejects_forged_and_changed_readiness(
     else:
         adapter = ADRARBAdapter()
         dossier = _governance_dossier(
-            "adr-arb-r2", "architecture_change", evidence_id=9202
+            org, "adr-arb-r2", "architecture_change", label="stale-adr"
         )
         row = ArchitectureDecisionRecord(
             organization_id=org.id,
