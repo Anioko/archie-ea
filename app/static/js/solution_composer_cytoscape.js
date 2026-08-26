@@ -8,35 +8,31 @@ document.addEventListener('DOMContentLoaded', function() {
   // Fetch palette and relationship types
   async function fetchPalette() {
     try {
-      const res = await fetch('/api/solution-composer/palette', { credentials: 'same-origin' });
+      // Platform.fetch throws on non-ok responses, returns parsed body directly.
+      const data = await Platform.fetch('/api/solution-composer/palette');
       // Unchecked, a 500 parsed to `{}` and the composer rendered an empty palette —
       // the user reads that as "this canvas has no element types".
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      const data = await res.json();
       return data.data || data;
     } catch (e) {
-      console.warn('Failed to fetch palette', e);
-      if (window.Platform && window.Platform.toast) {
-        window.Platform.toast.error('Could not load the element palette — it is empty because the request failed.');
-      }
-      return {};
+      // Platform.fetch already shows a toast unless silent:true, but we also need to
+      // surface the failure to the caller. Do NOT return a fallback empty object.
+      // The caller will handle the error appropriately.
+      throw e;
     }
   }
 
   async function fetchRelationshipTypes() {
     try {
-      const res = await fetch('/api/solution-composer/relationship-types', { credentials: 'same-origin' });
+      // Platform.fetch throws on non-ok responses, returns parsed body directly.
+      const data = await Platform.fetch('/api/solution-composer/relationship-types');
       // Unchecked, a 500 left the relationship-type list empty, so drawing a link
       // offered no types to choose from and looked like a broken control.
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      const data = await res.json();
       return (data.data && data.data.relationship_types) || data.relationship_types || [];
     } catch (e) {
-      console.warn('Failed to fetch relationship types', e);
-      if (window.Platform && window.Platform.toast) {
-        window.Platform.toast.error('Could not load relationship types — none are available because the request failed.');
-      }
-      return [];
+      // Platform.fetch already shows a toast unless silent:true, but we also need to
+      // surface the failure to the caller. Do NOT return a fallback empty array.
+      // The caller will handle the error appropriately.
+      throw e;
     }
   }
 
@@ -96,16 +92,16 @@ document.addEventListener('DOMContentLoaded', function() {
         const posX = parseFloat(el.style.left);
         const posY = parseFloat(el.style.top);
         try {
-          const posResp = await fetch(`/api/solution-composer/nodes/${encodeURIComponent(nodeId)}/position`, {
-            method: 'PUT',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({position_x: posX, position_y: posY}),
+          // Platform.fetch.put serialises plain object to JSON automatically and injects CSRF.
+          await Platform.fetch.put(`/api/solution-composer/nodes/${encodeURIComponent(nodeId)}/position`, {
+            position_x: posX,
+            position_y: posY,
           });
-          if (!posResp.ok) throw new Error('HTTP ' + posResp.status);
         } catch (e) {
           // The node visually stays where it was dropped even though the position
           // did not persist — the user must be told, or a reload silently reverts it.
-          console.warn('Failed to save position', e);
+          // Platform.fetch already shows a toast; we keep the existing toast to provide
+          // context specific to position saving.
           Platform.toast.error('Could not save the new node position.');
         }
       }
@@ -121,8 +117,18 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 
   async function init() {
-    const palette = await fetchPalette();
-    const relTypes = await fetchRelationshipTypes();
+    let palette;
+    let relTypes;
+    try {
+      palette = await fetchPalette();
+      relTypes = await fetchRelationshipTypes();
+    } catch (e) {
+      // fetchPalette/fetchRelationshipTypes already throw; we need to stop init
+      // because the UI cannot function without palette or relationship types.
+      // The error has already been surfaced via Platform.fetch's toast.
+      // We rethrow to prevent further execution.
+      throw e;
+    }
 
     // Populate palette simple list
     if (paletteEl && palette.archimate_elements) {
@@ -144,12 +150,8 @@ document.addEventListener('DOMContentLoaded', function() {
             properties: {},
           };
           try {
-            const res = await fetch('/api/solution-composer/nodes', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(payload),
-            });
-            const rj = await res.json();
+            // Platform.fetch.post serialises plain object to JSON automatically and injects CSRF.
+            const rj = await Platform.fetch.post('/api/solution-composer/nodes', payload);
             if (rj.success) {
               const el = makeNodeElement(payload);
               canvasEl.appendChild(el);
@@ -157,7 +159,8 @@ document.addEventListener('DOMContentLoaded', function() {
               Platform.toast.error('Failed to add node: ' + (rj.error || 'unknown'));
             }
           } catch (e) {
-            console.warn('Failed to add node', e);
+            // Platform.fetch already shows a toast; we keep the existing toast to provide
+            // context specific to node creation.
             Platform.toast.error('Failed to add node.');
           }
         });
@@ -167,8 +170,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Load existing canvas nodes via /api/solution-composer/state
     try {
-      const res = await fetch('/api/solution-composer/state');
-      const js = await res.json();
+      // Platform.fetch throws on non-ok responses, returns parsed body directly.
+      const js = await Platform.fetch('/api/solution-composer/state');
       if (js.success && js.data && js.data.nodes) {
         js.data.nodes.forEach((n) => {
           const el = makeNodeElement(n);
@@ -178,7 +181,8 @@ document.addEventListener('DOMContentLoaded', function() {
     } catch (e) {
       // Distinguish "failed to load" from "nothing saved yet" — otherwise a broken
       // load reads as an empty canvas and the user starts re-adding nodes that already exist.
-      console.warn('No canvas state loaded', e);
+      // Platform.fetch already shows a toast; we keep the existing toast to provide
+      // context specific to canvas loading.
       Platform.toast.error('Could not load the saved canvas. Existing nodes may not be showing.');
     }
 
@@ -203,12 +207,8 @@ document.addEventListener('DOMContentLoaded', function() {
           target_node_id: target,
           relationship_type: 'serving',
         };
-        fetch('/api/solution-composer/connections', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        })
-          .then((r) => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+        // Platform.fetch.post serialises plain object to JSON automatically and injects CSRF.
+        Platform.fetch.post('/api/solution-composer/connections', payload)
           .then((rj) => {
             if (!rj.success) Platform.toast.error('Connection failed: ' + (rj.error || 'unknown'));
           })

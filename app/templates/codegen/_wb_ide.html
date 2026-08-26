@@ -60,11 +60,9 @@
                 <div x-show="fileList.length > 0" x-cloak x-data="{sharing:false, shareUrl:'', copied:false}">
                     <button type="button" x-show="!shareUrl"
                             @click="sharing=true;
-                                fetch('/solutions/'+solutionId+'/codegen/share',{
-                                    method:'POST',
-                                    headers:{'Content-Type':'application/json','X-CSRFToken':document.querySelector('meta[name=csrf-token]')?.content||''},
-                                    body:'{}'
-                                }).then(r=>r.json()).then(d=>{sharing=false;if(d.share_url){shareUrl=d.share_url;}else{Platform.toast.error(d.error||'Failed');}}).catch(()=>{sharing=false;Platform.toast.error('Network error');})"
+                                Platform.fetch.post('/solutions/'+solutionId+'/codegen/share', {}, {silent:true})
+                                    .then(d=>{sharing=false;if(d.share_url){shareUrl=d.share_url;}else{Platform.toast.error(d.error||'Failed');}})
+                                    .catch(e=>{sharing=false;Platform.toast.error(e.message||'Network error');})"
                             :disabled="sharing"
                             class="h-7 px-2.5 text-xs font-medium border border-border rounded-md transition-colors flex items-center gap-1.5"
                             :class="sharing ? 'text-muted-foreground opacity-50' : 'text-info-emphasis border-info/30 bg-info/5 hover:bg-info/10'">
@@ -101,11 +99,9 @@
                      x-data="{pushing:false, prUrl:'', pushErr:''}">
                     <button type="button" x-show="!prUrl"
                             @click="pushing=true; pushErr='';
-                                fetch('/solutions/'+solutionId+'/codegen/push-to-git',{
-                                    method:'POST',
-                                    headers:{'Content-Type':'application/json','X-CSRFToken':document.querySelector('meta[name=csrf-token]')?.content||''},
-                                    body:'{}'
-                                }).then(r=>r.json()).then(d=>{pushing=false;if(d.success&&d.pr_url){prUrl=d.pr_url;}else{pushErr=d.error||'Push failed';}}).catch(()=>{pushing=false;pushErr='Network error';})"
+                                Platform.fetch.post('/solutions/'+solutionId+'/codegen/push-to-git', {}, {silent:true})
+                                    .then(d=>{pushing=false;if(d.success&&d.pr_url){prUrl=d.pr_url;}else{pushErr=d.error||'Push failed';}})
+                                    .catch(e=>{pushing=false;pushErr=e.message||'Network error';})"
                             :disabled="pushing"
                             class="h-7 px-2.5 text-xs font-medium border border-border rounded-md transition-colors flex items-center gap-1.5"
                             :class="pushing ? 'text-muted-foreground opacity-50' : 'text-primary border-info/30 bg-info/5 hover:bg-info/10'">
@@ -1042,16 +1038,12 @@
                                              if (!this.iacOwner || !this.iacRepo) { this.iacDeployError = 'Owner and repo are required'; return; }
                                              this.iacDeploying = true; this.iacDeployError = ''; this.iacDeployResult = null;
                                              try {
-                                                 const csrf = document.querySelector('[name=csrf_token]')?.value || '';
-                                                 const resp = await fetch(`/solutions/{{ solution.id }}/codegen/deploy-iac`, {
-                                                     method: 'POST',
-                                                     headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrf},
-                                                     body: JSON.stringify({owner: this.iacOwner, repo: this.iacRepo, base_branch: this.iacBaseBranch})
-                                                 });
-                                                 const data = await resp.json();
+                                                 const data = await Platform.fetch.post(`/solutions/{{ solution.id }}/codegen/deploy-iac`,
+                                                     {owner: this.iacOwner, repo: this.iacRepo, base_branch: this.iacBaseBranch},
+                                                     {silent: true});
                                                  if (data.success) { this.iacDeployResult = data; this.iacShowForm = false; }
                                                  else { this.iacDeployError = data.error || 'Deployment failed'; }
-                                             } catch(e) { this.iacDeployError = 'Network error: ' + e.message; }
+                                             } catch(e) { this.iacDeployError = e.message || 'Deployment failed'; }
                                              this.iacDeploying = false;
                                          }
                                      }">
@@ -1279,12 +1271,7 @@
                         <!-- Upload button -->
                         <button type="button" @click="
                             snacking = true; snackError = ''; snackUrl = ''; snackId = '';
-                            fetch('/solutions/' + solutionId + '/codegen/expo-snack', {
-                                method: 'POST',
-                                headers: {'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''},
-                                body: '{}'
-                            })
-                            .then(r => r.json())
+                            Platform.fetch.post('/solutions/' + solutionId + '/codegen/expo-snack', {}, {silent: true})
                             .then(d => {
                                 snacking = false;
                                 if (d.snack_url) {
@@ -1293,7 +1280,7 @@
                                     showEmbed = true;
                                 } else { snackError = d.error || 'Unknown error'; }
                             })
-                            .catch(e => { snacking = false; snackError = 'Network error: ' + e.message; })"
+                            .catch(e => { snacking = false; snackError = e.message || 'Upload failed'; })"
                                 :disabled="snacking"
                                 class="w-full h-8 text-xs font-semibold rounded-lg border border-info/30 bg-info/10 hover:bg-info/15 text-primary disabled:opacity-50 transition-colors flex items-center justify-center gap-2">
                             <svg x-show="snacking" x-cloak class="h-3 w-3 animate-spin" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
@@ -1832,9 +1819,8 @@
                          async launchStackBlitz() {
                              this.sbLaunching = true;
                              try {
-                                 const r = await fetch('/solutions/' + solutionId + '/codegen/stackblitz-data');
-                                 if (!r.ok) throw new Error('the project bundle could not be built (HTTP ' + r.status + ')');
-                                 const d = await r.json();
+                                 const d = await Platform.fetch('/solutions/' + solutionId + '/codegen/stackblitz-data',
+                                     { silent: true, errorMsg: 'the project bundle could not be built' });
                                  if (d.error) { Platform.toast.error(d.error); return; }
                                  const form = document.createElement('form');
                                  form.method = 'POST';
@@ -1960,11 +1946,9 @@ npm run dev</pre>
                                     <div x-show="hasMobile" class="space-y-2">
                                         <button type="button" x-show="!snacking && !snackUrl"
                                                 @click="snacking=true; snackError='';
-                                                        fetch('/solutions/' + solutionId + '/codegen/expo-snack',
-                                                              {method:'POST', headers:{'Content-Type':'application/json','X-CSRFToken':document.cookie.match(/csrftoken=([^;]+)/)?.[1]||''}})
-                                                        .then(r=>r.json())
+                                                        Platform.fetch.post('/solutions/' + solutionId + '/codegen/expo-snack', undefined, {silent:true})
                                                         .then(d=>{ if(d.snack_url){ snackUrl=d.snack_url; snackId=d.snack_id; showEmbed=true; showQr=true; } else { snackError=d.error||'Upload failed'; } snacking=false; })
-                                                        .catch(e=>{ snackError='Request failed: '+e.message; snacking=false; })"
+                                                        .catch(e=>{ snackError=e.message||'Upload failed'; snacking=false; })"
                                                 :disabled="snacking"
                                                 class="w-full h-9 text-sm font-semibold rounded-lg bg-info hover:bg-info/90 text-primary-foreground transition-colors disabled:opacity-60 flex items-center justify-center gap-2">
                                             <svg x-show="snacking" class="w-4 h-4 wb-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48 2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48 2.83-2.83"/></svg>
@@ -2005,10 +1989,9 @@ npm run dev</pre>
                                     <div x-show="!previewActive && !swaggerActive" class="space-y-2">
                                         <div class="rounded-lg bg-warning/10 border border-warning/30 p-3 text-2xs text-warning-emphasis">Start the preview container to load live API docs.</div>
                                         <button type="button" @click="swaggerStarting=true;
-                                                        fetch('/solutions/'+solutionId+'/codegen/preview/start',{method:'POST',headers:{'Content-Type':'application/json','X-CSRFToken':document.cookie.match(/csrftoken=([^;]+)/)?.[1]||''}})
-                                                        .then(r=>r.json())
-                                                        .then(d=>{ if(d.swagger_url||d.url){swaggerUrl=d.swagger_url||d.url; swaggerActive=true;} swaggerStarting=false; })
-                                                        .catch(()=>{ swaggerStarting=false; })"
+                                                        Platform.fetch.post('/solutions/'+solutionId+'/codegen/preview/start', undefined, {silent:true})
+                                                        .then(d=>{ if(d.swagger_url||d.url){swaggerUrl=d.swagger_url||d.url; swaggerActive=true;} else {Platform.toast.error(d.error||'The preview container did not report an API docs URL.');} swaggerStarting=false; })
+                                                        .catch(e=>{ Platform.toast.error(e.message||'Could not start the API preview.'); swaggerStarting=false; })"
                                                 :disabled="swaggerStarting"
                                                 class="w-full h-9 text-sm font-semibold rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-60 transition-colors flex items-center justify-center gap-2">
                                             <svg x-show="swaggerStarting" class="w-4 h-4 wb-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48 2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48 2.83-2.83"/></svg>

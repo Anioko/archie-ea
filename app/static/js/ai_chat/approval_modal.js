@@ -65,16 +65,10 @@ function registerApprovalManager() {
             const fetchSequence = ++this._fetchSequence;
             this.loading = true;
             try {
-                const res = await fetch("/ai-chat/approvals/queue", {
-                    headers: {
-                        "X-CSRFToken": window.csrfToken || "",
-                    },
+                const data = await Platform.fetch("/ai-chat/approvals/queue", {
                     credentials: "same-origin",
+                    silent: true, // We handle errors inline below
                 });
-                if (!res.ok) {
-                    throw new Error("HTTP " + res.status);
-                }
-                const data = await res.json();
                 if (!data.success) {
                     throw new Error(data.error || "Approval queue was unavailable");
                 }
@@ -88,7 +82,7 @@ function registerApprovalManager() {
                 if (fetchSequence !== this._fetchSequence) {
                     return;
                 }
-                console.error("[approvalManager] fetchPending failed:", err);
+                // Platform.fetch already logged the error; we set a user‑visible error state.
                 this.error = this.hasLoaded
                     ? "Unable to refresh approvals. Showing the last known results."
                     : "Unable to load approvals. Approval status is unavailable.";
@@ -111,18 +105,14 @@ function registerApprovalManager() {
             this.busyIds[approvalId] = true;
             this.error = null;
             try {
-                const res = await fetch(
+                const data = await Platform.fetch.post(
                     "/ai-chat/approvals/" + approvalId + "/approve",
+                    null, // no body
                     {
-                        method: "POST",
-                        headers: {
-                            "Content-Type": "application/json",
-                            "X-CSRFToken": window.csrfToken || "",
-                        },
                         credentials: "same-origin",
+                        silent: true, // We handle errors inline
                     }
                 );
-                const data = await res.json();
                 if (data.success) {
                     this.approvals = this.approvals.filter(
                         (a) => a.id !== approvalId
@@ -153,19 +143,14 @@ function registerApprovalManager() {
             this.busyIds[approvalId] = true;
             this.error = null;
             try {
-                const res = await fetch(
+                const data = await Platform.fetch.post(
                     "/ai-chat/approvals/" + approvalId + "/reject",
+                    { reason: this.rejectReason }, // plain object, auto‑JSON
                     {
-                        method: "POST",
-                        headers: {
-                            "Content-Type": "application/json",
-                            "X-CSRFToken": window.csrfToken || "",
-                        },
                         credentials: "same-origin",
-                        body: JSON.stringify({ reason: this.rejectReason }),
+                        silent: true, // We handle errors inline
                     }
                 );
-                const data = await res.json();
                 if (data.success) {
                     this.approvals = this.approvals.filter(
                         (a) => a.id !== approvalId

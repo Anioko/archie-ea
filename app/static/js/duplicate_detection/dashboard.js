@@ -70,16 +70,14 @@ function duplicateDetection() {
             this.elementGroupsLoading = true;
             this.elementGroupsError = '';
             try {
-                let response = await fetch('/duplicate-detection/simple/api/element-groups');
-                if (!response.ok) throw new Error('HTTP ' + response.status);
-                let data = await response.json();
+                let data = await Platform.fetch('/duplicate-detection/simple/api/element-groups');
                 this.elementGroups = data.groups || [];
                 this.elementGroupsTotalDuplicated = data.total_duplicated_elements || 0;
                 this.$nextTick(function() { lucide.createIcons(); });
             } catch (error) {
-                console.error('Error loading ArchiMate element duplicate groups:', error);
                 this.elementGroupsError = 'Could not load ArchiMate element duplicate groups.';
-                if (window.Platform && Platform.toast) Platform.toast.error(this.elementGroupsError);
+                // The error toast is already shown by Platform.fetch (unless silent:true).
+                // We keep the inline error state for the UI.
             } finally {
                 this.elementGroupsLoading = false;
             }
@@ -247,11 +245,9 @@ function duplicateDetection() {
 
         async loadStats() {
             try {
-                let response = await fetch('/duplicate-detection/simple/api/statistics');
+                let data = await Platform.fetch('/duplicate-detection/simple/api/statistics');
                 // Unchecked, a 500 parsed to `{}` and every `|| 0` below fired, so the
                 // KPI tiles showed a measured-looking zero for figures never computed.
-                if (!response.ok) throw new Error('HTTP ' + response.status);
-                let data = await response.json();
                 let self = this;
                 let latestRun = data.latest_run || null;
                 let groupsFound = latestRun && latestRun.groups_found != null ? latestRun.groups_found : 0;
@@ -276,7 +272,6 @@ function duplicateDetection() {
                 };
                 this.$nextTick(function() { lucide.createIcons(); });
             } catch (error) {
-                console.error('Error loading stats:', error);
                 // null, not 0 — nothing was measured, so the tiles must render an em dash.
                 this.stats = {
                     total_groups: null,
@@ -285,25 +280,22 @@ function duplicateDetection() {
                     last_run_date: null,
                     last_run_summary: null
                 };
-                if (window.Platform && Platform.toast) Platform.toast.error('Could not load duplicate detection statistics.');
+                // Platform.fetch already shows a toast; we keep the inline null state.
             }
         },
 
         async loadGroups() {
             this.isLoading = true;
             try {
-                let response = await fetch('/duplicate-detection/simple/api/groups');
+                let data = await Platform.fetch('/duplicate-detection/simple/api/groups');
                 // Unchecked, a 500 parsed to `{}` and the table rendered "no duplicate
                 // groups found" — a detection failure dressed up as a clean portfolio.
-                if (!response.ok) throw new Error('HTTP ' + response.status);
-                let data = await response.json();
                 this.allGroups = data.groups || [];
                 this.currentPage = 1;
                 this.$nextTick(function() { lucide.createIcons(); });
             } catch (error) {
-                console.error('Error loading groups:', error);
                 this.allGroups = [];
-                if (window.Platform && Platform.toast) Platform.toast.error('Could not load duplicate groups.');
+                // Platform.fetch already shows a toast; we keep the empty array state.
             } finally {
                 this.isLoading = false;
             }
@@ -319,17 +311,14 @@ function duplicateDetection() {
             }
 
             try {
-                let response = await fetch('/duplicate-detection/simple/api/run-detection', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        method: this.detectionConfig.strategy || 'hybrid',
-                        threshold: threshold,
-                        run_name: this.detectionConfig.run_name || ''
-                    })
+                let data = await Platform.fetch.post('/duplicate-detection/simple/api/run-detection', {
+                    method: this.detectionConfig.strategy || 'hybrid',
+                    threshold: threshold,
+                    run_name: this.detectionConfig.run_name || ''
                 });
-                let data = await response.json();
 
+                // Platform.fetch throws on non-ok, so reaching here means HTTP succeeded.
+                // The payload may still indicate logical failure via data.success.
                 if (data.success) {
                     await this.loadStats();
                     await this.loadGroups();
@@ -366,7 +355,6 @@ function duplicateDetection() {
                     };
                 }
             } catch (error) {
-                console.error('Error running detection:', error);
                 this.runFeedback = {
                     status: 'error',
                     title: 'Detection failed',
@@ -397,12 +385,9 @@ function duplicateDetection() {
                     { text: 'Cancel', class: 'px-4 py-2 text-sm font-medium text-foreground bg-background border border-border rounded-md hover:bg-muted', action: 'cancel', handler: function() {} },
                     { text: 'Add to List', class: 'px-4 py-2 text-sm font-medium text-primary-foreground bg-primary border border-transparent rounded-md hover:bg-primary/90', action: 'add', handler: async function() {
                         try {
-                            let response = await fetch('/duplicate-detection/api/groups/' + groupId + '/add-to-consolidation', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                credentials: 'include'
-                            });
-                            let data = await response.json();
+                            let data = await Platform.fetch.post('/duplicate-detection/api/groups/' + groupId + '/add-to-consolidation', {});
+                            // Platform.fetch throws on non-ok, so reaching here means HTTP succeeded.
+                            // The payload may still indicate logical failure via data.success.
                             if (data.success) {
                                 let msg = 'Added ' + (data.added_count || 0) + ' application(s) to consolidation list' +
                                     (data.skipped_count ? ' (' + data.skipped_count + ' already listed)' : '');
@@ -412,7 +397,6 @@ function duplicateDetection() {
                                 Platform.toast.error('Error: ' + (data.error || 'Unknown error'));
                             }
                         } catch (error) {
-                            console.error('Error adding to consolidation:', error);
                             Platform.toast.error('Failed to add to consolidation: ' + error.message);
                         }
                     } }
@@ -431,12 +415,9 @@ function duplicateDetection() {
                     { text: 'Cancel', class: 'px-4 py-2 text-sm font-medium text-foreground bg-background border border-border rounded-md hover:bg-muted', action: 'cancel', handler: function() {} },
                     { text: 'Dismiss', class: 'px-4 py-2 text-sm font-medium text-destructive-foreground bg-destructive border border-transparent rounded-md hover:bg-destructive/90', action: 'dismiss', handler: async function() {
                         try {
-                            let response = await fetch('/duplicate-detection/api/groups/' + groupId + '/ignore', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                credentials: 'include'
-                            });
-                            let data = await response.json();
+                            let data = await Platform.fetch.post('/duplicate-detection/api/groups/' + groupId + '/ignore', {});
+                            // Platform.fetch throws on non-ok, so reaching here means HTTP succeeded.
+                            // The payload may still indicate logical failure via data.success.
                             if (data.success) {
                                 self.allGroups = self.allGroups.filter(function(g) { return g.id !== groupId; });
                                 await self.loadStats();
@@ -444,7 +425,6 @@ function duplicateDetection() {
                                 Platform.toast.error('Error: ' + (data.error || 'Unknown error'));
                             }
                         } catch (error) {
-                            console.error('Error dismissing group:', error);
                             Platform.toast.error('Failed to dismiss group: ' + error.message);
                         }
                     } }

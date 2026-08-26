@@ -143,12 +143,8 @@ function implementationPlanningDashboard() {
 
         loadDashboardData() {
             this.loadError = '';
-            // fetch does not reject on 4xx/5xx — an error page would otherwise
+            // Platform.fetch rejects on 4xx/5xx — without that an error page would
             // be parsed as a legitimately empty roadmap.
-            const jsonOrThrow = (response) => {
-                if (!response.ok) throw new Error('request failed: ' + response.status);
-                return response.json();
-            };
             // Four requests failing at once is one outage: report it once.
             const reportFailure = () => {
                 if (this.loadError) return;
@@ -157,8 +153,7 @@ function implementationPlanningDashboard() {
             };
 
             // Load statistics
-            fetch('/implementation/api/dashboard-stats')
-                .then(jsonOrThrow)
+            Platform.fetch('/implementation/api/dashboard-stats', { silent: true })
                 .then(data => {
                     this.stats = data.stats;
                 })
@@ -168,8 +163,7 @@ function implementationPlanningDashboard() {
                 });
 
             // Load work packages
-            fetch('/implementation/api/work-packages')
-                .then(jsonOrThrow)
+            Platform.fetch('/implementation/api/work-packages', { silent: true })
                 .then(data => {
                     this.workPackages = data.work_packages || [];
                 })
@@ -179,8 +173,7 @@ function implementationPlanningDashboard() {
                 });
 
             // Load critical gaps
-            fetch('/implementation/api/gaps?priority=critical&limit=5')
-                .then(jsonOrThrow)
+            Platform.fetch('/implementation/api/gaps?priority=critical&limit=5', { silent: true })
                 .then(data => {
                     this.criticalGaps = data.gaps || [];
                 })
@@ -190,8 +183,7 @@ function implementationPlanningDashboard() {
                 });
 
             // Load recent work packages
-            fetch('/implementation/api/work-packages?limit=5&sort=updated_at')
-                .then(jsonOrThrow)
+            Platform.fetch('/implementation/api/work-packages?limit=5&sort=updated_at', { silent: true })
                 .then(data => {
                     this.recentWorkPackages = data.work_packages || [];
                 })
@@ -203,8 +195,7 @@ function implementationPlanningDashboard() {
         
         async runGapDiscovery() {
             if ((await Platform.modal.confirm('Run intelligent gap discovery? This may take a few minutes.'))) {
-                fetch('/implementation/gaps/discover', { method: 'POST', headers: {'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''} })
-                    .then(response => response.json())
+                Platform.fetch.post('/implementation/gaps/discover', undefined, { silent: true })
                     .then(data => {
                         if (data.success) {
                             Platform.toast.success('Gap discovery completed successfully!');
@@ -214,8 +205,7 @@ function implementationPlanningDashboard() {
                         }
                     })
                     .catch(error => {
-                        console.error('Error running gap discovery:', error);
-                        Platform.toast.error('Error during gap discovery');
+                        Platform.toast.error('Error during gap discovery: ' + (error.message || 'request failed'));
                     });
             }
         },
@@ -367,15 +357,7 @@ function workPackageCreateModal() {
       if (!this.formData.name.trim()) { this.errorMsg = 'Name is required.'; return; }
       this.submitting = true;
       this.errorMsg = '';
-      fetch('{{ url_for("implementation_planning.create_work_package") }}', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''
-        },
-        body: JSON.stringify(this.formData)
-      })
-      .then(r => r.json())
+      Platform.fetch.post('{{ url_for("implementation_planning.create_work_package") }}', this.formData, { silent: true })
       .then(data => {
         this.submitting = false;
         if (!data.success) {
@@ -386,7 +368,7 @@ function workPackageCreateModal() {
         showToast({ title: 'Work package created successfully', variant: 'default' });
         setTimeout(() => window.location.reload(), 800);
       })
-      .catch(() => { this.submitting = false; this.errorMsg = 'Network error. Please try again.'; });
+      .catch((e) => { this.submitting = false; this.errorMsg = e.message || 'Network error. Please try again.'; });
     }
   };
 }

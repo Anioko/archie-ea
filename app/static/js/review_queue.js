@@ -83,20 +83,19 @@ class ReviewQueueManager {
     async loadReviewQueue() {
         try {
             this.showLoading(true);
-            const response = await fetch('/api/review-queue');
-            const data = await response.json();
+            const data = await Platform.fetch('/api/review-queue');
 
-            if (data.success) {
-                this.reviewItems = data.items;
-                this.statistics = data.statistics;
-                this.renderReviewQueue();
-                this.updateStatistics();
-            } else {
-                this.showError('Failed to load review queue: ' + data.error);
-            }
+            // Platform.fetch throws on non-ok responses, so we only reach here on success
+            this.reviewItems = data.items;
+            this.statistics = data.statistics;
+            this.renderReviewQueue();
+            this.updateStatistics();
         } catch (error) {
-            console.error('Failed to load review queue:', error);
+            // Platform.fetch already shows a toast unless silent:true, but we still need to paint inline error state
+            // The existing code painted an inline error via showError, which we preserve.
+            // We must not swallow the error; rethrow after showing inline error.
             this.showError('Error loading review queue');
+            throw error; // surface the failure
         } finally {
             this.showLoading(false);
         }
@@ -199,81 +198,67 @@ class ReviewQueueManager {
 
     async approveItem(itemId, reason = '') {
         try {
-            const response = await fetch(`/api/review-queue/${itemId}/approve`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
+            const result = await Platform.fetch.post(`/api/review-queue/${itemId}/approve`, {
+                decision_reason: reason || 'Approved by user',
+                reviewer_role: 'architect',
+                reviewer_experience_level: 'senior',
+                quality_assessment: {
+                    accuracy: { score: 0.9, weight: 0.4 },
+                    completeness: { score: 0.8, weight: 0.3 },
+                    relevance: { score: 0.7, weight: 0.3 }
                 },
-                body: JSON.stringify({
-                    decision_reason: reason || 'Approved by user',
-                    reviewer_role: 'architect',
-                    reviewer_experience_level: 'senior',
-                    quality_assessment: {
-                        accuracy: { score: 0.9, weight: 0.4 },
-                        completeness: { score: 0.8, weight: 0.3 },
-                        relevance: { score: 0.7, weight: 0.3 }
-                    },
-                    identified_issues: [],
-                    suggested_improvements: [],
-                    human_confidence_estimate: 0.9,
-                    ai_accuracy_assessment: 4,
-                    correction_made: false,
-                    corrected_data: {},
-                    review_duration_seconds: 30
-                })
+                identified_issues: [],
+                suggested_improvements: [],
+                human_confidence_estimate: 0.9,
+                ai_accuracy_assessment: 4,
+                correction_made: false,
+                corrected_data: {},
+                review_duration_seconds: 30
             });
 
-            const result = await response.json();
-            if (result.success) {
-                this.removeItem(itemId);
-                this.showSuccess(`Item ${itemId} approved successfully`);
-                await this.loadReviewQueue(); // Refresh
-            } else {
-                this.showError('Failed to approve item: ' + result.error);
-            }
+            // Platform.fetch throws on non-ok responses, so we only reach here on success
+            this.removeItem(itemId);
+            this.showSuccess(`Item ${itemId} approved successfully`);
+            await this.loadReviewQueue(); // Refresh
         } catch (error) {
-            console.error('Failed to approve item:', error);
+            // Platform.fetch already shows a toast unless silent:true, but we still need to paint inline error state
+            // The existing code painted an inline error via showError, which we preserve.
+            // We must not swallow the error; rethrow after showing inline error.
             this.showError('Error approving item');
+            throw error; // surface the failure
         }
     }
 
     async rejectItem(itemId, reason = '') {
         try {
-            const response = await fetch(`/api/review-queue/${itemId}/reject`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
+            const result = await Platform.fetch.post(`/api/review-queue/${itemId}/reject`, {
+                decision_reason: reason || 'Rejected by user',
+                reviewer_role: 'architect',
+                reviewer_experience_level: 'senior',
+                quality_assessment: {
+                    accuracy: { score: 0.3, weight: 0.4 },
+                    completeness: { score: 0.5, weight: 0.3 },
+                    relevance: { score: 0.4, weight: 0.3 }
                 },
-                body: JSON.stringify({
-                    decision_reason: reason || 'Rejected by user',
-                    reviewer_role: 'architect',
-                    reviewer_experience_level: 'senior',
-                    quality_assessment: {
-                        accuracy: { score: 0.3, weight: 0.4 },
-                        completeness: { score: 0.5, weight: 0.3 },
-                        relevance: { score: 0.4, weight: 0.3 }
-                    },
-                    identified_issues: [],
-                    suggested_improvements: [],
-                    human_confidence_estimate: 0.3,
-                    ai_accuracy_assessment: 2,
-                    correction_made: false,
-                    corrected_data: {},
-                    review_duration_seconds: 30
-                })
+                identified_issues: [],
+                suggested_improvements: [],
+                human_confidence_estimate: 0.3,
+                ai_accuracy_assessment: 2,
+                correction_made: false,
+                corrected_data: {},
+                review_duration_seconds: 30
             });
 
-            const result = await response.json();
-            if (result.success) {
-                this.removeItem(itemId);
-                this.showSuccess(`Item ${itemId} rejected successfully`);
-                await this.loadReviewQueue(); // Refresh
-            } else {
-                this.showError('Failed to reject item: ' + result.error);
-            }
+            // Platform.fetch throws on non-ok responses, so we only reach here on success
+            this.removeItem(itemId);
+            this.showSuccess(`Item ${itemId} rejected successfully`);
+            await this.loadReviewQueue(); // Refresh
         } catch (error) {
-            console.error('Failed to reject item:', error);
+            // Platform.fetch already shows a toast unless silent:true, but we still need to paint inline error state
+            // The existing code painted an inline error via showError, which we preserve.
+            // We must not swallow the error; rethrow after showing inline error.
             this.showError('Error rejecting item');
+            throw error; // surface the failure
         }
     }
 
@@ -302,42 +287,35 @@ class ReviewQueueManager {
 
     async _doBulkApprove(itemIds) {
         try {
-            const response = await fetch('/api/review-queue/bulk-approve', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
+            const result = await Platform.fetch.post('/api/review-queue/bulk-approve', {
+                item_ids: itemIds,
+                decision_reason: 'Bulk approved by user',
+                reviewer_role: 'architect',
+                reviewer_experience_level: 'senior',
+                quality_assessment: {
+                    accuracy: { score: 0.9, weight: 0.4 },
+                    completeness: { score: 0.8, weight: 0.3 },
+                    relevance: { score: 0.7, weight: 0.3 }
                 },
-                body: JSON.stringify({
-                    item_ids: itemIds,
-                    decision_reason: 'Bulk approved by user',
-                    reviewer_role: 'architect',
-                    reviewer_experience_level: 'senior',
-                    quality_assessment: {
-                        accuracy: { score: 0.9, weight: 0.4 },
-                        completeness: { score: 0.8, weight: 0.3 },
-                        relevance: { score: 0.7, weight: 0.3 }
-                    },
-                    identified_issues: [],
-                    suggested_improvements: [],
-                    human_confidence_estimate: 0.9,
-                    ai_accuracy_assessment: 4,
-                    correction_made: false,
-                    corrected_data: {},
-                    review_duration_seconds: 30
-                })
+                identified_issues: [],
+                suggested_improvements: [],
+                human_confidence_estimate: 0.9,
+                ai_accuracy_assessment: 4,
+                correction_made: false,
+                corrected_data: {},
+                review_duration_seconds: 30
             });
 
-            const result = await response.json();
-            if (result.success) {
-                this.selectedItems.clear();
-                this.showSuccess(`Bulk approval completed: ${result.successful_count} approved, ${result.failed_count} failed`);
-                await this.loadReviewQueue(); // Refresh
-            } else {
-                this.showError('Bulk approval failed: ' + result.error);
-            }
+            // Platform.fetch throws on non-ok responses, so we only reach here on success
+            this.selectedItems.clear();
+            this.showSuccess(`Bulk approval completed: ${result.successful_count} approved, ${result.failed_count} failed`);
+            await this.loadReviewQueue(); // Refresh
         } catch (error) {
-            console.error('Failed to bulk approve:', error);
+            // Platform.fetch already shows a toast unless silent:true, but we still need to paint inline error state
+            // The existing code painted an inline error via showError, which we preserve.
+            // We must not swallow the error; rethrow after showing inline error.
             this.showError('Error in bulk approval');
+            throw error; // surface the failure
         }
     }
 
@@ -366,42 +344,35 @@ class ReviewQueueManager {
 
     async _doBulkReject(itemIds) {
         try {
-            const response = await fetch('/api/review-queue/bulk-reject', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
+            const result = await Platform.fetch.post('/api/review-queue/bulk-reject', {
+                item_ids: itemIds,
+                decision_reason: 'Bulk rejected by user',
+                reviewer_role: 'architect',
+                reviewer_experience_level: 'senior',
+                quality_assessment: {
+                    accuracy: { score: 0.3, weight: 0.4 },
+                    completeness: { score: 0.5, weight: 0.3 },
+                    relevance: { score: 0.4, weight: 0.3 }
                 },
-                body: JSON.stringify({
-                    item_ids: itemIds,
-                    decision_reason: 'Bulk rejected by user',
-                    reviewer_role: 'architect',
-                    reviewer_experience_level: 'senior',
-                    quality_assessment: {
-                        accuracy: { score: 0.3, weight: 0.4 },
-                        completeness: { score: 0.5, weight: 0.3 },
-                        relevance: { score: 0.4, weight: 0.3 }
-                    },
-                    identified_issues: [],
-                    suggested_improvements: [],
-                    human_confidence_estimate: 0.3,
-                    ai_accuracy_assessment: 2,
-                    correction_made: false,
-                    corrected_data: {},
-                    review_duration_seconds: 30
-                })
+                identified_issues: [],
+                suggested_improvements: [],
+                human_confidence_estimate: 0.3,
+                ai_accuracy_assessment: 2,
+                correction_made: false,
+                corrected_data: {},
+                review_duration_seconds: 30
             });
 
-            const result = await response.json();
-            if (result.success) {
-                this.selectedItems.clear();
-                this.showSuccess(`Bulk rejection completed: ${result.successful_count} rejected, ${result.failed_count} failed`);
-                await this.loadReviewQueue(); // Refresh
-            } else {
-                this.showError('Bulk rejection failed: ' + result.error);
-            }
+            // Platform.fetch throws on non-ok responses, so we only reach here on success
+            this.selectedItems.clear();
+            this.showSuccess(`Bulk rejection completed: ${result.successful_count} rejected, ${result.failed_count} failed`);
+            await this.loadReviewQueue(); // Refresh
         } catch (error) {
-            console.error('Failed to bulk reject:', error);
+            // Platform.fetch already shows a toast unless silent:true, but we still need to paint inline error state
+            // The existing code painted an inline error via showError, which we preserve.
+            // We must not swallow the error; rethrow after showing inline error.
             this.showError('Error in bulk rejection');
+            throw error; // surface the failure
         }
     }
 
@@ -551,31 +522,24 @@ class ReviewQueueManager {
         const rejection = document.getElementById('rejection-threshold').value;
 
         try {
-            const response = await fetch('/api/review-queue/thresholds', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    threshold_name: 'User Configured Thresholds',
-                    threshold_type: 'global',
-                    minimum_confidence: (autoAccept - 30) / 100,
-                    auto_approval_threshold: autoAccept / 100,
-                    rejection_threshold: rejection / 100,
-                    requires_human_review: true,
-                    user_id: 1 // This should come from session
-                })
+            const result = await Platform.fetch.post('/api/review-queue/thresholds', {
+                threshold_name: 'User Configured Thresholds',
+                threshold_type: 'global',
+                minimum_confidence: (autoAccept - 30) / 100,
+                auto_approval_threshold: autoAccept / 100,
+                rejection_threshold: rejection / 100,
+                requires_human_review: true,
+                user_id: 1 // This should come from session
             });
 
-            const result = await response.json();
-            if (result.success) {
-                this.showSuccess('Thresholds saved successfully');
-            } else {
-                this.showError('Failed to save thresholds: ' + result.error);
-            }
+            // Platform.fetch throws on non-ok responses, so we only reach here on success
+            this.showSuccess('Thresholds saved successfully');
         } catch (error) {
-            console.error('Error saving thresholds:', error);
+            // Platform.fetch already shows a toast unless silent:true, but we still need to paint inline error state
+            // The existing code painted an inline error via showError, which we preserve.
+            // We must not swallow the error; rethrow after showing inline error.
             this.showError('Error saving thresholds');
+            throw error; // surface the failure
         }
     }
 

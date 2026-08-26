@@ -313,15 +313,12 @@
 
             async loadNarrative() {
                 try {
-                    const resp = await fetch(
+                    const json = await Platform.fetch(
                         '/solutions/' + solutionId + '/api/section-narratives/architecture_decisions',
-                        { headers: { 'X-CSRFToken': csrfToken, 'Accept': 'application/json' } }
+                        { headers: { 'Accept': 'application/json' }, silent: true }
                     );
-                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
-                    const json = await resp.json();
                     this.narrative = (json.data ?? json).narrative || '';
                 } catch (e) {
-                    console.error('[decisions] loadNarrative error:', e);
                     // The textarea below is empty either way — without this,
                     // the user can't tell "no narrative saved yet" from "load
                     // failed", and typing + autosave would then silently
@@ -335,33 +332,34 @@
             async autoSave(value) {
                 this.narrativeSaving = 'saving';
                 try {
-                    await fetch(
+                    // The raw fetch this replaced never checked the response, so a
+                    // rejected save still flipped the indicator to 'saved' and the
+                    // catch discarded network failures without a word - the user was
+                    // shown a saved narrative that the server had not stored.
+                    await Platform.fetch.put(
                         '/solutions/' + solutionId + '/api/section-narratives/architecture_decisions',
-                        {
-                            method: 'PUT',
-                            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
-                            body: JSON.stringify({ narrative: value !== undefined ? value : this.narrative }),
-                        }
+                        { narrative: value !== undefined ? value : this.narrative },
+                        { silent: true }
                     );
                     this.narrativeSaving = 'saved';
                     setTimeout(() => { if (this.narrativeSaving === 'saved') this.narrativeSaving = 'idle'; }, 2000);
-                } catch (_) { this.narrativeSaving = 'idle'; }
+                } catch (e) {
+                    this.narrativeSaving = 'idle';
+                    if (window.Platform && Platform.toast) {
+                        Platform.toast.error('Narrative not saved: ' + (e.message || 'save failed'));
+                    }
+                }
             },
 
             async generateNarrative() {
                 if (this.generatingNarrative) return;
                 this.generatingNarrative = true;
                 try {
-                    const resp = await fetch(
+                    const json = await Platform.fetch.post(
                         '/solutions/' + solutionId + '/api/blueprint/architecture_decisions/generate',
-                        {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
-                            body: JSON.stringify({ force_regenerate: false }),
-                        }
+                        { force_regenerate: false },
+                        { silent: true }
                     );
-                    const json = await resp.json();
-                    if (!resp.ok) throw new Error(json.error || 'Generate failed');
                     this.narrative = json.narrative || this.narrative;
                     await this.autoSave();
                 } catch (e) {
@@ -376,14 +374,10 @@
                 this.loading = true;
                 this.error   = null;
                 try {
-                    const resp = await fetch(baseUrl, {
-                        headers: {
-                            'X-CSRFToken': csrfToken,
-                            'Accept':      'application/json',
-                        },
+                    const json = await Platform.fetch(baseUrl, {
+                        headers: { 'Accept': 'application/json' },
+                        silent: true,
                     });
-                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
-                    const json = await resp.json();
                     if (!json.success) throw new Error(json.error || 'Load failed');
                     this.decisions = json.data || [];
                 } catch (e) {
@@ -485,16 +479,12 @@
                         : baseUrl;
                     const method = this.editingDecision ? 'PUT' : 'POST';
 
-                    const resp = await fetch(url, {
+                    const json = await Platform.fetch(url, {
                         method,
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-CSRFToken':  csrfToken,
-                            'Accept':       'application/json',
-                        },
-                        body: JSON.stringify(payload),
+                        headers: { 'Accept': 'application/json' },
+                        body: payload,
+                        silent: true,
                     });
-                    const json = await resp.json();
                     if (!json.success) throw new Error(json.error || 'Save failed');
 
                     // Patch local list in-place
@@ -525,14 +515,11 @@
             async approveDecision(id) {
                 this.actionLoading = { ...this.actionLoading, [id]: true };
                 try {
-                    const resp = await fetch(baseUrl + '/' + id + '/approve', {
+                    const json = await Platform.fetch(baseUrl + '/' + id + '/approve', {
                         method:  'POST',
-                        headers: {
-                            'X-CSRFToken': csrfToken,
-                            'Accept':      'application/json',
-                        },
+                        headers: { 'Accept': 'application/json' },
+                        silent: true,
                     });
-                    const json = await resp.json();
                     if (!json.success) throw new Error(json.error || 'Approve failed');
                     const idx = this.decisions.findIndex(d => d.id === id);
                     if (idx >= 0) {
@@ -563,16 +550,12 @@
                 this.submitting   = true;
                 try {
                     const id   = this.rejectingDecision.id;
-                    const resp = await fetch(baseUrl + '/' + id + '/reject', {
+                    const json = await Platform.fetch(baseUrl + '/' + id + '/reject', {
                         method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-CSRFToken':  csrfToken,
-                            'Accept':       'application/json',
-                        },
-                        body: JSON.stringify({ reason: this.rejectReason.trim() }),
+                        headers: { 'Accept': 'application/json' },
+                        body: { reason: this.rejectReason.trim() },
+                        silent: true,
                     });
-                    const json = await resp.json();
                     if (!json.success) throw new Error(json.error || 'Reject failed');
 
                     const idx = this.decisions.findIndex(d => d.id === id);

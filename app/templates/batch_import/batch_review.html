@@ -811,19 +811,20 @@ function batchReview(jobId, batchId) {
         async loadData() {
             this.loading = true;
             try {
-                const [jobRes, batchRes, elementsRes] = await Promise.all([
-                    fetch(`/api/batch-import/jobs/${this.jobId}`),
-                    fetch(`/api/batch-import/batches/${this.batchId}`),
-                    fetch(`/api/batch-import/batches/${this.batchId}/elements`)
+                const [jobData, batchData, elementsData] = await Promise.all([
+                    Platform.fetch(`/api/batch-import/jobs/${this.jobId}`, { silent: true }),
+                    Platform.fetch(`/api/batch-import/batches/${this.batchId}`, { silent: true }),
+                    Platform.fetch(`/api/batch-import/batches/${this.batchId}/elements`, { silent: true })
                 ]);
 
-                const jobData = await jobRes.json();
-                const batchData = await batchRes.json();
-                const elementsData = await elementsRes.json();
-
-                if (jobData.success) this.job = jobData.job || jobData.data || this.job;
-                if (batchData.success) this.batch = batchData.batch || batchData.data || this.batch;
-                if (elementsData.success) this.elements = elementsData.elements || elementsData.data || [];
+                // A 200 carrying success:false used to be dropped on the floor, so a
+                // failed load rendered as an empty review queue with nothing to approve.
+                if (!jobData.success) throw new Error(jobData.message || jobData.error || 'Failed to load the import job');
+                if (!batchData.success) throw new Error(batchData.message || batchData.error || 'Failed to load the batch');
+                if (!elementsData.success) throw new Error(elementsData.message || elementsData.error || 'Failed to load the batch elements');
+                this.job = jobData.job || jobData.data || this.job;
+                this.batch = batchData.batch || batchData.data || this.batch;
+                this.elements = elementsData.elements || elementsData.data || [];
 
                 this.$nextTick(() => {
                     if (typeof lucide !== 'undefined') {
@@ -831,8 +832,7 @@ function batchReview(jobId, batchId) {
                     }
                 });
             } catch (error) {
-                console.error('Failed to load data:', error);
-                this.showToast('Failed to load batch data', 'error');
+                this.showToast(error.message || 'Failed to load batch data', 'error');
             } finally {
                 this.loading = false;
             }
@@ -953,15 +953,11 @@ function batchReview(jobId, batchId) {
 
         async saveElement() {
             try {
-                const response = await fetch(
+                const data = await Platform.fetch.put(
                     `/api/batch-import/elements/${this.editingElement.id}`,
-                    {
-                        method: 'PUT',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(this.editingElement)
-                    }
+                    this.editingElement,
+                    { silent: true }
                 );
-                const data = await response.json();
 
                 if (data.success) {
                     const idx = this.elements.findIndex(e => e.id === this.editingElement.id);
@@ -974,8 +970,7 @@ function batchReview(jobId, batchId) {
                     this.showToast(data.message || data.error || 'Failed to update element', 'error');
                 }
             } catch (error) {
-                console.error('Failed to save element:', error);
-                this.showToast('Failed to save element', 'error');
+                this.showToast(error.message || 'Failed to save element', 'error');
             }
         },
 
@@ -989,46 +984,45 @@ function batchReview(jobId, batchId) {
 
         async updateElementStatus(elementId, status) {
             try {
+                // The bulk actions used to pass 'Approved'/'Rejected'; these two
+                // comparisons are lower-case, so endpoint stayed null and every
+                // bulk approve/reject died on "Unsupported status update".
+                // Normalise here as well as at the call sites.
+                const normStatus = String(status || '').toLowerCase();
                 let endpoint = null;
-                if (status === 'approved') endpoint = `/api/batch-import/elements/${elementId}/approve`;
-                if (status === 'rejected') endpoint = `/api/batch-import/elements/${elementId}/reject`;
+                if (normStatus === 'approved') endpoint = `/api/batch-import/elements/${elementId}/approve`;
+                if (normStatus === 'rejected') endpoint = `/api/batch-import/elements/${elementId}/reject`;
                 if (!endpoint) {
                     this.showToast('Unsupported status update', 'error');
                     return;
                 }
 
-                const response = await fetch(endpoint, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({})
-                });
-                const data = await response.json();
+                const data = await Platform.fetch.post(endpoint, {}, { silent: true });
 
                 if (data.success) {
                     const idx = this.elements.findIndex(e => e.id === elementId);
                     if (idx > -1) {
-                        this.elements[idx].approval_status = status;
+                        this.elements[idx].approval_status = normStatus;
                     }
-                    this.showToast(`Element ${status}`, 'success');
+                    this.showToast(`Element ${normStatus}`, 'success');
                 } else {
                     this.showToast(data.message || data.error || 'Failed to update status', 'error');
                 }
             } catch (error) {
-                console.error('Failed to update element status:', error);
-                this.showToast('Failed to update status', 'error');
+                this.showToast(error.message || 'Failed to update status', 'error');
             }
         },
 
         async bulkApprove() {
             for (const id of this.selectedElements) {
-                await this.updateElementStatus(id, 'Approved');
+                await this.updateElementStatus(id, 'approved');
             }
             this.selectedElements = [];
         },
 
         async bulkReject() {
             for (const id of this.selectedElements) {
-                await this.updateElementStatus(id, 'Rejected');
+                await this.updateElementStatus(id, 'rejected');
             }
             this.selectedElements = [];
         },
@@ -1044,7 +1038,7 @@ function batchReview(jobId, batchId) {
             }
 
             for (const id of highConfidenceIds) {
-                await this.updateElementStatus(id, 'Approved');
+                await this.updateElementStatus(id, 'approved');
             }
 
             this.showToast(`Auto-approved ${highConfidenceIds.length} elements`, 'success');
@@ -1056,14 +1050,11 @@ function batchReview(jobId, batchId) {
 
         async confirmCommit() {
             try {
-                const response = await fetch(
+                const data = await Platform.fetch.post(
                     `/api/batch-import/batches/${this.batchId}/commit`,
-                    {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' }
-                    }
+                    undefined,
+                    { silent: true }
                 );
-                const data = await response.json();
 
                 if (data.success) {
                     const committedCount = data.committed_count || (data.batch && data.batch.elements_approved) || (data.data && data.data.elements_approved) || 0;
@@ -1074,8 +1065,7 @@ function batchReview(jobId, batchId) {
                     this.showToast(data.message || data.error || 'Failed to commit batch', 'error');
                 }
             } catch (error) {
-                console.error('Failed to commit batch:', error);
-                this.showToast('Failed to commit batch', 'error');
+                this.showToast(error.message || 'Failed to commit batch', 'error');
             }
         },
 

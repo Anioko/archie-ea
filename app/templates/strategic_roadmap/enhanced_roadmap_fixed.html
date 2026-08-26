@@ -288,25 +288,16 @@ function roadmapApp() {
         async loadData() {
             try {
                 // Load work packages
-                const workPackagesResponse = await fetch('/api/strategic-work-packages');
-                if (!workPackagesResponse.ok) {
-                    throw new Error('Could not load work packages (HTTP ' + workPackagesResponse.status + ')');
-                }
-                this.workPackages = await workPackagesResponse.json();
+                this.workPackages = await Platform.fetch('/api/strategic-work-packages',
+                    { silent: true, errorMsg: 'Could not load work packages' });
 
                 // Load capabilities
-                const capabilitiesResponse = await fetch('/api/capabilities');
-                if (!capabilitiesResponse.ok) {
-                    throw new Error('Could not load capabilities (HTTP ' + capabilitiesResponse.status + ')');
-                }
-                this.capabilities = await capabilitiesResponse.json();
+                this.capabilities = await Platform.fetch('/api/capabilities',
+                    { silent: true, errorMsg: 'Could not load capabilities' });
 
                 // Load users
-                const usersResponse = await fetch('/api/users');
-                if (!usersResponse.ok) {
-                    throw new Error('Could not load users (HTTP ' + usersResponse.status + ')');
-                }
-                this.users = await usersResponse.json();
+                this.users = await Platform.fetch('/api/users',
+                    { silent: true, errorMsg: 'Could not load users' });
 
                 this.updateStatistics();
                 this.renderTimeline();
@@ -555,17 +546,11 @@ function roadmapApp() {
 
                 const method = this.editingWorkPackage ? 'PUT' : 'POST';
 
-                const response = await fetch(url, {
+                await Platform.fetch(url, {
                     method: method,
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(this.workPackageForm)
+                    body: this.workPackageForm,
+                    silent: true
                 });
-
-                if (!response.ok) {
-                    throw new Error((await response.text()) || 'HTTP ' + response.status);
-                }
                 this.closeWorkPackageModal();
                 this.loadData();
             } catch (error) {
@@ -578,13 +563,7 @@ function roadmapApp() {
         async deleteWorkPackage(id) {
             if (!(await Platform.modal.confirm('Are you sure you want to delete this work package?'))) return;
             try {
-                const response = await fetch(`/api/strategic-work-packages/${id}`, {
-                    method: 'DELETE'
-                });
-
-                if (!response.ok) {
-                    throw new Error((await response.text()) || 'HTTP ' + response.status);
-                }
+                await Platform.fetch.delete(`/api/strategic-work-packages/${id}`, { silent: true });
                 this.loadData();
             } catch (error) {
                 Platform.toast.error('Could not delete the work package', {
@@ -595,7 +574,9 @@ function roadmapApp() {
 
         async exportData(format) {
             try {
-                const response = await fetch(`/strategic/roadmap?format=${format}`);
+                // raw-fetch-ok: the CSV branch below needs the raw Response to call
+                // .blob() for the download; Platform.fetch returns a parsed body.
+                const response = await fetch(`/strategic/roadmap?format=${format}`); // raw-fetch-ok: .blob() needs the raw Response
                 if (!response.ok) {
                     throw new Error('Export failed (HTTP ' + response.status + ')');
                 }

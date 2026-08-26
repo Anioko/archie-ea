@@ -1250,6 +1250,7 @@
                 };
 
                 try {
+                    // SSE streaming response requires raw fetch to read stream.
                     const resp = await fetch(
                         `/solutions/${this.solutionId}/codegen/generate-stream`,
                         {
@@ -1427,6 +1428,7 @@
                 };
 
                 try {
+                    // SSE streaming response requires raw fetch to read stream.
                     const resp = await fetch(
                         `/solutions/${this.solutionId}/codegen/verify`,
                         {
@@ -1520,6 +1522,7 @@
                 let errorMsg = '';
                 const patchFailures = [];
 
+                // SSE streaming response requires raw fetch to read stream.
                 const resp = await fetch(url, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
@@ -1557,23 +1560,17 @@
 
                         if (currentEventType === 'patch' && payload.file && payload.diff) {
                             try {
-                                const applyResp = await fetch(
+                                // This is a regular JSON endpoint, not SSE, so we can use Platform.fetch.
+                                // The caller already paints its own error state, so we pass { silent: true }.
+                                const applyData = await Platform.fetch(
                                     `/solutions/${this.solutionId}/codegen/chat-edit/apply-patch`,
                                     {
                                         method: 'POST',
-                                        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
-                                        body: JSON.stringify({ file: payload.file, diff: payload.diff }),
+                                        body: { file: payload.file, diff: payload.diff },
+                                        silent: true,
                                     }
                                 );
-                                // fetch() does not reject on 4xx/5xx, and the server can
-                                // also answer 200 {success: false}. Both were previously
-                                // ignored, leaving patchesApplied at 0 with no error.
-                                // The {} below is the ERROR BODY when it is not JSON; the
-                                // check on the next line is what reports the failure.
-                                const applyData = await applyResp.json().catch(() => ({}));
-                                if (!applyResp.ok || !applyData.success) {
-                                    throw new Error(applyData.error || applyData.message || ('HTTP ' + applyResp.status));
-                                }
+                                // Platform.fetch throws on non-ok, so reaching here means success.
                                 patchesApplied++;
                                 const newContent = applyData.content || applyData.new_content;
                                 if (newContent) {
@@ -2463,6 +2460,7 @@
                 }
 
                 try {
+                    // FormData upload requires raw fetch.
                     const resp = await fetch(
                         `/architecture-journey/${this.solutionId}/upload-documents`,
                         { method: 'POST', headers: { 'X-CSRFToken': this._csrfToken() }, body: formData }
