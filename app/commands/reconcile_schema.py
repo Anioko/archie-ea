@@ -58,6 +58,11 @@ _TRANSFORMATION_TABLES = (
     "decision_brief_evidence_citations",
     "decision_events",
     "arb_subject_evidence_snapshots",
+    # arb_review_cycles carries a RESTRICT FK to this table, so it must exist
+    # first. Without it reconcile-schema can never converge on a database that
+    # predates the submission-evidence feature: arb_review_cycles fails with
+    # UndefinedTable on every pass.
+    "arb_submission_evidence_snapshots",
     "arb_review_cycles",
 )
 
@@ -363,6 +368,9 @@ def _create_transformation_tables(*, dry_run, existing_tables, added, failed):
     # import them before consulting metadata so fresh deployments cannot omit
     # the typed ARB tables.
     from app.models.architecture_review_board import ARBReviewCycle  # noqa: F401
+    from app.models.arb_submission_evidence import (  # noqa: F401
+        ARBSubmissionEvidenceSnapshot,
+    )
     from app.models.transformation_decision import (  # noqa: F401
         ARBSubjectEvidenceSnapshot,
     )

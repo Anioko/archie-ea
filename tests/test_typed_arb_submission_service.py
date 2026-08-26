@@ -1309,7 +1309,11 @@ def test_cycle_and_review_numbers_must_match(app, _schema):
     (
         "ALTER TABLE arb_review_cycles DROP CONSTRAINT ck_arb_review_cycle_shape; "
         "ALTER TABLE arb_review_cycles ADD CONSTRAINT ck_arb_review_cycle_shape CHECK (true)",
-        "DROP INDEX uq_arb_review_cycle_review_number; "
+        # uq_arb_review_cycle_review_number is declared as a UniqueConstraint in
+        # __table_args__, so PostgreSQL backs it with an index it refuses to DROP
+        # INDEX directly. Drop the constraint to leave a non-unique squatter on the
+        # guard's name -- which is what exercises the repair path's DROP INDEX branch.
+        "ALTER TABLE arb_review_cycles DROP CONSTRAINT uq_arb_review_cycle_review_number; "
         "CREATE INDEX uq_arb_review_cycle_review_number ON arb_review_cycles (status)",
         "DROP TRIGGER trg_arb_cycle_membership ON arb_review_cycles; "
         "CREATE TRIGGER trg_arb_cycle_membership BEFORE INSERT ON arb_review_cycles "

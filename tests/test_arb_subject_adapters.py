@@ -512,7 +512,13 @@ def test_subject_policy_requires_every_applicable_mandatory_standard(db_session,
 
     assert readiness.ready is False
     assert "mandatory_standard_unsatisfied" in readiness.reason_codes
-    assert readiness.missing_evidence[-1]["standard_id"] == standard.id
+    # ARBGovernanceStandard is global reference data, not tenant-scoped, so every
+    # active mandatory standard applicable to the review type is reported here --
+    # including any already seeded in the database. Assert membership rather than
+    # position, which would only hold against an empty standards table.
+    assert standard.id in {
+        entry["standard_id"] for entry in readiness.missing_evidence
+    }
 
 
 @pytest.mark.parametrize("subject_kind", ("architecture_model", "adr"))
