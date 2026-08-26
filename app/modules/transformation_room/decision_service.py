@@ -990,6 +990,46 @@ class DecisionBriefService:
             return brief
 
     @classmethod
+    def require_latest_frozen_version(cls, brief):
+        """Load the latest immutable version belonging to a tenant-bound brief."""
+        organization_id = getattr(brief, "organization_id", None)
+        if organization_id is None:
+            raise NotFound("decision_brief_not_found")
+        with Session(db.engine) as session:
+            version = session.scalar(
+                select(DecisionBriefVersion)
+                .where(
+                    DecisionBriefVersion.organization_id == organization_id,
+                    DecisionBriefVersion.brief_id == brief.id,
+                    DecisionBriefVersion.workstream_id == brief.workstream_id,
+                )
+                .order_by(
+                    DecisionBriefVersion.version.desc(),
+                    DecisionBriefVersion.id.desc(),
+                )
+            )
+            if version is None:
+                raise NotFound("decision_brief_not_found")
+            session.expunge(version)
+            return version
+
+    @classmethod
+    def require_version_for_tenant(cls, actor, version_id):
+        """Load one immutable brief version without disclosing foreign IDs."""
+        version_id = _positive_id(version_id, "version_id")
+        with Session(db.engine) as session:
+            version = session.scalar(
+                select(DecisionBriefVersion).where(
+                    DecisionBriefVersion.id == version_id,
+                    DecisionBriefVersion.organization_id == actor.organization_id,
+                )
+            )
+            if version is None:
+                raise NotFound("decision_brief_not_found")
+            session.expunge(version)
+            return version
+
+    @classmethod
     def current_option_version_ids(cls, brief, *, actor):
         with Session(db.engine) as session:
             candidate_scope = (

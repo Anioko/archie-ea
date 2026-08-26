@@ -85,6 +85,39 @@ class ARBSubmissionService:
     )
 
     @classmethod
+    def build_evidence_snapshot(
+        cls,
+        *,
+        organization_id: int,
+        solution_id: int,
+        actor_id: int,
+        workspace_id: int | None,
+        assertions: dict[str, Any],
+        readiness: ARBReadinessResult,
+        review_item_id: int | None = None,
+        captured_at: datetime | None = None,
+    ) -> ARBSubmissionEvidenceSnapshot:
+        """Build and flush immutable evidence without owning submission side effects."""
+        snapshot = ARBSubmissionEvidenceSnapshot(
+            schema_version=cls.SCHEMA_VERSION,
+            organization_id=organization_id,
+            review_item_id=review_item_id,
+            solution_id=solution_id,
+            workspace_id=workspace_id,
+            workflow_type=readiness.workflow_type,
+            actor_id=actor_id,
+            captured_at=captured_at or datetime.utcnow(),
+            checks=deepcopy(readiness.checks),
+            artifacts=deepcopy(readiness.artifacts),
+            governance_result=deepcopy(readiness.governance_result),
+            request_assertions=deepcopy(assertions),
+        )
+        snapshot.content_hash = snapshot.recompute_content_hash()
+        db.session.add(snapshot)
+        db.session.flush()
+        return snapshot
+
+    @classmethod
     def evaluate(
         cls,
         solution_id: int,
@@ -389,22 +422,16 @@ class ARBSubmissionService:
             db.session.add(review)
             db.session.flush()
 
-            snapshot = ARBSubmissionEvidenceSnapshot(
-                schema_version=cls.SCHEMA_VERSION,
+            snapshot = cls.build_evidence_snapshot(
                 organization_id=organization_id,
                 review_item_id=review.id,
                 solution_id=solution.id,
                 workspace_id=workspace_id,
-                workflow_type=readiness.workflow_type,
                 actor_id=actor_id,
                 captured_at=now,
-                checks=readiness.checks,
-                artifacts=readiness.artifacts,
-                governance_result=readiness.governance_result,
-                request_assertions=assertions,
+                assertions=assertions,
+                readiness=readiness,
             )
-            snapshot.content_hash = snapshot.recompute_content_hash()
-            db.session.add(snapshot)
 
             solution.governance_status = "arb_review"
             solution.arb_submission_date = now

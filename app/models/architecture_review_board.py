@@ -23,7 +23,9 @@ ArchiMate 3.2 Viewpoints for Review:
 - Implementation & Migration Viewpoints
 """
 
+import logging
 import os
+import re
 import uuid
 from datetime import datetime, timedelta  # dead-code-ok
 from enum import Enum
@@ -34,6 +36,8 @@ from sqlalchemy.ext.hybrid import hybrid_property  # dead-code-ok
 
 from .. import db
 from .mixins import OptimisticLockMixin, TenantMixin
+
+logger = logging.getLogger(__name__)
 
 _FAST_INIT = os.getenv("APP_FAST_INIT", "0") == "1"
 
@@ -429,6 +433,234 @@ class ARBBoardMember(TenantMixin, db.Model):
     __table_args__ = (db.UniqueConstraint("arb_session_id", "user_id", name="uix_arb_member"),)
 
 
+_ARB_OPEN_CYCLE_STATUSES = (
+    "submitted",
+    "under_review",
+    "pending_information",
+    "pending_info",
+    "pending",
+)
+_ARB_TERMINAL_CYCLE_STATUSES = (
+    "approved",
+    "approved_with_conditions",
+    "rejected",
+    "deferred",
+    "withdrawn",
+    "returned_for_evidence",
+    "returned_for_options",
+)
+_ARB_OPEN_CYCLE_SQL = ", ".join(f"'{value}'" for value in _ARB_OPEN_CYCLE_STATUSES)
+_ARB_TERMINAL_CYCLE_SQL = ", ".join(
+    f"'{value}'" for value in _ARB_TERMINAL_CYCLE_STATUSES
+)
+
+
+_ARB_REVIEW_CYCLE_SHAPE = (
+    "subject_type IS NOT NULL AND subject_id IS NOT NULL "
+    "AND review_number IS NOT NULL AND cycle_number IS NOT NULL "
+    "AND cycle_number > 0 AND status IS NOT NULL AND opened_at IS NOT NULL "
+    "AND ((cycle_number = 1 AND predecessor_cycle_id IS NULL) "
+    "OR (cycle_number > 1 AND predecessor_cycle_id IS NOT NULL)) "
+    "AND ((status = 'historical_unverified' "
+    "AND migration_gap_reason IS NOT NULL AND legacy_source_type IS NOT NULL "
+    "AND legacy_source_id IS NOT NULL AND closed_at IS NOT NULL "
+    "AND terminal_outcome IS NOT NULL "
+    "AND terminal_outcome = 'historical_unverified' "
+    "AND decision_brief_version_id IS NULL "
+    "AND solution_evidence_snapshot_id IS NULL "
+    "AND subject_evidence_snapshot_id IS NULL "
+    "AND ((subject_type = 'solution' AND subject_id = solution_id "
+    "AND solution_id IS NOT NULL AND decision_brief_id IS NULL "
+    "AND architecture_model_id IS NULL AND adr_id IS NULL) "
+    "OR (subject_type = 'architecture_model' "
+    "AND subject_id = architecture_model_id "
+    "AND architecture_model_id IS NOT NULL AND decision_brief_id IS NULL "
+    "AND solution_id IS NULL AND adr_id IS NULL) "
+    "OR (subject_type = 'adr' AND subject_id = adr_id AND adr_id IS NOT NULL "
+    "AND decision_brief_id IS NULL AND solution_id IS NULL "
+    "AND architecture_model_id IS NULL))) "
+    "OR (status <> 'historical_unverified' "
+    "AND migration_gap_reason IS NULL AND legacy_source_type IS NULL "
+    "AND legacy_source_id IS NULL "
+    "AND ((subject_type = 'decision_brief' "
+    "AND subject_id = decision_brief_id AND decision_brief_id IS NOT NULL "
+    "AND solution_id IS NULL AND architecture_model_id IS NULL AND adr_id IS NULL "
+    "AND decision_brief_version_id IS NOT NULL "
+    "AND solution_evidence_snapshot_id IS NULL "
+    "AND subject_evidence_snapshot_id IS NULL) "
+    "OR (subject_type = 'solution' AND subject_id = solution_id "
+    "AND solution_id IS NOT NULL AND decision_brief_id IS NULL "
+    "AND architecture_model_id IS NULL AND adr_id IS NULL "
+    "AND decision_brief_version_id IS NULL "
+    "AND solution_evidence_snapshot_id IS NOT NULL "
+    "AND subject_evidence_snapshot_id IS NULL) "
+    "OR (subject_type = 'architecture_model' "
+    "AND subject_id = architecture_model_id "
+    "AND architecture_model_id IS NOT NULL AND decision_brief_id IS NULL "
+    "AND solution_id IS NULL AND adr_id IS NULL "
+    "AND decision_brief_version_id IS NULL "
+    "AND solution_evidence_snapshot_id IS NULL "
+    "AND subject_evidence_snapshot_id IS NOT NULL) "
+    "OR (subject_type = 'adr' AND subject_id = adr_id AND adr_id IS NOT NULL "
+    "AND decision_brief_id IS NULL AND solution_id IS NULL "
+    "AND architecture_model_id IS NULL AND decision_brief_version_id IS NULL "
+    "AND solution_evidence_snapshot_id IS NULL "
+    "AND subject_evidence_snapshot_id IS NOT NULL)) "
+    f"AND ((status IN ({_ARB_OPEN_CYCLE_SQL}) "
+    "AND closed_at IS NULL AND terminal_outcome IS NULL) "
+    f"OR (status IN ({_ARB_TERMINAL_CYCLE_SQL}) "
+    "AND closed_at IS NOT NULL AND terminal_outcome IS NOT NULL "
+    "AND terminal_outcome = status))))"
+)
+
+
+class ARBReviewCycle(TenantMixin, db.Model):
+    """Immutable subject/evidence identity around the sole ARB review item."""
+
+    __tablename__ = "arb_review_cycles"
+
+    id = db.Column(db.Integer, primary_key=True)
+    subject_type = db.Column(db.String(40), nullable=True, index=True)
+    subject_id = db.Column(db.Integer, nullable=True, index=True)
+    decision_brief_id = db.Column(
+        db.Integer,
+        db.ForeignKey("decision_briefs.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+    solution_id = db.Column(
+        db.Integer,
+        db.ForeignKey("solutions.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+    architecture_model_id = db.Column(
+        db.Integer,
+        db.ForeignKey("architecture_models.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+    adr_id = db.Column(
+        db.Integer,
+        db.ForeignKey("architecture_decision_records.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+    decision_brief_version_id = db.Column(
+        db.Integer,
+        db.ForeignKey("decision_brief_versions.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    solution_evidence_snapshot_id = db.Column(
+        db.Integer,
+        db.ForeignKey("arb_submission_evidence_snapshots.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    subject_evidence_snapshot_id = db.Column(
+        db.Integer,
+        db.ForeignKey("arb_subject_evidence_snapshots.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    review_number = db.Column(db.String(50), nullable=True)
+    cycle_number = db.Column(db.Integer, nullable=True)
+    predecessor_cycle_id = db.Column(
+        db.Integer,
+        db.ForeignKey("arb_review_cycles.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    status = db.Column(db.String(40), nullable=True)
+    migration_gap_reason = db.Column(db.Text, nullable=True)
+    legacy_source_type = db.Column(db.String(80), nullable=True)
+    legacy_source_id = db.Column(db.Integer, nullable=True)
+    opened_at = db.Column(
+        db.DateTime(timezone=True), nullable=True, server_default=db.func.now()
+    )
+    closed_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    terminal_outcome = db.Column(db.String(80), nullable=True)
+
+    __table_args__ = (
+        db.CheckConstraint(_ARB_REVIEW_CYCLE_SHAPE, name="ck_arb_review_cycle_shape"),
+        db.UniqueConstraint(
+            "organization_id",
+            "subject_type",
+            "subject_id",
+            "cycle_number",
+            name="uq_arb_review_cycle_number",
+        ),
+        db.UniqueConstraint(
+            "organization_id",
+            "review_number",
+            name="uq_arb_review_cycle_review_number",
+        ),
+        db.UniqueConstraint(
+            "predecessor_cycle_id",
+            name="uq_arb_review_cycle_predecessor",
+        ),
+        db.Index(
+            "uq_arb_review_cycle_open_subject",
+            "organization_id",
+            "subject_type",
+            "subject_id",
+            unique=True,
+            postgresql_where=db.text("closed_at IS NULL"),
+        ),
+    )
+
+
+_ARB_TYPED_REVIEW_SHAPE = (
+    "(review_cycle_id IS NULL AND subject_type IS NULL AND subject_id IS NULL "
+    "AND decision_brief_id IS NULL AND decision_brief_version_id IS NULL "
+    "AND solution_evidence_snapshot_id IS NULL "
+    "AND subject_evidence_snapshot_id IS NULL) "
+    "OR (review_cycle_id IS NOT NULL AND status = 'historical_unverified' "
+    "AND subject_type IS NOT NULL AND subject_id IS NOT NULL "
+    "AND decision_brief_id IS NULL AND decision_brief_version_id IS NULL "
+    "AND solution_evidence_snapshot_id IS NULL "
+    "AND subject_evidence_snapshot_id IS NULL "
+    "AND decision IS NULL AND decision_rationale IS NULL AND conditions IS NULL "
+    "AND decision_date IS NULL AND decided_by_id IS NULL "
+    "AND governance_checklist IS NULL AND compliance_score IS NULL "
+    "AND risk_score IS NULL AND quality_score IS NULL AND overall_score IS NULL "
+    "AND ((subject_type = 'solution' AND subject_id = solution_id "
+    "AND solution_id IS NOT NULL AND architecture_model_id IS NULL "
+    "AND adr_id IS NULL) "
+    "OR (subject_type = 'architecture_model' "
+    "AND subject_id = architecture_model_id AND solution_id IS NULL "
+    "AND architecture_model_id IS NOT NULL AND adr_id IS NULL) "
+    "OR (subject_type = 'adr' AND subject_id = adr_id AND solution_id IS NULL "
+    "AND architecture_model_id IS NULL AND adr_id IS NOT NULL))) "
+    "OR (review_cycle_id IS NOT NULL AND status <> 'historical_unverified' "
+    "AND subject_type IS NOT NULL "
+    "AND subject_id IS NOT NULL AND ((subject_type = 'decision_brief' "
+    "AND subject_id = decision_brief_id AND decision_brief_id IS NOT NULL "
+    "AND solution_id IS NULL AND architecture_model_id IS NULL AND adr_id IS NULL "
+    "AND decision_brief_version_id IS NOT NULL "
+    "AND solution_evidence_snapshot_id IS NULL "
+    "AND subject_evidence_snapshot_id IS NULL) "
+    "OR (subject_type = 'solution' AND subject_id = solution_id "
+    "AND solution_id IS NOT NULL AND decision_brief_id IS NULL "
+    "AND architecture_model_id IS NULL AND adr_id IS NULL "
+    "AND decision_brief_version_id IS NULL "
+    "AND solution_evidence_snapshot_id IS NOT NULL "
+    "AND subject_evidence_snapshot_id IS NULL) "
+    "OR (subject_type = 'architecture_model' "
+    "AND subject_id = architecture_model_id "
+    "AND architecture_model_id IS NOT NULL AND decision_brief_id IS NULL "
+    "AND solution_id IS NULL AND adr_id IS NULL "
+    "AND decision_brief_version_id IS NULL "
+    "AND solution_evidence_snapshot_id IS NULL "
+    "AND subject_evidence_snapshot_id IS NOT NULL) "
+    "OR (subject_type = 'adr' AND subject_id = adr_id AND adr_id IS NOT NULL "
+    "AND decision_brief_id IS NULL AND solution_id IS NULL "
+    "AND architecture_model_id IS NULL AND decision_brief_version_id IS NULL "
+    "AND solution_evidence_snapshot_id IS NULL "
+    "AND subject_evidence_snapshot_id IS NOT NULL)) "
+    f"AND ((status IN ({_ARB_OPEN_CYCLE_SQL}) AND decision IS NULL) "
+    f"OR (status IN ({_ARB_TERMINAL_CYCLE_SQL}) "
+    "AND decision IS NOT NULL AND decision = status)))"
+)
+
+
 class ARBReviewItem(TenantMixin, db.Model, OptimisticLockMixin):
     """
     Individual item submitted for ARB review.
@@ -461,6 +693,40 @@ class ARBReviewItem(TenantMixin, db.Model, OptimisticLockMixin):
     solution_id = db.Column(db.Integer, db.ForeignKey("solutions.id"))
     architecture_model_id = db.Column(db.Integer, db.ForeignKey("architecture_models.id"))
     adr_id = db.Column(db.Integer, db.ForeignKey("architecture_decision_records.id"))
+    subject_type = db.Column(db.String(40), nullable=True, index=True)
+    subject_id = db.Column(db.Integer, nullable=True, index=True)
+    decision_brief_id = db.Column(
+        db.Integer,
+        db.ForeignKey("decision_briefs.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+    decision_brief_version_id = db.Column(
+        db.Integer,
+        db.ForeignKey("decision_brief_versions.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    solution_evidence_snapshot_id = db.Column(
+        db.Integer,
+        db.ForeignKey("arb_submission_evidence_snapshots.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    subject_evidence_snapshot_id = db.Column(
+        db.Integer,
+        db.ForeignKey("arb_subject_evidence_snapshots.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    review_cycle_id = db.Column(
+        db.Integer,
+        db.ForeignKey(
+            "arb_review_cycles.id",
+            ondelete="RESTRICT",
+            use_alter=True,
+            name="fk_arb_review_item_cycle",
+        ),
+        nullable=True,
+        unique=True,
+    )
 
     # Status and workflow
     status = db.Column(db.String(30), default="draft")  # From ARBReviewStatus enum
@@ -530,11 +796,20 @@ class ARBReviewItem(TenantMixin, db.Model, OptimisticLockMixin):
     submitter = db.relationship("User", foreign_keys=[submitter_id], backref="submitted_arb_items")
     reviewer = db.relationship("User", foreign_keys=[reviewer_id], backref="reviewed_arb_items")
     decided_by = db.relationship("User", foreign_keys=[decided_by_id], backref="arb_decisions")
+    review_cycle = db.relationship(
+        "ARBReviewCycle",
+        foreign_keys=[review_cycle_id],
+        backref=db.backref("review_item", uselist=False),
+    )
     comments = db.relationship(
         "ARBReviewComment", back_populates="review_item", cascade="all, delete-orphan"
     )
     capability_links = db.relationship(
         "ARBCapabilityImpact", back_populates="review_item", cascade="all, delete-orphan"
+    )
+
+    __table_args__ = (
+        db.CheckConstraint(_ARB_TYPED_REVIEW_SHAPE, name="ck_arb_review_item_typed_shape"),
     )
 
     def __repr__(self):
@@ -630,6 +905,1179 @@ class ARBReviewItem(TenantMixin, db.Model, OptimisticLockMixin):
             )
 
         return base_dict
+
+
+def _arb_membership_function_sql(quoted_schema):
+    return f"""
+    CREATE OR REPLACE FUNCTION {quoted_schema}.archie_validate_arb_cycle_membership()
+    RETURNS trigger
+    LANGUAGE plpgsql
+    SET search_path = pg_catalog, {quoted_schema}
+    AS $$
+    DECLARE
+        matching_review_id integer;
+    BEGIN
+        IF NEW.subject_type IS NOT NULL AND NEW.subject_id IS NOT NULL THEN
+            PERFORM pg_advisory_xact_lock(hashtextextended(
+                'archie-arb-subject:' || NEW.subject_type || ':' || NEW.subject_id::text,
+                0
+            ));
+        END IF;
+        IF TG_TABLE_NAME = 'arb_subject_evidence_snapshots' THEN
+            IF NEW.subject_type = 'architecture_model' AND NOT EXISTS (
+                SELECT 1 FROM architecture_models model
+                WHERE model.id = NEW.architecture_model_id
+                  AND model.organization_id = NEW.organization_id
+            ) THEN
+                RAISE EXCEPTION 'ARB snapshot subject is outside its tenant'
+                    USING ERRCODE = '23514';
+            ELSIF NEW.subject_type = 'adr' AND NOT EXISTS (
+                SELECT 1 FROM architecture_decision_records adr
+                WHERE adr.id = NEW.adr_id
+                  AND adr.organization_id = NEW.organization_id
+            ) THEN
+                RAISE EXCEPTION 'ARB snapshot subject is outside its tenant'
+                    USING ERRCODE = '23514';
+            END IF;
+
+        ELSIF TG_TABLE_NAME = 'arb_review_cycles' THEN
+            IF NEW.subject_type = 'decision_brief' THEN
+                IF NOT EXISTS (
+                    SELECT 1 FROM decision_briefs brief
+                    WHERE brief.id = NEW.decision_brief_id
+                      AND brief.organization_id = NEW.organization_id
+                ) THEN
+                    RAISE EXCEPTION 'ARB cycle subject is outside its tenant'
+                        USING ERRCODE = '23514';
+                END IF;
+                IF NOT EXISTS (
+                    SELECT 1 FROM decision_brief_versions version
+                    WHERE version.id = NEW.decision_brief_version_id
+                      AND version.brief_id = NEW.decision_brief_id
+                      AND version.organization_id = NEW.organization_id
+                ) THEN
+                    RAISE EXCEPTION 'ARB cycle version does not belong to its brief and tenant'
+                        USING ERRCODE = '23514';
+                END IF;
+            ELSIF NEW.subject_type = 'solution' THEN
+                IF NOT EXISTS (
+                    SELECT 1 FROM solutions solution
+                    WHERE solution.id = NEW.solution_id
+                      AND solution.organization_id = NEW.organization_id
+                ) THEN
+                    RAISE EXCEPTION 'ARB cycle subject is outside its tenant'
+                        USING ERRCODE = '23514';
+                END IF;
+                IF NEW.status <> 'historical_unverified' AND NOT EXISTS (
+                    SELECT 1 FROM arb_submission_evidence_snapshots snapshot
+                    WHERE snapshot.id = NEW.solution_evidence_snapshot_id
+                      AND snapshot.solution_id = NEW.solution_id
+                      AND snapshot.organization_id = NEW.organization_id
+                ) THEN
+                    RAISE EXCEPTION 'ARB cycle snapshot does not belong to its subject and tenant'
+                        USING ERRCODE = '23514';
+                END IF;
+            ELSIF NEW.subject_type = 'architecture_model' THEN
+                IF NOT EXISTS (
+                    SELECT 1 FROM architecture_models model
+                    WHERE model.id = NEW.architecture_model_id
+                      AND model.organization_id = NEW.organization_id
+                ) THEN
+                    RAISE EXCEPTION 'ARB cycle subject is outside its tenant'
+                        USING ERRCODE = '23514';
+                END IF;
+                IF NEW.status <> 'historical_unverified' AND NOT EXISTS (
+                    SELECT 1 FROM arb_subject_evidence_snapshots snapshot
+                    WHERE snapshot.id = NEW.subject_evidence_snapshot_id
+                      AND snapshot.subject_type = NEW.subject_type
+                      AND snapshot.subject_id = NEW.subject_id
+                      AND snapshot.architecture_model_id = NEW.architecture_model_id
+                      AND snapshot.organization_id = NEW.organization_id
+                ) THEN
+                    RAISE EXCEPTION 'ARB cycle snapshot does not belong to its subject and tenant'
+                        USING ERRCODE = '23514';
+                END IF;
+            ELSIF NEW.subject_type = 'adr' THEN
+                IF NOT EXISTS (
+                    SELECT 1 FROM architecture_decision_records adr
+                    WHERE adr.id = NEW.adr_id
+                      AND adr.organization_id = NEW.organization_id
+                ) THEN
+                    RAISE EXCEPTION 'ARB cycle subject is outside its tenant'
+                        USING ERRCODE = '23514';
+                END IF;
+                IF NEW.status <> 'historical_unverified' AND NOT EXISTS (
+                    SELECT 1 FROM arb_subject_evidence_snapshots snapshot
+                    WHERE snapshot.id = NEW.subject_evidence_snapshot_id
+                      AND snapshot.subject_type = NEW.subject_type
+                      AND snapshot.subject_id = NEW.subject_id
+                      AND snapshot.adr_id = NEW.adr_id
+                      AND snapshot.organization_id = NEW.organization_id
+                ) THEN
+                    RAISE EXCEPTION 'ARB cycle snapshot does not belong to its subject and tenant'
+                        USING ERRCODE = '23514';
+                END IF;
+            END IF;
+
+            IF NEW.predecessor_cycle_id IS NOT NULL AND NOT EXISTS (
+                SELECT 1 FROM arb_review_cycles predecessor
+                WHERE predecessor.id = NEW.predecessor_cycle_id
+                  AND predecessor.organization_id = NEW.organization_id
+                  AND predecessor.subject_type = NEW.subject_type
+                  AND predecessor.subject_id = NEW.subject_id
+                  AND predecessor.cycle_number = NEW.cycle_number - 1
+                  AND predecessor.status IN ({_ARB_TERMINAL_CYCLE_SQL})
+                  AND predecessor.closed_at IS NOT NULL
+                  AND predecessor.terminal_outcome IS NOT NULL
+                  AND predecessor.terminal_outcome = predecessor.status
+                  AND predecessor.closed_at <= NEW.opened_at
+                  AND EXISTS (
+                      SELECT 1 FROM arb_review_items predecessor_review
+                      WHERE predecessor_review.review_cycle_id = predecessor.id
+                        AND predecessor_review.organization_id = predecessor.organization_id
+                        AND predecessor_review.status = predecessor.status
+                        AND predecessor_review.decision IS NOT NULL
+                        AND predecessor_review.decision = predecessor.status
+                  )
+            ) THEN
+                RAISE EXCEPTION 'ARB cycle predecessor is not monotonic for its typed subject'
+                    USING ERRCODE = '23514';
+            END IF;
+
+            SELECT review.id INTO matching_review_id
+            FROM arb_review_items review
+            WHERE review.review_cycle_id = NEW.id
+              AND review.organization_id = NEW.organization_id
+              AND review.review_number = NEW.review_number
+              AND review.status = NEW.status
+              AND review.subject_type = NEW.subject_type
+              AND review.subject_id = NEW.subject_id
+              AND review.decision_brief_id IS NOT DISTINCT FROM NEW.decision_brief_id
+              AND review.solution_id IS NOT DISTINCT FROM NEW.solution_id
+              AND review.architecture_model_id IS NOT DISTINCT FROM NEW.architecture_model_id
+              AND review.adr_id IS NOT DISTINCT FROM NEW.adr_id
+              AND review.decision_brief_version_id IS NOT DISTINCT FROM NEW.decision_brief_version_id
+              AND review.solution_evidence_snapshot_id IS NOT DISTINCT FROM NEW.solution_evidence_snapshot_id
+              AND review.subject_evidence_snapshot_id IS NOT DISTINCT FROM NEW.subject_evidence_snapshot_id;
+            IF matching_review_id IS NULL THEN
+                RAISE EXCEPTION 'ARB cycle review projection is missing or disagrees'
+                    USING ERRCODE = '23514';
+            END IF;
+            IF NEW.subject_type = 'solution'
+               AND NEW.status <> 'historical_unverified'
+               AND NOT EXISTS (
+                   SELECT 1 FROM arb_submission_evidence_snapshots snapshot
+                   WHERE snapshot.id = NEW.solution_evidence_snapshot_id
+                     AND snapshot.review_item_id = matching_review_id
+               ) THEN
+                RAISE EXCEPTION 'ARB Solution snapshot does not belong to its review'
+                    USING ERRCODE = '23514';
+            END IF;
+
+        ELSIF TG_TABLE_NAME = 'arb_review_items' AND NEW.review_cycle_id IS NOT NULL THEN
+            IF NOT EXISTS (
+                SELECT 1 FROM arb_review_cycles cycle
+                WHERE cycle.id = NEW.review_cycle_id
+                  AND cycle.organization_id = NEW.organization_id
+                  AND cycle.review_number = NEW.review_number
+                  AND cycle.status = NEW.status
+                  AND cycle.subject_type = NEW.subject_type
+                  AND cycle.subject_id = NEW.subject_id
+                  AND cycle.decision_brief_id IS NOT DISTINCT FROM NEW.decision_brief_id
+                  AND cycle.solution_id IS NOT DISTINCT FROM NEW.solution_id
+                  AND cycle.architecture_model_id IS NOT DISTINCT FROM NEW.architecture_model_id
+                  AND cycle.adr_id IS NOT DISTINCT FROM NEW.adr_id
+                  AND cycle.decision_brief_version_id IS NOT DISTINCT FROM NEW.decision_brief_version_id
+                  AND cycle.solution_evidence_snapshot_id IS NOT DISTINCT FROM NEW.solution_evidence_snapshot_id
+                  AND cycle.subject_evidence_snapshot_id IS NOT DISTINCT FROM NEW.subject_evidence_snapshot_id
+            ) THEN
+                RAISE EXCEPTION 'ARB review projection disagrees with its cycle'
+                    USING ERRCODE = '23514';
+            END IF;
+            IF NEW.subject_type = 'solution'
+               AND NEW.solution_evidence_snapshot_id IS NOT NULL
+               AND NOT EXISTS (
+                SELECT 1 FROM arb_submission_evidence_snapshots snapshot
+                WHERE snapshot.id = NEW.solution_evidence_snapshot_id
+                  AND snapshot.review_item_id = NEW.id
+                  AND snapshot.organization_id = NEW.organization_id
+                  AND snapshot.solution_id = NEW.solution_id
+            ) THEN
+                RAISE EXCEPTION 'ARB Solution snapshot does not belong to its review'
+                    USING ERRCODE = '23514';
+            END IF;
+        END IF;
+        RETURN NEW;
+    END;
+    $$
+    """
+
+
+def _arb_history_function_sql(quoted_schema):
+    return f"""
+    CREATE OR REPLACE FUNCTION {quoted_schema}.archie_guard_arb_cycle_history()
+    RETURNS trigger
+    LANGUAGE plpgsql
+    SET search_path = pg_catalog, {quoted_schema}
+    AS $$
+    BEGIN
+        IF TG_TABLE_NAME = 'arb_review_cycles' THEN
+            IF TG_OP = 'DELETE' THEN
+                RAISE EXCEPTION 'ARB review cycle history is append-only'
+                    USING ERRCODE = '55000';
+            END IF;
+            IF ROW(
+                OLD.organization_id, OLD.subject_type, OLD.subject_id,
+                OLD.decision_brief_id, OLD.solution_id, OLD.architecture_model_id,
+                OLD.adr_id, OLD.decision_brief_version_id,
+                OLD.solution_evidence_snapshot_id, OLD.subject_evidence_snapshot_id,
+                OLD.review_number, OLD.cycle_number, OLD.predecessor_cycle_id,
+                OLD.migration_gap_reason, OLD.legacy_source_type,
+                OLD.legacy_source_id, OLD.opened_at
+            ) IS DISTINCT FROM ROW(
+                NEW.organization_id, NEW.subject_type, NEW.subject_id,
+                NEW.decision_brief_id, NEW.solution_id, NEW.architecture_model_id,
+                NEW.adr_id, NEW.decision_brief_version_id,
+                NEW.solution_evidence_snapshot_id, NEW.subject_evidence_snapshot_id,
+                NEW.review_number, NEW.cycle_number, NEW.predecessor_cycle_id,
+                NEW.migration_gap_reason, NEW.legacy_source_type,
+                NEW.legacy_source_id, NEW.opened_at
+            ) THEN
+                RAISE EXCEPTION 'ARB review cycle identity and evidence are immutable'
+                    USING ERRCODE = '55000';
+            END IF;
+            IF OLD.closed_at IS NOT NULL AND ROW(
+                OLD.status, OLD.closed_at, OLD.terminal_outcome
+            ) IS DISTINCT FROM ROW(
+                NEW.status, NEW.closed_at, NEW.terminal_outcome
+            ) THEN
+                RAISE EXCEPTION 'closed ARB review cycle history is immutable'
+                    USING ERRCODE = '55000';
+            END IF;
+        ELSIF TG_TABLE_NAME = 'arb_review_items' THEN
+            IF TG_OP = 'DELETE' AND OLD.review_cycle_id IS NOT NULL THEN
+                RAISE EXCEPTION 'typed ARB review history is append-only'
+                    USING ERRCODE = '55000';
+            END IF;
+            IF TG_OP = 'UPDATE' AND OLD.review_cycle_id IS NOT NULL AND ROW(
+                OLD.organization_id, OLD.subject_type, OLD.subject_id,
+                OLD.decision_brief_id, OLD.solution_id, OLD.architecture_model_id,
+                OLD.adr_id, OLD.decision_brief_version_id,
+                OLD.solution_evidence_snapshot_id, OLD.subject_evidence_snapshot_id,
+                OLD.review_cycle_id
+            ) IS DISTINCT FROM ROW(
+                NEW.organization_id, NEW.subject_type, NEW.subject_id,
+                NEW.decision_brief_id, NEW.solution_id, NEW.architecture_model_id,
+                NEW.adr_id, NEW.decision_brief_version_id,
+                NEW.solution_evidence_snapshot_id, NEW.subject_evidence_snapshot_id,
+                NEW.review_cycle_id
+            ) THEN
+                RAISE EXCEPTION 'typed ARB review projection is immutable'
+                    USING ERRCODE = '55000';
+            END IF;
+            IF TG_OP = 'UPDATE' AND OLD.review_cycle_id IS NOT NULL
+               AND OLD.status = 'historical_unverified'
+               AND to_jsonb(NEW) IS DISTINCT FROM to_jsonb(OLD) THEN
+                RAISE EXCEPTION 'historical unverified ARB review is immutable'
+                    USING ERRCODE = '55000';
+            END IF;
+        END IF;
+        RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+    END;
+    $$
+    """
+
+
+def _arb_parent_tenant_function_sql(quoted_schema):
+    return f"""
+    CREATE OR REPLACE FUNCTION {quoted_schema}.archie_guard_arb_subject_tenant()
+    RETURNS trigger
+    LANGUAGE plpgsql
+    SET search_path = pg_catalog, {quoted_schema}
+    AS $$
+    DECLARE
+        typed_subject text;
+    BEGIN
+        IF NEW.organization_id IS NOT DISTINCT FROM OLD.organization_id THEN
+            RETURN NEW;
+        END IF;
+        typed_subject := CASE TG_TABLE_NAME
+            WHEN 'decision_briefs' THEN 'decision_brief'
+            WHEN 'solutions' THEN 'solution'
+            WHEN 'architecture_models' THEN 'architecture_model'
+            WHEN 'architecture_decision_records' THEN 'adr'
+        END;
+        PERFORM pg_advisory_xact_lock(hashtextextended(
+            'archie-arb-subject:' || typed_subject || ':' || OLD.id::text,
+            0
+        ));
+        IF EXISTS (
+            SELECT 1 FROM arb_review_cycles cycle
+            WHERE cycle.subject_type = typed_subject
+              AND cycle.subject_id = OLD.id
+              AND cycle.organization_id IS DISTINCT FROM NEW.organization_id
+        ) OR EXISTS (
+            SELECT 1 FROM arb_review_items review
+            WHERE review.review_cycle_id IS NOT NULL
+              AND review.subject_type = typed_subject
+              AND review.subject_id = OLD.id
+              AND review.organization_id IS DISTINCT FROM NEW.organization_id
+        ) OR (
+            typed_subject IN ('architecture_model', 'adr') AND EXISTS (
+                SELECT 1 FROM arb_subject_evidence_snapshots snapshot
+                WHERE snapshot.subject_type = typed_subject
+                  AND snapshot.subject_id = OLD.id
+                  AND snapshot.organization_id IS DISTINCT FROM NEW.organization_id
+            )
+        ) THEN
+            RAISE EXCEPTION 'subject tenant change would invalidate typed ARB history'
+                USING ERRCODE = '23514';
+        END IF;
+        RETURN NEW;
+    END;
+    $$
+    """
+
+
+_ARB_CHECK_SPECS = {
+    "ck_arb_subject_evidence_snapshot_shape": (
+        "arb_subject_evidence_snapshots",
+        "ARBSubjectEvidenceSnapshot",
+    ),
+    "ck_arb_review_cycle_shape": ("arb_review_cycles", "ARBReviewCycle"),
+    "ck_arb_review_item_typed_shape": ("arb_review_items", "ARBReviewItem"),
+}
+_ARB_INDEX_SPECS = {
+    "uq_arb_review_cycle_number": (
+        "arb_review_cycles",
+        ("organization_id", "subject_type", "subject_id", "cycle_number"),
+        None,
+    ),
+    "uq_arb_review_cycle_review_number": (
+        "arb_review_cycles",
+        ("organization_id", "review_number"),
+        None,
+    ),
+    "uq_arb_review_cycle_predecessor": (
+        "arb_review_cycles",
+        ("predecessor_cycle_id",),
+        None,
+    ),
+    "uq_arb_review_cycle_open_subject": (
+        "arb_review_cycles",
+        ("organization_id", "subject_type", "subject_id"),
+        "closed_at is null",
+    ),
+    "uq_arb_review_item_cycle": ("arb_review_items", ("review_cycle_id",), None),
+}
+_ARB_FK_SPECS = {
+    "fk_arb_subject_snapshot_architecture_model": (
+        "arb_subject_evidence_snapshots",
+        ("architecture_model_id",),
+        "architecture_models",
+        ("id",),
+    ),
+    "fk_arb_subject_snapshot_adr": (
+        "arb_subject_evidence_snapshots",
+        ("adr_id",),
+        "architecture_decision_records",
+        ("id",),
+    ),
+    "fk_arb_subject_snapshot_captured_by": (
+        "arb_subject_evidence_snapshots",
+        ("captured_by_id",),
+        "users",
+        ("id",),
+    ),
+    "fk_arb_review_cycle_decision_brief": (
+        "arb_review_cycles", ("decision_brief_id",), "decision_briefs", ("id",)
+    ),
+    "fk_arb_review_cycle_solution": (
+        "arb_review_cycles", ("solution_id",), "solutions", ("id",)
+    ),
+    "fk_arb_review_cycle_architecture_model": (
+        "arb_review_cycles", ("architecture_model_id",), "architecture_models", ("id",)
+    ),
+    "fk_arb_review_cycle_adr": (
+        "arb_review_cycles", ("adr_id",), "architecture_decision_records", ("id",)
+    ),
+    "fk_arb_review_cycle_decision_brief_version": (
+        "arb_review_cycles",
+        ("decision_brief_version_id",),
+        "decision_brief_versions",
+        ("id",),
+    ),
+    "fk_arb_review_cycle_solution_snapshot": (
+        "arb_review_cycles",
+        ("solution_evidence_snapshot_id",),
+        "arb_submission_evidence_snapshots",
+        ("id",),
+    ),
+    "fk_arb_review_cycle_subject_snapshot": (
+        "arb_review_cycles",
+        ("subject_evidence_snapshot_id",),
+        "arb_subject_evidence_snapshots",
+        ("id",),
+    ),
+    "fk_arb_review_cycle_predecessor": (
+        "arb_review_cycles", ("predecessor_cycle_id",), "arb_review_cycles", ("id",)
+    ),
+    "fk_arb_review_item_decision_brief": (
+        "arb_review_items", ("decision_brief_id",), "decision_briefs", ("id",)
+    ),
+    "fk_arb_review_item_decision_brief_version": (
+        "arb_review_items",
+        ("decision_brief_version_id",),
+        "decision_brief_versions",
+        ("id",),
+    ),
+    "fk_arb_review_item_solution_snapshot": (
+        "arb_review_items",
+        ("solution_evidence_snapshot_id",),
+        "arb_submission_evidence_snapshots",
+        ("id",),
+    ),
+    "fk_arb_review_item_subject_snapshot": (
+        "arb_review_items",
+        ("subject_evidence_snapshot_id",),
+        "arb_subject_evidence_snapshots",
+        ("id",),
+    ),
+    "fk_arb_review_item_cycle": (
+        "arb_review_items", ("review_cycle_id",), "arb_review_cycles", ("id",)
+    ),
+}
+_ARB_TRIGGER_NO_FILTER = (None, 0, "")
+_ARB_TRIGGER_SPECS = {
+    ("arb_subject_evidence_snapshots", "trg_arb_subject_snapshot_membership"):
+        ("archie_validate_arb_cycle_membership", 21, True, True, True, (),
+         *_ARB_TRIGGER_NO_FILTER),
+    ("arb_review_cycles", "trg_arb_cycle_membership"):
+        ("archie_validate_arb_cycle_membership", 21, True, True, True, (),
+         *_ARB_TRIGGER_NO_FILTER),
+    ("arb_review_cycles", "trg_arb_cycle_history"):
+        ("archie_guard_arb_cycle_history", 27, False, False, False, (),
+         *_ARB_TRIGGER_NO_FILTER),
+    ("arb_review_items", "trg_arb_review_cycle_membership"):
+        ("archie_validate_arb_cycle_membership", 21, True, True, True, (),
+         *_ARB_TRIGGER_NO_FILTER),
+    ("arb_review_items", "trg_arb_review_cycle_history"):
+        ("archie_guard_arb_cycle_history", 27, False, False, False, (),
+         *_ARB_TRIGGER_NO_FILTER),
+    ("arb_subject_evidence_snapshots", "trg_reject_arb_subject_snapshot_mutation"):
+        ("archie_reject_arb_subject_snapshot_mutation", 27, False, False, False, (),
+         *_ARB_TRIGGER_NO_FILTER),
+    ("decision_briefs", "trg_arb_decision_brief_tenant_history"):
+        ("archie_guard_arb_subject_tenant", 19, False, False, False,
+         ("organization_id",), *_ARB_TRIGGER_NO_FILTER),
+    ("solutions", "trg_arb_solution_tenant_history"):
+        ("archie_guard_arb_subject_tenant", 19, False, False, False,
+         ("organization_id",), *_ARB_TRIGGER_NO_FILTER),
+    ("architecture_models", "trg_arb_architecture_model_tenant_history"):
+        ("archie_guard_arb_subject_tenant", 19, False, False, False,
+         ("organization_id",), *_ARB_TRIGGER_NO_FILTER),
+    ("architecture_decision_records", "trg_arb_adr_tenant_history"):
+        ("archie_guard_arb_subject_tenant", 19, False, False, False,
+         ("organization_id",), *_ARB_TRIGGER_NO_FILTER),
+}
+
+
+def _arb_check_tokens(value):
+    """Retain boolean grouping while normalizing PostgreSQL's type/IN rewrites."""
+    value = value.lower().replace('"', "")
+    value = re.sub(r"::(?:character\s+varying|text)(?:\[\])?", "", value)
+    value = re.sub(
+        r"\b([a-z_][a-z0-9_]*)\s*=\s*any\s*"
+        r"\(\s*array\s*\[(.*?)\]\s*\)",
+        lambda match: f"{match.group(1)} in ({match.group(2)})",
+        value,
+        flags=re.S,
+    )
+    return re.findall(
+        r"'(?:''|[^'])*'|<>|>=|<=|=|>|<|[(),]|[a-z_][a-z0-9_]*|\d+",
+        value,
+    )
+
+
+def _arb_check_structure(value):
+    tokens = _arb_check_tokens(value)
+    if tokens and tokens[0] == "check":
+        tokens = tokens[1:]
+    position = 0
+
+    def combine(operator, nodes):
+        flattened = []
+        for node in nodes:
+            if node[0] == operator:
+                flattened.extend(node[1])
+            else:
+                flattened.append(node)
+        return (operator, tuple(flattened))
+
+    def parse_or():
+        nonlocal position
+        nodes = [parse_and()]
+        while position < len(tokens) and tokens[position] == "or":
+            position += 1
+            nodes.append(parse_and())
+        return nodes[0] if len(nodes) == 1 else combine("or", nodes)
+
+    def parse_and():
+        nonlocal position
+        nodes = [parse_primary()]
+        while position < len(tokens) and tokens[position] == "and":
+            position += 1
+            nodes.append(parse_primary())
+        return nodes[0] if len(nodes) == 1 else combine("and", nodes)
+
+    def parse_primary():
+        nonlocal position
+        if position < len(tokens) and tokens[position] == "(":
+            position += 1
+            node = parse_or()
+            if position >= len(tokens) or tokens[position] != ")":
+                raise ValueError("unbalanced typed ARB check definition")
+            position += 1
+            return node
+        atom = []
+        nested = 0
+        while position < len(tokens):
+            token = tokens[position]
+            if nested == 0 and token in {"and", "or", ")"}:
+                break
+            if token == "(":
+                nested += 1
+            elif token == ")":
+                nested -= 1
+            atom.append(token)
+            position += 1
+        if not atom:
+            raise ValueError("empty typed ARB check expression")
+        return ("atom", tuple(atom))
+
+    structure = parse_or()
+    if position != len(tokens):
+        raise ValueError("unparsed typed ARB check definition")
+    return structure
+
+
+def _arb_normalize_catalog_definition(value):
+    return " ".join(value.lower().replace('"', "").split())
+
+
+def _arb_check_matches(row, table_name, expected_definition):
+    return bool(
+        row is not None
+        and row.relname == table_name
+        and row.contype == "c"
+        and row.convalidated
+        and _arb_check_structure(row.definition)
+        == _arb_check_structure(expected_definition)
+    )
+
+
+def _arb_trigger_matches(state, expected, schema_name):
+    if state is None or state[0] != "O":
+        return False
+    if state[3] != schema_name:
+        return False
+    actual = (state[2], state[1], *state[4:])
+    return actual == expected
+
+
+def _arb_function_body(function_sql):
+    match = re.search(r"\bAS\s+\$\$(.*?)\$\$\s*$", function_sql, re.I | re.S)
+    if not match:
+        raise RuntimeError("typed ARB function SQL has no canonical body")
+    return match.group(1).strip()
+
+
+def _arb_normalize_function_body(value):
+    return re.sub(r"\s+", " ", value).strip()
+
+
+def _arb_expected_function_state(quoted_schema, schema_name):
+    from app.models.transformation_decision import (
+        _ARB_SUBJECT_SNAPSHOT_IMMUTABILITY_BODY,
+    )
+
+    schema_search_path = f"search_path=pg_catalog, {schema_name}"
+    return {
+        "archie_validate_arb_cycle_membership": (
+            _arb_function_body(_arb_membership_function_sql(quoted_schema)),
+            (schema_search_path,),
+        ),
+        "archie_guard_arb_cycle_history": (
+            _arb_function_body(_arb_history_function_sql(quoted_schema)),
+            (schema_search_path,),
+        ),
+        "archie_guard_arb_subject_tenant": (
+            _arb_function_body(_arb_parent_tenant_function_sql(quoted_schema)),
+            (schema_search_path,),
+        ),
+        "archie_reject_arb_subject_snapshot_mutation": (
+            _ARB_SUBJECT_SNAPSHOT_IMMUTABILITY_BODY,
+            ("search_path=pg_catalog",),
+        ),
+    }
+
+
+def _arb_model_check_definitions():
+    model_tables = {
+        "ARBSubjectEvidenceSnapshot": db.metadata.tables[
+            "arb_subject_evidence_snapshots"
+        ],
+        "ARBReviewCycle": ARBReviewCycle.__table__,
+        "ARBReviewItem": ARBReviewItem.__table__,
+    }
+    definitions = {}
+    for name, (_table_name, model_name) in _ARB_CHECK_SPECS.items():
+        constraint = next(
+            item for item in model_tables[model_name].constraints if item.name == name
+        )
+        definitions[name] = f"CHECK ({constraint.sqltext})"
+    return definitions
+
+
+def _arb_expected_index_definition(schema_name, name, table_name, columns, predicate):
+    definition = (
+        f"CREATE UNIQUE INDEX {name} ON {schema_name}.{table_name} "
+        f"USING btree ({', '.join(columns)})"
+    )
+    if predicate:
+        definition += f" WHERE ({predicate})"
+    return definition
+
+
+def _arb_fk_matches(row, schema_name, expected):
+    source_table, source_columns, target_table, target_columns = expected
+    return bool(
+        row is not None
+        and row.contype == "f"
+        and row.source_table == source_table
+        and tuple(row.source_columns) == source_columns
+        and row.target_schema == schema_name
+        and row.target_table == target_table
+        and tuple(row.target_columns) == target_columns
+        and row.confupdtype == "a"
+        and row.confdeltype == "r"
+        and row.confmatchtype == "s"
+        and not row.condeferrable
+        and not row.condeferred
+        and row.convalidated
+    )
+
+
+def _arb_catalog_state(connection):
+    from sqlalchemy import text
+
+    rows = connection.execute(
+        text(
+            """
+            SELECT cls.relname, trigger.tgname, trigger.tgenabled,
+                   trigger.tgtype, procedure.proname,
+                   procedure_namespace.nspname AS procedure_schema,
+                   (trigger.tgconstraint <> 0) AS is_constraint,
+                   COALESCE(constraint_row.condeferrable, false) AS is_deferrable,
+                   COALESCE(constraint_row.condeferred, false) AS is_deferred,
+                   ARRAY(
+                       SELECT attribute.attname
+                       FROM unnest(trigger.tgattr::smallint[])
+                            WITH ORDINALITY update_column(attnum, ord)
+                       JOIN pg_attribute attribute
+                         ON attribute.attrelid = trigger.tgrelid
+                        AND attribute.attnum = update_column.attnum
+                       ORDER BY update_column.ord
+                   ) AS update_columns,
+                   pg_get_expr(trigger.tgqual, trigger.tgrelid, true)
+                       AS predicate,
+                   trigger.tgnargs AS argument_count,
+                   encode(trigger.tgargs, 'hex') AS arguments_hex
+            FROM pg_trigger trigger
+            JOIN pg_class cls ON cls.oid = trigger.tgrelid
+            JOIN pg_namespace namespace ON namespace.oid = cls.relnamespace
+            JOIN pg_proc procedure ON procedure.oid = trigger.tgfoid
+            JOIN pg_namespace procedure_namespace
+              ON procedure_namespace.oid = procedure.pronamespace
+            LEFT JOIN pg_constraint constraint_row
+              ON constraint_row.oid = trigger.tgconstraint
+            WHERE namespace.nspname = current_schema()
+              AND NOT trigger.tgisinternal
+            """
+        )
+    ).all()
+    return {
+        (row.relname, row.tgname): (
+            row.tgenabled,
+            row.tgtype,
+            row.proname,
+            row.procedure_schema,
+            row.is_constraint,
+            row.is_deferrable,
+            row.is_deferred,
+            tuple(row.update_columns),
+            row.predicate,
+            row.argument_count,
+            row.arguments_hex,
+        )
+        for row in rows
+    }
+
+
+def _arb_check_state(connection, schema_name):
+    from sqlalchemy import text
+
+    rows = connection.execute(
+        text(
+            """
+            SELECT constraint_row.conname, cls.relname, constraint_row.contype,
+                   constraint_row.convalidated,
+                   pg_get_constraintdef(constraint_row.oid, true) AS definition
+            FROM pg_constraint constraint_row
+            JOIN pg_class cls ON cls.oid = constraint_row.conrelid
+            JOIN pg_namespace namespace ON namespace.oid = cls.relnamespace
+            WHERE namespace.nspname = :schema_name
+              AND constraint_row.conname = ANY(:names)
+            """
+        ),
+        {"schema_name": schema_name, "names": list(_ARB_CHECK_SPECS)},
+    ).all()
+    return {row.conname: row for row in rows}
+
+
+def _arb_index_state(connection, schema_name):
+    from sqlalchemy import text
+
+    rows = connection.execute(
+        text(
+            """
+            SELECT index_cls.relname AS index_name, table_cls.relname AS table_name,
+                   index_row.indisunique, index_row.indisvalid, index_row.indisready,
+                   ARRAY(
+                       SELECT pg_get_indexdef(index_row.indexrelid, ordinal, true)
+                       FROM generate_series(1, index_row.indnkeyatts) ordinal
+                   ) AS columns,
+                   pg_get_expr(index_row.indpred, index_row.indrelid) AS predicate,
+                   pg_get_indexdef(index_row.indexrelid, 0, false) AS definition
+            FROM pg_index index_row
+            JOIN pg_class index_cls ON index_cls.oid = index_row.indexrelid
+            JOIN pg_class table_cls ON table_cls.oid = index_row.indrelid
+            JOIN pg_namespace namespace ON namespace.oid = table_cls.relnamespace
+            WHERE namespace.nspname = :schema_name
+              AND index_cls.relname = ANY(:names)
+            """
+        ),
+        {"schema_name": schema_name, "names": list(_ARB_INDEX_SPECS)},
+    ).all()
+    return {row.index_name: row for row in rows}
+
+
+def _arb_fk_state(connection, schema_name):
+    from sqlalchemy import text
+
+    rows = connection.execute(
+        text(
+            """
+            SELECT constraint_row.conname, constraint_row.contype,
+                   source.relname AS source_table,
+                   target_namespace.nspname AS target_schema,
+                   target.relname AS target_table, constraint_row.convalidated,
+                   constraint_row.confupdtype, constraint_row.confdeltype,
+                   constraint_row.confmatchtype, constraint_row.condeferrable,
+                   constraint_row.condeferred,
+                   ARRAY(
+                       SELECT attribute.attname
+                       FROM unnest(constraint_row.conkey) WITH ORDINALITY key(attnum, ord)
+                       JOIN pg_attribute attribute
+                         ON attribute.attrelid = source.oid
+                        AND attribute.attnum = key.attnum
+                       ORDER BY key.ord
+                   ) AS source_columns,
+                   ARRAY(
+                       SELECT attribute.attname
+                       FROM unnest(constraint_row.confkey) WITH ORDINALITY key(attnum, ord)
+                       JOIN pg_attribute attribute
+                         ON attribute.attrelid = target.oid
+                        AND attribute.attnum = key.attnum
+                       ORDER BY key.ord
+                   ) AS target_columns
+            FROM pg_constraint constraint_row
+            JOIN pg_class source ON source.oid = constraint_row.conrelid
+            LEFT JOIN pg_class target ON target.oid = constraint_row.confrelid
+            LEFT JOIN pg_namespace target_namespace
+              ON target_namespace.oid = target.relnamespace
+            JOIN pg_namespace namespace ON namespace.oid = source.relnamespace
+            WHERE namespace.nspname = :schema_name
+              AND constraint_row.conname = ANY(:names)
+            """
+        ),
+        {"schema_name": schema_name, "names": list(_ARB_FK_SPECS)},
+    ).all()
+    return {row.conname: row for row in rows}
+
+
+def inspect_arb_cycle_constraints(connection):
+    """Return actionable drift for typed ARB checks, indexes and triggers."""
+    if connection.dialect.name != "postgresql":
+        return ["unsupported_dialect"]
+    from sqlalchemy import text
+
+    schema_name = connection.scalar(text("SELECT current_schema()"))
+    tables = set(
+        connection.scalars(
+            text(
+                "SELECT tablename FROM pg_tables WHERE schemaname = :schema_name"
+            ),
+            {"schema_name": schema_name},
+        )
+    )
+    required_tables = {
+        table for table, _name in _ARB_TRIGGER_SPECS
+    } | {spec[0] for spec in _ARB_FK_SPECS.values()}
+    drift = [f"table_missing:{table}" for table in sorted(required_tables - tables)]
+    if drift:
+        return drift
+
+    check_state = _arb_check_state(connection, schema_name)
+    check_definitions = _arb_model_check_definitions()
+    for name, (table_name, _model_name) in _ARB_CHECK_SPECS.items():
+        row = check_state.get(name)
+        if row is None:
+            drift.append(f"constraint_missing:{name}")
+        elif not _arb_check_matches(row, table_name, check_definitions[name]):
+            drift.append(f"constraint_malformed:{name}")
+
+    index_state = _arb_index_state(connection, schema_name)
+    for name, (table_name, columns, predicate) in _ARB_INDEX_SPECS.items():
+        row = index_state.get(name)
+        if row is None:
+            drift.append(f"index_missing:{name}")
+            continue
+        expected_definition = _arb_expected_index_definition(
+            schema_name, name, table_name, columns, predicate
+        )
+        if (
+            row.table_name != table_name
+            or not row.indisunique
+            or not row.indisvalid
+            or not row.indisready
+            or _arb_normalize_catalog_definition(row.definition)
+            != _arb_normalize_catalog_definition(expected_definition)
+        ):
+            drift.append(f"index_malformed:{name}")
+
+    fk_state = _arb_fk_state(connection, schema_name)
+    for name, (source_table, source_columns, target_table, target_columns) in (
+        _ARB_FK_SPECS.items()
+    ):
+        row = fk_state.get(name)
+        if row is None:
+            drift.append(f"foreign_key_missing:{name}")
+        elif not _arb_fk_matches(
+            row,
+            schema_name,
+            (source_table, source_columns, target_table, target_columns),
+        ):
+            drift.append(f"foreign_key_malformed:{name}")
+
+    trigger_state = _arb_catalog_state(connection)
+    for key, expected in _ARB_TRIGGER_SPECS.items():
+        state = trigger_state.get(key)
+        if state is None:
+            drift.append(f"trigger_missing:{key[0]}.{key[1]}")
+        elif state[0] != "O":
+            drift.append(f"trigger_disabled:{key[0]}.{key[1]}")
+        elif not _arb_trigger_matches(state, expected, schema_name):
+            drift.append(f"trigger_malformed:{key[0]}.{key[1]}")
+
+    quote = connection.dialect.identifier_preparer.quote
+    expected_functions = _arb_expected_function_state(quote(schema_name), schema_name)
+    function_rows = connection.execute(
+        text(
+            """
+            SELECT procedure.proname, procedure.prosrc AS source,
+                   procedure.proconfig, language.lanname,
+                   format_type(procedure.prorettype, NULL) AS result_type
+            FROM pg_proc procedure
+            JOIN pg_namespace namespace ON namespace.oid = procedure.pronamespace
+            JOIN pg_language language ON language.oid = procedure.prolang
+            WHERE namespace.nspname = :schema_name
+              AND procedure.proname = ANY(:names)
+              AND procedure.pronargs = 0
+            """
+        ),
+        {"schema_name": schema_name, "names": list(expected_functions)},
+    ).all()
+    functions = {row.proname: row for row in function_rows}
+    for name, (expected_body, expected_config) in expected_functions.items():
+        row = functions.get(name)
+        if row is None:
+            drift.append(f"function_missing:{name}")
+        elif (
+            _arb_normalize_function_body(row.source)
+            != _arb_normalize_function_body(expected_body)
+            or tuple(row.proconfig or ()) != expected_config
+            or row.lanname != "plpgsql"
+            or row.result_type != "trigger"
+        ):
+            drift.append(f"function_malformed:{name}")
+    return sorted(drift)
+
+
+def _arb_unreconciled_shape(connection, schema_name, model_tables):
+    """Return a description of typed ARB columns the live schema is still missing.
+
+    These guards presuppose the fully reconciled column shape: the CHECK
+    constraints, foreign keys and indexes all name columns that reconcile-schema
+    ADDs to the long-lived arb_review_items table.
+
+    create_all() reaches this function through ARBReviewCycle's after_create
+    hook, and the deploy chain runs init-db BEFORE reconcile-schema. On every
+    existing database that ordering puts us here while arb_review_items still
+    lacks review_cycle_id and its six siblings, so ADD CONSTRAINT fails with
+    UndefinedColumn, create_all() aborts, init-db exits non-zero and the
+    container never reaches gunicorn.
+
+    So report the gap instead of installing a half-built guard set. Whichever
+    columns are missing, reconcile-schema adds them and then calls this function
+    again -- at which point the shape is complete and every guard installs.
+    """
+    from sqlalchemy import text
+
+    missing = []
+    for table in model_tables.values():
+        live_columns = set(
+            connection.scalars(
+                text(
+                    "SELECT column_name FROM information_schema.columns "
+                    "WHERE table_schema = :schema_name AND table_name = :table_name"
+                ),
+                {"schema_name": schema_name, "table_name": table.name},
+            )
+        )
+        if not live_columns:
+            missing.append(f"{table.name} (table absent)")
+            continue
+        absent = {column.name for column in table.columns} - live_columns
+        if absent:
+            missing.append(f"{table.name}.({','.join(sorted(absent))})")
+    return missing
+
+
+def ensure_arb_cycle_constraints(connection):
+    """Reconcile commit-time membership and immutable typed ARB history."""
+    if connection.dialect.name != "postgresql":
+        return
+    from sqlalchemy import text
+
+    schema_name = connection.scalar(text("SELECT current_schema()"))
+    quote = connection.dialect.identifier_preparer.quote
+    quoted_schema = quote(schema_name)
+    connection.exec_driver_sql(
+        "SELECT pg_advisory_xact_lock(hashtext('archie_typed_arb_constraints'))"
+    )
+    tables = set(
+        connection.scalars(
+            text("SELECT tablename FROM pg_tables WHERE schemaname = :schema_name"),
+            {"schema_name": schema_name},
+        )
+    )
+
+    model_tables = {
+        "ARBSubjectEvidenceSnapshot": db.metadata.tables[
+            "arb_subject_evidence_snapshots"
+        ],
+        "ARBReviewCycle": ARBReviewCycle.__table__,
+        "ARBReviewItem": ARBReviewItem.__table__,
+    }
+    unreconciled = _arb_unreconciled_shape(connection, schema_name, model_tables)
+    if unreconciled:
+        # Not an error: reconcile-schema adds these columns and calls us again.
+        logger.info(
+            "typed ARB guards deferred until reconcile-schema adds: %s",
+            "; ".join(unreconciled),
+        )
+        return
+
+    check_state = _arb_check_state(connection, schema_name)
+    for constraint_name, (table_name, model_name) in _ARB_CHECK_SPECS.items():
+        if table_name not in tables:
+            continue
+        constraint = next(
+            item
+            for item in model_tables[model_name].constraints
+            if item.name == constraint_name
+        )
+        row = check_state.get(constraint_name)
+        expected_definition = f"CHECK ({constraint.sqltext})"
+        if row and not _arb_check_matches(row, table_name, expected_definition):
+            actual_table = f"{quoted_schema}.{quote(row.relname)}"
+            connection.exec_driver_sql(
+                f"ALTER TABLE {actual_table} DROP CONSTRAINT {quote(constraint_name)}"
+            )
+            row = None
+        if row:
+            continue
+        qualified_table = f"{quoted_schema}.{quote(table_name)}"
+        connection.exec_driver_sql(
+            f"ALTER TABLE {qualified_table} ADD CONSTRAINT {quote(constraint_name)} "
+            f"CHECK ({constraint.sqltext}) NOT VALID"
+        )
+        connection.exec_driver_sql(
+            f"ALTER TABLE {qualified_table} VALIDATE CONSTRAINT {quote(constraint_name)}"
+        )
+
+    fk_state = _arb_fk_state(connection, schema_name)
+    for name, (source_table, source_columns, target_table, target_columns) in (
+        _ARB_FK_SPECS.items()
+    ):
+        if source_table not in tables or target_table not in tables:
+            continue
+        row = fk_state.get(name)
+        correct = _arb_fk_matches(
+            row,
+            schema_name,
+            (source_table, source_columns, target_table, target_columns),
+        )
+        if correct:
+            continue
+        if row:
+            actual_table = f"{quoted_schema}.{quote(row.source_table)}"
+            connection.exec_driver_sql(
+                f"ALTER TABLE {actual_table} DROP CONSTRAINT {quote(name)}"
+            )
+        qualified_source = f"{quoted_schema}.{quote(source_table)}"
+        qualified_target = f"{quoted_schema}.{quote(target_table)}"
+        local_sql = ", ".join(quote(column) for column in source_columns)
+        remote_sql = ", ".join(quote(column) for column in target_columns)
+        connection.exec_driver_sql(
+            f"ALTER TABLE {qualified_source} ADD CONSTRAINT {quote(name)} "
+            f"FOREIGN KEY ({local_sql}) REFERENCES {qualified_target} ({remote_sql}) "
+            "MATCH SIMPLE ON UPDATE NO ACTION ON DELETE RESTRICT "
+            "NOT DEFERRABLE NOT VALID"
+        )
+        connection.exec_driver_sql(
+            f"ALTER TABLE {qualified_source} VALIDATE CONSTRAINT {quote(name)}"
+        )
+
+    index_state = _arb_index_state(connection, schema_name)
+    for name, (table_name, columns, predicate) in _ARB_INDEX_SPECS.items():
+        if table_name not in tables:
+            continue
+        row = index_state.get(name)
+        expected_definition = _arb_expected_index_definition(
+            schema_name, name, table_name, columns, predicate
+        )
+        correct = row and (
+            row.table_name == table_name
+            and row.indisunique
+            and row.indisvalid
+            and row.indisready
+            and _arb_normalize_catalog_definition(row.definition)
+            == _arb_normalize_catalog_definition(expected_definition)
+        )
+        if correct:
+            continue
+        if row:
+            backing_constraint = connection.execute(
+                text(
+                    """
+                    SELECT constraint_row.conname, cls.relname
+                    FROM pg_constraint constraint_row
+                    JOIN pg_class cls ON cls.oid = constraint_row.conrelid
+                    JOIN pg_namespace namespace ON namespace.oid = cls.relnamespace
+                    WHERE namespace.nspname = :schema_name
+                      AND constraint_row.conindid = (
+                          SELECT index_cls.oid FROM pg_class index_cls
+                          JOIN pg_namespace index_namespace
+                            ON index_namespace.oid = index_cls.relnamespace
+                          WHERE index_namespace.nspname = :schema_name
+                            AND index_cls.relname = :index_name
+                      )
+                    """
+                ),
+                {"schema_name": schema_name, "index_name": name},
+            ).first()
+            if backing_constraint:
+                actual_table = f"{quoted_schema}.{quote(backing_constraint.relname)}"
+                connection.exec_driver_sql(
+                    f"ALTER TABLE {actual_table} DROP CONSTRAINT {quote(backing_constraint.conname)}"
+                )
+            else:
+                connection.exec_driver_sql(
+                    f"DROP INDEX {quoted_schema}.{quote(name)}"
+                )
+        qualified_table = f"{quoted_schema}.{quote(table_name)}"
+        column_sql = ", ".join(quote(column) for column in columns)
+        statement = (
+            f"CREATE UNIQUE INDEX {quote(name)} ON {qualified_table} ({column_sql})"
+        )
+        if predicate:
+            statement += f" WHERE {predicate}"
+        connection.exec_driver_sql(statement)
+
+    from app.models.transformation_decision import (
+        ensure_arb_subject_snapshot_immutability,
+    )
+
+    ensure_arb_subject_snapshot_immutability(connection)
+    connection.exec_driver_sql(_arb_membership_function_sql(quoted_schema))
+    connection.exec_driver_sql(_arb_history_function_sql(quoted_schema))
+    connection.exec_driver_sql(_arb_parent_tenant_function_sql(quoted_schema))
+    trigger_state = _arb_catalog_state(connection)
+    parent_triggers = {
+        "trg_arb_decision_brief_tenant_history",
+        "trg_arb_solution_tenant_history",
+        "trg_arb_architecture_model_tenant_history",
+        "trg_arb_adr_tenant_history",
+    }
+    for (table_name, trigger_name), expected in _ARB_TRIGGER_SPECS.items():
+        if table_name not in tables:
+            continue
+        qualified_table = f"{quoted_schema}.{quote(table_name)}"
+        state = trigger_state.get((table_name, trigger_name))
+        if _arb_trigger_matches(state, expected, schema_name):
+            continue
+        if state:
+            connection.exec_driver_sql(
+                f"DROP TRIGGER {quote(trigger_name)} ON {qualified_table}"
+            )
+        (
+            function_name,
+            _tgtype,
+            is_constraint,
+            _is_deferrable,
+            _is_deferred,
+            _update_columns,
+            _predicate,
+            _argument_count,
+            _arguments_hex,
+        ) = expected
+        qualified_function = f"{quoted_schema}.{quote(function_name)}()"
+        if is_constraint:
+            connection.exec_driver_sql(
+                f"CREATE CONSTRAINT TRIGGER {quote(trigger_name)} "
+                f"AFTER INSERT OR UPDATE ON {qualified_table} "
+                "DEFERRABLE INITIALLY DEFERRED FOR EACH ROW "
+                f"EXECUTE FUNCTION {qualified_function}"
+            )
+        elif trigger_name in parent_triggers:
+            connection.exec_driver_sql(
+                f"CREATE TRIGGER {quote(trigger_name)} BEFORE UPDATE OF organization_id "
+                f"ON {qualified_table} FOR EACH ROW EXECUTE FUNCTION {qualified_function}"
+            )
+        else:
+            connection.exec_driver_sql(
+                f"CREATE TRIGGER {quote(trigger_name)} "
+                f"BEFORE UPDATE OR DELETE ON {qualified_table} FOR EACH ROW "
+                f"EXECUTE FUNCTION {qualified_function}"
+            )
+
+
+@event.listens_for(ARBReviewCycle.__table__, "after_create")
+@event.listens_for(ARBReviewItem.__table__, "after_create")
+def _install_arb_cycle_constraints(_target, connection, **_kwargs):
+    ensure_arb_cycle_constraints(connection)
 
 
 class ARBReviewComment(TenantMixin, db.Model):

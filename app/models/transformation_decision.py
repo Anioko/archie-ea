@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
+
+from sqlalchemy import event
 from sqlalchemy.orm import validates
 
 from app import db
@@ -12,9 +16,178 @@ from app.models.transformation_programme import ISO_4217_CURRENCIES
 OPTION_EXCEPTION_TYPES = ("policy", "legal")
 BRIEF_STATUSES = ("draft", "frozen", "in_governance", "terminal")
 
+_ARB_SUBJECT_SNAPSHOT_IMMUTABILITY_BODY = """
+BEGIN
+    RAISE EXCEPTION 'ARB subject evidence snapshots are append-only'
+        USING ERRCODE = '55000';
+END;
+""".strip()
+
 
 def _sql_values(values):
     return ", ".join(f"'{value}'" for value in values)
+
+
+class ARBSubjectEvidenceSnapshot(TenantMixin, db.Model):
+    """Immutable typed evidence captured for model and ADR ARB subjects.
+
+    Decision Brief cycles pin ``DecisionBriefVersion`` and Solution cycles keep
+    using ``ARBSubmissionEvidenceSnapshot``.  This table exists only for the
+    two governed subjects that did not already have an immutable evidence type.
+
+    The nullable declarations are deliberate deployment compatibility: a
+    long-lived database may receive these columns through add-only schema
+    reconciliation.  The check constraint supplies the strict new-row shape.
+    """
+
+    __tablename__ = "arb_subject_evidence_snapshots"
+
+    id = db.Column(db.Integer, primary_key=True)
+    subject_type = db.Column(db.String(40), nullable=True, index=True)
+    subject_id = db.Column(db.Integer, nullable=True, index=True)
+    architecture_model_id = db.Column(
+        db.Integer,
+        db.ForeignKey("architecture_models.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+    adr_id = db.Column(
+        db.Integer,
+        db.ForeignKey("architecture_decision_records.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+    schema_version = db.Column(db.Integer, nullable=True)
+    policy_version = db.Column(db.String(160), nullable=True)
+    captured_by_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    captured_at = db.Column(
+        db.DateTime(timezone=True),
+        nullable=True,
+        server_default=db.func.now(),
+    )
+    payload = db.Column(db.JSON, nullable=True)
+    citations = db.Column(db.JSON, nullable=True)
+    content_hash = db.Column(db.String(64), nullable=True, index=True)
+
+    __table_args__ = (
+        db.CheckConstraint(
+            "subject_type IS NOT NULL AND subject_id IS NOT NULL "
+            "AND schema_version IS NOT NULL AND schema_version > 0 "
+            "AND policy_version IS NOT NULL AND captured_at IS NOT NULL "
+            "AND payload IS NOT NULL AND citations IS NOT NULL "
+            "AND content_hash IS NOT NULL AND length(content_hash) = 64 "
+            "AND ((subject_type = 'architecture_model' "
+            "AND subject_id = architecture_model_id "
+            "AND architecture_model_id IS NOT NULL AND adr_id IS NULL) "
+            "OR (subject_type = 'adr' AND subject_id = adr_id "
+            "AND adr_id IS NOT NULL AND architecture_model_id IS NULL))",
+            name="ck_arb_subject_evidence_snapshot_shape",
+        ),
+    )
+
+    def canonical_content(self):
+        """Return the exact typed dossier protected by ``content_hash``."""
+        return {
+            "schema_version": self.schema_version,
+            "organization_id": self.organization_id,
+            "subject_type": self.subject_type,
+            "subject_id": self.subject_id,
+            "architecture_model_id": self.architecture_model_id,
+            "adr_id": self.adr_id,
+            "policy_version": self.policy_version,
+            "captured_by_id": self.captured_by_id,
+            "captured_at": self.captured_at.isoformat() if self.captured_at else None,
+            "payload": self.payload,
+            "citations": self.citations,
+        }
+
+    def recompute_content_hash(self):
+        document = json.dumps(
+            self.canonical_content(),
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            default=str,
+        )
+        return hashlib.sha256(document.encode("utf-8")).hexdigest()
+
+
+def ensure_arb_subject_snapshot_immutability(connection):
+    """Install the PostgreSQL append-only trigger on fresh and existing tables."""
+    if connection.dialect.name != "postgresql":
+        return
+    connection.exec_driver_sql(
+        "SELECT pg_advisory_xact_lock(hashtext("
+        "'archie_arb_subject_snapshot_immutability'))"
+    )
+    connection.exec_driver_sql(
+        f"""
+        CREATE OR REPLACE FUNCTION archie_reject_arb_subject_snapshot_mutation()
+        RETURNS trigger LANGUAGE plpgsql
+        SET search_path = pg_catalog
+        AS $$
+        {_ARB_SUBJECT_SNAPSHOT_IMMUTABILITY_BODY}
+        $$
+        """
+    )
+    connection.exec_driver_sql(
+        """
+        DO $$
+        DECLARE qualified_table text;
+        BEGIN
+            qualified_table := format('%%I.%%I', current_schema(),
+                                      'arb_subject_evidence_snapshots');
+            IF to_regclass(qualified_table) IS NOT NULL
+               AND NOT EXISTS (
+                   SELECT 1
+                   FROM pg_trigger trigger
+                   WHERE trigger.tgname =
+                         'trg_reject_arb_subject_snapshot_mutation'
+                     AND trigger.tgrelid = to_regclass(qualified_table)
+               ) THEN
+                EXECUTE format(
+                    'CREATE TRIGGER trg_reject_arb_subject_snapshot_mutation '
+                    'BEFORE UPDATE OR DELETE ON %%s FOR EACH ROW EXECUTE FUNCTION '
+                    'archie_reject_arb_subject_snapshot_mutation()',
+                    qualified_table
+                );
+            END IF;
+            IF to_regclass(qualified_table) IS NOT NULL THEN
+                EXECUTE format(
+                    'ALTER TABLE %%s ENABLE TRIGGER '
+                    'trg_reject_arb_subject_snapshot_mutation',
+                    qualified_table
+                );
+            END IF;
+        END;
+        $$
+        """
+    )
+
+
+@event.listens_for(ARBSubjectEvidenceSnapshot.__table__, "after_create")
+def _install_arb_subject_snapshot_immutability(_target, connection, **_kwargs):
+    ensure_arb_subject_snapshot_immutability(connection)
+
+
+def _reject_arb_subject_snapshot_mutation(_mapper, _connection, _target):
+    raise ValueError("ARB subject evidence snapshots are append-only")
+
+
+event.listen(
+    ARBSubjectEvidenceSnapshot,
+    "before_update",
+    _reject_arb_subject_snapshot_mutation,
+)
+event.listen(
+    ARBSubjectEvidenceSnapshot,
+    "before_delete",
+    _reject_arb_subject_snapshot_mutation,
+)
 
 
 class TransformationOption(TenantMixin, db.Model):
@@ -499,6 +672,7 @@ class DecisionEvent(TenantMixin, db.Model):
 
 
 __all__ = [
+    "ARBSubjectEvidenceSnapshot",
     "BRIEF_STATUSES",
     "DecisionBrief",
     "DecisionBriefEvidenceCitation",
@@ -508,4 +682,5 @@ __all__ = [
     "OPTION_EXCEPTION_TYPES",
     "TransformationOption",
     "TransformationOptionVersion",
+    "ensure_arb_subject_snapshot_immutability",
 ]

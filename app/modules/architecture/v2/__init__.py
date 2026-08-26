@@ -44,6 +44,7 @@ def register(app: Flask) -> None:
     from app.modules.architecture.routes.adm_kanban_routes import adm_kanban_bp
     from app.modules.architecture.routes.integration_routes import integration_bp
     from app.modules.architecture.routes.archimate_routes import archimate_bp
+    from app.modules.architecture.routes.adr_routes import adr_bp
 
     # Mark all blueprints as guardrailed BEFORE registration
     blueprints = [
@@ -62,6 +63,7 @@ def register(app: Flask) -> None:
         adm_kanban_bp,
         integration_bp,
         archimate_bp,
+        adr_bp,
     ]
 
     for bp in blueprints:
@@ -83,6 +85,7 @@ def register(app: Flask) -> None:
     app.register_blueprint(adm_kanban_bp)
     app.register_blueprint(integration_bp)
     app.register_blueprint(archimate_bp)
+    app.register_blueprint(adr_bp)
 
     app.logger.info(
         "[MODULE-V2] architecture v2 registered (guardrail-enabled, ~215 routes, 15 blueprints)"
