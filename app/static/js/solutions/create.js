@@ -730,7 +730,9 @@ document.addEventListener('alpine:init', function() {
                 // A saved draft exists but cannot be read. Drop it so the next
                 // save starts clean, and say so — a silently blank form reads as
                 // "nothing was ever saved".
-                try { sessionStorage.removeItem(this._storageKey); } catch (_) { /* storage unavailable */ }
+                try { sessionStorage.removeItem(this._storageKey); } catch (_) { /* swallow-ok: storage is
+                    already unreadable -- that is why we are in this catch -- so a failure to remove the
+                    key changes nothing, and the warning below already told the user. */ }
                 if (window.Platform && window.Platform.toast) {
                     window.Platform.toast.warning('Your saved draft could not be restored — please re-enter this form.');
                 }

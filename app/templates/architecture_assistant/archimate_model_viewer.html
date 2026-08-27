@@ -209,7 +209,9 @@ document.addEventListener('DOMContentLoaded', function() {
             // The stored cache is unreadable. Drop it rather than re-reading a
             // corrupt value on every call, and say so — otherwise a lost cache
             // is indistinguishable from never having generated a model.
-            try { localStorage.removeItem(MODEL_CACHE_KEY); } catch (_) { /* storage unavailable */ }
+            try { localStorage.removeItem(MODEL_CACHE_KEY); } catch (_) { /* swallow-ok: storage is
+                already unreadable -- that is why we are in this catch -- so a failure to remove the
+                key changes nothing, and the warning below already told the user. */ }
             if (window.Platform && Platform.toast) {
                 Platform.toast.warning('Your locally cached models could not be read and have been cleared.');
             }
