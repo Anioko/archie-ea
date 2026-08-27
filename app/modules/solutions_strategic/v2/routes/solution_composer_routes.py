@@ -32,7 +32,6 @@ import time
 from flask import Blueprint, jsonify, request
 from flask_login import current_user, login_required
 
-from app import db
 from app.decorators import audit_log
 from app.modules.solutions_strategic.v2.services.solution_composer_service import SolutionComposerService
 
@@ -943,142 +942,79 @@ def compare_canvases():
 @login_required
 @audit_log("submit_to_arb")
 def submit_to_arb():
+    """Submit a **persisted** Architecture Model to the Architecture Review Board.
+
+    This endpoint used to construct a raw, unlinked ``ARBReviewItem`` straight
+    from browser canvas JSON.  That row had no typed subject, no evidence
+    snapshot and no review cycle, so nothing downstream could govern it, and the
+    canvas payload itself was trusted as its own evidence.
+
+    A canvas is a drawing surface, not a system of record.  It is therefore no
+    longer submittable on its own: the caller must first persist the design as
+    an ``ArchitectureModel`` and submit that model's id, which is then routed
+    through the typed, evidence-gated submission command.  Nothing is
+    manufactured from canvas JSON.
+
+    Request body:
+        {"architecture_model_id": 42, "human_reviewed": true}
     """
-    Submit the current canvas design to the Architecture Review Board.
+    from app.modules.transformation_room.arb_typed_subject_ingress import (
+        TypedARBSubjectIngress,
+    )
 
-    This creates an ARBReviewItem linked to the current canvas, enabling
-    the formal governance approval workflow.
-
-    Request Body:
-        {
-            "title": "Solution Design: Customer Portal Modernization",
-            "description": "Modernizing customer portal with cloud-native architecture",
-            "priority": "high",
-            "business_impact": "high",
-            "togaf_phase": "phase_e_opportunities",
-            "business_justification": "Reduces customer wait times by 40%"
-        }
-
-    Returns:
-        JSON with created ARBReviewItem details and review number
-    """
-    from datetime import datetime
-
-    from app.models.architecture_review_board import ARBReviewItem, ReviewType
-
-    service = _get_service()
-
-    # Check if canvas exists
-    if not service.current_canvas or not service.current_canvas.canvas_id:
+    data = request.get_json(silent=True) or {}
+    model_id = data.get("architecture_model_id")
+    if isinstance(model_id, bool) or not isinstance(model_id, int) or model_id <= 0:
         return (
             jsonify(
                 {
                     "success": False,
-                    "error": "No canvas loaded. Please save your canvas before submitting to ARB.",
+                    "reason_codes": ["architecture_model_required"],
+                    "error": (
+                        "Save this canvas as an architecture model first, then "
+                        "submit that model for review. A canvas on its own has "
+                        "no governed subject or evidence to review."
+                    ),
+                    "action_url": "/architecture/models",
                 }
             ),
-            400,
+            422,
         )
 
-    # Get validation status
-    validation = service.validate_canvas()
-    if validation.get("is_valid") is False:
-        error_count = len(validation.get("errors", []))
-        if error_count > 0:
-            return (
-                jsonify(
-                    {
-                        "success": False,
-                        "error": f"Canvas has {error_count} validation error(s). Please fix before submitting.",
-                        "validation_errors": validation.get("errors", []),
-                    }
-                ),
-                400,
-            )
-
-    data = request.get_json() or {}
-
-    # Generate review number
-    review_number = ARBReviewItem.generate_review_number()
-
-    # Build canvas summary for description
-    canvas_state = service.get_canvas_state()
-    nodes = canvas_state.get("nodes", [])
-    node_count = len(nodes)
-    connection_count = len(canvas_state.get("connections", []))
-    layers_used = set(n.get("layer") for n in nodes if n.get("layer"))
-    layers_sorted = sorted(layers_used) if layers_used else []
-    primary_layer = (
-        "application"
-        if "application" in layers_used
-        else (layers_sorted[0] if layers_sorted else "application")
+    result = TypedARBSubjectIngress.submit_from_request(
+        subject_type="architecture_model",
+        subject_id=model_id,
+        payload=data,
     )
-    archimate_elements = [
-        {
-            "id": n.get("id"),
-            "name": n.get("name"),
-            "type": n.get("type"),
-            "layer": n.get("layer"),
-            "source": n.get("source_type", "canvas"),
-        }
-        for n in nodes
-    ]
-    archimate_viewpoints_payload = {
-        "canvas_id": service.current_canvas.canvas_id,
-        "elements": archimate_elements,
-        "layers_covered": layers_sorted,
-        "primary_layer": primary_layer,
-    }
+    if not result.success:
+        payload = result.failure_payload()
+        payload["error"] = "The architecture model could not be submitted for review."
+        return jsonify(payload), result.http_status
 
-    description = data.get("description", "")
-    if description:
-        description += "\n\n"
-    description += "Solution Composer Canvas Summary:\n"
-    description += f"- Canvas ID: {service.current_canvas.canvas_id}\n"
-    description += f"- Canvas Name: {service.current_canvas.name}\n"
-    description += f"- Elements: {node_count}\n"
-    description += f"- Relationships: {connection_count}\n"
-    description += f"- ArchiMate Layers: {', '.join(sorted(layers_used))}\n"
-
-    if data.get("business_justification"):
-        description += f"\nBusiness Justification:\n{data.get('business_justification')}"
-
-    try:
-        # Create ARB Review Item
-        review_item = ARBReviewItem(
-            review_number=review_number,
-            title=data.get("title", f"Solution Design: {service.current_canvas.name}"),
-            description=description,
-            review_type=ReviewType.SOLUTION_DESIGN.value,
-            togaf_phase=data.get("togaf_phase", "phase_e_opportunities"),
-            archimate_layer=primary_layer,
-            priority=data.get("priority", "medium"),
-            business_impact=data.get("business_impact", "medium"),
-            status="submitted",
-            submitter_id=current_user.id,
-            submitted_at=datetime.utcnow(),
-            # ArchiMate 3.2 elements from canvas for governance traceability
-            archimate_viewpoints=archimate_viewpoints_payload,
-        )
-
-        db.session.add(review_item)
-        db.session.commit()
-
-        return jsonify(
+    return (
+        jsonify(
             {
                 "success": True,
                 "data": {
-                    "review_number": review_number,
-                    "review_item_id": review_item.id,
+                    "review_number": result.review_number,
+                    "review_item_id": result.review_item_id,
+                    "review_cycle_id": result.review_cycle_id,
+                    "snapshot_id": result.evidence_id,
+                    "canonical_url": result.canonical_url,
+                    "idempotent": result.idempotent,
                     "status": "submitted",
-                    "message": f"Design submitted to ARB as {review_number}. You will be notified when review begins.",
+                    "message": (
+                        f"Design submitted to ARB as {result.review_number}. "
+                        "You will be notified when review begins."
+                    ),
                     "arb_dashboard_url": "/arb/reviews",
+                    "redirect_url": f"/arb/reviews/{result.review_item_id}",
                 },
+                "request_id": result.request_id,
             }
-        )
-    except Exception:
-        db.session.rollback()
-        return jsonify({"success": False, "error": "Failed to submit to ARB"}), 500
+        ),
+        result.http_status,
+    )
 
 
 @solution_composer_bp.route("/strategic-alignment", methods=["GET"])
