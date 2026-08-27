@@ -707,8 +707,68 @@ _REVIEW_ROLES = ("admin", "enterprise_architect", "architect")
 
 
 def _get_solution_or_404(solution_id: int):
+    """Resolve a solution with an explicit (id, organization_id) predicate.
+
+    ``Query.get()`` is tenant-scoped only on an identity-map miss, so it is
+    not a tenancy boundary (AGENTS.md). A solution in another tenant must be
+    indistinguishable from a missing one.
+    """
+    from flask import abort, g
+
     from app.models.solution_models import Solution
-    return Solution.query.get_or_404(solution_id)
+
+    organization_id = getattr(g, "current_org_id", None)
+    if not isinstance(organization_id, int) or organization_id <= 0:
+        abort(404)
+    solution = db.session.execute(
+        db.select(Solution).where(
+            Solution.id == solution_id,
+            Solution.organization_id == organization_id,
+        )
+    ).scalar_one_or_none()
+    if solution is None:
+        abort(404)
+    return solution
+
+
+def _typed_cycle_for_solution(solution_id: int, *, open_only: bool):
+    """Return the typed ARB cycle governing this solution, if any."""
+    from app.modules.architecture.routes.arb_routes import TypedARBDecisionAdapter
+
+    if open_only:
+        return TypedARBDecisionAdapter.open_typed_cycle_for_solution(solution_id)
+    cycles = TypedARBDecisionAdapter.typed_cycles_for_solution(solution_id)
+    return cycles[0] if cycles else None
+
+
+def _typed_lifecycle_blocked(reason_code: str, message: str):
+    """Refuse a lifecycle write that no typed command exposes."""
+    import uuid
+
+    return jsonify({
+        "success": False,
+        "error": message,
+        "reason_codes": [reason_code],
+        "missing_evidence": [],
+        "request_id": str(uuid.uuid4()),
+    }), 409
+
+
+def _typed_decision_response(result, solution_id: int, *, legacy_fields=None):
+    """Typed decision result in this endpoint's established envelope."""
+    if not result.success:
+        return jsonify(result.failure_payload()), result.http_status
+    payload = {
+        "success": True,
+        # governance_status stays a projection of the recorded decision event;
+        # this route no longer writes Solution.governance_status for a typed
+        # cycle.
+        "governance_status": result.status,
+        "solution_id": solution_id,
+        **(legacy_fields or {}),
+        **result.success_fields(),
+    }
+    return jsonify(payload), 200
 
 
 @arb_workflow_bp.route("/solutions/<int:solution_id>/lifecycle", methods=["GET"])
@@ -745,6 +805,12 @@ def begin_arb_review(solution_id: int):
         { "notes": "Review notes" }
     """
     solution = _get_solution_or_404(solution_id)
+    if _typed_cycle_for_solution(solution_id, open_only=True) is not None:
+        return _typed_lifecycle_blocked(
+            "typed_cycle_status_not_client_mutable",
+            "This solution is governed by a typed ARB cycle. Its review state "
+            "is derived from recorded commands and cannot be set directly.",
+        )
     status = solution.governance_status or "draft"
 
     if status not in ("arb_review", "arb_submitted", "proposed"):
@@ -781,6 +847,22 @@ def approve_solution(solution_id: int):
         { "notes": "Approval notes" }
     """
     solution = _get_solution_or_404(solution_id)
+    typed_cycle = _typed_cycle_for_solution(solution_id, open_only=True)
+    if typed_cycle is not None:
+        from app.modules.architecture.routes.arb_routes import (
+            TypedARBDecisionAdapter,
+        )
+
+        payload = request.get_json(silent=True) or {}
+        result = TypedARBDecisionAdapter.decide(
+            cycle=typed_cycle,
+            outcome="approved",
+            rationale=payload.get("notes") or payload.get("rationale"),
+            conditions=None,
+        )
+        return _typed_decision_response(
+            result, solution_id, legacy_fields={"message": "Solution approved"}
+        )
     status = solution.governance_status or "draft"
 
     if status != "under_review":
@@ -842,6 +924,28 @@ def reject_solution(solution_id: int):
         { "reason": "Rejection reason" (required), "notes": "Additional notes" }
     """
     solution = _get_solution_or_404(solution_id)
+    typed_cycle = _typed_cycle_for_solution(solution_id, open_only=True)
+    if typed_cycle is not None:
+        from app.modules.architecture.routes.arb_routes import (
+            TypedARBDecisionAdapter,
+        )
+
+        payload = request.get_json(silent=True) or {}
+        rejection_reason = (payload.get("reason") or "").strip()
+        result = TypedARBDecisionAdapter.decide(
+            cycle=typed_cycle,
+            outcome="rejected",
+            rationale=rejection_reason or None,
+            conditions=None,
+        )
+        return _typed_decision_response(
+            result,
+            solution_id,
+            legacy_fields={
+                "message": "Solution rejected",
+                "arb_rejection_reason": rejection_reason,
+            },
+        )
     status = solution.governance_status or "draft"
 
     if status != "under_review":
@@ -883,6 +987,14 @@ def withdraw_solution(solution_id: int):
         { "reason": "Withdrawal reason" }
     """
     solution = _get_solution_or_404(solution_id)
+    if _typed_cycle_for_solution(solution_id, open_only=True) is not None:
+        # Withdraw has no typed command with defined audit semantics, and a
+        # typed decision history must not be silently abandoned.
+        return _typed_lifecycle_blocked(
+            "typed_cycle_withdraw_not_supported",
+            "This solution is governed by an open typed ARB cycle. Withdrawal "
+            "is not an available typed command; return the review instead.",
+        )
     status = solution.governance_status or "draft"
 
     if status in _TERMINAL_STATUSES:
