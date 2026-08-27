@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 import uuid
 
 import pytest
@@ -378,6 +379,34 @@ def test_real_adr_submission_is_atomic_and_same_key_replay_is_stable(app, adr_sc
         assert submission_event.event_type == "submitted"
         assert submission_event.command_generation == receipt.lease_generation
         assert receipt.operation == "arb.submit"
+
+
+def test_same_key_replay_survives_terminal_cycle_transition(app, adr_scope):
+    with app.app_context():
+        first = _submit(adr_scope, "terminal-replay")
+        cycle = db.session.get(
+            ARBReviewCycle, first.object_ids["review_cycle_id"]
+        )
+        item = db.session.get(ARBReviewItem, first.object_ids["review_item_id"])
+        now = datetime.now(timezone.utc)
+        cycle.status = cycle.terminal_outcome = "approved"
+        cycle.closed_at = now
+        item.status = "approved"
+        item.decision = "approved"
+        db.session.commit()
+        db.session.remove()
+
+        replay = _submit(adr_scope, "terminal-replay")
+
+    assert replay.idempotent is True
+    assert replay.object_ids == first.object_ids
+    assert _counts(adr_scope) == {
+        "snapshots": 1,
+        "cycles": 1,
+        "items": 1,
+        "results": 1,
+        "events": 1,
+    }
 
 
 def test_real_solution_submission_pins_legacy_evidence_into_typed_graph(
