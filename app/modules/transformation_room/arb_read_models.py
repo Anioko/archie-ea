@@ -608,6 +608,7 @@ class TypedARBReadModel:
             ARBReviewCycle.predecessor_cycle_id == cycle.id,
             ARBReviewCycle.organization_id == actor.organization_id,
         )
+        successor_cycle_id = successor.id if successor is not None else None
         return {
             "review_item_id": review.id,
             "review_cycle_id": cycle.id,
@@ -616,8 +617,33 @@ class TypedARBReadModel:
             "subject_type": cycle.subject_type,
             "subject_id": cycle.subject_id,
             "predecessor_cycle_id": cycle.predecessor_cycle_id,
-            "successor_cycle_id": successor.id if successor is not None else None,
+            "predecessor_review_item_id": cls._review_item_id_for_cycle(
+                session, actor, cycle.predecessor_cycle_id
+            ),
+            "successor_cycle_id": successor_cycle_id,
+            "successor_review_item_id": cls._review_item_id_for_cycle(
+                session, actor, successor_cycle_id
+            ),
         }
+
+    @classmethod
+    def _review_item_id_for_cycle(cls, session, actor, cycle_id):
+        """Return the addressable review item for a linked cycle, or ``None``.
+
+        ``/arb/reviews/<review_item_id>`` cannot be addressed by a cycle ID, so
+        a predecessor/successor link needs the review item.  A cycle in another
+        tenant, or one whose review item is missing, resolves to ``None``: the
+        cycle ID is never substituted as a stand-in.
+        """
+        if cycle_id is None:
+            return None
+        review = cls._one(
+            session,
+            ARBReviewItem,
+            ARBReviewItem.review_cycle_id == cycle_id,
+            ARBReviewItem.organization_id == actor.organization_id,
+        )
+        return review.id if review is not None else None
 
     # ------------------------------------------------------------------
     # evidence

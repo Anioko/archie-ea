@@ -53,6 +53,9 @@ def _build_adr_cycle(
     status="submitted",
     corrupt_hash=False,
     historical=False,
+    adr=None,
+    cycle_number=1,
+    predecessor_cycle_id=None,
 ):
     """Create one ADR subject, its pinned snapshot, cycle and review item."""
     from app.models.adr import ArchitectureDecisionRecord
@@ -61,7 +64,8 @@ def _build_adr_cycle(
 
     suffix = uuid.uuid4().hex[:10]
     _sql(db_session, "SET LOCAL session_replication_role = replica")
-    adr = ArchitectureDecisionRecord(
+    existing_adr = adr
+    adr = existing_adr or ArchitectureDecisionRecord(
         organization_id=org.id,
         adr_number=int(suffix[:7], 16),
         title=f"Read model ADR {suffix}",
@@ -72,8 +76,9 @@ def _build_adr_cycle(
         consequences="Conditions must be verified.",
         created_by=submitter.email,
     )
-    db_session.add(adr)
-    db_session.flush()
+    if existing_adr is None:
+        db_session.add(adr)
+        db_session.flush()
 
     snapshot = None
     if not historical:
@@ -109,7 +114,8 @@ def _build_adr_cycle(
         adr_id=adr.id,
         subject_evidence_snapshot_id=None if historical else snapshot.id,
         review_number=f"REV-{suffix}",
-        cycle_number=1,
+        cycle_number=cycle_number,
+        predecessor_cycle_id=predecessor_cycle_id,
         status="historical_unverified" if historical else status,
         opened_at=datetime.now(timezone.utc),
         closed_at=None if open_cycle and not historical else datetime.now(timezone.utc),
@@ -710,3 +716,95 @@ def test_command_keys_are_fresh_per_get(db_session, make_org, tenant_ctx):
             actor=_actor(decider, org), review_item_id=graph.review.id
         )
     assert first["command_keys"]["decision"] != second["command_keys"]["decision"]
+
+
+# ---------------------------------------------------------------------------
+# predecessor / successor addressing
+# ---------------------------------------------------------------------------
+
+
+def test_historical_cycle_exposes_resolvable_successor_review_item(
+    db_session, make_org, tenant_ctx
+):
+    """The successor link must address /arb/reviews/<review_item_id>."""
+    from app.modules.transformation_room.arb_read_models import typed_arb_review_view
+
+    org = make_org("arb-successor")
+    submitter = _user(db_session, org, "submitter", admin=True)
+    with tenant_ctx(org.id):
+        historical = _build_adr_cycle(db_session, org, submitter, historical=True)
+        successor = _build_adr_cycle(
+            db_session,
+            org,
+            submitter,
+            adr=historical.adr,
+            cycle_number=2,
+            predecessor_cycle_id=historical.cycle.id,
+        )
+        historical_view = typed_arb_review_view(
+            actor=_actor(submitter, org), review_item_id=historical.review.id
+        )
+        successor_view = typed_arb_review_view(
+            actor=_actor(submitter, org), review_item_id=successor.review.id
+        )
+
+    assert historical_view["state"] == "historical_unverified"
+    identity = historical_view["identity"]
+    assert identity["successor_cycle_id"] == successor.cycle.id
+    assert identity["successor_review_item_id"] == successor.review.id
+    assert identity["predecessor_cycle_id"] is None
+    assert identity["predecessor_review_item_id"] is None
+
+    successor_identity = successor_view["identity"]
+    assert successor_identity["predecessor_cycle_id"] == historical.cycle.id
+    assert successor_identity["predecessor_review_item_id"] == historical.review.id
+    assert successor_identity["successor_review_item_id"] is None
+
+
+def test_cross_tenant_successor_resolves_to_none_and_leaks_nothing(
+    db_session, make_org, tenant_ctx
+):
+    from app.modules.transformation_room.arb_read_models import typed_arb_review_view
+
+    org = make_org("arb-successor-owner")
+    other_org = make_org("arb-successor-other")
+    submitter = _user(db_session, org, "submitter", admin=True)
+    outsider = _user(db_session, other_org, "outsider", admin=True)
+    with tenant_ctx(org.id):
+        historical = _build_adr_cycle(db_session, org, submitter, historical=True)
+    with tenant_ctx(other_org.id):
+        # A foreign cycle claiming our cycle as its predecessor must not become
+        # a successor link for this tenant.
+        foreign = _build_adr_cycle(
+            db_session,
+            other_org,
+            outsider,
+            cycle_number=2,
+            predecessor_cycle_id=historical.cycle.id,
+        )
+    with tenant_ctx(org.id):
+        view = typed_arb_review_view(
+            actor=_actor(submitter, org), review_item_id=historical.review.id
+        )
+
+    identity = view["identity"]
+    assert identity["successor_cycle_id"] is None
+    assert identity["successor_review_item_id"] is None
+    assert foreign.review.title not in repr(view)
+    assert str(foreign.review.id) not in str(identity.values())
+
+
+def test_absent_successor_is_none_not_invented(db_session, make_org, tenant_ctx):
+    from app.modules.transformation_room.arb_read_models import typed_arb_review_view
+
+    org = make_org("arb-no-successor")
+    submitter = _user(db_session, org, "submitter", admin=True)
+    with tenant_ctx(org.id):
+        graph = _build_adr_cycle(db_session, org, submitter)
+        view = typed_arb_review_view(
+            actor=_actor(submitter, org), review_item_id=graph.review.id
+        )
+    identity = view["identity"]
+    assert identity["successor_cycle_id"] is None
+    assert identity["successor_review_item_id"] is None
+    assert identity["predecessor_review_item_id"] is None
