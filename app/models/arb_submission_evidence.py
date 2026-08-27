@@ -162,6 +162,12 @@ def ensure_evidence_immutability_triggers(connection):
 
 def _ensure_snapshot_review_fk(connection):
     """Repair the cyclic Solution snapshot FK on upgraded PostgreSQL schemas."""
+    tables_ready = connection.exec_driver_sql(
+        "SELECT to_regclass(current_schema() || '.arb_submission_evidence_snapshots') "
+        "IS NOT NULL AND to_regclass(current_schema() || '.arb_review_items') IS NOT NULL"
+    ).scalar()
+    if not tables_ready:
+        return
     row = connection.exec_driver_sql(
         """
         SELECT c.conname, c.condeferrable, c.condeferred,
@@ -253,10 +259,12 @@ def evidence_immutability_is_installed(connection):
     )
 
 
-@event.listens_for(ARBSubmissionEvidenceSnapshot.__table__, "after_create")
-@event.listens_for(WorkbenchArtifactEvidence.__table__, "after_create")
-def _install_evidence_triggers_after_create(_target, connection, **_kwargs):
+def _install_evidence_guards_after_metadata_create(_target, connection, **_kwargs):
+    """Install cross-table guards only after every mapped table exists."""
     ensure_evidence_immutability_triggers(connection)
+
+
+event.listen(db.metadata, "after_create", _install_evidence_guards_after_metadata_create)
 
 
 def _reject_snapshot_mutation(_mapper, _connection, _target):

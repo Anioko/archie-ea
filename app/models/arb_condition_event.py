@@ -52,7 +52,13 @@ LANGUAGE plpgsql SET search_path=pg_catalog,{schema} AS $$ BEGIN
 def _condition_event_final_sql(schema):
     return f"""
 CREATE OR REPLACE FUNCTION {schema}.archie_validate_arb_condition_event_final() RETURNS trigger
-LANGUAGE plpgsql SET search_path=pg_catalog,{schema} AS $$ BEGIN
+LANGUAGE plpgsql SET search_path=pg_catalog,{schema} AS $$ DECLARE expected_operation text; BEGIN
+ expected_operation := CASE NEW.event_type
+  WHEN 'submit_evidence' THEN 'arb.condition.evidence.submit'
+  WHEN 'verify' THEN 'arb.condition.evidence.verify'
+  WHEN 'waive' THEN 'arb.condition.waive'
+  WHEN 'waiver_expired' THEN 'arb.condition.waiver.expire'
+ END;
  IF NOT EXISTS (SELECT 1 FROM arb_canonical_conditions condition
  JOIN arb_decision_events decision ON decision.id=condition.decision_event_id
  JOIN arb_review_cycles cycle ON cycle.id=condition.review_cycle_id
@@ -66,6 +72,15 @@ LANGUAGE plpgsql SET search_path=pg_catalog,{schema} AS $$ BEGIN
  AND submission_event.decision_event_id=NEW.decision_event_id
  AND submission_event.review_cycle_id=NEW.review_cycle_id
  AND submission_event.review_item_id=NEW.review_item_id
+ LEFT JOIN arb_condition_events waiver_event
+ ON waiver_event.condition_id=NEW.condition_id
+ AND waiver_event.event_type='waive'
+ AND waiver_event.organization_id=NEW.organization_id
+ AND waiver_event.decision_event_id=NEW.decision_event_id
+ AND waiver_event.review_cycle_id=NEW.review_cycle_id
+ AND waiver_event.review_item_id=NEW.review_item_id
+ AND waiver_event.waiver_scope_json::jsonb IS NOT DISTINCT FROM NEW.waiver_scope_json::jsonb
+ AND waiver_event.condition_revision<NEW.condition_revision
  WHERE condition.id=NEW.condition_id
  AND condition.organization_id=NEW.organization_id AND condition.status=NEW.to_state
  AND condition.revision=NEW.condition_revision AND condition.decision_event_id=NEW.decision_event_id
@@ -109,13 +124,18 @@ LANGUAGE plpgsql SET search_path=pg_catalog,{schema} AS $$ BEGIN
  AND review.submitter_id<>NEW.actor_id)
  OR (NEW.event_type='waive' AND condition.waived_by_id=NEW.actor_id
  AND condition.waiver_scope_json::jsonb IS NOT DISTINCT FROM NEW.waiver_scope_json::jsonb)
- OR (NEW.event_type='waiver_expired' AND condition.waiver_prior_status=NEW.to_state)))
+ OR (NEW.event_type='waiver_expired'
+ AND waiver_event.waiver_scope_json::jsonb ->> 'prior_status'=NEW.to_state
+ AND condition.waiver_prior_status IS NULL AND condition.waiver_scope_json IS NULL
+ AND condition.waived_at IS NULL AND condition.waived_by_id IS NULL
+ AND condition.waiver_reason IS NULL AND condition.waiver_expires_at IS NULL
+ AND condition.compensating_control IS NULL)))
  THEN RAISE EXCEPTION 'ARB condition event final state or membership is invalid' USING ERRCODE='23514'; END IF;
  IF NOT EXISTS (SELECT 1 FROM users actor WHERE actor.id=NEW.actor_id AND actor.organization_id=NEW.organization_id)
  THEN RAISE EXCEPTION 'ARB condition event actor is outside tenant' USING ERRCODE='23514'; END IF;
  IF NOT EXISTS (SELECT 1 FROM command_idempotency_records receipt JOIN operation_results result ON result.id=receipt.operation_result_id AND result.receipt_id=receipt.id JOIN command_materialisations materialisation ON materialisation.receipt_id=receipt.id
  WHERE receipt.id=NEW.command_receipt_id AND receipt.organization_id=NEW.organization_id AND receipt.actor_id=NEW.actor_id
- AND receipt.operation='arb.condition.transition' AND receipt.natural_key='arb-condition:' || NEW.organization_id::text || ':' || NEW.condition_id::text || ':' || NEW.event_type || ':' || NEW.condition_revision::text
+ AND receipt.operation=expected_operation AND receipt.natural_key='arb-condition:' || NEW.organization_id::text || ':' || NEW.condition_id::text || ':' || NEW.event_type || ':' || NEW.condition_revision::text
  AND receipt.status='succeeded' AND receipt.completed_at IS NOT NULL AND receipt.lease_generation=NEW.command_generation
  AND result.organization_id=NEW.organization_id AND result.actor_id=NEW.actor_id AND result.operation=receipt.operation AND result.natural_key=receipt.natural_key AND result.request_digest=receipt.request_digest AND result.receipt_generation=NEW.command_generation
  AND materialisation.organization_id=NEW.organization_id AND materialisation.actor_id=NEW.actor_id AND materialisation.operation=receipt.operation AND materialisation.natural_key=receipt.natural_key AND materialisation.request_digest=receipt.request_digest AND materialisation.receipt_generation=NEW.command_generation

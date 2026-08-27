@@ -16,8 +16,21 @@ import inspect
 from types import SimpleNamespace
 
 import pytest
+from sqlalchemy import event
 
 from app.models.mixins import TenantMixin
+
+
+def test_cross_table_snapshot_fk_is_installed_after_full_metadata_create():
+    """The review-item table may be created after the evidence snapshot table."""
+    from app import db
+    from app.models.arb_submission_evidence import (
+        _install_evidence_guards_after_metadata_create,
+    )
+
+    assert event.contains(
+        db.metadata, "after_create", _install_evidence_guards_after_metadata_create
+    )
 from app.modules.transformation_room.domain import (
     ActorContext,
     DomainMutationResult,

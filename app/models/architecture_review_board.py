@@ -2125,10 +2125,11 @@ def ensure_arb_cycle_constraints(connection):
             )
 
 
-@event.listens_for(ARBReviewCycle.__table__, "after_create")
-@event.listens_for(ARBReviewItem.__table__, "after_create")
 def _install_arb_cycle_constraints(_target, connection, **_kwargs):
     ensure_arb_cycle_constraints(connection)
+
+
+event.listen(db.metadata, "after_create", _install_arb_cycle_constraints)
 
 
 class ARBReviewComment(TenantMixin, db.Model):

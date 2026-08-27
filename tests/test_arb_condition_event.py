@@ -47,7 +47,10 @@ def test_condition_event_guards_prove_source_final_state_and_exact_operation():
     assert "condition.revision + 1 = NEW.condition_revision" in source
     assert "condition.status=NEW.to_state" in final
     assert "condition.revision=NEW.condition_revision" in final
-    assert "receipt.operation='arb.condition.transition'" in final
+    assert "WHEN 'submit_evidence' THEN 'arb.condition.evidence.submit'" in final
+    assert "WHEN 'verify' THEN 'arb.condition.evidence.verify'" in final
+    assert "WHEN 'waive' THEN 'arb.condition.waive'" in final
+    assert "WHEN 'waiver_expired' THEN 'arb.condition.waiver.expire'" in final
     assert "receipt.status='succeeded'" in final
     assert "operation_results" in final and "command_materialisations" in final
 
@@ -65,6 +68,14 @@ def test_cycle_and_review_expose_condition_projection_revision():
     assert "FROM arb_condition_events condition_event" in sql
     assert "condition_event.projection_status = NEW.status" in sql
     assert "condition_event.projection_revision" in sql
+
+
+def test_arb_cross_table_constraints_install_after_metadata_create():
+    from sqlalchemy import event
+    from app import db
+    from app.models.architecture_review_board import _install_arb_cycle_constraints
+
+    assert event.contains(db.metadata, "after_create", _install_arb_cycle_constraints)
 
 
 def test_reconcile_registers_condition_event_table():
@@ -155,3 +166,13 @@ def test_verify_uses_prior_submission_event_not_adjacent_evidence_revision():
     sql = _condition_event_final_sql('"public"')
     assert "submission_event.condition_revision=evidence.condition_revision + 1" in sql
     assert "submission_event.condition_revision<NEW.condition_revision" in sql
+
+
+def test_expiry_uses_immutable_waiver_event_and_cleared_final_projection():
+    from app.models.arb_condition_event import _condition_event_final_sql
+
+    sql = _condition_event_final_sql('"public"')
+    assert "waiver_event.event_type='waive'" in sql
+    assert "waiver_event.waiver_scope_json::jsonb ->> 'prior_status'=NEW.to_state" in sql
+    assert "condition.waiver_prior_status IS NULL" in sql
+    assert "condition.waiver_scope_json IS NULL" in sql
