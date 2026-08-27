@@ -353,7 +353,7 @@ def test_conditions_are_canonical_and_reject_duplicates_or_bad_dates():
             "blocks_execution": True,
         }
     ]
-    with pytest.raises(ValueError, match="unique and nonblank"):
+    with pytest.raises(ValueError, match="unique"):
         module.TypedARBDecisionService._canonical_conditions(
             [{"code": "SEC-1", "text": "A"}, {"code": "SEC-1", "text": "B"}]
         )
@@ -361,6 +361,19 @@ def test_conditions_are_canonical_and_reject_duplicates_or_bad_dates():
         module.TypedARBDecisionService._canonical_conditions(
             [{"code": "SEC-1", "text": "A", "due_date": "tomorrow"}]
         )
+    with pytest.raises(ValueError, match="control characters"):
+        module.TypedARBDecisionService._canonical_conditions(
+            [{"code": "SEC\n1", "text": "A"}]
+        )
+    with pytest.raises(ValueError, match="exceeds 80"):
+        module.TypedARBDecisionService._canonical_conditions(
+            [{"code": "X" * 81, "text": "A"}]
+        )
+    normalized = module.TypedARBDecisionService._canonical_conditions(
+        [{"code": " SEC   1 ", "text": "  Complete   review  "}]
+    )
+    assert normalized[0]["condition_number"] == "SEC 1"
+    assert normalized[0]["description"] == "Complete review"
 
 
 def test_handler_authority_mode_locks_server_user_row(monkeypatch):
@@ -383,7 +396,8 @@ def test_handler_authority_mode_locks_server_user_row(monkeypatch):
         "_load_cycle_and_review",
         classmethod(
             lambda cls, session, actor, cycle_id, for_update: (
-                SimpleNamespace(id=501), SimpleNamespace(submitter_id=99)
+                SimpleNamespace(id=501, subject_type="adr"),
+                SimpleNamespace(submitter_id=99),
             )
         ),
     )
@@ -398,3 +412,112 @@ def test_handler_authority_mode_locks_server_user_row(monkeypatch):
     )
 
     assert statements[0]._for_update_arg is not None
+
+
+@pytest.mark.parametrize("board_authorized", [True, False])
+def test_non_brief_board_member_authority_is_server_derived(
+    monkeypatch, board_authorized
+):
+    module = _decision_module()
+    user = SimpleNamespace(
+        id=73, is_org_admin=False, is_platform_admin=False, enterprise_role="viewer"
+    )
+    session = SimpleNamespace(
+        execute=lambda statement: SimpleNamespace(
+            scalar_one_or_none=lambda: user
+        )
+    )
+    cycle = SimpleNamespace(id=501, subject_type="adr")
+    review = SimpleNamespace(submitter_id=99, arb_session_id=601)
+    monkeypatch.setattr(
+        module.TypedARBDecisionService,
+        "_load_cycle_and_review",
+        classmethod(lambda cls, session, actor, cycle_id, for_update: (cycle, review)),
+    )
+    monkeypatch.setattr(
+        module.TypedARBDecisionService,
+        "_assert_cycle_review_projection_equal",
+        staticmethod(lambda cycle, review: None),
+    )
+    monkeypatch.setattr(
+        module.TypedARBDecisionService,
+        "_has_board_authority",
+        staticmethod(lambda session, actor, review, for_update: board_authorized),
+    )
+
+    if board_authorized:
+        module.TypedARBDecisionService.authorise_decision(session, _actor(), 501)
+    else:
+        with pytest.raises(NotAuthorised, match="not_authorised"):
+            module.TypedARBDecisionService.authorise_decision(session, _actor(), 501)
+
+
+@pytest.mark.parametrize("assigned", [True, False])
+def test_decision_brief_denies_unassigned_architect(monkeypatch, assigned):
+    module = _decision_module()
+    user = SimpleNamespace(
+        id=73, is_org_admin=False, is_platform_admin=False,
+        enterprise_role="enterprise_architect",
+    )
+    session = SimpleNamespace(
+        execute=lambda statement: SimpleNamespace(
+            scalar_one_or_none=lambda: user
+        )
+    )
+    cycle = SimpleNamespace(id=501, subject_type="decision_brief")
+    review = SimpleNamespace(submitter_id=99)
+    monkeypatch.setattr(
+        module.TypedARBDecisionService,
+        "_load_cycle_and_review",
+        classmethod(lambda cls, session, actor, cycle_id, for_update: (cycle, review)),
+    )
+    monkeypatch.setattr(
+        module.TypedARBDecisionService,
+        "_assert_cycle_review_projection_equal",
+        staticmethod(lambda cycle, review: None),
+    )
+    monkeypatch.setattr(
+        module.TypedARBDecisionService,
+        "_has_decision_brief_authority",
+        staticmethod(lambda session, actor, cycle, for_update: assigned),
+    )
+
+    if assigned:
+        module.TypedARBDecisionService.authorise_decision(session, _actor(), 501)
+    else:
+        with pytest.raises(NotAuthorised, match="not_authorised"):
+            module.TypedARBDecisionService.authorise_decision(session, _actor(), 501)
+
+
+def test_named_decision_authority_is_denied_after_canonical_authority_expires(
+    monkeypatch
+):
+    module = _decision_module()
+    results = iter(
+        (
+            SimpleNamespace(
+                scalar_one_or_none=lambda: SimpleNamespace(
+                    id=801, workstream_id=901, decision_authority_id=73
+                )
+            ),
+            SimpleNamespace(
+                scalar_one_or_none=lambda: SimpleNamespace(id=901, programme_id=1001)
+            ),
+            SimpleNamespace(first=lambda: None),
+        )
+    )
+    session = SimpleNamespace(execute=lambda statement: next(results))
+    monkeypatch.setattr(
+        module,
+        "_decision_brief_service",
+        lambda: SimpleNamespace(
+            _user_has_decision_authority=lambda *args, **kwargs: False
+        ),
+    )
+
+    assert module.TypedARBDecisionService._has_decision_brief_authority(
+        session,
+        _actor(),
+        SimpleNamespace(decision_brief_id=801),
+        for_update=True,
+    ) is False
