@@ -150,7 +150,7 @@ def _call(app, org, user, view, *args, json=None, headers=None):
     with app.test_request_context(
         "/", method="POST", json=json or {}, headers=headers or {}
     ):
-        g.current_org_id = org.id
+        g.current_org_id = getattr(org, "id", None) or org.organization_id
         login_user(user)
         response = inspect.unwrap(view)(*args)
     body, status = (
@@ -651,7 +651,7 @@ def test_escalation_service_will_not_type_a_solution_finding(app, db_session, ma
     org = make_org("typed-escalate")
     user = _make_user(db_session, org)
     with app.test_request_context("/", method="POST"):
-        g.current_org_id = org.id
+        g.current_org_id = getattr(org, "id", None) or org.organization_id
         login_user(user)
         result = ARBEscalationService.escalate(
             title="Drift detected",
@@ -663,3 +663,238 @@ def test_escalation_service_will_not_type_a_solution_finding(app, db_session, ma
         )
     assert result["success"] is False
     assert "canonical evidence-gated submission endpoint" in result["error"]
+
+
+# ----------------------- decision_brief ingress -------------------------- #
+#
+# These reuse the committed `decision_scope` chain (programme -> workstream ->
+# candidate -> options -> evidence -> brief), because a Decision Brief can only
+# be submitted once a real frozen version exists; there is nothing to stub.
+
+from tests.test_decision_brief_service import (  # noqa: E402
+    _assertions as _brief_assertions,
+    _freeze_brief,
+    _freeze_options,
+)
+from tests.test_transformation_evidence_service import (  # noqa: E402,F401
+    _record_named_source,
+    evidence_scope,
+)
+from tests.test_transformation_option_service import decision_scope  # noqa: E402,F401
+
+
+def _scope_user(scope):
+    from app import db
+    from app.models.user import User
+
+    return db.session.execute(
+        db.select(User).where(
+            User.id == scope.actor_id,
+            User.organization_id == scope.organization_id,
+        )
+    ).scalar_one()
+
+
+def _brief_cycle_count(scope):
+    from app import db
+    from app.models.architecture_review_board import ARBReviewCycle
+
+    db.session.remove()
+    return db.session.execute(
+        db.select(db.func.count(ARBReviewCycle.id)).where(
+            ARBReviewCycle.organization_id == scope.organization_id,
+            ARBReviewCycle.subject_type == "decision_brief",
+            ARBReviewCycle.subject_id == scope.brief_id,
+        )
+    ).scalar_one()
+
+
+def test_decision_brief_route_creates_one_cycle_and_replays(app, decision_scope):
+    from app import db
+    from app.models.transformation_programme import ProgrammeWorkstream
+    from app.modules.solutions_strategic.v2.routes import governance_api_routes
+
+    option_version_ids = _freeze_options(decision_scope)
+    _freeze_brief(
+        decision_scope,
+        option_version_ids,
+        assertions=_brief_assertions(decision_scope),
+        key=f"route-freeze-{uuid.uuid4().hex}",
+    )
+    user = _scope_user(decision_scope)
+    workstream = db.session.get(ProgrammeWorkstream, decision_scope.workstream_id)
+    expected_url = (
+        f"/solutions/programmes/{workstream.programme_id}/workstreams/"
+        f"{workstream.id}/decision"
+    )
+
+    view = governance_api_routes.submit_typed_subject_for_arb
+    key = f"brief-submit-{uuid.uuid4().hex}"
+    status, body = _call(
+        app, decision_scope, user, view,
+        "decision_brief", decision_scope.brief_id,
+        json={"human_reviewed": True},
+        headers={"Idempotency-Key": key},
+    )
+    assert status == 201, body
+    assert body["success"] is True
+    assert body["subject_type"] == "decision_brief"
+    assert body["subject_id"] == decision_scope.brief_id
+    assert body["canonical_url"] == expected_url
+    # Same envelope and aliases as the other typed subjects.
+    assert body["review_id"] == body["review_item_id"]
+    assert body["snapshot_id"] == body["evidence_id"]
+    assert body["redirect_url"] == f"/arb/reviews/{body['review_item_id']}"
+    assert body["review_number"]
+    assert _brief_cycle_count(decision_scope) == 1
+
+    replay_status, replay_body = _call(
+        app, decision_scope, user, view,
+        "decision_brief", decision_scope.brief_id,
+        json={"human_reviewed": True},
+        headers={"Idempotency-Key": key},
+    )
+    assert replay_status == 200, replay_body
+    assert replay_body["idempotent"] is True
+    assert replay_body["review_cycle_id"] == body["review_cycle_id"]
+    assert _brief_cycle_count(decision_scope) == 1
+
+
+def test_decision_brief_without_a_frozen_version_is_a_422_blocker(app, decision_scope):
+    """An unfrozen brief is a readiness blocker, not a missing record."""
+    from app.modules.solutions_strategic.v2.routes import governance_api_routes
+
+    user = _scope_user(decision_scope)
+    status, body = _call(
+        app, decision_scope, user,
+        governance_api_routes.submit_typed_subject_for_arb,
+        "decision_brief", decision_scope.brief_id,
+        json={"human_reviewed": True},
+    )
+    assert status == 422, body
+    assert body["reason_codes"] == ["decision_brief_version_not_frozen"]
+    assert body["missing_evidence"][0]["resource_type"] == "decision_brief"
+    assert body["request_id"]
+    assert _brief_cycle_count(decision_scope) == 0
+
+
+def test_cross_tenant_decision_brief_id_is_not_found_and_leaks_nothing(
+    app, decision_scope
+):
+    from app import db
+    from app.models.organization import Organization
+    from app.models.transformation_decision import DecisionBrief
+    from app.models.user import User
+    from app.modules.solutions_strategic.v2.routes import governance_api_routes
+
+    option_version_ids = _freeze_options(decision_scope)
+    _freeze_brief(
+        decision_scope,
+        option_version_ids,
+        assertions=_brief_assertions(decision_scope),
+        key=f"foreign-freeze-{uuid.uuid4().hex}",
+    )
+    suffix = uuid.uuid4().hex[:10]
+    other_org = Organization(name=f"Test brief-other {suffix}", slug=f"brief-{suffix}")
+    db.session.add(other_org)
+    db.session.flush()
+    intruder = User(
+        organization_id=other_org.id,
+        email=f"brief-intruder-{suffix}@example.test",
+        enterprise_role="enterprise_architect",
+        confirmed=True,
+    )
+    db.session.add(intruder)
+    db.session.commit()
+    other_org_id = other_org.id
+    brief_title = db.session.execute(
+        db.select(DecisionBrief.title).where(
+            DecisionBrief.id == decision_scope.brief_id,
+            DecisionBrief.organization_id == decision_scope.organization_id,
+        )
+    ).scalar_one()
+
+    try:
+        with app.test_request_context(
+            "/",
+            method="POST",
+            json={
+                "human_reviewed": True,
+                "organization_id": decision_scope.organization_id,
+            },
+        ):
+            g.current_org_id = other_org_id
+            login_user(intruder)
+            response = inspect.unwrap(
+                governance_api_routes.submit_typed_subject_for_arb
+            )("decision_brief", decision_scope.brief_id)
+        body, status = (
+            response
+            if isinstance(response, tuple)
+            else (response, response.status_code)
+        )
+        payload = body.get_json()
+        assert status == 404
+        assert payload["reason_codes"] == ["arb_subject_not_found"]
+        assert brief_title not in repr(payload)
+        assert _brief_cycle_count(decision_scope) == 0
+    finally:
+        db.session.remove()
+        with db.engine.begin() as connection:
+            connection.execute(
+                db.text("DELETE FROM users WHERE organization_id = :org"),
+                {"org": other_org_id},
+            )
+            connection.execute(
+                db.text("DELETE FROM organizations WHERE id = :org"),
+                {"org": other_org_id},
+            )
+
+
+# ------------------------- governance role sets --------------------------- #
+
+
+def test_submission_and_evidence_role_sets_are_distinct_and_pinned():
+    """Two different authorities, two different names, two pinned memberships.
+
+    These sets were both called ``_SUBMIT_ROLES``, which made two different
+    authorities look like one and turned a correct 403 into an apparent bug.
+    The membership difference is deliberate governance policy; this test makes
+    any change to either set explicit in review rather than silent.
+    """
+    from app.modules.transformation_room.arb_condition_evidence_service import (
+        _EVIDENCE_CAPTURE_ROLES,
+    )
+    from app.modules.transformation_room.arb_submission_service import (
+        _SUBJECT_SUBMIT_ROLES,
+    )
+
+    assert _SUBJECT_SUBMIT_ROLES == frozenset(
+        {
+            "chief_architect",
+            "enterprise_architect",
+            "solution_architect",
+            "application_architect",
+            "business_architect",
+            "data_architect",
+            "technology_architect",
+            "security_architect",
+            "architect",
+            "platform_admin",
+        }
+    )
+    assert _EVIDENCE_CAPTURE_ROLES == frozenset(
+        {
+            "chief_architect",
+            "enterprise_architect",
+            "solution_architect",
+            "architect",
+            "arb_member",
+        }
+    )
+    # The differences are the point: neither set may silently absorb the other.
+    assert "arb_member" in _EVIDENCE_CAPTURE_ROLES
+    assert "arb_member" not in _SUBJECT_SUBMIT_ROLES
+    assert "platform_admin" in _SUBJECT_SUBMIT_ROLES
+    assert "platform_admin" not in _EVIDENCE_CAPTURE_ROLES
+    assert _SUBJECT_SUBMIT_ROLES != _EVIDENCE_CAPTURE_ROLES

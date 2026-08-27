@@ -46,9 +46,9 @@ from app.modules.transformation_room.domain import (
 
 logger = logging.getLogger(__name__)
 
-#: Subjects this ingress may submit.  Solution keeps its own legacy boundary and
-#: Decision Brief is submitted from the workstream decision surface.
-SUPPORTED_SUBJECT_TYPES = frozenset({"adr", "architecture_model"})
+#: Subjects this ingress may submit.  Solution keeps its own legacy boundary in
+#: ``arb_submission_adapter`` because it must preserve a wider legacy envelope.
+SUPPORTED_SUBJECT_TYPES = frozenset({"adr", "architecture_model", "decision_brief"})
 
 _SAFE_CONFLICT_REASONS = frozenset(
     {
@@ -180,6 +180,11 @@ class TypedARBSubjectIngress:
                 request_id=request_id,
             )
 
+        if subject_type == "decision_brief":
+            precheck = cls._decision_brief_precheck(actor, subject_id)
+            if precheck is not None:
+                return precheck
+
         return cls.submit(
             actor=actor,
             command_key=command_key,
@@ -237,6 +242,62 @@ class TypedARBSubjectIngress:
             subject_id=response.get("subject_id") or subject_id,
             canonical_url=response.get("canonical_url"),
         )
+
+    @staticmethod
+    def _decision_brief_precheck(actor: ActorContext, brief_id: int):
+        """Separate "no such brief" (404) from "nothing frozen yet" (422).
+
+        The subject actually submitted for a Decision Brief is its latest
+        **frozen** ``DecisionBriefVersion``, never the mutable brief.  The
+        shared adapter raises NotFound for both a missing brief and a brief
+        with no version yet, which would tell an author who simply has not
+        frozen a version that their brief does not exist.  Resolving both rows
+        here with explicit ``(id, organization_id)`` predicates keeps the
+        cross-tenant answer at 404 while giving the author the real, stable
+        readiness blocker.  Returns ``None`` when the command may proceed.
+        """
+        from app.models.transformation_decision import (
+            DecisionBrief,
+            DecisionBriefVersion,
+        )
+
+        brief = db.session.execute(
+            db.select(DecisionBrief).where(
+                DecisionBrief.id == brief_id,
+                DecisionBrief.organization_id == actor.organization_id,
+            )
+        ).scalar_one_or_none()
+        if brief is None:
+            return TypedSubjectSubmissionResult(
+                False,
+                404,
+                ["arb_subject_not_found"],
+                request_id=actor.request_id,
+            )
+        frozen_version_id = db.session.execute(
+            db.select(DecisionBriefVersion.id)
+            .where(
+                DecisionBriefVersion.organization_id == actor.organization_id,
+                DecisionBriefVersion.brief_id == brief.id,
+                DecisionBriefVersion.workstream_id == brief.workstream_id,
+            )
+            .limit(1)
+        ).scalar_one_or_none()
+        if frozen_version_id is None:
+            return TypedSubjectSubmissionResult(
+                False,
+                422,
+                ["decision_brief_version_not_frozen"],
+                [
+                    {
+                        "code": "decision_brief_version_not_frozen",
+                        "resource_type": "decision_brief",
+                        "resource_id": brief.id,
+                    }
+                ],
+                request_id=actor.request_id,
+            )
+        return None
 
     # ── trusted input derivation ──────────────────────────────────────── #
 
