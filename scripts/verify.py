@@ -528,6 +528,37 @@ def gate_broken_surfaces(baseline: int) -> Result:
                   detail, count, baseline)
 
 
+def gate_reconcile_coverage() -> Result:
+    """Every typed-ARB / Transformation model table is reconcilable. ZERO.
+
+    `flask reconcile-schema` creates missing TABLES only for the hand-maintained
+    `_TRANSFORMATION_TABLES` tuple. A model added to this feature area and left
+    out of that tuple is a table the reconciler can never create: invisible on a
+    fresh database (create_all makes it), fatal on every long-lived one, where
+    the first query raises UndefinedTable, aborts the transaction and cascades
+    into InFailedSqlTransaction across the whole page.
+
+    It has happened four times (arb_submission_evidence_snapshots,
+    arb_waiver_expiry_checkpoints, workbench_artifact_evidence), which makes it
+    a class rather than a run of bad luck, and nothing else in this gate set can
+    see it: schema-drift compares the ORM to a database that create_all has
+    already populated, so it is green precisely where the deployment is broken.
+
+    Two rules, both required — see scripts/check_reconcile_coverage.py.
+    Ownership catches the omission; convergence catches a tuple that is complete
+    but unrunnable, because a listed table FKs to an unlisted feature table and
+    so raises UndefinedTable on every pass.
+    """
+    proc = _run([sys.executable, "scripts/check_reconcile_coverage.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("reconcile-coverage", FAIL,
+                      f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    detail = "" if count == 0 else "run scripts/check_reconcile_coverage.py to list them"
+    return Result("reconcile-coverage", PASS if count == 0 else FAIL, detail, count, 0)
+
+
 def gate_dynamic_link_prefixes(baseline: int) -> Result:
     """ARCH-043: concatenated href/fetch links whose literal prefix is dead. RATCHET.
 
@@ -1338,6 +1369,15 @@ def build_gates(baseline: dict) -> list[Gate]:
              remediation="run scripts/check_csrf_coverage.py; justify the exemption in "
                          "app/_bootstrap/csrf_coverage.py or remove it",
              tags=["static", "security", "runtime"]),
+        Gate("reconcile-coverage",
+             "every typed-ARB/Transformation model table is reconcilable on a live DB",
+             "zero", gate_reconcile_coverage,
+             remediation="run scripts/check_reconcile_coverage.py; add the table to "
+                         "_TRANSFORMATION_TABLES in app/commands/reconcile_schema.py, "
+                         "in dependency order (after anything it FKs to)",
+             # NOT "static". Walks db.metadata, so it boots the app - same
+             # reason as broken-surfaces. Belongs with boot-health.
+             tags=["boot", "db"]),
         Gate("schema-drift", "Live DB matches the ORM models", "command",
              gate_schema_drift, needs_db=True,
              remediation="run: flask --app manage reconcile-schema", tags=["runtime", "db"]),
