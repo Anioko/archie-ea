@@ -884,6 +884,16 @@ def test_legacy_condition_reconcile_is_real_and_idempotent(app, _schema):
                     review_cycle_id integer NOT NULL,
                     review_item_id integer NOT NULL
                 );
+                CREATE TABLE {quoted_schema}.arb_decision_events (
+                    id integer PRIMARY KEY,
+                    organization_id integer NOT NULL,
+                    review_cycle_id integer NOT NULL,
+                    review_item_id integer NOT NULL,
+                    outcome varchar(40) NOT NULL
+                );
+                CREATE TABLE {quoted_schema}.arb_condition_membership_audit (
+                    condition_id integer NOT NULL
+                );
                 CREATE TABLE {quoted_schema}.arb_canonical_conditions (
                     id integer PRIMARY KEY,
                     organization_id integer NOT NULL,
@@ -919,6 +929,12 @@ def test_legacy_condition_reconcile_is_real_and_idempotent(app, _schema):
                     id, organization_id, condition_id, decision_event_id,
                     review_cycle_id, review_item_id
                 ) VALUES (702, 1, 2, 12, 22, 32);
+                INSERT INTO {quoted_schema}.arb_decision_events (
+                    id, organization_id, review_cycle_id, review_item_id, outcome
+                ) VALUES
+                    (11, 1, 21, 31, 'approved_with_conditions'),
+                    (12, 1, 22, 32, 'approved_with_conditions'),
+                    (13, 1, 23, 33, 'approved_with_conditions');
                 INSERT INTO {quoted_schema}.arb_canonical_conditions (
                     id, organization_id, decision_event_id, review_cycle_id,
                     review_item_id, status, revision, fulfilled_at,
@@ -938,11 +954,39 @@ def test_legacy_condition_reconcile_is_real_and_idempotent(app, _schema):
                      TIMESTAMPTZ '2026-01-03 10:00:00+00', 104,
                      'Legacy waiver', TIMESTAMPTZ '2026-01-04 10:00:00+00',
                      'Legacy control');
+                CREATE OR REPLACE FUNCTION {quoted_schema}.validate_legacy_condition_membership()
+                RETURNS trigger LANGUAGE plpgsql AS $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1
+                        FROM {quoted_schema}.arb_decision_events AS decision
+                        WHERE decision.id=NEW.decision_event_id
+                          AND decision.outcome='approved_with_conditions'
+                          AND decision.review_cycle_id=NEW.review_cycle_id
+                          AND decision.review_item_id=NEW.review_item_id
+                          AND decision.organization_id=NEW.organization_id
+                    ) THEN
+                        RAISE EXCEPTION 'legacy ARB condition membership is invalid';
+                    END IF;
+                    INSERT INTO {quoted_schema}.arb_condition_membership_audit (condition_id)
+                    VALUES (NEW.id);
+                    RETURN NEW;
+                END $$;
+                CREATE CONSTRAINT TRIGGER trg_arb_condition_membership
+                AFTER UPDATE ON {quoted_schema}.arb_canonical_conditions
+                DEFERRABLE INITIALLY DEFERRED FOR EACH ROW
+                EXECUTE FUNCTION {quoted_schema}.validate_legacy_condition_membership();
             """)
 
         with engine.begin() as connection:
             connection.exec_driver_sql(_condition_reconcile_sql(quoted_schema))
             first = snapshot(connection)
+            membership_audit = connection.exec_driver_sql(f"""
+                SELECT condition_id, count(*)
+                FROM {quoted_schema}.arb_condition_membership_audit
+                GROUP BY condition_id
+                ORDER BY condition_id
+            """).fetchall()
             foreign_keys = connection.exec_driver_sql("""
                 SELECT constraint_row.conname, target.relname
                 FROM pg_constraint AS constraint_row
@@ -976,6 +1020,7 @@ def test_legacy_condition_reconcile_is_real_and_idempotent(app, _schema):
         assert first_by_id[3]["legacy_lifecycle_provenance"] == {
             "classification": "pre_c3_waiver"
         }
+        assert membership_audit == [(1, 3), (3, 1)]
         assert foreign_keys == [
             (
                 "fk_arb_condition_fulfilment_evidence",
@@ -990,7 +1035,17 @@ def test_legacy_condition_reconcile_is_real_and_idempotent(app, _schema):
         with engine.begin() as connection:
             connection.exec_driver_sql(_condition_reconcile_sql(quoted_schema))
             second = snapshot(connection)
+            second_membership_audit = connection.exec_driver_sql(f"""
+                SELECT condition_id, count(*)
+                FROM {quoted_schema}.arb_condition_membership_audit
+                GROUP BY condition_id
+                ORDER BY condition_id
+            """).fetchall()
         assert second == first
+        # Reconciliation is data-idempotent, though its defensive NULL reset
+        # deliberately updates the already-normalised legacy row and must still
+        # drain the long-lived deferred membership trigger before its DDL.
+        assert second_membership_audit == [(1, 4), (3, 1)]
     finally:
         with engine.begin() as connection:
             connection.exec_driver_sql(f"DROP SCHEMA IF EXISTS {quoted_schema} CASCADE")
