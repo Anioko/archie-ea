@@ -117,6 +117,7 @@ def _membership_sql(quoted_schema):
             WHERE cycle.id = NEW.review_cycle_id
               AND cycle.organization_id = NEW.organization_id
               AND review.organization_id = NEW.organization_id
+              AND review.submitter_id = NEW.actor_id
               AND cycle.subject_type = NEW.subject_type
               AND cycle.subject_id = NEW.subject_id
               AND review.subject_type = NEW.subject_type
@@ -136,7 +137,7 @@ def _membership_sql(quoted_schema):
               AND cycle.subject_evidence_snapshot_id IS NOT DISTINCT FROM NEW.subject_evidence_snapshot_id
               AND review.subject_evidence_snapshot_id IS NOT DISTINCT FROM NEW.subject_evidence_snapshot_id
         ) THEN
-            RAISE EXCEPTION 'ARB submission event membership disagrees with its cycle or review'
+            RAISE EXCEPTION 'ARB submission event membership or submitter/actor disagrees'
                 USING ERRCODE = '23514';
         END IF;
         IF NOT EXISTS (
@@ -148,14 +149,39 @@ def _membership_sql(quoted_schema):
                 USING ERRCODE = '23514';
         END IF;
         IF NOT EXISTS (
-            SELECT 1 FROM command_idempotency_records receipt
+            SELECT 1
+            FROM command_idempotency_records receipt
+            JOIN operation_results result
+              ON result.id = receipt.operation_result_id
+             AND result.receipt_id = receipt.id
             WHERE receipt.id = NEW.command_receipt_id
               AND receipt.organization_id = NEW.organization_id
               AND receipt.actor_id = NEW.actor_id
               AND receipt.operation = 'arb.submit'
+              AND receipt.natural_key =
+                  'arb-submission:' || NEW.organization_id::text || ':' ||
+                  NEW.subject_type || ':' || NEW.subject_id::text
+              AND receipt.status = 'succeeded'
+              AND receipt.operation_result_id IS NOT NULL
+              AND receipt.completed_at IS NOT NULL
               AND receipt.lease_generation = NEW.command_generation
+              AND result.organization_id = NEW.organization_id
+              AND result.actor_id = NEW.actor_id
+              AND result.operation = receipt.operation
+              AND result.natural_key = receipt.natural_key
+              AND result.request_digest = receipt.request_digest
+              AND result.receipt_generation = NEW.command_generation
+              AND result.object_ids::jsonb @> jsonb_build_object(
+                  'review_cycle_id', NEW.review_cycle_id,
+                  'review_item_id', NEW.review_item_id,
+                  'evidence_id', COALESCE(
+                      NEW.decision_brief_version_id,
+                      NEW.solution_evidence_snapshot_id,
+                      NEW.subject_evidence_snapshot_id
+                  )
+              )
         ) THEN
-            RAISE EXCEPTION 'ARB submission event receipt generation is not current'
+            RAISE EXCEPTION 'ARB submission event receipt/result provenance is invalid'
                 USING ERRCODE = '23514';
         END IF;
         RETURN NEW;
