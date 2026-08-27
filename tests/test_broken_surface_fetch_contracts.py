@@ -57,10 +57,19 @@ def test_governance_bulk_delete_rejects_non_2xx_before_reading_json():
     bulk_delete = source.split("executeBulkDelete: function", 1)[1]
     normalized = " ".join(bulk_delete.split())
 
-    assert (
-        ".then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); "
-        "return r.json(); })"
-    ) in normalized
+    # The delete now goes through Platform.fetch, which RAISES on any non-2xx, so
+    # the explicit `if (!r.ok) throw` is gone. The contract is unchanged and is
+    # what this asserts: a non-2xx must reach the failure counter, never the
+    # success path, even when the error body happens to be valid JSON.
+    assert "Platform.fetch.delete(" in normalized, (
+        "the delete must use the wrapper that throws on non-2xx"
+    )
+    assert ".catch(function () { failures++; })" in normalized, (
+        "a thrown non-2xx must be counted as a failed deletion"
+    )
+    assert "failures === 0" in normalized and "Capabilities deleted." in normalized, (
+        "success may only be reported when nothing failed"
+    )
 
 
 def test_element_groups_api_requires_authentication(app):

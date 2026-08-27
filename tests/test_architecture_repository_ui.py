@@ -47,9 +47,18 @@ def _dashboard_context(client, query: str = "") -> dict:
 
 
 def _template() -> str:
-    dashboard = TEMPLATE_PATH.read_text(encoding="utf-8")
-    persistent_panels = dashboard.split("<!-- Health panel slide-out -->", 1)[1]
-    return WORKSPACE_PATH.read_text(encoding="utf-8") + "\n" + persistent_panels
+    """The repository screen as a user meets it: the page plus its workspace partial.
+
+    The header used to live inside _repository_workspace.html; it now sits in
+    dashboard.html so the page owns its own header like every other screen, and it
+    renders through the page_shell() macro rather than a literal <h1>. So the whole
+    dashboard is included here, not just the trailing panel region.
+    """
+    return (
+        TEMPLATE_PATH.read_text(encoding="utf-8")
+        + "\n"
+        + WORKSPACE_PATH.read_text(encoding="utf-8")
+    )
 
 
 def _script() -> str:
@@ -66,9 +75,12 @@ def test_motivation_route_selects_layer_specific_repository_heading(client):
     assert "Goals, drivers, requirements and constraints" in context["selected_layer"]["description"]
 
     template = _template()
-    assert template.count("<h1") == 1
-    assert "{{ selected_layer.title }}" in template
-    assert template.count('aria-label="Breadcrumb"') == 1
+    # The heading now renders through page_shell(), so there is no literal <h1>
+    # in the source. What this test guards is unchanged: exactly ONE heading
+    # source, fed by the selected layer, with no competing hard-coded title.
+    assert template.count("<h1") == 0, "the heading must come from page_shell, not a literal <h1>"
+    assert template.count("page_shell(") == 1
+    assert "title=selected_layer.title" in "".join(template.split())
     assert "Architecture Elements</h1>" not in template
     assert "{% block breadcrumb %}" not in template
 
