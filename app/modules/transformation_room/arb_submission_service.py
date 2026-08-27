@@ -15,6 +15,11 @@ from sqlalchemy import select, text
 from app import db
 from app.models.architecture_review_board import ARBReviewCycle, ARBReviewItem
 from app.models.arb_submission_event import ARBSubmissionEvent
+from app.models.transformation_execution import (
+    CommandIdempotencyRecord,
+    CommandMaterialisation,
+    OperationResult,
+)
 from app.models.user import User
 from app.modules.transformation_room.command_service import CommandService
 from app.modules.transformation_room.domain import (
@@ -135,16 +140,27 @@ class TypedARBSubmissionService:
         subject = adapter.load(actor, subject_id)
         cls._validate_loaded_subject(actor, subject, subject_type, subject_id)
         cls.authorise_submit(db.session, actor, subject_type, subject_id)
-        claimed_anchor = cls._submission_anchor(
-            db.session,
-            actor.organization_id,
-            subject_type,
-            subject_id,
+        existing_receipt = cls._existing_command_receipt(
+            db.session, actor, command_key
         )
-        natural_key = (
+        natural_key_prefix = (
             f"arb-submission:{actor.organization_id}:{subject_type}:{subject_id}"
-            f":after:{claimed_anchor}"
+            ":after:"
         )
+        if existing_receipt is not None:
+            natural_key = existing_receipt.natural_key
+            if not natural_key.startswith(natural_key_prefix):
+                raise CommandConflict("arb_submission_command_mismatch")
+            claimed_anchor = natural_key.removeprefix(natural_key_prefix)
+        else:
+            claimed_anchor = cls._submission_anchor(
+                db.session,
+                actor.organization_id,
+                subject_type,
+                subject_id,
+                subject.logical_version_id,
+            )
+            natural_key = f"{natural_key_prefix}{claimed_anchor}"
         payload = {
             "subject_type": subject_type,
             "subject_id": subject_id,
@@ -164,13 +180,23 @@ class TypedARBSubmissionService:
             cls._validate_loaded_subject(
                 runtime_actor, current, subject_type, subject_id
             )
-            if cls._submission_anchor(
+            current_anchor = cls._submission_anchor(
                 session,
                 runtime_actor.organization_id,
                 subject_type,
                 subject_id,
-            ) != claimed_anchor:
-                raise CommandConflict("arb_submission_anchor_changed")
+                current.logical_version_id,
+            )
+            if str(current_anchor) != str(claimed_anchor):
+                if existing_receipt is None or not cls._receipt_proves_submission(
+                    session,
+                    existing_receipt.id,
+                    runtime_actor,
+                    subject_type,
+                    subject_id,
+                    natural_key,
+                ):
+                    raise CommandConflict("arb_submission_anchor_changed")
 
         return CommandService.execute(
             actor=actor,
@@ -261,8 +287,9 @@ class TypedARBSubmissionService:
             actor.organization_id,
             subject.subject_type,
             subject.subject_id,
+            subject.logical_version_id,
         )
-        if current_anchor != claimed_anchor:
+        if str(current_anchor) != str(claimed_anchor):
             raise CommandConflict("arb_submission_anchor_changed")
         with _adapter_session(session):
             # Adapter.snapshot performs the subject-specific FOR UPDATE and then
@@ -313,7 +340,12 @@ class TypedARBSubmissionService:
 
     @classmethod
     def _submission_anchor(
-        cls, session, organization_id, subject_type, subject_id
+        cls,
+        session,
+        organization_id,
+        subject_type,
+        subject_id,
+        logical_version_id=None,
     ):
         latest = session.execute(
             select(ARBReviewCycle)
@@ -332,7 +364,80 @@ class TypedARBSubmissionService:
             return "root"
         if latest.closed_at is None:
             return latest.predecessor_cycle_id or "root"
+        if (
+            subject_type == "decision_brief"
+            and latest.decision_brief_version_id == logical_version_id
+        ):
+            return latest.predecessor_cycle_id or "root"
         return latest.id
+
+    @classmethod
+    def _existing_command_receipt(cls, session, actor, command_key):
+        return session.execute(
+            select(CommandIdempotencyRecord).where(
+                CommandIdempotencyRecord.organization_id == actor.organization_id,
+                CommandIdempotencyRecord.actor_id == actor.user_id,
+                CommandIdempotencyRecord.operation == cls.OPERATION,
+                CommandIdempotencyRecord.idempotency_key == command_key,
+            )
+        ).scalar_one_or_none()
+
+    @classmethod
+    def _receipt_proves_submission(
+        cls,
+        session,
+        receipt_id,
+        actor,
+        subject_type,
+        subject_id,
+        natural_key,
+    ):
+        receipt = session.execute(
+            select(CommandIdempotencyRecord).where(
+                CommandIdempotencyRecord.id == receipt_id,
+                CommandIdempotencyRecord.organization_id == actor.organization_id,
+                CommandIdempotencyRecord.actor_id == actor.user_id,
+                CommandIdempotencyRecord.operation == cls.OPERATION,
+                CommandIdempotencyRecord.natural_key == natural_key,
+                CommandIdempotencyRecord.status == "succeeded",
+                CommandIdempotencyRecord.completed_at.is_not(None),
+                CommandIdempotencyRecord.operation_result_id.is_not(None),
+            )
+        ).scalar_one_or_none()
+        if receipt is None:
+            return False
+        result = session.execute(
+            select(OperationResult).where(
+                OperationResult.id == receipt.operation_result_id,
+                OperationResult.organization_id == actor.organization_id,
+                OperationResult.receipt_id == receipt.id,
+                OperationResult.operation == cls.OPERATION,
+                OperationResult.natural_key == natural_key,
+            )
+        ).scalar_one_or_none()
+        materialisation = session.execute(
+            select(CommandMaterialisation).where(
+                CommandMaterialisation.organization_id == actor.organization_id,
+                CommandMaterialisation.receipt_id == receipt.id,
+                CommandMaterialisation.operation == cls.OPERATION,
+                CommandMaterialisation.natural_key == natural_key,
+            )
+        ).scalar_one_or_none()
+        if result is None or materialisation is None:
+            return False
+        if result.object_ids != materialisation.object_ids:
+            return False
+        cycle_id = result.object_ids.get("review_cycle_id")
+        if not isinstance(cycle_id, int):
+            return False
+        return session.execute(
+            select(ARBReviewCycle.id).where(
+                ARBReviewCycle.id == cycle_id,
+                ARBReviewCycle.organization_id == actor.organization_id,
+                ARBReviewCycle.subject_type == subject_type,
+                ARBReviewCycle.subject_id == subject_id,
+            )
+        ).scalar_one_or_none() is not None
 
     @classmethod
     def _lock_subject_submission(cls, session, actor, subject):
@@ -383,6 +488,12 @@ class TypedARBSubmissionService:
         if history and history[0].closed_at is None:
             raise CommandConflict("arb_subject_already_has_open_cycle")
         predecessor = history[0] if history else None
+        if (
+            predecessor is not None
+            and subject.subject_type == "decision_brief"
+            and predecessor.decision_brief_version_id == subject.logical_version_id
+        ):
+            raise CommandConflict("arb_decision_brief_version_already_reviewed")
         cycle_number = predecessor.cycle_number + 1 if predecessor else 1
         now = CommandService._database_now(session)
         review_number = f"REV-{now:%Y}-{uuid.uuid4().hex[:12].upper()}"
