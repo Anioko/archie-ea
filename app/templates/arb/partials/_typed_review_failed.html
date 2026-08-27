@@ -1,0 +1,32 @@
+{#
+  `state == "failed"` — the read boundary could not assemble this review.
+
+  Nothing is shown that could be mistaken for data: no zero counts, no partial
+  dossier, no live-subject fallback and no mutation control. The read model
+  returns command_keys == {} and all-False actions for this state, and the
+  route returns 503 for a full-page failure.
+
+  Renders no page header, breadcrumb or <h1>.
+
+  Context: review, request_id (optional).
+#}
+{% from 'components/alert.html' import alert as alert_box, alert_title, alert_description %}
+
+{% call alert_box(variant='destructive', icon='triangle-alert', class='mb-6') %}
+    {% call alert_title() %}This review could not be read. Retry.{% endcall %}
+    {% call alert_description() %}
+        <p>No review detail is shown, because none could be read. No governance action was taken.</p>
+        {% if review.reason %}
+        <p class="mt-2 break-all font-mono text-xs">Reason: {{ review.reason }}</p>
+        {% endif %}
+        {% if request_id %}
+        <p class="mt-1 break-all font-mono text-xs">Request ID: {{ request_id }}</p>
+        {% endif %}
+        <p class="mt-3">
+            <a href="{{ url_for('arb.dashboard') }}"
+               class="inline-flex h-9 items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                Back to the ARB queue
+            </a>
+        </p>
+    {% endcall %}
+{% endcall %}

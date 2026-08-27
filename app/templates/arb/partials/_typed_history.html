@@ -1,0 +1,68 @@
+{#
+  Decision and provenance history (blueprint section 10).
+
+  One chronological ledger assembled by the read model from persisted typed
+  events only — submission, decision and condition events. Oldest first, so the
+  causal chain reads naturally. No mutable ARBAuditLog inference replaces these
+  rows, and nothing here is derived or estimated.
+
+  Context: review.
+#}
+{% from 'arb/partials/_typed_macros.html' import dash, ts %}
+{% from 'components/card.html' import card, card_header, card_title, card_content %}
+{% from 'components/empty_state.html' import empty_state %}
+
+{% set _history = review.history or [] %}
+
+<section id="history" aria-labelledby="history-heading" class="mb-6">
+{% call card() %}
+    {% call card_header() %}
+        {% call card_title(class='text-lg') %}
+            <span id="history-heading">Decision and provenance history</span>
+        {% endcall %}
+    {% endcall %}
+    {% call card_content(class='p-0') %}
+    {% if _history %}
+    <ol class="divide-y divide-border" role="list">
+        {% for entry in _history %}
+        <li class="p-4 sm:px-6">
+            <div class="flex flex-wrap items-baseline justify-between gap-2">
+                <p class="text-sm font-medium text-foreground">
+                    {{ dash(entry.event_type) }}
+                    <span class="ml-1 text-xs font-normal text-muted-foreground">({{ dash(entry.kind) }})</span>
+                </p>
+                <p class="text-xs text-muted-foreground">{{ ts(entry.recorded_at) }}</p>
+            </div>
+            <p class="mt-1 text-sm text-muted-foreground">
+                {{ dash(entry.from_state) }} &rarr; {{ dash(entry.to_state) }}
+                &#183; {{ dash(entry.actor_display) }}
+            </p>
+            {% if entry.rationale %}
+            <p class="mt-2 whitespace-pre-wrap break-words text-sm text-foreground">{{ entry.rationale }}</p>
+            {% endif %}
+            {% if entry.object_ids %}
+            <details class="mt-2">
+                <summary class="cursor-pointer text-xs text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Technical provenance</summary>
+                <dl class="mt-1 space-y-1">
+                    {% for key, value in entry.object_ids.items() %}
+                    <div class="flex flex-wrap gap-x-2">
+                        <dt class="text-xs text-muted-foreground">{{ key | replace('_', ' ') }}</dt>
+                        <dd class="min-w-0 break-all font-mono text-xs text-foreground">{{ dash(value) }}</dd>
+                    </div>
+                    {% endfor %}
+                </dl>
+            </details>
+            {% endif %}
+        </li>
+        {% endfor %}
+    </ol>
+    {% else %}
+    {{ empty_state(
+        icon='history',
+        title='No recorded events yet.',
+        description='Submission, decision and condition events appear here as they are recorded.'
+    ) }}
+    {% endif %}
+    {% endcall %}
+{% endcall %}
+</section>
