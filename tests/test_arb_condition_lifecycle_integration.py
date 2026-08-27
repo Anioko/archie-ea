@@ -28,25 +28,38 @@ def db_session(app, _schema):
                 raw = db.engine.raw_connection()
                 try:
                     with raw.cursor() as cursor:
+                        cursor.execute("SHOW session_replication_role")
+                        original_role = cursor.fetchone()[0]
                         cursor.execute("SET session_replication_role = replica")
-                        for table in (
-                            "arb_condition_events", "arb_canonical_conditions",
-                            "arb_condition_evidence_records", "arb_decision_events",
-                            "arb_submission_events", "operation_results",
-                            "command_materialisations", "command_idempotency_records",
-                            "arb_review_items", "arb_review_cycles",
-                            "arb_subject_evidence_snapshots",
-                            "architecture_decision_records", "users",
-                        ):
+                        try:
+                            for table in (
+                                "arb_condition_events", "arb_canonical_conditions",
+                                "arb_condition_evidence_records", "arb_decision_events",
+                                "arb_submission_events", "operation_results",
+                                "command_materialisations", "command_idempotency_records",
+                                "arb_review_items", "arb_review_cycles",
+                                "arb_subject_evidence_snapshots",
+                                "architecture_decision_records", "users",
+                            ):
+                                cursor.execute(
+                                    f'DELETE FROM "{table}" WHERE organization_id = ANY(%s)',
+                                    (list(organization_ids),),
+                                )
                             cursor.execute(
-                                f'DELETE FROM "{table}" WHERE organization_id = ANY(%s)',
+                                "DELETE FROM organizations WHERE id = ANY(%s)",
                                 (list(organization_ids),),
                             )
+                        except Exception:
+                            raw.rollback()
+                            cursor.execute(
+                                f"SET session_replication_role = {original_role}"
+                            )
+                            raw.commit()
+                            raise
                         cursor.execute(
-                            "DELETE FROM organizations WHERE id = ANY(%s)",
-                            (list(organization_ids),),
+                            f"SET session_replication_role = {original_role}"
                         )
-                    raw.commit()
+                        raw.commit()
                 finally:
                     raw.close()
 
@@ -128,6 +141,7 @@ def test_submit_verify_and_projection_commit_under_real_guards(
     submission = TypedARBSubmissionService.submit(
         actor=submitter_actor, command_key=f"submit-{suffix}",
         subject_type="adr", subject_id=adr.id,
+        assertions={"human_reviewed": True},
     )
     decision = TypedARBDecisionService.decide(
         actor=verifier_actor, command_key=f"decision-{suffix}",
@@ -204,10 +218,10 @@ def test_submit_verify_and_projection_commit_under_real_guards(
     assert cycle.status == "approved"
     assert cycle.terminal_outcome == "approved_with_conditions"
 
-    app.config.update(
-        ARB_CONDITION_EXPIRY_PRINCIPAL_ID=verifier.id,
-        ARB_CONDITION_EXPIRY_ORGANIZATION_ID=org.id,
-        ARB_CONDITION_EXPIRY_CAPABILITY="c3-expiry-capability",
+    monkeypatch.setitem(app.config, "ARB_CONDITION_EXPIRY_PRINCIPAL_ID", verifier.id)
+    monkeypatch.setitem(app.config, "ARB_CONDITION_EXPIRY_ORGANIZATION_ID", org.id)
+    monkeypatch.setitem(
+        app.config, "ARB_CONDITION_EXPIRY_CAPABILITY", "c3-expiry-capability"
     )
     monkeypatch.setattr(
         CommandService, "_database_now",
