@@ -12,9 +12,10 @@ from sqlalchemy.orm import Session
 from app import db
 from app.models.adr import ArchitectureDecisionRecord
 from app.models.architecture_review_board import ARBReviewCycle, ARBReviewItem
+from app.models.arb_submission_event import ARBSubmissionEvent
 from app.models.transformation_db_guards import ensure_transformation_db_guards
 from app.models.transformation_decision import ARBSubjectEvidenceSnapshot
-from app.models.transformation_execution import OperationResult
+from app.models.transformation_execution import CommandIdempotencyRecord, OperationResult
 from app.models.organization import Organization
 from app.models.arb_submission_evidence import (
     ARBSubmissionEvidenceSnapshot,
@@ -33,7 +34,7 @@ from app.models.user import User
 from app.modules.transformation_room.arb_submission_service import (
     TypedARBSubmissionService,
 )
-from app.modules.transformation_room.domain import ActorContext, NotFound
+from app.modules.transformation_room.domain import ActorContext, NotAuthorised, NotFound
 
 
 @dataclass(frozen=True)
@@ -126,6 +127,7 @@ def adr_scope(app, _schema):
             with db.engine.begin() as connection:
                 connection.exec_driver_sql("SET LOCAL session_replication_role = replica")
                 for table_name in (
+                    "arb_submission_events",
                     "transformation_outbox_events",
                     "operation_results",
                     "command_materialisations",
@@ -252,6 +254,7 @@ def solution_scope(app, _schema):
             with db.engine.begin() as connection:
                 connection.exec_driver_sql("SET LOCAL session_replication_role = replica")
                 for table_name in (
+                    "arb_submission_events",
                     "transformation_outbox_events",
                     "operation_results",
                     "command_materialisations",
@@ -325,6 +328,11 @@ def _counts(scope):
                     OperationResult.operation == "arb.submit",
                 )
             ),
+            "events": session.scalar(
+                select(db.func.count())
+                .select_from(ARBSubmissionEvent)
+                .where(ARBSubmissionEvent.organization_id == scope.organization_id)
+            ),
         }
 
 
@@ -341,6 +349,7 @@ def test_real_adr_submission_is_atomic_and_same_key_replay_is_stable(app, adr_sc
         "cycles": 1,
         "items": 1,
         "results": 1,
+        "events": 1,
     }
     with Session(db.engine) as session:
         cycle = session.get(ARBReviewCycle, first.object_ids["review_cycle_id"])
@@ -353,6 +362,22 @@ def test_real_adr_submission_is_atomic_and_same_key_replay_is_stable(app, adr_sc
         assert item.subject_evidence_snapshot_id == snapshot.id
         assert cycle.review_number == item.review_number
         assert snapshot.content_hash == snapshot.recompute_content_hash()
+        submission_event = session.execute(
+            select(ARBSubmissionEvent).where(
+                ARBSubmissionEvent.review_cycle_id == cycle.id
+            )
+        ).scalar_one()
+        receipt = session.get(
+            CommandIdempotencyRecord, submission_event.command_receipt_id
+        )
+        assert submission_event.review_item_id == item.id
+        assert submission_event.subject_type == "adr"
+        assert submission_event.subject_id == submission_event.adr_id == adr_scope.adr_id
+        assert submission_event.subject_evidence_snapshot_id == snapshot.id
+        assert submission_event.actor_id == adr_scope.user_id
+        assert submission_event.event_type == "submitted"
+        assert submission_event.command_generation == receipt.lease_generation
+        assert receipt.operation == "arb.submit"
 
 
 def test_real_solution_submission_pins_legacy_evidence_into_typed_graph(
@@ -391,6 +416,16 @@ def test_real_solution_submission_pins_legacy_evidence_into_typed_graph(
         assert item.solution_evidence_snapshot_id == snapshot.id
         assert item.review_cycle_id == cycle.id
         assert snapshot.review_item_id == item.id
+        submission_event = session.execute(
+            select(ARBSubmissionEvent).where(
+                ARBSubmissionEvent.review_cycle_id == cycle.id
+            )
+        ).scalar_one()
+        assert submission_event.review_item_id == item.id
+        assert submission_event.solution_id == solution_scope.solution_id
+        assert submission_event.solution_evidence_snapshot_id == snapshot.id
+        assert submission_event.actor_id == solution_scope.actor.user_id
+        assert submission_event.event_type == "submitted"
         assert session.scalar(
             select(db.func.count())
             .select_from(ARBSubmissionEvidenceSnapshot)
@@ -430,6 +465,7 @@ def test_different_command_key_reconciles_to_the_same_open_cycle(app, adr_scope)
         "cycles": 1,
         "items": 1,
         "results": 1,
+        "events": 1,
     }
 
 
@@ -448,6 +484,61 @@ def test_cross_tenant_subject_is_uniform_not_found_and_creates_no_receipt(app, a
         "cycles": 0,
         "items": 0,
         "results": 0,
+        "events": 0,
+    }
+
+
+def test_same_tenant_non_architect_cannot_submit_even_with_forged_actor_roles(
+    app, adr_scope
+):
+    with app.app_context():
+        user = db.session.get(User, adr_scope.user_id)
+        user.enterprise_role = "viewer"
+        user.is_org_admin = False
+        user.is_platform_admin = False
+        db.session.commit()
+        forged = ActorContext(
+            user.id,
+            adr_scope.organization_id,
+            frozenset({"enterprise_architect", "platform_admin"}),
+            "forged-submit-role",
+        )
+        with pytest.raises(NotAuthorised, match="arb_submission_not_authorised"):
+            TypedARBSubmissionService.submit(
+                actor=forged,
+                command_key="unauthorised-command",
+                subject_type="adr",
+                subject_id=adr_scope.adr_id,
+                assertions={"human_reviewed": True},
+            )
+
+    assert _counts(adr_scope) == {
+        "snapshots": 0,
+        "cycles": 0,
+        "items": 0,
+        "results": 0,
+        "events": 0,
+    }
+
+
+def test_replay_revalidates_authority_after_role_revocation(app, adr_scope):
+    with app.app_context():
+        first = _submit(adr_scope, "revoked-replay")
+        user = db.session.get(User, adr_scope.user_id)
+        user.enterprise_role = "viewer"
+        user.is_org_admin = False
+        user.is_platform_admin = False
+        db.session.commit()
+        with pytest.raises(NotAuthorised, match="arb_submission_not_authorised"):
+            _submit(adr_scope, "revoked-replay")
+
+    assert first.created is True
+    assert _counts(adr_scope) == {
+        "snapshots": 1,
+        "cycles": 1,
+        "items": 1,
+        "results": 1,
+        "events": 1,
     }
 
 
@@ -469,4 +560,27 @@ def test_review_item_insert_failure_rolls_back_snapshot_cycle_and_result(app, ad
         "cycles": 0,
         "items": 0,
         "results": 0,
+        "events": 0,
+    }
+
+
+def test_submission_event_insert_failure_rolls_back_entire_graph(app, adr_scope):
+    def fail_event_insert(_mapper, _connection, _target):
+        raise RuntimeError("forced typed ARB event insert failure")
+
+    event.listen(ARBSubmissionEvent, "before_insert", fail_event_insert)
+    try:
+        with app.app_context(), pytest.raises(
+            RuntimeError, match="forced typed ARB event insert failure"
+        ):
+            _submit(adr_scope, "forced-event-rollback")
+    finally:
+        event.remove(ARBSubmissionEvent, "before_insert", fail_event_insert)
+
+    assert _counts(adr_scope) == {
+        "snapshots": 0,
+        "cycles": 0,
+        "items": 0,
+        "results": 0,
+        "events": 0,
     }

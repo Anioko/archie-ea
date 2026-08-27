@@ -14,6 +14,8 @@ from sqlalchemy import select, text
 
 from app import db
 from app.models.architecture_review_board import ARBReviewCycle, ARBReviewItem
+from app.models.arb_submission_event import ARBSubmissionEvent
+from app.models.user import User
 from app.modules.transformation_room.command_service import CommandService
 from app.modules.transformation_room.domain import (
     ActorContext,
@@ -40,6 +42,20 @@ _EVIDENCE_COLUMNS = {
     ),
     "adr": ("subject_evidence_snapshot_id", "arb_subject_evidence_snapshot"),
 }
+_SUBMIT_ROLES = frozenset(
+    {
+        "chief_architect",
+        "enterprise_architect",
+        "solution_architect",
+        "application_architect",
+        "business_architect",
+        "data_architect",
+        "technology_architect",
+        "security_architect",
+        "architect",
+        "platform_admin",
+    }
+)
 
 
 def get_arb_subject_adapter(subject_type):
@@ -118,6 +134,7 @@ class TypedARBSubmissionService:
         # malformed identity. The authorizer repeats this check for every replay.
         subject = adapter.load(actor, subject_id)
         cls._validate_loaded_subject(actor, subject, subject_type, subject_id)
+        cls.authorise_submit(db.session, actor, subject_type, subject_id)
         natural_key = (
             f"arb-submission:{actor.organization_id}:{subject_type}:{subject_id}"
         )
@@ -132,6 +149,9 @@ class TypedARBSubmissionService:
                 raise NotAuthorised("arb_submission_command_mismatch")
             if runtime_actor.organization_id != actor.organization_id:
                 raise NotAuthorised("arb_submission_actor_mismatch")
+            cls.authorise_submit(
+                session, runtime_actor, subject_type, subject_id
+            )
             with _adapter_session(session):
                 current = adapter.load(runtime_actor, subject_id)
             cls._validate_loaded_subject(
@@ -157,6 +177,37 @@ class TypedARBSubmissionService:
         )
 
     @classmethod
+    def authorise_submit(cls, session, actor, subject_type, subject_id):
+        """Authorize from current server rows, never caller-supplied role claims."""
+        user = session.execute(
+            select(User).where(
+                User.id == actor.user_id,
+                User.organization_id == actor.organization_id,
+            )
+        ).scalar_one_or_none()
+        if user is None:
+            raise NotAuthorised("arb_submission_not_authorised")
+        if user.is_org_admin or user.is_platform_admin or user.enterprise_role in _SUBMIT_ROLES:
+            return
+        if subject_type == "solution":
+            from app.models.solution_models import Solution
+            from app.modules.solutions_strategic.v2.services.arb_submission_service import (
+                ARBSubmissionService,
+            )
+
+            solution = session.execute(
+                select(Solution).where(
+                    Solution.id == subject_id,
+                    Solution.organization_id == actor.organization_id,
+                )
+            ).scalar_one_or_none()
+            if solution is not None and ARBSubmissionService._actor_can_access(
+                user, solution
+            ):
+                return
+        raise NotAuthorised("arb_submission_not_authorised")
+
+    @classmethod
     def submit_legacy_solution(
         cls,
         *,
@@ -179,7 +230,6 @@ class TypedARBSubmissionService:
 
     @classmethod
     def _submit_locked(cls, *, session, actor, subject, adapter, assertions, claim):
-        del claim  # fencing is enforced by the session before the first write
         cls._lock_subject_submission(session, actor, subject)
         with _adapter_session(session):
             # Adapter.snapshot performs the subject-specific FOR UPDATE and then
@@ -209,6 +259,7 @@ class TypedARBSubmissionService:
                 adapter=adapter,
                 pinned_evidence=pinned,
                 review_item_id=review_item_id,
+                claim=claim,
             )
 
     @staticmethod
@@ -244,7 +295,15 @@ class TypedARBSubmissionService:
 
     @classmethod
     def _insert_submission_graph(
-        cls, *, session, actor, subject, adapter, pinned_evidence, review_item_id=None
+        cls,
+        *,
+        session,
+        actor,
+        subject,
+        adapter,
+        pinned_evidence,
+        review_item_id=None,
+        claim,
     ) -> DomainMutationResult:
         subject_column = _SUBJECT_COLUMNS[subject.subject_type]
         evidence_column, expected_evidence_type = _EVIDENCE_COLUMNS[
@@ -302,6 +361,18 @@ class TypedARBSubmissionService:
             submitted_at=now.astimezone(timezone.utc).replace(tzinfo=None),
         )
         session.add(review)
+        session.flush()
+        session.add(
+            ARBSubmissionEvent(
+                **typed_values,
+                review_cycle_id=cycle.id,
+                review_item_id=review.id,
+                event_type="submitted",
+                actor_id=actor.user_id,
+                command_receipt_id=claim.receipt_id,
+                command_generation=claim.generation,
+            )
+        )
         session.flush()
         response = {
             "review_cycle_id": cycle.id,

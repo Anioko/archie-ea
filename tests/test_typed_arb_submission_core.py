@@ -32,6 +32,16 @@ SUBJECT_CASES = (
 )
 
 
+@pytest.fixture(autouse=True)
+def _isolate_command_boundary_from_database_authority(monkeypatch):
+    module = _submission_module()
+    monkeypatch.setattr(
+        module.TypedARBSubmissionService,
+        "authorise_submit",
+        classmethod(lambda cls, session, actor, subject_type, subject_id: None),
+    )
+
+
 def _submission_module():
     try:
         return importlib.import_module(
