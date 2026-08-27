@@ -342,7 +342,15 @@ _ADMIN_LINKS = [
     _link("Users", "admin.registered_users", "users"),
     _link("Organizations", "admin.organizations_list", "building-2"),
     _link("API Settings", "admin.api_settings", "key"),
-    _link("AI Prompts", "solution_prompt_admin.solution_prompts_page", "sparkles"),
+    # NAV-1 (27 Aug 2026): repointed from `solution_prompt_admin.
+    # solution_prompts_page` to `admin.solution_prompts_page`. Both blueprints
+    # register the SAME rule, /admin/solution-prompts, and the admin (v2,
+    # guardrail-enabled) one wins the URL map — so the endpoint this link used
+    # to name could never actually be served. url_for() resolved it, the page
+    # looked fine, and the handler behind the name was dead code. Found by the
+    # nav-verified gate: no test had ever exercised that endpoint, and none
+    # could. The link now names the handler that actually runs.
+    _link("AI Prompts", "admin.solution_prompts_page", "sparkles"),
     _link("Governance Gates", "admin.governance_gates", "shield-check"),
     _link("Import History", "dashboard_pages.import_history", "history"),
     _link("Seed Management", "admin.seed_management", "database"),
@@ -371,19 +379,27 @@ _MY_WORK_LINKS = {
     ],
     ROLE_ENTERPRISE_ARCHITECT: [
         _link("Transformation programmes", "solution_design.programmes_list", "waypoints"),
-        # BA-A3 (21 Aug 2026): the /business-architecture landing page is
-        # deliberately NOT here. enterprise_architect renders 26 sidebar links,
-        # which is the `sidebar_links` ratchet's baseline exactly — adding a
-        # 27th trips the gate, and raising a ratchet is a regression, not a
-        # cleanup. The page is not lost to this persona: EA's zones already
-        # carry Capability Map, Gap Analysis, Work Packages, Traceability
-        # Matrix, Capability Health, Roadmaps and Data Architecture directly,
-        # which is most of what the landing page fronts, and platform_admin —
-        # the default enterprise_role for any user who never picked one — does
-        # carry the link. Give EA this link only in the same change that
-        # retires one of its existing 13 My-work links.
+        # BA-A3 (21 Aug 2026, re-measured 27 Aug 2026): the
+        # /business-architecture landing page is deliberately NOT here.
+        # enterprise_architect renders 25 sidebar links, which is the
+        # `sidebar_links` ratchet's value exactly — adding a 26th raises the
+        # ratchet, which is a regression, not a cleanup. The page is not lost to
+        # this persona: EA's zones already carry Capabilities (Library), Gap
+        # Analysis, Work Packages, Traceability Matrix, Capability Health,
+        # Roadmaps and Data Architecture directly, which is most of what the
+        # landing page fronts, and platform_admin — the default enterprise_role
+        # for any user who never picked one — does carry the link. Give EA this
+        # link only in the same change that retires one of its existing 12
+        # My-work links.
         _link("Portfolio", "portfolio.index", "layout-dashboard"),
-        _link("Capability Map", "capability_map.index", "map"),
+        # NAV-1 (27 Aug 2026): "Capability Map" was removed from this zone. It
+        # pointed at `capability_map.index` — the exact endpoint Library already
+        # carries as "Capabilities" for every role — so this persona rendered the
+        # same page twice under two labels, the same defect the platform_admin
+        # "Applications" duplicate had. Nothing is lost: the page is still one
+        # click away in Library. Removing it took the rendered total 26 -> 25 and
+        # is what paid for the nav-coverage links added below without any persona
+        # losing a feature.
         _link("Roadmaps", "main.capability_roadmap", "map"),
         # Fix round: both were reachable from nowhere in the sidebar.
         _link("ArchiMate Composer", "archimate.composer_page", "pen-tool"),
@@ -416,6 +432,11 @@ _MY_WORK_LINKS = {
         _link("Health Scorecard", "dashboard.health_scorecard", "heart-pulse"),
         _link("Rationalization", "unified_applications.rationalization_dashboard", "git-merge"),
         _link("Investment Analysis", "architecture.investment_priorities", "target"),
+        # NAV-1 (27 Aug 2026, nav-coverage output 9 — KPI/metric dashboards).
+        # /dashboard/rationalization/scorecard is a real executive KPI page
+        # (TCO coverage, cost tiers, rationalization posture) that no persona's
+        # sidebar linked to. Given to the two roles whose job it is.
+        _link("Portfolio KPIs", "dashboard_pages.rationalization_scorecard", "gauge"),
     ],
     ROLE_BUSINESS_ARCHITECT: [
         # BA-A1/A2. This persona had 4 links against a budget of 27 while
@@ -452,6 +473,22 @@ _MY_WORK_LINKS = {
         _link("Traceability Matrix", "architect_ui.traceability_matrix", "git-compare"),
         _link("Capability Health", "strategic.capability_health", "activity"),
         _link("Data Architecture", "data_architecture.data_architecture_dashboard", "database"),
+        # NAV-1 (27 Aug 2026, nav-coverage gate 4 -> 0). Three of Iain's twelve
+        # business-architecture outputs had working routes and no sidebar link
+        # anywhere, in any persona — which is why an evaluating architect read
+        # them as absent. All three land on pages that already ship; none is new.
+        #
+        # Output 5, Information/data maps: field-level lineage over the
+        # DataObject catalogue. Distinct from "Data Architecture" above (the
+        # domain/steward dashboard) — this is the map itself.
+        _link("Data Lineage", "data_architecture.data_lineage_view", "git-fork"),
+        # Output 6, Strategy-to-execution: the motivation layer — drivers,
+        # goals, outcomes, principles, requirements — is the ArchiMate backbone
+        # that connects strategy to the work packages already linked above.
+        _link("Motivation Model", "architect_ui.motivation_view", "target"),
+        # Output 10, Products & services: the Product register in the business
+        # layer of the ArchiMate element browser.
+        _link("Products & Services", "archimate_layers.business_products", "package-open"),
     ],
     ROLE_PORTFOLIO_MANAGER: [
         # S-11 / ARCH-122: /portfolio/ is a complete programme-management
@@ -466,6 +503,8 @@ _MY_WORK_LINKS = {
         _link("Applications", "unified_applications.application_list", "list"),
         # S-11 remainder: directory-only, never in a sidebar zone.
         _link("Consolidation List", "consolidation_list.dashboard", "layers"),
+        # NAV-1: see the CTO entry above — same page, the other owning persona.
+        _link("Portfolio KPIs", "dashboard_pages.rationalization_scorecard", "gauge"),
     ],
     ROLE_PROCUREMENT: [
         # Fix round: Overview, Licences and Compliance were reachable from
