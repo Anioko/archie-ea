@@ -132,7 +132,7 @@
                     </div>
                     <div class="flex items-center gap-2">
                         <div class="flex-1 h-2 bg-muted rounded-full overflow-hidden">
-                            {% set pct = (data.annual_cost|default(0) / summary.total_annual_cost|default(0) * 100) if summary.total_annual_cost|default(0) > 0 else 0 %}
+                            {% set pct = (data.annual_cost|default(0) / summary.total_annual_cost|default(0) * 100) if (summary.total_annual_cost or 0) > 0 else 0 %}
                             <div class="h-full bg-primary rounded-full" style="width: {{ pct }}%"></div>
                         </div>
                         <span class="text-xs text-muted-foreground w-12 text-right">{{ "{:.1f}".format(pct) }}%</span>

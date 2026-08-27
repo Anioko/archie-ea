@@ -57,7 +57,7 @@
        indistinguishable from a genuine all-zero measurement. #}
     {% set completed_reviews = dashboard_data.metrics.approved_items + dashboard_data.metrics.rejected_items %}
     {% set approval_rate_display = (("%.1f"|format(dashboard_data.metrics.approval_rate|default(0))) ~ '%') if completed_reviews > 0 else None %}
-    {% set cycle_time_display = (("%.1f"|format(cycle_time.avg_days|default(0))) ~ ' days') if cycle_time and cycle_time.total_reviews|default(0) > 0 else None %}
+    {% set cycle_time_display = (("%.1f"|format(cycle_time.avg_days|default(0))) ~ ' days') if cycle_time and (cycle_time.total_reviews or 0) > 0 else None %}
 
     <!-- AI Queue Triage (board-secretary assist) -->
     <div x-data="arbQueueTriagePanel()" class="bg-card border border-border rounded-lg p-4">
