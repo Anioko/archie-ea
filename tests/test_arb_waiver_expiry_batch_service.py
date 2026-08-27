@@ -193,6 +193,23 @@ def test_scheduler_rejects_boolean_tenant_and_principal_ids(expiry_app):
         lifecycle._scheduler_actor("batch-secret", organization_id=41)
 
 
+@pytest.mark.parametrize("organization_id", (False, 0))
+def test_explicit_invalid_scheduler_tenant_does_not_fall_back_to_legacy_config(
+    expiry_app, organization_id
+):
+    module = _module()
+    lifecycle = module.TypedARBConditionLifecycleService
+    expiry_app.config.update(
+        ARB_CONDITION_EXPIRY_ORGANIZATION_ID=41,
+        ARB_CONDITION_EXPIRY_PRINCIPAL_ID=73,
+    )
+
+    with pytest.raises(NotAuthorised, match="tenant_required"):
+        lifecycle._scheduler_actor(
+            "batch-secret", organization_id=organization_id
+        )
+
+
 def test_scheduler_principal_must_be_confirmed_under_lock(expiry_app):
     module = _module()
     lifecycle = module.TypedARBConditionLifecycleService

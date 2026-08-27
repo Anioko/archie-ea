@@ -6,11 +6,17 @@ from flask import Flask
 
 
 class _Scheduler:
-    def __init__(self):
+    def __init__(self, optional_add_error=None):
         self.jobs = []
         self.started = False
+        self.optional_add_error = optional_add_error
 
     def add_job(self, **kwargs):
+        if (
+            kwargs["id"] == "typed_arb_waiver_expiry"
+            and self.optional_add_error is not None
+        ):
+            raise self.optional_add_error
         self.jobs.append(kwargs)
 
     def start(self):
@@ -23,17 +29,31 @@ class _Scheduler:
         return None
 
 
-def _start(monkeypatch, *, organization_ids="", interval="5"):
+def _start(
+    monkeypatch,
+    *,
+    organization_ids="",
+    interval="5",
+    optional_add_error=None,
+    interval_trigger=None,
+):
     import apscheduler.schedulers.background
+    import apscheduler.triggers.interval
 
     from app._bootstrap.extensions import init_scheduler
 
-    scheduler = _Scheduler()
+    scheduler = _Scheduler(optional_add_error=optional_add_error)
     monkeypatch.setattr(
         apscheduler.schedulers.background,
         "BackgroundScheduler",
         lambda: scheduler,
     )
+    if interval_trigger is not None:
+        monkeypatch.setattr(
+            apscheduler.triggers.interval,
+            "IntervalTrigger",
+            interval_trigger,
+        )
     app = Flask("arb-expiry-scheduler-test")
     app.config.update(
         TESTING=False,
@@ -67,6 +87,46 @@ def test_scheduler_enabled_registers_typed_arb_expiry(monkeypatch):
 
 def test_malformed_optional_interval_does_not_disable_established_jobs(monkeypatch):
     scheduler = _start(monkeypatch, organization_ids="41", interval="invalid")
+
+    assert scheduler.started is True
+    assert {job["id"] for job in scheduler.jobs} == {
+        "ea_workflow_scheduler",
+        "data_maturity_digest",
+        "executive_summary",
+        "teams_subscription_renewal",
+    }
+
+
+def test_overflowing_optional_trigger_does_not_disable_established_jobs(monkeypatch):
+    from apscheduler.triggers.interval import IntervalTrigger
+
+    def overflow_only_for_arb(*args, **kwargs):
+        if kwargs.get("minutes") == 10**100:
+            raise OverflowError("interval is too large")
+        return IntervalTrigger(*args, **kwargs)
+
+    scheduler = _start(
+        monkeypatch,
+        organization_ids="41",
+        interval=str(10**100),
+        interval_trigger=overflow_only_for_arb,
+    )
+
+    assert scheduler.started is True
+    assert {job["id"] for job in scheduler.jobs} == {
+        "ea_workflow_scheduler",
+        "data_maturity_digest",
+        "executive_summary",
+        "teams_subscription_renewal",
+    }
+
+
+def test_optional_add_job_failure_does_not_disable_established_jobs(monkeypatch):
+    scheduler = _start(
+        monkeypatch,
+        organization_ids="41",
+        optional_add_error=RuntimeError("job store rejected optional job"),
+    )
 
     assert scheduler.started is True
     assert {job["id"] for job in scheduler.jobs} == {

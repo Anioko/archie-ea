@@ -377,9 +377,9 @@ def init_scheduler(app):
                     max_instances=1,
                 )
                 arb_expiry_registered = True
-            except (KeyError, TypeError, ValueError) as exc:
+            except Exception as exc:
                 app.logger.error(
-                    "Typed ARB waiver expiry scheduler disabled by invalid interval: %s",
+                    "Typed ARB waiver expiry scheduler job was not registered: %s",
                     exc,
                 )
 

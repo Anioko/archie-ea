@@ -533,9 +533,10 @@ class TypedARBConditionLifecycleService:
         secret = current_app.config.get("ARB_CONDITION_EXPIRY_CAPABILITY")
         if not secret or not isinstance(capability, str) or not hmac.compare_digest(capability, secret):
             raise NotAuthorised("arb_condition_expiry_capability_required")
-        organization_id = organization_id or current_app.config.get(
-            "ARB_CONDITION_EXPIRY_ORGANIZATION_ID"
-        )
+        if organization_id is None:
+            organization_id = current_app.config.get(
+                "ARB_CONDITION_EXPIRY_ORGANIZATION_ID"
+            )
         if (
             not isinstance(organization_id, int)
             or isinstance(organization_id, bool)
