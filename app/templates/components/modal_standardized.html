@@ -117,23 +117,16 @@ function myModalData() {
         // copying this pattern without substituting a real endpoint fails
         // loudly and immediately.
         const YOUR_ENDPOINT_HERE = undefined;   // e.g. '/applications/42/notes'
-        const response = await fetch(YOUR_ENDPOINT_HERE, {
+        // Platform.fetch automatically injects CSRF token for POST, serializes plain objects to JSON,
+        // and throws on non-ok responses. We pass { silent: true } because we show inline error.
+        const data = await Platform.fetch(YOUR_ENDPOINT_HERE, {
           method: 'POST',
           body: formData,
-          headers: {
-            'X-CSRFToken': formData.get('csrf_token')
-          }
+          silent: true
         });
-        
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${await response.text()}`);
-        }
-        
-        const data = await response.json();
         Platform.modal.close('my-modal', data); // Close modal with result
         
       } catch (error) {
-        console.error('Form submission error:', error);
         this.errorMessage = error.message || 'An error occurred. Please try again.';
       } finally {
         this.submitting = false;
@@ -153,7 +146,7 @@ function myModalData() {
 # 6. Keep Alpine for form data management and reactivity only
 #
 # Example migration:
-# BEFORE: <div [alpine-show]="open" id="my-modal">
+# BEFORE: <div x-show="open" id="my-modal">
 # AFTER:  <div hidden id="my-modal" data-modal="my-modal">
 #
 # BEFORE: <button type="button" @click="Platform.modal.close('my-modal')">

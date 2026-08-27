@@ -11,45 +11,48 @@
         assessLoading: false,
         dispositionLoading: false,
         noticeLoading: false,
-        selectedDisposition: '',
+        selectedDisposition: {{ (cr.disposition or '') | tojson }},
         noticeText: '',
         flashMessage: '',
         flashType: '',
         showFlash(msg, type) { this.flashMessage = msg; this.flashType = type; setTimeout(() => this.flashMessage = '', 4000); },
-        async postJson(url, body) {
-            const r = await fetch(url, {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json', 'X-CSRFToken': document.cookie.match(/csrf_token=([^;]+)/)?.[1] || ''},
-                credentials: 'include',
-                body: JSON.stringify(body)
-            });
-            return { status: r.status, body: await r.json() };
-        },
         async assessImpact() {
             this.assessLoading = true;
             try {
-                const res = await this.postJson('/arb/api/arb/change-requests/{{ cr.id }}/assess-impact', {impact_level: 'medium'});
-                if (res.status === 200) { this.showFlash('Impact assessment complete — page will refresh.', 'success'); setTimeout(() => location.reload(), 1500); }
-                else { this.showFlash('Assessment failed: ' + JSON.stringify(res.body), 'error'); }
-            } finally { this.assessLoading = false; }
+                await Platform.fetch.post('/arb/api/arb/change-requests/{{ cr.id }}/assess-impact', {impact_level: 'medium'}, { silent: true });
+                this.showFlash('Impact assessment complete — page will refresh.', 'success');
+                setTimeout(() => location.reload(), 1500);
+            } catch (error) {
+                this.showFlash('Assessment failed: ' + (error.data ? JSON.stringify(error.data) : error.message), 'error');
+            } finally {
+                this.assessLoading = false;
+            }
         },
         async setDisposition() {
             if (!this.selectedDisposition) { this.showFlash('Select a disposition first.', 'error'); return; }
             this.dispositionLoading = true;
             try {
-                const res = await this.postJson('/arb/api/arb/change-requests/{{ cr.id }}/set-disposition', {disposition: this.selectedDisposition});
-                if (res.status === 200) { this.showFlash('Disposition set — page will refresh.', 'success'); setTimeout(() => location.reload(), 1500); }
-                else { this.showFlash('Failed: ' + JSON.stringify(res.body), 'error'); }
-            } finally { this.dispositionLoading = false; }
+                await Platform.fetch.post('/arb/api/arb/change-requests/{{ cr.id }}/set-disposition', {disposition: this.selectedDisposition}, { silent: true });
+                this.showFlash('Disposition set — page will refresh.', 'success');
+                setTimeout(() => location.reload(), 1500);
+            } catch (error) {
+                this.showFlash('Failed: ' + (error.data ? JSON.stringify(error.data) : error.message), 'error');
+            } finally {
+                this.dispositionLoading = false;
+            }
         },
         async issueNotice() {
             if (!this.noticeText.trim()) { this.showFlash('Enter notice text first.', 'error'); return; }
             this.noticeLoading = true;
             try {
-                const res = await this.postJson('/arb/api/arb/change-requests/{{ cr.id }}/issue-notice', {notice_text: this.noticeText});
-                if (res.status === 201) { this.showFlash('Change notice issued — page will refresh.', 'success'); setTimeout(() => location.reload(), 1500); }
-                else { this.showFlash('Failed: ' + JSON.stringify(res.body), 'error'); }
-            } finally { this.noticeLoading = false; }
+                await Platform.fetch.post('/arb/api/arb/change-requests/{{ cr.id }}/issue-notice', {notice_text: this.noticeText}, { silent: true });
+                this.showFlash('Change notice issued — page will refresh.', 'success');
+                setTimeout(() => location.reload(), 1500);
+            } catch (error) {
+                this.showFlash('Failed: ' + (error.data ? JSON.stringify(error.data) : error.message), 'error');
+            } finally {
+                this.noticeLoading = false;
+            }
         }
      }">
 
@@ -66,7 +69,6 @@
 
     <!-- Flash -->
     <div x-show="flashMessage" x-cloak
-         x-cloak
          :class="flashType === 'success' ? 'bg-success/5 border-success/20 text-success-emphasis' : 'bg-destructive/5 border-destructive/20 text-destructive-emphasis'"
          class="border rounded-lg px-4 py-3 text-sm font-medium"
          x-text="flashMessage"></div>

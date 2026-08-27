@@ -1,4 +1,5 @@
 {% extends 'layouts/admin_base.html' %}
+{% from 'macros/page_shell.html' import page_shell %}
 
 {% block title %}Import ArchiMate Model (OEF){% endblock %}
 
@@ -12,18 +13,15 @@
 {% endblock %}
 
 {% block content %}
-<div class="container mx-auto p-6 space-y-6 max-w-2xl">
+<div class="p-6 space-y-6 mx-auto max-w-2xl">
     <!-- Header -->
-    <div class="flex items-center justify-between">
-        <div>
-            <h1 class="text-3xl font-bold">Import ArchiMate Model (OEF)</h1>
-            <p class="text-muted-foreground mt-2">Upload an ArchiMate Open Exchange Format XML file</p>
-        </div>
-        <a href="{{ url_for('archimate_crud.dashboard') }}"
+    {% macro _ps_actions() %}
+<a href="{{ url_for('archimate_crud.dashboard') }}"
            class="inline-flex items-center gap-2 px-3 py-2 text-sm border border-border rounded-md hover:bg-accent">
             <i data-lucide="arrow-left" class="h-4 w-4" aria-hidden="true"></i> Back to Dashboard
         </a>
-    </div>
+    {% endmacro %}
+    {{ page_shell(title='Import ArchiMate Model (OEF)', subtitle='Upload an ArchiMate Open Exchange Format XML file', actions_caller=_ps_actions) }}
 
     {% with messages = get_flashed_messages(with_categories=true) %}
         {% for category, message in messages %}

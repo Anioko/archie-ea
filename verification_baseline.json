@@ -1,6 +1,6 @@
 {
   "_comment": "Ratchet baselines for scripts/verify.py. Lowering a number is routine (run --update-baseline after a cleanup). Raising one is a deliberate regression and must be justified in review.",
-  "_note": "updated 2026-08-21 (nav-verified gate)",
+  "_note": "updated 2026-08-27 (raw_fetch_sites -> 0; only sidebar_links 25 (at budget) and shell_conformance 3 remain)",
   "ratchets": {
     "undefined_names": 0,
     "redefinitions": 0,
@@ -12,12 +12,13 @@
     "broken_surfaces": 0,
     "dynamic_link_prefixes": 0,
     "fetch_guards": 0,
-    "sidebar_links": 26,
-    "nav_coverage": 4,
-    "design_tokens_extended": 12,
-    "shell_conformance": 158,
-    "raw_fetch_sites": 919,
-    "ui_contract": 27,
-    "nav_verified": 16
+    "sidebar_links": 25,
+    "nav_coverage": 0,
+    "design_tokens_extended": 0,
+    "shell_conformance": 3,
+    "raw_fetch_sites": 0,
+    "ui_contract": 0,
+    "nav_verified": 0,
+    "console_reporting": 0
   }
 }

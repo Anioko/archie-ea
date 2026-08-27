@@ -1,29 +1,15 @@
 {% extends "layouts/admin_base.html" %}
+{% from 'macros/page_shell.html' import page_shell %}
 {% from 'components/status_badge.html' import status_badge %}
 
 {% block title %}{{ session.name }}{% endblock %}
 
 {% block content %}
-<div class="container mx-auto px-4 sm:px-6 lg:px-8 py-8 max-w-7xl" x-data="sessionDetail()">
-    {# Breadcrumbs #}
-    <nav class="flex items-center gap-2 text-sm text-muted-foreground mb-6">
-        <a href="{{ url_for('main.index') }}" class="hover:text-foreground transition-colors">Dashboard</a>
-        <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
-        <a href="{{ url_for('solution_design.list_solutions') }}" class="hover:text-foreground transition-colors">Solutions</a>
-        <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
-        <span class="text-foreground font-medium">{{ session.name }}</span>
-    </nav>
-
+<div class="p-6 space-y-6 mx-auto max-w-7xl" x-data="sessionDetail()">
     <!-- Header -->
-    <div class="flex items-center justify-between mb-8">
-        <div class="flex items-center gap-4">
-            <a href="{{ url_for('solution_design.list_solutions') }}"
-               class="p-2 rounded-md hover:bg-accent transition-colors">
-                <i data-lucide="arrow-left" class="h-5 w-5" aria-hidden="true"></i>
-            </a>
-            <div>
-                <h1 class="text-4xl font-bold tracking-tight">{{ session.name }}</h1>
-                <p class="text-muted-foreground mt-1">
+    {# The subtitle carries a status_badge macro call, so it goes through
+       subtitle_caller rather than the plain-text `subtitle` kwarg. #}
+    {% macro _ps_sub() %}
                     Created {{ session.created_at.strftime('%Y-%m-%d %H:%M') }} •
                     Version {{ session.current_version }} •
                     {% if session.status.value == 'completed' %}
@@ -33,11 +19,8 @@
                     {% else %}
                     {{ status_badge(session.status.value|replace('_', ' ')|title, 'neutral') }}
                     {% endif %}
-                </p>
-            </div>
-        </div>
-
-        <div class="flex gap-2">
+    {% endmacro %}
+    {% macro _ps_actions() %}
             <button type="button" @click="resumeAnalysis"
                     class="inline-flex items-center gap-2 h-10 px-4 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-sm font-medium" aria-label="Resume analysis">
                 <i data-lucide="play" class="h-4 w-4" aria-hidden="true"></i>
@@ -48,8 +31,17 @@
                 <i data-lucide="download" class="h-4 w-4" aria-hidden="true"></i>
                 Export
             </button>
-        </div>
-    </div>
+    {% endmacro %}
+    {{ page_shell(
+        title=session.name,
+        breadcrumb=[
+            ('Dashboard', url_for('main.index')),
+            ('Solutions', url_for('solution_design.list_solutions')),
+            (session.name, None)
+        ],
+        subtitle_caller=_ps_sub,
+        actions_caller=_ps_actions
+    ) }}
 
     <!-- Tabs -->
     <div class="border-b border-border mb-6">
@@ -1222,11 +1214,9 @@ function sessionDetail() {
         async loadAnalysisResults() {
             if (this.analysisLoaded) return;
             try {
-                const response = await fetch('/solutions/architect/api/sessions/{{ session.id }}/analysis-results', {
-                    headers: { 'Content-Type': 'application/json' }
-                });
-                const data = await response.json();
-                if (data.success && data.has_results) {
+                const data = await Platform.fetch('/solutions/architect/api/sessions/{{ session.id }}/analysis-results', { silent: true });
+                if (!data.success) throw new Error(data.error || data.message || 'Failed to load analysis results');
+                if (data.has_results) {
                     this.analysisResults = data.recommendations.map(rec => ({
                         ...rec,
                         _showPros: false,
@@ -1235,8 +1225,11 @@ function sessionDetail() {
                 }
                 this.analysisLoaded = true;
             } catch (err) {
-                console.error('Failed to load analysis results:', err);
+                // Marked loaded either way so the panel stops spinning, but the
+                // user is told: an empty options list from a failed load is
+                // indistinguishable from a session with no recommendations.
                 this.analysisLoaded = true;
+                if (window.Platform && Platform.toast) Platform.toast.error(err.message || 'Failed to load analysis results');
             }
         },
 
@@ -1244,11 +1237,7 @@ function sessionDetail() {
             this.analysisLoading = true;
             this.analysisError = null;
             try {
-                const response = await fetch('/solutions/architect/api/sessions/{{ session.id }}/run-analysis', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
-                });
-                const data = await response.json();
+                const data = await Platform.fetch.post('/solutions/architect/api/sessions/{{ session.id }}/run-analysis', undefined, { silent: true });
                 if (data.success) {
                     this.analysisResults = data.recommendations.map((rec, idx) => ({
                         option_type: rec.option_type,
@@ -1269,8 +1258,7 @@ function sessionDetail() {
                     this.analysisError = data.error || 'Analysis failed. Please try again.';
                 }
             } catch (err) {
-                this.analysisError = 'Network error. Please check your connection and try again.';
-                console.error('Options analysis error:', err);
+                this.analysisError = err.message || 'Analysis failed. Please try again.';
             } finally {
                 this.analysisLoading = false;
             }
@@ -1279,19 +1267,17 @@ function sessionDetail() {
         async generateAIElements() {
             this.aiLoading.elements = true;
             try {
-                const response = await fetch('/solutions/architect/api/sessions/{{ session.id }}/ai-elements', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
-                });
-                const data = await response.json();
-                if (data.success && data.suggestions) {
+                const data = await Platform.fetch.post('/solutions/architect/api/sessions/{{ session.id }}/ai-elements', undefined, { silent: true });
+                // A 200 carrying success:false used to fall through with no message,
+                // leaving the button looking dead. Treat it as the failure it is.
+                if (!data.success || !data.suggestions) throw new Error(data.error || data.message || 'Failed to generate AI elements');
+                {
                     this.aiElements = data.suggestions;
                     this.aiElementsSource = data.source || 'unknown';
                     this.aiGenerated.elements = true;
                 }
             } catch (err) {
-                console.error('AI elements generation error:', err);
-                if (window.Platform && Platform.toast) Platform.toast.error('Failed to generate AI elements');
+                if (window.Platform && Platform.toast) Platform.toast.error(err.message || 'Failed to generate AI elements');
             } finally {
                 this.aiLoading.elements = false;
             }
@@ -1300,19 +1286,17 @@ function sessionDetail() {
         async detectAIPatterns() {
             this.aiLoading.patterns = true;
             try {
-                const response = await fetch('/solutions/architect/api/sessions/{{ session.id }}/ai-patterns', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
-                });
-                const data = await response.json();
-                if (data.success && data.patterns) {
+                const data = await Platform.fetch.post('/solutions/architect/api/sessions/{{ session.id }}/ai-patterns', undefined, { silent: true });
+                // A 200 carrying success:false used to fall through with no message,
+                // leaving the button looking dead. Treat it as the failure it is.
+                if (!data.success || !data.patterns) throw new Error(data.error || data.message || 'Failed to detect patterns');
+                {
                     this.aiPatterns = data.patterns;
                     this.aiPatternMatchCount = data.match_count || 0;
                     this.aiGenerated.patterns = true;
                 }
             } catch (err) {
-                console.error('Pattern detection error:', err);
-                if (window.Platform && Platform.toast) Platform.toast.error('Failed to detect patterns');
+                if (window.Platform && Platform.toast) Platform.toast.error(err.message || 'Failed to detect patterns');
             } finally {
                 this.aiLoading.patterns = false;
             }
@@ -1321,19 +1305,17 @@ function sessionDetail() {
         async generateAIRequirements() {
             this.aiLoading.requirements = true;
             try {
-                const response = await fetch('/solutions/architect/api/sessions/{{ session.id }}/ai-requirements', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
-                });
-                const data = await response.json();
-                if (data.success && data.requirements) {
+                const data = await Platform.fetch.post('/solutions/architect/api/sessions/{{ session.id }}/ai-requirements', undefined, { silent: true });
+                // A 200 carrying success:false used to fall through with no message,
+                // leaving the button looking dead. Treat it as the failure it is.
+                if (!data.success || !data.requirements) throw new Error(data.error || data.message || 'Failed to generate AI requirements');
+                {
                     this.aiRequirements = data.requirements;
                     this.aiRequirementsSource = data.source || 'unknown';
                     this.aiGenerated.requirements = true;
                 }
             } catch (err) {
-                console.error('AI requirements generation error:', err);
-                if (window.Platform && Platform.toast) Platform.toast.error('Failed to generate AI requirements');
+                if (window.Platform && Platform.toast) Platform.toast.error(err.message || 'Failed to generate AI requirements');
             } finally {
                 this.aiLoading.requirements = false;
             }
@@ -1342,19 +1324,17 @@ function sessionDetail() {
         async generateAIRoadmap() {
             this.aiLoading.roadmap = true;
             try {
-                const response = await fetch('/solutions/architect/api/sessions/{{ session.id }}/ai-roadmap', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
-                });
-                const data = await response.json();
-                if (data.success && data.roadmap_items) {
+                const data = await Platform.fetch.post('/solutions/architect/api/sessions/{{ session.id }}/ai-roadmap', undefined, { silent: true });
+                // A 200 carrying success:false used to fall through with no message,
+                // leaving the button looking dead. Treat it as the failure it is.
+                if (!data.success || !data.roadmap_items) throw new Error(data.error || data.message || 'Failed to generate AI roadmap');
+                {
                     this.aiRoadmap = data.roadmap_items;
                     this.aiRoadmapSource = data.source || 'unknown';
                     this.aiGenerated.roadmap = true;
                 }
             } catch (err) {
-                console.error('AI roadmap generation error:', err);
-                if (window.Platform && Platform.toast) Platform.toast.error('Failed to generate AI roadmap');
+                if (window.Platform && Platform.toast) Platform.toast.error(err.message || 'Failed to generate AI roadmap');
             } finally {
                 this.aiLoading.roadmap = false;
             }
@@ -1396,7 +1376,6 @@ function sessionDetail() {
                 recalculated.sort((a, b) => b.score - a.score);
                 this.scenarioResults = recalculated;
             } catch (err) {
-                console.error('Scenario recalculation error:', err);
                 if (window.Platform && Platform.toast) Platform.toast.error('Failed to recalculate scenario');
             } finally {
                 this.scenarioLoading = false;

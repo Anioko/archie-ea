@@ -1,4 +1,5 @@
 {% extends "layouts/admin_base.html" %}
+{% from 'macros/page_shell.html' import page_shell %}
 {% import 'components/breadcrumb.html' as breadcrumb %}
 
 {% block title %}Flow Analytics — Throughput &amp; Cycle Time{% endblock %}
@@ -21,12 +22,8 @@
     {% endcall %}
 
     <!-- Page Header + Board Selector -->
-    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-            <h1 class="text-3xl font-bold tracking-tight">Flow Analytics</h1>
-            <p class="text-muted-foreground mt-1">Throughput, cycle time, and WIP metrics from Kanban card flow.</p>
-        </div>
-        <div>
+    {% macro _ps_actions() %}
+<div>
             {% if boards %}
             <label for="board-selector" class="sr-only">Select Board</label>
             <select id="board-selector"
@@ -35,7 +32,7 @@
                     @change="loadAll()">
                 {% for board in boards %}
                 <option value="{{ board.id }}"
-                        {% if board.id == selected_board_id %}selected{% endif %}>
+                        {% if selected_board_id is not none and board.id|string == selected_board_id|string %}selected{% endif %}>
                     {{ board.name }}
                 </option>
                 {% endfor %}
@@ -44,7 +41,8 @@
             <span class="text-sm text-muted-foreground">No boards found</span>
             {% endif %}
         </div>
-    </div>
+    {% endmacro %}
+    {{ page_shell(title='Flow Analytics', subtitle='Throughput, cycle time, and WIP metrics from Kanban card flow.', actions_caller=_ps_actions) }}
 
     <!-- Metric Summary Cards -->
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -205,14 +203,23 @@ function flowAnalytics(initialBoardId) {
 
         // `fetch` resolves on 4xx/5xx, so every leg needs its own .ok check —
         // without one, an error body parses fine and Promise.all "succeeds".
+        // Platform.fetch throws on non‑ok, so we catch and re‑throw with the same
+        // user‑visible message the previous inline .ok check produced.
         _leg(url, what) {
-            return fetch(url).then(r => {
-                if (!r.ok) throw new Error('Could not load ' + what + ' (HTTP ' + r.status + ')');
-                return r.json();
-            }).then(d => {
-                if (d && d.error) throw new Error('Could not load ' + what + ': ' + d.error);
-                return d;
-            });
+            return Platform.fetch(url, { silent: true })
+                .then(d => {
+                    if (d && d.error) throw new Error('Could not load ' + what + ': ' + d.error);
+                    return d;
+                })
+                .catch(error => {
+                    // Platform.fetch throws on non‑ok responses; preserve the
+                    // exact error wording the UI already expects.
+                    if (error.status) {
+                        throw new Error('Could not load ' + what + ' (HTTP ' + error.status + ')');
+                    }
+                    // Network errors etc. keep their original message.
+                    throw error;
+                });
         },
 
         async loadAll() {

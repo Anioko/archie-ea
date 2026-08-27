@@ -119,13 +119,11 @@ function seedManager() {
 
         async refreshStatus() {
             try {
-                const resp = await fetch('{{ url_for("admin.seed_status") }}');
-                const data = await resp.json();
+                const data = await Platform.fetch('{{ url_for("admin.seed_status") }}', { silent: true });
                 if (data.success) {
                     this.categories = data.categories;
                 }
             } catch (e) {
-                console.error('Failed to refresh seed status:', e);
                 // seed/seedAll already set this.message to their own success/failure result;
                 // this only means the category list on screen may now be stale, so append
                 // rather than overwrite whatever that message already said.
@@ -139,11 +137,11 @@ function seedManager() {
             this.seedingKey = key;
             this.message = null;
             try {
-                const resp = await fetch(`{{ url_for("admin.seed", key="__KEY__") }}`.replace('__KEY__', key), {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
-                });
-                const data = await resp.json();
+                const data = await Platform.fetch.post(
+                    `{{ url_for("admin.seed", key="__KEY__") }}`.replace('__KEY__', key),
+                    undefined,
+                    { silent: true }
+                );
                 this.message = data.message || (data.success ? 'Seeding complete' : 'Seeding failed');
                 this.messageType = data.success ? 'success' : 'error';
                 await this.refreshStatus();
@@ -158,11 +156,11 @@ function seedManager() {
             this.seeding = true;
             this.message = null;
             try {
-                const resp = await fetch('{{ url_for("admin.seed_all") }}', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
-                });
-                const data = await resp.json();
+                const data = await Platform.fetch.post(
+                    '{{ url_for("admin.seed_all") }}',
+                    undefined,
+                    { silent: true }
+                );
                 this.message = data.message || (data.success ? 'All seeders completed' : 'Some seeders had errors');
                 this.messageType = data.success ? 'success' : 'error';
                 await this.refreshStatus();

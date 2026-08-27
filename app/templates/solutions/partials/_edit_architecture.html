@@ -172,12 +172,9 @@
                     x-data="{ archiLoading: false, archiDone: false }"
                     @click="
                         archiLoading = true;
-                        fetch('/api/solutions/' + (window.__SOLUTION_CONFIG__||{}).solutionId + '/archimate/generate', {
-                            method: 'POST',
-                            credentials: 'same-origin',
-                            headers: {'Content-Type':'application/json','X-CSRFToken':(document.querySelector('[name=csrf_token]')||{value:''}).value},
-                            body: JSON.stringify({phase: activePhase})
-                        }).then(r=>r.json()).then(()=>{ archiLoading=false; archiDone=true; setTimeout(()=>archiDone=false,3000); }).catch(()=>{ archiLoading=false; })
+                        Platform.fetch.post('/api/solutions/' + (window.__SOLUTION_CONFIG__||{}).solutionId + '/archimate/generate', {phase: activePhase})
+                            .then(()=>{ archiLoading=false; archiDone=true; setTimeout(()=>archiDone=false,3000); })
+                            .catch(()=>{ archiLoading=false; })
                     "
                     :disabled="archiLoading"
                     class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-muted hover:bg-accent text-foreground transition-colors disabled:opacity-50">
@@ -196,7 +193,7 @@
         {% include 'solutions/partials/_business_elements.html' %}
     </div>
 
-    {# Phase C & D — Application + Technology Elements (ArchiMate 3.2) #}
+    {# Phase D — Technology Elements (ArchiMate 3.2) #}
     <div class="mt-4">
         {% include 'solutions/partials/_technology_elements.html' %}
     </div>
@@ -365,9 +362,7 @@
              this.damLoading = true;
              this.damError = null;
              try {
-                 const elRes = await fetch('/api/solutions/' + this.solutionId + '/archimate-elements', {credentials:'same-origin'});
-                 if (!elRes.ok) throw new Error('HTTP ' + elRes.status);
-                 const elData = await elRes.json();
+                 const elData = await Platform.fetch.get('/api/solutions/' + this.solutionId + '/archimate-elements');
                  const allEls = [];
                  for (const [layer, items] of Object.entries(elData.elements_by_layer || {})) {
                      for (const el of items) allEls.push(el);
@@ -375,9 +370,7 @@
                  this.appComponents = allEls.filter(e => (e.type || '').includes('ApplicationComponent') || (e.type || '').includes('ApplicationService'));
                  this.dataObjects = allEls.filter(e => (e.type || '').includes('DataObject') || (e.type || '').includes('DataEntity') || (e.type || '').includes('DatabaseInstance'));
 
-                 const relRes = await fetch('/api/solutions/' + this.solutionId + '/relationships?type=access', {credentials:'same-origin'});
-                 if (!relRes.ok) throw new Error('HTTP ' + relRes.status);
-                 const relData = await relRes.json();
+                 const relData = await Platform.fetch.get('/api/solutions/' + this.solutionId + '/relationships', {type: 'access'});
                  for (const r of (relData.relationships || [])) {
                      const key = this.accessKey(r.source?.id || r.source_element_id, r.target?.id || r.target_element_id);
                      this.accessMap[key] = { id: r.id, access_type: r.access_type || 'read' };
@@ -400,24 +393,15 @@
 
              try {
                  if (current && current.id) {
-                     await fetch('/api/solutions/' + this.solutionId + '/relationships/' + current.id, {
-                         method: 'DELETE', credentials: 'same-origin'
-                     });
+                     await Platform.fetch.delete('/api/solutions/' + this.solutionId + '/relationships/' + current.id);
                      delete this.accessMap[key];
                  }
                  if (nextType) {
-                     const res = await fetch('/api/solutions/' + this.solutionId + '/relationships', {
-                         method: 'POST',
-                         headers: {'Content-Type': 'application/json'},
-                         credentials: 'same-origin',
-                         body: JSON.stringify({
-                             source_element_id: appId,
-                             target_element_id: dataId,
-                             relationship_type: 'access'
-                         })
+                     const data = await Platform.fetch.post('/api/solutions/' + this.solutionId + '/relationships', {
+                         source_element_id: appId,
+                         target_element_id: dataId,
+                         relationship_type: 'access'
                      });
-                     if (!res.ok) throw new Error('HTTP ' + res.status);
-                     const data = await res.json();
                      this.accessMap[key] = { id: data.id, access_type: nextType };
                  }
              } catch(e) {

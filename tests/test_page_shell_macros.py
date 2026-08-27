@@ -166,3 +166,59 @@ def test_section_card_body_via_caller(app):
     )
     assert "Recent activity" in html
     assert "Nothing yet." in html
+
+
+def test_page_shell_without_new_slots_is_unchanged(app):
+    """icon / subtitle_caller / meta_caller are additive: omitting them must
+    render exactly the pre-existing shape (bare <h1>, no extra wrappers)."""
+    html = _render(
+        app,
+        """
+        {% from 'macros/page_shell.html' import page_shell %}
+        {{ page_shell('Applications', subtitle='Portfolio') }}
+        """,
+    )
+    assert '<h1 class="text-2xl font-bold text-foreground">Applications</h1>' in html
+    assert '<p class="mt-1 text-sm text-muted-foreground">Portfolio</p>' in html
+    assert "data-lucide" not in html
+
+
+def test_page_shell_icon_sits_beside_the_title(app):
+    html = _render(
+        app,
+        """
+        {% from 'macros/page_shell.html' import page_shell %}
+        {{ page_shell('Capability Hierarchy', icon='git-branch') }}
+        """,
+    )
+    assert html.count("<h1") == 1
+    assert re.search(
+        r'data-lucide="git-branch".*?<h1[^>]*>\s*Capability Hierarchy',
+        html,
+        re.S,
+    )
+
+
+def test_page_shell_subtitle_caller_wins_over_subtitle_and_keeps_markup(app):
+    html = _render(
+        app,
+        """
+        {% from 'macros/page_shell.html' import page_shell %}
+        {% macro sub() %}<span x-text="count">—</span> shown{% endmacro %}
+        {{ page_shell('Trees', subtitle='plain', subtitle_caller=sub) }}
+        """,
+    )
+    assert '<span x-text="count">—</span> shown' in html
+    assert "plain" not in html
+
+
+def test_page_shell_meta_caller_renders_below_the_title(app):
+    html = _render(
+        app,
+        """
+        {% from 'macros/page_shell.html' import page_shell %}
+        {% macro meta() %}<span class="badge">Active</span>{% endmacro %}
+        {{ page_shell('Element', meta_caller=meta) }}
+        """,
+    )
+    assert re.search(r'<h1[^>]*>\s*Element\s*</h1>.*?<span class="badge">Active</span>', html, re.S)

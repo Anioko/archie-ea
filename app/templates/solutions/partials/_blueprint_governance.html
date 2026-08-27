@@ -94,7 +94,6 @@
                         });
                     }
                 }).catch(function(err) {
-                    console.error('[setupChecklist] failed to load setup status:', err);
                     self.loadError = true;
                 });
             },
@@ -885,7 +884,6 @@
                 Platform.fetch('/api/enterprise/contracts?per_page=100', { silent: true })
                 .then(function(data) { self.contracts = data.items || []; self.contractsError = false; })
                 .catch(function(err) {
-                    console.error('[integrationContracts] failed to load contracts:', err);
                     self.contractsError = true;
                 });
             },
@@ -900,7 +898,6 @@
                     });
                 })
                 .catch(function(err) {
-                    console.error('[integrationContracts] failed to load connected applications:', err);
                     if (window.Platform && Platform.toast) Platform.toast.error('Failed to load applications for the contract form');
                 });
             },
@@ -1108,7 +1105,6 @@
                         }
                     }
                 }).catch(function(err) {
-                    console.error('[identityProvider] failed to load existing config:', err);
                     self.loadError = true;
                 });
             },
@@ -1408,7 +1404,6 @@
                         self.db.backup_days = c.backup_days || 7;
                     }
                 }).catch(function(err) {
-                    console.error('[infrastructureConfig] failed to load database config:', err);
                     self.loadError.db = true;
                 });
 
@@ -1425,7 +1420,6 @@
                         self.cicd.run_security_scan = c.run_security_scan !== false;
                     }
                 }).catch(function(err) {
-                    console.error('[infrastructureConfig] failed to load CI/CD config:', err);
                     self.loadError.cicd = true;
                 });
 
@@ -1440,7 +1434,6 @@
                         self.arch.api_gateway = c.api_gateway || '';
                     }
                 }).catch(function(err) {
-                    console.error('[infrastructureConfig] failed to load architecture style:', err);
                     self.loadError.arch = true;
                 });
             },
@@ -1745,7 +1738,6 @@
                         }
                     }
                 }).catch(function(err) {
-                    console.error('[complianceMonitor] failed to load latest check:', err);
                     self.error = 'Failed to load the last compliance check result.';
                 });
             },
@@ -1789,7 +1781,7 @@
 
 </div>
 
-{# CSP-safe event handlers — replaces all removed onclick="" attributes #}
+{# CSP-safe event handlers — replaces all the inline handlers removed from this page #}
 <script>
 (function () {
     let _SID = {{ solution.id }};

@@ -90,7 +90,7 @@
                                     <button type="button"
                                             title="Change capability link"
                                             class="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-muted transition-opacity"
-                                            @click="openLinkCapModal({{ req.id }}, {{ req.capability_id }}, '{{ cap_map[req.capability_id]|replace("'", "\\'") }}')">
+                                            @click="openLinkCapModal({{ req.id }}, {{ req.capability_id }}, null)">
                                         <i data-lucide="pencil" class="h-3 w-3 text-muted-foreground" aria-hidden="true"></i>
                                     </button>
                                 </div>
@@ -295,12 +295,11 @@
                 let self = this;
                 if (self.saving) return;
                 self.saving = true;
-                fetch('/api/enterprise/requirements/' + self.activeReqId + '/enrich', {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': self._csrf() },
-                    body: JSON.stringify({ capability_id: self.activeCapId })
-                })
-                .then(function (r) { return r.json(); })
+                // Use Platform.fetch.patch which automatically injects CSRF token and serializes JSON
+                Platform.fetch.patch('/api/enterprise/requirements/' + self.activeReqId + '/enrich', 
+                    { capability_id: self.activeCapId },
+                    { silent: true }
+                )
                 .then(function (data) {
                     if (data.success) {
                         self._updateRow(self.activeReqId, self.activeCapId);
@@ -311,7 +310,18 @@
                         Platform.toast.error('Error: ' + (data.error || 'Unknown error'));
                     }
                 })
-                .catch(function (e) { Platform.toast.error('Network error: ' + e); })
+                .catch(function (e) {
+                    // Platform.fetch throws a PlatformError on network or HTTP errors
+                    // We passed silent:true, so no automatic toast was shown.
+                    // Extract a user-friendly message from the error.
+                    let message = 'Network error';
+                    if (e.type === 'HttpError' && e.data && e.data.error) {
+                        message = e.data.error;
+                    } else if (e.message) {
+                        message = e.message;
+                    }
+                    Platform.toast.error('Error: ' + message);
+                })
                 .finally(function () { self.saving = false; });
             },
 
@@ -349,7 +359,7 @@
                     '</button></div>';
                 if (window.lucide) lucide.createIcons();
                 let editBtn = cell.querySelector('button');
-                if (editBtn) editBtn.onclick = function () { self.openLinkCapModal(reqId, capId, capName); };
+                if (editBtn) editBtn.onclick = function () { self.openLinkCapModal(reqId, capId, null); };
             },
 
             _esc: function (s) {

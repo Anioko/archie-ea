@@ -126,66 +126,50 @@ function documentAnalyzer(entityType, entityId) {
                     self.fileProgress[i].percent = 30;
                     self.fileProgress[i].status = 'uploading';
 
-                    let csrfToken = '';
-                    let csrfEl = document.querySelector('[name=csrf_token]');
-                    if (csrfEl) csrfToken = csrfEl.value;
+                    return Platform.fetch.post(url, formData, { silent: true })
+                        .then(function(data) {
+                            self.fileProgress[i].percent = 60;
+                            self.fileProgress[i].status = 'analyzing';
+                            // Platform.fetch already parsed the JSON body
+                            // No need to check response.ok; it throws on non-ok
+                            // Store result
+                            self.fileProgress[i].percent = 100;
+                            self.fileProgress[i].status = 'completed';
 
-                    return fetch(url, {
-                        method: 'POST',
-                        body: formData,
-                        headers: {
-                            'X-CSRFToken': csrfToken
-                        }
-                    })
-                    .then(function(response) {
-                        self.fileProgress[i].percent = 60;
-                        self.fileProgress[i].status = 'analyzing';
-
-                        if (!response.ok) {
-                            return response.json().then(function(errorData) {
-                                throw new Error(errorData.error || 'Analysis failed');
+                            // Store result
+                            self.batchResults.push({
+                                fileName: file.name,
+                                analysis: data.analysis,
+                                analysisId: data.analysis_id,
+                                success: true
                             });
-                        }
-                        return response.json();
-                    })
-                    .then(function(data) {
-                        self.fileProgress[i].percent = 100;
-                        self.fileProgress[i].status = 'completed';
 
-                        // Store result
-                        self.batchResults.push({
-                            fileName: file.name,
-                            analysis: data.analysis,
-                            analysisId: data.analysis_id,
-                            success: true
+                            // If this is the first file, set it as the main result
+                            if (i === 0) {
+                                self.analysisResults = data.analysis;
+                                self.analysisId = data.analysis_id;
+                            }
+                        })
+                        .catch(function(error) {
+                            self.fileProgress[i].status = 'error';
+                            self.fileProgress[i].percent = 100;
+
+                            // Better error handling
+                            let errorMessage = error.message;
+                            if (error.message.indexOf('timeout') !== -1 || error.message.indexOf('network') !== -1) {
+                                errorMessage = 'Analysis timed out';
+                            } else if (error.message.indexOf('file type') !== -1 || error.message.indexOf('not allowed') !== -1) {
+                                errorMessage = 'Unsupported file type';
+                            } else if (error.message.indexOf('size') !== -1 || error.message.indexOf('too large') !== -1) {
+                                errorMessage = 'File too large (max 50MB)';
+                            }
+
+                            self.batchResults.push({
+                                fileName: file.name,
+                                error: errorMessage,
+                                success: false
+                            });
                         });
-
-                        // If this is the first file, set it as the main result
-                        if (i === 0) {
-                            self.analysisResults = data.analysis;
-                            self.analysisId = data.analysis_id;
-                        }
-                    })
-                    .catch(function(error) {
-                        self.fileProgress[i].status = 'error';
-                        self.fileProgress[i].percent = 100;
-
-                        // Better error handling
-                        let errorMessage = error.message;
-                        if (error.message.indexOf('timeout') !== -1 || error.message.indexOf('network') !== -1) {
-                            errorMessage = 'Analysis timed out';
-                        } else if (error.message.indexOf('file type') !== -1 || error.message.indexOf('not allowed') !== -1) {
-                            errorMessage = 'Unsupported file type';
-                        } else if (error.message.indexOf('size') !== -1 || error.message.indexOf('too large') !== -1) {
-                            errorMessage = 'File too large (max 50MB)';
-                        }
-
-                        self.batchResults.push({
-                            fileName: file.name,
-                            error: errorMessage,
-                            success: false
-                        });
-                    });
                 });
             });
 
@@ -223,29 +207,10 @@ function documentAnalyzer(entityType, entityId) {
                 ? '/api/applications/' + self.entityId + '/apply-analysis'
                 : '/api/vendors/' + self.entityId + '/apply-analysis';
 
-            let csrfToken = '';
-            let csrfEl = document.querySelector('[name=csrf_token]');
-            if (csrfEl) csrfToken = csrfEl.value;
-
-            fetch(url, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': csrfToken
-                },
-                body: JSON.stringify({
-                    analysis: self.analysisResults,
-                    analysis_id: self.analysisId
-                })
-            })
-            .then(function(response) {
-                if (!response.ok) {
-                    return response.json().then(function(errorData) {
-                        throw new Error(errorData.error || 'Failed to apply analysis');
-                    });
-                }
-                return response.json();
-            })
+            Platform.fetch.post(url, {
+                analysis: self.analysisResults,
+                analysis_id: self.analysisId
+            }, { silent: true })
             .then(async function(data) {
                 // Show success message with details
                 let message = 'Analysis applied successfully!\n\n' +

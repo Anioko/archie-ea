@@ -21,12 +21,18 @@ def _panels():
 
 def test_a_failed_load_is_not_rendered_as_an_empty_portfolio():
     js = _panels()
-    assert js.count("if (!resp.ok) throw") + js.count("if (!response.ok) throw") >= 2, (
-        "both the briefing and the alerts loader must reject a non-2xx rather "
-        "than rendering its empty arrays as a clean portfolio"
+    # Both loaders now go through Platform.fetch, which raises on any non-2xx,
+    # so the explicit `if (!resp.ok) throw` is gone. The CONTRACT is unchanged and
+    # is what this asserts: a non-2xx must not reach the render path, because the
+    # endpoint's own 500 body carries empty arrays -- exactly the shape of
+    # "nothing to report".
+    assert js.count("await Platform.fetch") >= 2, (
+        "both the briefing and the alerts loader must use the wrapper that throws "
+        "on non-2xx, rather than rendering an error body's empty arrays as a clean "
+        "portfolio"
     )
-    assert "This is an error, not an empty portfolio" in js, (
-        "the failed state must say so; a silent empty panel is a lie about the data"
+    assert js.count("This is an error, not an empty portfolio") >= 2, (
+        "each failed state must say so; a silent empty panel is a lie about the data"
     )
 
 

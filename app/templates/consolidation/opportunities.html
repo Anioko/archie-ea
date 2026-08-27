@@ -1,13 +1,11 @@
 {% extends "layouts/admin_base.html" %}
+{% from 'macros/page_shell.html' import page_shell %}
 
 {% block title %}Consolidation Opportunities{% endblock %}
 
 {% block content %}
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-    <div class="mb-8">
-        <h1 class="text-3xl font-bold text-foreground">Consolidation Opportunities</h1>
-        <p class="text-muted-foreground mt-2">Cost savings and rationalization opportunities</p>
-    </div>
+    {{ page_shell(title='Consolidation Opportunities', subtitle='Cost savings and rationalization opportunities') }}
 
     {% if savings_forecast %}
     <div class="rounded-xl border-2 border-input bg-background p-6 mb-6">

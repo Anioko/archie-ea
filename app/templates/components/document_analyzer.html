@@ -670,23 +670,12 @@ function documentAnalyzer(entityType, entityId) {
                     this.fileProgress[i].percent = 30;
                     this.fileProgress[i].status = 'uploading';
 
-                    const response = await fetch(url, {
-                        method: 'POST',
-                        body: formData,
-                        headers: {
-                            'X-CSRFToken': document.querySelector('[name=csrf_token]')?.value || ''
-                        }
+                    const data = await Platform.fetch.post(url, formData, {
+                        silent: true  // We handle errors inline in the catch block
                     });
 
                     this.fileProgress[i].percent = 60;
                     this.fileProgress[i].status = 'analyzing';
-
-                    if (!response.ok) {
-                        const error = await response.json();
-                        throw new Error(error.error || 'Analysis failed');
-                    }
-
-                    const data = await response.json();
                     this.fileProgress[i].percent = 100;
                     this.fileProgress[i].status = 'completed';
                     
@@ -761,24 +750,12 @@ function documentAnalyzer(entityType, entityId) {
                     ? `/api/applications/${this.entityId}/apply-analysis`
                     : `/api/vendors/${this.entityId}/apply-analysis`;
 
-                const response = await fetch(url, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': document.querySelector('[name=csrf_token]')?.value || ''
-                    },
-                    body: JSON.stringify({
-                        analysis: this.analysisResults,
-                        analysis_id: this.analysisId
-                    })
+                const data = await Platform.fetch.post(url, {
+                    analysis: this.analysisResults,
+                    analysis_id: this.analysisId
+                }, {
+                    silent: true  // We show our own error toast in the catch block
                 });
-
-                if (!response.ok) {
-                    const error = await response.json();
-                    throw new Error(error.error || 'Failed to apply analysis');
-                }
-
-                const data = await response.json();
                 
                 // Show success message with details
                 const message = `Analysis applied successfully!\n\n` +

@@ -514,16 +514,16 @@
                                              if (!this.iacOwner || !this.iacRepo) { this.iacDeployError = 'Owner and repo are required'; return; }
                                              this.iacDeploying = true; this.iacDeployError = ''; this.iacDeployResult = null;
                                              try {
-                                                 const csrf = document.querySelector('[name=csrf_token]')?.value || '';
-                                                 const resp = await fetch(`/solutions/{{ solution.id }}/codegen/deploy-iac`, {
-                                                     method: 'POST',
-                                                     headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrf},
-                                                     body: JSON.stringify({owner: this.iacOwner, repo: this.iacRepo, base_branch: this.iacBaseBranch})
+                                                 const data = await Platform.fetch.post(`/solutions/{{ solution.id }}/codegen/deploy-iac`, {
+                                                     owner: this.iacOwner,
+                                                     repo: this.iacRepo,
+                                                     base_branch: this.iacBaseBranch
                                                  });
-                                                 const data = await resp.json();
                                                  if (data.success) { this.iacDeployResult = data; this.iacShowForm = false; }
                                                  else { this.iacDeployError = data.error || 'Deployment failed'; }
-                                             } catch(e) { this.iacDeployError = 'Network error: ' + e.message; }
+                                             } catch(e) {
+                                                 this.iacDeployError = e.type === 'NetworkError' ? 'Network error: ' + (e.originalError?.message || e.message) : e.message;
+                                             }
                                              this.iacDeploying = false;
                                          }
                                      }">
@@ -806,12 +806,7 @@ eas build --platform android --profile preview</pre>
                         <!-- Upload button -->
                         <button type="button" @click="
                             snacking = true; snackError = ''; snackUrl = ''; snackId = '';
-                            fetch('/solutions/' + solutionId + '/codegen/expo-snack', {
-                                method: 'POST',
-                                headers: {'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''},
-                                body: '{}'
-                            })
-                            .then(r => r.json())
+                            Platform.fetch.post('/solutions/' + solutionId + '/codegen/expo-snack', {})
                             .then(d => {
                                 snacking = false;
                                 if (d.snack_url) {
@@ -1249,9 +1244,7 @@ eas build --platform android --profile preview</pre>
                          async launchStackBlitz() {
                              this.sbLaunching = true;
                              try {
-                                 const r = await fetch('/solutions/' + solutionId + '/codegen/stackblitz-data');
-                                 if (!r.ok) throw new Error('the project bundle could not be built (HTTP ' + r.status + ')');
-                                 const d = await r.json();
+                                 const d = await Platform.fetch.get('/solutions/' + solutionId + '/codegen/stackblitz-data');
                                  if (d.error) { Platform.toast.error(d.error); return; }
                                  const form = document.createElement('form');
                                  form.method = 'POST';
@@ -1386,9 +1379,7 @@ npm run dev</pre>
                                     <div x-show="hasMobile" class="space-y-2">
                                         <button type="button" x-show="!snacking && !snackUrl"
                                                 @click="snacking=true; snackError='';
-                                                        fetch('/solutions/' + solutionId + '/codegen/expo-snack',
-                                                              {method:'POST', headers:{'Content-Type':'application/json','X-CSRFToken':document.cookie.match(/csrftoken=([^;]+)/)?.[1]||''}})
-                                                        .then(r=>r.json())
+                                                        Platform.fetch.post('/solutions/' + solutionId + '/codegen/expo-snack', {})
                                                         .then(d=>{ if(d.snack_url){ snackUrl=d.snack_url; snackId=d.snack_id; showEmbed=true; showQr=true; } else { snackError=d.error||'Upload failed'; } snacking=false; })
                                                         .catch(e=>{ snackError='Request failed: '+e.message; snacking=false; })"
                                                 :disabled="snacking"
@@ -1461,8 +1452,7 @@ npm run dev</pre>
                                             Start the preview container to load live API docs.
                                         </div>
                                         <button type="button" @click="swaggerStarting=true;
-                                                        fetch('/solutions/'+solutionId+'/codegen/preview/start',{method:'POST',headers:{'Content-Type':'application/json','X-CSRFToken':document.cookie.match(/csrftoken=([^;]+)/)?.[1]||''}})
-                                                        .then(r=>r.json())
+                                                        Platform.fetch.post('/solutions/'+solutionId+'/codegen/preview/start', {})
                                                         .then(d=>{ if(d.swagger_url||d.url){swaggerUrl=d.swagger_url||d.url; swaggerActive=true;} swaggerStarting=false; })
                                                         .catch(()=>{ swaggerStarting=false; })"
                                                 :disabled="swaggerStarting"

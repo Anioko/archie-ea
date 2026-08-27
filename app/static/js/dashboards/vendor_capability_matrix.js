@@ -9,15 +9,16 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 function loadMatrixData() {
-    fetch('/api/vendors/capability-matrix')
-        .then(function(response) { if (!response.ok) throw new Error('HTTP ' + response.status); return response.json(); })
+    Platform.fetch('/api/vendors/capability-matrix', { silent: true })
         .then(function(data) {
             matrixData = data;
             filteredData = data;
             renderMatrix();
         })
         .catch(function(error) {
-            console.error('Error loading matrix data:', error);
+            // The call site already paints its own inline error state, so we pass silent:true to avoid duplicate toast.
+            // However, Platform.fetch will still throw, and we must surface the failure to the user via showError.
+            // The existing console.error call is replaced with a real user-visible error path.
             showError('Failed to load capability matrix data');
         });
 }

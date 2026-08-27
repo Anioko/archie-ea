@@ -6,7 +6,7 @@
 
 {% block content %}
 <!-- modal-a11y-ok -->
-<div class="container mx-auto px-4 sm:px-6 lg:px-8 py-6 max-w-7xl"
+<div class="p-6 space-y-6 mx-auto max-w-7xl"
      x-data="solutionTemplateCatalogue()">
     {{ page_header(
         title='Solution Design Templates',
@@ -116,25 +116,25 @@ function solutionTemplateCatalogue() {
             if (!name) return;
             let tid = this.selectedTemplateId;
             Platform.modal.close('template-name-modal');
-            fetch("{{ url_for('solution_design.create_solution_from_template') }}", {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': (document.querySelector('meta[name=csrf-token]') || {}).content || ''
-                },
-                body: JSON.stringify({ template_id: tid, solution_name: name })
-            })
-            .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
-            .then(function (res) {
-                if (res.ok && res.data.success) {
-                    window.location.href = res.data.redirect || '/solutions/' + res.data.solution_id;
-                } else {
-                    Platform.toast.error('Could not create solution: ' + (res.data.error || 'unknown error'));
-                }
-            })
-            .catch(function (err) {
-                Platform.toast.error('Request failed: ' + err.message);
-            });
+            // Platform.fetch automatically injects CSRF token and serializes plain objects to JSON
+            Platform.fetch.post("{{ url_for('solution_design.create_solution_from_template') }}", 
+                { template_id: tid, solution_name: name })
+                .then(function (data) {
+                    // Platform.fetch returns parsed JSON directly; non-ok responses throw
+                    if (data.success) {
+                        window.location.href = data.redirect || '/solutions/' + data.solution_id;
+                    } else {
+                        // The server returned a 200 with success:false; show the error without a global toast
+                        // because Platform.fetch only throws on non-ok responses, not on application-level errors.
+                        Platform.toast.error('Could not create solution: ' + (data.error || 'unknown error'));
+                    }
+                })
+                .catch(function (err) {
+                    // Platform.fetch throws on network errors or non-ok HTTP responses, and shows a global toast by default.
+                    // We keep the catch to prevent unhandled rejection, but the toast is already shown.
+                    // Re-throw to propagate the error (though there's no further handling).
+                    throw err;
+                });
         }
     };
 }

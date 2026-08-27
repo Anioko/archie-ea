@@ -1,4 +1,5 @@
 {% extends "layouts/admin_base.html" %}
+{% from 'macros/page_shell.html' import page_shell %}
 
 {% block title %}Batch Update Maturity{% endblock %}
 
@@ -16,18 +17,15 @@
 <div class="mx-auto px-4 py-6">
     <!-- Header -->
     <div class="mb-8">
-        <div class="flex items-center justify-between">
-            <div>
-                <h1 class="text-3xl font-bold text-foreground mb-2">Batch Update Maturity</h1>
-                <p class="text-muted-foreground">Update maturity levels for multiple capabilities at once</p>
-            </div>
-            <div class="flex space-x-4">
+        {% macro _ps_actions() %}
+<div class="flex space-x-4">
                 <a href="{{ url_for('maturity_management.frameworks_overview') }}" 
                    class="inline-flex items-center gap-2 rounded-md border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground transition-colors">
                     ← Back to Dashboard
                 </a>
             </div>
-        </div>
+        {% endmacro %}
+        {{ page_shell(title='Batch Update Maturity', subtitle='Update maturity levels for multiple capabilities at once', actions_caller=_ps_actions) }}
     </div>
 
     <!-- Warning Notice -->
@@ -58,17 +56,13 @@
                  this.result = null;
                  var fd = new FormData();
                  fd.append('file', file);
-                 var csrf = document.querySelector('meta[name=csrf-token]')?.content || '';
                  try {
-                     var r = await fetch('{{ url_for('maturity_management.import_maturity_csv') }}', {
-                         method: 'POST',
-                         headers: { 'X-CSRFToken': csrf },
-                         body: fd
-                     });
-                     if (!r.ok) throw new Error('the server rejected the import (HTTP ' + r.status + ')');
-                     this.result = await r.json();
+                     this.result = await Platform.fetch.post('{{ url_for('maturity_management.import_maturity_csv') }}', fd, { silent: true });
                  } catch(e) {
-                     this.result = { success: false, error: 'Import failed: ' + e.message };
+                     this.result = { 
+                         success: false, 
+                         error: 'Import failed: ' + (e.message || 'Unknown error')
+                     };
                  }
                  this.importing = false;
              }
@@ -100,7 +94,7 @@
         <!-- Import result -->
         <div x-show="result" x-cloak class="px-6 py-4 border-t border-border">
             <div x-show="result && result.success"
-                 class="flex items-start gap-2 text-sm text-success-emphasis bg-success/10 border border-success/30 rounded-lg px-4 py-3"
+                 class="flex items-start gap-2 text-sm text-success-emphasis bg-success/10 border border-success/30 rounded-lg px-4 py-3">
                 <i data-lucide="check-circle" class="w-4 h-4 mt-0.5 flex-shrink-0"></i>
                 <div>
                     <span x-text="result && result.message"></span>
@@ -230,7 +224,7 @@
                                     </tr>
                                 </thead>
                                 <tbody class="bg-card divide-y divide-border">
-                                    {% for cap in preview_capabilities %}
+                                    {% for cap in preview_capabilities[:20] %}
                                     <tr>
                                         <td class="px-4 py-2 text-sm text-foreground">{{ cap.name }}</td>
                                         <td class="px-4 py-2 text-sm text-muted-foreground">{{ cap.domain or 'Unknown' }}</td>
@@ -242,7 +236,7 @@
                                 </tbody>
                             </table>
                         </div>
-                        {% if preview_capabilities|length >= 20 %}
+                        {% if preview_capabilities|length > 20 %}
                         <div class="px-4 py-2 bg-muted text-center text-sm text-muted-foreground">
                             Showing first 20 capabilities. More may be updated.
                         </div>

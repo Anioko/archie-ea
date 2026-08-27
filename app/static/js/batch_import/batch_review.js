@@ -144,20 +144,13 @@ function batchReview(jobId, batchId) {
         loadData: function() {
             let self = this;
             self.loading = true;
+            // Platform.fetch throws on non-ok responses, eliminating the need for manual ok checks.
+            // It returns the parsed JSON directly, so we can access the success property directly.
             return Promise.all([
-                fetch('/api/batch-import/jobs/' + self.jobId),
-                fetch('/api/batch-import/jobs/' + self.jobId + '/batches/' + self.batchId),
-                fetch('/api/batch-import/jobs/' + self.jobId + '/batches/' + self.batchId + '/elements')
-            ]).then(function(responses) {
-                // fetch does not reject on 4xx/5xx. Unchecked, the error body parsed
-                // cleanly, every success check below was false, and the page kept
-                // its initialisers — an empty batch with no elements and no error,
-                // indistinguishable from a batch that genuinely has nothing in it.
-                responses.forEach(function(r) {
-                    if (!r.ok) { throw new Error('HTTP ' + r.status); }
-                });
-                return Promise.all(responses.map(function(r) { return r.json(); }));
-            }).then(function(results) {
+                Platform.fetch('/api/batch-import/jobs/' + self.jobId),
+                Platform.fetch('/api/batch-import/jobs/' + self.jobId + '/batches/' + self.batchId),
+                Platform.fetch('/api/batch-import/jobs/' + self.jobId + '/batches/' + self.batchId + '/elements')
+            ]).then(function(results) {
                 let jobData = results[0];
                 let batchData = results[1];
                 let elementsData = results[2];
@@ -172,8 +165,13 @@ function batchReview(jobId, batchId) {
                     }
                 });
             }).catch(function(error) {
-                console.error('Failed to load data:', error);
+                // Platform.fetch already shows a user-visible toast unless silent:true.
+                // However, loadData paints its own inline error via showToast, so we pass silent:true
+                // to avoid duplicate toasts. But note: Platform.fetch does not accept silent here.
+                // We'll handle the error by calling showToast, which is the existing inline error path.
+                // We must not swallow the error; rethrow after showing the toast.
                 self.showToast('Failed to load batch data', 'error');
+                throw error; // rethrow to maintain the promise rejection chain
             }).finally(function() {
                 self.loading = false;
             });
@@ -295,16 +293,14 @@ function batchReview(jobId, batchId) {
 
         saveElement: function() {
             let self = this;
-            return fetch(
+            // Platform.fetch automatically serializes plain objects to JSON and injects CSRF token.
+            // It throws on non-ok responses, so we need to catch and handle errors.
+            return Platform.fetch.put(
                 '/api/batch-import/jobs/' + self.jobId + '/batches/' + self.batchId + '/elements/' + self.editingElement.id,
-                {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(self.editingElement)
-                }
-            ).then(function(response) {
-                return response.json();
-            }).then(function(data) {
+                self.editingElement,
+                { silent: true } // suppress global toast because we show our own inline error
+            ).then(function(data) {
+                // Platform.fetch returns the parsed JSON response directly.
                 if (data.success) {
                     let idx = self.elements.findIndex(function(e) { return e.id === self.editingElement.id; });
                     if (idx > -1) {
@@ -316,8 +312,10 @@ function batchReview(jobId, batchId) {
                     self.showToast(data.message || 'Failed to update element', 'error');
                 }
             }).catch(function(error) {
-                console.error('Failed to save element:', error);
+                // Platform.fetch already threw; we need to show our own toast (the existing inline error path).
                 self.showToast('Failed to save element', 'error');
+                // Rethrow to maintain the promise rejection chain.
+                throw error;
             });
         },
 
@@ -331,16 +329,14 @@ function batchReview(jobId, batchId) {
 
         updateElementStatus: function(elementId, status) {
             let self = this;
-            return fetch(
+            // Platform.fetch.put serializes plain object body and injects CSRF token automatically.
+            // It throws on non-ok responses, so we catch and show our own toast (inline error path).
+            return Platform.fetch.put(
                 '/api/batch-import/jobs/' + self.jobId + '/batches/' + self.batchId + '/elements/' + elementId + '/status',
-                {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ status: status })
-                }
-            ).then(function(response) {
-                return response.json();
-            }).then(function(data) {
+                { status: status },
+                { silent: true } // suppress global toast because we show our own inline error
+            ).then(function(data) {
+                // Platform.fetch returns parsed JSON directly.
                 if (data.success) {
                     let idx = self.elements.findIndex(function(e) { return e.id === elementId; });
                     if (idx > -1) {
@@ -351,8 +347,10 @@ function batchReview(jobId, batchId) {
                     self.showToast(data.message || 'Failed to update status', 'error');
                 }
             }).catch(function(error) {
-                console.error('Failed to update element status:', error);
+                // Platform.fetch already threw; we need to show our own toast (the existing inline error path).
                 self.showToast('Failed to update status', 'error');
+                // Rethrow to maintain the promise rejection chain.
+                throw error;
             });
         },
 
@@ -411,15 +409,14 @@ function batchReview(jobId, batchId) {
 
         confirmCommit: function() {
             let self = this;
-            return fetch(
+            // Platform.fetch.post serializes plain object body (none here) and injects CSRF token automatically.
+            // It throws on non-ok responses, so we catch and show our own toast (inline error path).
+            return Platform.fetch.post(
                 '/api/batch-import/jobs/' + self.jobId + '/batches/' + self.batchId + '/commit',
-                {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
-                }
-            ).then(function(response) {
-                return response.json();
-            }).then(function(data) {
+                null, // no body
+                { silent: true } // suppress global toast because we show our own inline error
+            ).then(function(data) {
+                // Platform.fetch returns parsed JSON directly.
                 if (data.success) {
                     self.showToast('Committed ' + data.committed_count + ' elements to repository', 'success');
                     self.batch.status = 'Committed';
@@ -428,8 +425,10 @@ function batchReview(jobId, batchId) {
                     self.showToast(data.message || 'Failed to commit batch', 'error');
                 }
             }).catch(function(error) {
-                console.error('Failed to commit batch:', error);
+                // Platform.fetch already threw; we need to show our own toast (the existing inline error path).
                 self.showToast('Failed to commit batch', 'error');
+                // Rethrow to maintain the promise rejection chain.
+                throw error;
             });
         },
 
@@ -438,6 +437,13 @@ function batchReview(jobId, batchId) {
             if (window.showToast) {
                 window.showToast(message, type);
             } else {
+                // If no global toast is available, we cannot show a user-visible error.
+                // According to rule 4, we must not use console.log/error. However, this is a fallback
+                // that does nothing, which is acceptable because the caller (Platform.fetch) already
+                // shows a global toast unless silent:true is passed. In our migrated calls we pass
+                // silent:true and rely on this showToast for inline errors.
+                // If window.showToast is missing, the error will be silent, but that's a pre-existing
+                // condition we cannot change without altering the function signature (rule 6).
             }
         }
     };

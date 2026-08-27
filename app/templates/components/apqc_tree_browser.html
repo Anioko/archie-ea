@@ -110,14 +110,16 @@ document.addEventListener('click', function(e) {
   } catch(err) {
     // This is a document-level delegated click handler, so it must not throw
     // for every other click on the page over one malformed node's data-params.
-    console.error('[apqc-tree-browser] toggleAPQCNode parse error', err);
+    if (window.Platform && Platform.toast) {
+      Platform.toast.error('This process node could not be expanded — its data is malformed.');
+    }
   }
 });
 
 async function loadAPQCHierarchy() {
   try {
-    const response = await fetch('/api/apqc/hierarchy');
-    const data = await response.json();
+    // Platform.fetch.get returns parsed JSON directly; throws on non-ok.
+    const data = await Platform.fetch.get('/api/apqc/hierarchy', null, { silent: true });
 
     if (data.success) {
       apqcTreeData = data.tree || [];
@@ -127,6 +129,7 @@ async function loadAPQCHierarchy() {
         `<div class="text-destructive-emphasis text-center py-8">Error: ${escapeHtml(data.error)}</div>`;
     }
   } catch (error) {
+    // Platform.fetch throws a structured PlatformError; we paint inline error state.
     document.getElementById('apqc-tree-content').innerHTML =
       `<div class="text-destructive-emphasis text-center py-8">Failed to load APQC hierarchy: ${escapeHtml(error.message)}</div>`;
   }
@@ -239,8 +242,8 @@ async function searchAPQCProcesses(query) {
   }
 
   try {
-    const response = await fetch(`/api/apqc/search?q=${encodeURIComponent(query)}&limit=50`);
-    const data = await response.json();
+    // Platform.fetch.get serialises query parameters automatically; throws on non-ok.
+    const data = await Platform.fetch.get('/api/apqc/search', { q: query, limit: 50 }, { silent: true });
 
     if (data.success && data.results) {
       const searchResults = data.results.map(r => ({
@@ -256,8 +259,8 @@ async function searchAPQCProcesses(query) {
     }
     _apqcSearchErrorShown = false;
   } catch (error) {
-    console.error('APQC search error:', error);
     // Fires on every keystroke — toast once per outage, not on every retry.
+    // We passed silent:true, so Platform.fetch won't show a toast; we keep our own logic.
     if (!_apqcSearchErrorShown) {
       _apqcSearchErrorShown = true;
       if (window.Platform && Platform.toast) Platform.toast.error('APQC search failed.');

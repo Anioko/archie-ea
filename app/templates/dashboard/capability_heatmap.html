@@ -1,17 +1,14 @@
 {% extends "layouts/admin_base.html" %}
+{% from 'macros/page_shell.html' import page_shell %}
 
-{% block title %}Capability Heatmap & Investment — {{ config.APP_NAME }}{% endblock %}
+{% block title %}Capability Heatmap &amp; Investment — {{ config.APP_NAME }}{% endblock %}
 
 {% block content %}
 <div x-data="capabilityHeatmap()" x-init="fetchData()" class="space-y-6">
 
   {# Page header #}
-  <div class="flex items-center justify-between">
-    <div>
-      <h1 class="text-2xl font-bold text-foreground">Capability Heatmap</h1>
-      <p class="text-sm text-muted-foreground mt-1">Maturity levels by domain with investment overlay</p>
-    </div>
-    <div class="flex items-center gap-2">
+  {% macro _ps_actions() %}
+<div class="flex items-center gap-2">
       <label class="text-sm text-muted-foreground">View:</label>
       <select x-model="viewMode" @change="fetchData()"
               class="rounded-md border border-border bg-background text-foreground text-sm px-3 py-1.5 focus:ring-2 focus:ring-ring" aria-label="View">
@@ -19,7 +16,8 @@
         <option value="investment">With Investment</option>
       </select>
     </div>
-  </div>
+  {% endmacro %}
+  {{ page_shell(title='Capability Heatmap', subtitle='Maturity levels by domain with investment overlay', actions_caller=_ps_actions) }}
 
   {# Loading state #}
   <div x-show="loading" x-cloak class="flex items-center justify-center py-16">
@@ -205,15 +203,15 @@ function capabilityHeatmap() {
       this.error = null;
       this.selectedDomain = null;
       try {
-        const params = this.viewMode === 'investment' ? '?group_by=domain' : '';
-        const resp = await fetch('/dashboard/api/capability-heatmap' + params);
-        const json = await resp.json();
+        const params = this.viewMode === 'investment' ? { group_by: 'domain' } : {};
+        const json = await Platform.fetch.get('/dashboard/api/capability-heatmap', params, { silent: true });
         if (json.success) {
           this.data = json.data;
         } else {
           this.error = json.error || 'Failed to load heatmap data';
         }
       } catch (e) {
+        // Platform.fetch throws on network or HTTP error; surface to user via inline error state
         this.error = 'Network error: ' + e.message;
       } finally {
         this.loading = false;

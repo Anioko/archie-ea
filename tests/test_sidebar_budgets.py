@@ -159,7 +159,11 @@ def test_enterprise_architect_my_work_membership():
         # baseline, so a 27th would trip the gate. See the comment on this
         # role's entry in app/utils/role_access.py.
         "Portfolio",
-        "Capability Map",
+        # NAV-1 (27 Aug 2026): "Capability Map" removed — it pointed at
+        # capability_map.index, the identical endpoint Library already renders
+        # as "Capabilities" for every role, so this persona showed one page
+        # twice. Rendered total 26 -> 25, which is what let the nav-coverage
+        # links land elsewhere without any persona exceeding the budget.
         "Roadmaps",
         "ArchiMate Composer",
         "Traceability Matrix",
@@ -186,6 +190,9 @@ def test_cto_my_work_membership():
         "Health Scorecard",
         "Rationalization",
         "Investment Analysis",
+        # NAV-1: nav-coverage output 9 (KPI/metric dashboards) had routes but
+        # no sidebar link in any persona.
+        "Portfolio KPIs",
     ]
 
 
@@ -221,6 +228,13 @@ def test_business_architect_my_work_membership():
         "Traceability Matrix",
         "Capability Health",
         "Data Architecture",
+        # NAV-1 (27 Aug 2026): nav-coverage outputs 5, 6 and 10 — information/
+        # data maps, strategy-to-execution and products & services — all had
+        # working routes and no sidebar link in any persona. Every one of these
+        # endpoints already shipped.
+        "Data Lineage",
+        "Motivation Model",
+        "Products & Services",
     ]
 
 
@@ -232,6 +246,8 @@ def test_portfolio_manager_my_work_membership():
         "Vendors",
         "Applications",
         "Consolidation List",
+        # NAV-1: see test_cto_my_work_membership — same page, other owner.
+        "Portfolio KPIs",
     ]
 
 

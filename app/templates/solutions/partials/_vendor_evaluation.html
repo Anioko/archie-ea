@@ -207,9 +207,8 @@ document.addEventListener('alpine:init', () => {
             this.loading = true;
             this.loadFailed = false;
             try {
-                const resp = await fetch(`/solutions/${this.solutionId}/vendor-evaluation`);
-                if (!resp.ok) throw new Error('HTTP ' + resp.status);
-                const data = await resp.json();
+                const data = await Platform.fetch(`/solutions/${this.solutionId}/vendor-evaluation`, { silent: true });
+                // Platform.fetch returns the parsed response body directly; it throws on non‑ok responses.
                 if (data.success) {
                     this.shortlist = data.shortlist || [];
                     this.categories = data.categories || [];
@@ -217,7 +216,6 @@ document.addEventListener('alpine:init', () => {
                     this.loadFailed = true;
                 }
             } catch (e) {
-                console.error('Failed to load vendor evaluation shortlist:', e);
                 this.loadFailed = true;
                 this.errorMsg = 'Failed to load vendor shortlist. Reload the page to try again.';
             } finally {
@@ -233,17 +231,20 @@ document.addEventListener('alpine:init', () => {
             }
             this.searching = true;
             try {
-                const params = new URLSearchParams();
-                if (q) params.set('q', q);
-                if (this.categoryFilter) params.set('category', this.categoryFilter);
-                params.set('limit', '20');
-                const resp = await fetch(`/solutions/vendor-products/search?${params}`);
-                const data = await resp.json();
+                const params = {};
+                if (q) params.q = q;
+                if (this.categoryFilter) params.category = this.categoryFilter;
+                params.limit = '20';
+                // Platform.fetch.get serialises plain‑object params to query string automatically.
+                const data = await Platform.fetch.get(`/solutions/vendor-products/search`, params, { silent: true });
+                // Platform.fetch returns the parsed response body directly; it throws on non‑ok responses.
                 if (data.success) {
                     this.searchResults = data.results || [];
+                } else {
+                    this.searchResults = [];
+                    this.errorMsg = data.error || 'Vendor product search failed.';
                 }
             } catch (e) {
-                console.error('Vendor product search failed:', e);
                 this.errorMsg = 'Vendor product search failed.';
             } finally {
                 this.searching = false;
@@ -259,12 +260,9 @@ document.addEventListener('alpine:init', () => {
             this.addingId = productId;
             this.errorMsg = '';
             try {
-                const resp = await fetch(`/solutions/${this.solutionId}/vendor-evaluation/shortlist`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ product_id: productId }),
-                });
-                const data = await resp.json();
+                // Platform.fetch.post serialises plain‑object body to JSON automatically; CSRF token is injected.
+                const data = await Platform.fetch.post(`/solutions/${this.solutionId}/vendor-evaluation/shortlist`, { product_id: productId }, { silent: true });
+                // Platform.fetch returns the parsed response body directly; it throws on non‑ok responses.
                 if (data.success) {
                     this.shortlist.push(data.item);
                     if (data.warning) {
@@ -287,11 +285,9 @@ document.addEventListener('alpine:init', () => {
             this.removingId = productId;
             this.errorMsg = '';
             try {
-                const resp = await fetch(
-                    `/solutions/${this.solutionId}/vendor-evaluation/shortlist/${productId}`,
-                    { method: 'DELETE' }
-                );
-                const data = await resp.json();
+                // Platform.fetch.delete injects CSRF token automatically.
+                const data = await Platform.fetch.delete(`/solutions/${this.solutionId}/vendor-evaluation/shortlist/${productId}`, { silent: true });
+                // Platform.fetch returns the parsed response body directly; it throws on non‑ok responses.
                 if (data.success) {
                     this.shortlist = this.shortlist.filter(item => item.id !== productId);
                 } else {

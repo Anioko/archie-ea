@@ -1,4 +1,5 @@
 {% extends "layouts/admin_base.html" %}
+{% from 'macros/page_shell.html' import page_shell %}
 {% import 'components/breadcrumb.html' as breadcrumb %}
 
 {% block title %}Tree Browser{% endblock %}
@@ -52,11 +53,8 @@
     {% endcall %}
 
     <!-- Header -->
-    <div class="flex items-center space-x-3">
-        <i data-lucide="trees" class="w-6 h-6 text-primary"></i>
-        <h1 class="text-3xl font-bold tracking-tight">Tree Browser</h1>
-        <span class="text-sm text-muted-foreground">{{ trees | length }} hierarchies available</span>
-    </div>
+    {% macro _ps_sub() %}{{ trees | length }} hierarchies available{% endmacro %}
+    {{ page_shell(title='Tree Browser', icon='trees', subtitle_caller=_ps_sub) }}
 
     <!-- Tree cards grid -->
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">

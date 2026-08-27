@@ -27,49 +27,45 @@ function loadAvailableApplications() {
     // Get current consolidation list entries to exclude them
     let currentAppIds = allEntries.map(function(e) { return e.application_id; });
 
-    fetch('/capability-map/api/applications', {
-        credentials: 'include'
-    })
-    .then(function(response) {
-        if (!response.ok) { throw new Error('applications request failed: ' + response.status); }
-        return response.json();
-    })
-    .then(function(data) {
-        if (data.applications) {
-            // Filter out applications already in consolidation list
-            allAvailableApps = data.applications.filter(function(app) {
-                return !currentAppIds.includes(app.id);
-            });
+    Platform.fetch('/capability-map/api/applications')
+        .then(function(data) {
+            if (data.applications) {
+                // Filter out applications already in consolidation list
+                allAvailableApps = data.applications.filter(function(app) {
+                    return !currentAppIds.includes(app.id);
+                });
 
-            // Populate department filter
-            let deptSelect = document.getElementById('app-filter-department');
-            let departments = [];
-            let seen = {};
-            allAvailableApps.forEach(function(a) {
-                if (a.department && !seen[a.department]) {
-                    seen[a.department] = true;
-                    departments.push(a.department);
-                }
-            });
-            departments.sort();
-            departments.forEach(function(dept) {
-                let option = document.createElement('option');
-                option.value = dept;
-                option.textContent = dept;
-                deptSelect.appendChild(option);
-            });
+                // Populate department filter
+                let deptSelect = document.getElementById('app-filter-department');
+                let departments = [];
+                let seen = {};
+                allAvailableApps.forEach(function(a) {
+                    if (a.department && !seen[a.department]) {
+                        seen[a.department] = true;
+                        departments.push(a.department);
+                    }
+                });
+                departments.sort();
+                departments.forEach(function(dept) {
+                    let option = document.createElement('option');
+                    option.value = dept;
+                    option.textContent = dept;
+                    deptSelect.appendChild(option);
+                });
 
-            displayAvailableApplications(allAvailableApps);
-        } else {
+                displayAvailableApplications(allAvailableApps);
+            } else {
+                safeHTML(document.getElementById('app-list-container'),
+                    '<div class="p-8 text-center text-destructive">Error loading applications. Please refresh.</div>');
+            }
+        })
+        .catch(function(error) {
+            // Platform.fetch already shows a toast unless silent:true, but we also need to paint inline error.
+            // The existing inline error state is painted via safeHTML below.
+            // We keep silent:false (default) because there is no duplicate toast issue (no other error display).
             safeHTML(document.getElementById('app-list-container'),
-                '<div class="p-8 text-center text-destructive">Error loading applications. Please refresh.</div>');
-        }
-    })
-    .catch(function(error) {
-        console.error('Error loading applications:', error);
-        safeHTML(document.getElementById('app-list-container'),
-            '<div class="p-8 text-center text-destructive">Error loading applications.</div>');
-    });
+                '<div class="p-8 text-center text-destructive">Error loading applications.</div>');
+        });
 }
 
 // Display applications in list
@@ -188,33 +184,28 @@ function submitAddApplications() {
 
     let appIds = Array.from(selectedAppIds);
 
-    fetch('/consolidation-list/api/add', {
-        method: 'POST',
-        credentials: 'include',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
-        },
-        body: JSON.stringify({
-            application_ids: appIds,
-            source_type: 'manual',
-            source_group_name: 'Manual Selection'
+    Platform.fetch.post('/consolidation-list/api/add', {
+        application_ids: appIds,
+        source_type: 'manual',
+        source_group_name: 'Manual Selection'
+    })
+        .then(function(data) {
+            if (data.success) {
+                Platform.toast.success('Added ' + data.added_count + ' application(s) to consolidation list');
+                closeAddApplicationsModal();
+                loadEntries(); // Reload the main list
+            } else {
+                // The server returned a 200 with success:false, which Platform.fetch does not treat as an error.
+                // We must still show an error toast with the server's message.
+                Platform.toast.error('Error: ' + (data.error || 'Unknown error'));
+            }
         })
-    })
-    .then(function(response) { return response.json(); })
-    .then(function(data) {
-        if (data.success) {
-            Platform.toast.success('Added ' + data.added_count + ' application(s) to consolidation list');
-            closeAddApplicationsModal();
-            loadEntries(); // Reload the main list
-        } else {
-            Platform.toast.error('Error: ' + (data.error || 'Unknown error'));
-        }
-    })
-    .catch(function(error) {
-        console.error('Error adding applications:', error);
-        Platform.toast.error('Error adding applications. Please try again.');
-    });
+        .catch(function(error) {
+            // Platform.fetch already shows a toast for non‑ok responses (unless silent:true).
+            // We keep silent:false (default) because there is no duplicate toast issue.
+            // No console.error allowed; the error is already surfaced to the user via Platform.fetch's toast.
+            Platform.toast.error('Error adding applications. Please try again.');
+        });
 }
 
 // Helper: Get status background color

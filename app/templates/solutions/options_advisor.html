@@ -4,8 +4,8 @@
 {% block title %}Options & Decision — {{ solution.name }}{% endblock %}
 
 {% block content %}
-<div class="container mx-auto px-4 sm:px-6 lg:px-8 py-6 max-w-5xl"
-     x-data="optionsAdvisor({{ solution.id }}, {{ (adr.id if adr else 'null') }})">
+<div class="p-6 space-y-6 mx-auto max-w-5xl"
+     x-data="optionsAdvisor({{ solution.id }}, {{ (adr.id if adr else none) | tojson }})">
     {{ page_header(
         title='Options & Decision',
         description='The AI Solution Architect evaluates 2-3 architecture options with trade-offs and proposes a decision record — grounded in this solution\'s drivers, constraints and requirements. You decide; the ARB disposes.',
@@ -77,11 +77,11 @@
                 <span class="text-xs font-bold uppercase tracking-wider text-muted-foreground">ADR-{{ '%03d' % adr.adr_number }}</span>
                 <h2 class="text-sm font-semibold text-foreground">{{ adr.title }}</h2>
             </div>
-            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-bold uppercase
-                {% if adr.status == 'accepted' %}bg-success/10 text-success-emphasis border border-success/30
-                {% elif adr.status == 'rejected' %}bg-destructive/10 text-destructive-emphasis border border-destructive/30
-                {% else %}bg-warning/10 text-warning-emphasis border border-warning/30{% endif %}"
-                x-text="status"></span>
+            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-bold uppercase"
+                  :class="status === 'accepted' ? 'bg-success/10 text-success-emphasis border border-success/30' :
+                          status === 'rejected' ? 'bg-destructive/10 text-destructive-emphasis border border-destructive/30' :
+                          'bg-warning/10 text-warning-emphasis border border-warning/30'"
+                  x-text="status"></span>
         </div>
         <div class="p-5 space-y-4">
             {% for label, field, icon in [
@@ -132,27 +132,28 @@
             async generate() {
                 this.busy = true; this.error = '';
                 try {
-                    const r = await fetch('/solutions/' + this.solutionId + '/options-advisor/generate', {
-                        method: 'POST', headers: { 'X-CSRFToken': this._csrf() },
-                    });
-                    const d = await r.json();
-                    if (!r.ok || !d.success) { this.error = d.error || 'Generation failed.'; return; }
+                    // Platform.fetch.post automatically injects CSRF and serializes body
+                    const d = await Platform.fetch.post('/solutions/' + this.solutionId + '/options-advisor/generate', null, { silent: true });
+                    if (!d.success) { this.error = d.error || 'Generation failed.'; return; }
                     window.location.reload();
-                } catch (e) { this.error = 'Network error during generation.'; }
-                finally { this.busy = false; }
+                } catch (e) {
+                    // Platform.fetch throws on network or HTTP error; we already have this.error for inline display
+                    // The global toast is suppressed via silent:true, so we only show inline error
+                    this.error = e.message || 'Network error during generation.';
+                } finally { this.busy = false; }
             },
             async setStatus(status) {
                 if (!this.adrId) return;
                 this.busy = true;
                 try {
-                    const r = await fetch('/solutions/options-advisor/' + this.adrId + '/status', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this._csrf() },
-                        body: JSON.stringify({ status }),
-                    });
-                    const d = await r.json();
-                    if (r.ok && d.success) { this.status = status; }
+                    // Platform.fetch.post automatically injects CSRF and serializes plain object body to JSON
+                    const d = await Platform.fetch.post('/solutions/options-advisor/' + this.adrId + '/status', { status }, { silent: true });
+                    if (d.success) { this.status = status; }
                     else { this.error = d.error || 'Could not update status.'; }
+                } catch (e) {
+                    // Platform.fetch throws on network or HTTP error; we already have this.error for inline display
+                    // The global toast is suppressed via silent:true, so we only show inline error
+                    this.error = e.message || 'Could not update status.';
                 } finally { this.busy = false; }
             },
         };

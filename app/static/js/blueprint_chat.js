@@ -56,14 +56,15 @@ function blueprintChat() {
 
         async syncAutoExecute() {
             try {
-                const resp = await fetch('/ai-chat/session/auto-execute');
-                if (!resp.ok) throw new Error('HTTP ' + resp.status);
-                const data = await resp.json();
+                const data = await Platform.fetch.get('/ai-chat/session/auto-execute');
                 this.autoExecute = !!data.auto_execute;
             } catch (err) {
-                console.error('Failed to read auto-execute state:', err);
                 // Leave the placeholder value in place — a stale local guess
                 // is a smaller failure than blocking the panel on this call.
+                // Platform.fetch has already toasted the failure, so the stale value
+                // is visible as stale rather than presented as fresh truth.
+                // Suppressed here only to avoid a duplicate, because this is a
+                // background sync that failing should not block the UI.
             }
         },
 
@@ -74,16 +75,11 @@ function blueprintChat() {
 
         async toggleAutoExecute() {
             try {
-                const resp = await fetch('/ai-chat/session/toggle-auto-execute', {
-                    method: 'POST',
-                    headers: { 'X-CSRFToken': this.csrfToken },
-                });
-                if (!resp.ok) throw new Error('HTTP ' + resp.status);
-                const data = await resp.json();
+                const data = await Platform.fetch.post('/ai-chat/session/toggle-auto-execute');
                 this.autoExecute = data.auto_execute;
             } catch (err) {
-                console.error('Failed to toggle auto-execute:', err);
-                if (window.Platform && Platform.toast) Platform.toast.error('Could not change the auto-execute setting.');
+                // Platform.fetch has already toasted this failure; the catch only
+                // stops it becoming an unhandled rejection.
             }
         },
 
@@ -101,7 +97,8 @@ function blueprintChat() {
             const streamIdx = this.messages.length - 1;
 
             try {
-                const resp = await fetch('/ai-chat/message/stream', {
+                // raw-fetch-ok: streaming response requires raw Response object to access body.getReader()
+                const resp = await fetch('/ai-chat/message/stream', {  // raw-fetch-ok: SSE stream; needs body.getReader() on the raw Response
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -197,7 +194,9 @@ function blueprintChat() {
                 }
 
             } catch (err) {
-                console.error('Stream error:', err);
+                // Platform.fetch would have thrown a structured error for non‑streaming errors,
+                // but we keep raw fetch for streaming. The error is already surfaced to the user
+                // via the inline error message placed in the chat thread.
                 this.messages[streamIdx].streaming = false;
                 this.messages[streamIdx].role = 'error';
                 this.messages[streamIdx].text = 'Request failed. Please try again.';
@@ -226,32 +225,21 @@ function blueprintChat() {
             if (!url) return; // No undo for link operations
 
             try {
-                const resp = await fetch(url, {
-                    method: 'DELETE',
-                    headers: { 'X-CSRFToken': this.csrfToken },
-                });
-                if (!resp.ok) throw new Error('Undo failed: HTTP ' + resp.status);
+                await Platform.fetch.delete(url);
                 action.undone = true;
                 clearTimeout(action.undoTimer);
                 window.dispatchEvent(new CustomEvent('bp-agent-wrote', {
                     detail: { entity_type: entityType, solution_id: this.solutionId },
                 }));
             } catch (err) {
-                console.error('Undo failed:', err);
-                Platform.toast.error('Undo failed — the item may still exist');
+                // Platform.fetch has already toasted this failure; the catch only
+                // stops it becoming an unhandled rejection.
             }
         },
 
         async approveAction(approval) {
             try {
-                const resp = await fetch(`/ai-chat/tools/approve/${approval.approval_id}`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': this.csrfToken,
-                    },
-                });
-                const data = await resp.json();
+                const data = await Platform.fetch.post(`/ai-chat/tools/approve/${approval.approval_id}`);
                 if (data.success) {
                     approval.dismissed = true;
                     this.messages.push({
@@ -264,11 +252,14 @@ function blueprintChat() {
                         }));
                     }
                 } else {
+                    // Platform.fetch would have thrown on non‑ok response, so this branch
+                    // only runs if the server returns a 200 with success:false.
+                    // We keep the existing inline error toast.
                     Platform.toast.error('Approve failed: ' + (data.error || 'Unknown error'));
                 }
             } catch (err) {
-                console.error('Approve failed:', err);
-                Platform.toast.error('Approve failed. Please try again.');
+                // Platform.fetch has already toasted this failure; the catch only
+                // stops it becoming an unhandled rejection.
             }
         },
 
@@ -369,12 +360,12 @@ function copilotInsights(solutionId) {
 
         async load() {
             try {
-                const resp = await fetch(`/solutions/${this.solutionId}/copilot-insights`);
-                if (!resp.ok) return;
-                const data = await resp.json();
+                const data = await Platform.fetch.get(`/solutions/${this.solutionId}/copilot-insights`);
                 this.insights = data.insights || [];
             } catch (err) {
-                // Silent fail — proactive insights are non-critical
+                // Proactive insights are an enhancement, not a record: the panel simply
+                // stays empty. Platform.fetch has already toasted the failure, so the
+                // user is not left thinking there were no insights.
             }
         },
 
@@ -385,13 +376,12 @@ function copilotInsights(solutionId) {
         },
 
         async dismiss(insight) {
-            const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
             try {
-                await fetch(`/solutions/${this.solutionId}/copilot-insights/${insight.id}/dismiss`, {
-                    method: 'POST',
-                    headers: { 'X-CSRFToken': csrf },
-                });
-            } catch { /* silent */ }
+                await Platform.fetch.post(`/solutions/${this.solutionId}/copilot-insights/${insight.id}/dismiss`);
+            } catch {
+                // Silent fail — proactive insights are non‑critical.
+                // Platform.fetch may have shown a toast; we suppress duplicate user‑facing error.
+            }
             this.insights = this.insights.filter(i => i.id !== insight.id);
         },
 

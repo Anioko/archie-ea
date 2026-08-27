@@ -139,15 +139,7 @@ async function seedFrameworks() {
     }
 
     try {
-        const response = await fetch('/industry-apqc/api/seed-frameworks', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': '{{ csrf_token() }}'
-            }
-        });
-
-        const data = await response.json();
+        const data = await Platform.fetch.post('/industry-apqc/api/seed-frameworks', null, { silent: true });
 
         if (data.success) {
             Platform.toast.success(`Successfully created ${data.total_created} frameworks!`);
@@ -156,6 +148,7 @@ async function seedFrameworks() {
             Platform.toast.error('Error: ' + (data.error || 'Failed to seed frameworks'));
         }
     } catch (error) {
+        // Platform.fetch throws on network errors or HTTP errors (non-2xx)
         Platform.toast.error('Error: ' + error.message);
     }
 }

@@ -97,7 +97,7 @@
         {# Counters start null, not 0: an unloaded figure renders as an em dash,
            because a 0 here is indistinguishable from a measured zero. #}
         <div x-data="{ rhExpanded: false, rhLoaded: false, rhError: '', rhData: {total_elements:null,total_relationships:null,zero_relationship_count:null,average_per_element:null,by_layer:[]} }"
-             x-init="fetch('/capability-map/api/archimate/relationship-health').then(r=>{if(!r.ok)throw new Error('relationship health request failed: '+r.status);return r.json()}).then(d=>{rhData=d;rhLoaded=true}).catch(()=>{rhError='Could not load ArchiMate relationship health.';Platform.toast.error(rhError)})"
+             x-init="Platform.fetch('/capability-map/api/archimate/relationship-health', { silent: true }).then(d=>{rhData=d;rhLoaded=true}).catch(err=>{rhError='Could not load ArchiMate relationship health.';Platform.toast.error(rhError)})"
              class="mb-4">
             <div class="rounded-lg border border-input bg-card">
                 <div class="p-3 flex items-center justify-between cursor-pointer" @click="rhExpanded=!rhExpanded">
@@ -954,9 +954,9 @@
                                     <option value="USER-EXPERIENCE">User Experience</option>
                                     <option value="APPLICATION-SERVICES">Application Services</option>
                                     <option value="DATA-STORAGE">Data Storage</option>
-                                    <option value="SECURITY-IDENTITY">Security & Identity</option>
+                                    <option value="SECURITY-IDENTITY">Security &amp; Identity</option>
                                     <option value="DEVOPS-PLATFORM">DevOps Platform</option>
-                                    <option value="AI-ANALYTICS">AI & Analytics</option>
+                                    <option value="AI-ANALYTICS">AI &amp; Analytics</option>
                                     <option value="COMMUNICATION">Communication</option>
                                 </select>
                             </div>
@@ -1089,7 +1089,7 @@
                                 <span class="text-xs font-bold text-primary bg-primary/10 px-2 py-0.5 rounded">1.0</span>
                                 <div class="w-2 h-2 rounded-full bg-muted-foreground/40" id="proc-cat-1-status"></div>
                             </div>
-                            <h4 class="text-sm font-semibold text-primary mb-1">Vision & Strategy</h4>
+                            <h4 class="text-sm font-semibold text-primary mb-1">Vision &amp; Strategy</h4>
                             <div class="flex justify-between text-xs text-muted-foreground">
                                 <span id="proc-cat-1-count">0</span>
                                 <span class="font-medium text-primary" id="proc-cat-1-pct">0%</span>
@@ -1101,7 +1101,7 @@
                                 <span class="text-xs font-bold text-success-emphasis bg-success/10 px-2 py-0.5 rounded">2.0</span>
                                 <div class="w-2 h-2 rounded-full bg-muted-foreground/40" id="proc-cat-2-status"></div>
                             </div>
-                            <h4 class="text-sm font-semibold text-success-emphasis mb-1">Products & Services</h4>
+                            <h4 class="text-sm font-semibold text-success-emphasis mb-1">Products &amp; Services</h4>
                             <div class="flex justify-between text-xs text-muted-foreground">
                                 <span id="proc-cat-2-count">0</span>
                                 <span class="font-medium text-success-emphasis" id="proc-cat-2-pct">0%</span>
@@ -1113,7 +1113,7 @@
                                 <span class="text-xs font-bold text-primary bg-accent px-2 py-0.5 rounded">3.0</span>
                                 <div class="w-2 h-2 rounded-full bg-muted-foreground/40" id="proc-cat-3-status"></div>
                             </div>
-                            <h4 class="text-sm font-semibold text-primary mb-1">Marketing & Sales</h4>
+                            <h4 class="text-sm font-semibold text-primary mb-1">Marketing &amp; Sales</h4>
                             <div class="flex justify-between text-xs text-muted-foreground">
                                 <span id="proc-cat-3-count">0</span>
                                 <span class="font-medium text-primary" id="proc-cat-3-pct">0%</span>
@@ -1250,9 +1250,9 @@
                             <label for="process-category-filter" class="text-sm font-medium text-muted-foreground">Category:</label>
                             <select id="process-category-filter" @change="filterProcessGapTable()" class="px-3 py-2 border border-input rounded-md text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                                 <option value="">All Categories</option>
-                                <option value="1.0">1.0 - Vision & Strategy</option>
-                                <option value="2.0">2.0 - Products & Services</option>
-                                <option value="3.0">3.0 - Marketing & Sales</option>
+                                <option value="1.0">1.0 - Vision &amp; Strategy</option>
+                                <option value="2.0">2.0 - Products &amp; Services</option>
+                                <option value="3.0">3.0 - Marketing &amp; Sales</option>
                                 <option value="4.0">4.0 - Deliver Products</option>
                                 <option value="5.0">5.0 - Deliver Services</option>
                                 <option value="6.0">6.0 - Customer Service</option>
@@ -1613,9 +1613,9 @@
                                 <option value="USER-EXPERIENCE">User Experience</option>
                                 <option value="APPLICATION-SERVICES">Application Services</option>
                                 <option value="DATA-STORAGE">Data Storage</option>
-                                <option value="SECURITY-IDENTITY">Security & Identity</option>
+                                <option value="SECURITY-IDENTITY">Security &amp; Identity</option>
                                 <option value="DEVOPS-PLATFORM">DevOps Platform</option>
-                                <option value="AI-ANALYTICS">AI & Analytics</option>
+                                <option value="AI-ANALYTICS">AI &amp; Analytics</option>
                                 <option value="COMMUNICATION">Communication</option>
                             </select>
                             <select id="acm-level-filter" @change="filterACMCapabilities()" class="px-3 py-2 border border-input rounded-md text-sm" aria-label="Filter by Level">
@@ -2097,7 +2097,7 @@
                             <div class="bg-card border border-border rounded-lg p-5 mb-4">
                                 <h4 class="text-sm font-semibold text-foreground mb-4 flex items-center">
                                     <i data-lucide="activity" class="w-4 h-4 mr-2 text-success" aria-hidden="true"></i>
-                                    Status & Progress
+                                    Status &amp; Progress
                                 </h4>
                                 <div class="grid grid-cols-3 gap-4">
                                     <div>
@@ -2137,7 +2137,7 @@
                             <div class="bg-card border border-border rounded-lg p-5 mb-4">
                                 <h4 class="text-sm font-semibold text-foreground mb-4 flex items-center">
                                     <i data-lucide="calendar" class="w-4 h-4 mr-2 text-primary" aria-hidden="true"></i>
-                                    Timeline & Scheduling
+                                    Timeline &amp; Scheduling
                                 </h4>
                                 <div class="grid grid-cols-3 gap-4">
                                     <div>
@@ -2165,7 +2165,7 @@
                             <div class="bg-card border border-border rounded-lg p-5">
                                 <h4 class="text-sm font-semibold text-foreground mb-4 flex items-center">
                                     <i data-lucide="dollar-sign" class="w-4 h-4 mr-2 text-warning-emphasis" aria-hidden="true"></i>
-                                    Resources & Budget
+                                    Resources &amp; Budget
                                 </h4>
                                 <div class="grid grid-cols-4 gap-4">
                                     <div>

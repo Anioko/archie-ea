@@ -779,3 +779,82 @@ def test_decision_brief_adapter_load_evaluate_snapshot_url_and_hash_tamper(
 
     with pytest.raises(CommandConflict, match="decision_brief_hash_mismatch"):
         adapter.snapshot(decision_scope.actor, subject, current_readiness)
+
+
+def test_server_evidence_never_crosses_a_tenant_boundary(db_session, make_org):
+    """NotFound and NotAuthorised deliberately collapse into one blocker.
+
+    Carried forward from the dossier-era
+    ``test_citation_to_another_tenants_evidence_is_indistinguishable_from_missing``
+    on main. That test guarded a submitter-supplied citation path this branch
+    removed outright; the protection it encoded -- another tenant's row is
+    never readable and never reaches an immutable snapshot -- still applies to
+    the server-derived evidence that replaced it, so it is re-pinned here
+    against the surviving contract rather than deleted with the old one.
+    """
+    org, foreign_org = make_org("server-ev-own"), make_org("server-ev-foreign")
+    actor_user = _user(db_session, org)
+    foreign_user = _user(db_session, foreign_org)
+    foreign_model = ArchitectureModel(
+        organization_id=foreign_org.id,
+        name="Foreign tenant model",
+        version="9.9",
+        user_id=foreign_user.id,
+    )
+    db_session.add(foreign_model)
+    db_session.flush()
+    adr = ArchitectureDecisionRecord(
+        organization_id=org.id,
+        adr_number=77,
+        title="ADR pointing at another tenant",
+        status="proposed",
+        context="Context",
+        decision="Decision",
+        rationale="Rationale",
+        consequences="Consequences",
+        architecture_model_id=foreign_model.id,
+    )
+    db_session.add(adr)
+    db_session.flush()
+    adapter = ADRARBAdapter()
+    actor = _actor(actor_user, org)
+
+    readiness = adapter.evaluate(actor, adapter.load(actor, adr.id), {"human_reviewed": True})
+
+    assert readiness.ready is False
+    assert "adr_architecture_model_outside_tenant" in readiness.reason_codes
+    citations = readiness.checks["evidence_citations"]
+    assert all(
+        not (
+            citation.get("resource_type") == "architecture_model"
+            and citation.get("resource_id") == foreign_model.id
+        )
+        for citation in citations
+    )
+    assert "Foreign tenant model" not in json.dumps(readiness.checks, default=str)
+    with pytest.raises(BlockedByEvidence, match="arb_subject_not_ready"):
+        adapter.snapshot(actor, adapter.load(actor, adr.id), readiness)
+
+
+def test_model_server_evidence_excludes_another_tenants_elements(db_session, make_org):
+    """A foreign-tenant element must not count toward the persisted graph."""
+    org, foreign_org = make_org("model-ev-own"), make_org("model-ev-foreign")
+    actor_user = _user(db_session, org)
+    model = ArchitectureModel(
+        organization_id=org.id,
+        name="Model with a foreign element",
+        version="1.0",
+        user_id=actor_user.id,
+    )
+    db_session.add(model)
+    db_session.flush()
+    # Same architecture_id, other tenant: the only thing keeping it out is the
+    # organization_id predicate in _server_evidence.
+    _add_model_element(db_session, model, foreign_org, name="Foreign element")
+    adapter = ArchitectureModelARBAdapter()
+    actor = _actor(actor_user, org)
+
+    readiness = adapter.evaluate(actor, adapter.load(actor, model.id), {"human_reviewed": True})
+
+    assert readiness.ready is False
+    assert "architecture_model_elements_required" in readiness.reason_codes

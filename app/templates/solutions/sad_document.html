@@ -1,4 +1,5 @@
 {% extends "layouts/admin_base.html" %}
+{% from 'macros/page_shell.html' import page_shell %}
 <!-- modal-a11y-ok -->
 
 {% block title %}Solution Architecture Document — {{ sad.solution.name }}{% endblock %}
@@ -44,12 +45,8 @@
 <div class="max-w-5xl mx-auto py-6 px-4" id="sad-top">
 
   {# ── Header bar ──────────────────────────────────────────────────────── #}
-  <div class="flex items-center justify-between mb-6 print-hide">
-    <div>
-      <h1 class="text-2xl font-bold text-foreground">Solution Architecture Document</h1>
-      <p class="text-sm text-muted-foreground mt-1">{{ sad.solution.name }}</p>
-    </div>
-    <div class="flex gap-2">
+  {% macro _ps_actions() %}
+<div class="flex gap-2">
       <a href="{{ url_for('solution_design.solution_sad_download', solution_id=sad.solution.id) }}"
          class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md border border-border bg-card text-foreground hover:bg-muted transition-colors"
          aria-label="Download SAD as HTML file">
@@ -69,7 +66,8 @@
         Back to Solution
       </a>
     </div>
-  </div>
+  {% endmacro %}
+  {{ page_shell(title='Solution Architecture Document', subtitle=(sad.solution.name), actions_caller=_ps_actions) }}
 
   {# ── Table of Contents ───────────────────────────────────────────────── #}
   <nav class="sad-toc print-hide" aria-label="Table of Contents">

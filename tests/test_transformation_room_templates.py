@@ -304,6 +304,88 @@ def test_technology_intake_context_is_conditional_and_non_persisting(
     assert 'name="vendor_key"' not in body
 
 
+def test_programme_wizard_renders_every_step_and_its_navigation(
+    app, programme_fixture, login_as
+):
+    """The whole point of a wizard is that the page renders at all.
+
+    The first attempt at this feature shipped a url_for() to a blueprint that
+    did not exist and a Jinja filter that was never written, so every request
+    500'd. A 200 plus the presence of all six steps is the cheapest guard
+    against that returning.
+    """
+    client = app.test_client()
+    login_as(client, programme_fixture.owner_id)
+    response = client.get("/solutions/new-programme")
+
+    assert response.status_code == 200
+    body = response.get_data(as_text=True)
+
+    for step in (
+        "step-intent",
+        "step-ownership",
+        "step-workstream",
+        "step-outcome",
+        "step-measure",
+        "step-review",
+    ):
+        assert f'data-testid="{step}"' in body, step
+
+    # Navigation controls, and a step nav that cannot skip ahead.
+    assert 'data-testid="wizard-next"' in body
+    assert 'data-testid="wizard-back"' in body
+    assert 'data-testid="wizard-submit"' in body
+    assert "canVisit(index)" in body
+
+    # Each step is gated on its own index, and every one carries x-cloak, or the
+    # six steps all flash on screen together before Alpine boots.
+    for index in range(6):
+        marker = f'x-show="currentStep === {index}"'
+        assert marker in body, marker
+    assert body.count("x-cloak") >= 6
+
+
+def test_programme_wizard_gates_steps_and_shows_absent_values_as_em_dash(
+    app, programme_fixture, login_as
+):
+    """Optional-but-explained fields must not be silently defaulted.
+
+    A missing baseline is recorded as its stated reason, never as 0 -- a 0
+    that means "not measured" is indistinguishable from a measured zero.
+    """
+    client = app.test_client()
+    login_as(client, programme_fixture.owner_id)
+    body = client.get("/solutions/new-programme").get_data(as_text=True)
+
+    # Continue is disabled until the current step validates.
+    assert ':disabled="!stepValid(currentStep)"' in body
+    # Submit is blocked while any earlier step is incomplete.
+    assert ':disabled="submitting || incompleteSteps.length > 0"' in body
+    # Enter on a non-review step advances instead of creating the programme.
+    assert "if (this.currentStep !== this.steps.length - 1) { this.next(); return; }" in body
+
+    # Absent values render as an em dash, not 0 and not a blank.
+    assert "return text === '' ? '—' : text;" in body
+    # The earlier attempt at this feature substituted a literal scope when the
+    # capability lookup returned nothing. Nothing may reappear like it.
+    assert "'Enterprise'" not in body
+    assert "Not specified" not in body
+
+
+def test_programme_wizard_draft_survives_reload_without_breaking_on_blocked_storage(
+    app, programme_fixture, login_as
+):
+    client = app.test_client()
+    login_as(client, programme_fixture.owner_id)
+    body = client.get("/solutions/new-programme").get_data(as_text=True)
+
+    assert "transformation-programme-intake-draft" in body
+    assert "restoreDraft()" in body
+    # Private-mode sessionStorage throws on access; the wizard must still run.
+    assert body.count("try {") >= 4
+    assert "clearDraft()" in body
+
+
 def test_transformation_programmes_are_discoverable_for_architect_leaders():
     for role in (ROLE_ENTERPRISE_ARCHITECT, ROLE_CTO):
         links = [link for zone in SIDEBAR_ZONES[role] for link in zone["links"]]

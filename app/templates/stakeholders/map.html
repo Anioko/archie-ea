@@ -1,4 +1,5 @@
 {% extends 'layouts/admin_base.html' %}
+{% from 'macros/page_shell.html' import page_shell %}
 
 {% from 'components/modal.html' import modal %}
 {% block title %}Stakeholder Map{% endblock %}
@@ -108,12 +109,8 @@
 <div class="p-6 space-y-4" x-data="stakeholderMap()">
 
   {# ── Page header ────────────────────────────────── #}
-  <div class="flex flex-wrap items-center justify-between gap-3">
-    <div>
-      <h1 class="text-2xl font-bold text-foreground">Stakeholder Map</h1>
-      <p class="text-sm text-muted-foreground mt-0.5">Power / Interest grid — drag nodes to reposition</p>
-    </div>
-    <div class="flex items-center gap-2">
+  {% macro _ps_actions() %}
+<div class="flex items-center gap-2">
       {# Solution filter #}
       <select x-model="selectedSolution" @change="loadData()"
               class="text-sm border border-border rounded-lg px-3 py-2 bg-background focus:ring-2 focus:ring-ring outline-none" aria-label="Select a solution...">
@@ -135,7 +132,8 @@
         AI Suggest
       </button>
     </div>
-  </div>
+  {% endmacro %}
+  {{ page_shell(title='Stakeholder Map', subtitle='Power / Interest grid — drag nodes to reposition', actions_caller=_ps_actions) }}
 
   {# ── Legend ─────────────────────────────────────── #}
   <div class="flex flex-wrap gap-4 text-xs text-muted-foreground">
@@ -402,9 +400,7 @@ function stakeholderMap() {
     async searchPeople() {
       if (this.personSearch.length < 2) { this.personResults = []; this.personSearchError = ''; return; }
       try {
-        const res = await fetch('/api/stakeholders/search-people?q=' + encodeURIComponent(this.personSearch));
-        if (!res.ok) throw new Error('People search failed (HTTP ' + res.status + ')');
-        this.personResults = await res.json();
+        this.personResults = await Platform.fetch('/api/stakeholders/search-people?q=' + encodeURIComponent(this.personSearch), { silent: true, errorMsg: 'People search failed' });
         this.personSearchError = '';
       } catch(e) {
         // Otherwise the "Name not found — type manually" field appears and the user
@@ -448,9 +444,7 @@ function stakeholderMap() {
       this.loading = true;
       const url = '/api/stakeholders/map-data?solution_id=' + this.selectedSolution;
       try {
-        const res = await fetch(url);
-        if (!res.ok) throw new Error('Could not load the stakeholder map (HTTP ' + res.status + ')');
-        this.stakeholders = await res.json();
+        this.stakeholders = await Platform.fetch(url, { silent: true, errorMsg: 'Could not load the stakeholder map.' });
         this.loadError = '';
       } catch(e) {
         this.stakeholders = [];
@@ -476,12 +470,10 @@ function stakeholderMap() {
       const body = { ...this.form };
       if (this.selectedSolution) body.solution_id = parseInt(this.selectedSolution);
       try {
-        const resp = await fetch('/api/stakeholders/', { method:'POST', headers:{'Content-Type':'application/json', 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''}, body: JSON.stringify(body) });
-        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        await Platform.fetch.post('/api/stakeholders/', body, { silent: true });
         Platform.modal.close('add-stakeholder-modal');
         await this.loadData();
       } catch(e) {
-        console.error(e);
         Platform.toast.error('Could not add that stakeholder.');
       }
     },
@@ -501,13 +493,7 @@ function stakeholderMap() {
       this.aiPanel.error = null;
       this.aiPanel.suggestions = [];
       try {
-        const resp = await fetch('/api/stakeholders/ai/identify', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || '' },
-          body: JSON.stringify({ business_context: context })
-        });
-        const data = await resp.json();
-        if (!resp.ok) throw new Error(data.error || ('HTTP ' + resp.status));
+        const data = await Platform.fetch.post('/api/stakeholders/ai/identify', { business_context: context }, { silent: true });
         this.aiPanel.suggestions = data.stakeholders || [];
         if (this.aiPanel.suggestions.length === 0) {
           this.aiPanel.error = 'No stakeholders suggested for that context.';
@@ -533,12 +519,7 @@ function stakeholderMap() {
         attitude: 'neutral',
       };
       try {
-        const resp = await fetch('/api/stakeholders/', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || '' },
-          body: JSON.stringify(body)
-        });
-        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        await Platform.fetch.post('/api/stakeholders/', body, { silent: true });
         Platform.toast.success(sugg.name + ' added.');
         this.aiPanel.suggestions = this.aiPanel.suggestions.filter(s => s !== sugg);
         await this.loadData();
@@ -553,13 +534,7 @@ function stakeholderMap() {
       this.aiPanel.strategyLoading = true;
       Platform.modal.open('engagement-strategy-modal');
       try {
-        const resp = await fetch(`/api/stakeholders/${stakeholderId}/ai/engagement-strategy`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || '' },
-        });
-        const data = await resp.json();
-        if (!resp.ok) throw new Error(data.error || ('HTTP ' + resp.status));
-        this.aiPanel.strategy = data;
+        this.aiPanel.strategy = await Platform.fetch.post(`/api/stakeholders/${stakeholderId}/ai/engagement-strategy`, undefined, { silent: true });
       } catch (e) {
         this.aiPanel.strategyError = e.message || 'Engagement strategy generation failed.';
       } finally {
@@ -569,16 +544,10 @@ function stakeholderMap() {
 
     async patchStakeholder(id, influence_level, interest_level) {
       try {
-        const resp = await fetch(`/api/stakeholders/${id}`, {
-          method: 'PATCH',
-          headers: {'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''},
-          body: JSON.stringify({ influence_level, interest_level })
-        });
-        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        await Platform.fetch.patch(`/api/stakeholders/${id}`, { influence_level, interest_level }, { silent: true });
       } catch(e) {
         // The dot has already visually moved to the dropped position (drag end);
         // the user needs to know that position was not actually saved.
-        console.error(e);
         Platform.toast.error('Could not save the new position. Reload to see the last saved state.');
       }
     },

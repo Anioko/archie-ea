@@ -84,9 +84,9 @@
             if (isDev) {
                 throw new Error(msg);
             } else {
-                // Production: warn but don't crash
+                // Production: warn but don't crash.
                 if (global.console && global.console.warn) {
-                    global.console.warn(msg);
+                    global.console.warn(msg);  // console-ok: build/load-order defect (a module bundled twice) with no user-actionable remedy; this is the namespace bootstrap, so Platform.toast does not exist yet, and dev throws instead.
                 }
                 return;
             }
@@ -356,9 +356,11 @@
         throw new Error('[Platform] core/00-namespace.js must be loaded before core/02-sanitize.js');
     }
 
-    let log = global.Platform.log
-        ? global.Platform.log.child('sanitize')
-        : { warn: function (m) { if (global.console) global.console.warn(m); } };
+    if (!global.Platform.log) {
+        throw new Error('[Platform] core/01-logger.js must be loaded before core/02-sanitize.js');
+    }
+
+    let log = global.Platform.log.child('sanitize');
 
     // ── DOMPurify config ─────────────────────────────────────────────────────
     // Allow standard HTML but strip all event handlers and dangerous protocols.
@@ -632,7 +634,7 @@
         try {
             let response;
             try {
-                response = await global.fetch(url, fetchOptions);
+                response = await global.fetch(url, fetchOptions); // raw-fetch-ok: core implementation must use native fetch
             } catch (networkErr) {
                 let netMsg = options.errorMsg || ('Network error: ' + (networkErr.message || 'Request failed'));
                 if (!silent && global.Platform.toast) {
@@ -832,7 +834,7 @@
             } catch (e) {
                 log.warn('CSRF injection skipped', e);
             }
-            return nativeFetch(input, init);
+            return nativeFetch(input, init); // raw-fetch-ok: CSRF safety net must call native fetch to avoid recursion
         };
     }());
 
@@ -1319,7 +1321,7 @@
     // Log silently — do NOT show toasts for unhandled errors (too noisy).
     //
     // P-07: these handlers used to pass the raw Error/rejection value
-    // straight to log.error() as a positional arg. console.error() itself
+    // straight to log.error() as a positional arg. The browser devtools log itself
     // renders an Error fine interactively, but anything downstream that
     // stringifies the arguments (log capture, a headless test harness
     // reading console text, a future log-shipping hook) calls String()/
@@ -1345,7 +1347,29 @@
         return { message: String(reason), stack: null };
     }
 
+    // Alpine rejects a transition promise with {isFromCancelledTransition: true}
+    // whenever one transition supersedes another -- a toast replacing a toast, an
+    // x-show toggled twice before the first finished. That is Alpine's internal
+    // "superseded" signal, not a failure: nothing went wrong and there is nothing
+    // for anyone to act on. Reporting it as [Platform][error] invents an error
+    // that did not happen, which is the same sin as inventing data, and it buries
+    // real rejections in noise that scales with how much the UI is used.
+    function _isCancelledAlpineTransition(reason) {
+        return Boolean(reason)
+            && typeof reason === 'object'
+            && reason.isFromCancelledTransition === true;
+    }
+
     global.window.addEventListener('unhandledrejection', function (event) {
+        if (_isCancelledAlpineTransition(event.reason)) {
+            // Always prevented, dev included. The usual reason to let a rejection
+            // through in dev is so devtools still shows it -- but there is nothing
+            // here worth showing, and leaving it unprevented surfaces a bare
+            // "Object" in the console and in Playwright's pageerror channel, which
+            // is what made the browser gates fail on pages that merely animate.
+            event.preventDefault();
+            return;
+        }
         const serialised = _serialiseRejectionReason(event.reason);
         log.error(
             'Unhandled promise rejection: ' + serialised.message,

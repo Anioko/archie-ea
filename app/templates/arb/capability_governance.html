@@ -22,9 +22,7 @@
         data: null,
         async init() {
             try {
-                const r = await fetch('/api/arb/capabilities/{{ capability_id }}/governance');
-                if (!r.ok) throw new Error('Could not load capability governance (HTTP ' + r.status + ')');
-                this.data = await r.json();
+                this.data = await Platform.fetch('/api/arb/capabilities/{{ capability_id }}/governance');
                 this.loadError = null;
             } catch (e) {
                 // data stays null so every panel below shows its own empty state; the

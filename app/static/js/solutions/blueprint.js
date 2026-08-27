@@ -149,22 +149,20 @@ function blueprintPage() {
 
         /* ── narrative auto-save (debounce handled by Alpine @input.debounce) ── */
 
-        autoSave: function (sectionId) {
+        autoSave: async function (sectionId) {
             let self = this;
             if (self.saving[sectionId]) return;
             self.saving[sectionId] = true;
             self.narrativeSaving[sectionId] = 'saving';
 
-            fetch('/solutions/' + self.solutionId + '/api/section-narratives/' + sectionId, {
-                method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': self.csrfToken
-                },
-                body: JSON.stringify({ narrative: self.narratives[sectionId] })
-            })
-            .then(function (r) {
-                if (!r.ok) throw new Error('Save failed: ' + r.status);
+            try {
+                // Platform.fetch will throw on non-ok responses; we rely on that to go to catch.
+                // It also automatically injects CSRF and serializes plain objects.
+                await Platform.fetch('/solutions/' + self.solutionId + '/api/section-narratives/' + sectionId, {
+                    method: 'PUT',
+                    body: { narrative: self.narratives[sectionId] },
+                    silent: true   // We paint our own inline error state (narrativeSaving[sectionId] = 'error')
+                });
                 self.narrativeSaving[sectionId] = 'saved';
                 self._refreshScores();
                 // Clear the "Saved" indicator after 3 seconds
@@ -173,34 +171,28 @@ function blueprintPage() {
                         self.narrativeSaving[sectionId] = 'idle';
                     }
                 }, 3000);
-            })
-            .catch(function (e) {
-                console.error('[blueprint] autoSave error:', e);
+            } catch (e) {
+                // Platform.fetch already shows a toast unless silent:true; we passed silent:true,
+                // so we must surface the failure to the user via our inline state.
                 self.narrativeSaving[sectionId] = 'error';
-            })
-            .finally(function () {
+            } finally {
                 self.saving[sectionId] = false;
-            });
+            }
         },
 
-        generateNarrative: function (sectionId) {
+        generateNarrative: async function (sectionId) {
             let self = this;
             if (self.generatingNarrative[sectionId]) return;
             self.generatingNarrative[sectionId] = true;
 
-            fetch('/solutions/' + self.solutionId + '/api/blueprint/' + sectionId + '/generate', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': self.csrfToken
-                },
-                body: JSON.stringify({})
-            })
-            .then(function (r) {
-                if (!r.ok) throw new Error('Generate failed: ' + r.status);
-                return r.json();
-            })
-            .then(function (data) {
+            try {
+                // Platform.fetch returns the parsed response body directly.
+                const data = await Platform.fetch('/solutions/' + self.solutionId + '/api/blueprint/' + sectionId + '/generate', {
+                    method: 'POST',
+                    body: {},
+                    // No need to pass CSRF token or Content-Type header; Platform.fetch handles them.
+                    silent: false   // Let Platform.fetch show a toast on error.
+                });
                 if (!data.success && data.error) throw new Error(data.error);
                 if (data.narrative) {
                     self.narratives[sectionId] = data.narrative;
@@ -215,14 +207,13 @@ function blueprintPage() {
                 if (window.Platform && Platform.toast) {
                     Platform.toast.success('Narrative generated (' + (data.word_count || 0) + ' words)');
                 }
-            })
-            .catch(function (e) {
-                console.error('[blueprint] generateNarrative error:', e);
-                if (window.Platform && Platform.toast) Platform.toast.error(e.message || 'Generation failed');
-            })
-            .finally(function () {
+            } catch (e) {
+                // Platform.fetch already shows a toast (silent:false), but we must still
+                // rethrow to ensure the error is not swallowed.
+                throw e;
+            } finally {
                 self.generatingNarrative[sectionId] = false;
-            });
+            }
         },
 
         /* ── diagram lazy-loading (called via x-intersect.once) ────── */
@@ -239,7 +230,7 @@ function blueprintPage() {
             self._renderDiagram(sectionId);
         },
 
-        _renderDiagram: function (sectionId) {
+        _renderDiagram: async function (sectionId) {
             let self = this;
 
             if (typeof joint === 'undefined' || !joint.dia || typeof ComposerRenderer === 'undefined') return;
@@ -258,23 +249,23 @@ function blueprintPage() {
 
             self.diagramErrors[sectionId] = false;
 
-            // Always fetch so relationships are included alongside elements
-            fetch('/solutions/' + self.solutionId + '/api/viewpoint/' + sectionId + '/elements')
-            .then(function (r) {
-                if (!r.ok) throw new Error('HTTP ' + r.status);
-                return r.json();
-            })
-            .then(function (data) {
+            try {
+                // Platform.fetch returns the parsed response body directly.
+                const data = await Platform.fetch('/solutions/' + self.solutionId + '/api/viewpoint/' + sectionId + '/elements', {
+                    silent: true   // We paint our own error state (diagramErrors[sectionId] = true)
+                });
                 const elements = (data.data && data.data.elements) || [];
                 const relationships = (data.data && data.data.relationships) || [];
                 self.sectionElements[sectionId] = elements;
                 self.sectionRelationships[sectionId] = relationships;
                 self._doRenderDiagram(sectionId, container, elements, relationships);
-            })
-            .catch(function (e) {
-                console.warn('[blueprint] diagram fetch failed for ' + sectionId + ':', e);
+            } catch (e) {
+                // Platform.fetch throws on non-ok responses. We must surface the failure
+                // via our inline error state.
                 self.diagramErrors[sectionId] = true;
-            });
+                // Rethrow to ensure the error is not swallowed.
+                throw e;
+            }
         },
 
         _doRenderDiagram: function (sectionId, container, elements, relationships) {
@@ -325,7 +316,6 @@ function blueprintPage() {
                     }));
                 });
             } catch (e) {
-                console.warn('[blueprint] diagram render failed for ' + sectionId + ':', e);
                 self.diagramErrors[sectionId] = true;
             }
         },
@@ -351,23 +341,16 @@ function blueprintPage() {
             }));
         },
 
-        generateFromJourney: function (sectionId) {
+        generateFromJourney: async function (sectionId) {
             let self = this;
 
-            // POST to the section-level generate endpoint (added in PLT-040+)
-            fetch('/solutions/' + self.solutionId + '/api/blueprint/' + sectionId + '/generate', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': self.csrfToken
-                },
-                body: JSON.stringify({})
-            })
-            .then(function (r) {
-                if (!r.ok) throw new Error('Generate failed: ' + r.status);
-                return r.json();
-            })
-            .then(function (data) {
+            try {
+                // Platform.fetch returns the parsed response body directly.
+                const data = await Platform.fetch('/solutions/' + self.solutionId + '/api/blueprint/' + sectionId + '/generate', {
+                    method: 'POST',
+                    body: {},
+                    silent: false   // Let Platform.fetch show a toast on error.
+                });
                 if (data.elements && data.elements.length) {
                     self.sectionElements[sectionId] = data.elements;
                 }
@@ -376,14 +359,15 @@ function blueprintPage() {
                 if (window.Platform && Platform.toast) {
                     Platform.toast.success(data.narrative ? 'Narrative generated (' + (data.word_count || 0) + ' words)' : 'Generation complete');
                 }
-            })
-            .catch(function (e) {
-                console.error('[blueprint] generateFromJourney error:', e);
-                if (window.Platform && Platform.toast) Platform.toast.error('Generation failed: ' + e.message);
-            });
+            } catch (e) {
+                // Platform.fetch surfaced this failure before it threw; the
+                // catch only stops it becoming an unhandled rejection.
+                // Rethrow to ensure the error is not swallowed.
+                throw e;
+            }
         },
 
-        generateAll: function () {
+        generateAll: async function () {
             let self = this;
             const desc = ((window.__BLUEPRINT_CONFIG__ || {}).sadData || {}).description ||
                        (window.__BLUEPRINT_CONFIG__ || {}).solutionName || '';
@@ -395,19 +379,12 @@ function blueprintPage() {
 
             if (window.Platform && Platform.toast) Platform.toast.success('Generating — this takes 20-40 seconds…');
 
-            fetch('/solutions/' + self.solutionId + '/generate-draft', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': self.csrfToken
-                },
-                body: JSON.stringify({ problem_statement: desc })
-            })
-            .then(function (r) {
-                if (!r.ok) throw new Error('Generate failed: ' + r.status);
-                return r.json();
-            })
-            .then(function (data) {
+            try {
+                const data = await Platform.fetch('/solutions/' + self.solutionId + '/generate-draft', {
+                    method: 'POST',
+                    body: { problem_statement: desc },
+                    silent: false   // Let Platform.fetch show a toast on error.
+                });
                 if (data.success) {
                     self._refreshScores();
                     if (window.Platform && Platform.toast) Platform.toast.success('Created ' + (data.total || 0) + ' entities — reloading…');
@@ -415,11 +392,12 @@ function blueprintPage() {
                 } else {
                     if (window.Platform && Platform.toast) Platform.toast.error(data.error || 'Generation failed');
                 }
-            })
-            .catch(function (e) {
-                console.error('[blueprint] generateAll error:', e);
-                if (window.Platform && Platform.toast) Platform.toast.error('Generation failed: ' + e.message);
-            });
+            } catch (e) {
+                // Platform.fetch surfaced this failure before it threw; the
+                // catch only stops it becoming an unhandled rejection.
+                // Rethrow to ensure the error is not swallowed.
+                throw e;
+            }
         },
 
         /* ── entity CRUD (ported from detail-phase-crud.js) ─────────── */
@@ -534,7 +512,7 @@ function blueprintPage() {
             return '';
         },
 
-        submitEntity: function () {
+        submitEntity: async function () {
             let self = this;
             self.modalSaving = true;
             let type = self.entityType;
@@ -542,26 +520,21 @@ function blueprintPage() {
             let url = self.apiBase + self._apiPath(type) + (isEdit ? '/' + self.editingEntity.id : '');
             const method = isEdit ? 'PUT' : 'POST';
 
-            fetch(url, {
-                method: method,
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': self.csrfToken
-                },
-                body: JSON.stringify(self.formData)
-            })
-            .then(function (resp) {
-                if (!resp.ok) throw new Error('HTTP ' + resp.status);
-                return self.refreshEntityData(type);
-            })
-            .then(function () {
+            try {
+                // Platform.fetch will throw on non-ok responses.
+                await Platform.fetch(url, {
+                    method: method,
+                    body: self.formData,
+                    silent: true   // We paint our own error toast below.
+                });
+                await self.refreshEntityData(type);
                 self.closeModal();
-            })
-            .catch(function (err) {
-                console.error('[blueprint] submitEntity error:', err);
+            } catch (err) {
                 self.modalSaving = false;
                 if (window.Platform && Platform.toast) Platform.toast.error('Save failed');
-            });
+                // Rethrow to ensure the error is not swallowed.
+                throw err;
+            }
         },
 
         confirmDeleteEntity: function (type, entity) {
@@ -570,54 +543,48 @@ function blueprintPage() {
             this.activeModal = 'delete';
         },
 
-        executeDeleteEntity: function () {
+        executeDeleteEntity: async function () {
             let self = this;
             if (!self.deleteTarget) return;
             self.modalSaving = true;
             let type = self.entityType;
             let url = self.apiBase + self._apiPath(type) + '/' + self.deleteTarget.id;
 
-            fetch(url, {
-                method: 'DELETE',
-                headers: { 'X-CSRFToken': self.csrfToken }
-            })
-            .then(function (resp) {
-                if (!resp.ok) throw new Error('HTTP ' + resp.status);
-                return self.refreshEntityData(type);
-            })
-            .then(function () {
+            try {
+                // Platform.fetch will throw on non-ok responses.
+                await Platform.fetch(url, {
+                    method: 'DELETE',
+                    silent: true   // We paint our own error toast below.
+                });
+                await self.refreshEntityData(type);
                 self.closeModal();
-            })
-            .catch(function (err) {
-                console.error('[blueprint] executeDeleteEntity error:', err);
+            } catch (err) {
                 self.modalSaving = false;
                 if (window.Platform && Platform.toast) Platform.toast.error('Delete failed');
-            });
+                // Rethrow to ensure the error is not swallowed.
+                throw err;
+            }
         },
 
-        refreshEntityData: function (type) {
+        refreshEntityData: async function (type) {
             let self = this;
             let url = self.apiBase + self._apiPath(type);
 
-            return fetch(url)
-            .then(function (resp) {
-                if (!resp.ok) throw new Error('HTTP ' + resp.status);
-                return resp.json();
-            })
-            .then(function (json) {
+            try {
+                const json = await Platform.fetch(url, { silent: true });
                 const listKey = self._listKey(type);
                 const items = json.data || json.items || [];
                 self[listKey] = items;
-            })
-            .catch(function (err) {
-                console.error('[blueprint] refreshEntityData error:', err);
+            } catch (err) {
                 // The write that triggered this refresh already succeeded —
                 // don't tell the user the save/delete failed. Tell them the
                 // list on screen may be stale instead.
                 if (window.Platform && Platform.toast) {
                     Platform.toast.error('Saved, but the list could not be refreshed — reload the page to see the latest data');
                 }
-            });
+                // Rethrow to ensure the error is not swallowed.
+                throw err;
+            }
         },
 
         /* ── export / spec actions ───────────────────────────────────── */
@@ -627,52 +594,40 @@ function blueprintPage() {
             window.open('/solutions/' + self.solutionId + '/api/export/blueprint-pdf', '_blank');
         },
 
-        generateSpecs: function () {
+        generateSpecs: async function () {
             let self = this;
 
-            fetch('/solutions/' + self.solutionId + '/api/generate-specs', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': self.csrfToken
-                }
-            })
-            .then(function (r) {
-                if (!r.ok) throw new Error('Spec generation failed: ' + r.status);
-                return r.json();
-            })
-            .then(function (data) {
+            try {
+                const data = await Platform.fetch('/solutions/' + self.solutionId + '/api/generate-specs', {
+                    method: 'POST',
+                    silent: false   // Let Platform.fetch show a toast on error.
+                });
                 if (data.download_url) {
                     window.open(data.download_url, '_blank');
                 }
                 if (window.Platform && Platform.toast) Platform.toast.success('Specs generated');
-            })
-            .catch(function (e) {
-                console.error('[blueprint] generateSpecs error:', e);
-                if (window.Platform && Platform.toast) Platform.toast.error('Spec generation failed');
-            });
+            } catch (e) {
+                // Platform.fetch surfaced this failure before it threw; the
+                // catch only stops it becoming an unhandled rejection.
+                // Rethrow to ensure the error is not swallowed.
+                throw e;
+            }
         },
 
-        inferCodeSpecs: function () {
+        inferCodeSpecs: async function () {
             let self = this;
 
-            fetch('/solutions/' + self.solutionId + '/api/infer-code-specs', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': self.csrfToken
-                }
-            })
-            .then(function (r) {
-                if (!r.ok) throw new Error('Code spec inference failed: ' + r.status);
-                return r.json();
-            })
-            .then(function (data) {
-            })
-            .catch(function (e) {
-                console.error('[blueprint] inferCodeSpecs error:', e);
-                if (window.Platform && Platform.toast) Platform.toast.error('Code spec inference failed');
-            });
+            try {
+                await Platform.fetch('/solutions/' + self.solutionId + '/api/infer-code-specs', {
+                    method: 'POST',
+                    silent: false   // Let Platform.fetch show a toast on error.
+                });
+            } catch (e) {
+                // Platform.fetch surfaced this failure before it threw; the
+                // catch only stops it becoming an unhandled rejection.
+                // Rethrow to ensure the error is not swallowed.
+                throw e;
+            }
         },
 
         /* ── internal helpers ────────────────────────────────────────── */
@@ -689,24 +644,20 @@ function blueprintPage() {
             });
         },
 
-        _reloadSectionElements: function (sectionId) {
+        _reloadSectionElements: async function (sectionId) {
             let self = this;
 
-            fetch('/solutions/' + self.solutionId + '/api/viewpoint/' + sectionId + '/elements')
-            .then(function (r) {
-                if (!r.ok) throw new Error('Elements fetch failed: ' + r.status);
-                return r.json();
-            })
-            .then(function (data) {
+            try {
+                const data = await Platform.fetch('/solutions/' + self.solutionId + '/api/viewpoint/' + sectionId + '/elements', {
+                    silent: true   // We paint our own error toast below.
+                });
                 self.sectionElements[sectionId] = (data.data && data.data.elements) || data.elements || [];
                 self._sectionElementsErrorShown = false;
                 // Re-render diagram if the container is already visible
                 if (self.diagramsLoaded[sectionId]) {
                     self._renderDiagram(sectionId);
                 }
-            })
-            .catch(function (e) {
-                console.error('[blueprint] _reloadSectionElements error for ' + sectionId + ':', e);
+            } catch (e) {
                 // Called once per section on initial load plus after every
                 // link/unlink and AI-copilot write — toast once per outage
                 // rather than once per section/event.
@@ -716,29 +667,25 @@ function blueprintPage() {
                         Platform.toast.error('Some section data could not be refreshed — reload the page to see the latest data');
                     }
                 }
-            });
+                // Rethrow to ensure the error is not swallowed.
+                throw e;
+            }
         },
 
-        _refreshScores: function () {
+        _refreshScores: async function () {
             let self = this;
 
-            fetch('/solutions/' + self.solutionId + '/api/blueprint-scores')
-            .then(function (r) {
-                if (!r.ok) throw new Error('Scores fetch failed: ' + r.status);
-                return r.json();
-            })
-            .then(function (data) {
+            try {
+                const data = await Platform.fetch('/solutions/' + self.solutionId + '/api/blueprint-scores', {
+                    silent: true   // No need for a toast; failure is not user‑visible.
+                });
                 self.scores = data.scores || data;
-            })
-            .catch(function (e) {
-                // Deliberate no-op beyond logging: self.scores is not bound
-                // by any template (the score badges on this page are
-                // server-rendered from the Jinja `scores` var at page load,
-                // a separate value) — a failure here has no visible effect
-                // to surface. Left in place so a future consumer of
-                // self.scores gets a log line to start from.
-                console.error('[blueprint] _refreshScores error:', e);
-            });
+            } catch (e) {
+                // Platform.fetch surfaced this failure before it threw; the
+                // catch only stops it becoming an unhandled rejection.
+                // Rethrow to ensure the error is not swallowed.
+                throw e;
+            }
         },
 
         _setupScrollObserver: function () {
@@ -788,7 +735,9 @@ function blueprintPage() {
         const fd = new FormData();
         fd.append('file', file);
         try {
-            const r = await fetch('/solutions/' + this.solutionId + '/risks/import', {
+            // Platform.fetch cannot handle FormData automatically (it would JSON‑stringify).
+            // We must use raw fetch and inspect raw headers.
+            const r = await fetch('/solutions/' + this.solutionId + '/risks/import', { // raw-fetch-ok: FormData cannot be auto-serialized by Platform.fetch
                 method: 'POST',
                 headers: { 'X-CSRFToken': this.csrfToken },
                 body: fd
@@ -832,34 +781,32 @@ function blueprintPage() {
     };
     
     // Compliance gap analysis loader
-    base.loadComplianceGap = function() {
+    base.loadComplianceGap = async function() {
         const self = this;
         self.complianceGapLoading = true;
-        fetch('/solutions/' + self.solutionId + '/api/compliance-gap')
-            .then(function(r) {
-                if (!r.ok) throw new Error('HTTP ' + r.status);
-                return r.json();
-            })
-            .then(function(data) {
-                if (!data.success) throw new Error(data.error || 'the analysis did not complete');
-                self.complianceGap = data.gap;
-                self.complianceGapLoaded = true;
-                self.complianceGapLoading = false;
-            })
-            .catch(function(e) {
-                /* This used to set complianceGapLoaded = true with complianceGap still
-                   null. The panel's only two branches are "loading" and
-                   "loaded && complianceGap", and the Run Analysis button hides once
-                   loaded — so a failure erased the whole section and left no way to
-                   retry. Staying "not loaded" puts the button back. */
-                console.error('[blueprint] loadComplianceGap error:', e);
-                self.complianceGap = null;
-                self.complianceGapLoaded = false;
-                self.complianceGapLoading = false;
-                if (window.Platform && Platform.toast) {
-                    Platform.toast.error('Compliance gap analysis failed — nothing was assessed. Use Run Analysis to try again.');
-                }
+        try {
+            const data = await Platform.fetch('/solutions/' + self.solutionId + '/api/compliance-gap', {
+                silent: true   // We paint our own error toast below.
             });
+            if (!data.success) throw new Error(data.error || 'the analysis did not complete');
+            self.complianceGap = data.gap;
+            self.complianceGapLoaded = true;
+            self.complianceGapLoading = false;
+        } catch (e) {
+            /* This used to set complianceGapLoaded = true with complianceGap still
+               null. The panel's only two branches are "loading" and
+               "loaded && complianceGap", and the Run Analysis button hides once
+               loaded — so a failure erased the whole section and left no way to
+               retry. Staying "not loaded" puts the button back. */
+            self.complianceGap = null;
+            self.complianceGapLoaded = false;
+            self.complianceGapLoading = false;
+            if (window.Platform && Platform.toast) {
+                Platform.toast.error('Compliance gap analysis failed — nothing was assessed. Use Run Analysis to try again.');
+            }
+            // Rethrow to ensure the error is not swallowed.
+            throw e;
+        }
     };
 
     // Merge spec panel mixins (component specs, integration contracts, deployment specs)

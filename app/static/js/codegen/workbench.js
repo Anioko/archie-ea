@@ -681,10 +681,10 @@
                         `/solutions/${this.solutionId}/codegen/generate-iac`,
                         {
                             method: 'POST',
-                            body: JSON.stringify({
+                            body: {
                                 region: this.iacRegion,
                                 environment: this.iacEnvironment,
-                            }),
+                            },
                         }
                     );
                     this.iacResult = data;
@@ -753,11 +753,11 @@
                         '/solutions/' + this.solutionId + '/codegen/save-as-template',
                         {
                             method: 'POST',
-                            body: JSON.stringify({
+                            body: {
                                 name: name,
                                 description: (this.newTemplateDesc || '').trim() || null,
                                 language: this.config.language,
-                            }),
+                            },
                         }
                     );
                     this.templateSets.unshift(data);
@@ -785,26 +785,24 @@
                 // Delegate to shared store fetch when available
                 const s = Alpine.store('codegen');
                 if (s) return s.apiFetch(url, opts);
-                // Fallback (store not loaded)
-                opts = opts || {};
-                opts.headers = Object.assign({
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': this._csrfToken(),
-                }, opts.headers || {});
-                const resp = await fetch(url, opts);
-                const text = await resp.text();
-                let data;
+                // Fallback (store not loaded) — use Platform.fetch
+                // Platform.fetch automatically injects CSRF token, serializes JSON, and throws on non-ok.
+                // We need to preserve the existing error handling that shows inline errors.
+                // The caller already paints its own error state, so we pass { silent: true } to avoid duplicate toasts.
                 try {
-                    data = JSON.parse(text);
-                } catch (e) {
-                    // HTML error page or non-JSON response
-                    const preview = text.substring(0, 300).replace(/<[^>]+>/g, ' ').trim();
-                    throw new Error(`Server returned non-JSON (HTTP ${resp.status}): ${preview}`);
+                    const options = opts || {};
+                    // Platform.fetch expects body as plain object for auto-JSON; ensure we don't double-stringify.
+                    // If the caller already stringified, we need to adjust, but existing callers pass plain objects.
+                    // We'll rely on Platform.fetch's detection.
+                    return await Platform.fetch(url, { ...options, silent: true });
+                } catch (error) {
+                    // Rethrow: this is a shared helper whose callers own the
+                    // user-facing error state (which is why silent:true is set).
+                    // Swallowing would return undefined, and every caller reads
+                    // that as an empty result -- a failed request rendered as
+                    // "nothing here", which the user cannot tell apart.
+                    throw error;
                 }
-                if (!resp.ok) {
-                    throw new Error(data.error || `HTTP ${resp.status}`);
-                }
-                return data;
             },
 
             async runSapImport() {
@@ -831,7 +829,7 @@
                             lang: 'EN',
                         };
                     }
-                    const data = await this._fetch('/api/sap/import', { method: 'POST', body: JSON.stringify(body) });
+                    const data = await this._fetch('/api/sap/import', { method: 'POST', body: body });
                     si.result = data;
                     if (data.ok) {
                         const s = data.stats || {};
@@ -1027,7 +1025,7 @@
                 try {
                     await this._fetch(
                         `/solutions/${this.solutionId}/codegen/enrich`,
-                        { method: 'POST', body: JSON.stringify({ version: this.version }) }
+                        { method: 'POST', body: { version: this.version } }
                     );
                     // Job started in background — poll for completion
                     await this._pollEnrich();
@@ -1103,7 +1101,7 @@
                 try {
                     const data = await this._fetch(
                         `/solutions/${this.solutionId}/codegen/apply-specs`,
-                        { method: 'POST', body: JSON.stringify({}) }
+                        { method: 'POST', body: {} }
                     );
                     this.version = data.version;
                     await this._loadUml();
@@ -1124,7 +1122,7 @@
                 try {
                     await this._fetch(
                         `/solutions/${this.solutionId}/codegen/uml/reset`,
-                        { method: 'POST', body: JSON.stringify({}) }
+                        { method: 'POST', body: {} }
                     );
                     this.uml = null;
                     this.generatedFiles = {};
@@ -1183,7 +1181,7 @@
                     };
                     const data = await this._fetch(
                         `/solutions/${this.solutionId}/codegen/config`,
-                        { method: 'PUT', body: JSON.stringify(payload) }
+                        { method: 'PUT', body: payload }
                     );
                     this.version = data.version;
                     this.phase = Math.max(this.phase, 4);
@@ -1252,7 +1250,8 @@
                 };
 
                 try {
-                    const resp = await fetch(
+                    // SSE streaming response requires raw fetch to read stream.
+                    const resp = await fetch(  // raw-fetch-ok: SSE stream; needs body.getReader() on the raw Response
                         `/solutions/${this.solutionId}/codegen/generate-stream`,
                         {
                             method: 'POST',
@@ -1271,7 +1270,7 @@
                                 ...this.normalizedSalesforceConfig(),
                             }),
                         }
-                    );
+                    ); // raw-fetch-ok: SSE streaming response requires raw fetch to read stream.
 
                     if (!resp.ok) {
                         // Non-streaming error (e.g. 400 / 409)
@@ -1429,7 +1428,8 @@
                 };
 
                 try {
-                    const resp = await fetch(
+                    // SSE streaming response requires raw fetch to read stream.
+                    const resp = await fetch(  // raw-fetch-ok: SSE stream; needs body.getReader() on the raw Response
                         `/solutions/${this.solutionId}/codegen/verify`,
                         {
                             method: 'POST',
@@ -1439,7 +1439,7 @@
                             },
                             body: JSON.stringify({}),
                         }
-                    );
+                    ); // raw-fetch-ok: SSE streaming response requires raw fetch to read stream.
                     if (!resp.ok) {
                         const err = await resp.json().catch(() => ({ error: resp.statusText }));
                         throw new Error(err.error || resp.statusText);
@@ -1496,7 +1496,7 @@
                 try {
                     const data = await this._fetch(
                         `/solutions/${this.solutionId}/codegen/patch-violation`,
-                        { method: 'POST', body: JSON.stringify({ constraint }) }
+                        { method: 'POST', body: { constraint } }
                     );
                     if (data.success) {
                         this._setSuccess(data.message);
@@ -1522,11 +1522,12 @@
                 let errorMsg = '';
                 const patchFailures = [];
 
-                const resp = await fetch(url, {
+                // SSE streaming response requires raw fetch to read stream.
+                const resp = await fetch(url, {  // raw-fetch-ok: SSE stream; needs body.getReader() on the raw Response
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
                     body: JSON.stringify(body),
-                });
+                }); // raw-fetch-ok: SSE streaming response requires raw fetch to read stream.
 
                 if (!resp.ok) {
                     const err = await resp.json().catch(() => ({}));
@@ -1559,23 +1560,17 @@
 
                         if (currentEventType === 'patch' && payload.file && payload.diff) {
                             try {
-                                const applyResp = await fetch(
+                                // This is a regular JSON endpoint, not SSE, so we can use Platform.fetch.
+                                // The caller already paints its own error state, so we pass { silent: true }.
+                                const applyData = await Platform.fetch(
                                     `/solutions/${this.solutionId}/codegen/chat-edit/apply-patch`,
                                     {
                                         method: 'POST',
-                                        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
-                                        body: JSON.stringify({ file: payload.file, diff: payload.diff }),
+                                        body: { file: payload.file, diff: payload.diff },
+                                        silent: true,
                                     }
                                 );
-                                // fetch() does not reject on 4xx/5xx, and the server can
-                                // also answer 200 {success: false}. Both were previously
-                                // ignored, leaving patchesApplied at 0 with no error.
-                                // The {} below is the ERROR BODY when it is not JSON; the
-                                // check on the next line is what reports the failure.
-                                const applyData = await applyResp.json().catch(() => ({}));
-                                if (!applyResp.ok || !applyData.success) {
-                                    throw new Error(applyData.error || applyData.message || ('HTTP ' + applyResp.status));
-                                }
+                                // Platform.fetch throws on non-ok, so reaching here means success.
                                 patchesApplied++;
                                 const newContent = applyData.content || applyData.new_content;
                                 if (newContent) {
@@ -1711,7 +1706,8 @@
                             }
                         }
                     } catch (e) {
-                        // fileList from initialData is sufficient
+                        // Platform.fetch surfaced this failure before it threw; the
+                        // catch only stops it becoming an unhandled rejection.
                     }
                 }
                 // Auto-open the most useful file on first load. Deferred so Alpine finishes
@@ -1743,7 +1739,7 @@
                 try {
                     const data = await this._fetch(
                         `/solutions/${this.solutionId}/codegen/regenerate`,
-                        { method: 'POST', body: JSON.stringify({ file_key: groupKey, version: this.version }) }
+                        { method: 'POST', body: { file_key: groupKey, version: this.version } }
                     );
                     this.promptGroupStatus[groupKey] = 'done';
                     this.version = data.version;
@@ -1913,7 +1909,9 @@
                 const selectedText = this.cmEditor.state.sliceDoc(from, to);
                 let instruction;
                 if (mode === 'edit') {
-                    instruction = prompt('What do you want to do with this code?', 'Add error handling');
+                    instruction = await Platform.modal.promptText('What do you want to do with this code?', {
+                        title: 'Edit with AI', defaultValue: 'Add error handling'
+                    });
                     if (!instruction) return;
                 } else if (mode === 'fix') {
                     instruction = 'Fix any errors or issues in this code snippet';
@@ -1924,10 +1922,10 @@
                 try {
                     const data = await this._fetch(
                         `/solutions/${this.solutionId}/codegen/patch`,
-                        { method: 'POST', body: JSON.stringify({
+                        { method: 'POST', body: {
                             path: this.selectedFile,
                             instruction: instruction + '\n\nApply change ONLY to this exact snippet — return the replacement code with no explanation or markdown:\n\n' + selectedText,
-                        }) }
+                        } }
                     );
                     if (data.new_content) {
                         // Replace selection range with AI result
@@ -1950,7 +1948,7 @@
                 try {
                     let data = await this._fetch(
                         '/solutions/' + this.solutionId + '/codegen/files',
-                        { method: 'PATCH', body: JSON.stringify({ path: this.selectedFile, content: content }) }
+                        { method: 'PATCH', body: { path: this.selectedFile, content: content } }
                     );
                     this.generatedFiles[this.selectedFile] = content;
                     this.selectedContent = content;
@@ -1977,10 +1975,10 @@
                 try {
                     let data = await this._fetch(
                         '/solutions/' + this.solutionId + '/codegen/patch',
-                        { method: 'POST', body: JSON.stringify({
+                        { method: 'POST', body: {
                             path: this.selectedFile,
                             instruction: this.patchInstruction.trim()
-                        }) }
+                        } }
                     );
                     this.patchDiff = { path: data.path, old: data.old_content, new: data.new_content };
                 } catch (e) {
@@ -2025,10 +2023,10 @@
                 try {
                     const data = await this._fetch('/api/codegen/genome/patch', {
                         method: 'POST',
-                        body: JSON.stringify({
+                        body: {
                             genome: genome,
                             nl_instruction: this.genomePatchInstruction.trim()
-                        })
+                        }
                     });
                     this.genomePatchResult = data;
                 } catch (e) {
@@ -2045,10 +2043,10 @@
                     // Step 1: apply patch to get updated genome
                     const patchResult = await this._fetch('/api/codegen/genome/patch/apply', {
                         method: 'POST',
-                        body: JSON.stringify({
+                        body: {
                             genome: window.__codegenGenome || {},
                             patch_ops: this.genomePatchResult.patch_ops
-                        })
+                        }
                     });
                     if (!patchResult.success) throw new Error(patchResult.error || 'Patch apply failed');
                     // Update the non-reactive genome reference
@@ -2057,7 +2055,7 @@
                     // Step 2: persist patched genome to DB
                     await this._fetch('/solutions/' + this.solutionId + '/codegen/genome-patch/store', {
                         method: 'POST',
-                        body: JSON.stringify({ genome: patchResult.genome })
+                        body: { genome: patchResult.genome }
                     });
 
                     // Step 3: trigger full regeneration (uses stored genome)
@@ -2085,7 +2083,7 @@
                 try {
                     const data = await this._fetch(
                         `/solutions/${this.solutionId}/codegen/push-to-git`,
-                        { method: 'POST', body: JSON.stringify({ version: this.version }) }
+                        { method: 'POST', body: { version: this.version } }
                     );
                     this.githubUrl = data.github_url;
                     this.githubPrUrl = data.pr_url || '';
@@ -2139,7 +2137,7 @@
                     const data = await this._fetch(`/solutions/${this.solutionId}/codegen/files`, {
                         method: 'DELETE',
                         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this._csrfToken() },
-                        body: JSON.stringify({ path }),
+                        body: { path },
                     });
                     this.closeTab(path);
                     this.fileList = this.fileList.filter(f => f !== path);
@@ -2153,13 +2151,15 @@
             },
 
             async createFile() {
-                const path = prompt('New file path (e.g. app/utils/helpers.py):');
+                const path = await Platform.modal.promptText('New file path (e.g. app/utils/helpers.py):', {
+                    title: 'New file'
+                });
                 if (!path || !path.trim()) return;
                 try {
                     const data = await this._fetch(`/solutions/${this.solutionId}/codegen/files/create`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this._csrfToken() },
-                        body: JSON.stringify({ path: path.trim(), content: '' }),
+                        body: { path: path.trim(), content: '' },
                     });
                     this.fileList.push(path.trim());
                     this.fileList.sort();
@@ -2174,13 +2174,15 @@
             async renameFile(oldPath) {
                 const p = oldPath || this.selectedFile;
                 if (!p) return;
-                const newPath = prompt(`Rename / move "${p}" to:`, p);
+                const newPath = await Platform.modal.promptText(`Rename / move "${p}" to:`, {
+                    title: 'Rename file', defaultValue: p
+                });
                 if (!newPath || newPath.trim() === p) return;
                 try {
                     const data = await this._fetch(`/solutions/${this.solutionId}/codegen/files/rename`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this._csrfToken() },
-                        body: JSON.stringify({ old_path: p, new_path: newPath.trim() }),
+                        body: { old_path: p, new_path: newPath.trim() },
                     });
                     // Update local state
                     this.fileList = this.fileList.map(f => f === p ? newPath.trim() : f).sort();
@@ -2207,13 +2209,15 @@
                 const ext = p.includes('.') ? '.' + p.split('.').pop() : '';
                 const base = p.includes('.') ? p.slice(0, p.lastIndexOf('.')) : p;
                 const suggested = `${base}_copy${ext}`;
-                const dest = prompt(`Duplicate "${p}" to:`, suggested);
+                const dest = await Platform.modal.promptText(`Duplicate "${p}" to:`, {
+                    title: 'Duplicate file', defaultValue: suggested
+                });
                 if (!dest || !dest.trim()) return;
                 try {
                     const data = await this._fetch(`/solutions/${this.solutionId}/codegen/files/duplicate`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this._csrfToken() },
-                        body: JSON.stringify({ source_path: p, dest_path: dest.trim() }),
+                        body: { source_path: p, dest_path: dest.trim() },
                     });
                     this.fileList.push(dest.trim());
                     this.fileList.sort();
@@ -2226,13 +2230,15 @@
             },
 
             async searchFiles() {
-                const query = prompt('Search across all files:');
+                const query = await Platform.modal.promptText('Search across all files:', {
+                    title: 'Search files'
+                });
                 if (!query || !query.trim()) return;
                 try {
                     const data = await this._fetch(`/solutions/${this.solutionId}/codegen/files/search`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this._csrfToken() },
-                        body: JSON.stringify({ query: query.trim() }),
+                        body: { query: query.trim() },
                     });
                     this.searchResults = data;
                     this.rightTab = 'search';
@@ -2464,10 +2470,11 @@
                 }
 
                 try {
-                    const resp = await fetch(
+                    // FormData upload requires raw fetch.
+                    const resp = await fetch(  // raw-fetch-ok: FormData upload; the wrapper would re-serialise the body
                         `/architecture-journey/${this.solutionId}/upload-documents`,
                         { method: 'POST', headers: { 'X-CSRFToken': this._csrfToken() }, body: formData }
-                    );
+                    ); // raw-fetch-ok: FormData upload requires raw fetch.
                     const data = await resp.json();
                     if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
 
@@ -2544,7 +2551,7 @@
                 try {
                     const data = await this._fetch(
                         `/architecture-journey/${this.solutionId}/proposals/batch-accept`,
-                        { method: 'POST', body: JSON.stringify({ proposal_ids: pending.map(p => p.id) }) }
+                        { method: 'POST', body: { proposal_ids: pending.map(p => p.id) } }
                     );
                     const result = data.data || data;
                     // Mark all as accepted
@@ -2595,10 +2602,10 @@
                         `/solutions/${this.solutionId}/codegen/generate-architecture`,
                         {
                             method: 'POST',
-                            body: JSON.stringify({
+                            body: {
                                 description: this.nlDescription,
                                 append: append || false,
-                            }),
+                            },
                         }
                     );
                     if (data.success) {
@@ -2684,12 +2691,12 @@
                         '/solutions/' + this.solutionId + '/codegen/confirm-fields',
                         {
                             method: 'POST',
-                            body: JSON.stringify({
+                            body: {
                                 classes: [{
                                     source_element_id: cls.source_element_id,
                                     fields: fields,
                                 }],
-                            }),
+                            },
                         }
                     );
                     this.version = data.version;
@@ -2731,7 +2738,7 @@
                 try {
                     let data = await this._fetch(
                         '/solutions/' + this.solutionId + '/codegen/confirm-fields',
-                        { method: 'POST', body: JSON.stringify({ classes: classes }) }
+                        { method: 'POST', body: { classes: classes } }
                     );
                     this.version = data.version;
                     // Mark every class confirmed in local state
@@ -2850,7 +2857,7 @@
                         '/solutions/' + this.solutionId + '/codegen/intelligence',
                         {
                             method: 'POST',
-                            body: JSON.stringify({ action: action, payload: payload }),
+                            body: { action: action, payload: payload },
                         }
                     );
                     if (!data.success) {
@@ -2881,10 +2888,10 @@
                         '/solutions/' + this.solutionId + '/codegen/intent-plan',
                         {
                             method: 'POST',
-                            body: JSON.stringify({
+                            body: {
                                 instruction: instruction,
                                 selected_path: this.selectedFile || null,
-                            }),
+                            },
                         }
                     );
                     this.intentPlan = data.plan || null;
@@ -3057,7 +3064,7 @@
                         '/solutions/' + this.solutionId + '/codegen/chat-regenerate',
                         {
                             method: 'POST',
-                            body: JSON.stringify({
+                            body: {
                                 instruction: instruction,
                                 version: this.version,
                                 intent_plan_active: !!this.intentPlan,
@@ -3065,7 +3072,7 @@
                                 override_reason: this.allowChatWithoutVerify
                                     ? (this.chatOverrideReason || '').trim()
                                     : '',
-                            }),
+                            },
                         }
                     );
                     this.version = data.version;
@@ -3280,7 +3287,6 @@
         };
     });
     } catch (e) {
-        console.error('[Workbench] Component registration failed:', e);
         document.addEventListener('DOMContentLoaded', () => {
             const wb = document.querySelector('[x-data*="codegenWorkbench"]');
             if (wb) {

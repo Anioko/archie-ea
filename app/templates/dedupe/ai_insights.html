@@ -1,4 +1,5 @@
 {% extends "layouts/admin_base.html" %}
+{% from 'macros/page_shell.html' import page_shell %}
 
 {% block title %}AI Dedupe Insights{% endblock %}
 
@@ -8,10 +9,7 @@
         <a href="{% if 'unified_duplicate.ai_dashboard' in flask.current_app.view_functions %}{{ url_for('unified_duplicate.ai_dashboard') }}{% else %}#{% endif %}" class="text-muted-foreground hover:text-foreground">
             <i data-lucide="arrow-left" class="w-5 h-5" aria-hidden="true"></i>
         </a>
-        <div>
-            <h1 class="text-3xl font-bold text-foreground">AI Deduplication Insights</h1>
-            <p class="text-muted-foreground mt-1">Run #{{ run.id if run else '—' }}</p>
-        </div>
+        {{ page_shell(title='AI Deduplication Insights', subtitle='Run #' ~ (run.id if run else '—')) }}
     </div>
 
     {% if ai_insights %}

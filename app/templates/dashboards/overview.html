@@ -45,10 +45,12 @@
     {% if not current_user.welcome_banner_dismissed_at %}
     <div x-data="{ show: true, dismiss() {
                 this.show = false;
-                const _f = (window.Platform && window.Platform.fetch) || window.apiFetch || fetch;
-                _f('/dashboard/api/welcome-dismiss', {
+                // Use Platform.fetch for automatic CSRF and error handling
+                // silent: true because we don't want a toast if the request fails (banner will reappear on next load)
+                (window.Platform?.fetch || window.apiFetch || fetch)('/dashboard/api/welcome-dismiss', {
                     method: 'POST',
-                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''},
+                    body: {}, // empty object ensures JSON serialization
+                    silent: true,
                 }).catch(() => { /* swallow-ok: best-effort persist; the banner is already hidden for this visit and simply reappears next load if the POST failed, which is not worth an error toast */ });
              } }"
          x-show="show"
@@ -447,10 +449,17 @@
             
             {# FRAG-035: Executive Summary (lazy-loaded) #}
             <div x-data="{ execData: null, execLoading: true }" x-init="
-                fetch('/dashboard/api/executive-summary')
-                    .then(r => r.json())
-                    .then(d => { execData = d.data; execLoading = false; })
-                    .catch(() => { execLoading = false; })
+                (async () => {
+                    try {
+                        const data = await (window.Platform?.fetch || window.apiFetch || fetch).get('/dashboard/api/executive-summary');
+                        execData = data.data;
+                    } catch (e) {
+                        // Platform.fetch throws on non-ok; we keep execData null and hide the template
+                        // No toast needed because we are handling inline state (silent:true is default for .get)
+                    } finally {
+                        execLoading = false;
+                    }
+                })()
             ">
             <template x-if="execData">
                 <div class="rounded-xl border border-border bg-card p-5 mb-6">
@@ -577,10 +586,17 @@
             </div>
             {# ── Governance Stats (lazy-loaded from ARB API) ── #}
             <div x-data="{ govData: null, govLoading: true }" x-init="
-                fetch('/arb/api/dashboard')
-                    .then(r => r.json())
-                    .then(d => { govData = d.data; govLoading = false; })
-                    .catch(() => { govLoading = false; })
+                (async () => {
+                    try {
+                        const data = await (window.Platform?.fetch || window.apiFetch || fetch).get('/arb/api/dashboard');
+                        govData = data.data;
+                    } catch (e) {
+                        // Platform.fetch throws on non-ok; we keep govData null and hide the template
+                        // No toast needed because we are handling inline state (silent:true is default for .get)
+                    } finally {
+                        govLoading = false;
+                    }
+                })()
             ">
             {% call card.card(class='border-l-4 border-l-amber-500') %}
                 {% call card.card_header(class='pb-3') %}

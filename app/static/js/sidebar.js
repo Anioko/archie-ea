@@ -22,31 +22,40 @@ async function loadQuickAccessItems(type, limit) {
       : "sidebar-vendors-quick-access";
   const container = document.getElementById(containerId);
 
+  // Container absent on pages that do not render this sidebar section.
   if (!container) {
-    console.debug(`[Sidebar] Container #${containerId} not found, skipping async load`);
+    // Container not found, skipping async load
     return;
   }
 
   try {
-    const response = await fetch(`/api/sidebar/quick-access?type=${type}&limit=${limit}`, {
-      method: "GET",
-      credentials: "same-origin",
-      headers: {
-        "X-Requested-With": "XMLHttpRequest",
-      },
+    const data = await Platform.fetch.get(`/api/sidebar/quick-access?type=${type}&limit=${limit}`, null, {
+      // The call site paints its own inline error state via container.innerHTML = '' below,
+      // so suppress the global toast to avoid duplicate user-visible errors.
+      silent: true,
     });
-
-    if (!response.ok) {
-      console.error(`[Sidebar] Failed to load ${type}: ${response.status}`);
-      return;
-    }
-
-    const data = await response.json();
     renderQuickAccessItems(container, data.items, type);
   } catch (error) {
-    console.warn(`[Sidebar] Quick access for ${type} unavailable (network)`, error.message);
+    // Platform.fetch throws on any non-ok response or network error.
+    // We must surface the failure to the user by clearing the container,
+    // which leaves the sidebar section empty (no invented data).
     container.innerHTML = '';
   }
+}
+
+/**
+ * Render an explicit unavailable state. Without this a failed request leaves an
+ * empty container, which reads as "no applications" — a failure disguised as data.
+ * @param {HTMLElement} container - DOM element to populate
+ * @param {string} type - 'applications' or 'vendors'
+ * @param {string} detail - Short failure detail
+ */
+function renderQuickAccessUnavailable(container, type, detail) {
+  safeHTML(container, `
+    <div class="px-2.5 py-3 text-xs text-destructive-emphasis">
+      Could not load ${type} (${detail})
+    </div>
+  `);
 }
 
 /**

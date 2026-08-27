@@ -363,6 +363,11 @@
           <span class="animate-pulse w-2 h-2 rounded-full bg-info inline-block shrink-0"></span>
           <span class="text-xs text-muted-foreground">Running semantic review...</span>
         </div>
+        <div x-show="critiqueStatus === 'error'" x-cloak
+             class="border-t border-border px-5 py-2.5 flex items-center gap-2">
+          <i data-lucide="alert-triangle" class="h-3.5 w-3.5 text-warning-emphasis shrink-0"></i>
+          <span class="text-xs text-warning-emphasis">Semantic review could not be completed. The generated architecture is unaffected.</span>
+        </div>
 
         {# ── SEM-001: Structural quality flags ── #}
         <template x-if="architectureResult && architectureResult.semantic_quality">
@@ -549,7 +554,6 @@
                                      renderer.fitToContent();
                                      diagramReady = true;
                                  } catch(e) {
-                                     console.warn('Diagram render failed:', e);
                                      diagramError = true;
                                  }
                              });
@@ -757,13 +761,10 @@
                                                 async saveRules() {
                                                     this.brSaving = true; this.brError = '';
                                                     try {
-                                                        const resp = await fetch('/architecture-journey/{{ solution_id }}/proposal/' + el.proposal_id + '/business-rules', {
-                                                            method: 'PATCH',
-                                                            headers: {'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('[name=csrf_token]')?.value || ''},
-                                                            body: JSON.stringify({rules: this.brRules})
-                                                        });
-                                                        if (!resp.ok) this.brError = 'Save failed';
-                                                    } catch(e) { this.brError = 'Network error'; }
+                                                        await Platform.fetch.patch('/architecture-journey/{{ solution_id }}/proposal/' + el.proposal_id + '/business-rules', {rules: this.brRules}, {silent: true});
+                                                    } catch(e) {
+                                                        this.brError = e.type === 'NetworkError' ? 'Network error' : 'Save failed';
+                                                    }
                                                     this.brSaving = false;
                                                 }
                                              }">

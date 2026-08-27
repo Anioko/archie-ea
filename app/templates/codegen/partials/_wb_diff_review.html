@@ -121,18 +121,21 @@ function wbDiffReview() {
       if (patch.applied) return;
       this.isApplying = true;
       try {
-        const r = await fetch(`/solutions/${this.solutionId}/codegen/chat-edit/apply-patch`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-CSRFToken': window.CSRF_TOKEN || '' },
-          body: JSON.stringify({ file: patch.file, diff: patch.diff }),
+        // Platform.fetch automatically injects CSRF token and serializes plain objects to JSON
+        await Platform.fetch.post(`/solutions/${this.solutionId}/codegen/chat-edit/apply-patch`, {
+          file: patch.file,
+          diff: patch.diff,
         });
-        if (r.ok) {
-          patch.applied = true;
-          window.wbRefreshFile?.(patch.file);
-        } else {
-          const err = await r.json();
-          Platform.toast.error(err.error || 'Apply failed');
-        }
+        patch.applied = true;
+        window.wbRefreshFile?.(patch.file);
+      } catch (error) {
+        // Platform.fetch already shows a toast for non‑silent errors; we keep the inline error state
+        // by re‑throwing to preserve existing behaviour (the caller will handle the error).
+        // The toast is shown by Platform.fetch, but we still need to surface the failure.
+        // Since the original code displayed a toast via Platform.toast.error, and Platform.fetch
+        // already does that, we don't need to duplicate it. However we must not swallow the error.
+        // Re‑throwing ensures the promise rejects and the UI can react accordingly.
+        throw error;
       } finally { this.isApplying = false; }
     },
 

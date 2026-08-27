@@ -8,12 +8,14 @@
 {% endblock %}
 
 {% block content %}
-<main class="container mx-auto max-w-4xl px-4 py-6 sm:px-6 lg:px-8"
+<main class="p-6 space-y-6 mx-auto max-w-4xl"
       x-data="transformationProgrammeIntake()" x-init="init()">
   {{ page_header(
       title='New transformation programme',
       description='Start with a business objective, an accountable outcome and the first governed workstream.'
   ) }}
+
+  {% include 'solutions/programme_wizard/_step_nav.html' %}
 
   <form class="mt-6 space-y-6" method="post"
         action="{{ url_for('solution_design.create_programme') }}"
@@ -30,201 +32,33 @@
     </div>
     {% endif %}
 
-    <section class="rounded-lg border border-border bg-card p-6" aria-labelledby="programme-heading">
-      <h2 id="programme-heading" class="text-lg font-semibold text-foreground">Programme intent</h2>
-      <div class="mt-4 grid gap-4">
-        <label class="grid gap-2 text-sm font-medium text-foreground">
-          Programme name
-          <input class="h-9 rounded-md border border-border bg-background px-3 text-sm"
-                 name="name" value="{{ programme_form.name }}"
-                 x-model.trim="form.name" required autocomplete="off">
-        </label>
-        <label class="grid gap-2 text-sm font-medium text-foreground">
-          Business objective
-          <textarea class="min-h-24 rounded-md border border-border bg-background px-3 py-2 text-sm"
-                    name="objective" x-model.trim="form.objective"
-                    required>{{ programme_form.objective }}</textarea>
-        </label>
-      </div>
-    </section>
-
-    <section class="rounded-lg border border-border bg-card p-6" aria-labelledby="ownership-heading">
-      <h2 id="ownership-heading" class="text-lg font-semibold text-foreground">Ownership and timing</h2>
-      <div class="mt-4 grid gap-4 sm:grid-cols-2">
-        <div class="relative sm:col-span-2">
-          <label for="owner-search" class="text-sm font-medium text-foreground">Programme owner</label>
-          <input type="hidden" name="owner_id" :value="form.owner_id"
-                 value="{{ programme_form.owner_id }}">
-          <input id="owner-search" class="mt-2 h-9 w-full rounded-md border border-border bg-background px-3 text-sm"
-                 type="search" value="{{ programme_owner_label }}" x-model="ownerQuery"
-                 @input.debounce.250ms="ownerQueryChanged(); searchOwners()"
-                 @focus="ownerOpen = true" autocomplete="off" role="combobox"
-                 aria-autocomplete="list"
-                 readonly :readonly="false"
-                 :aria-expanded="ownerOpen.toString()" aria-controls="owner-results"
-                 :aria-activedescendant="activeOwnerId"
-                 @keydown.arrow-down.prevent="moveOwner(1)"
-                 @keydown.arrow-up.prevent="moveOwner(-1)"
-                 @keydown.enter.prevent="chooseActiveOwner()"
-                 @keydown.escape="closeOwnerPicker()"
-                 placeholder="Search people by name or email" required>
-          <ul id="owner-results" x-show="ownerOpen && owners.length" x-cloak
-              class="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-md border border-border bg-popover p-1 shadow-md"
-              role="listbox">
-            <template x-for="(person, index) in owners" :key="person.id">
-              <li>
-                <button type="button" class="w-full rounded-sm px-3 py-2 text-left text-sm hover:bg-accent"
-                        :id="'owner-option-' + person.id"
-                        :class="{'bg-accent': index === activeOwnerIndex}"
-                        :aria-selected="(form.owner_id === person.id).toString()"
-                        @mousemove="activeOwnerIndex = index"
-                        @click="selectOwner(person)" role="option">
-                  <span class="block font-medium" x-text="person.name"></span>
-                  <span class="block text-xs text-muted-foreground" x-text="person.email"></span>
-                </button>
-              </li>
-            </template>
-          </ul>
-          <p class="mt-2 text-xs text-muted-foreground" x-show="form.owner_id" x-cloak>
-            Selected: <span x-text="selectedOwnerName"></span>
-          </p>
-          <noscript>
-            <label for="owner-fallback" class="mt-3 grid gap-2 text-sm font-medium text-foreground">
-              Choose a programme owner
-              <select id="owner-fallback" name="owner_id_fallback" required
-                      class="h-9 rounded-md border border-border bg-background px-3 text-sm">
-                <option value="">Select a person</option>
-                {% for owner in programme_owner_options %}
-                <option value="{{ owner.id }}"{% if owner.id == programme_form.owner_id %} selected{% endif %}>{{ owner.name }} — {{ owner.email }}</option>
-                {% endfor %}
-              </select>
-            </label>
-          </noscript>
-        </div>
-        <label class="grid gap-2 text-sm font-medium text-foreground">
-          Target date
-          <input class="h-9 rounded-md border border-border bg-background px-3 text-sm"
-                 type="date" name="target_date" value="{{ programme_form.target_date }}"
-                 x-model="form.target_date">
-        </label>
-        <label class="grid gap-2 text-sm font-medium text-foreground">
-          If the target date is not known
-          <input class="h-9 rounded-md border border-border bg-background px-3 text-sm"
-                 name="target_date_unavailable_reason"
-                 value="{{ programme_form.target_date_unavailable_reason }}"
-                 x-model.trim="form.target_date_unavailable_reason"
-                 placeholder="Why the date is unavailable">
-        </label>
-      </div>
-      <div x-show="form.workstream_type === 'technology'" x-cloak
-           class="mt-4 rounded-md border border-info/30 bg-info/10 p-4 text-sm text-info-emphasis">
-        <p class="font-medium">Technology elaboration follows the business decision.</p>
-        <p class="mt-1">A technology Solution may be added after programme approval. Platform and vendor choices belong to that governed Solution record and are not collected or discarded here.</p>
-      </div>
-    </section>
-
-    <section class="rounded-lg border border-border bg-card p-6" aria-labelledby="workstream-heading">
-      <h2 id="workstream-heading" class="text-lg font-semibold text-foreground">First workstream</h2>
-      <div class="mt-4 grid gap-4 sm:grid-cols-2">
-        <label class="grid gap-2 text-sm font-medium text-foreground">
-          Workstream type
-          <select class="h-9 rounded-md border border-border bg-background px-3 text-sm"
-                  name="workstream_type" x-model="form.workstream_type" required>
-            <option value="application_rationalisation"{% if programme_form.workstream_type == 'application_rationalisation' %} selected{% endif %}>Application rationalisation</option>
-            <option value="process"{% if programme_form.workstream_type == 'process' %} selected{% endif %}>Process</option>
-            <option value="organisation_skills"{% if programme_form.workstream_type == 'organisation_skills' %} selected{% endif %}>Organisation and skills</option>
-            <option value="policy_control"{% if programme_form.workstream_type == 'policy_control' %} selected{% endif %}>Policy and control</option>
-            <option value="data"{% if programme_form.workstream_type == 'data' %} selected{% endif %}>Data</option>
-            <option value="supplier"{% if programme_form.workstream_type == 'supplier' %} selected{% endif %}>Supplier</option>
-            <option value="technology"{% if programme_form.workstream_type == 'technology' %} selected{% endif %}>Technology</option>
-            <option value="other"{% if programme_form.workstream_type == 'other' %} selected{% endif %}>Other</option>
-          </select>
-        </label>
-        <label class="grid gap-2 text-sm font-medium text-foreground">
-          Business units in scope
-          <input class="h-9 rounded-md border border-border bg-background px-3 text-sm"
-                 name="scope_expression" value="{{ programme_form.scope_expression }}"
-                 x-model.trim="form.business_units" required
-                 placeholder="Retail, Operations">
-        </label>
-      </div>
-    </section>
-
-    <section class="rounded-lg border border-border bg-card p-6" aria-labelledby="outcome-heading">
-      <h2 id="outcome-heading" class="text-lg font-semibold text-foreground">Initial outcome and measure</h2>
-      <div class="mt-4 grid gap-4 sm:grid-cols-2">
-        <label class="grid gap-2 text-sm font-medium text-foreground sm:col-span-2">
-          Outcome statement
-          <input class="h-9 rounded-md border border-border bg-background px-3 text-sm"
-                 name="outcome" value="{{ programme_form.outcome }}"
-                 x-model.trim="form.outcome.statement" required>
-        </label>
-        <label class="grid gap-2 text-sm font-medium text-foreground">
-          Improvement direction
-          <select class="h-9 rounded-md border border-border bg-background px-3 text-sm"
-                  name="direction" x-model="form.outcome.direction" required>
-            <option value="decrease"{% if programme_form.direction == 'decrease' %} selected{% endif %}>Decrease</option>
-            <option value="increase"{% if programme_form.direction == 'increase' %} selected{% endif %}>Increase</option>
-            <option value="maintain"{% if programme_form.direction == 'maintain' %} selected{% endif %}>Maintain</option>
-          </select>
-        </label>
-        <label class="grid gap-2 text-sm font-medium text-foreground">
-          Metric name
-          <input class="h-9 rounded-md border border-border bg-background px-3 text-sm"
-                 name="metric_name" value="{{ programme_form.metric_name }}"
-                 x-model.trim="form.outcome.measure.metric_name" required>
-        </label>
-        <label class="grid gap-2 text-sm font-medium text-foreground">
-          Unit
-          <input class="h-9 rounded-md border border-border bg-background px-3 text-sm"
-                 name="unit" value="{{ programme_form.unit }}"
-                 x-model.trim="form.outcome.measure.unit" required placeholder="GBP, %, count">
-        </label>
-        <label class="grid gap-2 text-sm font-medium text-foreground">
-          Currency, when monetary
-          <input class="h-9 rounded-md border border-border bg-background px-3 text-sm uppercase"
-                 name="currency" maxlength="3" value="{{ programme_form.currency }}"
-                 x-model.trim="form.outcome.measure.currency" placeholder="GBP">
-        </label>
-        <label class="grid gap-2 text-sm font-medium text-foreground">
-          Aggregation
-          <select class="h-9 rounded-md border border-border bg-background px-3 text-sm"
-                  name="aggregation" x-model="form.outcome.measure.aggregation" required>
-            <option value="sum"{% if programme_form.aggregation == 'sum' %} selected{% endif %}>Sum</option>
-            <option value="average"{% if programme_form.aggregation == 'average' %} selected{% endif %}>Average</option>
-            <option value="minimum"{% if programme_form.aggregation == 'minimum' %} selected{% endif %}>Minimum</option>
-            <option value="maximum"{% if programme_form.aggregation == 'maximum' %} selected{% endif %}>Maximum</option>
-            <option value="latest"{% if programme_form.aggregation == 'latest' %} selected{% endif %}>Latest</option>
-          </select>
-        </label>
-        <label class="grid gap-2 text-sm font-medium text-foreground">
-          Baseline value
-          <input class="h-9 rounded-md border border-border bg-background px-3 text-sm"
-                 type="number" step="any" name="baseline_value"
-                 value="{{ programme_form.baseline_value }}"
-                 x-model="form.outcome.measure.baseline_value">
-        </label>
-        <label class="grid gap-2 text-sm font-medium text-foreground">
-          Baseline unavailable reason
-          <input class="h-9 rounded-md border border-border bg-background px-3 text-sm"
-                 name="unavailable_reason" value="{{ programme_form.unavailable_reason }}"
-                 x-model.trim="form.outcome.measure.unavailable_reason">
-        </label>
-        <label class="grid gap-2 text-sm font-medium text-foreground">
-          Target value
-          <input class="h-9 rounded-md border border-border bg-background px-3 text-sm"
-                 type="number" step="any" name="target_value"
-                 value="{{ programme_form.target_value }}"
-                 x-model="form.outcome.measure.target_value" required>
-        </label>
-      </div>
-    </section>
+    {% include 'solutions/programme_wizard/_intent_step.html' %}
+    {% include 'solutions/programme_wizard/_ownership_step.html' %}
+    {% include 'solutions/programme_wizard/_workstream_step.html' %}
+    {% include 'solutions/programme_wizard/_outcome_step.html' %}
+    {% include 'solutions/programme_wizard/_measure_step.html' %}
+    {% include 'solutions/programme_wizard/_review_step.html' %}
 
     <div class="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive-emphasis"
-         x-show="error" x-cloak role="alert" x-text="error"></div>
-    <div class="flex justify-end">
-      <button type="submit" class="inline-flex h-9 items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
-              :disabled="submitting">
+         x-show="error" x-cloak role="alert" x-text="error" data-testid="programme-error"></div>
+
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <button type="button" data-testid="wizard-back"
+              class="inline-flex h-9 items-center justify-center rounded-md border border-border bg-background px-4 py-2 text-sm font-medium text-foreground hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
+              :disabled="currentStep === 0" @click="back()">Back</button>
+
+      <p class="text-xs text-muted-foreground" x-show="!stepValid(currentStep) && currentStep !== steps.length - 1" x-cloak
+         data-testid="wizard-step-hint">Complete the required fields on this step to continue.</p>
+
+      <button type="button" data-testid="wizard-next"
+              x-show="currentStep !== steps.length - 1" x-cloak
+              class="inline-flex h-9 items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
+              :disabled="!stepValid(currentStep)" @click="next()">Continue</button>
+
+      <button type="submit" data-testid="wizard-submit"
+              x-show="currentStep === steps.length - 1" x-cloak
+              class="inline-flex h-9 items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
+              :disabled="submitting || incompleteSteps.length > 0">
         <span x-text="submitting ? 'Creating programme…' : 'Create programme'"></span>
       </button>
     </div>
@@ -236,6 +70,16 @@
 <script>
 function transformationProgrammeIntake() {
   return {
+    steps: [
+      {id: 'intent', label: 'Intent'},
+      {id: 'ownership', label: 'Ownership'},
+      {id: 'workstream', label: 'Workstream'},
+      {id: 'outcome', label: 'Outcome'},
+      {id: 'measure', label: 'Measure'},
+      {id: 'review', label: 'Review'}
+    ],
+    currentStep: 0,
+    furthestStep: 0,
     form: {
       name: {{ programme_form.name|tojson }},
       objective: {{ programme_form.objective|tojson }},
@@ -263,18 +107,141 @@ function transformationProgrammeIntake() {
     selectedOwnerName: {{ programme_owner_label|tojson }},
     owners: [], ownerOpen: false, activeOwnerIndex: -1, submitting: false, error: '',
     idempotencyKey: {{ programme_command_key|tojson }},
+
+    // ---- step machinery -------------------------------------------------
+    // A step is valid when the fields the server requires for it are filled.
+    // These mirror the `required` attributes in the step partials; if you add a
+    // required field, add it here too or the wizard will let an incomplete
+    // payload reach the server and rely on a 400 to explain it.
+    stepValid(index) {
+      const measure = this.form.outcome.measure;
+      const filled = (value) => String(value === null || value === undefined ? '' : value).trim() !== '';
+      switch (index) {
+        case 0: return filled(this.form.name) && filled(this.form.objective);
+        // A target date is optional, but if it is absent the reason is not.
+        case 1: return Boolean(this.form.owner_id)
+                  && (filled(this.form.target_date) || filled(this.form.target_date_unavailable_reason));
+        case 2: return filled(this.form.workstream_type) && filled(this.form.business_units);
+        case 3: return filled(this.form.outcome.statement) && filled(this.form.outcome.direction);
+        // Baseline is optional, but an absent baseline needs a stated reason
+        // rather than being recorded as a measured zero.
+        case 4: return filled(measure.metric_name) && filled(measure.unit)
+                  && filled(measure.aggregation) && filled(measure.target_value)
+                  && (filled(measure.baseline_value) || filled(measure.unavailable_reason));
+        case 5: return this.incompleteSteps.length === 0;
+        default: return false;
+      }
+    },
+    isComplete(index) {
+      return index < this.steps.length - 1 && this.stepValid(index);
+    },
+    get incompleteSteps() {
+      const missing = [];
+      for (let index = 0; index < this.steps.length - 1; index += 1) {
+        if (!this.stepValid(index)) missing.push(index);
+      }
+      return missing;
+    },
+    // Only allow jumping to a step already reached, or the next one once the
+    // current step is valid. Prevents skipping straight to Review.
+    canVisit(index) {
+      return index <= this.furthestStep || (index === this.currentStep + 1 && this.stepValid(this.currentStep));
+    },
+    goTo(index) {
+      if (index < 0 || index >= this.steps.length || !this.canVisit(index)) return;
+      this.currentStep = index;
+      this.furthestStep = Math.max(this.furthestStep, index);
+      this.error = '';
+      this.persistDraft();
+    },
+    next() {
+      if (!this.stepValid(this.currentStep)) return;
+      this.goTo(this.currentStep + 1);
+    },
+    back() { this.goTo(this.currentStep - 1); },
+
+    // ---- display helpers ------------------------------------------------
+    // Em dash for absent values -- never 0, never blank, so a reader can tell
+    // "not provided" from a real measured value.
+    display(value) {
+      const text = String(value === null || value === undefined ? '' : value).trim();
+      return text === '' ? '—' : text;
+    },
+    labelFor(select, value) {
+      const option = document.querySelector(`[data-testid="${select}"] option[value="${value}"]`);
+      return option ? option.textContent.trim() : this.display(value);
+    },
+    get workstreamLabel() { return this.labelFor('field-workstream-type', this.form.workstream_type); },
+    get directionLabel() { return this.labelFor('field-direction', this.form.outcome.direction); },
+    get aggregationLabel() { return this.labelFor('field-aggregation', this.form.outcome.measure.aggregation); },
+    get businessUnitList() {
+      return this.form.business_units.split(',').map((value) => value.trim()).filter(Boolean);
+    },
+
+    // ---- draft persistence ----------------------------------------------
+    draftKey: 'transformation-programme-intake-draft',
+    persistDraft() {
+      try {
+        sessionStorage.setItem(this.draftKey, JSON.stringify({
+          form: this.form, currentStep: this.currentStep,
+          furthestStep: this.furthestStep, selectedOwnerName: this.selectedOwnerName
+        }));
+      } catch (failure) {
+        // Private mode or blocked storage: the wizard still works, it just
+        // will not survive a reload. Not worth interrupting the user for.
+      }
+    },
+    restoreDraft() {
+      let raw = null;
+      try { raw = sessionStorage.getItem(this.draftKey); } catch (failure) { return; }
+      if (!raw) return;
+      let draft;
+      try { draft = JSON.parse(raw); } catch (failure) { return; }
+      if (!draft || typeof draft !== 'object' || !draft.form) return;
+      this.form = Object.assign(this.form, draft.form);
+      this.form.outcome = Object.assign(this.form.outcome, draft.form.outcome || {});
+      this.form.outcome.measure = Object.assign(
+        this.form.outcome.measure, (draft.form.outcome || {}).measure || {}
+      );
+      if (typeof draft.selectedOwnerName === 'string') {
+        this.selectedOwnerName = draft.selectedOwnerName;
+        this.ownerQuery = draft.selectedOwnerName;
+      }
+      this.furthestStep = Number.isInteger(draft.furthestStep) ? draft.furthestStep : 0;
+      const step = Number.isInteger(draft.currentStep) ? draft.currentStep : 0;
+      this.currentStep = Math.min(Math.max(step, 0), this.steps.length - 1);
+      this.furthestStep = Math.max(this.furthestStep, this.currentStep);
+    },
+    clearDraft() {
+      try {
+        sessionStorage.removeItem(this.draftKey);
+        sessionStorage.removeItem('transformation-programme-intake-key');
+      } catch (failure) { /* swallow-ok: sessionStorage throws in private mode or when
+        blocked; there is then nothing stored to clear, so the draft is already gone
+        and the submission it followed has already succeeded. */ }
+    },
+
     init() {
       const storageKey = 'transformation-programme-intake-key';
-      this.idempotencyKey = sessionStorage.getItem(storageKey) || this.idempotencyKey;
-      sessionStorage.setItem(storageKey, this.idempotencyKey);
+      try {
+        this.idempotencyKey = sessionStorage.getItem(storageKey) || this.idempotencyKey;
+        sessionStorage.setItem(storageKey, this.idempotencyKey);
+      } catch (failure) { /* swallow-ok: sessionStorage throws in private mode or when
+        blocked; the server-issued idempotency key in this.idempotencyKey still applies,
+        so the only thing lost is draft recall across a reload. */ }
+      this.restoreDraft();
+      this.$watch('form', () => this.persistDraft(), {deep: true});
     },
+
+    // ---- owner picker (unchanged contract) ------------------------------
     async searchOwners() {
       this.ownerOpen = true;
       this.activeOwnerIndex = -1;
       try {
-        const response = await fetch('/api/users', {headers: {'Accept': 'application/json'}});
-        if (!response.ok) throw new Error('People search is unavailable.');
-        const body = await response.json();
+        const body = await Platform.fetch.get('/api/users', null, {
+          headers: {'Accept': 'application/json'},
+          silent: true
+        });
         const query = this.ownerQuery.trim().toLowerCase();
         this.owners = (body.users || []).filter((person) =>
           !query || person.name.toLowerCase().includes(query) || person.email.toLowerCase().includes(query)
@@ -316,7 +283,10 @@ function transformationProgrammeIntake() {
       this.selectedOwnerName = person.name;
       this.ownerOpen = false;
       this.activeOwnerIndex = -1;
+      this.persistDraft();
     },
+
+    // ---- submit (unchanged payload contract) ----------------------------
     payload() {
       const measure = this.form.outcome.measure;
       return {
@@ -326,7 +296,7 @@ function transformationProgrammeIntake() {
         target_date: this.form.target_date || null,
         target_date_unavailable_reason: this.form.target_date_unavailable_reason || null,
         workstream_type: this.form.workstream_type,
-        scope_expression: {business_units: this.form.business_units.split(',').map((v) => v.trim()).filter(Boolean)},
+        scope_expression: {business_units: this.businessUnitList},
         outcome: {
           statement: this.form.outcome.statement,
           owner_id: this.form.outcome.owner_id,
@@ -342,27 +312,31 @@ function transformationProgrammeIntake() {
         }
       };
     },
+    // Enter on any step advances rather than submitting; only the review step
+    // creates the programme.
     async submit() {
+      if (this.currentStep !== this.steps.length - 1) { this.next(); return; }
       this.error = '';
+      const missing = this.incompleteSteps;
+      if (missing.length) {
+        this.goTo(missing[0]);
+        this.error = 'Some required detail is still missing.';
+        return;
+      }
       if (!this.form.owner_id) { this.error = 'Choose a programme owner.'; return; }
       this.submitting = true;
       try {
-        const response = await fetch('/solutions/create-programme', {
-          method: 'POST',
+        const data = await Platform.fetch.post('/solutions/create-programme', this.payload(), {
           headers: {
-            'Content-Type': 'application/json',
             'Accept': 'application/json',
-            'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || '',
             'Idempotency-Key': this.idempotencyKey
           },
-          body: JSON.stringify(this.payload())
+          silent: true
         });
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(data.error || 'Programme creation failed.');
         if (!data.programme_id || !data.workstream_id || !data.redirect_url) {
           throw new Error('Programme creation returned an incomplete response.');
         }
-        sessionStorage.removeItem('transformation-programme-intake-key');
+        this.clearDraft();
         window.location.href = data.redirect_url;
       } catch (failure) {
         this.error = failure.message || 'Programme creation failed.';

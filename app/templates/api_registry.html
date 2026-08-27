@@ -5,7 +5,7 @@
 {% block title %}API Registry{% endblock %}
 
 {% block content %}
-<div class="container mx-auto px-4 sm:px-6 lg:px-8 py-6 max-w-7xl" x-data="apiRegistry()">
+<div class="p-6 space-y-6 mx-auto max-w-7xl" x-data="apiRegistry()">
     {{ page_header(
         title='API Registry',
         description='Enterprise-wide catalog of published API contracts generated from solution blueprints.',
@@ -237,14 +237,14 @@ function apiRegistry() {
                 if (this.statusFilter) params.set('status', this.statusFilter);
                 if (this.typeFilter) params.set('type', this.typeFilter);
 
-                const res = await fetch(`/solutions/api/registry/specs?${params}`);
-                if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                const data = await res.json();
+                const data = await Platform.fetch.get(`/solutions/api/registry/specs?${params}`);
                 this.specs = data.data || [];
                 this.total = data.total || 0;
             } catch (err) {
-                console.error('Failed to load API specs:', err);
                 this.loadError = true;
+                // The error is already surfaced via Platform.fetch's built-in toast,
+                // but we still need to set loadError so the UI shows its inline error state.
+                // No console output allowed.
             } finally {
                 this.loading = false;
             }
@@ -260,14 +260,13 @@ function apiRegistry() {
             if (this.typeFilter) params.set('type', this.typeFilter);
 
             try {
-                const res = await fetch(`/solutions/api/registry/specs?${params}`);
-                if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                const data = await res.json();
+                const data = await Platform.fetch.get(`/solutions/api/registry/specs?${params}`);
                 this.specs = this.specs.concat(data.data || []);
             } catch (err) {
-                console.error('Failed to load more specs:', err);
                 this.page -= 1;
-                if (window.Platform && Platform.toast) Platform.toast.error('Could not load more specs.');
+                // Platform.fetch already shows a toast; we do not need a duplicate.
+                // The error is surfaced to the user via the global toast.
+                // No console output allowed.
             }
         },
 
@@ -281,14 +280,13 @@ function apiRegistry() {
             const spec = this.specs.find(s => s.id === specId);
             if (spec && !spec.spec_content) {
                 try {
-                    const res = await fetch(`/solutions/api/registry/specs/${specId}`);
-                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                    const data = await res.json();
+                    const data = await Platform.fetch.get(`/solutions/api/registry/specs/${specId}`);
                     spec.spec_content = data.data.spec_content;
                     spec.description = spec.description || data.data.description;
                 } catch (err) {
-                    console.error('Failed to load spec detail:', err);
-                    Platform.toast.error('Failed to load API spec details: ' + err.message);
+                    // Platform.fetch already shows a toast; we do not need a duplicate.
+                    // The error is surfaced to the user via the global toast.
+                    // No console output allowed.
                 }
             }
         },

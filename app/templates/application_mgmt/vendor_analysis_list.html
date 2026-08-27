@@ -140,7 +140,7 @@
           <template x-for="a in analyses" :key="a.id">
             <tr class="border-b hover:bg-muted/30 transition-colors">
               <td class="px-4 py-3">
-                <a :href="'{{ url_for("application_mgmt.vendor_analysis_detail", analysis_id=0) }}'.replace('/0', '/' + a.id)" class="font-medium text-foreground hover:text-primary" x-text="a.name"></a>
+                <a :href="'{{ url_for('application_mgmt.vendor_analysis_detail', analysis_id=0) }}'.replace('/0', '/' + a.id)" class="font-medium text-foreground hover:text-primary" x-text="a.name"></a>
               </td>
               <td class="px-4 py-3">
                 <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-xs font-medium border"
@@ -159,7 +159,7 @@
               <td class="px-4 py-3 text-sm text-muted-foreground" x-text="a.created_at ? new Date(a.created_at).toLocaleDateString() : ''"></td>
               <td class="px-4 py-3 text-right">
                 <div class="flex items-center justify-end gap-2">
-                  <a :href="'{{ url_for("application_mgmt.vendor_analysis_detail", analysis_id=0) }}'.replace('/0', '/' + a.id)" class="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground" title="View" aria-label="View analysis">
+                  <a :href="'{{ url_for('application_mgmt.vendor_analysis_detail', analysis_id=0) }}'.replace('/0', '/' + a.id)" class="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground" title="View" aria-label="View analysis">
                     <i data-lucide="eye" class="h-4 w-4"></i>
                   </a>
                   <button type="button" @click="confirmDelete(a.id, a.name)" class="p-1.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive-emphasis" title="Delete" aria-label="Delete analysis">
@@ -236,25 +236,23 @@ function vendorAnalysisList() {
     async loadAnalyses(page) {
       this.loading = true;
       try {
-        let params = new URLSearchParams();
-        params.set('page', page || 1);
-        params.set('per_page', 20);
-        params.set('sort_by', this.sortBy);
-        params.set('sort_dir', this.sortBy === 'name' ? 'asc' : 'desc');
-        if (this.statusFilter) params.set('status', this.statusFilter);
-        if (this.searchQuery) params.set('search', this.searchQuery);
+        let paramsObj = {
+          page: page || 1,
+          per_page: 20,
+          sort_by: this.sortBy,
+          sort_dir: this.sortBy === 'name' ? 'asc' : 'desc'
+        };
+        if (this.statusFilter) paramsObj.status = this.statusFilter;
+        if (this.searchQuery) paramsObj.search = this.searchQuery;
 
-        let resp = await fetch('/dashboard/api/vendor-analyses?' + params.toString(), {
-          credentials: 'same-origin',
-          headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        let data = await Platform.fetch.get('/dashboard/api/vendor-analyses', paramsObj, {
+          headers: { 'X-Requested-With': 'XMLHttpRequest' },
+          silent: true
         });
-        if (!resp.ok) throw new Error('Failed to load vendor analyses (HTTP ' + resp.status + ')');
-        let data = await resp.json();
         this.analyses = data.analyses || [];
         this.summary = data.summary || this.summary;
         this.pagination = data.pagination || this.pagination;
       } catch (e) {
-        console.error('Error loading analyses:', e);
         Platform.toast.error(e.message || 'Failed to load vendor analyses');
       } finally {
         this.loading = false;
@@ -286,20 +284,14 @@ function vendorAnalysisList() {
     async executeDelete() {
       if (!this.deleteTarget) return;
       try {
-        let resp = await fetch('/dashboard/api/vendor-analysis/' + this.deleteTarget, {
-          method: 'DELETE',
-          credentials: 'same-origin',
-          headers: {
-            'X-Requested-With': 'XMLHttpRequest',
-            'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''
-          }
+        await Platform.fetch.delete('/dashboard/api/vendor-analysis/' + this.deleteTarget, {
+          headers: { 'X-Requested-With': 'XMLHttpRequest' },
+          silent: true
         });
-        if (!resp.ok) throw new Error('Failed to delete vendor analysis (HTTP ' + resp.status + ')');
         this.deleteTarget = null;
         this.deleteTargetName = '';
         await this.loadAnalyses(this.pagination.page);
       } catch (e) {
-        console.error('Error deleting analysis:', e);
         Platform.toast.error(e.message || 'Failed to delete vendor analysis');
       }
     }

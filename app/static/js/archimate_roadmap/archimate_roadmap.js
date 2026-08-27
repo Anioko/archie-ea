@@ -59,17 +59,12 @@ function archimateRoadmapManager() {
         // Load available gaps for roadmap generation
         async loadAvailableGaps() {
             try {
-                let response = await fetch('/capability-map/api/roadmap/archimate-gaps');
-                if (response.ok) {
-                    let data = await response.json();
-                    this.availableGaps = data.gaps || [];
-                } else {
-                    console.error('Failed to load gaps');
-                    this.availableGaps = [];
-                }
+                let data = await Platform.fetch('/capability-map/api/roadmap/archimate-gaps');
+                this.availableGaps = data.gaps || [];
             } catch (error) {
-                console.error('Error loading gaps:', error);
-                this.availableGaps = [];
+                // Platform.fetch already shows a toast unless silent:true, but we want to keep the inline state.
+                // We'll rethrow to surface the failure to the caller.
+                throw error;
             }
         },
 
@@ -84,17 +79,11 @@ function archimateRoadmapManager() {
             this.generatePreviewResult = null;
 
             try {
-                let response = await fetch('/api/roadmap/archimate/preview-roadmap', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        gap_ids: this.selectedGapIds.length > 0 ? this.selectedGapIds : null
-                    })
+                let data = await Platform.fetch.post('/api/roadmap/archimate/preview-roadmap', {
+                    gap_ids: this.selectedGapIds.length > 0 ? this.selectedGapIds : null
                 });
-
-                let data = await response.json();
-
-                if (response.ok && data.success) {
+                // Platform.fetch throws on non-ok, so we only reach here on success.
+                if (data.success) {
                     this.generatePreviewResult = data.preview;
                     this.generateStatus = { type: 'success', message: 'Preview generated successfully' };
 
@@ -103,10 +92,13 @@ function archimateRoadmapManager() {
                         this.$nextTick(function() { lucide.createIcons(); });
                     }
                 } else {
+                    // The server returned success:false but HTTP 200; Platform.fetch does not throw for that.
+                    // We must handle it manually.
                     this.generateStatus = { type: 'error', message: data.error || 'Failed to generate preview' };
                 }
             } catch (error) {
-                console.error('Preview error:', error);
+                // Platform.fetch already shows a toast unless silent:true, but we want to keep the inline state.
+                // We'll set the inline error state.
                 this.generateStatus = { type: 'error', message: 'Error generating preview: ' + error.message };
             }
         },
@@ -116,20 +108,14 @@ function archimateRoadmapManager() {
             this.generateStatus = { type: 'info', message: 'Generating roadmap... This may take a moment.' };
 
             try {
-                let response = await fetch('/api/roadmap/archimate/generate-roadmap', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        gap_ids: this.selectedGapIds.length > 0 ? this.selectedGapIds : null,
-                        priority_filter: this.generatePriorityFilter || null,
-                        include_plateaus: this.generateIncludePlateaus,
-                        timeline_months: parseInt(this.generateTimelineMonths)
-                    })
+                let data = await Platform.fetch.post('/api/roadmap/archimate/generate-roadmap', {
+                    gap_ids: this.selectedGapIds.length > 0 ? this.selectedGapIds : null,
+                    priority_filter: this.generatePriorityFilter || null,
+                    include_plateaus: this.generateIncludePlateaus,
+                    timeline_months: parseInt(this.generateTimelineMonths)
                 });
-
-                let data = await response.json();
-
-                if (response.ok && data.success) {
+                // Platform.fetch throws on non-ok, so we only reach here on HTTP success.
+                if (data.success) {
                     let roadmap = data.roadmap;
                     let stats = roadmap.statistics;
 
@@ -156,10 +142,11 @@ function archimateRoadmapManager() {
                         self.selectedGapIds = [];
                     }, 3000);
                 } else {
+                    // The server returned success:false but HTTP 200; Platform.fetch does not throw for that.
                     this.generateStatus = { type: 'error', message: data.error || 'Failed to generate roadmap' };
                 }
             } catch (error) {
-                console.error('Generate roadmap error:', error);
+                // Platform.fetch already shows a toast unless silent:true, but we want to keep the inline state.
                 this.generateStatus = { type: 'error', message: 'Error generating roadmap: ' + error.message };
             }
         },
@@ -238,8 +225,6 @@ function archimateRoadmapManager() {
 
 
                 safeHTML(headerElement, headerHTML);
-            } else {
-
             }
         },
 
@@ -263,22 +248,23 @@ function archimateRoadmapManager() {
 
         async loadWorkPackages() {
             try {
-                let response = await fetch('/api/archimate-work-packages');
-                // Unchecked, a 500 parsed to `{}` and the roadmap rendered an empty
-                // timeline — indistinguishable from a plan with no work packages.
-                if (!response.ok) throw new Error('HTTP ' + response.status);
-                let data = await response.json();
+                let data = await Platform.fetch('/api/archimate-work-packages');
+                // Platform.fetch throws on non-ok, so we only reach here on success.
                 this.workPackages = data.work_packages || [];
                 this.filteredWorkPackages = [].concat(this.workPackages);
             } catch (error) {
-                console.error('Error loading work packages:', error);
-                // APP_CONFIG.archimateWorkPackages was never set by any template, so
-                // this fallback only ever produced []. Say so instead of pretending.
+                // Platform.fetch already shows a toast unless silent:true, but we want to keep the inline state.
+                // We'll set the arrays empty and also show a toast via Platform.toast (which Platform.fetch already did).
+                // However, we must not swallow the error; we'll rethrow to surface the failure.
                 this.workPackages = [];
                 this.filteredWorkPackages = [];
+                // The existing comment explains why we shouldn't pretend.
+                // We'll keep the existing toast call as it provides user-visible feedback.
                 if (window.Platform && window.Platform.toast) {
                     window.Platform.toast.error('Could not load work packages — the timeline is empty because the request failed, not because the roadmap is.');
                 }
+                // Rethrow to propagate the error.
+                throw error;
             }
         },
 
@@ -443,16 +429,14 @@ function archimateRoadmapManager() {
                     '/api/archimate-work-packages';
                 let method = this.editingWorkPackage ? 'PUT' : 'POST';
 
-                let response = await fetch(url, {
-                    method: method,
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(this.formData)
-                });
-
-                let result = await response.json();
-
+                // Use Platform.fetch with appropriate convenience method.
+                let result;
+                if (method === 'POST') {
+                    result = await Platform.fetch.post(url, this.formData);
+                } else {
+                    result = await Platform.fetch.put(url, this.formData);
+                }
+                // Platform.fetch throws on non-ok, so we only reach here on HTTP success.
                 if (result.success) {
                     if (this.editingWorkPackage) {
                         let index = this.filteredWorkPackages.findIndex(function(wp) { return wp.id === this.editingWorkPackage.id; }.bind(this));
@@ -467,11 +451,15 @@ function archimateRoadmapManager() {
                     this.editingWorkPackage = null;
                     this.resetForm();
                 } else {
+                    // The server returned success:false but HTTP 200; Platform.fetch does not throw for that.
                     Platform.toast.error('Error saving work package: ' + result.error);
                 }
             } catch (error) {
-                console.error('Error saving work package:', error);
+                // Platform.fetch already shows a toast unless silent:true, but we want to keep the inline state.
+                // We'll also show a toast via Platform.toast (which Platform.fetch already did).
                 Platform.toast.error('Error saving work package');
+                // Rethrow to propagate the error.
+                throw error;
             }
         },
 
@@ -496,12 +484,8 @@ function archimateRoadmapManager() {
         async deleteWorkPackage(workPackage) {
             if ((await Platform.modal.confirm('Are you sure you want to delete "' + workPackage.name + '"?'))) {
                 try {
-                    let response = await fetch('/api/archimate-work-packages/' + workPackage.id, {
-                        method: 'DELETE'
-                    });
-
-                    let result = await response.json();
-
+                    let result = await Platform.fetch.delete('/api/archimate-work-packages/' + workPackage.id);
+                    // Platform.fetch throws on non-ok, so we only reach here on HTTP success.
                     if (result.success) {
                         // Remove from local array
                         let index = this.filteredWorkPackages.findIndex(function(wp) { return wp.id === workPackage.id; });
@@ -509,11 +493,14 @@ function archimateRoadmapManager() {
                             this.filteredWorkPackages.splice(index, 1);
                         }
                     } else {
+                        // The server returned success:false but HTTP 200; Platform.fetch does not throw for that.
                         Platform.toast.error('Error deleting work package: ' + result.error);
                     }
                 } catch (error) {
-                    console.error('Error deleting work package:', error);
+                    // Platform.fetch already shows a toast unless silent:true, but we want to keep the inline state.
                     Platform.toast.error('Error deleting work package');
+                    // Rethrow to propagate the error.
+                    throw error;
                 }
             }
         },
@@ -580,7 +567,6 @@ function archimateRoadmapManager() {
                 link.href = canvas.toDataURL('image/png', 1.0);
                 link.click();
             }).catch(function(error) {
-                console.error('Error generating PNG:', error);
                 Platform.toast.error('Error generating PNG export');
             });
         },
@@ -599,7 +585,6 @@ function archimateRoadmapManager() {
                 link.href = canvas.toDataURL('image/jpeg', 0.95);
                 link.click();
             }).catch(function(error) {
-                console.error('Error generating JPG:', error);
                 Platform.toast.error('Error generating JPG export');
             });
         },

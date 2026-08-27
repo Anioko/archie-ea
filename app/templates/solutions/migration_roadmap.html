@@ -4,7 +4,7 @@
 {% block title %}Migration Roadmap — {{ solution.name }}{% endblock %}
 
 {% block content %}
-<div class="container mx-auto px-4 sm:px-6 lg:px-8 py-6 max-w-5xl"
+<div class="p-6 space-y-6 mx-auto max-w-5xl"
      x-data="migrationRoadmap({{ solution.id }}, {{ (roadmap.id if roadmap else 'null') }})">
     {{ page_header(
         title='Migration Roadmap',
@@ -112,14 +112,19 @@
             async generate() {
                 this.busy = true; this.error = '';
                 try {
-                    const r = await fetch('/solutions/' + this.solutionId + '/migration-roadmap/generate', {
-                        method: 'POST', headers: { 'X-CSRFToken': this._csrf() },
-                    });
-                    const d = await r.json();
-                    if (!r.ok || !d.success) { this.error = d.error || 'Generation failed.'; return; }
+                    const d = await Platform.fetch.post('/solutions/' + this.solutionId + '/migration-roadmap/generate', null, { silent: true });
+                    if (!d.success) {
+                        this.error = d.error || 'Generation failed.';
+                        return;
+                    }
                     window.location.reload();
-                } catch (e) { this.error = 'Network error during generation.'; }
-                finally { this.busy = false; }
+                } catch (e) {
+                    // Platform.fetch throws on network errors or non-ok responses.
+                    // We already passed silent:true, so no duplicate toast appears.
+                    this.error = e.message || 'Network error during generation.';
+                } finally {
+                    this.busy = false;
+                }
             },
         };
     }

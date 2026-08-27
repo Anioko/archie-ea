@@ -352,12 +352,13 @@ function diagramImport() {
                 if (extra) {
                     Object.keys(extra).forEach(k => body.append(k, extra[k]));
                 }
-                const token = document.querySelector('meta[name=csrf-token]');
-                const res = await fetch(url, {
-                    method: 'POST', credentials: 'same-origin', body: body,
-                    headers: token ? { 'X-CSRFToken': token.content } : {},
+                // Platform.fetch automatically injects CSRF token and throws on non-ok responses.
+                // We pass { silent: true } because we handle errors inline via this.error.
+                const data = await Platform.fetch(url, {
+                    method: 'POST',
+                    body: body,
+                    silent: true,
                 });
-                const data = await res.json();
                 if (!data.success) { this.error = data.error || 'Import failed.'; return null; }
                 return data;
             } catch (e) {

@@ -6,7 +6,7 @@
 {% block content %}
 <!-- modal-a11y-ok -->
 <div
-    class="container mx-auto px-4 sm:px-6 lg:px-8 py-6 max-w-4xl"
+    class="p-6 space-y-6 mx-auto max-w-4xl"
     x-data="commLog({{ solution_id }}, {{ entries | tojson }})"
 >
     {{ page_header(
@@ -257,22 +257,15 @@ function commLog(solutionId, initialEntries) {
             };
 
             try {
-                const resp = await fetch('/api/communications', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload),
-                });
-                if (!resp.ok) {
-                    const err = await resp.json();
-                    this.formError = err.error || 'Failed to save entry.';
-                    return;
-                }
-                const entry = await resp.json();
+                // Platform.fetch.post returns the parsed response directly, throws on error
+                const entry = await Platform.fetch.post('/api/communications', payload, { silent: true });
                 this.entries = [...this.entries, entry];
                 this.showForm = false;
                 this.form = { comm_type: '', stakeholder_id: '', subject: '', summary: '', outcome: '' };
-            } catch (e) {
-                this.formError = 'Network error. Please try again.';
+            } catch (error) {
+                // Platform.fetch throws a structured PlatformError for network or HTTP errors
+                // Its message is already user‑friendly (built from errData.message/error or flattened field errors)
+                this.formError = error.message || 'Failed to save entry.';
             }
         }
     };

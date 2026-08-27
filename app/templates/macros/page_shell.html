@@ -24,7 +24,23 @@
    Existing pages keep using the older macros unless a later task migrates them.
 #}
 
-{% macro page_shell(title, subtitle=None, breadcrumb=[], actions_caller=None, tabs=[]) %}
+{# Additive slots (2026-08-27, shell_conformance burndown). Every one of these
+   defaults to None/off, so an existing call renders byte-identical to before
+   (pinned by tests/test_page_shell_macros.py):
+
+     icon           — a lucide icon name rendered beside the <h1>. A dozen pages
+                      (capability_map/*, errors, batch_import) hand-rolled a
+                      `<i data-lucide> + <h1>` row precisely because the macro
+                      had nowhere to put one.
+     subtitle_caller— a {% call %}-style slot for a subtitle that carries markup
+                      (an Alpine x-text span, a status badge, a <strong>). The
+                      plain `subtitle` string cannot hold those, which is why
+                      those pages kept their own <p>.
+     meta_caller    — a row below the title for identity badges / counters that
+                      belong to the header but are not actions.
+
+   Passing both `subtitle` and `subtitle_caller` renders the caller only. #}
+{% macro page_shell(title, subtitle=None, breadcrumb=[], actions_caller=None, tabs=[], icon=None, subtitle_caller=None, meta_caller=None) %}
 <div class="mb-6">
     {% if breadcrumb %}
     <nav aria-label="Breadcrumb" class="mb-3">
@@ -53,9 +69,21 @@
        1280+ this renders identically to the previous side-by-side layout. #}
     <div class="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
         <div>
+            {% if icon %}
+            <div class="flex items-center gap-3">
+                <i data-lucide="{{ icon }}" class="h-6 w-6 shrink-0 text-primary" aria-hidden="true"></i>
+                <h1 class="text-2xl font-bold text-foreground">{{ title }}</h1>
+            </div>
+            {% else %}
             <h1 class="text-2xl font-bold text-foreground">{{ title }}</h1>
-            {% if subtitle %}
+            {% endif %}
+            {% if subtitle_caller %}
+            <div class="mt-1 text-sm text-muted-foreground">{{ subtitle_caller() }}</div>
+            {% elif subtitle %}
             <p class="mt-1 text-sm text-muted-foreground">{{ subtitle }}</p>
+            {% endif %}
+            {% if meta_caller %}
+            <div class="mt-3 flex flex-wrap items-center gap-2">{{ meta_caller() }}</div>
             {% endif %}
         </div>
         {% if actions_caller %}

@@ -196,11 +196,9 @@ document.addEventListener('alpine:init', function() {
               this.loading = false;
               return;
             }
-            let resp = await fetch(base + '/phase-gate');
-            if (!resp.ok) {
-              throw new Error('HTTP ' + resp.status);
-            }
-            let data = await resp.json();
+            // Platform.fetch throws on non-ok responses, returns parsed data directly
+            let data = await Platform.fetch(base + '/phase-gate', { silent: true });
+            // The API returns { success: true, ... } on success
             if (data.success) {
               this.gate = {
                 can_advance: data.can_advance,
@@ -217,6 +215,8 @@ document.addEventListener('alpine:init', function() {
               this.error = data.error || 'Failed to load gate checklist';
             }
           } catch (err) {
+            // Platform.fetch already shows a toast unless silent:true; we set silent:true
+            // because we paint inline error state (this.error). Keep the inline error.
             this.error = 'Error loading gate: ' + err.message;
           }
           this.loading = false;
@@ -252,19 +252,21 @@ document.addEventListener('alpine:init', function() {
         async _directAdvance(force) {
           try {
             let base = this.apiBase || (window.__solutionApiBase || '');
-            let csrf = this.csrfToken || '';
-            let resp = await fetch(base + '/advance-phase', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
-              body: JSON.stringify({ force: !!force }),
-            });
-            let data = await resp.json();
+            // Platform.fetch.post automatically injects CSRF and serializes body to JSON
+            let data = await Platform.fetch.post(base + '/advance-phase', { force: !!force }, { silent: true });
+            // The API returns { success: true, ... } or { completed: true, ... } on success
             if (data.success || data.completed) {
               window.location.reload();
             } else {
+              // Platform.fetch already shows a toast unless silent:true; we set silent:true
+              // because we want to handle the error inline (via Platform.toast.error).
+              // However, the call succeeded (no throw) but returned a non‑successful payload.
+              // We still need to show a user‑visible error.
               Platform.toast.error((data.errors || []).join('\n') || 'Phase advance failed.');
             }
           } catch (err) {
+            // Platform.fetch already shows a toast unless silent:true; we set silent:true
+            // so we must show our own toast here.
             Platform.toast.error('Error: ' + err.message);
           }
         },

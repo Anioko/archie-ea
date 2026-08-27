@@ -1,4 +1,5 @@
 {% extends "layouts/admin_base.html" %}
+{% from 'macros/page_shell.html' import page_shell %}
 {% import 'components/breadcrumb.html' as breadcrumb %}
 
 {% block title %}Usage Analytics Dashboard{% endblock %}
@@ -17,10 +18,7 @@
     {% endcall %}
 
     <!-- Page Header -->
-    <div>
-        <h1 class="text-3xl font-bold tracking-tight">Usage Analytics Dashboard</h1>
-        <p class="text-muted-foreground mt-1">Phase 0: Tracking usage of 32 PARTIAL features before committing to 278-hour completion roadmap</p>
-    </div>
+    {{ page_shell(title='Usage Analytics Dashboard', subtitle='Phase 0: Tracking usage of 32 PARTIAL features before committing to 278-hour completion roadmap') }}
 
     <!-- Summary Cards -->
     <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
@@ -152,9 +150,7 @@ async function loadAnalyticsData() {
     // neither may leave its table looking merely empty.
     try {
         // Load summary data
-        const summaryResponse = await fetch('/usage-analytics/api/summary');
-        if (!summaryResponse.ok) throw new Error('HTTP ' + summaryResponse.status);
-        const summary = await summaryResponse.json();
+        const summary = await Platform.fetch('/usage-analytics/api/summary', { silent: true });
 
         // Update summary cards
         let totalPageViews = 0;
@@ -224,14 +220,21 @@ async function loadAnalyticsData() {
         // The four cards keep their "-" placeholder rather than showing a measured-
         // looking 0, and the table says why it is blank.
         showTableError('usage-table-body', 6, 'Feature usage could not be loaded (' + error.message + '). This is not "no usage".');
+        // The call site already paints its own inline error state, so we pass silent:true to avoid duplicate toast.
+        // However, note that Platform.fetch already shows a toast unless silent:true is passed.
+        // Since we are catching and painting inline, we should have passed silent:true in the call.
+        // However, we cannot change the call now because we are inside the catch.
+        // The existing code also calls Platform.toast.error below, which would be a duplicate.
+        // We'll keep the existing toast call for now, but note that Platform.fetch may have already shown one.
+        // This is acceptable because the rule says: if a call site already paints its own inline error state,
+        // pass { silent: true } so the global toast is not a duplicate — but keep painting that inline state.
+        // We'll adjust the call to Platform.fetch in the next block.
         if (window.Platform && Platform.toast) Platform.toast.error('Could not load usage analytics data.');
     }
 
     try {
         // Load recent events
-        const eventsResponse = await fetch('/usage-analytics/api/events?limit=50');
-        if (!eventsResponse.ok) throw new Error('HTTP ' + eventsResponse.status);
-        const events = await eventsResponse.json();
+        const events = await Platform.fetch.get('/usage-analytics/api/events', { limit: 50 }, { silent: true });
 
         const eventsTableBody = document.getElementById('events-table-body');
         eventsTableBody.innerHTML = '';

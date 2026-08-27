@@ -127,7 +127,13 @@ _TRANSFORMATION_FOREIGN_KEYS = (
         "organization_id",
         "organizations",
         "id",
-        "RESTRICT",
+        # CASCADE, not RESTRICT like its neighbours: this is TenantMixin's
+        # organization_id, which declares ON DELETE CASCADE, and every other
+        # tenant table cascades. _ensure_transformation_foreign_keys DROPs the
+        # live constraint before re-adding this one, so RESTRICT here actively
+        # replaced a correct CASCADE and made this the single table that blocks
+        # deleting an organization.
+        "CASCADE",
     ),
     (
         "fk_strategic_roadmap_items_programme_workstream",
@@ -326,6 +332,37 @@ _TRANSFORMATION_FOREIGN_KEYS = (
         "arb_review_items",
         "review_cycle_id",
         "arb_review_cycles",
+        "id",
+        "RESTRICT",
+    ),
+    # arb_canonical_conditions and arb_condition_evidence_records reference each
+    # other, so these three FKs are declared use_alter=True and SQLAlchemy emits
+    # them only from metadata.create_all()'s final ALTER pass. _ensure_transformation_tables
+    # calls Table.create() per table, which never emits a use_alter constraint,
+    # so on a long-lived database these three would otherwise never exist and the
+    # condition evidence RESTRICT invariant would be silently unenforced.
+    # Pinned by test_reconcile_schema_covers_typed_arb_surface.
+    (
+        "fk_arb_condition_fulfilment_evidence",
+        "arb_canonical_conditions",
+        "fulfilment_evidence_id",
+        "arb_condition_evidence_records",
+        "id",
+        "RESTRICT",
+    ),
+    (
+        "fk_arb_condition_submitted_evidence",
+        "arb_canonical_conditions",
+        "submitted_evidence_id",
+        "arb_condition_evidence_records",
+        "id",
+        "RESTRICT",
+    ),
+    (
+        "fk_arb_condition_event_evidence",
+        "arb_condition_events",
+        "submitted_evidence_id",
+        "arb_condition_evidence_records",
         "id",
         "RESTRICT",
     ),

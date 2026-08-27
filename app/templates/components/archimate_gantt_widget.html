@@ -25,22 +25,48 @@ Usage:
         filteredWorkPackages: [], displayMode: 'month', viewMode: 'timeline'
     };
 
-    window['initArchimateGantt' + containerId] = function() {
-        fetch(endpoint)
-            .then(r => r.json())
-            .then(data => {
-                if (data.success) {
-                    const d = window['archimateData_' + containerId];
-                    d.work_packages = data.work_packages || data.items?.filter(i => i.type === 'work_package') || [];
-                    d.plateaus = data.plateaus || [];
-                    d.events = data.events || [];
-                    d.dependencies = data.dependencies || [];
-                    d.filteredWorkPackages = d.work_packages;
-                    window['renderArchimateGantt' + containerId]();
-                    window['updateArchimateStats' + containerId]();
-                }
-            })
-            .catch(err => console.error('Failed to load Archimate Gantt:', err));
+    window['initArchimateGantt' + containerId] = async function() {
+        try {
+            const data = await Platform.fetch(endpoint, { silent: true });
+            // data is already parsed; success field is present per original API contract
+            if (data.success) {
+                const d = window['archimateData_' + containerId];
+                d.work_packages = data.work_packages || (data.items ? data.items.filter(i => i.type === 'work_package') : []) || [];
+                d.plateaus = data.plateaus || [];
+                d.events = data.events || [];
+                d.dependencies = data.dependencies || [];
+                d.filteredWorkPackages = d.work_packages;
+                window['renderArchimateGantt' + containerId]();
+                window['updateArchimateStats' + containerId]();
+            } else {
+                // The API returned a non‑successful response (e.g., {success: false, error: ...}).
+                // This is not an HTTP error (status 2xx), so Platform.fetch did NOT throw.
+                // We must still paint the inline error state, and we should NOT show a global toast
+                // because we passed silent:true. However, archimateGanttFailed will show its own toast.
+                window['archimateGanttFailed' + containerId](data.error || 'Unknown error');
+            }
+        } catch (err) {
+            // Platform.fetch throws on network errors or non‑ok responses (HTTP status not 2xx).
+            // We passed silent:true, so no global toast was shown.
+            // Paint the inline error state, which will also show a toast.
+            window['archimateGanttFailed' + containerId](err.message || err);
+        }
+    };
+
+    // A failed load must not leave the "No work packages to display" empty state
+    // standing: that is a failure rendered as data.
+    window['archimateGanttFailed' + containerId] = function(detail) {
+        const container = document.getElementById('archimate-timeline-' + containerId);
+        if (container) {
+            container.innerHTML = '';
+            const msg = document.createElement('div');
+            msg.className = 'p-8 text-center text-sm text-destructive-emphasis';
+            msg.textContent = 'Could not load the roadmap (' + detail + ').';
+            container.appendChild(msg);
+        }
+        if (window.Platform && Platform.toast) {
+            Platform.toast.error('Could not load the roadmap: ' + detail);
+        }
     };
 
     window['renderArchimateGantt' + containerId] = function() {

@@ -20,7 +20,7 @@
  *   ✅ No duplicated component names
  *   ✅ Modal logic lives in modal components only
  *   ✅ Page logic lives in page components only
- *   ✅ Async always uses apiFetch() — never raw fetch()
+ *   ✅ Async always goes through Platform.fetch — never the native API
  *   ✅ Error handling always sets this.errorMsg
  *   ✅ Loading always uses this.loading flag
  *   ✅ Notifications always use window.toast — never alert()
@@ -51,7 +51,8 @@
 'use strict';
 
 if (window.__ALPINE_ARCH_LOADED__) {
-    console.warn('[alpine-architecture] Already loaded — skipping re-registration.');
+    /* Already loaded — skip re-registration. Harmless: the first load's
+       components are already registered and remain in use. */
 } else {
     window.__ALPINE_ARCH_LOADED__ = true;
 
@@ -61,9 +62,13 @@ if (window.__ALPINE_ARCH_LOADED__) {
      * ========================================================================= */
 
     function _fetch(url, opts) {
-        if (window.Platform && window.Platform.fetch) return window.Platform.fetch(url, opts);
-        if (window.apiFetch) return window.apiFetch(url, opts);
-        return fetch(url, opts).then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); });
+        // Merge opts with silent:true to suppress duplicate toast (error shown by component)
+        const mergedOpts = Object.assign({}, opts || {}, { silent: true });
+        if (window.Platform && window.Platform.fetch) {
+            return window.Platform.fetch(url, mergedOpts);
+        }
+        // Platform.fetch must be available; if not, the loading order is broken.
+        return Promise.reject(new Error('Platform.fetch not available'));
     }
 
     function _toast(type, msg) {

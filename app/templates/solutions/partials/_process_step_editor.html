@@ -103,8 +103,9 @@
                         </button>
                         {# Validation on its own row #}
                         <div class="col-span-12 pl-8 -mt-0.5">
-                          <input type="text" x-model="step.validation" placeholder="Validation (e.g. total_amount  aria-label="Validation"> 0)"
-                                 class="w-full text-2xs border border-input rounded px-1.5 py-1 bg-background text-muted-foreground placeholder:text-muted-foreground/40"/>
+                          <input type="text" x-model="step.validation" placeholder="Validation (e.g. total_amount > 0)"
+                                 class="w-full text-2xs border border-input rounded px-1.5 py-1 bg-background text-muted-foreground placeholder:text-muted-foreground/40"
+                                 aria-label="Validation"/>
                         </div>
                       </div>
                     </template>
@@ -157,9 +158,7 @@ function processStepEditor(solutionId) {
 
     async load() {
       try {
-        const r = await fetch(`/architecture-journey/${solutionId}/element-steps`, { credentials: 'same-origin' });
-        if (!r.ok) { this.loading = false; return; }
-        const data = await r.json();
+        const data = await Platform.fetch(`/architecture-journey/${solutionId}/element-steps`, { silent: true });
         this.summary = data.summary || { total: 0, with_steps: 0, empty: 0 };
         this.elements = (data.elements || []).map(el => ({
           ...el,
@@ -171,6 +170,7 @@ function processStepEditor(solutionId) {
         }));
       } catch (e) {
         // silent — panel stays empty
+        // Platform.fetch throws on non-ok; we let the panel stay empty, which is the existing behaviour.
       }
       this.loading = false;
     },
@@ -196,32 +196,25 @@ function processStepEditor(solutionId) {
       el._saveError = '';
       el._saved = false;
       try {
-        const csrf = document.querySelector('meta[name=csrf-token]')?.getAttribute('content')
-                  || document.querySelector('[name=csrf_token]')?.value || '';
-        const r = await fetch(`/architecture-journey/${solutionId}/element/${el.element_id}/steps`, {
-          method: 'PATCH',
-          credentials: 'same-origin',
-          headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
-          body: JSON.stringify({ steps }),
-        });
-        // Parses the error BODY only; a non-JSON error page is expected here.
-        // The failure itself is reported on the line below.
-        const body = await r.json().catch(() => ({}));
-        if (!r.ok) {
-          el._saveError = body.error || 'Save failed';
-        } else {
-          el.process_steps = steps;
-          el._editSteps = JSON.parse(JSON.stringify(steps));
-          el._saved = true;
-          // Update summary counters
-          const hadSteps = el.process_steps && el.process_steps.length > 0;
-          const hasSteps = steps.length > 0;
-          if (!hadSteps && hasSteps) { this.summary.with_steps++; this.summary.empty--; }
-          else if (hadSteps && !hasSteps) { this.summary.with_steps--; this.summary.empty++; }
-          setTimeout(() => { el._saved = false; }, 3000);
-        }
+        // Platform.fetch.patch automatically injects CSRF token and serialises plain object to JSON.
+        // It throws a structured PlatformError on non-ok responses, which we catch below.
+        // The existing code painted its own inline error state (el._saveError), so we pass { silent: true }
+        // to avoid a duplicate global toast.
+        await Platform.fetch.patch(`/architecture-journey/${solutionId}/element/${el.element_id}/steps`, { steps }, { silent: true });
+        el.process_steps = steps;
+        el._editSteps = JSON.parse(JSON.stringify(steps));
+        el._saved = true;
+        // Update summary counters
+        const hadSteps = el.process_steps && el.process_steps.length > 0;
+        const hasSteps = steps.length > 0;
+        if (!hadSteps && hasSteps) { this.summary.with_steps++; this.summary.empty--; }
+        else if (hadSteps && !hasSteps) { this.summary.with_steps--; this.summary.empty++; }
+        setTimeout(() => { el._saved = false; }, 3000);
       } catch (e) {
-        el._saveError = 'Network error';
+        // Platform.fetch throws on any non-ok response or network error.
+        // The existing code painted its own inline error state, so we preserve that.
+        // The error object may have a .message property; we fall back to a generic message.
+        el._saveError = e.message || 'Save failed';
       }
       el._saving = false;
     },

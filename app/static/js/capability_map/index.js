@@ -119,43 +119,32 @@
     // Format: { 'gap-123': true, 'wp-456': true, 'wp-789': false }
     const expandedRows = new Map();
     
-    // Fetch with timeout and retry — wraps native fetch with AbortController timeout.
-    // Platform.fetch handles loading indicators; this adds timeout protection for long API calls.
+    // Fetch with timeout and retry — wraps Platform.fetch with timeout protection for long API calls.
     async function fetchWithTimeout(url, options = {}, timeout = 30000) {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), timeout);
-
-        // Inject CSRF token for mutating methods
-        const method = (options.method || 'GET').toUpperCase();
-        if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
-            options.headers = options.headers || {};
-            if (!options.headers['X-CSRFToken']) {
-                const meta = document.querySelector('meta[name="csrf-token"]');
-                if (meta) options.headers['X-CSRFToken'] = meta.content || '';
-            }
-        }
+        // Platform.fetch already handles CSRF token injection, loading indicators, and error toasting.
+        // We'll use a Promise.race to implement timeout on top of Platform.fetch.
+        // Pass silent: true to prevent duplicate toasts from Platform.fetch when timeout occurs
+        const fetchPromise = Platform.fetch(url, { ...options, silent: true })
+            .catch(error => {
+                // Re-throw the error so it can be caught by the caller
+                throw error;
+            });
+        
+        const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => {
+                const timeoutMsg = 'Request timeout - server took too long to respond';
+                reject(new Error(timeoutMsg));
+            }, timeout);
+        });
 
         try {
-            const response = await fetch(url, {
-                ...options,
-                credentials: 'include',
-                signal: controller.signal
-            });
-            clearTimeout(timeoutId);
-
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
-
-            return response;
+            const result = await Promise.race([fetchPromise, timeoutPromise]);
+            return result;
         } catch (error) {
-            clearTimeout(timeoutId);
-            if (error.name === 'AbortError') {
-                const timeoutMsg = 'Request timeout - server took too long to respond';
-                if (window.Platform && Platform.toast) Platform.toast.error(timeoutMsg);
-                throw new Error(timeoutMsg);
+            // Show toast for timeout errors only
+            if (error.message === 'Request timeout - server took too long to respond') {
+                if (window.Platform && Platform.toast) Platform.toast.error(error.message);
             }
-            if (window.Platform && Platform.toast) Platform.toast.error(error.message || 'Network request failed');
             throw error;
         }
     }
@@ -205,8 +194,7 @@
     async function loadDataForAllTabs() {
         try {
             // Load unified data (source for all capability tabs)
-            const unifiedResponse = await fetchWithTimeout('/capability-map/api/unified-capabilities');
-            const unifiedData = await unifiedResponse.json();
+            const unifiedData = await fetchWithTimeout('/capability-map/api/unified-capabilities');
             if (unifiedData.unified_capabilities || unifiedData.capabilities) {
                 // Normalize unified array from possible keys
                 const unifiedArr = unifiedData.unified_capabilities || unifiedData.capabilities || [];
@@ -244,9 +232,6 @@
             updateGapTabMetricCards(tableData.gap.data);
     
         } catch (error) {
-            console.error('Error loading data:', error);
-            if (window.Platform && Platform.toast) Platform.toast.error('Failed to load capability data');
-
             // Display error in all table bodies
             const errorMsg = error.message || 'Failed to load capability data. Please check your connection and try again.';
             displayTableError('unified', errorMsg);
@@ -706,7 +691,8 @@
     // Export functions — uses raw fetch for blob download (not JSON)
     async function exportData(format) {
         try {
-            const response = await fetch(`/capability-map/api/export-mappings?format=${format}`, {
+            // raw-fetch-ok: blob download requires Response object, not parsed body
+            const response = await fetch(`/capability-map/api/export-mappings?format=${format}`, {  // raw-fetch-ok: blob download; needs the raw Response
                 credentials: 'include'
             });
             if (!response.ok) {
@@ -722,7 +708,6 @@
             window.URL.revokeObjectURL(url);
             document.body.removeChild(a);
         } catch (error) {
-            console.error('Error exporting data:', error);
             if (window.Platform && Platform.toast) Platform.toast.error('Error exporting data: ' + (error.message || 'Unknown error'));
         }
     }
@@ -902,8 +887,7 @@
     
         try {
             // Fetch comprehensive gap analysis from new API
-            const response = await fetchWithTimeout('/capability-map/api/roadmap/gaps');
-            const data = await response.json();
+            const data = await fetchWithTimeout('/capability-map/api/roadmap/gaps');
     
             if (data.success && data.gaps) {
                 // Store statistics
@@ -948,8 +932,6 @@
                 renderRoadmapTimeline();
             }
         } catch (error) {
-            console.error('Error loading roadmap data:', error);
-            if (window.Platform && Platform.toast) Platform.toast.error('Error loading roadmap data');
             const retryButton = `<button onclick="roadmapData.initialized = false; initRoadmapTab();" class="mt-4 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors">
                 <i data-lucide="refresh-cw" class="w-4 h-4 inline mr-2"></i>
                 Retry
@@ -1888,7 +1870,7 @@
         const hierarchyControls = getEl('hierarchy-controls');
     
         if (!btnAuto || !btnPersisted) {
-            console.warn('View toggle buttons not found');
+            showToast('Unable to switch roadmap view: the view controls did not load. Please refresh the page.', 'error');
             return;
         }
     
@@ -1938,8 +1920,7 @@
         lucide.createIcons();
     
         try {
-            const response = await fetchWithTimeout('/capability-map/api/roadmap/archimate-gaps');
-            const data = await response.json();
+            const data = await fetchWithTimeout('/capability-map/api/roadmap/archimate-gaps');
     
             if (data.success) {
                 roadmapData.persistedGaps = data.gaps || [];
@@ -1981,8 +1962,6 @@
                 renderRoadmapTimeline();
             }
         } catch (error) {
-            console.error('Error loading persisted roadmap:', error);
-
             // Check if it's an empty state (no data) vs actual error
             const isEmptyState = error.message && error.message.includes('No gaps found');
             if (!isEmptyState && window.Platform && Platform.toast) Platform.toast.error('Error loading persisted roadmap');
@@ -2117,7 +2096,6 @@
                 showToast(data.error || 'Conversion failed', 'error');
             }
         } catch (error) {
-            console.error('Error converting gaps:', error);
             showToast('Error converting gaps', 'error');
         } finally {
             safeHTML(btn, originalText);
@@ -2540,7 +2518,7 @@
     }
     
     // Save current filters as preset
-    function saveCurrentFilters() {
+    async function saveCurrentFilters() {
         const filters = {
             search: getEl('roadmap-search')?.value || '',
             status: getEl('filter-status')?.value || '',
@@ -2552,7 +2530,9 @@
         };
     
         // Save to localStorage
-        const presetName = prompt('Enter a name for this filter preset:');
+        const presetName = await Platform.modal.promptText('Enter a name for this filter preset:', {
+            title: 'Save filter preset'
+        });
         if (presetName) {
             const savedPresets = JSON.parse(localStorage.getItem('roadmapFilterPresets') || '{}');
             savedPresets[presetName] = filters;
@@ -2691,29 +2671,20 @@
         lucide.createIcons();
     }
     
+    // Bulk status / owner / delete were never wired to an API: each one closed the
+    // modal, cleared the selection and toasted "Successfully ...", so the user was
+    // told a bulk edit -- including a bulk DELETE -- had been applied when nothing
+    // had happened. Reporting the truth is the only correct behaviour until the
+    // endpoints exist; the selection is deliberately left intact because nothing
+    // was changed.
+    function _bulkNotWired(action) {
+        document.querySelector('.fixed')?.remove();
+        showToast(`Bulk ${action} is not available yet — no changes were made.`, 'error');
+    }
+
     // Execute bulk status update
     async function executeBulkStatusUpdate() {
-        const statusSelect = getEl('bulk-status-select');
-        const newStatus = statusSelect.value;
-    
-        const items = Array.from(bulkSelectedItems);
-    
-        try {
-            // In a real implementation, this would call an API
-            // For now, we'll simulate the update
-            showToast(`Updating ${items.length} items to ${newStatus}...`, 'info');
-    
-            // Close modal
-            document.querySelector('.fixed')?.remove();
-    
-            // Clear selection
-            clearBulkSelection();
-    
-            showToast(`Successfully updated ${items.length} items`, 'success');
-        } catch (error) {
-            console.error('Bulk update error:', error);
-            showToast('Error updating items', 'error');
-        }
+        _bulkNotWired('status update');
     }
     
     // Bulk update owner
@@ -2763,22 +2734,7 @@
             return;
         }
     
-        const items = Array.from(bulkSelectedItems);
-    
-        try {
-            showToast(`Assigning ${items.length} items to ${newOwner}...`, 'info');
-    
-            // Close modal
-            document.querySelector('.fixed')?.remove();
-    
-            // Clear selection
-            clearBulkSelection();
-    
-            showToast(`Successfully assigned ${items.length} items to ${newOwner}`, 'success');
-        } catch (error) {
-            console.error('Bulk owner update error:', error);
-            showToast('Error assigning owner', 'error');
-        }
+        _bulkNotWired('owner assignment');
     }
     
     // Bulk delete
@@ -2823,22 +2779,7 @@
     
     // Execute bulk delete
     async function executeBulkDelete() {
-        const items = Array.from(bulkSelectedItems);
-    
-        try {
-            showToast(`Deleting ${items.length} items...`, 'info');
-    
-            // Close modal
-            document.querySelector('.fixed')?.remove();
-    
-            // Clear selection
-            clearBulkSelection();
-    
-            showToast(`Successfully deleted ${items.length} items`, 'success');
-        } catch (error) {
-            console.error('Bulk delete error:', error);
-            showToast('Error deleting items', 'error');
-        }
+        _bulkNotWired('delete');
     }
     
     // ============================================
@@ -3172,7 +3113,7 @@
     function toggleRoadmapExportMenu() {
         const menu = getEl('roadmap-export-menu');
         if (!menu) {
-            console.error('Export menu not found');
+            showToast('Unable to open the export menu: it did not load. Please refresh the page.', 'error');
             return;
         }
         menu.classList.toggle('hidden');
@@ -3208,7 +3149,6 @@
                 await exportAsSVG();
             }
         } catch (error) {
-            console.error('Export error:', error);
             showToast(`Error exporting roadmap: ${error.message}`, 'error');
         }
     }
@@ -3351,7 +3291,6 @@
     
             showToast('High-quality PDF exported successfully!', 'success');
         } catch (error) {
-            console.error('PDF export error:', error);
             showToast(`PDF export failed: ${error.message}`, 'error');
             throw error;
         }
@@ -3403,7 +3342,6 @@
                 showToast(`High-quality ${format.toUpperCase()} exported successfully!`, 'success');
             }, mimeType, quality);
         } catch (error) {
-            console.error('Image export error:', error);
             showToast(`${format.toUpperCase()} export failed: ${error.message}`, 'error');
             throw error;
         }
@@ -3456,7 +3394,6 @@
     
             showToast('SVG exported successfully!', 'success');
         } catch (error) {
-            console.error('SVG export error:', error);
             throw error;
         }
     }
@@ -3816,7 +3753,6 @@
                 showToast(data.error || 'Update failed', 'error');
             }
         } catch (error) {
-            console.error('Error saving gap:', error);
             showToast('Error saving changes', 'error');
         }
     }
@@ -4314,7 +4250,6 @@
                 showToast(data.error || 'Failed to add to roadmap', 'error');
             }
         } catch (error) {
-            console.error('Error adding to roadmap:', error);
             showToast('Error adding to roadmap', 'error');
         }
     }
@@ -4437,7 +4372,6 @@
             }
     
         } catch (error) {
-            console.error('Error bulk adding to roadmap:', error);
             showToast('Error adding capabilities to roadmap', 'error');
         }
     }
@@ -4798,8 +4732,7 @@
         lucide.createIcons();
     
         try {
-            const response = await fetchWithTimeout('/capability-map/api/process-gaps');
-            const data = await response.json();
+            const data = await fetchWithTimeout('/capability-map/api/process-gaps');
     
             if (data.error) {
                 throw new Error(data.error);
@@ -4821,8 +4754,6 @@
             updateProcessGapTable();
     
         } catch (error) {
-            console.error('Error loading process gap data:', error);
-            if (window.Platform && Platform.toast) Platform.toast.error('Error loading process gap data');
             const retryButton = `<button onclick="processGapData.loaded = false; loadProcessGapData();" class="mt-4 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-purple-700 transition-colors">
                 <i data-lucide="refresh-cw" class="w-4 h-4 inline mr-2"></i>
                 Retry
@@ -5243,7 +5174,6 @@
             // AUDIT-CAP-002: Only show error if this is still the current request
             if (requestId === currentModalRequestId) {
                 setModalLoadingState(false);
-                console.error('Error loading applications:', error);
                 showNotification('Error loading applications', 'error');
             }
         }
@@ -5576,14 +5506,10 @@
         try {
             const applications = Array.from(selectedApplications.values());
 
-            const data = await Platform.fetch('/capability-map/api/mappings', {
-                method: 'POST',
-                body: {
-                    capability_id: currentCapabilityId,
-                    applications: applications
-                },
-                silent: true
-            });
+            const data = await Platform.fetch.post('/capability-map/api/mappings', {
+                capability_id: currentCapabilityId,
+                applications: applications
+            }, { silent: true });
     
             if (data.error) {
                 showNotification('Error saving mappings: ' + data.error, 'error');
@@ -5601,7 +5527,6 @@
             // Close modal
             closeMappingModal();
         } catch (error) {
-            console.error('Error saving mappings:', error);
             showNotification('Error saving mappings', 'error');
         }
     }
@@ -5615,10 +5540,7 @@
                 { text: 'Cancel', class: 'px-4 py-2 text-sm font-medium text-foreground bg-background border border-border rounded-md hover:bg-muted', action: 'cancel', handler: function() {} },
                 { text: 'Remove', class: 'px-4 py-2 text-sm font-medium text-destructive-foreground bg-destructive border border-transparent rounded-md hover:bg-destructive/90', action: 'remove', handler: async function() {
                     try {
-                        const data = await Platform.fetch(`/capability-map/api/mappings/${mappingId}`, {
-                            method: 'DELETE',
-                            silent: true
-                        });
+                        const data = await Platform.fetch.delete(`/capability-map/api/mappings/${mappingId}`, { silent: true });
 
                         if (data.error) {
                             showNotification('Error removing mapping: ' + data.error, 'error');
@@ -5630,7 +5552,6 @@
                         // Reload all table data to reflect the removal
                         await loadDataForAllTabs();
                     } catch (error) {
-                        console.error('Error deleting mapping:', error);
                         showNotification('Error removing mapping', 'error');
                     }
                 } }
@@ -5702,10 +5623,7 @@
                 return;
             }
     
-            const data = await Platform.fetch(endpoint, {
-                method: 'DELETE',
-                silent: true
-            });
+            const data = await Platform.fetch.delete(endpoint, { silent: true });
     
             if (data.success) {
                 const itemTypeName = itemType === 'gap' ? 'Gap' : 'Work package';
@@ -5722,7 +5640,6 @@
                 showToast(data.error || 'Delete failed', 'error');
             }
         } catch (error) {
-            console.error('Error deleting item:', error);
             showToast('Error deleting item', 'error');
         }
     }
@@ -5938,8 +5855,7 @@
         let container = document.getElementById('heatmap-container');
         if (!loading || !container) return;
 
-        fetch('/capability-map/api/unified-capabilities')
-            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+        Platform.fetch('/capability-map/api/unified-capabilities')
             .then(function(data) {
                 let caps = data.unified_capabilities || data.capabilities || [];
                 if (caps.length === 0) {

@@ -1,25 +1,23 @@
 {% extends 'layouts/admin_base.html' %}
+{% from 'macros/page_shell.html' import page_shell %}
 {% block title %}Health Overview{% endblock %}
 
 {% block content %}
-<div class="container mx-auto px-4 py-6">
+<div class="p-6 space-y-6 mx-auto">
     <div class="flex items-center gap-1 mb-4 border-b border-border" role="tablist" aria-label="My Applications">
         <a href="{{ url_for('my_applications.dashboard') }}" role="tab" aria-selected="{{ 'true' if request.endpoint == 'my_applications.dashboard' else 'false' }}" class="px-3 py-2 text-sm border-b-2 {{ 'border-primary text-foreground font-medium' if request.endpoint == 'my_applications.dashboard' else 'border-transparent text-muted-foreground hover:text-foreground' }}">Dashboard</a>
         <a href="{{ url_for('my_applications.app_list') }}" role="tab" aria-selected="{{ 'true' if request.endpoint == 'my_applications.app_list' else 'false' }}" class="px-3 py-2 text-sm border-b-2 {{ 'border-primary text-foreground font-medium' if request.endpoint == 'my_applications.app_list' else 'border-transparent text-muted-foreground hover:text-foreground' }}">Applications</a>
         <a href="{{ url_for('my_applications.health_overview') }}" role="tab" aria-selected="{{ 'true' if request.endpoint == 'my_applications.health_overview' else 'false' }}" class="px-3 py-2 text-sm border-b-2 {{ 'border-primary text-foreground font-medium' if request.endpoint == 'my_applications.health_overview' else 'border-transparent text-muted-foreground hover:text-foreground' }}">Health</a>
         <a href="{{ url_for('my_applications.roadmap_impact') }}" role="tab" aria-selected="{{ 'true' if request.endpoint == 'my_applications.roadmap_impact' else 'false' }}" class="px-3 py-2 text-sm border-b-2 {{ 'border-primary text-foreground font-medium' if request.endpoint == 'my_applications.roadmap_impact' else 'border-transparent text-muted-foreground hover:text-foreground' }}">Roadmap</a>
     </div>
-    <div class="flex items-center justify-between mb-6">
-        <div>
-            <h1 class="text-2xl font-bold">Application Health Overview</h1>
-            <p class="text-muted-foreground">Health status of your applications</p>
-        </div>
-        <a href="{{ url_for('my_applications.dashboard') }}"
+    {% macro _ps_actions() %}
+<a href="{{ url_for('my_applications.dashboard') }}"
            class="inline-flex items-center gap-2 px-4 py-2 rounded-md border border-border hover:bg-accent transition-colors">
             <i data-lucide="arrow-left" class="w-4 h-4"></i>
             Back to Dashboard
         </a>
-    </div>
+    {% endmacro %}
+    {{ page_shell(title='Application Health Overview', subtitle='Health status of your applications', actions_caller=_ps_actions) }}
 
     <!-- Summary Cards -->
     <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
@@ -79,25 +77,21 @@
                     <div class="font-medium">{{ item.name }}</div>
                     <button type="button"
                             @click="
-                                loading['{{ item.id }}'] = true;
-                                error['{{ item.id }}'] = null;
-                                fetch('{{ url_for('my_applications.ai_health_assessment', app_id=item.id) }}', {
-                                    method: 'POST',
-                                    headers: { 'X-CSRFToken': '{{ csrf_token() }}' },
-                                }).then(resp => {
-                                    if (!resp.ok) throw resp;
-                                    return resp.json();
-                                }).then(data => {
-                                    result['{{ item.id }}'] = data.assessment;
-                                    open['{{ item.id }}'] = true;
-                                }).catch(err => {
-                                    if (err && err.json) {
-                                        err.json().then(body => { error['{{ item.id }}'] = body.message || body.error || 'AI health assessment failed.'; });
-                                    } else {
-                                        error['{{ item.id }}'] = 'AI health assessment failed.';
+                                (async () => {
+                                    loading['{{ item.id }}'] = true;
+                                    error['{{ item.id }}'] = null;
+                                    try {
+                                        const data = await Platform.fetch.post('{{ url_for('my_applications.ai_health_assessment', app_id=item.id) }}', null, { silent: true });
+                                        result['{{ item.id }}'] = data.assessment;
+                                        open['{{ item.id }}'] = true;
+                                    } catch (err) {
+                                        const body = err.data;
+                                        error['{{ item.id }}'] = (body && (body.message || body.error)) || err.message || 'AI health assessment failed.';
+                                        open['{{ item.id }}'] = true;
+                                    } finally {
+                                        loading['{{ item.id }}'] = false;
                                     }
-                                    open['{{ item.id }}'] = true;
-                                }).finally(() => { loading['{{ item.id }}'] = false; });
+                                })()
                             "
                             :disabled="loading['{{ item.id }}']"
                             :class="{ 'opacity-50': loading['{{ item.id }}'] }"

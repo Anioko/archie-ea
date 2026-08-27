@@ -69,12 +69,10 @@
         appendSystemMessage(`Generating ArchiMate diagram for application ${appId}…`, 'info');
 
         try {
-            const response = await fetch('/ai-chat/chat/generate-archimate', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ application_id: parseInt(appId), preview_only: false })
+            const data = await Platform.fetch.post('/ai-chat/chat/generate-archimate', {
+                application_id: parseInt(appId),
+                preview_only: false
             });
-            const data = await response.json();
 
             if (data.success) {
                 const solutionId = data.architecture_id;
@@ -107,12 +105,10 @@
         appendSystemMessage(`Mapping APQC processes for application ${appId}...`, 'info');
 
         try {
-            const response = await fetch('/ai-chat/chat/map-apqc', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ application_id: parseInt(appId), preview_only: true })
+            const data = await Platform.fetch.post('/ai-chat/chat/map-apqc', {
+                application_id: parseInt(appId),
+                preview_only: true
             });
-            const data = await response.json();
 
             if (data.success) {
                 const highConf = data.mappings.filter(m => m.confidence >= 0.85);
@@ -146,16 +142,11 @@ ${lowConf.length > 0 ? lowConf.map(m => `- ❓ ${m.process_code}: ${m.process_na
 
     async function applyApqcMappings(appId, highConfOnly) {
         try {
-            const response = await fetch('/ai-chat/chat/map-apqc', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    application_id: parseInt(appId),
-                    preview_only: false,
-                    apply_high_confidence: highConfOnly
-                })
+            const data = await Platform.fetch.post('/ai-chat/chat/map-apqc', {
+                application_id: parseInt(appId),
+                preview_only: false,
+                apply_high_confidence: highConfOnly
             });
-            const data = await response.json();
 
             if (data.success) {
                 appendSystemMessage(`✅ Applied ${data.mappings_applied} APQC mappings — <a href="/applications/${appId}" class="underline font-medium" onclick="window.location.href='/applications/${appId}';return false;"><!-- inline-event-ok -->View Application →</a>`, 'info');
@@ -180,15 +171,10 @@ ${lowConf.length > 0 ? lowConf.map(m => `- ❓ ${m.process_code}: ${m.process_na
         appendSystemMessage(`Saving insights to application ${appId}...`, 'info');
 
         try {
-            const response = await fetch('/ai-chat/chat/save-insights', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    application_id: appId,
-                    insights: { description: insightContent }
-                })
+            const data = await Platform.fetch.post('/ai-chat/chat/save-insights', {
+                application_id: appId,
+                insights: { description: insightContent }
             });
-            const data = await response.json();
 
             if (data.success) {
                 appendMessage('ai', `## ✅ Insights Saved\n\n**Application:** ${data.application_name}\n**Fields Updated:** ${data.fields_updated?.join(', ') || 'description'}\n\n[View Application →](/applications/${data.application_id})`, { domain: 'general' });
@@ -206,18 +192,13 @@ ${lowConf.length > 0 ? lowConf.map(m => `- ❓ ${m.process_code}: ${m.process_na
         appendSystemMessage(`Starting bulk processing for up to ${maxApps} applications...`, 'info');
 
         try {
-            const response = await fetch('/ai-chat/chat/bulk-process', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    max_applications: maxApps,
-                    map_capabilities: true,
-                    map_processes: true,
-                    generate_archimate: false,
-                    auto_create: false
-                })
+            const data = await Platform.fetch.post('/ai-chat/chat/bulk-process', {
+                max_applications: maxApps,
+                map_capabilities: true,
+                map_processes: true,
+                generate_archimate: false,
+                auto_create: false
             });
-            const data = await response.json();
 
             if (data.success) {
                 let responseText = `## Bulk Processing Results
@@ -248,12 +229,9 @@ Use \`/bulk-process [number]\` to process more applications.`;
         appendSystemMessage(`Running ${analysisType} gap analysis...`, 'info');
 
         try {
-            const response = await fetch('/ai-chat/chat/gap-analysis', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ analysis_type: analysisType })
+            const data = await Platform.fetch.post('/ai-chat/chat/gap-analysis', {
+                analysis_type: analysisType
             });
-            const data = await response.json();
 
             if (data.success) {
                 const criticalGaps = data.gaps.filter(g => g.severity === 'high' || g.severity === 'critical');
@@ -299,12 +277,10 @@ ${data.gaps.slice(0, 10).map(g => `
         appendSystemMessage(`Discovering vendors for "${capabilityName}"...`, 'info');
 
         try {
-            const response = await fetch('/ai-chat/chat/discover-vendors', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ capability_name: capabilityName, calculate_tco: true })
+            const data = await Platform.fetch.post('/ai-chat/chat/discover-vendors', {
+                capability_name: capabilityName,
+                calculate_tco: true
             });
-            const data = await response.json();
 
             if (data.success) {
                 let responseText = `## Vendor Discovery: ${data.capability_searched}
@@ -341,12 +317,9 @@ ${v.tco_estimate ? `**3-Year TCO:** $${v.tco_estimate.three_year.toLocaleString(
         appendSystemMessage(`Creating diagram for solution ${solutionId}...`, 'info');
 
         try {
-            const response = await fetch('/ai-chat/chat/create-solution-diagram', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ solution_id: solutionId })
+            const data = await Platform.fetch.post('/ai-chat/chat/create-solution-diagram', {
+                solution_id: solutionId
             });
-            const data = await response.json();
 
             if (data.success) {
                 appendMessage('ai',
@@ -374,12 +347,9 @@ ${v.tco_estimate ? `**3-Year TCO:** $${v.tco_estimate.three_year.toLocaleString(
         appendSystemMessage('Running TOGAF ADM analysis... this may take a moment.', 'info');
 
         try {
-            const response = await fetch('/ai-chat/architect/analyze', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ problem_statement: problemStatement })
+            const data = await Platform.fetch.post('/ai-chat/architect/analyze', {
+                problem_statement: problemStatement
             });
-            const data = await response.json();
 
             if (data.success) {
                 const phases = data.phases || {};
@@ -422,12 +392,9 @@ ${v.tco_estimate ? `**3-Year TCO:** $${v.tco_estimate.three_year.toLocaleString(
         appendSystemMessage(`Generating viewpoints for solution ${solutionId}...`, 'info');
 
         try {
-            const response = await fetch('/ai-chat/architect/viewpoints', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ solution_id: solutionId })
+            const data = await Platform.fetch.post('/ai-chat/architect/viewpoints', {
+                solution_id: solutionId
             });
-            const data = await response.json();
 
             if (data.success) {
                 let responseText = `## Stakeholder Viewpoints: ${data.solution_name}\n\nGenerated **${data.viewpoints.length}** viewpoints:\n\n`;
@@ -460,12 +427,9 @@ ${v.tco_estimate ? `**3-Year TCO:** $${v.tco_estimate.three_year.toLocaleString(
         appendSystemMessage(`Checking ARB readiness for solution ${solutionId}...`, 'info');
 
         try {
-            const response = await fetch('/ai-chat/architect/arb-ready', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ solution_id: solutionId })
+            const data = await Platform.fetch.post('/ai-chat/architect/arb-ready', {
+                solution_id: solutionId
             });
-            const data = await response.json();
 
             if (data.success) {
                 const gradeColor = data.grade === 'A' ? '' : data.grade === 'B' ? '' : data.grade === 'C' ? '' : '';
@@ -567,12 +531,9 @@ ${v.tco_estimate ? `**3-Year TCO:** $${v.tco_estimate.three_year.toLocaleString(
         lucide.createIcons();
 
         try {
-            const resp = await fetch('/ai-chat/chat/generate-archimate-description', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ description })
+            const data = await Platform.fetch.post('/ai-chat/chat/generate-archimate-description', {
+                description
             });
-            const data = await resp.json();
             document.getElementById(loadingId)?.remove();
 
             if (data.success && data.elements && data.elements.length > 0) {

@@ -56,6 +56,13 @@ All colors use CSS variables defined in `app/static/css/shadcn_tokens.css`. Refe
 | Implementation | sky (`--layer-implementation`) | Work Packages, Plateaus |
 | Risk | red (`--layer-risk`) | Assessments, Issues |
 
+Use them as Tailwind utilities: `bg-layer-<name>` / `border-layer-<name>` for the
+fill and border, and **`text-layer-<name>-emphasis`** for any text on a
+`bg-layer-<name>/10` tint. The base hue is picked for distinctness between the
+seven layers, not for contrast — as text it is under WCAG AA, exactly as
+`--info` is against `bg-info/10`. Never hand-roll the layer palette from raw
+`amber-*` / `violet-*` / `emerald-*` classes; a layer badge is these tokens.
+
 ### Forbidden Color Classes
 
 **Never** use raw Tailwind color scales — the pre-commit hook `check_token_migration.py` will block the commit.
@@ -193,6 +200,38 @@ Always include via:
 </div>
 {% endblock %}
 ```
+
+### `page_shell` — the screen-system header
+
+`macros/page_shell.html`'s `page_shell()` is the header for screens rebuilt from
+2026-08-12 onward, and the one the `shell_conformance` gate counts. Prefer it over
+`components/page_header.html` for new work.
+
+```jinja
+{% from 'macros/page_shell.html' import page_shell %}
+
+{% macro _ps_actions() %}<a href="/new" class="...">New</a>{% endmacro %}
+{{ page_shell(
+    title='Applications',
+    subtitle='Manage your application portfolio',
+    breadcrumb=[('Home', url_for('main.index')), ('Applications', None)],
+    actions_caller=_ps_actions
+) }}
+```
+
+`breadcrumb` takes `(label, href)` tuples — the last one is the current page and
+takes `None`. Three optional slots exist for headers a plain title/subtitle cannot
+express; all default to off:
+
+| Slot | Use for |
+|---|---|
+| `icon='git-branch'` | a lucide icon beside the `<h1>` |
+| `subtitle_caller` | a subtitle carrying markup (an Alpine `x-text` span, a badge macro, `<strong>`) — wins over `subtitle` |
+| `meta_caller` | a row of identity badges / counters under the title that are not actions |
+
+**Do not hand-roll a header row beside these.** A page with an icon, a badge or a
+back-link next to its title belongs in these slots; a back-link belongs in
+`breadcrumb`. There is exactly one `<h1>` per page and `page_shell` owns it.
 
 ---
 

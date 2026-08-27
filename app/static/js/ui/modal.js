@@ -333,7 +333,7 @@
             _setBackgroundInert(null, false);
         }
 
-        // Resolve promise if prompt() is waiting
+        // Resolve promise if awaitResult() is waiting
         if (entry.resolver) {
             entry.resolver(result);
             entry.resolver = null;
@@ -350,8 +350,10 @@
         return close(id, result);
     }
 
-    // ── Promise-based prompt ─────────────────────────────────────────────────
-    function prompt(id, payload) {
+    // ── Promise-based result ─────────────────────────────────────────────────
+    // Named awaitResult, not prompt: it shadowed the native dialog, so every
+    // internal call read as one.
+    function awaitResult(id, payload) {
         return new Promise(function (resolve_) {
             if (!_registry[id]) register(id);
             const entry = _registry[id];
@@ -568,9 +570,80 @@
                 }
             ]
         });
-        return prompt(id).then(function (result) {
+        return awaitResult(id).then(function (result) {
             setTimeout(function () { destroy(id); }, 300);
             return result === true;
+        });
+    }
+
+    // ── Text prompt dialog ───────────────────────────────────────────────────
+    /**
+     * Ask the user for a line of text in a styled modal and return a
+     * Promise<string|null> — null when cancelled or dismissed. Replaces the
+     * native prompt(), which is unstyled, blocking and suppressible.
+     *
+     * @param {string} message - Label shown above the field
+     * @param {object|string} [options] - defaultValue, or an options object
+     * @param {string} [options.defaultValue]
+     * @param {string} [options.title]
+     * @param {string} [options.placeholder]
+     * @param {string} [options.confirmLabel]
+     * @param {string} [options.cancelLabel]
+     * @param {boolean} [options.multiline] - render a textarea instead
+     * @returns {Promise<string|null>}
+     */
+    function promptText(message, options) {
+        if (typeof options === 'string' || typeof options === 'number') {
+            options = { defaultValue: String(options) };
+        }
+        options = options || {};
+        const id = 'modal-prompt-' + Date.now();
+        const fieldId = id + '-field';
+        const fieldCls = 'w-full rounded-md border border-input bg-background px-3 py-2 ' +
+                         'text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring';
+        const field = options.multiline
+            ? '<textarea id="' + fieldId + '" class="h-24 ' + fieldCls + '" placeholder="' +
+              sanitize.escape(options.placeholder || '') + '"></textarea>'
+            : '<input type="text" id="' + fieldId + '" class="' + fieldCls + '" placeholder="' +
+              sanitize.escape(options.placeholder || '') + '">';
+        create({
+            id:      id,
+            title:   options.title || 'Enter a value',
+            size:    'sm',
+            backdrop: false,
+            keyboard: true,
+            content: '<label for="' + fieldId + '" class="mb-2 block text-sm text-muted-foreground">' +
+                     sanitize.escape(String(message || '')) + '</label>' + field,
+            buttons: [
+                { label: options.cancelLabel || 'Cancel', variant: 'outline', resolve: null },
+                {
+                    label: options.confirmLabel || 'OK',
+                    variant: 'primary',
+                    handler: function () {
+                        const input = global.document.getElementById(fieldId);
+                        resolve(id, input ? input.value : null);
+                    }
+                }
+            ]
+        });
+        const input = global.document.getElementById(fieldId);
+        if (input) {
+            // Set as a property, not an attribute: keeps sanitize.html out of
+            // the way of a value that may contain markup characters.
+            input.value = options.defaultValue == null ? '' : String(options.defaultValue);
+            if (!options.multiline) {
+                input.addEventListener('keydown', function (e) {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        resolve(id, input.value);
+                    }
+                });
+            }
+            setTimeout(function () { input.focus(); input.select(); }, 50);
+        }
+        return awaitResult(id).then(function (result) {
+            setTimeout(function () { destroy(id); }, 300);
+            return (result === undefined || result === null) ? null : String(result);
         });
     }
 
@@ -771,7 +844,8 @@
         open:        open,
         close:       close,
         resolve:     resolve,
-        prompt:      prompt,
+        prompt:      awaitResult,
+        promptText:  promptText,
         closeAll:    closeAll,
         on:          on,
         off:         off,

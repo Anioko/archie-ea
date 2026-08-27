@@ -32,15 +32,17 @@ function loadContext(mode, contextId) {
         ? '/code-generation/api/context/application/' + contextId
         : '/code-generation/api/context/architecture/' + contextId;
 
-    fetch(endpoint)
-        .then(function(response) { if (!response.ok) throw new Error('HTTP ' + response.status); return response.json(); })
+    Platform.fetch(endpoint, { silent: true })
         .then(function(data) {
             if (data.success) {
                 displayContext(data, mode);
+            } else {
+                // An errored 200 otherwise left the container on its loading
+                // placeholder, indistinguishable from context still arriving.
+                throw new Error(data.error || 'request failed');
             }
         })
         .catch(function(error) {
-            console.error('Failed to load context:', error);
             let contextContainer = document.getElementById('contextContainer');
             if (contextContainer) {
                 safeHTML(contextContainer, '<p class="text-sm text-destructive">Could not load context.</p>');
@@ -49,15 +51,15 @@ function loadContext(mode, contextId) {
 }
 
 function loadTemplates() {
-    fetch('/code-generation/api/templates')
-        .then(function(response) { if (!response.ok) throw new Error('HTTP ' + response.status); return response.json(); })
+    Platform.fetch('/code-generation/api/templates', { silent: true })
         .then(function(data) {
             if (data.success) {
                 displayTemplates(data.templates);
+            } else {
+                throw new Error(data.error || 'request failed');
             }
         })
         .catch(function(error) {
-            console.error('Failed to load templates:', error);
             let templateContainer = document.getElementById('templateList');
             if (templateContainer) {
                 safeHTML(templateContainer, '<p class="text-sm text-destructive">Could not load templates.</p>');
@@ -151,30 +153,22 @@ function generateCode() {
     };
 
     // Generate code
-    fetch('/code-generation/api/generate', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(requestData)
-    })
-    .then(function(response) { return response.json(); })
-    .then(function(data) {
-        if (data.success) {
-            displayResults(data.artifacts);
-            showNotification('Generated ' + data.artifacts.length + ' code artifacts', 'success');
-        } else {
-            showNotification(data.error || 'Generation failed', 'error');
-        }
-    })
-    .catch(function(error) {
-        console.error('Generation failed:', error);
-        showNotification('Generation failed: ' + error.message, 'error');
-    })
-    .finally(function() {
-        generateBtn.disabled = false;
-        generateBtn.textContent = originalText;
-    });
+    Platform.fetch.post('/code-generation/api/generate', requestData, { silent: true })
+        .then(function(data) {
+            if (data.success) {
+                displayResults(data.artifacts);
+                showNotification('Generated ' + data.artifacts.length + ' code artifacts', 'success');
+            } else {
+                showNotification(data.error || 'Generation failed', 'error');
+            }
+        })
+        .catch(function(error) {
+            showNotification('Generation failed: ' + error.message, 'error');
+        })
+        .finally(function() {
+            generateBtn.disabled = false;
+            generateBtn.textContent = originalText;
+        });
 }
 
 function displayResults(artifacts) {

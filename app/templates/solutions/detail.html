@@ -120,6 +120,17 @@
 
   <div class="max-w-6xl mx-auto px-6 py-6 space-y-6">
 
+    {# This page had no <h1> anywhere — the solution name was an <h2> inside the
+       title card. page_shell now carries it, and the title card below keeps the
+       governance badge, the ARB submit button and the rest of its content. #}
+    {{ page_shell(
+        title=solution.name,
+        breadcrumb=[
+            ('Solutions', url_for('solution_design.list_solutions')),
+            (solution.name, None)
+        ]
+    ) }}
+
     {# ══════════════════════════════════════════════════════════════ #}
     {#  TITLE CARD                                                    #}
     {# ══════════════════════════════════════════════════════════════ #}
@@ -127,7 +138,6 @@
       <div class="flex items-start justify-between gap-4">
         <div class="min-w-0">
           <div class="flex items-center gap-3 mb-1">
-            <h2 class="text-xl font-bold text-foreground">{{ solution.name }}</h2>
             <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-2xs font-semibold {{ status_badge_class }}">
               <span class="w-1.5 h-1.5 rounded-full {{ status_dot_class }}"></span>{{ (solution.governance_status or 'Draft') | replace('_', ' ') | title }}
             </span>
@@ -357,11 +367,7 @@
                     start: function() {
                         let self = this;
                         self.loading = true;
-                        fetch('{{ url_for("solution_design.api_infer_code_specs", solution_id=solution.id) }}', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token() }}' }
-                        })
-                        .then(function(r) { return r.json(); })
+                        Platform.fetch.post('{{ url_for("solution_design.api_infer_code_specs", solution_id=solution.id) }}', undefined, { silent: true })
                         .then(function(d) {
                             self.loading = false;
                             if (d.success) {
@@ -375,7 +381,8 @@
                         })
                         .catch(function(e) {
                             self.loading = false;
-                            if (window.Platform && Platform.toast) Platform.toast.error('Network error');
+                            // Covers transport failures and non-ok responses alike now that the wrapper throws on both.
+                            if (window.Platform && Platform.toast) Platform.toast.error(e.message || 'Inference failed');
                         });
                         if (typeof lucide !== 'undefined') setTimeout(function() { lucide.createIcons(); }, 200);
                     },
@@ -384,12 +391,7 @@
                         const elem = self.elements[elemId];
                         if (!elem) return;
                         elem.confirming = true;
-                        fetch('{{ url_for("solution_design.api_confirm_code_spec", solution_id=solution.id, element_id=0) }}'.replace('/0', '/' + elemId), {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token() }}' },
-                            body: JSON.stringify({ fields: elem.fields })
-                        })
-                        .then(function(r) { return r.json(); })
+                        Platform.fetch.post('{{ url_for("solution_design.api_confirm_code_spec", solution_id=solution.id, element_id=0) }}'.replace('/0', '/' + elemId), { fields: elem.fields }, { silent: true })
                         .then(function(d) {
                             elem.confirming = false;
                             if (d.success) {
@@ -399,16 +401,16 @@
                                 if (window.Platform && Platform.toast) Platform.toast.error(d.error || 'Save failed');
                             }
                         })
-                        .catch(function() { elem.confirming = false; });
+                        .catch(function(e) {
+                            // A failed confirm used to leave the row looking merely un-confirmed.
+                            elem.confirming = false;
+                            if (window.Platform && Platform.toast) Platform.toast.error(e.message || 'Save failed');
+                        });
                     },
                     downloadSpecs: function() {
                         let self = this;
                         self.downloading = true;
-                        fetch('{{ url_for("solution_design.api_generate_specs", solution_id=solution.id) }}', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token() }}' }
-                        })
-                        .then(function(r) { return r.json(); })
+                        Platform.fetch.post('{{ url_for("solution_design.api_generate_specs", solution_id=solution.id) }}', undefined, { silent: true })
                         .then(function(d) {
                             self.downloading = false;
                             if (d.success) {
@@ -418,9 +420,10 @@
                                 if (window.Platform && Platform.toast) Platform.toast.error(d.error || 'Generation failed');
                             }
                         })
-                        .catch(function() {
+                        .catch(function(e) {
                             self.downloading = false;
-                            if (window.Platform && Platform.toast) Platform.toast.error('Network error');
+                            // Covers transport failures and non-ok responses alike now that the wrapper throws on both.
+                            if (window.Platform && Platform.toast) Platform.toast.error(e.message || 'Generation failed');
                         });
                     }
                 };
@@ -443,12 +446,7 @@
                         self.error = null;
                         self.result = null;
                         self.testResult = null;
-                        fetch('/api/solutions/' + self.solutionId + '/product/generate', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token() }}' },
-                            body: JSON.stringify({ language: 'python-fastapi' })
-                        })
-                        .then(function(r) { return r.json(); })
+                        Platform.fetch.post('/api/solutions/' + self.solutionId + '/product/generate', { language: 'python-fastapi' }, { silent: true })
                         .then(function(d) {
                             self.loading = false;
                             if (d.success && d.bundle_id) {
@@ -460,7 +458,8 @@
                         })
                         .catch(function(e) {
                             self.loading = false;
-                            self.error = 'Network error: ' + e.message;
+                            // Covers transport failures and non-ok responses alike now that the wrapper throws on both.
+                            self.error = e.message || 'Generation failed';
                             self.result = null;
                         });
                     },
@@ -468,11 +467,7 @@
                         let self = this;
                         if (!self.result || !self.result.bundle_id) return;
                         self.running = true;
-                        fetch('/api/solutions/' + self.solutionId + '/product/' + self.result.bundle_id + '/run', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token() }}' }
-                        })
-                        .then(function(r) { return r.json(); })
+                        Platform.fetch.post('/api/solutions/' + self.solutionId + '/product/' + self.result.bundle_id + '/run', undefined, { silent: true })
                         .then(function(d) {
                             self.running = false;
                             if (d.success) {
@@ -483,7 +478,8 @@
                         })
                         .catch(function(e) {
                             self.running = false;
-                            self.error = 'Network error: ' + e.message;
+                            // Covers transport failures and non-ok responses alike now that the wrapper throws on both.
+                            self.error = e.message || 'Sandbox run failed';
                         });
                     }
                 };
@@ -1984,9 +1980,7 @@ document.addEventListener('alpine:init', () => {
         async loadComments() {
             this.loading = true;
             try {
-                const r = await fetch(`/solutions/${solutionId}/comments?section=${this.section}`);
-                if (!r.ok) throw new Error('Failed to load comments: ' + r.status);
-                const data = await r.json();
+                const data = await Platform.fetch(`/solutions/${solutionId}/comments?section=${this.section}`, { silent: true });
                 this.comments = data.comments || [];
             } catch(e) {
                 this.comments = [];
@@ -1999,13 +1993,8 @@ document.addEventListener('alpine:init', () => {
             if (!this.newComment.trim()) return;
             this.submitting = true;
             try {
-                const csrfMeta = document.querySelector('meta[name=csrf-token]');
-                const r = await fetch(`/solutions/${solutionId}/comments`, {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfMeta ? csrfMeta.content : ''},
-                    body: JSON.stringify({ section: this.section, content: this.newComment.trim() }),
-                });
-                if (!r.ok) throw new Error('Failed to post comment: ' + r.status);
+                await Platform.fetch.post(`/solutions/${solutionId}/comments`,
+                    { section: this.section, content: this.newComment.trim() }, { silent: true });
                 this.newComment = '';
                 await this.loadComments();
                 this.$nextTick(() => {
@@ -2023,13 +2012,8 @@ document.addEventListener('alpine:init', () => {
             if (!this.replyText.trim()) return;
             this.submitting = true;
             try {
-                const csrfMeta = document.querySelector('meta[name=csrf-token]');
-                const r = await fetch(`/solutions/${solutionId}/comments`, {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfMeta ? csrfMeta.content : ''},
-                    body: JSON.stringify({ section: this.section, content: this.replyText.trim(), parent_comment_id: parentId }),
-                });
-                if (!r.ok) throw new Error('Failed to post reply: ' + r.status);
+                await Platform.fetch.post(`/solutions/${solutionId}/comments`,
+                    { section: this.section, content: this.replyText.trim(), parent_comment_id: parentId }, { silent: true });
                 this.replyTo = null; this.replyText = ''; await this.loadComments();
             } catch(e) {
                 if (window.Platform && Platform.toast) Platform.toast.error(e.message || 'Failed to post reply');
@@ -2081,9 +2065,7 @@ function openSectionComments(section, label) {
             this.loading = true;
             this.error = '';
             try {
-                const resp = await fetch('/archimate/api/elements/search?q=' + encodeURIComponent(this.query) + '&limit=20');
-                if (!resp.ok) throw new Error('Search unavailable (HTTP ' + resp.status + ')');
-                const json = await resp.json();
+                const json = await Platform.fetch('/archimate/api/elements/search?q=' + encodeURIComponent(this.query) + '&limit=20', { silent: true });
                 this.results = json.data || json.results || [];
             } catch (e) {
                 this.error = e.message || 'Search unavailable';
@@ -2094,22 +2076,20 @@ function openSectionComments(section, label) {
     },
     async select(element) {
         if (!this.linkEndpoint) { this.open = false; return; }
-        const meta = document.querySelector('meta[name=csrf-token]');
-        const csrf = meta ? meta.content : '';
         try {
-            const resp = await fetch(this.linkEndpoint, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
-                body: JSON.stringify({ element_id: element.id, layer: element.layer || element.layer_name || '' })
-            });
-            if (resp.ok || resp.status === 409) {
+            await Platform.fetch.post(this.linkEndpoint,
+                { element_id: element.id, layer: element.layer || element.layer_name || '' },
+                { silent: true });
+            this.open = false;
+            window.location.reload();
+        } catch (e) {
+            if (e.status === 409) {
+                // 409 = already linked server-side; the desired end state either way.
                 this.open = false;
                 window.location.reload();
-            } else {
-                this.error = 'Failed to link element (' + resp.status + ')';
+                return;
             }
-        } catch (e) {
-            this.error = 'Network error';
+            this.error = e.message || 'Failed to link element';
         }
     }
 }"
@@ -2320,13 +2300,14 @@ function sadPage() {
       const container = document.getElementById(containerId);
       if (!container) return;
       try {
-        const resp = await fetch('/solutions/{{ solution.id }}/viewpoint-elements?viewpoint=' + vpType, {
-          credentials: 'same-origin',
-          headers: { 'Accept': 'application/json', 'X-CSRFToken': csrf() }
+        const data = await Platform.fetch('/solutions/{{ solution.id }}/viewpoint-elements?viewpoint=' + vpType, {
+          silent: true,
+          headers: { 'Accept': 'application/json' }
         });
-        const data = await resp.json();
         this._diagramsLoaded[tab] = true;
-        if (!resp.ok || !data.success) return;
+        // A viewpoint that reports failure used to return silently, leaving an
+        // empty box indistinguishable from "no elements".
+        if (!data.success) throw new Error(data.error || 'Viewpoint elements unavailable');
         if (!data.elements || data.elements.length === 0) {
           container.innerHTML = '<div class="flex items-center justify-center py-8 text-center">' +
             '<div><p class="text-sm text-muted-foreground">' + (data.empty_reason || 'No elements for this viewpoint.') + '</p>' +
@@ -2342,7 +2323,6 @@ function sadPage() {
           r.fitToContent();
         }
       } catch (e) {
-        console.warn('[detail] viewpoint diagram load failed:', e);
         container.innerHTML = '<div class="flex items-center justify-center py-8 text-center">' +
           '<div><p class="text-sm text-destructive-emphasis">Diagram failed to load.</p>' +
           '<p class="text-xs text-muted-foreground mt-1">Reload the page to try again.</p></div></div>';
@@ -2361,8 +2341,8 @@ function sadPage() {
   if (!wrap) return;
   const solutionId = {{ solution.id }};
 
-  fetch('/api/stakeholders/map-data?solution_id=' + solutionId)
-    .then(function(r){ if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+  // silent: the catch below paints an inline "could not load" message in the grid.
+  Platform.fetch('/api/stakeholders/map-data?solution_id=' + solutionId, { silent: true })
     .then(function(data){
       if (!Array.isArray(data) || data.length === 0) {
         wrap.innerHTML = '<p class="text-center text-xs text-muted-foreground py-8">No stakeholders with influence/interest data.</p>';
@@ -2450,11 +2430,8 @@ function sadPage() {
 function dismissableBanner() { return { show: true }; }
 window.deleteSolution = window.deleteSolution || async function(solutionId, solutionName) {
     if (!(await Platform.modal.confirm('Delete "' + solutionName + '"? This cannot be undone.'))) return;
-    let csrf = document.querySelector('meta[name=csrf-token]');
-    fetch('/solutions/' + solutionId + '/delete', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf ? csrf.content : '' }
-    }).then(function(r) { return r.json(); }).then(function(d) {
+    Platform.fetch.post('/solutions/' + solutionId + '/delete', undefined, { silent: true })
+    .then(function(d) {
         if (d.success) { window.location.href = '/solutions/'; }
         else { Platform.toast.error(d.error || 'Delete failed'); }
     }).catch(function(e) { Platform.toast.error('Delete failed: ' + e.message); });

@@ -14,8 +14,7 @@
 (function(){
   function esc(s){ var d=document.createElement('div'); d.textContent=(s==null?'':String(s)); return d.innerHTML; }
   var el=document.getElementById('gov-list');
-  fetch('/governance/api/principles',{headers:{'Accept':'application/json'}})
-    .then(function(r){ if(!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+  Platform.fetch('/governance/api/principles',{headers:{'Accept':'application/json'}, silent: true})
     .then(function(items){
       if(!items || !items.length){
         el.innerHTML='<div class="col-span-full rounded-xl border bg-card shadow-sm p-10 text-center text-muted-foreground">No architecture principles defined yet.</div>';

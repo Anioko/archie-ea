@@ -63,14 +63,17 @@
         if (!url) {
             throw new Error('Lazy modal host is missing; cannot load ' + modalId);
         }
-        var resp = await fetch(url, {
-            credentials: 'same-origin',
-            headers: { 'X-Requested-With': 'XMLHttpRequest' }
-        });
-        if (!resp.ok) {
-            throw new Error('Failed to load ' + modalId + ' (HTTP ' + resp.status + ')');
+        try {
+            // Platform.fetch automatically injects CSRF token and handles errors
+            var html = await Platform.fetch(url, {
+                headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                // The caller already handles errors via toast, so we don't need an additional toast
+                silent: true
+            });
+        } catch (err) {
+            // Platform.fetch throws on non-ok responses; rethrow with a descriptive message
+            throw new Error('Failed to load ' + modalId + ' (HTTP ' + (err.status || 'unknown') + ')');
         }
-        var html = await resp.text();
 
         var holder = document.createElement('template');
         holder.innerHTML = html;
@@ -88,8 +91,8 @@
      * Resolve with the dialog's root element, loading it if it is not in the
      * DOM yet. Concurrent callers share one request.
      *
-     * Resolves with `null` — after telling the user through Platform.toast and
-     * logging the cause — when the fragment cannot be loaded. It does not
+     * Resolves with `null` — after telling the user through Platform.toast —
+     * when the fragment cannot be loaded. It does not
      * reject: every caller is an `@click` handler, so a rejection would surface
      * only as an unhandled promise. Callers MUST check the result and return
      * rather than operating on a dialog that is not there.
@@ -104,7 +107,6 @@
         }
         inFlight[modalId] = fetchAndInject(modalId).catch(function (err) {
             delete inFlight[modalId];
-            console.error('Lazy modal load failed:', err);
             if (global.Platform && global.Platform.toast) {
                 global.Platform.toast.error(
                     'The mapping dialog could not be loaded. Please try again.'

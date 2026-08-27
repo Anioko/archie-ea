@@ -271,21 +271,27 @@ function newImportForm() {
                     formData.append('source_type', 'existing');
                 }
 
-                let response = await fetch('/api/batch-import/jobs', {
+                // Platform.fetch will throw on non-ok responses; we handle success and errors accordingly.
+                // silent: true because we show our own toast for errors.
+                let data = await Platform.fetch('/api/batch-import/jobs', {
                     method: 'POST',
-                    body: formData
+                    body: formData,
+                    silent: true
                 });
 
-                let data = await response.json();
-
+                // Platform.fetch returns parsed response body directly.
+                // The server returns { success: true, job_id: ... } on success.
                 if (data.success) {
                     this.showToast('Import job created successfully', 'success');
                     window.location.href = '/batch-import/jobs/' + data.job_id;
                 } else {
+                    // This branch is for HTTP 200 responses where success is false.
+                    // Platform.fetch does not throw for these because response.ok is true.
                     this.showToast(data.message || 'Failed to create import job', 'error');
                 }
             } catch (error) {
-                console.error('Failed to create import job:', error);
+                // Platform.fetch throws for network errors or HTTP non-ok responses.
+                // We already show a toast via this.showToast; silent:true prevents duplicate global toast.
                 this.showToast('Failed to create import job', 'error');
             } finally {
                 this.submitting = false;
@@ -295,8 +301,10 @@ function newImportForm() {
         showToast(message, type) {
             if (window.showToast) {
                 window.showToast(message, type);
-            } else {
-
+            } else if (window.Platform && Platform.toast) {
+                // Without this branch a failed import reported itself to nobody.
+                const fn = Platform.toast[type] || Platform.toast.info;
+                fn(message);
             }
         }
     };

@@ -15,16 +15,16 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 function loadCapabilities() {
-    fetch('/api/vendor-discovery/capabilities')
-        .then(function(response) { if (!response.ok) throw new Error('HTTP ' + response.status); return response.json(); })
+    Platform.fetch.get('/api/vendor-discovery/capabilities', null, { silent: true })
         .then(function(data) {
             if (data.success) {
                 availableCapabilities = data.capabilities;
                 populateCapabilityList();
+            } else {
+                showError(data.error || 'Failed to load capabilities');
             }
         })
         .catch(function(error) {
-            console.error('Error loading capabilities:', error);
             showError('Failed to load capabilities');
         });
 }
@@ -211,29 +211,21 @@ function runDiscovery() {
     }
 
     // Run discovery
-    fetch('/api/vendor-discovery/discover', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(requestData)
-    })
-    .then(function(response) { return response.json(); })
-    .then(function(data) {
-        document.getElementById('loadingState').classList.add('hidden');
+    Platform.fetch.post('/api/vendor-discovery/discover', requestData, { silent: true })
+        .then(function(data) {
+            document.getElementById('loadingState').classList.add('hidden');
 
-        if (data.success) {
-            discoveryResults = data.discovery_results;
-            displayResults();
-        } else {
-            showError(data.error || 'Discovery failed');
-        }
-    })
-    .catch(function(error) {
-        document.getElementById('loadingState').classList.add('hidden');
-        console.error('Error running discovery:', error);
-        showError('Failed to run vendor discovery');
-    });
+            if (data.success) {
+                discoveryResults = data.discovery_results;
+                displayResults();
+            } else {
+                showError(data.error || 'Discovery failed');
+            }
+        })
+        .catch(function(error) {
+            document.getElementById('loadingState').classList.add('hidden');
+            showError('Failed to run vendor discovery');
+        });
 }
 
 function displayResults() {

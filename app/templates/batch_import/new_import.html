@@ -519,9 +519,7 @@ function newImportForm() {
         programmesError: null,
         async loadProgrammes() {
             try {
-                const r = await fetch('/solutions/programmes/api/list');
-                if (!r.ok) throw new Error('Could not load transformation programmes (HTTP ' + r.status + ')');
-                const d = await r.json();
+                const d = await Platform.fetch('/solutions/programmes/api/list');
                 this.programmes = d.programmes || [];
                 this.programmesError = null;
             } catch (e) {
@@ -725,14 +723,13 @@ function newImportForm() {
         async loadAvailableApplications() {
             this.loadingApplications = true;
             try {
-                const response = await fetch('/capability-map/api/applications?limit=100');
-                const data = await response.json();
-                if (data.success) {
-                    this.availableApplications = data.applications || [];
-                }
+                // Platform.fetch throws on non-ok responses, and an unchecked `data.success`
+                // left the picker empty -- a failure that read as "no applications".
+                const data = await Platform.fetch('/capability-map/api/applications?limit=100');
+                if (!data.success) throw new Error(data.message || data.error || 'request failed');
+                this.availableApplications = data.applications || [];
             } catch (error) {
-                console.error('Failed to load applications:', error);
-                this.showToast('Failed to load applications', 'error');
+                this.showToast('Failed to load applications — ' + (error && error.message ? error.message : 'request failed'), 'error');
             } finally {
                 this.loadingApplications = false;
             }
@@ -798,12 +795,7 @@ function newImportForm() {
                     formData.append('source_type', 'existing');
                 }
 
-                const response = await fetch('/api/batch-import/jobs', {
-                    method: 'POST',
-                    body: formData
-                });
-
-                const data = await response.json();
+                const data = await Platform.fetch.post('/api/batch-import/jobs', formData);
 
                 if (data.success) {
                     const jobId = data.job_id || (data.data && data.data.id) || (data.job && data.job.id);
@@ -815,8 +807,7 @@ function newImportForm() {
                     this.showToast(data.message || data.error || 'Failed to create import job', 'error');
                 }
             } catch (error) {
-                console.error('Failed to create import job:', error);
-                this.showToast('Failed to create import job', 'error');
+                this.showToast('Failed to create import job — ' + (error && error.message ? error.message : 'request failed'), 'error');
             } finally {
                 this.submitting = false;
             }
@@ -825,7 +816,10 @@ function newImportForm() {
         showToast(message, type = 'info') {
             if (window.showToast) {
                 window.showToast(message, type);
-            } else {
+            } else if (window.Platform && Platform.toast && Platform.toast[type]) {
+                Platform.toast[type](message);
+            } else if (window.Platform && Platform.toast) {
+                Platform.toast.info(message);
             }
         }
     };

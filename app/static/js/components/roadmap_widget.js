@@ -55,32 +55,35 @@
     }
 
     // Define all functions on window immediately
-    window['initRoadmapWidget' + containerId] = function(cid, ep) {
-        fetch(ep)
-            .then(r => r.json())
-            .then(data => {
-                if (data.success) {
-                    const items = data.items || data.gaps || [];
-                    const wdata = window['roadmapData_' + cid];
-                    wdata.items = items;
-                    wdata.filteredItems = items;
+    window['initRoadmapWidget' + containerId] = async function(cid, ep) {
+        try {
+            const data = await Platform.fetch(ep);
+            // Platform.fetch returns parsed data directly; success field is from our API
+            if (data.success) {
+                const items = data.items || data.gaps || [];
+                const wdata = window['roadmapData_' + cid];
+                wdata.items = items;
+                wdata.filteredItems = items;
 
-                    // Calculate timeline range
-                    const now = new Date();
-                    const years = wdata.timelineYears || 4;
-                    if (wdata.timelineCustomStart && wdata.timelineCustomEnd) {
-                        wdata.timelineStart = new Date(wdata.timelineCustomStart);
-                        wdata.timelineEnd = new Date(wdata.timelineCustomEnd);
-                    } else {
-                        wdata.timelineStart = new Date(now.getFullYear(), 0, 1);
-                        wdata.timelineEnd = new Date(now.getFullYear() + years, 0, 1);
-                    }
-
-                    window['renderRoadmapTimeline' + cid](cid);
-                    window['updateStats' + cid](cid);
+                // Calculate timeline range
+                const now = new Date();
+                const years = wdata.timelineYears || 4;
+                if (wdata.timelineCustomStart && wdata.timelineCustomEnd) {
+                    wdata.timelineStart = new Date(wdata.timelineCustomStart);
+                    wdata.timelineEnd = new Date(wdata.timelineCustomEnd);
+                } else {
+                    wdata.timelineStart = new Date(now.getFullYear(), 0, 1);
+                    wdata.timelineEnd = new Date(now.getFullYear() + years, 0, 1);
                 }
-            })
-            .catch(err => console.error('Failed to load roadmap:', err));
+
+                window['renderRoadmapTimeline' + cid](cid);
+                window['updateStats' + cid](cid);
+            }
+        } catch (err) {
+            // Platform.fetch already shows a user-visible toast for non-silent errors.
+            // Re-throw to prevent the widget from proceeding with invented data.
+            throw err;
+        }
     };
     
     window['setRoadmapView' + containerId] = function(mode) {
@@ -385,39 +388,42 @@
     });
     
     // Initialize widget
-    function initRoadmapWidget(cid, ep) {
-        fetch(ep)
-            .then(r => r.json())
-            .then(data => {
-                if (data.success) {
-                    let wdata = window['roadmapData_' + cid];
-                    wdata.items = data.items || [];
-                    wdata.filteredItems = data.items || [];
+    async function initRoadmapWidget(cid, ep) {
+        try {
+            const data = await Platform.fetch(ep);
+            // Platform.fetch returns parsed data directly; success field is from our API
+            if (data.success) {
+                let wdata = window['roadmapData_' + cid];
+                wdata.items = data.items || [];
+                wdata.filteredItems = data.items || [];
 
-                    // Calculate timeline range from configured years
-                    let now = new Date();
-                    let years = wdata.timelineYears || 4;
-                    if (wdata.timelineCustomStart && wdata.timelineCustomEnd) {
-                        wdata.timelineStart = new Date(wdata.timelineCustomStart);
-                        wdata.timelineEnd = new Date(wdata.timelineCustomEnd);
-                    } else {
-                        wdata.timelineStart = new Date(now.getFullYear(), 0, 1);
-                        wdata.timelineEnd = new Date(now.getFullYear() + years, 0, 1);
-                    }
-
-                    renderRoadmapTimeline(cid);
-                    updateStats(cid);
-
-                    // Update timeline range display
-                    const rangeEl = document.getElementById('roadmap-timeline-range-' + cid);
-                    if (rangeEl && wdata.timelineStart && wdata.timelineEnd) {
-                        let startStr = wdata.timelineStart.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
-                        let endStr = wdata.timelineEnd.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
-                        rangeEl.textContent = startStr + ' - ' + endStr;
-                    }
+                // Calculate timeline range from configured years
+                let now = new Date();
+                let years = wdata.timelineYears || 4;
+                if (wdata.timelineCustomStart && wdata.timelineCustomEnd) {
+                    wdata.timelineStart = new Date(wdata.timelineCustomStart);
+                    wdata.timelineEnd = new Date(wdata.timelineCustomEnd);
+                } else {
+                    wdata.timelineStart = new Date(now.getFullYear(), 0, 1);
+                    wdata.timelineEnd = new Date(now.getFullYear() + years, 0, 1);
                 }
-            })
-            .catch(err => console.error('Failed to load roadmap:', err));
+
+                renderRoadmapTimeline(cid);
+                updateStats(cid);
+
+                // Update timeline range display
+                const rangeEl = document.getElementById('roadmap-timeline-range-' + cid);
+                if (rangeEl && wdata.timelineStart && wdata.timelineEnd) {
+                    let startStr = wdata.timelineStart.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+                    let endStr = wdata.timelineEnd.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+                    rangeEl.textContent = startStr + ' - ' + endStr;
+                }
+            }
+        } catch (err) {
+            // Platform.fetch already shows a user-visible toast for non-silent errors.
+            // Re-throw to prevent the widget from proceeding with invented data.
+            throw err;
+        }
     }
     
     // View toggle

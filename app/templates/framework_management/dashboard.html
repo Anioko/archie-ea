@@ -1,4 +1,5 @@
 {% extends "layouts/admin_base.html" %}
+{% from 'macros/page_shell.html' import page_shell %}
 {% block title %}Framework Management{% endblock %}
 
 {% block breadcrumb %}
@@ -10,10 +11,7 @@
 {% endblock %}
 {% block content %}
 <div class="space-y-6 p-6">
-  <div>
-    <h1 class="text-2xl font-semibold text-foreground">Framework Management</h1>
-    <p class="text-muted-foreground mt-1">Manage capability frameworks, extensions, and deployment templates.</p>
-  </div>
+  {{ page_shell(title='Framework Management', subtitle='Manage capability frameworks, extensions, and deployment templates.') }}
 
   <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
     <a href="{{ url_for('main.framework_management.framework_dashboard') }}"
@@ -63,19 +61,15 @@ function frameworkStats() {
     error: '',
     load() {
       this.error = '';
-      fetch('/framework-management/api/statistics')
-        .then(r => {
-          // fetch does not reject on 4xx/5xx.
-          if (!r.ok) throw new Error('statistics request failed: ' + r.status);
-          return r.json();
-        })
+      Platform.fetch.get('/framework-management/api/statistics')
         .then(d => { this.stats = d; })
-        .catch(() => {
+        .catch((err) => {
           // Leave stats empty so every tile renders an em dash — an unloaded
           // count must not be shown as a number of any kind.
           this.stats = {};
           this.error = 'Could not load framework statistics.';
-          Platform.toast.error(this.error);
+          // The error toast is already shown by Platform.fetch (unless silent:true).
+          // We still set the inline error state for the UI.
         });
     }
   }

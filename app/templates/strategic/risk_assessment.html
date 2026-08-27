@@ -95,7 +95,16 @@
                                 <td class="p-3 text-sm tabular-nums">{{ risk.overall_risk_score|default(0) }}</td>
                                 <td class="p-3 text-sm text-muted-foreground">
                                     {% if risk.risk_factors %}
-                                        {{ risk.risk_factors[:2]|join(', ') }}{% if risk.risk_factors|length > 2 %}...{% endif %}
+                                        {% if risk.risk_factors is string %}
+                                            {{ risk.risk_factors }}
+                                        {% elif risk.risk_factors is mapping %}
+                                            {{ risk.risk_factors.keys()|list|join(', ') }}
+                                        {% elif risk.risk_factors is iterable %}
+                                            {% set factors = risk.risk_factors|list %}
+                                            {{ factors[:2]|join(', ') }}{% if factors|length > 2 %}...{% endif %}
+                                        {% else %}
+                                            {{ risk.risk_factors }}
+                                        {% endif %}
                                     {% else %}
                                         None
                                     {% endif %}
@@ -199,12 +208,9 @@ document.addEventListener('alpine:init', () => {
         
         async init() {
             try {
-                const response = await fetch('/strategic/api/risks/statuses');
-                if (!response.ok) throw new Error('HTTP ' + response.status);
-                this.statuses = await response.json();
+                this.statuses = await Platform.fetch('/strategic/api/risks/statuses', { silent: true });
             } catch (err) {
-                console.error('Failed to fetch risk statuses:', err);
-                Platform.toast.error('Failed to load risk statuses: ' + err.message);
+                Platform.toast.error('Failed to load risk statuses: ' + (err.message || 'Unknown error'));
             }
         },
         

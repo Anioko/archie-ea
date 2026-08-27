@@ -42,33 +42,29 @@ document.addEventListener('alpine:init', () => {
             if (!fieldValue || fieldValue.length < 3) return;
 
             try {
-                const resp = await fetch(`/api/wizard/${solutionId}/copilot/review-field`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || '',
-                    },
-                    body: JSON.stringify({ step, field_name: fieldName, field_value: fieldValue }),
-                });
                 // fetch-guard-ok: unsolicited background advisory fired 2s after typing; a failure adds nothing the user must act on
-                if (!resp.ok) return;
+                const data = await Platform.fetch.post(`/api/wizard/${solutionId}/copilot/review-field`, {
+                    step,
+                    field_name: fieldName,
+                    field_value: fieldValue,
+                }, { silent: true });
 
-                const json = await resp.json();
-                const data = json.data || json;
-
-                if (data.suggestion) {
+                const suggestion = data.data || data;
+                if (suggestion.suggestion) {
                     // Replace existing suggestion for this field, or add new
                     const idx = this.suggestions.findIndex(s => s.field_name === fieldName);
                     if (idx >= 0) {
-                        this.suggestions[idx] = data.suggestion;
+                        this.suggestions[idx] = suggestion.suggestion;
                     } else {
-                        this.suggestions.push(data.suggestion);
+                        this.suggestions.push(suggestion.suggestion);
                     }
                     this.sidebarOpen = true;
                 }
             } catch (e) {
                 // Non-blocking — don't show errors for field reviews
-                console.warn('Copilot field review failed:', e);
+                // Platform.fetch throws on non-ok responses; we catch and ignore as before
+                // No console output allowed: remove the console.warn
+                // The failure adds nothing the user must act on
             }
         },
 
@@ -81,31 +77,25 @@ document.addEventListener('alpine:init', () => {
             this.error = null;
 
             try {
-                const resp = await fetch(`/api/wizard/${solutionId}/copilot/review-step`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || '',
-                    },
-                    body: JSON.stringify({ step, step_data: stepData }),
-                });
                 /* "Enhance All" is something the user clicked. Unguarded, a 500 parsed
                    to `{}`, suggestions stayed empty and the sidebar never opened — the
                    button looked like it had run and found nothing to improve. */
-                if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                const data = await Platform.fetch.post(`/api/wizard/${solutionId}/copilot/review-step`, {
+                    step,
+                    step_data: stepData,
+                });
+                // Platform.fetch returns parsed data directly
+                const result = data.data || data;
 
-                const json = await resp.json();
-                const data = json.data || json;
-
-                this.suggestions = data.suggestions || [];
+                this.suggestions = result.suggestions || [];
                 if (this.suggestions.length > 0) {
                     this.sidebarOpen = true;
                 }
 
-                return data;
+                return result;
 
             } catch (e) {
-                console.error('Copilot step review failed:', e);
+                // Platform.fetch throws on non-ok responses
                 this.suggestions = [];
                 this.error = 'AI suggestions unavailable';
                 // No template renders store.error, so without this the click is silent.
@@ -125,18 +115,11 @@ document.addEventListener('alpine:init', () => {
             if (!this.solutionId) return;
 
             // Track acceptance
-            fetch(`/api/wizard/${this.solutionId}/copilot/accept`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || '',
-                },
-                body: JSON.stringify({
-                    suggestion_id: suggestion.suggestion_id,
-                    field_name: suggestion.field_name,
-                    new_value: suggestion.suggested_value,
-                }),
-            }).catch(() => { /* swallow-ok: acceptance counter for analytics only — the service itself documents "actual field update is handled by frontend", and that update is the dispatched event below, which does not depend on this call. Losing a tally must not interrupt the architect mid-form. */ });
+            Platform.fetch.post(`/api/wizard/${this.solutionId}/copilot/accept`, {
+                suggestion_id: suggestion.suggestion_id,
+                field_name: suggestion.field_name,
+                new_value: suggestion.suggested_value,
+            }, { silent: true }).catch(() => { /* swallow-ok: acceptance counter for analytics only — the service itself documents "actual field update is handled by frontend", and that update is the dispatched event below, which does not depend on this call. Losing a tally must not interrupt the architect mid-form. */ });
 
             // Dispatch event for journey component to apply the value
             window.dispatchEvent(new CustomEvent('copilot-accepted', {

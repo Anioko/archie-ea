@@ -2,11 +2,15 @@
  * JointJS UML Class Diagram shapes for Code Workbench.
  * Renders classes from the enriched UML snapshot as interactive boxes.
  */
-(function(joint) {
+(function(joint, global) {
     'use strict';
 
     if (!joint || !joint.dia) {
-        console.warn('JointJS not loaded — UML shapes skipped');
+        // The diagram library failed to load, so the class diagram cannot render.
+        // Say so rather than leaving an empty panel the user reads as "no classes".
+        if (global.Platform && global.Platform.toast) {
+            global.Platform.toast.error('The diagram library did not load, so the UML class diagram cannot be shown. Please reload the page.');
+        }
         return;
     }
 
@@ -184,4 +188,4 @@
         renderClassDiagram: renderClassDiagram,
     };
 
-})(window.joint);
+})(window.joint, window);

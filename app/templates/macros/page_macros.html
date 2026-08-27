@@ -45,31 +45,20 @@
                 editorElement.setAttribute("contenteditable", "true");
             });
 
-            endEditBtn.addEventListener('click', function() {
+            endEditBtn.addEventListener('click', async function() {
                 if (CKEDITOR.instances[editorIDName]) {
                     const editorData = CKEDITOR.instances[editorIDName].getData();
-                    const csrfToken = "{{ csrf_token() }}";
                     
-                    // Send POST request with vanilla JS
-                    fetch("{{ url_for('admin.update_editor_contents') }}", {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({
-                            csrf_token: csrfToken,
+                    // Send POST request with Platform.fetch
+                    try {
+                        await Platform.fetch.post("{{ url_for('admin.update_editor_contents') }}", {
                             editor_name: "{{ editable_html_obj.editor_name }}",
                             edit_data: editorData
-                        })
-                    }).then(response => {
-                        if (!response.ok) {
-                            Platform.toast.error('Failed to save changes (HTTP ' + response.status + ')');
-                            return;
-                        }
+                        }, { silent: true });
                         Platform.toast.success('Saved.');
-                    }).catch(error => {
-                        Platform.toast.error('Failed to save changes: ' + error.message);
-                    });
+                    } catch (error) {
+                        Platform.toast.error('Failed to save changes: ' + (error.message || 'Unknown error'));
+                    }
                     
                     CKEDITOR.instances[editorIDName].destroy();
                 }

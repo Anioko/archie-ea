@@ -48,6 +48,16 @@
     --layer-technology: 142 71% 45%;     /* green — Nodes, Devices, Networks */
     --layer-implementation: 199 89% 48%; /* sky — Work Packages, Plateaus */
     --layer-risk: 0 84% 60%;            /* red — Assessments, Issues */
+    /* Readable text on a `bg-layer-*/10` tint: the base hues above are chosen
+       for fill/border distinctness and are far under WCAG AA as text. Same
+       relationship as --info / --info-emphasis. */
+    --layer-motivation-emphasis: 263 70% 40%;
+    --layer-strategy-emphasis: 38 92% 28%;
+    --layer-business-emphasis: 160 84% 26%;
+    --layer-application-emphasis: 221 83% 42%;
+    --layer-technology-emphasis: 142 71% 26%;
+    --layer-implementation-emphasis: 199 89% 30%;
+    --layer-risk-emphasis: 0 84% 42%;
   }
 
   .dark {
@@ -93,6 +103,13 @@
     --layer-technology: 142 71% 55%;
     --layer-implementation: 199 89% 58%;
     --layer-risk: 0 84% 65%;
+    --layer-motivation-emphasis: 263 70% 75%;
+    --layer-strategy-emphasis: 38 92% 68%;
+    --layer-business-emphasis: 160 84% 62%;
+    --layer-application-emphasis: 221 83% 74%;
+    --layer-technology-emphasis: 142 71% 64%;
+    --layer-implementation-emphasis: 199 89% 68%;
+    --layer-risk-emphasis: 0 84% 74%;
   }
 }
 

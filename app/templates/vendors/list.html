@@ -36,23 +36,23 @@
 
   {# Metrics Cards #}
   <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 sm:gap-6 mb-8">
-    {{ data_card(icon='building', icon_color='blue', value=stats.total|dash, label='Total Vendors', subtitle='In vendor catalogue') }}
-    {{ data_card(icon='check-circle', icon_color='green', value=stats.active|dash, label='Active Vendors', subtitle=(((stats.active / stats.total) * 100)|round(0)|string ~ '% of total') if stats.total|default(0) > 0 else '—') }}
-    {{ data_card(icon='star', icon_color='purple', value=stats.strategic|dash, label='Strategic Vendors', subtitle='High-value partnerships') }}
-    {{ data_card(icon='package', icon_color='amber', value=stats.total_products|dash, label='Product Portfolio', subtitle='Across all vendors') }}
+    {{ data_card(icon='building', icon_color='blue', value=stats.total|default(0)|dash, label='Total Vendors', subtitle='In vendor catalogue') }}
+    {{ data_card(icon='check-circle', icon_color='green', value=stats.active|default(0)|dash, label='Active Vendors', subtitle=(((stats.active|default(0) / stats.total|default(1)) * 100)|round(0)|string ~ '% of total') if (stats.total or 0) > 0 else '—') }}
+    {{ data_card(icon='star', icon_color='purple', value=stats.strategic|default(0)|dash, label='Strategic Vendors', subtitle='High-value partnerships') }}
+    {{ data_card(icon='package', icon_color='amber', value=stats.total_products|default(0)|dash, label='Product Portfolio', subtitle='Across all vendors') }}
     {# Portfolio ACV card #}
-    {% if stats.total_acv|default(0) > 1000000 %}
+    {% if (stats.total_acv or 0) > 1000000 %}
       {% set acv_display = '$' ~ ('%.1f'|format(stats.total_acv / 1000000)) ~ 'M' %}
-    {% elif stats.total_acv|default(0) > 1000 %}
+    {% elif (stats.total_acv or 0) > 1000 %}
       {% set acv_display = '$' ~ ('%.0f'|format(stats.total_acv / 1000)) ~ 'K' %}
-    {% elif stats.total_acv|default(0) > 0 %}
+    {% elif (stats.total_acv or 0) > 0 %}
       {% set acv_display = '$' ~ ('%.0f'|format(stats.total_acv)) %}
     {% else %}
       {% set acv_display = '—' %}
     {% endif %}
     {{ data_card(icon='banknote', icon_color='cyan', value=acv_display, label='Portfolio ACV', subtitle='Contracted + deployed ACV') }}
     {# Renewals due card #}
-    {{ data_card(icon='calendar-clock', icon_color='amber' if stats.renewals_due|default(0) > 0 else 'gray', value=stats.renewals_due|dash, label='Renewals Due (90d)', subtitle='Contracts expiring within 90 days') }}
+    {{ data_card(icon='calendar-clock', icon_color='amber' if (stats.renewals_due or 0) > 0 else 'gray', value=stats.renewals_due|default(0)|dash, label='Renewals Due (90d)', subtitle='Contracts expiring within 90 days') }}
   </div>
 
   {# Main layout: table + side panel #}
@@ -311,15 +311,11 @@ document.addEventListener('alpine:init', () => {
   Alpine.store('vendorScores', {});
 });
 document.addEventListener('DOMContentLoaded', function () {
-  fetch('/api/vendors/ranking')
-    .then(r => {
-      // fetch does not reject on 4xx/5xx. Without this the score column would
-      // silently stay at an em dash on every row, reading as "never scored"
-      // rather than "scores could not be loaded".
-      if (!r.ok) throw new Error('vendor ranking request failed: ' + r.status);
-      return r.json();
-    })
+  Platform.fetch.get('/api/vendors/ranking', {}, { silent: true })
     .then(data => {
+      // Platform.fetch already threw if response not ok, so we are in success path.
+      // However, the API may return { success: false, error: ... }.
+      // We must still treat that as an error.
       if (!data.success) throw new Error(data.error || 'vendor ranking unavailable');
       const scores = {};
       (data.ranking || []).forEach(v => {
@@ -329,7 +325,7 @@ document.addEventListener('DOMContentLoaded', function () {
         Alpine.store('vendorScores', scores);
       }
     })
-    .catch(() => {
+    .catch(err => {
       // The store stays empty — no invented scores — and the user is told why
       // the column is blank.
       Platform.toast.error('Could not load vendor scores — the score column is unknown, not unscored.');

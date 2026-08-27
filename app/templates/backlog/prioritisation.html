@@ -1,4 +1,5 @@
 {% extends "layouts/admin_base.html" %}
+{% from 'macros/page_shell.html' import page_shell %}
 <!-- modal-a11y-ok -->
 
 {% block title %}Backlog Prioritisation — MoSCoW / WSJF / RICE{% endblock %}
@@ -22,10 +23,12 @@ input.score-input { width: 60px; border: 1px solid #d1d5db; border-radius: 4px;
 {% endblock %}
 
 {% block content %}
-<div class="container mx-auto px-4 py-6" x-data="prioritisationApp()">
+<div class="p-6 space-y-6 mx-auto" x-data="prioritisationApp()">
 
-  <h1 class="text-2xl font-bold mb-2">Backlog Prioritisation</h1>
-  <p class="text-muted-foreground mb-6">Classify requirements with MoSCoW, score them with WSJF or RICE.</p>
+  {{ page_shell(
+      title='Backlog Prioritisation',
+      subtitle='Classify requirements with MoSCoW, score them with WSJF or RICE.'
+  ) }}
 
   <!-- Tab bar -->
   <div class="flex gap-2 mb-6 border-b border-border">
@@ -170,9 +173,7 @@ function prioritisationApp() {
 
     async init() {
       try {
-        const r = await fetch('/api/backlog/prioritised?method=moscow');
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        this.reqs = await r.json();
+        this.reqs = await Platform.fetch('/api/backlog/prioritised?method=moscow');
       } catch (e) {
         this.error = 'Failed to load requirements: ' + e.message;
       } finally {
@@ -207,48 +208,43 @@ function prioritisationApp() {
       const prev = req.moscow_priority;
       req.moscow_priority = colKey;
       try {
-        const r = await fetch(`/api/backlog/${req.id}/moscow`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
-          body: JSON.stringify({ priority: colKey }),
-        });
-        if (!r.ok) { req.moscow_priority = prev; this.error = 'Save failed'; }
-      } catch (e) { req.moscow_priority = prev; this.error = e.message; }
+        await Platform.fetch.patch(`/api/backlog/${req.id}/moscow`, { priority: colKey });
+      } catch (e) {
+        req.moscow_priority = prev;
+        this.error = e.message;
+      }
     },
 
     async saveWsjf(req) {
-      const r = await fetch(`/api/backlog/${req.id}/wsjf`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
-        body: JSON.stringify({
+      try {
+        const updated = await Platform.fetch.patch(`/api/backlog/${req.id}/wsjf`, {
           business_value: req.business_value,
           time_criticality: req.time_criticality,
           risk_reduction: req.risk_reduction,
           job_size: req.job_size,
-        }),
-      });
-      if (!r.ok) { this.error = 'WSJF save failed'; return; }
-      const updated = await r.json();
-      req.wsjf_score = updated.wsjf_score;
+        });
+        req.wsjf_score = updated.wsjf_score;
+      } catch (e) {
+        this.error = 'WSJF save failed: ' + e.message;
+      }
     },
 
     async saveRice(req) {
-      const r = await fetch(`/api/backlog/${req.id}/rice`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
-        body: JSON.stringify({ reach: req.reach, impact: req.impact, confidence: req.confidence }),
-      });
-      if (!r.ok) { this.error = 'RICE save failed'; return; }
-      const updated = await r.json();
-      req.rice_score = updated.rice_score;
+      try {
+        const updated = await Platform.fetch.patch(`/api/backlog/${req.id}/rice`, {
+          reach: req.reach,
+          impact: req.impact,
+          confidence: req.confidence,
+        });
+        req.rice_score = updated.rice_score;
+      } catch (e) {
+        this.error = 'RICE save failed: ' + e.message;
+      }
     },
   };
 }
 
-function getCsrfToken() {
-  const el = document.querySelector('meta[name=csrf-token]') ||
-             document.querySelector('input[name="csrf_token"]');
-  return el ? (el.content || el.value) : '';
-}
+// CSRF token is automatically injected by Platform.fetch for mutating methods.
+// No manual token handling needed.
 </script>
 {% endblock %}

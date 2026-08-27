@@ -4,7 +4,7 @@
 {% block title %}{{ rollup.programme.name }} — {% if show_drift %}Drift History{% else %}Programme Cockpit{% endif %}{% endblock %}
 
 {% block content %}
-<div class="container mx-auto px-4 sm:px-6 lg:px-8 py-6 max-w-7xl"
+<div class="p-6 space-y-6 mx-auto max-w-7xl"
      x-data="programmeCockpit({{ rollup.programme.id }})">
     {{ page_header(
         title=rollup.programme.name,
@@ -207,14 +207,14 @@
     document.getElementById('js-take-snapshot-btn').addEventListener('click', async function() {
         this.disabled = true;
         this.textContent = 'Capturing…';
-        const csrf = document.querySelector('meta[name=csrf-token]')?.content || '';
         try {
-            const r = await fetch('/solutions/programmes/{{ rollup.programme.id }}/api/snapshot', {
-                method: 'POST', headers: { 'X-CSRFToken': csrf }
-            });
-            if (r.ok) { window.location.reload(); }
-            else { Platform.toast.error('Snapshot failed'); this.disabled = false; this.textContent = 'Take Snapshot'; }
-        } catch(e) { Platform.toast.error('Snapshot failed'); this.disabled = false; this.textContent = 'Take Snapshot'; }
+            await Platform.fetch.post('/solutions/programmes/{{ rollup.programme.id }}/api/snapshot', undefined, { silent: true });
+            window.location.reload();
+        } catch(e) {
+            Platform.toast.error(e.message || 'Snapshot failed');
+            this.disabled = false;
+            this.textContent = 'Take Snapshot';
+        }
     });
     </script>
     {% endif %}
@@ -416,9 +416,8 @@
             _csrf() { return document.querySelector('meta[name=csrf-token]')?.content || ''; },
             async load() {
                 try {
-                    const r = await fetch('/solutions/programmes/' + this.programmeId + '/api/snapshots');
-                    if (!r.ok) throw new Error('Could not load snapshots (HTTP ' + r.status + ')');
-                    const d = await r.json();
+                    const d = await Platform.fetch('/solutions/programmes/' + this.programmeId + '/api/snapshots',
+                        { silent: true, errorMsg: 'Could not load snapshots.' });
                     this.snapshots = d.snapshots || [];
                     this.loadError = null;
                 } catch (e) {
@@ -429,11 +428,7 @@
             async takeSnapshot() {
                 this.busy = true;
                 try {
-                    const r = await fetch('/solutions/programmes/' + this.programmeId + '/api/snapshot', {
-                        method: 'POST',
-                        headers: { 'X-CSRFToken': this._csrf() },
-                    });
-                    if (!r.ok) throw new Error('Snapshot failed: ' + r.status);
+                    await Platform.fetch.post('/solutions/programmes/' + this.programmeId + '/api/snapshot', undefined, { silent: true });
                     await this.load();
                 } catch (e) {
                     if (window.Platform && Platform.toast) Platform.toast.error(e.message || 'Snapshot failed');
@@ -452,9 +447,8 @@
             _csrf() { return document.querySelector('meta[name=csrf-token]')?.content || ''; },
             async searchSolutions() {
                 try {
-                    const r = await fetch('/solutions/programmes/api/unassigned-solutions?q=' + encodeURIComponent(this.pickerQuery));
-                    if (!r.ok) throw new Error('Could not search unassigned solutions (HTTP ' + r.status + ')');
-                    const d = await r.json();
+                    const d = await Platform.fetch('/solutions/programmes/api/unassigned-solutions?q=' + encodeURIComponent(this.pickerQuery),
+                        { silent: true, errorMsg: 'Could not search unassigned solutions.' });
                     this.pickerResults = d.results || [];
                     this.pickerError = null;
                 } catch (e) {
@@ -465,24 +459,29 @@
                 this.pickerOpen = true;
             },
             async assignSolution(solutionId) {
-                const r = await fetch('/solutions/programmes/' + this.programmeId + '/solutions', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this._csrf() },
-                    body: JSON.stringify({ solution_id: solutionId }),
-                });
-                const d = await r.json();
-                if (d.success) { window.location.reload(); }
-                else { Platform.toast.error(d.error || 'Assignment failed'); }
+                // Previously uncaught: a non-2xx made the response parse throw and the
+                // whole handler reject, so the button did nothing and said nothing.
+                try {
+                    const d = await Platform.fetch.post('/solutions/programmes/' + this.programmeId + '/solutions',
+                        { solution_id: solutionId }, { silent: true });
+                    if (d.success) { window.location.reload(); }
+                    else { Platform.toast.error(d.error || 'Assignment failed'); }
+                } catch (e) {
+                    Platform.toast.error(e.message || 'Assignment failed');
+                }
             },
             async unassignSolution(solutionId) {
                 if (!(await Platform.modal.confirm('Remove this solution from the programme? The solution itself is not deleted.'))) return;
-                const r = await fetch('/solutions/programmes/' + this.programmeId + '/solutions/' + solutionId, {
-                    method: 'DELETE',
-                    headers: { 'X-CSRFToken': this._csrf() },
-                });
-                const d = await r.json();
-                if (d.success) { window.location.reload(); }
-                else { Platform.toast.error(d.error || 'Removal failed'); }
+                // Previously uncaught: a non-2xx made the response parse throw and the
+                // whole handler reject, so the button did nothing and said nothing.
+                try {
+                    const d = await Platform.fetch.delete('/solutions/programmes/' + this.programmeId + '/solutions/' + solutionId,
+                        { silent: true });
+                    if (d.success) { window.location.reload(); }
+                    else { Platform.toast.error(d.error || 'Removal failed'); }
+                } catch (e) {
+                    Platform.toast.error(e.message || 'Removal failed');
+                }
             },
         };
     }

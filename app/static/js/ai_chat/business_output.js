@@ -56,26 +56,18 @@ class BusinessOutputDisplay {
     async renderOutput(role) {
         try {
             // Call backend to transform output for selected role
-            let response = await fetch('/ai-chat/transform-output', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    ai_response: this.currentResponse,
-                    stakeholder_role: role
-                })
+            let transformedData = await Platform.fetch.post('/ai-chat/transform-output', {
+                ai_response: this.currentResponse,
+                stakeholder_role: role
             });
-
-            if (response.ok) {
-                let transformedData = await response.json();
-                this.displayTransformedOutput(transformedData, role);
-            } else {
-                this.displayError('Failed to transform output');
-            }
+            this.displayTransformedOutput(transformedData, role);
         } catch (error) {
-            console.error('Error transforming output:', error);
-            this.displayError('Error transforming output');
+            // Platform.fetch already shows a toast; we also paint an inline error.
+            // Pass silent:true to avoid duplicate toast, but we still need to surface
+            // the failure to the user via displayError.
+            this.displayError('Failed to transform output');
+            // Re-throw to preserve the existing behaviour of not swallowing the error.
+            throw error;
         }
     }
 
@@ -688,7 +680,6 @@ class BusinessOutputDisplay {
                             }
                         });
                     } catch (error) {
-                        console.error('Chart rendering error:', error);
                         safeHTML(element, '<div class="p-4 text-sm text-muted-foreground">' +
                                 '<p class="font-medium mb-2">Visualization Data</p>' +
                                 '<pre class="text-xs overflow-auto">' + JSON.stringify(data, null, 2).substring(0, 500) + '</pre>' +

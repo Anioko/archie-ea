@@ -454,15 +454,14 @@
             error: null,
             async init() {
                 try {
-                    const res = await fetch('/ea-workflows/journeys');
-                    const data = await res.json();
+                    const data = await Platform.fetch('/ea-workflows/journeys', { silent: true });
                     if (data.success) {
                         this.journeys = data.journeys || [];
                     } else {
                         this.error = data.error || 'Failed to load journeys';
                     }
                 } catch(e) {
-                    this.error = 'Network error loading journeys';
+                    this.error = e.message || 'Network error loading journeys';
                 } finally {
                     this.loading = false;
                 }
@@ -1216,19 +1215,10 @@ document.getElementById('startWorkflowForm').addEventListener('submit', async fu
     btn.innerHTML = '<i data-lucide="loader-2" class="h-4 w-4 animate-spin" aria-hidden="true"></i> Starting...';
 
     try {
-        const response = await fetch('/api/ea-workflows/start', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': '{{ csrf_token() }}'
-            },
-            body: JSON.stringify({
-                workflow_code: workflowCode,
-                context: context
-            })
-        });
-
-        const data = await response.json();
+        const data = await Platform.fetch.post('/api/ea-workflows/start', {
+            workflow_code: workflowCode,
+            context: context
+        }, { silent: true });
 
         if (data.success) {
             closeWorkflowModal();
@@ -1243,7 +1233,7 @@ document.getElementById('startWorkflowForm').addEventListener('submit', async fu
             errorEl.classList.remove('hidden');
         }
     } catch (error) {
-        errorEl.textContent = 'Network error -- please try again.';
+        errorEl.textContent = error.message || 'Network error -- please try again.';
         errorEl.classList.remove('hidden');
     } finally {
         btn.disabled = false;
@@ -1257,15 +1247,7 @@ document.getElementById('startWorkflowForm').addEventListener('submit', async fu
 <script>
 async function seedWorkflows() {
     try {
-        const response = await fetch('/api/ea-workflows/seed-defaults', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': '{{ csrf_token() }}'
-            }
-        });
-
-        const data = await response.json();
+        const data = await Platform.fetch.post('/api/ea-workflows/seed-defaults', undefined, { silent: true });
 
         if (data.success) {
             if (window.Platform && window.Platform.toast) {
@@ -1309,16 +1291,19 @@ function analyticsPanel() {
         loadError: false,
         async loadAnalytics() {
             try {
-                const resp = await fetch('/api/ea-workflows/analytics');
-                const data = await resp.json();
+                const data = await Platform.fetch('/api/ea-workflows/analytics', { silent: true });
                 if (data.success) {
                     this.analytics = data.analytics;
                 } else {
                     this.loadError = true;
                 }
             } catch (e) {
-                console.error('Failed to load analytics:', e);
+                // loadError paints the inline "analytics unavailable" state below;
+                // the message names the actual reason.
                 this.loadError = true;
+                if (window.Platform && window.Platform.toast) {
+                    Platform.toast.error(e.message || 'Failed to load workflow analytics');
+                }
             }
             this.loaded = true;
         }
@@ -1335,16 +1320,7 @@ function analyticsPanel() {
 
 async function approveWorkflow(instanceId) {
     try {
-        const response = await fetch(`/api/ea-workflows/instances/${instanceId}/resume`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': '{{ csrf_token() }}'
-            },
-            body: JSON.stringify({})
-        });
-
-        const data = await response.json();
+        const data = await Platform.fetch.post(`/api/ea-workflows/instances/${instanceId}/resume`, {}, { silent: true });
 
         if (data.success) {
             if (window.Platform && window.Platform.toast) {
@@ -1371,15 +1347,22 @@ document.addEventListener('alpine:init', () => {
         phaseSummary: [],
         async init() {
             try {
-                const r = await fetch('/api/ea/phases/archimate-summary');
-                // The endpoint answers a failure with 500; without this the error
-                // payload parses to no phases and the badge row renders as
-                // "no elements in any phase", which is a different claim.
-                if (!r.ok) throw new Error('archimate-summary request failed: ' + r.status);
-                const data = await r.json();
+                // The endpoint answers a failure with 500; Platform.fetch throws on
+                // that, so the error payload can no longer parse to no phases and
+                // render the badge row as "no elements in any phase", which is a
+                // different claim.
+                const data = await Platform.fetch('/api/ea/phases/archimate-summary',
+                    { silent: true, errorMsg: 'archimate-summary request failed' });
                 this.phaseSummary = (data.phases || []).filter(p => p.element_count > 0);
                 this.loaded = true;
-            } catch(e) { this.loaded = false; }
+            } catch(e) {
+                // The badge row stays hidden; say why rather than looking like
+                // a repository with nothing in any phase.
+                this.loaded = false;
+                if (window.Platform && window.Platform.toast) {
+                    Platform.toast.error('ArchiMate phase summary not loaded: ' + (e.message || 'request failed'));
+                }
+            }
         },
     }));
 });

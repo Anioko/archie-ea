@@ -87,20 +87,17 @@ async function loadGraphData() {
         let url = `/api/knowledge-graph/graph?max_nodes=${maxNodes}`;
         if (layer) url += `&layer=${layer}`;
 
-        const response = await fetch(url);
-        const data = await response.json();
+        const data = await Platform.fetch(url, { silent: true });
 
         if (data.success) {
             graphData = data.graph;
             updateStatistics(data.metadata);
             renderGraph(graphData);
         } else {
-            console.error('Failed to load graph data:', data.error);
             Platform.toast.error('Failed to load graph data: ' + data.error);
         }
 
     } catch (error) {
-        console.error('Error loading graph:', error);
         Platform.toast.error('Error loading graph: ' + error.message);
     } finally {
         showLoading(false);
@@ -260,12 +257,7 @@ async function showNeighbors() {
 
     try {
         const nodeId = selectedNode.id.split('_')[1]; // Extract ID from "archimate_123"
-        const response = await fetch('/ai-chat/knowledge-graph/related', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ element: nodeId })
-        });
-        const data = await response.json();
+        const data = await Platform.fetch.post('/ai-chat/knowledge-graph/related', { element: nodeId }, { silent: true });
 
         if (data.success) {
             const related = data.related_entities || [];
@@ -274,9 +266,10 @@ async function showNeighbors() {
                 edges: related.map(e => ({ source: selectedNode.id, target: e.id || e.name }))
             };
             renderGraph(subgraph);
+        } else {
+            Platform.toast.error('Could not load neighbours: ' + (data.error || 'unknown error'));
         }
     } catch (error) {
-        console.error('Error loading neighbors:', error);
         Platform.toast.error('Error loading neighbors: ' + error.message);
     }
 }
@@ -370,12 +363,7 @@ async function findPath() {
     }
 
     try {
-        const response = await fetch('/ai-chat/knowledge-graph/related', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ element: source, target })
-        });
-        const data = await response.json();
+        const data = await Platform.fetch.post('/ai-chat/knowledge-graph/related', { element: source, target }, { silent: true });
 
         const resultDiv = document.getElementById('path-result');
         if (data.success && data.path) {
@@ -398,7 +386,6 @@ async function findPath() {
             resultDiv.style.display = 'block';
         }
     } catch (error) {
-        console.error('Error finding path:', error);
         Platform.toast.error('Error finding path: ' + error.message);
     }
 }

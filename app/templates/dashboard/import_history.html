@@ -206,27 +206,20 @@ document.addEventListener('DOMContentLoaded', function() {
     loadImportHistory();
 });
 
-function loadImportHistory() {
+async function loadImportHistory() {
     document.getElementById('error-state').classList.add('hidden');
-    fetch('/api/import-history')
-        .then(response => {
-            // fetch does not reject on 4xx/5xx; without this a 500 would be
-            // parsed as an empty history and shown as "No import history found".
-            if (!response.ok) throw new Error('import history request failed: ' + response.status);
-            return response.json();
-        })
-        .then(data => {
-            if (!data.success) throw new Error(data.error || 'import history unavailable');
-            importHistory = data.jobs || [];
-            displayImportHistory();
-            updateStatistics();
-        })
-        .catch(error => {
-            showLoadError(error);
-        })
-        .finally(() => {
-            document.getElementById('loading').classList.add('hidden');
-        });
+    try {
+        const data = await Platform.fetch('/api/import-history', { silent: true });
+        // Platform.fetch already parsed the JSON
+        if (!data.success) throw new Error(data.error || 'import history unavailable');
+        importHistory = data.jobs || [];
+        displayImportHistory();
+        updateStatistics();
+    } catch (error) {
+        showLoadError(error);
+    } finally {
+        document.getElementById('loading').classList.add('hidden');
+    }
 }
 
 // Never fall back to an empty list here: the history stays empty on screen but
@@ -513,54 +506,37 @@ function closeRollbackModal() {
     rollbackImportId = null;
 }
 
-function confirmRollback() {
+async function confirmRollback() {
     if (!rollbackImportId) return;
 
-    fetch(`/applications/rollback-import/${rollbackImportId}`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        }
-    })
-    .then(response => response.json())
-    .then(data => {
+    try {
+        const data = await Platform.fetch.post(`/applications/rollback-import/${rollbackImportId}`, null, { silent: true });
         if (data.success) {
             Platform.toast.info('Import rolled back successfully');
             loadImportHistory(); // Refresh the list
         } else {
             Platform.toast.error('Failed to rollback import: ' + data.error);
         }
-    })
-    .catch(error => {
-        console.error('Error rolling back import:', error);
+    } catch (error) {
         Platform.toast.error('Error rolling back import');
-    })
-    .finally(() => {
+    } finally {
         closeRollbackModal();
-    });
+    }
 }
 
 async function retryFailed(importId) {
     if ((await Platform.modal.confirm('Retry failed records for this import?'))) {
-        fetch(`/api/import-history/${importId}/retry-failed`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            }
-        })
-        .then(response => response.json())
-        .then(data => {
+        try {
+            const data = await Platform.fetch.post(`/api/import-history/${importId}/retry-failed`, null, { silent: true });
             if (data.success) {
                 Platform.toast.info('Retry started successfully');
                 loadImportHistory(); // Refresh the list
             } else {
                 Platform.toast.error('Failed to start retry: ' + data.error);
             }
-        })
-        .catch(error => {
-            console.error('Error retrying failed records:', error);
+        } catch (error) {
             Platform.toast.error('Error retrying failed records');
-        });
+        }
     }
 }
 

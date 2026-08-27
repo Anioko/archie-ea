@@ -23,13 +23,10 @@ function setupEventListeners() {
 
 function loadTableData() {
     tableData = [];
-    fetch('/framework-management/api/manufacturing/instances')
-        .then(function(r) {
-            // fetch does not reject on 4xx/5xx, so a 500 used to render the same
-            // "no records" table an empty framework legitimately produces.
-            if (!r.ok) { throw new Error('HTTP ' + r.status); }
-            return r.json();
-        })
+    // fetch does not reject on 4xx/5xx, so a 500 used to render the same
+    // "no records" table an empty framework legitimately produces.
+    // Platform.fetch throws on non‑ok responses, so we catch and show the error.
+    Platform.fetch('/framework-management/api/manufacturing/instances')
         .then(function(res) {
             tableData = res.data || [];
             renderTable();
@@ -37,6 +34,9 @@ function loadTableData() {
         .catch(function(e) {
             tableData = [];
             renderTable();
+            // The error toast is already shown by Platform.fetch unless silent:true,
+            // but we still need to inform the user that the table is empty because of a failure.
+            // We'll keep the existing inline error message via Platform.toast.
             if (window.Platform && window.Platform.toast) {
                 window.Platform.toast.error('Could not load framework instances: ' + (e.message || 'request failed') + '. The table is empty because the load failed, not because there are no records.');
             }

@@ -1763,3 +1763,102 @@ def test_reconcile_rejects_semantically_ineffective_same_named_guards(
             assert inspect_arb_cycle_constraints(connection) == []
         finally:
             transaction.rollback()
+
+
+def test_subject_tenant_guard_fails_closed_on_unsupported_table(app, _schema):
+    """An unlisted table must be refused, not silently waved through."""
+    raw = _install_typed_schema(app)
+    raw.close()
+    from app import db
+
+    with app.app_context(), db.engine.connect() as connection:
+        transaction = connection.begin()
+        try:
+            connection.exec_driver_sql(
+                "CREATE TABLE arb_guard_unlisted "
+                "(id integer PRIMARY KEY, organization_id integer)"
+            )
+            connection.exec_driver_sql(
+                "CREATE TRIGGER trg_arb_guard_unlisted_tenant_history "
+                "BEFORE UPDATE OF organization_id ON arb_guard_unlisted "
+                "FOR EACH ROW EXECUTE FUNCTION archie_guard_arb_subject_tenant()"
+            )
+            connection.exec_driver_sql(
+                "INSERT INTO arb_guard_unlisted (id, organization_id) VALUES (1, 1)"
+            )
+            with pytest.raises(Exception, match="unsupported table"):
+                connection.exec_driver_sql(
+                    "UPDATE arb_guard_unlisted SET organization_id = 2 WHERE id = 1"
+                )
+        finally:
+            transaction.rollback()
+
+
+def test_check_tokenizer_refuses_characters_it_cannot_compare(app, _schema):
+    """Silently dropped operators would equate a weaker predicate to the canon."""
+    from app.models.architecture_review_board import (
+        _arb_check_structure,
+        _arb_check_tokens,
+        _arb_model_check_definitions,
+    )
+
+    with app.app_context():
+        for definition in _arb_model_check_definitions().values():
+            assert _arb_check_tokens(definition), definition
+
+    for unreadable in (
+        "CHECK (cycle_number + 1 > 0)",
+        "CHECK (subject_type ~ 'adr')",
+        "CHECK (payload.subject_id IS NOT NULL)",
+    ):
+        with pytest.raises(ValueError, match="unrecognized token"):
+            _arb_check_tokens(unreadable)
+
+    # The pair below differs only in characters the old tokenizer discarded, so
+    # it normalized to one token stream and the weaker predicate was accepted.
+    with pytest.raises(ValueError, match="unrecognized token"):
+        _arb_check_structure("CHECK (cycle_number > 0)") == _arb_check_structure(
+            "CHECK (cycle_number > -0)"
+        )
+
+
+def test_constraint_state_is_keyed_per_table_not_per_name(app, _schema):
+    """conname is unique per table: a decoy must not evict the real constraint."""
+    raw = _install_typed_schema(app)
+    raw.close()
+    from app import db
+    from app.models.architecture_review_board import (
+        _arb_check_state,
+        _arb_fk_state,
+        ensure_arb_cycle_constraints,
+        inspect_arb_cycle_constraints,
+    )
+
+    with app.app_context(), db.engine.connect() as connection:
+        transaction = connection.begin()
+        try:
+            connection.exec_driver_sql(
+                "CREATE TABLE arb_guard_decoy ("
+                "id integer PRIMARY KEY, "
+                "solution_id integer, "
+                "cycle_number integer, "
+                "CONSTRAINT ck_arb_review_cycle_shape CHECK (cycle_number > 0))"
+            )
+            connection.exec_driver_sql(
+                "ALTER TABLE arb_guard_decoy ADD CONSTRAINT "
+                "fk_arb_review_cycle_solution FOREIGN KEY (solution_id) "
+                "REFERENCES solutions(id)"
+            )
+
+            check_state = _arb_check_state(connection, "public")
+            assert ("arb_guard_decoy", "ck_arb_review_cycle_shape") in check_state
+            assert ("arb_review_cycles", "ck_arb_review_cycle_shape") in check_state
+            fk_state = _arb_fk_state(connection, "public")
+            assert ("arb_guard_decoy", "fk_arb_review_cycle_solution") in fk_state
+            assert ("arb_review_cycles", "fk_arb_review_cycle_solution") in fk_state
+
+            assert inspect_arb_cycle_constraints(connection) == []
+            ensure_arb_cycle_constraints(connection)
+            assert inspect_arb_cycle_constraints(connection) == []
+        finally:
+            transaction.rollback()

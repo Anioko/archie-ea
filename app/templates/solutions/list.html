@@ -9,7 +9,7 @@
 {% block title %}All Solutions{% endblock %}
 
 {% block content %}
-<div class="container mx-auto px-4 sm:px-6 lg:px-8 py-6 max-w-7xl" x-data="solutionListCompare()">
+<div class="p-6 space-y-6 mx-auto max-w-7xl" x-data="solutionListCompare()">
     {# ─ PAGE HEADER — screen system: one primary action whose label matches
        where it actually goes. Was: three competing creation CTAs, with the
        visually-primary one ("New Programme") not matching the page's job
@@ -22,7 +22,7 @@
          class="inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-input bg-background text-sm font-medium hover:bg-accent transition-colors">
         <i data-lucide="layers" class="h-4 w-4" aria-hidden="true"></i>New Programme
       </a>
-      <button type="button" data-testid="btn-new-from-template" onclick="openTemplateModal()"
+      <button type="button" data-testid="btn-new-from-template" @click="openTemplateModal()"
         class="inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-input bg-background text-sm font-medium hover:bg-accent transition-colors">
         <i data-lucide="layout-template" class="h-4 w-4" aria-hidden="true"></i>New from Template
       </button>
@@ -193,7 +193,7 @@
                     <tr class="border-b border-border/50 bg-muted/30">
                         <th class="px-5 py-3.5 w-10"><input type="checkbox" data-select-all="solution-table" class="h-4 w-4 rounded border-input" aria-label="Select all solutions"></th>
                         <th class="px-5 py-3.5 text-left text-2xs font-semibold text-muted-foreground uppercase tracking-wider">Solution</th>
-                        <th class="px-5 py-3.5 text-left text-2xs font-semibold text-muted-foreground uppercase tracking-wider">Phase & Status</th>
+                        <th class="px-5 py-3.5 text-left text-2xs font-semibold text-muted-foreground uppercase tracking-wider">Phase &amp; Status</th>
                         <th class="px-5 py-3.5 text-left text-2xs font-semibold text-muted-foreground uppercase tracking-wider">Design Maturity</th>
                         <th class="px-5 py-3.5 text-left text-2xs font-semibold text-muted-foreground uppercase tracking-wider">Architecture Scope</th>
                         <th class="px-5 py-3.5 text-center text-2xs font-semibold text-muted-foreground uppercase tracking-wider">Arch. Score</th>
@@ -540,15 +540,11 @@
     }
     if (window.Platform && Platform.toast) Platform.toast.success('Deleting ' + ids.length + ' solution(s)...');
 
-    fetch('{{ url_for("solution_design.bulk_delete_solutions") }}', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''
-      },
-      body: JSON.stringify({ solution_ids: ids })
-    })
-    .then(function(r) { return r.json(); })
+    Platform.fetch.post('{{ url_for("solution_design.bulk_delete_solutions") }}', 
+      { solution_ids: ids },
+      { 
+        // Platform.fetch will automatically add Content-Type: application/json and CSRF token
+      })
     .then(function(data) {
       if (data.success) {
         Platform.toast.success('Deleted ' + data.deleted_count + ' solution(s)');
@@ -558,9 +554,11 @@
         Platform.toast.error(data.error || 'Failed to delete solutions');
       }
     })
-    .catch(function() {
+    .catch(function(err) {
       if (deleteBtn) { deleteBtn.disabled = false; deleteBtn.innerHTML = '<i data-lucide="trash-2" class="h-3.5 w-3.5"></i>Delete'; }
-      Platform.toast.error('Network error');
+      // Platform.fetch will show a toast automatically for non-ok responses
+      // But we need to handle network errors which are also thrown
+      // The error toast is already shown by Platform.fetch, so we don't need to show another one
     })
     .finally(function() { _bulkDeletePendingIds = []; });
   }
@@ -577,11 +575,10 @@
       list._delegated = true;
     }
     let cfg = window.__SOLUTION_LIST_CONFIG__ || {};
-    fetch(cfg.templatesUrl || '/solutions/templates', { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
-      .then(function(r) {
-        if (!r.ok) { throw new Error('templates request failed: ' + r.status); }
-        return r.json();
-      })
+    Platform.fetch.get(cfg.templatesUrl || '/solutions/templates', null, { 
+      headers: { 'Accept': 'application/json' },
+      silent: true  // We'll handle the error inline below
+    })
       .then(function(data) {
         if (!list) return;
         let templates = (data && data.templates) || [];
@@ -596,18 +593,20 @@
                 '<button type="button" data-tid="' + t.id + '" class="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90">Use Template</button></div>';
             }).join('');
       })
-      .catch(function() {
+      .catch(function(err) {
+        // Platform.fetch throws on non-ok responses; we need to show an inline error
         if (list) list.innerHTML = '<p class="text-sm text-muted-foreground py-4 text-center">Failed to load templates.</p>';
+        // The error toast is suppressed by silent:true, but we should still log for debugging
+        // However, console output is forbidden, so we'll just show the inline error
       });
   }
   function createFromTemplate(templateId) {
-    fetch('/architecture-journey/start-from-template', {
-      method: 'POST',
-      credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-      body: JSON.stringify({ template_id: templateId })
-    })
-      .then(function(r) { return r.json(); })
+    Platform.fetch.post('/architecture-journey/start-from-template', 
+      { template_id: templateId }, 
+      { 
+        headers: { 'Accept': 'application/json' },
+        // Platform.fetch will automatically add Content-Type: application/json and CSRF token
+      })
       .then(function(data) {
         if (data.success && data.redirect) {
           if (window.Platform && Platform.modal) Platform.modal.close('template-picker');
@@ -616,7 +615,12 @@
           Platform.toast.error(data.error || 'Failed to create solution');
         }
       })
-      .catch(function() { Platform.toast.error('Network error'); });
+      .catch(function(err) {
+        // Platform.fetch will show a toast automatically, but we need to handle specific cases
+        // The error toast is already shown by Platform.fetch, so we don't need to show another one
+        // However, we should ensure the modal stays open if there's an error
+        // No need for console.error as per rules
+      });
   }
   function openSolutionCompare() {
     let sel = Platform.selection ? Platform.selection.get('solution-table') : null;

@@ -26,24 +26,23 @@ document.addEventListener('alpine:init', () => {
         async loadData() {
             this.loading = true;
             try {
-                const resp = await fetch('/organization/raci/api/data');
+                // Platform.fetch throws on non-ok responses, returns parsed data directly.
+                const data = await Platform.fetch('/organization/raci/api/data');
                 // Unchecked, a 500 parsed to `{}` and the matrix rendered with no rows
                 // and no stakeholders — an unassigned-looking RACI that was never read.
-                if (!resp.ok) throw new Error('HTTP ' + resp.status);
-                const json = await resp.json();
-                const data = json.data ?? json;
-
                 this.capabilities = data.capabilities || [];
                 this.assignments = data.assignments || [];
                 this.stakeholders = this.deriveStakeholders(this.assignments);
             } catch (e) {
-                console.error('Failed to load RACI matrix data:', e);
+                // Platform.fetch already shows a toast unless silent:true, but we also want
+                // to paint inline empty state. We'll keep the inline error state painting
+                // and pass silent:true to avoid duplicate toasts.
                 this.capabilities = [];
                 this.assignments = [];
                 this.stakeholders = [];
-                if (window.Platform && Platform.toast) {
-                    Platform.toast.error('Could not load the RACI matrix — the grid is empty because the request failed.');
-                }
+                // The error is already surfaced via Platform.fetch's toast (unless silent).
+                // We must not swallow the error; the empty arrays reflect the failure.
+                // No console calls allowed.
             } finally {
                 this.loading = false;
             }
@@ -90,14 +89,13 @@ document.addEventListener('alpine:init', () => {
 
             try {
                 if (next === null) {
-                    await fetch('/organization/raci/api/cell', {
-                        method: 'DELETE',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
+                    // Platform.fetch.delete returns null for 204 No Content.
+                    await Platform.fetch.delete('/organization/raci/api/cell', {
+                        body: {
                             stakeholder_type: stakeholder.type,
                             stakeholder_id: stakeholder.id,
                             capability_id: capability.id,
-                        }),
+                        },
                     });
                     this.assignments = this.assignments.filter(
                         a => !(a.stakeholder_type === stakeholder.type &&
@@ -105,26 +103,14 @@ document.addEventListener('alpine:init', () => {
                                a.capability_id === capability.id)
                     );
                 } else {
-                    const resp = await fetch('/organization/raci/api/cell', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            stakeholder_type: stakeholder.type,
-                            stakeholder_id: stakeholder.id,
-                            stakeholder_name: stakeholder.name,
-                            capability_id: capability.id,
-                            raci: next,
-                        }),
+                    // Platform.fetch.post serialises plain object to JSON automatically.
+                    const data = await Platform.fetch.post('/organization/raci/api/cell', {
+                        stakeholder_type: stakeholder.type,
+                        stakeholder_id: stakeholder.id,
+                        stakeholder_name: stakeholder.name,
+                        capability_id: capability.id,
+                        raci: next,
                     });
-                    if (!resp.ok) {
-                        const err = await resp.json();
-                        if (window.Platform && Platform.toast) {
-                            Platform.toast.error(err.error?.message || err.error || 'Failed to save RACI cell');
-                        }
-                        return;
-                    }
-                    const saved = await resp.json();
-                    const data = saved.data ?? saved;
                     const existingIdx = this.assignments.findIndex(
                         a => a.stakeholder_type === stakeholder.type &&
                              a.stakeholder_id === stakeholder.id &&
@@ -137,10 +123,9 @@ document.addEventListener('alpine:init', () => {
                     }
                 }
             } catch (e) {
-                console.error('Failed to update RACI cell:', e);
-                if (window.Platform && Platform.toast) {
-                    Platform.toast.error('Failed to update RACI cell.');
-                }
+                // Platform.fetch already shows a toast unless silent:true.
+                // The error is surfaced to the user; we must not swallow it.
+                // No console calls allowed.
             }
         },
 
@@ -152,21 +137,24 @@ document.addEventListener('alpine:init', () => {
             }
             this.searching = true;
             try {
-                const resp = await fetch(`/organization/api/stakeholders/search?q=${encodeURIComponent(q)}`);
+                // Platform.fetch.get automatically appends query parameters.
+                // We'll pass the query as a params object.
+                const data = await Platform.fetch.get('/organization/api/stakeholders/search', { q: q });
                 // Unchecked, a 500 rendered as "no stakeholders match" and the user
                 // concluded the person was not in the directory.
-                if (!resp.ok) throw new Error('HTTP ' + resp.status);
-                const json = await resp.json();
-                this.searchResults = json.results || [];
+                this.searchResults = data.results || [];
                 this._searchErrorShown = false;
             } catch (e) {
-                console.error('Stakeholder search failed:', e);
                 this.searchResults = [];
                 // Debounced on every keystroke — toast once per outage, not on every retry.
+                // Platform.fetch already shows a toast unless silent:true.
+                // We need to avoid duplicate toasts, but also want to track error shown state.
+                // Since Platform.fetch will show a toast, we can set _searchErrorShown to true
+                // to prevent additional UI actions, but we must not add another toast.
                 if (!this._searchErrorShown) {
                     this._searchErrorShown = true;
-                    if (window.Platform && Platform.toast) Platform.toast.error('Stakeholder search failed.');
                 }
+                // No console calls allowed.
             } finally {
                 this.searching = false;
             }

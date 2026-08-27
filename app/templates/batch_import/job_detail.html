@@ -1,9 +1,9 @@
 {% extends 'layouts/admin_base.html' %}
+{% from 'macros/page_shell.html' import page_shell %}
 {% import 'components/card.html' as card %}
 {% import 'components/badge.html' as badge %}
 {% import 'components/tabs.html' as tabs %}
 {% import 'components/progress.html' as progress %}
-{% import 'components/breadcrumb.html' as breadcrumb %}
 {% from 'components/metrics_card.html' import metrics_card %}
 {% from 'components/detail_meta.html' import detail_meta_item %}
 {% from 'components/skeleton.html' import skeleton_table %}
@@ -12,20 +12,18 @@
 
 {% block content %}
 <div class="space-y-6" x-data="jobDetail({{ job.id if job else 0 }})">
-    <!-- Breadcrumb -->
-    {% call breadcrumb.breadcrumb() %}
-        {% call breadcrumb.breadcrumb_item(href=url_for('admin.dashboard')) %}
-            <i data-lucide="home" class="h-4 w-4" aria-hidden="true"></i>
-        {% endcall %}
-        {{ breadcrumb.breadcrumb_separator() }}
-        {% call breadcrumb.breadcrumb_item(href=url_for('batch_import_view.dashboard')) %}
-            Batch Import
-        {% endcall %}
-        {{ breadcrumb.breadcrumb_separator() }}
-        {% call breadcrumb.breadcrumb_item(active=true) %}
-            <span x-text="job?.name || 'Loading...'"></span>
-        {% endcall %}
-    {% endcall %}
+    {# The job name was the card's <h1>; it is the page's title, so it moves into
+       page_shell (server-rendered — the job is loaded by the view). The card keeps
+       the live status tile, badge, meta row and actions, which are job state, not
+       page identity. #}
+    {{ page_shell(
+        title=job.name if job else 'Import Job',
+        breadcrumb=[
+            ('Home', url_for('admin.dashboard')),
+            ('Batch Import', url_for('batch_import_view.dashboard')),
+            (job.name if job else 'Import Job', None)
+        ]
+    ) }}
 
     <!-- Job Header -->
     {% call card.card() %}
@@ -37,7 +35,6 @@
                     </div>
                     <div>
                         <div class="flex items-center gap-3">
-                            <h1 class="text-2xl font-bold tracking-tight" x-text="job?.name"></h1>
                             <span
                                 :class="getStatusBadgeClass(job?.status)"
                                 class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold"
@@ -637,21 +634,17 @@ function jobDetail(jobId) {
             this.refreshing = !silent;
 
             try {
-                const response = await fetch(`/api/batch-import/jobs/${this.jobId}`);
-                const data = await response.json();
-
-                if (data.success) {
-                    this.job = data.job || data.data || null;
-                    this.$nextTick(() => {
-                        if (typeof lucide !== 'undefined') {
-                            lucide.createIcons();
-                        }
-                    });
-                }
+                const data = await Platform.fetch(`/api/batch-import/jobs/${this.jobId}`, { silent: true });
+                if (!data.success) throw new Error(data.error || data.message || 'Failed to load job details');
+                this.job = data.job || data.data || null;
+                this.$nextTick(() => {
+                    if (typeof lucide !== 'undefined') {
+                        lucide.createIcons();
+                    }
+                });
             } catch (error) {
-                console.error('Failed to load job:', error);
                 if (!silent) {
-                    this.showToast('Failed to load job details', 'error');
+                    this.showToast(error.message || 'Failed to load job details', 'error');
                 }
             } finally {
                 this.loading = false;
@@ -663,16 +656,12 @@ function jobDetail(jobId) {
             if (!silent) this.loadingBatches = true;
 
             try {
-                const response = await fetch(`/api/batch-import/jobs/${this.jobId}/batches`);
-                const data = await response.json();
-
-                if (data.success) {
-                    this.batches = data.batches || data.data || [];
-                }
+                const data = await Platform.fetch(`/api/batch-import/jobs/${this.jobId}/batches`, { silent: true });
+                if (!data.success) throw new Error(data.error || data.message || 'Failed to load batches');
+                this.batches = data.batches || data.data || [];
             } catch (error) {
-                console.error('Failed to load batches:', error);
                 if (!silent) {
-                    this.showToast('Failed to load batches', 'error');
+                    this.showToast(error.message || 'Failed to load batches', 'error');
                 }
             } finally {
                 this.loadingBatches = false;
@@ -687,11 +676,7 @@ function jobDetail(jobId) {
         async startJob() {
             try {
                 // First, mark the job as started
-                const response = await fetch(`/api/batch-import/jobs/${this.jobId}/start`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
-                });
-                const data = await response.json();
+                const data = await Platform.fetch.post(`/api/batch-import/jobs/${this.jobId}/start`, undefined, { silent: true });
 
                 if (data.success) {
                     this.showToast('Job started - connecting to progress stream...', 'success');
@@ -702,8 +687,7 @@ function jobDetail(jobId) {
                     this.showToast(data.message || data.error || 'Failed to start job', 'error');
                 }
             } catch (error) {
-                console.error('Failed to start job:', error);
-                this.showToast('Failed to start job', 'error');
+                this.showToast(error.message || 'Failed to start job', 'error');
             }
         },
 
@@ -793,10 +777,19 @@ function jobDetail(jobId) {
                 this.loadJob(true);
             });
 
-            this.eventSource.onerror = (error) => {
-                console.error('SSE connection error:', error);
+            this.eventSource.onerror = () => {
+                // The live progress panel disappears when streaming flips false,
+                // and the job then only advances on the next poll. Saying nothing
+                // makes a dropped stream look like a stalled job, so tell the
+                // user which one it is. (console.error told nobody and is
+                // forbidden in shipped templates.)
                 this.stopStream();
                 this.loadJob(true);
+                if (window.Platform && Platform.toast) {
+                    Platform.toast.warning(
+                        'Live progress updates stopped. Refreshing job status instead.'
+                    );
+                }
             };
         },
 
@@ -822,11 +815,7 @@ function jobDetail(jobId) {
 
         async pauseJob() {
             try {
-                const response = await fetch(`/api/batch-import/jobs/${this.jobId}/pause`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
-                });
-                const data = await response.json();
+                const data = await Platform.fetch.post(`/api/batch-import/jobs/${this.jobId}/pause`, undefined, { silent: true });
 
                 if (data.success) {
                     this.showToast('Job paused', 'success');
@@ -836,18 +825,13 @@ function jobDetail(jobId) {
                     this.showToast(data.message || data.error || 'Failed to pause job', 'error');
                 }
             } catch (error) {
-                console.error('Failed to pause job:', error);
-                this.showToast('Failed to pause job', 'error');
+                this.showToast(error.message || 'Failed to pause job', 'error');
             }
         },
 
         async resumeJob() {
             try {
-                const response = await fetch(`/api/batch-import/jobs/${this.jobId}/resume`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
-                });
-                const data = await response.json();
+                const data = await Platform.fetch.post(`/api/batch-import/jobs/${this.jobId}/resume`, undefined, { silent: true });
 
                 if (data.success) {
                     this.showToast('Job resumed - connecting to progress stream...', 'success');
@@ -858,18 +842,13 @@ function jobDetail(jobId) {
                     this.showToast(data.message || data.error || 'Failed to resume job', 'error');
                 }
             } catch (error) {
-                console.error('Failed to resume job:', error);
-                this.showToast('Failed to resume job', 'error');
+                this.showToast(error.message || 'Failed to resume job', 'error');
             }
         },
 
         async cancelJob() {
             try {
-                const response = await fetch(`/api/batch-import/jobs/${this.jobId}/cancel`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
-                });
-                const data = await response.json();
+                const data = await Platform.fetch.post(`/api/batch-import/jobs/${this.jobId}/cancel`, undefined, { silent: true });
 
                 if (data.success) {
                     this.showToast('Job cancelled', 'success');
@@ -878,8 +857,7 @@ function jobDetail(jobId) {
                     this.showToast(data.message || data.error || 'Failed to cancel job', 'error');
                 }
             } catch (error) {
-                console.error('Failed to cancel job:', error);
-                this.showToast('Failed to cancel job', 'error');
+                this.showToast(error.message || 'Failed to cancel job', 'error');
             } finally {
                 this.showCancelModal = false;
             }
@@ -891,12 +869,7 @@ function jobDetail(jobId) {
             this.previewLoading = true;
             this.previewData = null;
             try {
-                const response = await fetch(`/api/batch-import/jobs/${this.jobId}/preview`, {
-                    headers: {
-                        'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''
-                    }
-                });
-                const data = await response.json();
+                const data = await Platform.fetch(`/api/batch-import/jobs/${this.jobId}/preview`, { silent: true });
                 if (data.success) {
                     this.previewData = data.data;
                     this.conflicts = data.data.duplicates || [];
@@ -913,8 +886,7 @@ function jobDetail(jobId) {
                     this.showToast(data.error || 'Failed to generate preview', 'error');
                 }
             } catch (error) {
-                console.error('Failed to load preview:', error);
-                this.showToast('Failed to load import preview', 'error');
+                this.showToast(error.message || 'Failed to load import preview', 'error');
             } finally {
                 this.previewLoading = false;
                 this.$nextTick(() => {
@@ -942,30 +914,26 @@ function jobDetail(jobId) {
                 return;
             }
             try {
-                const response = await fetch(`/api/batch-import/jobs/${this.jobId}/resolve-conflicts`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''
-                    },
-                    body: JSON.stringify({ resolutions: resolutionsList })
-                });
-                const data = await response.json();
+                const data = await Platform.fetch.post(`/api/batch-import/jobs/${this.jobId}/resolve-conflicts`,
+                    { resolutions: resolutionsList }, { silent: true });
                 if (data.success) {
                     this.showToast(data.message || 'Resolutions saved', 'success');
                 } else {
                     this.showToast(data.error || 'Failed to save resolutions', 'error');
                 }
             } catch (error) {
-                console.error('Failed to save resolutions:', error);
-                this.showToast('Failed to save conflict resolutions', 'error');
+                this.showToast(error.message || 'Failed to save conflict resolutions', 'error');
             }
         },
 
         showToast(message, type = 'info') {
             if (window.showToast) {
                 window.showToast(message, type);
-            } else {
+            } else if (window.Platform && Platform.toast) {
+                // The empty branch that used to be here dropped every failure
+                // message on any page where the legacy global is not defined.
+                const fn = Platform.toast[type] || Platform.toast.info;
+                fn.call(Platform.toast, message);
             }
         }
     };

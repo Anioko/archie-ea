@@ -1,5 +1,6 @@
 {# app/templates/adm_kanban/board_v2.html #}
 {% extends "layouts/admin_base.html" %}
+{% from 'macros/page_shell.html' import page_shell %}
 
 {% block title %}ADM Kanban — Architect's Operating View{% endblock %}
 
@@ -19,12 +20,8 @@
 <div x-data="admKanbanV2()" x-init="init()" @adm-board-refresh.window="reload()" @adm-card-created.window="onCardCreated($event.detail)" x-cloak class="space-y-4">
 
     {# -- Header --------------------------------------------------------- #}
-    <div class="flex items-center justify-between">
-        <div>
-            <h1 class="text-xl font-semibold text-foreground">ADM Kanban</h1>
-            <p class="text-sm text-muted-foreground">Architecture work across all TOGAF ADM phases</p>
-        </div>
-        <div class="flex items-center gap-2">
+    {% macro _ps_actions() %}
+<div class="flex items-center gap-2">
             <select x-model="filters.assignee" @change="reload()"
                     class="h-8 px-2 text-xs bg-background border border-border rounded text-foreground" aria-label="Filter by Type">
                 <option value="all">All Assignees</option>
@@ -92,7 +89,8 @@
                 Roadmap
             </a>
         </div>
-    </div>
+    {% endmacro %}
+    {{ page_shell(title='ADM Kanban', subtitle='Architecture work across all TOGAF ADM phases', actions_caller=_ps_actions) }}
 
     {# -- Phase Tabs (flat mode only) ------------------------------------ #}
     <div x-show="viewMode === 'flat'" x-cloak class="flex flex-wrap gap-1 border-b border-border pb-2">
@@ -1283,7 +1281,6 @@
                         <div class="flex items-center gap-2">
                             <span class="text-sm font-semibold text-foreground">Requirements & Motivation</span>
                             <span x-show="card && ((card.requirement_ids && card.requirement_ids.length) || (card.goal_ids && card.goal_ids.length) || (card.driver_ids && card.driver_ids.length) || (card.principle_ids && card.principle_ids.length))" x-cloak
-                                  x-cloak
                                   class="inline-flex items-center px-1.5 py-0.5 text-xs font-medium rounded-full bg-primary/10 text-primary"
                                   x-text="((card && card.requirement_ids ? card.requirement_ids.length : 0) + (card && card.goal_ids ? card.goal_ids.length : 0) + (card && card.driver_ids ? card.driver_ids.length : 0) + (card && card.principle_ids ? card.principle_ids.length : 0))"></span>
                         </div>
@@ -1778,9 +1775,7 @@
 </div>
 <script>
 (function(global) {
-    let _fetch = (global.Platform && global.Platform.fetch)
-        ? global.Platform.fetch
-        : function(url, opts) { return global.fetch(url, opts).then(function(r) { return r.json(); }); };
+    // Platform.fetch is used directly; no need for _fetch wrapper
 
     global.admKanbanDetail = function() {
         return {
@@ -1866,10 +1861,9 @@
             saveEdit: function() {
                 if (!this.card) return;
                 let self = this;
-                _fetch('/api/adm-kanban/v2/cards/' + self.card.id, {
+                Platform.fetch('/api/adm-kanban/v2/cards/' + self.card.id, {
                     method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
+                    body: {
                         title: self.editFields.title,
                         description: self.editFields.description,
                         priority: self.editFields.priority,
@@ -1882,22 +1876,23 @@
                         target_start_date: self.editFields.target_start_date || null,
                         target_end_date: self.editFields.target_end_date || null,
                         progress_pct: self.editFields.progress_pct,
-                    }),
+                    },
                 }).then(function(data) {
                     if (data && data.success && data.card) {
                         Object.assign(self.card, data.card);
                         self.editMode = false;
                         window.dispatchEvent(new CustomEvent('adm-board-refresh'));
                     }
-                }).catch(function() {
+                }).catch(function(err) {
                     self.editMode = false;
+                    throw err; // rethrow to let Platform.fetch's error handling show toast
                 });
             },
             deleteCard: function() {
                 if (!this.card) return;
                 let self = this;
                 let deletedId = self.card.id;
-                _fetch('/api/adm-kanban/v2/cards/' + deletedId, {
+                Platform.fetch('/api/adm-kanban/v2/cards/' + deletedId, {
                     method: 'DELETE',
                 }).then(function(data) {
                     if (data && data.success) {
@@ -1907,26 +1902,27 @@
                     } else {
                         self.confirmDelete = false;
                     }
-                }).catch(function() {
+                }).catch(function(err) {
                     self.confirmDelete = false;
+                    throw err; // rethrow to let Platform.fetch's error handling show toast
                 });
             },
             pushToGantt: function() {
                 if (!this.card) return;
                 let self = this;
                 self.ganttPushLoading = true;
-                _fetch('/api/adm-kanban/v2/cards/' + self.card.ref + '/push-to-gantt', {
+                Platform.fetch('/api/adm-kanban/v2/cards/' + self.card.ref + '/push-to-gantt', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({}),
+                    body: {},
                 }).then(function(data) {
                     self.ganttPushLoading = false;
                     if (data && data.success) {
                         self.card.work_package_id = data.work_package_id;
                         window.dispatchEvent(new CustomEvent('adm-board-refresh'));
                     }
-                }).catch(function() {
+                }).catch(function(err) {
                     self.ganttPushLoading = false;
+                    throw err; // rethrow to let Platform.fetch's error handling show toast
                 });
             },
             moveCard: function(toColumn) {
@@ -1935,10 +1931,9 @@
                 let prevColumn = self.card.column;
                 self.card.column = toColumn;
 
-                _fetch('/api/adm-kanban/v2/cards/' + self.card.id + '/move', {
+                Platform.fetch('/api/adm-kanban/v2/cards/' + self.card.id + '/move', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ to_column: toColumn }),
+                    body: { to_column: toColumn },
                 }).then(function(data) {
                     if (data && data.success && data.card) {
                         Object.assign(self.card, data.card);
@@ -1946,8 +1941,9 @@
                     } else {
                         self.card.column = prevColumn;
                     }
-                }).catch(function() {
+                }).catch(function(err) {
                     self.card.column = prevColumn;
+                    throw err; // rethrow to let Platform.fetch's error handling show toast
                 });
             },
             phaseClass: function(phase) {
@@ -1969,9 +1965,7 @@
             // A failed suggestion lookup must not look like "nothing matched" — the
             // caller records the message and the dropdown renders it in its place.
             _loadSuggestions: async function(kind, query, existingIds) {
-                let res = await fetch('/api/adm-kanban/v2/suggestions/' + kind + '?q=' + encodeURIComponent(query || ''));
-                if (!res.ok) throw new Error('Could not search ' + kind + ' (HTTP ' + res.status + ')');
-                let data = await res.json();
+                let data = await Platform.fetch.get('/api/adm-kanban/v2/suggestions/' + kind, { q: query || '' }, { silent: true });
                 let existing = existingIds || [];
                 return (data.results || []).filter(function(r) {
                     return !existing.includes(r.id);
@@ -2066,23 +2060,23 @@
             _patchTraceability: function() {
                 if (!this.card) return;
                 let self = this;
-                _fetch('/api/adm-kanban/v2/cards/' + self.card.id, {
+                Platform.fetch('/api/adm-kanban/v2/cards/' + self.card.id, {
                     method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
+                    body: {
                         requirement_ids: self.card.requirement_ids || [],
                         goal_ids: self.card.goal_ids || [],
                         driver_ids: self.card.driver_ids || [],
                         principle_ids: self.card.principle_ids || [],
-                    }),
+                    },
                 }).then(function(data) {
                     if (data && data.success && data.card) {
                         Object.assign(self.card, data.card);
                         window.dispatchEvent(new CustomEvent('adm-board-refresh'));
                     }
-                }).catch(function() {
+                }).catch(function(err) {
                     // Platform.fetch already toasted the failure (non-silent by default);
-                    // this only stops it from surfacing as an unhandled promise rejection.
+                    // rethrow to ensure error is not swallowed
+                    throw err;
                 });
             }
         };

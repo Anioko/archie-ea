@@ -56,8 +56,8 @@
        screen rendering "0.0 days" / "0.0%" over zero completed reviews,
        indistinguishable from a genuine all-zero measurement. #}
     {% set completed_reviews = dashboard_data.metrics.approved_items + dashboard_data.metrics.rejected_items %}
-    {% set approval_rate_display = (("%.1f"|format(dashboard_data.metrics.approval_rate)) ~ '%') if completed_reviews > 0 else None %}
-    {% set cycle_time_display = (("%.1f"|format(cycle_time.avg_days)) ~ ' days') if cycle_time.total_reviews > 0 else None %}
+    {% set approval_rate_display = (("%.1f"|format(dashboard_data.metrics.approval_rate|default(0))) ~ '%') if completed_reviews > 0 else None %}
+    {% set cycle_time_display = (("%.1f"|format(cycle_time.avg_days|default(0))) ~ ' days') if cycle_time and (cycle_time.total_reviews or 0) > 0 else None %}
 
     <!-- AI Queue Triage (board-secretary assist) -->
     <div x-data="arbQueueTriagePanel()" class="bg-card border border-border rounded-lg p-4">
@@ -139,7 +139,7 @@
     <!-- Status Breakdown (PH-011-06) -->
     <div class="bg-card border border-border rounded-lg p-6 shadow-sm">
         <h2 class="text-base font-semibold text-foreground mb-4">Review Status Overview</h2>
-        {% if dashboard_data.metrics.total_items > 0 %}
+        {% if (dashboard_data.metrics.total_items|default(0)) > 0 %}
         <div class="flex items-center gap-6 flex-wrap">
             <div class="flex-1 min-w-[200px]">
                 <canvas id="arbStatusChart" height="160"></canvas>
@@ -190,11 +190,11 @@
             <form method="GET" action="{{ url_for('arb.dashboard') }}" class="flex items-center gap-2">
                 <input type="hidden" name="search" value="{{ request.args.get('search', '') }}">
                 <select name="pending_status" class="rounded-md border border-input bg-background px-3 py-1.5 text-sm" onchange="this.form.submit()" aria-label="Filter by status">
-                    <option value="all" {% if pending_status == 'all' %}selected{% endif %}>All Statuses</option>
-                    <option value="draft" {% if pending_status == 'draft' %}selected{% endif %}>Draft</option>
-                    <option value="submitted" {% if pending_status == 'submitted' %}selected{% endif %}>Submitted</option>
-                    <option value="pending" {% if pending_status == 'pending' %}selected{% endif %}>Pending</option>
-                    <option value="under_review" {% if pending_status == 'under_review' %}selected{% endif %}>Under Review</option>
+                    <option value="all" {% if (pending_status|default('all')) == 'all' %}selected{% endif %}>All Statuses</option>
+                    <option value="draft" {% if (pending_status|default('all')) == 'draft' %}selected{% endif %}>Draft</option>
+                    <option value="submitted" {% if (pending_status|default('all')) == 'submitted' %}selected{% endif %}>Submitted</option>
+                    <option value="pending" {% if (pending_status|default('all')) == 'pending' %}selected{% endif %}>Pending</option>
+                    <option value="under_review" {% if (pending_status|default('all')) == 'under_review' %}selected{% endif %}>Under Review</option>
                 </select>
             </form>
         </div>
@@ -580,13 +580,8 @@ async function arbQuickAction(itemId, action) {
   const labels = { review: 'Begin Review', approve: 'Approve', reject: 'Reject' };
   if (!(await Platform.modal.confirm(`${labels[action] || action} this review item?`))) return;
   const url = `/arb/api/arb/${itemId}/${action}`;
-  fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || '' },
-    body: JSON.stringify({})
-  })
-  .then(r => r.json())
-  .then(d => {
+  try {
+    const d = await Platform.fetch.post(url, {}, { silent: true });
     if (d.success) {
       const row = document.getElementById('arb-row-' + itemId);
       if (row) row.style.opacity = '0.4';
@@ -594,8 +589,15 @@ async function arbQuickAction(itemId, action) {
     } else {
       Platform.toast.error('Action failed: ' + (d.error || 'Unknown error'));
     }
-  })
-  .catch(() => Platform.toast.error('Network error. Please try again.'));
+  } catch (err) {
+    // Platform.fetch throws on network errors or non-ok responses.
+    // We passed silent:true, so we must show our own toast.
+    if (err.type === 'HttpError' && err.data) {
+      Platform.toast.error('Action failed: ' + (err.data.error || 'Unknown error'));
+    } else {
+      Platform.toast.error(err.message || 'Network error. Please try again.');
+    }
+  }
 }
 
 // CSP-safe event delegation for ARB quick action buttons
@@ -621,21 +623,18 @@ function arbQueueTriagePanel() {
             this.loading = true;
             this.error = null;
             this.message = null;
-            const csrf = document.querySelector('meta[name=csrf-token]')?.content || '';
             try {
-                const r = await fetch('/arb/api/queue/ai-triage', {
-                    method: 'POST',
-                    headers: {'X-CSRFToken': csrf, 'Content-Type': 'application/json'}
-                });
-                if (!r.ok) {
-                    const d = await r.json().catch(() => ({}));
-                    throw new Error(d.message || d.error || `Triage failed (HTTP ${r.status})`);
-                }
-                const d = await r.json();
+                const d = await Platform.fetch.post('/arb/api/queue/ai-triage', {}, { silent: true });
                 this.triage = d.triage;
                 if (!d.triage) this.message = d.message || 'No pending reviews';
-            } catch (e) {
-                this.error = e.message || 'AI queue triage failed';
+            } catch (err) {
+                // Platform.fetch throws on network errors or non-ok responses.
+                // Extract user-friendly message from the error.
+                let errorMsg = err.message || 'AI queue triage failed';
+                if (err.type === 'HttpError' && err.data) {
+                    errorMsg = err.data.message || err.data.error || errorMsg;
+                }
+                this.error = errorMsg;
                 if (window.Platform && Platform.toast) Platform.toast.error(this.error);
             } finally {
                 this.loading = false;

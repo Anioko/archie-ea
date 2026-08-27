@@ -25,107 +25,103 @@ let statusPollInterval;
 let currentJobId = null;
 
 function updateSyncStatus() {
-    fetch(APP_CONFIG.syncStatusUrl, {
-        method: 'GET',
-        headers: {
-            'X-Requested-With': 'XMLHttpRequest',
-            'Content-Type': 'application/json',
-        },
-    })
-    .then(function(response) { return response.json(); })
-    .then(function(data) {
-        let statusIndicator = document.getElementById('status-indicator');
-        let statusText = document.getElementById('status-text');
-        let statusDetails = document.getElementById('status-details');
-        let syncButton = document.getElementById('sync-button');
-        let cancelBtn = document.getElementById('cancel-job-btn');
+    // Use Platform.fetch which throws on non-ok responses; we handle errors inline.
+    Platform.fetch.get(APP_CONFIG.syncStatusUrl, null, { silent: true })
+        .then(function(data) {
+            let statusIndicator = document.getElementById('status-indicator');
+            let statusText = document.getElementById('status-text');
+            let statusDetails = document.getElementById('status-details');
+            let syncButton = document.getElementById('sync-button');
+            let cancelBtn = document.getElementById('cancel-job-btn');
 
-        // Store current job ID
-        currentJobId = data.job_id;
+            // Store current job ID
+            currentJobId = data.job_id;
 
-        if (data.status === 'no_jobs') {
-            statusIndicator.className = 'h-3 w-3 rounded-full bg-muted/70';
-            statusText.textContent = 'No sync jobs';
-            statusText.className = 'font-medium text-foreground';
-            statusDetails.textContent = 'No sync jobs have been run yet.';
-            if (syncButton) syncButton.disabled = false;
-            if (cancelBtn) cancelBtn.classList.add('hidden');
-            return;
-        }
-
-        // Update status indicator
-        switch (data.status) {
-            case 'pending':
-                statusIndicator.className = 'h-3 w-3 rounded-full bg-yellow-400';
-                statusText.textContent = 'Queued';
-                statusText.className = 'font-medium text-amber-700';
-                if (syncButton) syncButton.disabled = true;
-                if (cancelBtn) cancelBtn.classList.remove('hidden');
-                break;
-            case 'in_progress':
-                statusIndicator.className = 'h-3 w-3 rounded-full bg-primary animate-pulse';
-                statusText.textContent = 'Running';
-                statusText.className = 'font-medium text-primary';
-                if (syncButton) syncButton.disabled = true;
-                if (cancelBtn) cancelBtn.classList.remove('hidden');
-                break;
-            case 'completed':
-                statusIndicator.className = 'h-3 w-3 rounded-full bg-emerald-500';
-                statusText.textContent = 'Completed';
-                statusText.className = 'font-medium text-emerald-700';
-                if (syncButton) syncButton.disabled = false;
-                if (cancelBtn) cancelBtn.classList.add('hidden');
-                break;
-            case 'failed':
-                statusIndicator.className = 'h-3 w-3 rounded-full bg-destructive';
-                statusText.textContent = 'Failed';
-                statusText.className = 'font-medium text-destructive';
-                if (syncButton) syncButton.disabled = false;
-                if (cancelBtn) cancelBtn.classList.add('hidden');
-                break;
-            case 'cancelled':
-                statusIndicator.className = 'h-3 w-3 rounded-full bg-orange-500';
-                statusText.textContent = 'Cancelled';
-                statusText.className = 'font-medium text-orange-700';
-                if (syncButton) syncButton.disabled = false;
-                if (cancelBtn) cancelBtn.classList.add('hidden');
-                break;
-            default:
+            if (data.status === 'no_jobs') {
                 statusIndicator.className = 'h-3 w-3 rounded-full bg-muted/70';
-                statusText.textContent = data.status || 'Unknown';
+                statusText.textContent = 'No sync jobs';
                 statusText.className = 'font-medium text-foreground';
+                statusDetails.textContent = 'No sync jobs have been run yet.';
                 if (syncButton) syncButton.disabled = false;
                 if (cancelBtn) cancelBtn.classList.add('hidden');
-        }
+                return;
+            }
 
-        // Update details
-        let details = 'Job ID: ' + data.job_id;
-        if (data.created_at) {
-            details += ' | Created: ' + new Date(data.created_at).toLocaleString();
-        }
-        if (data.started_at) {
-            details += ' | Started: ' + new Date(data.started_at).toLocaleString();
-        }
-        if (data.finished_at) {
-            details += ' | Finished: ' + new Date(data.finished_at).toLocaleString();
-        }
+            // Update status indicator
+            switch (data.status) {
+                case 'pending':
+                    statusIndicator.className = 'h-3 w-3 rounded-full bg-yellow-400';
+                    statusText.textContent = 'Queued';
+                    statusText.className = 'font-medium text-amber-700';
+                    if (syncButton) syncButton.disabled = true;
+                    if (cancelBtn) cancelBtn.classList.remove('hidden');
+                    break;
+                case 'in_progress':
+                    statusIndicator.className = 'h-3 w-3 rounded-full bg-primary animate-pulse';
+                    statusText.textContent = 'Running';
+                    statusText.className = 'font-medium text-primary';
+                    if (syncButton) syncButton.disabled = true;
+                    if (cancelBtn) cancelBtn.classList.remove('hidden');
+                    break;
+                case 'completed':
+                    statusIndicator.className = 'h-3 w-3 rounded-full bg-emerald-500';
+                    statusText.textContent = 'Completed';
+                    statusText.className = 'font-medium text-emerald-700';
+                    if (syncButton) syncButton.disabled = false;
+                    if (cancelBtn) cancelBtn.classList.add('hidden');
+                    break;
+                case 'failed':
+                    statusIndicator.className = 'h-3 w-3 rounded-full bg-destructive';
+                    statusText.textContent = 'Failed';
+                    statusText.className = 'font-medium text-destructive';
+                    if (syncButton) syncButton.disabled = false;
+                    if (cancelBtn) cancelBtn.classList.add('hidden');
+                    break;
+                case 'cancelled':
+                    statusIndicator.className = 'h-3 w-3 rounded-full bg-orange-500';
+                    statusText.textContent = 'Cancelled';
+                    statusText.className = 'font-medium text-orange-700';
+                    if (syncButton) syncButton.disabled = false;
+                    if (cancelBtn) cancelBtn.classList.add('hidden');
+                    break;
+                default:
+                    statusIndicator.className = 'h-3 w-3 rounded-full bg-muted/70';
+                    statusText.textContent = data.status || 'Unknown';
+                    statusText.className = 'font-medium text-foreground';
+                    if (syncButton) syncButton.disabled = false;
+                    if (cancelBtn) cancelBtn.classList.add('hidden');
+            }
 
-        if (data.result && data.result.records_fetched) {
-            let records = data.result.records_fetched;
-            details += ' | Fetched: ' + (records.applications || 0) + ' apps, ' + (records.capabilities || 0) + ' caps, ' + (records.relationships || 0) + ' rels';
-        }
+            // Update details
+            let details = 'Job ID: ' + data.job_id;
+            if (data.created_at) {
+                details += ' | Created: ' + new Date(data.created_at).toLocaleString();
+            }
+            if (data.started_at) {
+                details += ' | Started: ' + new Date(data.started_at).toLocaleString();
+            }
+            if (data.finished_at) {
+                details += ' | Finished: ' + new Date(data.finished_at).toLocaleString();
+            }
 
-        if (data.error) {
-            details += ' | Error: ' + data.error;
-        }
+            if (data.result && data.result.records_fetched) {
+                let records = data.result.records_fetched;
+                details += ' | Fetched: ' + (records.applications || 0) + ' apps, ' + (records.capabilities || 0) + ' caps, ' + (records.relationships || 0) + ' rels';
+            }
 
-        statusDetails.textContent = details;
-    })
-    .catch(function(error) {
-        console.error('Error fetching sync status:', error);
-        document.getElementById('status-text').textContent = 'Error loading status';
-        document.getElementById('status-details').textContent = 'Failed to check sync status.';
-    });
+            if (data.error) {
+                details += ' | Error: ' + data.error;
+            }
+
+            statusDetails.textContent = details;
+        })
+        .catch(function(error) {
+            // Platform.fetch throws a structured PlatformError; we paint inline error state.
+            // silent:true prevents duplicate toast, but we still show error in UI.
+            document.getElementById('status-text').textContent = 'Error loading status';
+            document.getElementById('status-details').textContent = 'Failed to check sync status.';
+            // Surfaced to the user in the UI below; a console line would tell nobody.
+        });
 }
 
 function cancelCurrentJob() {
@@ -144,34 +140,25 @@ function cancelCurrentJob() {
             { text: 'Cancel Job', class: 'px-4 py-2 text-sm font-medium text-destructive-foreground bg-destructive border border-transparent rounded-md hover:bg-destructive/90', action: 'stop', handler: function() {
                 let cancelUrl = '/admin/abacus-settings/cancel-job/' + jobId;
 
-                fetch(cancelUrl, {
-                    method: 'POST',
-                    headers: {
-                        'X-Requested-With': 'XMLHttpRequest',
-                        'Content-Type': 'application/json',
-                    },
-                    credentials: 'same-origin'
-                })
-                .then(function(response) {
-                    if (!response.ok) {
-                        return response.text().then(function(text) {
-                            throw new Error('HTTP ' + response.status + ': ' + text);
-                        });
-                    }
-                    return response.json();
-                })
-                .then(function(data) {
-                    if (data.success) {
-                        Platform.toast.success('Job cancelled successfully');
-                        updateSyncStatus(); // Refresh status immediately
-                    } else {
-                        Platform.toast.error('Failed to cancel job: ' + data.message);
-                    }
-                })
-                .catch(function(error) {
-                    console.error('Error cancelling job:', error);
-                    Platform.toast.error('Error cancelling job: ' + error.message);
-                });
+                // Use Platform.fetch.post which automatically injects CSRF and serializes body.
+                // No need for manual headers or JSON.stringify.
+                Platform.fetch.post(cancelUrl, null, { silent: false })
+                    .then(function(data) {
+                        if (data.success) {
+                            Platform.toast.success('Job cancelled successfully');
+                            updateSyncStatus(); // Refresh status immediately
+                        } else {
+                            Platform.toast.error('Failed to cancel job: ' + data.message);
+                        }
+                    })
+                    .catch(function(error) {
+                        // Platform.fetch already shows a toast unless silent:true, but we want to show error.
+                        // Since we didn't pass silent:true, a toast is already shown; we can still surface via UI if needed.
+                        // However, we must not swallow the error; it's already thrown and handled by Platform.fetch.
+                        // We'll re-throw to propagate, but the catch is required to avoid unhandled rejection.
+                        // The error is already surfaced to the user via toast, so we don't need additional console.
+                        throw error;
+                    });
             } }
         ]
     });
@@ -180,51 +167,47 @@ function cancelCurrentJob() {
 
 // Update imported data counts
 function updateImportedDataCounts() {
-    fetch('/admin/abacus-settings/stats', {
-        method: 'GET',
-        headers: {
-            'X-Requested-With': 'XMLHttpRequest',
-            'Content-Type': 'application/json',
-        },
-    })
-    .then(function(response) { if (!response.ok) throw new Error('HTTP ' + response.status); return response.json(); })
-    .then(function(data) {
-        if (data.success) {
-            window._abacusStatsErrorShown = false;
-            // Update applications count
-            let appsCount = data.applications || 0;
-            let appsCountEl = document.getElementById('imported-apps-count');
-            let appsProgressEl = document.getElementById('apps-progress');
-            if (appsCountEl) {
-                appsCountEl.textContent = appsCount;
-                if (appsProgressEl) {
-                    let percentage = Math.min(100, Math.max(1, (appsCount / 100) * 100));
-                    appsProgressEl.style.width = percentage + '%';
+    // Use Platform.fetch.get which throws on non-ok responses; we handle errors inline.
+    Platform.fetch.get('/admin/abacus-settings/stats', null, { silent: true })
+        .then(function(data) {
+            if (data.success) {
+                window._abacusStatsErrorShown = false;
+                // Update applications count
+                let appsCount = data.applications || 0;
+                let appsCountEl = document.getElementById('imported-apps-count');
+                let appsProgressEl = document.getElementById('apps-progress');
+                if (appsCountEl) {
+                    appsCountEl.textContent = appsCount;
+                    if (appsProgressEl) {
+                        let percentage = Math.min(100, Math.max(1, (appsCount / 100) * 100));
+                        appsProgressEl.style.width = percentage + '%';
+                    }
                 }
-            }
 
-            // Update capabilities count
-            let capsCount = data.capabilities || 0;
-            let capsCountEl = document.getElementById('imported-caps-count');
-            let capsProgressEl = document.getElementById('caps-progress');
-            if (capsCountEl) {
-                capsCountEl.textContent = capsCount;
-                if (capsProgressEl) {
-                    let capPercentage = Math.min(100, Math.max(1, (capsCount / 50) * 100));
-                    capsProgressEl.style.width = capPercentage + '%';
+                // Update capabilities count
+                let capsCount = data.capabilities || 0;
+                let capsCountEl = document.getElementById('imported-caps-count');
+                let capsProgressEl = document.getElementById('caps-progress');
+                if (capsCountEl) {
+                    capsCountEl.textContent = capsCount;
+                    if (capsProgressEl) {
+                        let capPercentage = Math.min(100, Math.max(1, (capsCount / 50) * 100));
+                        capsProgressEl.style.width = capPercentage + '%';
+                    }
                 }
             }
-        }
-    })
-    .catch(function(error) {
-        console.error('Error fetching Abacus stats:', error);
-        // Polled every 10s — toast once per outage, not on every retry, and reset
-        // so a later outage (not just recovery) can surface again.
-        if (!window._abacusStatsErrorShown) {
-            window._abacusStatsErrorShown = true;
-            if (window.Platform && Platform.toast) Platform.toast.error('Could not refresh imported data counts.');
-        }
-    });
+        })
+        .catch(function(error) {
+            // Platform.fetch throws a structured PlatformError; we paint inline error state.
+            // silent:true prevents duplicate toast, but we still show error via toast once per outage.
+            // Polled every 10s — toast once per outage, not on every retry, and reset
+            // so a later outage (not just recovery) can surface again.
+            if (!window._abacusStatsErrorShown) {
+                window._abacusStatsErrorShown = true;
+                if (window.Platform && Platform.toast) Platform.toast.error('Could not refresh imported data counts.');
+            }
+            // Surfaced to the user by the toast below; a console line would tell nobody.
+        });
 }
 
 // Start polling when page loads

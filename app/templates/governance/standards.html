@@ -28,8 +28,7 @@
   var body=document.getElementById('gov-rows');
   function empty(msg){ body.innerHTML='<tr><td colspan="4" class="px-4 py-10 text-center text-muted-foreground">'+msg+'</td></tr>'; }
   function error(msg){ body.innerHTML='<tr><td colspan="4" class="px-4 py-10 text-center text-destructive-emphasis">'+msg+'</td></tr>'; }
-  fetch('/governance/api/standards',{headers:{'Accept':'application/json'}})
-    .then(function(r){ if(!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+  Platform.fetch.get('/governance/api/standards', null, { headers: { 'Accept': 'application/json' }, silent: true })
     .then(function(items){
       if(!items || !items.length){ empty('No technology standards defined yet.'); return; }
       body.innerHTML=items.map(function(s){
@@ -40,7 +39,11 @@
           +'<td class="px-4 py-3 text-muted-foreground">'+esc(s.version||'')+'</td></tr>';
       }).join('');
     })
-    .catch(function(){ error('Could not load technology standards — the request failed.'); });
+    .catch(function(err){ 
+      // The call site already paints its own inline error state, so we pass silent:true to avoid duplicate toast.
+      // Platform.fetch throws on non-ok responses, so we handle the error here.
+      error('Could not load technology standards — the request failed.');
+    });
 })();
 </script>
 {% endblock %}

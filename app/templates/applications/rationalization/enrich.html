@@ -1,4 +1,5 @@
 {% extends "layouts/admin_base.html" %}
+{% from 'macros/page_shell.html' import page_shell %}
 {% block title %}Data Enrichment — Rationalization{% endblock %}
 
 {% block content %}
@@ -16,12 +17,7 @@
     </nav>
 
     {# ── Page Header ──────────────────────────────────────────────── #}
-    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-        <div>
-            <h1 class="text-2xl font-bold tracking-tight text-foreground">Data Enrichment</h1>
-            <p class="text-sm text-muted-foreground mt-1">Add cost, ownership, and criticality data to improve rationalization scoring</p>
-        </div>
-    </div>
+    {{ page_shell(title='Data Enrichment', subtitle='Add cost, ownership, and criticality data to improve rationalization scoring') }}
 
     {# ── Sub-Navigation ───────────────────────────────────────────── #}
     {% include 'applications/rationalization/_sub_nav.html' %}
@@ -171,14 +167,8 @@ function enrichmentApp() {
             self.loading = true;
             self.error = false;
 
-            fetch('/applications/rationalization/api/enrich-candidates?limit=50', {
-                headers: { 'Accept': 'application/json' }
-            })
-            .then(function(r) {
-                if (!r.ok) throw new Error('HTTP ' + r.status);
-                return r.json();
-            })
-            .then(function(data) {
+            try {
+                const data = await Platform.fetch.get('/applications/rationalization/api/enrich-candidates?limit=50', null, { silent: true });
                 self.apps = (data.applications || []).map(function(app) {
                     app._dirty = false;
                     app._saving = false;
@@ -192,15 +182,14 @@ function enrichmentApp() {
                 self.$nextTick(function() {
                     if (window.lucide) window.lucide.createIcons();
                 });
-            })
-            .catch(function(err) {
-                console.error('Enrich load failed:', err);
+            } catch (err) {
                 self.loading = false;
                 self.error = true;
-            });
+                // The error is already surfaced by the inline error state; no need for a toast.
+            }
         },
 
-        saveApp: function(app) {
+        saveApp: async function(app) {
             const self = this;
             app._saving = true;
 
@@ -209,16 +198,8 @@ function enrichmentApp() {
             if (app.application_owner) payload.application_owner = app.application_owner;
             if (app.business_criticality) payload.business_criticality = app.business_criticality;
 
-            fetch('/applications/rationalization/api/enrich/' + app.id, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': csrfToken
-                },
-                body: JSON.stringify(payload)
-            })
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
+            try {
+                const data = await Platform.fetch.post('/applications/rationalization/api/enrich/' + app.id, payload, { silent: true });
                 app._saving = false;
                 if (data.success) {
                     app._dirty = false;
@@ -227,28 +208,18 @@ function enrichmentApp() {
                 } else {
                     Platform.toast.error('Save failed: ' + (data.error || 'Unknown error'));
                 }
-            })
-            .catch(function(err) {
+            } catch (err) {
                 app._saving = false;
-                console.error('Save failed:', err);
-                Platform.toast.error('Save request failed.');
-            });
+                Platform.toast.error('Save request failed: ' + (err.message || err));
+            }
         },
 
-        rescoreApp: function(app) {
+        rescoreApp: async function(app) {
             app._rescoring = true;
             app._rescored = false;
 
-            fetch('/applications/rationalization/api/score/' + app.id, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': csrfToken
-                },
-                body: JSON.stringify({})
-            })
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
+            try {
+                const data = await Platform.fetch.post('/applications/rationalization/api/score/' + app.id, {}, { silent: true });
                 app._rescoring = false;
                 if (data.success || data.score) {
                     const score = data.score || data;
@@ -260,12 +231,10 @@ function enrichmentApp() {
                 } else {
                     Platform.toast.error('Re-score failed: ' + (data.error || 'Unknown error'));
                 }
-            })
-            .catch(function(err) {
+            } catch (err) {
                 app._rescoring = false;
-                console.error('Re-score failed:', err);
-                Platform.toast.error('Re-score request failed.');
-            });
+                Platform.toast.error('Re-score request failed: ' + (err.message || err));
+            }
         }
     };
 }

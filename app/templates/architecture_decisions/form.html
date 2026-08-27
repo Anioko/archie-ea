@@ -168,7 +168,7 @@ function elementPicker() {
         searchQuery: '',
         searchResults: [],
         searchError: null,
-        selectedElements: {{ (selected_elements | map(attribute='id') | list | tojson) if selected_elements else '[]' }}.map ? [] : [],
+        selectedElements: [],
 
         init() {
             {% if selected_elements %}
@@ -188,18 +188,21 @@ function elementPicker() {
             if (this.searchQuery.length < 2) { this.searchResults = []; return; }
             try {
                 // Canonical element search (the old /architecture/decisions/api/element-search route no longer exists)
-                const resp = await fetch(`/archimate/api/elements/search?q=${encodeURIComponent(this.searchQuery)}&limit=20`);
-                if (!resp.ok) throw new Error('Element search failed (HTTP ' + resp.status + ')');
-                const payload = await resp.json();
-                const data = Array.isArray(payload) ? payload : (payload.data || []);
-                this.searchResults = data
+                const data = await Platform.fetch.get(`/archimate/api/elements/search?q=${encodeURIComponent(this.searchQuery)}&limit=20`, { silent: true });
+                // Platform.fetch.get returns parsed data directly; it throws on non-ok responses.
+                // The endpoint returns either an array or an object with a data property.
+                const payload = Array.isArray(data) ? data : (data.data || []);
+                this.searchResults = payload
                     .map(el => ({ id: el.id, name: el.name, layer: el.layer || '', element_type: el.element_type || el.type || '' }))
                     .filter(el => !this.selectedIds.includes(el.id));
                 this.searchError = null;
             } catch (e) {
                 // Debounced typeahead: an inline message, not a toast on every keystroke.
+                // Platform.fetch already shows a toast unless silent:true, but we passed silent:true.
+                // We still need to surface the error inline, not swallow it.
                 this.searchResults = [];
                 this.searchError = e.message || 'Element search failed';
+                // Do NOT add console calls (forbidden). The error is already visible via searchError.
             }
         },
 

@@ -36,14 +36,10 @@ function aiChatAnalytics() {
       this.error = null;
       try {
         let url = "/ai-chat/admin/analytics/data?days=" + encodeURIComponent(this.days);
-        let resp = await fetch(url, {
-          credentials: "same-origin",
-          headers: { "X-Requested-With": "XMLHttpRequest" },
-        });
-        if (!resp.ok) {
-          throw new Error("Server returned " + resp.status);
-        }
-        let json = await resp.json();
+        // Platform.fetch returns parsed JSON directly, throws on non‑ok.
+        // It injects CSRF token automatically for mutating methods (not needed here).
+        // We pass { silent: true } because we paint our own inline error state.
+        let json = await Platform.fetch.get(url, null, { silent: true });
         // Ensure nested objects exist so templates never access properties of null
         json.feedback_summary = json.feedback_summary || { total_positive: 0, total_negative: 0, by_domain: {} };
         json.feedback_summary.by_domain = json.feedback_summary.by_domain || {};
@@ -54,6 +50,8 @@ function aiChatAnalytics() {
         json.top_templates = json.top_templates || [];
         this.data = json;
       } catch (err) {
+        // Platform.fetch throws a structured PlatformError; we preserve the existing
+        // inline error painting, never swallow the failure.
         this.error = "Failed to load analytics: " + err.message;
       } finally {
         this.loading = false;

@@ -223,20 +223,14 @@
                          this.archRejected = new Set();
                          this.archSelected = new Set();
                          try {
-                             const r = await fetch('/solutions/' + this.archSid + '/ai/suggest-archimate', {
-                                 method: 'POST', credentials: 'same-origin',
-                                 headers: { 'Content-Type': 'application/json',
-                                            'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || '' },
-                                 body: JSON.stringify({})
-                             });
-                             const d = await r.json();
-                             if (d.success) {
-                                 this.archSuggestions = d.suggestions || [];
-                                 this.archReasoningStateId = d.reasoning_state_id;
-                             }
+                             const d = await Platform.fetch.post('/solutions/' + this.archSid + '/ai/suggest-archimate', {}, { silent: true });
+                             // A 200 carrying success:false used to fall through silently,
+                             // leaving the button looking dead. Treat it as the failure it is.
+                             if (!d || !d.success) throw new Error((d && (d.error || d.message)) || 'Failed to generate ArchiMate suggestions');
+                             this.archSuggestions = d.suggestions || [];
+                             this.archReasoningStateId = d.reasoning_state_id;
                          } catch (e) {
-                             console.warn('[ENT-074] suggest-archimate error:', e);
-                             if (window.Platform && Platform.toast) Platform.toast.error('Failed to generate ArchiMate suggestions');
+                             if (window.Platform && Platform.toast) Platform.toast.error(e.message || 'Failed to generate ArchiMate suggestions');
                          }
                          this.archLoading = false;
                          if (typeof lucide !== 'undefined') this.$nextTick(() => lucide.createIcons());
@@ -255,17 +249,14 @@
                              reasoning_state_id: this.archReasoningStateId
                          };
                          try {
-                             const r = await fetch('/solutions/' + this.archSid + '/ai/accept-suggestion', {
-                                 method: 'POST', credentials: 'same-origin',
-                                 headers: { 'Content-Type': 'application/json',
-                                            'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || '' },
-                                 body: JSON.stringify(body)
-                             });
-                             const d = await r.json();
-                             if (d.success) { this.archAccepted.add(idx); this.archEditIdx = null; }
+                             const d = await Platform.fetch.post('/solutions/' + this.archSid + '/ai/accept-suggestion', body, { silent: true });
+                             // A 200 carrying success:false used to leave the row unmarked
+                             // with no message - the accept button read as dead.
+                             if (!d || !d.success) throw new Error((d && (d.error || d.message)) || 'Failed to accept suggestion');
+                             this.archAccepted.add(idx);
+                             this.archEditIdx = null;
                          } catch (e) {
-                             console.warn('[ENT-074] accept error:', e);
-                             if (window.Platform && Platform.toast) Platform.toast.error('Failed to accept suggestion');
+                             if (window.Platform && Platform.toast) Platform.toast.error(e.message || 'Failed to accept suggestion');
                          }
                          this.archAcceptingIdx = null;
                      },
@@ -274,16 +265,10 @@
                          const s = this.archSuggestions[idx];
                          if (!s || this.archAccepted.has(idx) || this.archRejected.has(idx)) return;
                          try {
-                             await fetch('/solutions/' + this.archSid + '/ai/reject-suggestion', {
-                                 method: 'POST', credentials: 'same-origin',
-                                 headers: { 'Content-Type': 'application/json',
-                                            'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || '' },
-                                 body: JSON.stringify({ suggestion_id: s.suggestion_id, reasoning_state_id: this.archReasoningStateId })
-                             });
+                             await Platform.fetch.post('/solutions/' + this.archSid + '/ai/reject-suggestion', { suggestion_id: s.suggestion_id, reasoning_state_id: this.archReasoningStateId }, { silent: true });
                              this.archRejected.add(idx);
                          } catch (e) {
-                             console.warn('[ENT-074] reject error:', e);
-                             if (window.Platform && Platform.toast) Platform.toast.error('Failed to reject suggestion');
+                             if (window.Platform && Platform.toast) Platform.toast.error(e.message || 'Failed to reject suggestion');
                          }
                      },
 
@@ -317,24 +302,18 @@
                          if (!items.length) return;
                          this.archLoading = true;
                          try {
-                             const r = await fetch('/solutions/' + this.archSid + '/ai/bulk-accept', {
-                                 method: 'POST', credentials: 'same-origin',
-                                 headers: { 'Content-Type': 'application/json',
-                                            'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || '' },
-                                 body: JSON.stringify({ suggestions: items, reasoning_state_id: this.archReasoningStateId })
+                             const d = await Platform.fetch.post('/solutions/' + this.archSid + '/ai/bulk-accept', { suggestions: items, reasoning_state_id: this.archReasoningStateId }, { silent: true });
+                             // A 200 carrying success:false used to leave every selected row
+                             // untouched with no message - indistinguishable from a no-op.
+                             if (!d || !d.success) throw new Error((d && (d.error || d.message)) || 'Failed to accept selected suggestions');
+                             const acceptedIds = new Set((d.accepted || []).map(a => a.suggestion_id));
+                             this.archSelected.forEach(idx => {
+                                 const s = this.archSuggestions[idx];
+                                 if (acceptedIds.has(s.suggestion_id)) this.archAccepted.add(idx);
                              });
-                             const d = await r.json();
-                             if (d.success) {
-                                 const acceptedIds = new Set((d.accepted || []).map(a => a.suggestion_id));
-                                 this.archSelected.forEach(idx => {
-                                     const s = this.archSuggestions[idx];
-                                     if (acceptedIds.has(s.suggestion_id)) this.archAccepted.add(idx);
-                                 });
-                                 this.archSelected = new Set();
-                             }
+                             this.archSelected = new Set();
                          } catch (e) {
-                             console.warn('[ENT-074] bulk-accept error:', e);
-                             if (window.Platform && Platform.toast) Platform.toast.error('Failed to accept selected suggestions');
+                             if (window.Platform && Platform.toast) Platform.toast.error(e.message || 'Failed to accept selected suggestions');
                          }
                          this.archLoading = false;
                      },
@@ -542,19 +521,13 @@
                          this.relChatProposals = [];
                          this.relChatUnresolved = [];
                          try {
-                             const r = await fetch('/api/solutions/' + this.relSid + '/relationships/extract', {
-                                 method: 'POST', credentials: 'same-origin',
-                                 headers: {'Content-Type': 'application/json'},
-                                 body: JSON.stringify({message: this.relChatMsg})
-                             });
-                             const d = await r.json();
-                             if (!r.ok) { this.relChatError = d.error || 'Extraction failed'; return; }
+                             const d = await Platform.fetch.post('/api/solutions/' + this.relSid + '/relationships/extract', { message: this.relChatMsg }, { silent: true });
                              this.relChatProposals = (d.proposals || []).map(p => ({...p, checked: (p.confidence || 0) >= 80}));
                              this.relChatUnresolved = d.unresolved || [];
                              if (this.relChatProposals.length === 0 && this.relChatUnresolved.length === 0) {
                                  this.relChatError = 'No relationships could be extracted. Try being more specific about element names.';
                              }
-                         } catch(e) { this.relChatError = e.message; }
+                         } catch(e) { this.relChatError = e.message || 'Extraction failed'; }
                          finally { this.relChatLoading = false; }
                      },
 
@@ -570,19 +543,14 @@
                          let failCount = 0;
                          for (const p of sel) {
                              try {
-                                 const r = await fetch('/api/solutions/' + this.relSid + '/relationships', {
-                                     method: 'POST', credentials: 'same-origin',
-                                     headers: {'Content-Type': 'application/json'},
-                                     body: JSON.stringify({
-                                         source_element_id: p.source_element_id,
-                                         target_element_id: p.target_element_id,
-                                         relationship_type: p.relationship_type
-                                     })
-                                 });
-                                 if (!r.ok) throw new Error('HTTP ' + r.status);
+                                 await Platform.fetch.post('/api/solutions/' + this.relSid + '/relationships', {
+                                     source_element_id: p.source_element_id,
+                                     target_element_id: p.target_element_id,
+                                     relationship_type: p.relationship_type
+                                 }, { silent: true });
                                  succeeded.push(p);
                              } catch(e) {
-                                 console.warn('[ENT-095] failed to create relationship', e);
+                                 // Counted, then surfaced in the aggregate toast below.
                                  failCount++;
                              }
                          }
@@ -691,9 +659,7 @@
                          if (this.bpLoaded || this.bpLoading || !this.bpSid) return;
                          this.bpLoading = true;
                          try {
-                             const r = await fetch('/api/solutions/' + this.bpSid + '/chief-packet', { credentials: 'same-origin' });
-                             if (!r.ok) throw new Error('the synthesis could not be generated (HTTP ' + r.status + ')');
-                             this.bpData = await r.json();
+                             this.bpData = await Platform.fetch('/api/solutions/' + this.bpSid + '/chief-packet', { silent: true, errorMsg: 'the synthesis could not be generated' });
                              this.bpLoaded = true;
                              this.bpError = null;
                          } catch(e) {

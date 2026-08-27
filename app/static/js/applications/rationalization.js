@@ -97,25 +97,20 @@ function setupAppAutocomplete(searchInputId, hiddenInputId, dropdownId, onSelect
     abortController = new AbortController();
     try {
       let url = '/api/enterprise/applications?search=' + encodeURIComponent(query) + '&limit=10';
-      let response = await fetch(url, {
-        method: 'GET',
-        credentials: 'same-origin',
-        headers: { 'X-Requested-With': 'XMLHttpRequest' },
-        signal: abortController.signal
+      // silent: this paints its own inline failure state below, so the global
+      // error toast would be a duplicate.
+      let data = await Platform.fetch.get(url, null, {
+        signal: abortController.signal,
+        silent: true
       });
-      if (!response.ok) {
-        safeHTML(dropdown, '<div class="px-3 py-2 text-sm text-destructive">Search failed. Please try again.</div>');
-        dropdown.classList.remove('hidden');
-        return;
-      }
-      let data = await response.json();
       renderItems(data.applications || []);
     } catch (err) {
       if (err.name === 'AbortError') return;
-      console.error('Autocomplete error:', err);
-      /* The !response.ok branch above paints "Search failed"; a network failure used
-         to paint nothing, leaving the previous query's results (or an empty dropdown)
-         on screen as though they were the answer for what was just typed. */
+      /* Platform.fetch throws on both a network failure and a non-ok response, so
+         this one branch now covers what used to be two. Painting "Search failed"
+         here is load-bearing: a network failure used to paint nothing, leaving the
+         previous query's results (or an empty dropdown) on screen as though they
+         were the answer for what was just typed. */
       safeHTML(dropdown, '<div class="px-3 py-2 text-sm text-destructive">Search failed. Please try again.</div>');
       dropdown.classList.remove('hidden');
     }
@@ -247,22 +242,10 @@ async function runDetection() {
   resultsDiv.classList.add('hidden');
 
   try {
-    let response = await fetch(APP_CONFIG.runDetectionUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-CSRFToken': getCSRFToken()
-      },
-      body: JSON.stringify({
-        method: selectedStrategy,
-        threshold: parseInt((thresholdSlider || {}).value || '80') / 100
-      })
+    let data = await Platform.fetch.post(APP_CONFIG.runDetectionUrl, {
+      method: selectedStrategy,
+      threshold: parseInt((thresholdSlider || {}).value || '80') / 100
     });
-
-    if (!response.ok) {
-      throw new Error('Detection request failed (HTTP ' + response.status + ')');
-    }
-    let data = await response.json();
 
     if (data.success) {
       // Update strategy name
@@ -311,7 +294,6 @@ async function runDetection() {
       showToast('Detection failed: ' + (data.error || 'Unknown error'), 'error');
     }
   } catch (error) {
-    console.error('Detection error:', error);
     showToast('Detection failed: ' + error.message, 'error');
   } finally {
     btn.disabled = false;
@@ -339,18 +321,7 @@ async function _doAutoResolveExact() {
   setButtonLoading(btn, true, 'Resolving...');
 
   try {
-    let response = await fetch(APP_CONFIG.autoResolveUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-CSRFToken': getCSRFToken()
-      }
-    });
-
-    if (!response.ok) {
-      throw new Error('Auto-resolve request failed (HTTP ' + response.status + ')');
-    }
-    let data = await response.json();
+    let data = await Platform.fetch.post(APP_CONFIG.autoResolveUrl);
 
     if (data.success) {
       showToast('Auto-Resolve Complete: ' + data.resolved_count + ' exact match groups resolved', 'success');
@@ -361,7 +332,6 @@ async function _doAutoResolveExact() {
       showToast('Error: ' + (data.error || 'Unknown error'), 'error');
     }
   } catch (error) {
-    console.error('Error in auto-resolve:', error);
     showToast('Failed to auto-resolve: ' + error.message, 'error');
   } finally {
     setButtonLoading(btn, false);
@@ -374,19 +344,7 @@ async function scorePortfolio() {
   setButtonLoading(btn, true, 'Scoring...');
 
   try {
-    let response = await fetch(APP_CONFIG.scorePortfolioUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-CSRFToken': getCSRFToken()
-      },
-      body: JSON.stringify({ force_recalculate: false })
-    });
-
-    if (!response.ok) {
-      throw new Error('Portfolio scoring request failed (HTTP ' + response.status + ')');
-    }
-    let data = await response.json();
+    let data = await Platform.fetch.post(APP_CONFIG.scorePortfolioUrl, { force_recalculate: false });
 
     if (data.success) {
       let scored = (data.data && data.data.total_scored) || 0;
@@ -396,7 +354,6 @@ async function scorePortfolio() {
       showToast('Error: ' + (data.error || 'Unknown error'), 'error');
     }
   } catch (error) {
-    console.error('Error scoring portfolio:', error);
     showToast('Failed to score portfolio: ' + error.message, 'error');
   } finally {
     setButtonLoading(btn, false);
@@ -539,21 +496,10 @@ async function checkRetirementBlockers() {
   try {
     // Fire both the dependency-level check (existing) and the new authoritative
     // 5-category assessment (RAT-109) in parallel for a complete picture.
-    let [response, assessResponse] = await Promise.all([
-      fetch('/dashboard/api/rationalization/retirement-blockers/' + appId, {
-        method: 'GET',
-        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCSRFToken() }
-      }),
-      fetch('/applications/rationalization/api/retirement-blockers/' + appId, {
-        method: 'GET',
-        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCSRFToken() }
-      })
+    let [result, assessResult] = await Promise.all([
+      Platform.fetch.get('/dashboard/api/rationalization/retirement-blockers/' + appId, null, { silent: true }),
+      Platform.fetch.get('/applications/rationalization/api/retirement-blockers/' + appId, null, { silent: true })
     ]);
-
-    if (!response.ok) {
-      throw new Error('Retirement blockers request failed (HTTP ' + response.status + ')');
-    }
-    let result = await response.json();
 
     if (!result.success) {
       showToast('Error: ' + (result.error || 'Unknown error'), 'error');
@@ -561,18 +507,11 @@ async function checkRetirementBlockers() {
     }
 
     // Render the RAT-109 category assessment if the container is present
-    if (assessResponse.ok) {
-      let assessResult = await assessResponse.json();
-      if (assessResult.success && assessResult.data) {
-        renderRetirementBlockers(assessResult.data, 'retirement-blocker-assessment');
-        // Reveal the assessment container
-        let assessContainer = document.getElementById('retirement-blocker-assessment-wrapper');
-        if (assessContainer) assessContainer.classList.remove('hidden');
-      }
-    } else {
-      // Non-fatal: the primary blocker analysis above already succeeded and renders;
-      // this secondary category assessment panel just stays hidden.
-      console.warn('Retirement blocker assessment unavailable: HTTP ' + assessResponse.status);
+    if (assessResult.success && assessResult.data) {
+      renderRetirementBlockers(assessResult.data, 'retirement-blocker-assessment');
+      // Reveal the assessment container
+      let assessContainer = document.getElementById('retirement-blocker-assessment-wrapper');
+      if (assessContainer) assessContainer.classList.remove('hidden');
     }
 
     let data = result.data;
@@ -668,7 +607,6 @@ async function checkRetirementBlockers() {
     }
 
   } catch (error) {
-    console.error('Error checking blockers:', error);
     showToast('Failed to check retirement blockers: ' + error.message, 'error');
   } finally {
     setButtonLoading(btn, false);
@@ -687,18 +625,7 @@ async function checkBlastRadius() {
   setButtonLoading(blastBtn, true, 'Analyzing...');
 
   try {
-    let response = await fetch('/dashboard/api/rationalization/blast-radius/' + appId + '?depth=3', {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-CSRFToken': getCSRFToken()
-      }
-    });
-
-    if (!response.ok) {
-      throw new Error('Blast radius request failed (HTTP ' + response.status + ')');
-    }
-    let result = await response.json();
+    let result = await Platform.fetch.get('/dashboard/api/rationalization/blast-radius/' + appId + '?depth=3', null, { silent: true });
 
     if (!result.success) {
       showToast('Error: ' + (result.error || 'Unknown error'), 'error');
@@ -783,7 +710,6 @@ async function checkBlastRadius() {
     }
 
   } catch (error) {
-    console.error('Error checking blast radius:', error);
     showToast('Failed to check blast radius: ' + error.message, 'error');
   } finally {
     setButtonLoading(blastBtn, false);
@@ -978,18 +904,7 @@ async function analyzeOptions() {
 
   try {
     // First, get the application's rationalization score to understand its current state
-    let scoreResponse = await fetch('/dashboard/api/rationalization/calculate/' + appId, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-CSRFToken': getCSRFToken()
-      }
-    });
-
-    if (!scoreResponse.ok) {
-      throw new Error('Score calculation failed (HTTP ' + scoreResponse.status + ')');
-    }
-    let scoreData = await scoreResponse.json();
+    let scoreData = await Platform.fetch.post('/dashboard/api/rationalization/calculate/' + appId);
     if (!scoreData.success) {
       throw new Error(scoreData.error || 'Failed to get application score');
     }
@@ -1003,39 +918,25 @@ async function analyzeOptions() {
     // Call options analysis API (may return 503 if engine not available)
     let useLocalFallback = false;
     try {
-      let response = await fetch('/dashboard/api/rationalization/options-analysis/' + appId, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRFToken': getCSRFToken()
+      let data = await Platform.fetch.post('/dashboard/api/rationalization/options-analysis/' + appId, {
+        requirements: {
+          business_criticality: appScore.business_score > 70 ? 'HIGH' : appScore.business_score > 40 ? 'MEDIUM' : 'LOW',
+          current_technical_score: appScore.technical_score,
+          current_cost_score: appScore.cost_score,
+          time_action: timeAction
         },
-        body: JSON.stringify({
-          requirements: {
-            business_criticality: appScore.business_score > 70 ? 'HIGH' : appScore.business_score > 40 ? 'MEDIUM' : 'LOW',
-            current_technical_score: appScore.technical_score,
-            current_cost_score: appScore.cost_score,
-            time_action: timeAction
-          },
-          options: options
-        })
+        options: options
       });
 
-      if (!response.ok) {
-        // Service unavailable (503) or other error — use local analysis
-        useLocalFallback = true;
+      if (data.success && data.data && data.data.results) {
+        displayOptionsResults(appId, data.data, appScore);
+      } else if (data.success && data.data) {
+        displayOptionsResults(appId, { results: [data.data] }, appScore);
       } else {
-        let data = await response.json();
-
-        if (data.success && data.data && data.data.results) {
-          displayOptionsResults(appId, data.data, appScore);
-        } else if (data.success && data.data) {
-          displayOptionsResults(appId, { results: [data.data] }, appScore);
-        } else {
-          useLocalFallback = true;
-        }
+        useLocalFallback = true;
       }
     } catch (fetchError) {
-      console.warn('Options analysis API unavailable, using local estimates:', fetchError.message);
+      // Platform.fetch throws on network or HTTP error — use local analysis
       useLocalFallback = true;
     }
 
@@ -1044,7 +945,6 @@ async function analyzeOptions() {
     }
 
   } catch (error) {
-    console.error('Error analyzing options:', error);
     // Only show error fallback if score calculation itself failed
     displayFallbackOptions(appId, error.message);
   } finally {
@@ -1686,14 +1586,7 @@ async function loadAndRenderEvidenceTrail(appId, containerId) {
   );
 
   try {
-    let response = await fetch(
-      '/applications/rationalization/api/evidence-trail/' + appId,
-      { method: 'GET', credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' } }
-    );
-    if (!response.ok) {
-      throw new Error('HTTP ' + response.status);
-    }
-    let data = await response.json();
+    let data = await Platform.fetch.get('/applications/rationalization/api/evidence-trail/' + appId, null, { silent: true });
     if (!data.success) {
       throw new Error(data.error || 'Unknown error');
     }
@@ -1969,14 +1862,7 @@ async function loadPortfolioDependencies(page) {
   if (loadBtn) { loadBtn.disabled = true; }
 
   try {
-    let response = await fetch(url, {
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCSRFToken() }
-    });
-    if (!response.ok) {
-      throw new Error('Portfolio dependencies request failed (HTTP ' + response.status + ')');
-    }
-    let result = await response.json();
+    let result = await Platform.fetch.get(url, null, { silent: true });
     if (!result.success) {
       throw new Error(result.error || 'Unknown error');
     }
@@ -2006,25 +1892,17 @@ async function loadPortfolioDependencies(page) {
       let appIds = result.apps.map(function(a) { return a.app_id; });
       let readinessBaseUrl = APP_CONFIG.portfolioReadinessUrl || '/applications/rationalization/api/portfolio-readiness';
       let readinessUrl = readinessBaseUrl + '?per_page=100';
-      let rResp = await fetch(readinessUrl, {
-        method: 'GET',
-        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCSRFToken() }
-      });
-      if (rResp.ok) {
-        let rData = await rResp.json();
-        if (rData.success && rData.apps) {
-          rData.apps.forEach(function(ra) {
-            if (appIds.indexOf(ra.app_id) !== -1) {
-              readinessByAppId[ra.app_id] = ra;
-            }
-          });
-        }
-      } else {
-        console.warn('Portfolio readiness unavailable: HTTP ' + rResp.status);
+      let rData = await Platform.fetch.get(readinessUrl, null, { silent: true });
+      if (rData.success && rData.apps) {
+        rData.apps.forEach(function(ra) {
+          if (appIds.indexOf(ra.app_id) !== -1) {
+            readinessByAppId[ra.app_id] = ra;
+          }
+        });
       }
     } catch (_e) {
       // Non-fatal: table renders without readiness column if fetch fails
-      console.warn('Portfolio readiness fetch failed:', _e);
+      // Platform.fetch already logged the error; we just proceed without readiness data
     }
 
     // Build table rows
@@ -2102,7 +1980,6 @@ async function loadPortfolioDependencies(page) {
   } catch (error) {
     if (elLoading) elLoading.classList.add('hidden');
     if (elEmpty) elEmpty.classList.remove('hidden');
-    console.error('Error loading portfolio dependencies:', error);
     showToast('Failed to load dependency risk data: ' + error.message, 'error');
   } finally {
     if (loadBtn) { loadBtn.disabled = false; }
@@ -2139,14 +2016,7 @@ async function loadDependencyImpact(appId, appName) {
   panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 
   try {
-    let response = await fetch(url, {
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCSRFToken() }
-    });
-    if (!response.ok) {
-      throw new Error('Dependency impact request failed (HTTP ' + response.status + ')');
-    }
-    let result = await response.json();
+    let result = await Platform.fetch.get(url, null, { silent: true });
     if (!result.success) {
       throw new Error(result.error || 'Unknown error');
     }
@@ -2262,7 +2132,6 @@ async function loadDependencyImpact(appId, appName) {
         '<p class="text-sm mt-1">' + escapeHtml(error.message) + '</p>' +
       '</div>'
     );
-    console.error('Error loading dependency impact:', error);
     showToast('Failed to load dependency impact: ' + error.message, 'error');
   }
 }
@@ -2305,12 +2174,7 @@ async function loadReadinessSummary() {
   try {
     APP_CONFIG = window.__APP_CONFIG__ || {};
     let baseUrl = APP_CONFIG.portfolioReadinessUrl || '/applications/rationalization/api/portfolio-readiness';
-    let response = await fetch(baseUrl + '?per_page=1', {
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCSRFToken() }
-    });
-    if (!response.ok) return;
-    let data = await response.json();
+    let data = await Platform.fetch.get(baseUrl + '?per_page=1', null, { silent: true });
     if (!data.success || !data.summary) return;
     let summary = data.summary;
     let readyEl = document.getElementById('readiness-ready-count');
@@ -2527,14 +2391,7 @@ async function loadRetirementSequence() {
   try {
     APP_CONFIG = window.__APP_CONFIG__ || {};
     let url = APP_CONFIG.retirementSequenceUrl || '/applications/rationalization/api/retirement-sequence';
-    let response = await fetch(url, {
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCSRFToken() }
-    });
-    if (!response.ok) {
-      throw new Error('HTTP ' + response.status);
-    }
-    let data = await response.json();
+    let data = await Platform.fetch.get(url, null, { silent: true });
     renderRetirementSequence(data, 'retirement-sequence-container');
   } catch (err) {
     safeHTML(container,
@@ -2543,7 +2400,6 @@ async function loadRetirementSequence() {
         '<p class="text-xs text-muted-foreground mt-1">' + escapeHtml(err.message) + '</p>' +
       '</div>'
     );
-    console.error('loadRetirementSequence error:', err);
   }
 }
 
@@ -2692,20 +2548,8 @@ function renderWorkbenchTable(data, containerId) {
  * @returns {Promise<Object>} — parsed JSON response
  */
 function executeBulkReview(appIds, action, notes) {
-  const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content ||
-                    document.cookie.match(/csrf_token=([^;]+)/)?.[1] || '';
-  return fetch('/applications/rationalization/api/bulk-review', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Requested-With': 'XMLHttpRequest',
-      'X-CSRFToken': csrfToken,
-    },
-    body: JSON.stringify({ app_ids: appIds, action: action, notes: notes || '' }),
-  }).then(function(r) {
-    if (!r.ok) { throw new Error('Bulk review request failed: ' + r.status); }
-    return r.json();
-  });
+  return Platform.fetch.post('/applications/rationalization/api/bulk-review', 
+    { app_ids: appIds, action: action, notes: notes || '' });
 }
 
 async function loadPortfolioWorkbench(filters, containerId) {
@@ -2739,14 +2583,7 @@ async function loadPortfolioWorkbench(filters, containerId) {
 
     let baseUrl = (window.__APP_CONFIG__ || {}).portfolioWorkbenchUrl
       || '/applications/rationalization/api/portfolio-workbench';
-    let response = await fetch(baseUrl + '?' + params.toString(), {
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCSRFToken() }
-    });
-    if (!response.ok) {
-      throw new Error('HTTP ' + response.status);
-    }
-    let data = await response.json();
+    let data = await Platform.fetch.get(baseUrl + '?' + params.toString(), null, { silent: true });
     if (container) {
       renderWorkbenchTable(data, containerId);
     }
@@ -2760,7 +2597,6 @@ async function loadPortfolioWorkbench(filters, containerId) {
         '</div>'
       );
     }
-    console.error('loadPortfolioWorkbench error:', err);
     return null;
   }
 }
@@ -2781,15 +2617,7 @@ async function loadRoadmapStatus(appId, containerId) {
     );
   }
   try {
-    let response = await fetch('/applications/rationalization/api/roadmap-status/' + encodeURIComponent(appId), {
-      method: 'GET',
-      headers: { 'X-Requested-With': 'XMLHttpRequest' },
-      credentials: 'same-origin',
-    });
-    if (!response.ok) {
-      throw new Error('HTTP ' + response.status);
-    }
-    let data = await response.json();
+    let data = await Platform.fetch.get('/applications/rationalization/api/roadmap-status/' + encodeURIComponent(appId), null, { silent: true });
     if (container) {
       renderRoadmapStatus(data, containerId);
     }
@@ -2802,7 +2630,6 @@ async function loadRoadmapStatus(appId, containerId) {
         '</div>'
       );
     }
-    console.error('loadRoadmapStatus error:', err);
     return null;
   }
 }
@@ -2873,17 +2700,8 @@ function renderRoadmapStatus(data, containerId) {
 
       setButtonLoading(submitBtn, true, 'Creating...');
       try {
-        let resp = await fetch('/applications/rationalization/api/create-roadmap-item/' + encodeURIComponent(data._appId || ''), {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Requested-With': 'XMLHttpRequest',
-            'X-CSRFToken': getCSRFToken(),
-          },
-          credentials: 'same-origin',
-          body: JSON.stringify({ owner: owner.trim(), target_date: targetDate || null, notes: notes.trim() || null }),
-        });
-        let result = await resp.json();
+        let result = await Platform.fetch.post('/applications/rationalization/api/create-roadmap-item/' + encodeURIComponent(data._appId || ''), 
+          { owner: owner.trim(), target_date: targetDate || null, notes: notes.trim() || null });
         if (result.success) {
           renderRoadmapStatus({ success: true, has_roadmap_item: true }, containerId);
         } else {
@@ -2893,7 +2711,6 @@ function renderRoadmapStatus(data, containerId) {
       } catch (err) {
         if (errorEl) { errorEl.textContent = 'Network error — please try again.'; errorEl.classList.remove('hidden'); }
         setButtonLoading(submitBtn, false);
-        console.error('createRoadmapItem error:', err);
       }
     });
   }
@@ -2905,10 +2722,7 @@ function loadDecisionDossier(appId, containerId) {
   if (!container) return;
   safeHTML(container, '<p class="text-sm text-muted-foreground">Loading dossier\u2026</p>');
 
-  fetch('/applications/rationalization/api/decision-dossier/' + appId, {
-    headers: { 'X-CSRFToken': getCSRFToken() }
-  })
-    .then(function(r) { return r.json(); })
+  Platform.fetch.get('/applications/rationalization/api/decision-dossier/' + appId, null, { silent: true })
     .then(function(data) {
       if (!data.success) {
         safeHTML(container, '<p class="text-sm text-destructive">Failed to load dossier.</p>');
@@ -3000,8 +2814,7 @@ function loadWorkflowStatus(appId, containerId) {
   let container = document.getElementById(containerId);
   if (!container) return;
   safeHTML(container, '<p class="text-sm text-muted-foreground">Loading workflow status\u2026</p>');
-  fetch('/applications/rationalization/api/workflow-status/' + appId)
-    .then(function(r) { return r.json(); })
+  Platform.fetch.get('/applications/rationalization/api/workflow-status/' + appId, null, { silent: true })
     .then(function(data) {
       if (!data.success) {
         safeHTML(container, '<p class="text-sm text-destructive">Failed to load.</p>');
@@ -3054,23 +2867,17 @@ function executiveSummary() {
       const self = this;
       self.loaded = false;
       self.loadError = false;
-      fetch('/applications/rationalization/api/executive-summary', {
-        credentials: 'same-origin',
-        headers: { 'X-Requested-With': 'XMLHttpRequest' }
-      })
-        .then(function(r) { return r.json(); })
+      Platform.fetch.get('/applications/rationalization/api/executive-summary', null, { silent: true })
         .then(function(json) {
           if (json.success) {
             self.data = json;
             self.loaded = true;
           } else {
-            console.error('Executive summary error:', json.error);
             self.loadError = true;
             if (window.Platform && Platform.toast) Platform.toast.error('Could not load the executive summary.');
           }
         })
         .catch(function(err) {
-          console.error('Failed to load executive summary:', err);
           self.loadError = true;
           if (window.Platform && Platform.toast) Platform.toast.error('Could not load the executive summary.');
         });
@@ -3171,11 +2978,7 @@ function workflowProgress() {
       if (!appId) { this.loaded = false; return; }
       const self = this;
       self.currentAppId = appId;
-      fetch('/applications/rationalization/api/workflow-status/' + appId)
-        .then(function(r) {
-          if (!r.ok) throw new Error('HTTP ' + r.status);
-          return r.json();
-        })
+      Platform.fetch.get('/applications/rationalization/api/workflow-status/' + appId, null, { silent: true })
         .then(function(data) {
           if (!data.success) throw new Error(data.error || 'workflow status unavailable');
           self.steps = data.steps;
@@ -3187,7 +2990,6 @@ function workflowProgress() {
           /* `loaded = false` is the panel's "Select an application to view workflow
              progress" state — so a failed load told the user they had not picked an
              application, for an application they had just picked. */
-          console.error('workflow loadStatus error:', e);
           self.steps = [];
           self.completionPct = null;
           self.currentPhase = null;

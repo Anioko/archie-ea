@@ -57,7 +57,7 @@
                            class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm
                                   shadow-sm transition-colors placeholder:text-muted-foreground
                                   focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" />
-                    <p class="text-xs text-muted-foreground">From your Slack app's "OAuth & Permissions" page.</p>
+                    <p class="text-xs text-muted-foreground">From your Slack app's "OAuth &amp; Permissions" page.</p>
                 </div>
 
                 <div class="flex flex-col gap-1.5">
@@ -137,7 +137,7 @@
                     <code class="flex-1 rounded-md border border-border bg-muted px-3 py-2 text-xs font-mono">
                         http://127.0.0.1/api/webhooks/slack/events
                     </code>
-                    <button type="button" onclick="navigator.clipboard.writeText('http://127.0.0.1/api/webhooks/slack/events')"
+                    <button type="button" data-copy-text="http://127.0.0.1/api/webhooks/slack/events"
                             class="shrink-0 inline-flex items-center justify-center rounded-md border border-input bg-background
                                    shadow-sm hover:bg-accent h-8 px-3 text-xs transition-colors">
                         Copy
@@ -164,6 +164,17 @@
 </div>
 
 <script>
+// Copy-to-clipboard, delegated: no inline onclick (CSP + DESIGN.md).
+document.addEventListener('click', function (e) {
+    const btn = e.target.closest('[data-copy-text]');
+    if (!btn) return;
+    navigator.clipboard.writeText(btn.getAttribute('data-copy-text')).then(function () {
+        Platform.toast.success('Copied to clipboard');
+    }).catch(function (err) {
+        Platform.toast.error('Could not copy: ' + (err && err.message ? err.message : 'clipboard unavailable'));
+    });
+});
+
 document.getElementById('test-btn').addEventListener('click', async function () {
     const btn = this;
     const tokenInput = document.getElementById('bot_token');
@@ -175,12 +186,10 @@ document.getElementById('test-btn').addEventListener('click', async function () 
     const csrfToken = csrfMeta ? csrfMeta.content : '';
 
     try {
-        const resp = await fetch('/admin/integrations/slack/test', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
-            body: JSON.stringify({ bot_token: tokenInput.value }),
-        });
-        const data = await resp.json();
+        const data = await Platform.fetch.post('/admin/integrations/slack/test', 
+            { bot_token: tokenInput.value },
+            { silent: true }
+        );
         alertEl.hidden = false;
         if (data.status === 'ok') {
             alertEl.className = 'mb-6 rounded-md border border-success/30 bg-success/10 text-success-emphasis p-4 text-sm';

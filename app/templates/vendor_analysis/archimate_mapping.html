@@ -1,4 +1,5 @@
 {% extends "layouts/admin_base.html" %}
+{% from 'macros/page_shell.html' import page_shell %}
 {% block title %}Vendor-ArchiMate Mapping Analysis{% endblock %}
 
 {% block page_title %}Vendor-ArchiMate Mapping Analysis{% endblock %}
@@ -6,10 +7,7 @@
 {% block content %}
 <div class="space-y-6">
     <!-- Header -->
-    <div class="mb-6">
-        <h1 class="text-3xl font-bold text-foreground mb-2">Vendor-ArchiMate Mapping Analysis</h1>
-        <p class="text-muted-foreground">Analyze and resolve vendor-to-ArchiMate element mapping issues</p>
-    </div>
+    {{ page_shell(title='Vendor-ArchiMate Mapping Analysis', subtitle='Analyze and resolve vendor-to-ArchiMate element mapping issues') }}
 
     <!-- Key Statistics -->
     <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
@@ -121,7 +119,7 @@
                         {% if (without_archimate or 0) > 0 %}
                         <li><strong>{{ without_archimate }}</strong> vendor products have no ArchiMate element mapping</li>
                         {% endif %}
-                        {% if vendor_coverage is not none %}<li>Overall mapping coverage is only {{ vendor_coverage }}% for vendor products</li>{% endif %}
+                        {% if vendor_coverage is not none and vendor_coverage < 100 %}<li>Overall mapping coverage is only {{ vendor_coverage }}% for vendor products</li>{% endif %}
                     </ul>
                 </div>
             </div>
@@ -262,8 +260,7 @@
 
 <script>
 function exportAnalysis() {
-    fetch('/api/vendor-archimate-analysis/export')
-        .then(response => response.json())
+    Platform.fetch('/api/vendor-archimate-analysis/export')
         .then(data => {
             const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
             const url = window.URL.createObjectURL(blob);
@@ -274,11 +271,13 @@ function exportAnalysis() {
             window.URL.revokeObjectURL(url);
         })
         .catch(error => {
-            console.error('Export failed:', error);
-            toast.error('Export Failed', {
-                description: 'Unable to export the mapping. Please try again.',
-                duration: 5000
-            });
+            // `toast` is not a global in this app -- this branch previously threw a
+            // ReferenceError, so a failed export reported nothing to the user.
+            if (window.Platform && Platform.toast) {
+                Platform.toast.error('Export failed — unable to export the mapping. Please try again.');
+            }
+            // Rethrow to surface the failure to the user (the global toast already shown by Platform.fetch).
+            throw error;
         });
 }
 

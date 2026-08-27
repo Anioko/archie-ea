@@ -13,10 +13,11 @@ function loadData() {
     // updateActiveFramework() renders as "no framework configured" — a statement
     // about this organisation's setup that a 500 has no business making. The outer
     // catch below already paints an explicit error panel with a Retry button.
+    // Platform.fetch throws on non-ok responses, so we catch and paint the error.
     Promise.all([
-        fetch('/framework-management/api/available-frameworks').then(function(r) { if (!r.ok) { throw new Error('HTTP ' + r.status); } return r.json(); }),
-        fetch('/framework-management/api/statistics').then(function(r) { if (!r.ok) { throw new Error('HTTP ' + r.status); } return r.json(); }),
-        fetch('/framework-management/api/active-framework').then(function(r) { if (!r.ok) { throw new Error('HTTP ' + r.status); } return r.json(); })
+        Platform.fetch('/framework-management/api/available-frameworks'),
+        Platform.fetch('/framework-management/api/statistics'),
+        Platform.fetch('/framework-management/api/active-framework')
     ]).then(function(results) {
         let frameworks = results[0];
         let stats = results[1];
@@ -29,7 +30,6 @@ function loadData() {
         renderTemplates();
         renderInstances();
     }).catch(function(error) {
-        console.error('Error loading data:', error);
         notifyFrameworkError('Failed to load framework data. Please retry.');
     });
 }
@@ -226,51 +226,41 @@ function closeDeployModal() {
 }
 
 function activateExtension(extensionId) {
-    fetch('/framework-management/api/activate-extension/' + extensionId, {
-        method: 'POST'
-    })
-    .then(function(response) { return response.json(); })
-    .then(function(data) {
-        if (data.success) {
-            Platform.toast.info(data.message);
-            loadData();
-        } else {
-            Platform.toast.error('Failed to activate extension: ' + data.message);
-        }
-    })
-    .catch(function(error) {
-        console.error('Error activating extension:', error);
-        Platform.toast.error('Error activating extension');
-    });
+    Platform.fetch.post('/framework-management/api/activate-extension/' + extensionId)
+        .then(function(data) {
+            if (data.success) {
+                Platform.toast.info(data.message);
+                loadData();
+            } else {
+                Platform.toast.error('Failed to activate extension: ' + data.message);
+            }
+        })
+        .catch(function(error) {
+            Platform.toast.error('Error activating extension');
+        });
 }
 
-function applyTemplate(templateId) {
-    let name = prompt('Enter configuration name:');
+async function applyTemplate(templateId) {
+    let name = await Platform.modal.promptText('Enter configuration name:', {
+        title: 'Apply template'
+    });
     if (!name) return;
 
-    fetch('/framework-management/api/apply-template', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-            template_id: templateId,
-            configuration_name: name
+    Platform.fetch.post('/framework-management/api/apply-template', {
+        template_id: templateId,
+        configuration_name: name
+    })
+        .then(function(data) {
+            if (data.success) {
+                Platform.toast.info(data.message);
+                loadData();
+            } else {
+                Platform.toast.error('Failed to apply template: ' + data.message);
+            }
         })
-    })
-    .then(function(response) { return response.json(); })
-    .then(function(data) {
-        if (data.success) {
-            Platform.toast.info(data.message);
-            loadData();
-        } else {
-            Platform.toast.error('Failed to apply template: ' + data.message);
-        }
-    })
-    .catch(function(error) {
-        console.error('Error applying template:', error);
-        Platform.toast.error('Error applying template');
-    });
+        .catch(function(error) {
+            Platform.toast.error('Error applying template');
+        });
 }
 
 // Handle deploy form submission
@@ -285,27 +275,19 @@ document.getElementById('deployForm').addEventListener('submit', function(e) {
         implementation_scope: document.getElementById('implementation-scope').value
     };
 
-    fetch('/framework-management/api/deploy-configuration', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(data)
-    })
-    .then(function(response) { return response.json(); })
-    .then(function(result) {
-        if (result.success) {
-            Platform.toast.info(result.message);
-            closeDeployModal();
-            loadData();
-        } else {
-            Platform.toast.error('Deployment failed: ' + result.message);
-        }
-    })
-    .catch(function(error) {
-        console.error('Error deploying configuration:', error);
-        Platform.toast.error('Error deploying configuration');
-    });
+    Platform.fetch.post('/framework-management/api/deploy-configuration', data)
+        .then(function(result) {
+            if (result.success) {
+                Platform.toast.info(result.message);
+                closeDeployModal();
+                loadData();
+            } else {
+                Platform.toast.error('Deployment failed: ' + result.message);
+            }
+        })
+        .catch(function(error) {
+            Platform.toast.error('Error deploying configuration');
+        });
 });
 
 // Filter event listeners

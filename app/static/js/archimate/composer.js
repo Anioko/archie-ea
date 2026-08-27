@@ -2428,7 +2428,6 @@ function composerApp() {
                      * failure is not an emergency, but the user must be told
                      * once rather than never — surfaced once per session,
                      * not every 10s. */
-                    console.warn('Auto-persist to local browser storage failed:', e.message);
                     if (!self._localAutosaveWarned) {
                         self._localAutosaveWarned = true;
                         _toast('warning', 'Local browser backup is full or unavailable — your work is still being saved to the server.');
@@ -3079,7 +3078,6 @@ function composerApp() {
                 });
             })
             .catch(function(err) {
-                console.error('[Composer] load error:', err);
                 _toast('error', 'Failed to load diagram: ' + ((err && err.message) || err));
                 self.statusText = 'Error loading data';
             });
@@ -5092,12 +5090,14 @@ function composerApp() {
         },
 
         /* ── GAP-INT-004: Event badge on elements ───────────── */
-        setEventBadge: function() {
+        setEventBadge: async function() {
             this.ctxMenuOpen = false;
             if (!this.ctxMenuCell || this.mode === 'view') return;
             let cell = this.ctxMenuCell;
             let existing = cell.get('eventSchedule') || '';
-            const schedule = prompt('Enter schedule/event (e.g. "Monthly 27th at 12:45 AM EST"):', existing);
+            const schedule = await Platform.modal.promptText('Enter schedule/event (e.g. "Monthly 27th at 12:45 AM EST"):', {
+                title: 'Event badge', defaultValue: existing
+            });
             if (schedule === null) return; // cancelled
             if (schedule.trim()) {
                 cell.set('eventSchedule', schedule.trim());
@@ -5140,7 +5140,7 @@ function composerApp() {
          *   phasing_out  — amber dashed border
          *   retired      — red dotted border, reduced opacity
          */
-        setLifecycleFromCtx: function(lifecycle) {
+        setLifecycleFromCtx: async function(lifecycle) {
             this.ctxMenuOpen = false;
             let cell = this.ctxMenuCell;
             if (!cell) return;
@@ -5165,7 +5165,7 @@ function composerApp() {
             let previousLifecycle = cell.get('elLifecycle') || '';
             let reason = '';
             if (previousLifecycle && previousLifecycle !== lifecycle) {
-                reason = prompt('Optional reason for lifecycle change (' + previousLifecycle.replace('_', ' ') + ' \u2192 ' + lifecycle.replace('_', ' ') + '):') || '';
+                reason = await Platform.modal.promptText('Optional reason for lifecycle change (' + previousLifecycle.replace('_', ' ') + ' \u2192 ' + lifecycle.replace('_', ' ') + '):', { title: 'Lifecycle change', multiline: true }) || '';
             }
 
             /* Store on cell for save/load */

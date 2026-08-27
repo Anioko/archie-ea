@@ -5,9 +5,7 @@
 (function (global) {
     'use strict';
 
-    let _fetch = (global.Platform && global.Platform.fetch)
-        ? global.Platform.fetch
-        : function (url, opts) { return global.fetch(url, opts).then(function (r) { return r.json(); }); };
+    let _fetch = global.Platform.fetch;
 
     global.admKanbanV2 = function () {
         return {
@@ -90,8 +88,7 @@
                         card.column = target;
                         return _fetch('/api/adm-kanban/v2/cards/' + cardId + '/move', {
                             method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ to_column: target }),
+                            body: { to_column: target },
                             silent: true,
                         });
                     }
@@ -267,8 +264,7 @@
 
                 _fetch('/api/adm-kanban/v2/cards/' + cardRef + '/move', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ to_column: toColumn }),
+                    body: { to_column: toColumn },
                     silent: true,
                 }).then(function (data) {
                     if (data && data.card && card) {
@@ -311,8 +307,7 @@
 
                 _fetch('/api/adm-kanban/v2/cards/' + card.id + '/move', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ to_column: toColumn }),
+                    body: { to_column: toColumn },
                     silent: true,
                 }).then(function (data) {
                     if (data && data.card) {
@@ -514,8 +509,7 @@
                 }
                 _fetch('/api/adm-kanban/v2/deliverables/' + deliverableId + '/check', {
                     method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ checked: newChecked }),
+                    body: { checked: newChecked },
                 }).catch(function () {
                     if (item) {
                         item.checked = !newChecked;
@@ -739,8 +733,7 @@
 
                 _fetch('/api/adm-kanban/v2/cards', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(body),
+                    body: body,
                 }).then(function (data) {
                     self.loading = false;
                     if (data && data.success && data.card) {
@@ -768,9 +761,7 @@
 
             searchUsers: async function () {
                 try {
-                    const res = await fetch('/api/adm-kanban/v2/suggestions/users?q=' + encodeURIComponent(this.assigneeSearch));
-                    if (!res.ok) throw new Error('HTTP ' + res.status);
-                    const data = await res.json();
+                    const data = await global.Platform.fetch.get('/api/adm-kanban/v2/suggestions/users', { q: this.assigneeSearch }, { silent: true });
                     this.userResults = data.results || [];
                 } catch (e) { this.userResults = []; this._searchFailed('users', e); }
             },
@@ -782,9 +773,7 @@
             },
             searchRequirements: async function () {
                 try {
-                    const res = await fetch('/api/adm-kanban/v2/suggestions/requirements?q=' + encodeURIComponent(this.requirementSearch));
-                    if (!res.ok) throw new Error('HTTP ' + res.status);
-                    const data = await res.json();
+                    const data = await Platform.fetch.get('/api/adm-kanban/v2/suggestions/requirements', { q: this.requirementSearch }, { silent: true });
                     const selected = this.form.requirement_ids.map(function (x) { return x.id; });
                     this.requirementResults = (data.results || []).filter(function (r) { return !selected.includes(r.id); });
                 } catch (e) { this.requirementResults = []; this._searchFailed('requirements', e); }
@@ -802,9 +791,7 @@
 
             searchGoals: async function () {
                 try {
-                    const res = await fetch('/api/adm-kanban/v2/suggestions/goals?q=' + encodeURIComponent(this.goalSearch));
-                    if (!res.ok) throw new Error('HTTP ' + res.status);
-                    const data = await res.json();
+                    const data = await Platform.fetch.get('/api/adm-kanban/v2/suggestions/goals', { q: this.goalSearch }, { silent: true });
                     const selected = this.form.goal_ids.map(function (x) { return x.id; });
                     this.goalResults = (data.results || []).filter(function (r) { return !selected.includes(r.id); });
                 } catch (e) { this.goalResults = []; this._searchFailed('goals', e); }
@@ -822,9 +809,7 @@
 
             searchDrivers: async function () {
                 try {
-                    const res = await fetch('/api/adm-kanban/v2/suggestions/drivers?q=' + encodeURIComponent(this.driverSearch));
-                    if (!res.ok) throw new Error('HTTP ' + res.status);
-                    const data = await res.json();
+                    const data = await Platform.fetch.get('/api/adm-kanban/v2/suggestions/drivers', { q: this.driverSearch }, { silent: true });
                     const selected = this.form.driver_ids.map(function (x) { return x.id; });
                     this.driverResults = (data.results || []).filter(function (r) { return !selected.includes(r.id); });
                 } catch (e) { this.driverResults = []; this._searchFailed('drivers', e); }
@@ -842,9 +827,7 @@
 
             searchPrinciples: async function () {
                 try {
-                    const res = await fetch('/api/adm-kanban/v2/suggestions/principles?q=' + encodeURIComponent(this.principleSearch));
-                    if (!res.ok) throw new Error('HTTP ' + res.status);
-                    const data = await res.json();
+                    const data = await Platform.fetch.get('/api/adm-kanban/v2/suggestions/principles', { q: this.principleSearch }, { silent: true });
                     const selected = this.form.principle_ids.map(function (x) { return x.id; });
                     this.principleResults = (data.results || []).filter(function (r) { return !selected.includes(r.id); });
                 } catch (e) { this.principleResults = []; this._searchFailed('principles', e); }
@@ -862,9 +845,7 @@
             searchEditUsers: async function () {
                 try {
                     const q = (this.editAssigneeSearch || '');
-                    const res = await fetch('/api/adm-kanban/v2/suggestions/users?q=' + encodeURIComponent(q));
-                    if (!res.ok) throw new Error('HTTP ' + res.status);
-                    const data = await res.json();
+                    const data = await Platform.fetch.get('/api/adm-kanban/v2/suggestions/users', { q: q }, { silent: true });
                     this.editUserResults = data.results || [];
                 } catch (e) { this.editUserResults = []; this._searchFailed('users', e); }
             },

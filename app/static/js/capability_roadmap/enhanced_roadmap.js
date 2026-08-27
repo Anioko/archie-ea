@@ -53,7 +53,6 @@ function capabilityRoadmapManager() {
                     this.selectedImportance = serverData.selectedImportance;
                 }
             } catch (error) {
-                console.error('Error parsing server data:', error);
                 this.selectedImportance = '';
             }
 
@@ -76,7 +75,6 @@ function capabilityRoadmapManager() {
 
                 // Work packages loaded successfully
             } catch (error) {
-                console.error('Error parsing work packages:', error);
                 this.workPackages = [];
                 // Fallback to API call
                 this.loadWorkPackages();
@@ -248,7 +246,6 @@ function capabilityRoadmapManager() {
                 ).join('');
 
                 safeHTML(headerElement, headerHTML);
-            } else {
             }
         },
 
@@ -292,15 +289,12 @@ function capabilityRoadmapManager() {
             this.isLoading = true;
             this.loadingMessage = 'Loading work packages...';
             try {
-                let response = await fetch('/api/capability-work-packages');
+                let data = await Platform.fetch('/api/capability-work-packages');
                 // Unchecked, a 500 parsed to `{}` and the timeline rendered empty —
                 // indistinguishable from a roadmap with no work packages.
-                if (!response.ok) throw new Error('HTTP ' + response.status);
-                let data = await response.json();
                 this.workPackages = data.work_packages || [];
                 this.filteredWorkPackages = [...this.workPackages];
             } catch (error) {
-                console.error('Error loading work packages:', error);
                 this.showNotification('Error loading work packages', 'error');
                 // No fallback data — show empty state on API failure
                 this.workPackages = [];
@@ -449,7 +443,6 @@ function capabilityRoadmapManager() {
                 link.click();
 
             } catch (error) {
-                console.error('Export error:', error);
                 this.showNotification('Failed to generate professional export', 'error');
             } finally {
                 document.body.removeChild(loadingDiv);
@@ -660,28 +653,19 @@ function capabilityRoadmapManager() {
                 let url = this.editingWorkPackage ?
                     '/api/capability-work-packages/' + this.editingWorkPackage.id :
                     '/api/capability-work-packages';
-                let method = this.editingWorkPackage ? 'PUT' : 'POST';
 
-                let response = await fetch(url, {
-                    method: method,
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(submissionData)
-                });
-
-                let result = await response.json();
-
-                if (response.ok) {
-                    this.showNotification('Work package saved successfully!', 'success');
-                    this.showAddModal = false;
-                    this.resetForm();
-                    await this.loadWorkPackages();
+                let result;
+                if (this.editingWorkPackage) {
+                    result = await Platform.fetch.put(url, submissionData);
                 } else {
-                    this.showNotification(result.error || 'Error saving work package', 'error');
+                    result = await Platform.fetch.post(url, submissionData);
                 }
+
+                this.showNotification('Work package saved successfully!', 'success');
+                this.showAddModal = false;
+                this.resetForm();
+                await this.loadWorkPackages();
             } catch (error) {
-                console.error('Error saving work package:', error);
                 this.showNotification('Error saving work package', 'error');
             } finally {
                 this.isSaving = false;
@@ -701,20 +685,10 @@ function capabilityRoadmapManager() {
                         self.isSaving = true;
                         self.loadingMessage = 'Deleting work package...';
                         try {
-                            let response = await fetch('/api/capability-work-packages/' + workPackage.id, {
-                                method: 'DELETE'
-                            });
-
-                            let result = await response.json();
-
-                            if (response.ok) {
-                                self.showNotification('Work package deleted successfully', 'success');
-                                await self.loadWorkPackages();
-                            } else {
-                                self.showNotification(result.error || 'Error deleting work package', 'error');
-                            }
+                            await Platform.fetch.delete('/api/capability-work-packages/' + workPackage.id);
+                            self.showNotification('Work package deleted successfully', 'success');
+                            await self.loadWorkPackages();
                         } catch (error) {
-                            console.error('Error deleting work package:', error);
                             self.showNotification('Error deleting work package', 'error');
                         } finally {
                             self.isSaving = false;
@@ -767,13 +741,11 @@ function capabilityRoadmapManager() {
 
         async loadGroupedCapabilities() {
             try {
-                let response = await fetch('/api/capabilities/grouped');
-                let data = await response.json();
+                let data = await Platform.fetch('/api/capabilities/grouped');
                 if (data.success) {
                     this.groupedCapabilities = data.grouped_capabilities;
                 }
             } catch (error) {
-                console.error('Error loading grouped capabilities:', error);
                 if (window.Platform && Platform.toast) Platform.toast.error('Could not load capabilities.');
             }
         },
@@ -926,19 +898,18 @@ function capabilityRoadmapManager() {
             }
 
             try {
-                let response = await fetch('/api/capabilities/check-duplicate?name=' + encodeURIComponent(name) + '&level=' + level);
-                let data = await response.json();
-
+                let data = await Platform.fetch.get('/api/capabilities/check-duplicate', {
+                    name: name,
+                    level: level
+                });
                 if (data.success && data.is_duplicate) {
                     this.capabilityDuplicateError = data.message;
                 } else {
                     this.capabilityDuplicateError = null;
                 }
             } catch (error) {
-                // Best-effort live "may be a duplicate" hint, fired on every level/name
-                // change; actual duplicate enforcement happens server-side on submit,
-                // so a failed check here just means the hint doesn't show.
-                console.error('Error checking duplicate:', error);
+                // Platform.fetch surfaced this failure before it threw; the
+                // catch only stops it becoming an unhandled rejection.
             }
         },
 
@@ -946,48 +917,29 @@ function capabilityRoadmapManager() {
             if (this.capabilityDuplicateError) return;
 
             try {
-                let response = await fetch('/api/capabilities', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(this.newCapabilityForm)
-                });
-
-                let result = await response.json();
-
-                if (response.status === 409) {
-                    // Duplicate error
-                    this.capabilityDuplicateError = result.error;
-                    return;
+                let result = await Platform.fetch.post('/api/capabilities', this.newCapabilityForm);
+                // Add to grouped capabilities
+                let levelKey = 'L' + result.capability.level;
+                if (!this.groupedCapabilities[levelKey]) {
+                    this.groupedCapabilities[levelKey] = [];
                 }
+                this.groupedCapabilities[levelKey].push(result.capability);
 
-                if (!response.ok) {
-                    // Other API errors (400, 500, etc.)
-                    console.error('API error:', response.status, result);
-                    this.capabilityDuplicateError = result.error || 'Error creating capability';
-                    return;
-                }
+                // Auto-select the new capability
+                this.formData.business_capability = result.capability.name;
+                this.selectedCapabilityLevel = 'L' + result.capability.level + ' - ' + result.capability.name;
 
-                if (result.success) {
-                    // Add to grouped capabilities
-                    let levelKey = 'L' + result.capability.level;
-                    if (!this.groupedCapabilities[levelKey]) {
-                        this.groupedCapabilities[levelKey] = [];
-                    }
-                    this.groupedCapabilities[levelKey].push(result.capability);
-
-                    // Auto-select the new capability
-                    this.formData.business_capability = result.capability.name;
-                    this.selectedCapabilityLevel = 'L' + result.capability.level + ' - ' + result.capability.name;
-
-                    // Close modal and show notification
-                    this.closeAddCapabilityModal();
-                    this.showNotification(result.message, 'success');
-                } else {
-                    this.capabilityDuplicateError = result.error || 'Error creating capability';
-                }
+                // Close modal and show notification
+                this.closeAddCapabilityModal();
+                this.showNotification(result.message, 'success');
             } catch (error) {
-                console.error('Error creating capability:', error);
-                this.capabilityDuplicateError = 'Network error - please try again';
+                // Platform.fetch throws on non-ok responses, including 409
+                // The error data is available in error.data
+                if (error.status === 409) {
+                    this.capabilityDuplicateError = error.data?.error || 'Duplicate capability';
+                } else {
+                    this.capabilityDuplicateError = error.data?.error || 'Error creating capability';
+                }
             }
         },
 
@@ -1022,9 +974,7 @@ function capabilityRoadmapManager() {
             this.isLoading = true;
             this.loadingMessage = 'Loading work package details...';
             try {
-                let response = await fetch('/api/capability-work-packages/' + workPackage.id + '/details');
-                let data = await response.json();
-
+                let data = await Platform.fetch('/api/capability-work-packages/' + workPackage.id + '/details');
                 if (data.success) {
                     this.detailsData = data;
                     this.showDetailsModal = true;
@@ -1032,11 +982,9 @@ function capabilityRoadmapManager() {
                     this.showAddTaskForm = false;
                     this.showAddDeliverableForm = false;
                 } else {
-                    console.error('Error loading work package details:', data.error);
                     this.showNotification('Error loading work package details', 'error');
                 }
             } catch (error) {
-                console.error('Error fetching work package details:', error);
                 this.showNotification('Error loading work package details', 'error');
             } finally {
                 this.isLoading = false;
@@ -1082,25 +1030,13 @@ function capabilityRoadmapManager() {
             this.loadingMessage = 'Creating task...';
             try {
                 let wpId = this.detailsData.work_package.id;
-                let response = await fetch('/api/capability-work-packages/' + wpId + '/tasks', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(this.taskForm)
-                });
-
-                let result = await response.json();
-
-                if (result.success) {
-                    this.detailsData.tasks.push(result.task);
-                    this.detailsData.statistics.total_tasks++;
-                    this.showAddTaskForm = false;
-                    this.resetTaskForm();
-                    this.showNotification('Task created successfully', 'success');
-                } else {
-                    this.showNotification(result.error || 'Error creating task', 'error');
-                }
+                let result = await Platform.fetch.post('/api/capability-work-packages/' + wpId + '/tasks', this.taskForm);
+                this.detailsData.tasks.push(result.task);
+                this.detailsData.statistics.total_tasks++;
+                this.showAddTaskForm = false;
+                this.resetTaskForm();
+                this.showNotification('Task created successfully', 'success');
             } catch (error) {
-                console.error('Error creating task:', error);
                 this.showNotification('Error creating task', 'error');
             } finally {
                 this.isSaving = false;
@@ -1121,21 +1057,11 @@ function capabilityRoadmapManager() {
                         self.loadingMessage = 'Deleting task...';
                         try {
                             let wpId = self.detailsData.work_package.id;
-                            let response = await fetch('/api/capability-work-packages/' + wpId + '/tasks/' + taskId, {
-                                method: 'DELETE'
-                            });
-
-                            let result = await response.json();
-
-                            if (result.success) {
-                                self.detailsData.tasks = self.detailsData.tasks.filter(t => t.id !== taskId);
-                                self.detailsData.statistics.total_tasks--;
-                                self.showNotification('Task deleted', 'success');
-                            } else {
-                                self.showNotification(result.error || 'Error deleting task', 'error');
-                            }
+                            let result = await Platform.fetch.delete('/api/capability-work-packages/' + wpId + '/tasks/' + taskId);
+                            self.detailsData.tasks = self.detailsData.tasks.filter(t => t.id !== taskId);
+                            self.detailsData.statistics.total_tasks--;
+                            self.showNotification('Task deleted', 'success');
                         } catch (error) {
-                            console.error('Error deleting task:', error);
                             self.showNotification('Error deleting task', 'error');
                         } finally {
                             self.isSaving = false;
@@ -1169,25 +1095,13 @@ function capabilityRoadmapManager() {
             this.loadingMessage = 'Creating deliverable...';
             try {
                 let wpId = this.detailsData.work_package.id;
-                let response = await fetch('/api/capability-work-packages/' + wpId + '/deliverables', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(this.deliverableForm)
-                });
-
-                let result = await response.json();
-
-                if (result.success) {
-                    this.detailsData.deliverables.push(result.deliverable);
-                    this.detailsData.statistics.total_deliverables++;
-                    this.showAddDeliverableForm = false;
-                    this.resetDeliverableForm();
-                    this.showNotification('Deliverable created successfully', 'success');
-                } else {
-                    this.showNotification(result.error || 'Error creating deliverable', 'error');
-                }
+                let result = await Platform.fetch.post('/api/capability-work-packages/' + wpId + '/deliverables', this.deliverableForm);
+                this.detailsData.deliverables.push(result.deliverable);
+                this.detailsData.statistics.total_deliverables++;
+                this.showAddDeliverableForm = false;
+                this.resetDeliverableForm();
+                this.showNotification('Deliverable created successfully', 'success');
             } catch (error) {
-                console.error('Error creating deliverable:', error);
                 this.showNotification('Error creating deliverable', 'error');
             } finally {
                 this.isSaving = false;
@@ -1208,21 +1122,11 @@ function capabilityRoadmapManager() {
                         self.loadingMessage = 'Deleting deliverable...';
                         try {
                             let wpId = self.detailsData.work_package.id;
-                            let response = await fetch('/api/capability-work-packages/' + wpId + '/deliverables/' + deliverableId, {
-                                method: 'DELETE'
-                            });
-
-                            let result = await response.json();
-
-                            if (result.success) {
-                                self.detailsData.deliverables = self.detailsData.deliverables.filter(d => d.id !== deliverableId);
-                                self.detailsData.statistics.total_deliverables--;
-                                self.showNotification('Deliverable deleted', 'success');
-                            } else {
-                                self.showNotification(result.error || 'Error deleting deliverable', 'error');
-                            }
+                            let result = await Platform.fetch.delete('/api/capability-work-packages/' + wpId + '/deliverables/' + deliverableId);
+                            self.detailsData.deliverables = self.detailsData.deliverables.filter(d => d.id !== deliverableId);
+                            self.detailsData.statistics.total_deliverables--;
+                            self.showNotification('Deliverable deleted', 'success');
                         } catch (error) {
-                            console.error('Error deleting deliverable:', error);
                             self.showNotification('Error deleting deliverable', 'error');
                         } finally {
                             self.isSaving = false;

@@ -279,7 +279,6 @@ let ComposerAI = (function() {
             })
             .catch(function(err) {
                 _toast('error', 'Validation failed: ' + (err.message || err));
-                console.error('[CMP-018] Validation failed:', err);
                 self.statusText = 'Validation failed';
                 self.validationReport = {
                     passed: [],

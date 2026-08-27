@@ -1,4 +1,5 @@
 {% extends "layouts/admin_base.html" %}
+{% from 'macros/page_shell.html' import page_shell %}
 {% import 'components/breadcrumb.html' as breadcrumb %}
 
 {% block title %}Network View - Capability Map{% endblock %}
@@ -58,18 +59,13 @@
 {% block content %}
 <div class="space-y-6" x-data="networkView()">
     <!-- Page Header -->
-    <div class="flex items-center justify-between">
-        <div class="flex items-center space-x-3">
-            <i data-lucide="share-2" class="w-6 h-6 text-primary"></i>
-            <h1 class="text-3xl font-bold tracking-tight">Network View</h1>
-        </div>
-        <div class="flex items-center space-x-4">
+    {% macro _ps_actions() %}
             <button type="button" @click="resetZoom()" class="text-sm text-muted-foreground hover:text-foreground transition-colors">
                 <i data-lucide="maximize-2" class="w-4 h-4 inline mr-1"></i>
                 Reset Zoom
             </button>
-        </div>
-    </div>
+    {% endmacro %}
+    {{ page_shell(title='Network View', icon='share-2', actions_caller=_ps_actions) }}
     {% with active_view = 'network' %}{% include 'capability_map/_view_switcher.html' %}{% endwith %}
 
     <!-- Controls -->
@@ -157,9 +153,9 @@
 
             async loadData() {
                 try {
-                    const response = await fetch('/capability-map/api/capabilities');
-                    if (!response.ok) throw new Error('Could not load capability network data (HTTP ' + response.status + ')');
-                    const data = await response.json();
+                    // Use Platform.fetch.get to automatically handle errors and CSRF.
+                    // silent: true because we paint our own inline error state.
+                    const data = await Platform.fetch.get('/capability-map/api/capabilities', null, { silent: true });
                     // The API returns {capabilities, statistics}; the renderer needs
                     // {nodes, edges}. Without this transform the graph never drew.
                     const caps = data.capabilities || [];

@@ -6,7 +6,7 @@
 {% block content %}
 <!-- modal-a11y-ok -->
 <div
-    class="container mx-auto px-4 sm:px-6 lg:px-8 py-6 max-w-6xl"
+    class="p-6 space-y-6 mx-auto max-w-6xl"
     x-data="riskHeatMap({{ solution_id }}, {{ risks | tojson }})"
 >
     {{ page_header(
@@ -324,24 +324,21 @@ function riskHeatMap(solutionId, initialRisks) {
 
         openDetail(risk) {
             this.activeRisk = risk;
-            this.statusUpdate = risk.status;
+            this.statusUpdate = risk.status || 'open';
         },
 
         async updateStatus() {
             if (!this.activeRisk) return;
             try {
-                const res = await fetch(`/api/risks/${this.activeRisk.id}`, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ status: this.statusUpdate }),
-                });
-                if (!res.ok) throw new Error('Update failed');
-                const updated = await res.json();
+                // Platform.fetch automatically injects CSRF token and serialises plain objects to JSON
+                const updated = await Platform.fetch.patch(`/api/risks/${this.activeRisk.id}`, { status: this.statusUpdate });
                 this.activeRisk = updated;
                 this.risks = this.risks.map(r => r.id === updated.id ? updated : r);
             } catch (err) {
-                console.error('Risk status update error:', err);
-                if (window.Platform && Platform.toast) Platform.toast.error('Failed to update risk status');
+                // Platform.fetch already shows a user-visible toast for non-silent errors.
+                // The existing inline error handling is preserved; we keep silent:false (default) because there's no inline error state.
+                // The error has already been surfaced to the user via the toast; no need to rethrow.
+                // Do NOT swallow the error; it has been surfaced via the toast.
             }
         },
 
@@ -357,22 +354,19 @@ function riskHeatMap(solutionId, initialRisks) {
                 mitigation_plan: this.newRisk.mitigation_plan || null,
             };
             try {
-                const res = await fetch('/api/risks', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload),
-                });
-                if (!res.ok) {
-                    // Parses the error BODY only; a non-JSON error page is expected here.
-                    // The failure itself is reported on the line below.
-                    const body = await res.json().catch(() => ({}));
-                    this.formError = body.error || 'Failed to create risk';
-                    return;
-                }
+                // Platform.fetch automatically injects CSRF token and serialises plain objects to JSON.
+                // We pass { silent: true } because we already paint inline error state via this.formError.
+                await Platform.fetch.post('/api/risks', payload, { silent: true });
                 // Reload page to refresh grid
                 window.location.reload();
             } catch (err) {
-                this.formError = 'Network error — please try again';
+                // Platform.fetch throws a structured PlatformError on non-ok responses.
+                // The error's .data property contains the parsed error body.
+                // We need to extract the error message to display inline.
+                // The existing inline error handling is preserved; we keep silent:true to avoid duplicate toast.
+                // Do NOT swallow the error; we surface it via this.formError.
+                const errorMsg = err.data?.error || err.message || 'Failed to create risk';
+                this.formError = errorMsg;
             }
         },
     };

@@ -35,22 +35,14 @@ document.addEventListener('alpine:init', () => {
             this.error = null;
 
             try {
-                const resp = await fetch(`/api/wizard/${solutionId}/quality/assess`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || '',
-                    },
-                    body: JSON.stringify({ step, step_data: stepData }),
-                });
                 /* Unguarded, a 500 parsed to `{}`: `passed` and `hard_block` were both
                    undefined, so `canAdvance` came out true and the overlay was shown
                    with a blank score — an assessment that never ran, displayed as a
                    passing one. */
-                if (!resp.ok) throw new Error('HTTP ' + resp.status);
-
-                const json = await resp.json();
-                const data = json.data || json;
+                const data = await Platform.fetch.post(`/api/wizard/${solutionId}/quality/assess`, {
+                    step,
+                    step_data: stepData,
+                }, { silent: true }); // silent: true because we handle inline error state
 
                 this.assessment = data;
                 this.canAdvance = data.passed || !data.hard_block;
@@ -58,7 +50,6 @@ document.addEventListener('alpine:init', () => {
                 return data;
 
             } catch (e) {
-                console.error('Quality gate assessment failed:', e);
                 this.error = 'Quality assessment unavailable';
                 // No assessment exists, so nothing may be rendered as one.
                 this.assessment = null;
@@ -83,31 +74,13 @@ document.addEventListener('alpine:init', () => {
             this.loading = true;
 
             try {
-                const resp = await fetch(`/api/wizard/${solutionId}/quality/can-advance`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || '',
-                    },
-                    body: JSON.stringify({ step, step_data: stepData }),
-                });
-
-                // Detect session timeout (302 redirect to login returns HTML)
-                const contentType = resp.headers.get('content-type') || '';
-                if (!contentType.includes('application/json') || resp.status === 401 || resp.status === 403) {
-                    if (resp.redirected || !contentType.includes('json')) {
-                        window.location.href = '/account/login';
-                        return false;
-                    }
-                }
+                const data = await Platform.fetch.post(`/api/wizard/${solutionId}/quality/can-advance`, {
+                    step,
+                    step_data: stepData,
+                }, { silent: true }); // silent: true because we handle inline error state
 
                 // A 500 here parsed to `{}`, leaving can_advance undefined and the
                 // overlay hidden — the gate silently did not run.
-                if (!resp.ok) throw new Error('HTTP ' + resp.status);
-
-                const json = await resp.json();
-                const data = json.data || json;
-
                 this.assessment = data.assessment;
                 this.canAdvance = data.can_advance;
 
@@ -119,9 +92,19 @@ document.addEventListener('alpine:init', () => {
                 return data.can_advance;
 
             } catch (e) {
-                console.error('Can-advance check failed:', e);
-                // If the error looks like a login redirect (HTML response), redirect
-                if (e.message && e.message.includes('JSON')) {
+                // Platform.fetch throws on non-ok responses, including network errors.
+                // We need to detect session timeout (redirect to login) which would have been a non-JSON response.
+                // Since Platform.fetch throws before parsing, we cannot inspect headers directly.
+                // However, the original code redirected on 401/403 or non-JSON content-type.
+                // We'll treat any error as a potential login redirect if the error type indicates a network or HTTP error.
+                if (e.type === 'HttpError' && (e.status === 401 || e.status === 403)) {
+                    window.location.href = '/account/login';
+                    return false;
+                }
+                // If the error is a network error (type 'NetworkError'), it could be a redirect.
+                // The original code checked for redirected or non-JSON content-type.
+                // We'll assume network errors could be due to a redirect and redirect to login.
+                if (e.type === 'NetworkError') {
                     window.location.href = '/account/login';
                     return false;
                 }
@@ -147,21 +130,13 @@ document.addEventListener('alpine:init', () => {
             if (!this.assessment || !this.solutionId) return;
 
             try {
-                const resp = await fetch(`/api/wizard/${this.solutionId}/quality/skip`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || '',
-                    },
-                    body: JSON.stringify({
-                        step: this.currentStep,
-                        overall_score: this.assessment.overall_score,
-                        threshold: this.assessment.threshold,
-                    }),
-                });
-                // fetch() resolves on 4xx/5xx, so without this the audit write could
+                // The native API resolves on 4xx/5xx, so without the wrapper the audit
                 // fail with a 500 and look exactly like a successful one.
-                if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                await Platform.fetch.post(`/api/wizard/${this.solutionId}/quality/skip`, {
+                    step: this.currentStep,
+                    overall_score: this.assessment.overall_score,
+                    threshold: this.assessment.threshold,
+                }, { silent: true }); // silent: true because we handle the error inline
             } catch (e) {
                 if (window.Platform && window.Platform.toast) {
                     window.Platform.toast.warning(

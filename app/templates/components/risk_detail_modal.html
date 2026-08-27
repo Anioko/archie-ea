@@ -20,22 +20,19 @@
         residual_probability: '',
         residual_impact: '',
 
-        initModal(capabilityId) {
+        async initModal(capabilityId) {
             this.loading = true;
             Platform.modal.open('risk-detail');
 
-            fetch(`/strategic/api/risks/${capabilityId}/details`)
-                .then(res => res.json())
-                .then(data => {
-                    this.risk = data;
-                    this.loadMitigationData(data);
-                    this.loading = false;
-                })
-                .catch(err => {
-                    console.error('Failed to load risk details:', err);
-                    this.loading = false;
-                    window.toast && window.toast.error('Failed to load risk details');
-                });
+            try {
+                const data = await Platform.fetch.get(`/strategic/api/risks/${capabilityId}/details`, null, { silent: true });
+                this.risk = data;
+                this.loadMitigationData(data);
+                this.loading = false;
+            } catch (err) {
+                this.loading = false;
+                Platform.toast.error('Failed to load risk details: ' + (err.message || 'request failed'));
+            }
         },
 
         loadMitigationData(data) {
@@ -90,18 +87,7 @@
             };
 
             try {
-                const response = await fetch(`/strategic/api/risks/${this.risk.capability_id}/mitigation`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content ?? ''
-                    },
-                    body: JSON.stringify(payload)
-                });
-
-                if (!response.ok) throw new Error('Failed to save mitigation plan');
-
-                const data = await response.json();
+                const data = await Platform.fetch.post(`/strategic/api/risks/${this.risk.capability_id}/mitigation`, payload, { silent: true });
                 this.loadMitigationData(data);
 
                 window.toast && window.toast.success('Mitigation plan saved successfully');
@@ -109,8 +95,7 @@
                 setTimeout(() => window.location.reload(), 1500);
 
             } catch (err) {
-                console.error('Failed to save mitigation:', err);
-                window.toast && window.toast.error('Failed to save mitigation plan');
+                Platform.toast.error('Failed to save mitigation plan: ' + (err.message || 'request failed'));
             } finally {
                 this.saving = false;
             }
@@ -149,7 +134,7 @@
             <i data-lucide="alert-triangle" class="h-5 w-5 text-destructive"></i>
         </div>
         <div>
-            <h3 id="modal-risk-detail-title" class="text-lg font-semibold">Risk Details & Mitigation</h3>
+            <h3 id="modal-risk-detail-title" class="text-lg font-semibold">Risk Details &amp; Mitigation</h3>
             <p class="text-sm text-muted-foreground" x-text="risk ? risk.capability_name : 'Loading...'"></p>
         </div>
     </div>

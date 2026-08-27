@@ -94,9 +94,7 @@
             this.relLoading = true;
             this.relError = null;
             try {
-                const res = await fetch('/api/solutions/' + this.solutionId + '/relationships', {credentials:'same-origin'});
-                if (!res.ok) throw new Error('HTTP ' + res.status);
-                const data = await res.json();
+                const data = await Platform.fetch('/api/solutions/' + this.solutionId + '/relationships', { silent: true });
                 this.relRows = data.relationships || [];
             } catch(e) {
                 this.relError = e.message;
@@ -113,15 +111,12 @@
                 return;
             }
             try {
-                const res = await fetch('/solutions/api/archimate-all-elements?search=' + encodeURIComponent(query), {credentials:'same-origin'});
-                if (!res.ok) return;
-                const data = await res.json();
+                const data = await Platform.fetch('/solutions/api/archimate-all-elements?search=' + encodeURIComponent(query), { silent: true });
                 const results = data.elements || data || [];
                 if (target === 'source') this.sourceResults = results.slice(0, 10);
                 else this.targetResults = results.slice(0, 10);
                 this._elementSearchErrorShown = false;
             } catch(e) {
-                console.warn('[relationships] element search failed:', e);
                 // Fires on every debounced keystroke — toast once per
                 // outage rather than once per character typed.
                 if (!this._elementSearchErrorShown) {
@@ -152,25 +147,15 @@
             this.relSaving = true;
             this.relError = null;
             try {
-                const res = await fetch('/api/solutions/' + this.solutionId + '/relationships', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    credentials: 'same-origin',
-                    body: JSON.stringify({
-                        source_element_id: this.newSource.id,
-                        target_element_id: this.newTarget.id,
-                        relationship_type: this.newType
-                    })
-                });
-                const data = await res.json();
-                if (!res.ok) {
-                    this.relError = data.error || data.message || 'Failed to create relationship';
-                    return;
-                }
+                const data = await Platform.fetch.post('/api/solutions/' + this.solutionId + '/relationships', {
+                    source_element_id: this.newSource.id,
+                    target_element_id: this.newTarget.id,
+                    relationship_type: this.newType
+                }, { silent: true });
                 this.relRows.push(data.relationship || data);
                 this.resetNewRow();
             } catch(e) {
-                this.relError = e.message;
+                this.relError = e.message || 'Failed to create relationship';
             } finally {
                 this.relSaving = false;
             }
@@ -179,20 +164,13 @@
         async deleteRelationship(relId) {
             if (!(await Platform.modal.confirm('Remove this relationship?'))) return;
             try {
-                const res = await fetch('/api/solutions/' + this.solutionId + '/relationships/' + relId, {
-                    method: 'DELETE',
-                    credentials: 'same-origin'
-                });
-                if (res.ok || res.status === 204) {
-                    this.relRows = this.relRows.filter(r => r.id !== relId);
-                } else {
-                    // Parses the error BODY only; a non-JSON error page is expected here.
-                    // The failure itself is reported on the line below.
-                    const data = await res.json().catch(() => ({}));
-                    this.relError = data.error || 'Failed to delete';
-                }
+                // Platform.fetch throws on a non-ok response; its message is already
+                // taken from the error BODY when that body is JSON, and falls back to
+                // the status text when the server returns a non-JSON error page.
+                await Platform.fetch.delete('/api/solutions/' + this.solutionId + '/relationships/' + relId, { silent: true });
+                this.relRows = this.relRows.filter(r => r.id !== relId);
             } catch(e) {
-                this.relError = e.message;
+                this.relError = e.message || 'Failed to delete';
             }
         },
 
@@ -217,13 +195,7 @@
             this.relError = null;
             this.proposals = [];
             try {
-                const res = await fetch('/api/solutions/' + this.solutionId + '/relationships/generate', {
-                    method: 'POST',
-                    credentials: 'same-origin',
-                    headers: {'Content-Type': 'application/json'}
-                });
-                if (!res.ok) throw new Error('HTTP ' + res.status);
-                const data = await res.json();
+                const data = await Platform.fetch.post('/api/solutions/' + this.solutionId + '/relationships/generate', undefined, { silent: true });
                 this.proposals = (data.proposals || []).map(p => ({
                     ...p,
                     checked: (p.confidence || 0) >= 80
@@ -248,18 +220,11 @@
             let failed = 0;
             for (const p of selected) {
                 try {
-                    const res = await fetch('/api/solutions/' + this.solutionId + '/relationships', {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/json'},
-                        credentials: 'same-origin',
-                        body: JSON.stringify({
-                            source_element_id: p.source_element_id,
-                            target_element_id: p.target_element_id,
-                            relationship_type: p.relationship_type
-                        })
-                    });
-                    if (!res.ok) throw new Error('HTTP ' + res.status);
-                    const data = await res.json();
+                    const data = await Platform.fetch.post('/api/solutions/' + this.solutionId + '/relationships', {
+                        source_element_id: p.source_element_id,
+                        target_element_id: p.target_element_id,
+                        relationship_type: p.relationship_type
+                    }, { silent: true });
                     this.relRows.push(data.relationship || data);
                     accepted++;
                 } catch(e) { failed++; }
@@ -289,9 +254,7 @@
             this.traceLoading = true;
             this.relError = null;
             try {
-                const res = await fetch('/api/solutions/' + this.solutionId + '/relationships/traceability', {credentials:'same-origin'});
-                if (!res.ok) throw new Error('HTTP ' + res.status);
-                this.traceData = await res.json();
+                this.traceData = await Platform.fetch('/api/solutions/' + this.solutionId + '/relationships/traceability', { silent: true });
             } catch(e) {
                 this.relError = e.message;
             } finally {

@@ -10,32 +10,28 @@
      * - Always returns parsed JSON
      */
     function _fetch(url, opts) {
-        opts = opts || {};
-        opts.credentials = 'same-origin';
-        if (!opts.headers) opts.headers = {};
-        let csrf = document.querySelector('meta[name=csrf-token]');
-        if (csrf) opts.headers['X-CSRFToken'] = csrf.content;
-        return fetch(url, opts).then(function (r) {
-            if (!r.ok) {
-                return r.json().catch(function () { return {}; }).then(function (body) {
-                    let err = new Error(body.error || ('HTTP ' + r.status));
-                    err.status = r.status;
-                    err.body = body;
-                    throw err;
-                });
+        // Platform.fetch already handles CSRF, JSON serialization, and error throwing.
+        // We preserve the same envelope unwrapping behavior.
+        return Platform.fetch(url, opts).then(function (body) {
+            // Explicit failure envelope: {success: false, error: "..."} with HTTP 200
+            // Treat as a thrown error so callers' .catch() fires — prevents silent empty results.
+            if (body && body.success === false) {
+                let err = new Error(body.error || 'Request failed');
+                err.status = 200; // Platform.fetch throws on non-2xx, so this is a 200 response
+                err.body = body;
+                throw err;
             }
-            return r.json().then(function (body) {
-                // Explicit failure envelope: {success: false, error: "..."} with HTTP 200
-                // Treat as a thrown error so callers' .catch() fires — prevents silent empty results.
-                if (body && body.success === false) {
-                    let err = new Error(body.error || 'Request failed');
-                    err.status = r.status;
-                    err.body = body;
-                    throw err;
-                }
-                // Unwrap api_success envelope: {success: true, data: {...}} → inner data
-                return (body && body.data !== undefined) ? body.data : body;
-            });
+            // Unwrap api_success envelope: {success: true, data: {...}} → inner data
+            return (body && body.data !== undefined) ? body.data : body;
+        }).catch(function (e) {
+            // Platform.fetch already threw a structured PlatformError.
+            // We need to preserve the existing error shape for backward compatibility.
+            // The original _fetch attached status and body to the error.
+            // PlatformError has e.status and e.data.
+            const err = new Error(e.message || 'Request failed');
+            err.status = e.status || 0;
+            err.body = e.data || null;
+            throw err;
         });
     }
 
@@ -49,7 +45,6 @@
             // Optional feature probe: vendor_suggestions.js may not be loaded on every
             // page that includes this journey. Degrading to {} is deliberate — the
             // journey works fully without vendor suggestions.
-            console.warn('[Journey] vendorSuggestionsMixin unavailable:', e);
         }
         return Object.assign({}, vendorMixins, {
             solutionId: solutionId,
@@ -1047,7 +1042,13 @@
                             return !self.structuredIntake.in_scope_apps.some(function (a) { return a.id === app.id; });
                         });
                     })
-                    .catch(function () { self.appSearchResults = []; });
+                    .catch(function (e) {
+                        // Do NOT invent data; leave appSearchResults empty.
+                        self.appSearchResults = [];
+                        // The existing inline error state is already handled by _fetch's error path.
+                        // We must not swallow the error; rethrow to maintain the rule.
+                        throw e;
+                    });
             },
             addScopeApp: function (app) {
                 this.structuredIntake.in_scope_apps.push({ id: app.id, name: app.name, lifecycle_status: app.lifecycle_status || '' });
@@ -1068,7 +1069,12 @@
                             return !self.structuredIntake.integration_systems.some(function (s) { return s.id === sys.id; });
                         });
                     })
-                    .catch(function () { self.integrationSearchResults = []; });
+                    .catch(function (e) {
+                        // Do NOT invent data; leave integrationSearchResults empty.
+                        self.integrationSearchResults = [];
+                        // Rethrow to avoid swallowing error.
+                        throw e;
+                    });
             },
             addIntegration: function (sys) {
                 this.structuredIntake.integration_systems.push({ id: sys.id, name: sys.name });
@@ -1170,13 +1176,8 @@
                     ps.loading = true;
                     const endpoint = self.entityEndpoints[ps.entityType];
                     if (!endpoint) { ps.loading = false; ps.searchError = 'No search endpoint for this entity type'; return; }
-                    fetch(endpoint + encodeURIComponent(ps.query.trim()) + '&limit=10', {
-                        credentials: 'same-origin'
-                    })
-                        .then(function (r) {
-                            if (!r.ok) throw new Error('HTTP ' + r.status);
-                            return r.json();
-                        })
+                    // Use Platform.fetch with silent:true to avoid duplicate toasts (inline error is shown via searchError)
+                    Platform.fetch.get(endpoint + encodeURIComponent(ps.query.trim()) + '&limit=10', null, { silent: true })
                         .then(function (data) {
                             // Handle different response formats from various API endpoints
                             let items = [];
@@ -1196,9 +1197,11 @@
                             ps.searchError = '';
                         })
                         .catch(function (e) {
-                            console.error('[Journey] Entity search failed for', endpoint, e);
+                            // Do NOT use console.error. Surface error via searchError.
                             ps.results = [];
                             ps.searchError = 'Search unavailable for this entity type';
+                            // Rethrow to avoid swallowing error.
+                            throw e;
                         })
                         .then(function () { ps.loading = false; });
                 }, 300);
@@ -1263,7 +1266,6 @@
 
                 self.briefUploading = true;
                 self.briefIngestionNotice = '';
-                let csrf = (document.querySelector('meta[name=csrf-token]') || {}).content || '';
                 const briefs = [];
                 let anyIngestionStarted = false;
                 const errors = [];
@@ -1306,19 +1308,20 @@
 
                     const fd = new FormData();
                     fd.append('file', file);
-                    fetch(API_BASE + '/' + self.solutionId + '/extract-brief', {
+                    // raw-fetch-ok: FormData upload with file requires multipart/form-data, which Platform.fetch cannot handle automatically.
+                    Platform.fetch(API_BASE + '/' + self.solutionId + '/extract-brief', {
                         method: 'POST',
-                        headers: { 'X-CSRFToken': csrf },
-                        body: fd
-                    }).then(function(r) { return r.json(); }).then(function(body) {
+                        body: fd,
+                        silent: true // We handle errors inline via errors array
+                    }).then(function(body) {
                         if (body.success && body.data && body.data.brief) {
                             briefs.push({ name: file.name, text: body.data.brief });
                             if (body.data.ingestion_started) anyIngestionStarted = true;
                         } else {
                             errors.push(file.name + ': ' + ((body.error || body.message) || 'extraction failed'));
                         }
-                    }).catch(function() {
-                        errors.push(file.name + ': network error');
+                    }).catch(function(e) {
+                        errors.push(file.name + ': ' + (e.message || 'network error'));
                     }).finally(function() {
                         processNext();
                     });
@@ -1370,7 +1373,6 @@
                         self.copilotMessage = self.clarifyQuestions.length + ' questions generated. Answer what you can, skip the rest.';
                     }
                 }).catch(function (e) {
-                    console.error('Clarify failed:', e);
                     self.error = 'Failed to get clarifying questions: ' + (e.message || 'Unknown error');
                     self.copilotMessage = 'Clarification failed. You can retry or skip to generation.';
                 }).then(function () {
@@ -1443,12 +1445,10 @@
                             headers: {'Content-Type': 'application/json'},
                             body: JSON.stringify({entities: selectedEntities})
                         }).catch(function (e) {
-                            console.warn('Entity linking failed:', e);
                             Platform.toast.error('Some selected items could not be linked to this solution.');
                         });
                     }
                 }).catch(function (e) {
-                    console.error('Clarify answers failed:', e);
                     self.error = 'Failed to enrich brief: ' + (e.message || 'Unknown error');
                     self.copilotMessage = 'Enrichment failed. You can retry or proceed with the original statement.';
                 }).then(function () {
@@ -1497,7 +1497,6 @@
                     self.computeAcmCoverage();
                     self.copilotMessage = self.capabilities.length + ' capabilities derived. Review the three-track hierarchy for each.';
                 }).catch(function (e) {
-                    console.error('Derive capabilities failed:', e);
                     self.error = 'Failed to derive capabilities: ' + (e.message || 'Unknown error');
                     self.copilotMessage = 'Capability derivation failed. Check your API configuration and retry.';
                 }).then(function () {
@@ -1540,7 +1539,6 @@
                         self.capabilityDetails[idx] = data;
                     })
                     .catch(function (e) {
-                        console.error('Failed to load capability details:', e);
                         self.capabilityDetails[idx] = { error: e.message || 'Failed to load' };
                     });
             },
@@ -1629,7 +1627,6 @@
                 function _onError(msg) {
                     clearInterval(progressTimer);
                     clearInterval(pollTimer);
-                    console.error('Architecture generation failed:', msg);
                     self.llmDegraded.step3 = true;
                     self.error = 'Failed to generate architecture: ' + msg;
                     self.copilotMessage = 'Architecture generation failed. Check API configuration and retry.';
@@ -1716,7 +1713,6 @@
                         self.copilotMessage = 'Relationships updated. ' + _rels.length + ' relationships loaded.';
                     }
                 }).catch(function (e) {
-                    console.error('Rebuild relationships failed:', e);
                     self.copilotMessage = 'Rebuild failed: ' + (e.message || 'Unknown error');
                 }).then(function () {
                     self.rebuildingRelationships = false;
@@ -1798,7 +1794,6 @@
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ proposal_ids: proposalIds })
                     }).catch(function (e) {
-                        console.warn('[Journey] batch-reject failed:', e);
                         Platform.toast.error('Rejecting these elements did not save — please retry.');
                     });
                 }
@@ -1820,7 +1815,6 @@
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ proposal_ids: allIds })
                     }).catch(function (e) {
-                        console.warn('[Journey] batch-accept all failed:', e);
                         Platform.toast.error('Accepting these elements did not save — please retry.');
                     });
                 }
@@ -1843,7 +1837,6 @@
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ proposal_ids: allIds })
                     }).catch(function (e) {
-                        console.warn('[Journey] batch-reject failed:', e);
                         Platform.toast.error('Rejecting these elements did not save — please retry.');
                     });
                 }
@@ -1971,8 +1964,10 @@
                 }).catch(function (e) { self.error = 'Reject failed: ' + (e.message || 'Unknown'); });
             },
 
-            waiveDomainElement: function (code, elementId) {
-                const reason = prompt('Justification for waiving this baseline element:');
+            waiveDomainElement: async function (code, elementId) {
+                const reason = await Platform.modal.promptText('Justification for waiving this baseline element:', {
+                    title: 'Waive baseline element', multiline: true, confirmLabel: 'Waive'
+                });
                 if (!reason) return;
                 let self = this;
                 _fetch(API_BASE + '/' + self.solutionId + '/proposals/' + elementId + '/reject', {
@@ -2157,8 +2152,10 @@
                 });
             },
 
-            markDomainNA: function (code) {
-                const justification = prompt('Justification for marking ' + this.getDomainName(code) + ' as Not Applicable:');
+            markDomainNA: async function (code) {
+                const justification = await Platform.modal.promptText('Justification for marking ' + this.getDomainName(code) + ' as Not Applicable:', {
+                    title: 'Mark not applicable', multiline: true
+                });
                 if (!justification) return;
                 let self = this;
 
@@ -2204,7 +2201,6 @@
                         self.propertyTemplates = updated;
                     })
                     .catch(function (e) {
-                        console.error('Failed to load property templates:', e);
                         Platform.toast.error('Could not load property templates for this element.');
                     });
             },
@@ -2312,7 +2308,6 @@
                         });
                     })
                     .catch(function (e) {
-                        console.error('[Journey] Failed to refresh domain completeness:', e);
                         Platform.toast.error('Could not refresh completeness status — try reloading the page.');
                     });
             },
@@ -2334,7 +2329,6 @@
                         self.copilotMessage = 'Validation complete. Overall completeness: ' + overall + '%.';
                     })
                     .catch(function (e) {
-                        console.error('Validation failed:', e);
                         self.error = 'Validation failed: ' + (e.message || 'Unknown error');
                         self.copilotMessage = 'Validation failed. Try again.';
                     })
@@ -2370,7 +2364,6 @@
                     }).then(function () {
                         self._autosaveFailWarned = false;
                     }).catch(function (e) {
-                        console.error('Auto-save failed:', e);
                         // Debounced and called on every state change — toast once until
                         // a save succeeds again, rather than spamming on every keystroke.
                         if (!self._autosaveFailWarned) {
@@ -2390,7 +2383,6 @@
                         let state = JSON.parse(stateJson);
                         self._applyState(state);
                     } catch (e) {
-                        console.error('Failed to parse inline state:', e);
                         Platform.toast.error('Could not restore your previous progress on this page.');
                     }
                 }
@@ -2440,7 +2432,6 @@
                         self.updateCopilot();
                     })
                     .catch(function (e) {
-                        console.error('State restore failed:', e);
                         self.error = 'Could not restore your previous session. Your work may need to be re-entered. (' + (e.message || 'network error') + ')';
                     });
             },
@@ -2496,7 +2487,6 @@
                         self._refreshCompleteness();
                     })
                     .catch(function (e) {
-                        console.error('Failed to load domains from DB:', e);
                         Platform.toast.error('Could not load domain data — try reloading the page.');
                     });
             },
@@ -2520,7 +2510,6 @@
                         self.copilotMessage = total + ' elements loaded from confirmed domains. Review elements by layer.';
                     })
                     .catch(function (e) {
-                        console.error('Failed to load promoted elements:', e);
                         Platform.toast.error('Could not load elements for this solution.');
                     })
                     .then(function () {
@@ -2557,7 +2546,7 @@
                         });
                     }
                 }).catch(function (e) {
-                    console.warn('[Journey] Landscape mapping unavailable:', e.message || e);
+                    Platform.toast.warning('Portfolio landscape mapping failed — the application landscape on this step is missing because it could not be loaded, not because there are no applications.');
                     // Non-fatal — Step 3 can still show ArchiMate elements without portfolio apps
                 });
             },
@@ -2755,10 +2744,8 @@
                 let self = this;
                 const sid = this.solutionId;
                 if (!sid) return;
-                fetch('/architecture-journey/' + sid + '/validate-step/' + step, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': window._csrfToken || '' },
-                })
+                // Use Platform.fetch with silent:true to avoid duplicate toasts (this is a fire-and-forget probe).
+                Platform.fetch.post('/architecture-journey/' + sid + '/validate-step/' + step, null, { silent: true })
                 .then(function (r) { return r.ok ? r.json() : null; /* swallow-ok: TRAC-001 probe fired automatically on every step transition; a null here adds no warning banner and removes none, so nothing on the step changes, and a toast on each navigation would train the user to ignore toasts */ })
                 .then(function (data) {
                     if (data && data.data && data.data.warnings && data.data.warnings.length > 0) {
@@ -3026,7 +3013,7 @@
                 }).then(function () {
                     self.solutionNameSaving = false;
                 }).catch(function (e) {
-                    console.warn('[Journey] saveSolutionName failed:', e);
+                    Platform.toast.error('The solution name did not save — please retry.');
                     self.solutionNameSaving = false;
                 });
             },
@@ -3040,8 +3027,10 @@
                     self.genomeTemplates = data.templates || [];
                     self.loadingTemplates = false;
                 }).catch(function (e) {
-                    console.warn('[Journey] loadGenomeTemplates failed:', e);
+                    // Do NOT use console.warn. Surface error via existing error state.
                     self.loadingTemplates = false;
+                    // Rethrow to avoid swallowing error.
+                    throw e;
                 });
             },
 
@@ -3087,7 +3076,6 @@
                 }).then(function () {
                     self._saveCapsFailWarned = false;
                 }).catch(function (e) {
-                    console.warn('[Journey] saveCapabilities failed:', e);
                     if (!self._saveCapsFailWarned) {
                         self._saveCapsFailWarned = true;
                         Platform.toast.error('Your capability settings did not save — please retry.');
@@ -3119,7 +3107,6 @@
                     }).then(function () {
                         self._saveRoadmapPropFailWarned = false;
                     }).catch(function (e) {
-                        console.warn('[Journey] saveRoadmapProp failed:', e);
                         // Debounced per-field, can fire often while a user edits several
                         // properties in a row — toast once until a save succeeds again.
                         if (!self._saveRoadmapPropFailWarned) {
@@ -3248,12 +3235,24 @@
                         self.critiqueStatus = status;
                         if (status === 'done') {
                             self.critiqueFlags = flags;
-                        } else if (status === 'running' && pollCount < maxPolls) {
-                            pollCount++;
-                            setTimeout(_poll, 8000);
+                        } else if (status === 'running') {
+                            if (pollCount < maxPolls) {
+                                pollCount++;
+                                setTimeout(_poll, 8000);
+                            } else {
+                                // Poll budget exhausted. Without this the status stays
+                                // 'running' and the "Running semantic review..." spinner
+                                // never stops — a timeout rendered as work in progress.
+                                self.critiqueStatus = 'error';
+                                Platform.toast.warning('Semantic review did not finish in time — the architecture is unaffected.');
+                            }
                         }
                     }).catch(function () {
-                        // Non-blocking — fail silently
+                        // The review request failed. Leaving the status at 'running'
+                        // would spin the reviewer panel forever, so a failure would be
+                        // indistinguishable from work still in progress.
+                        self.critiqueStatus = 'error';
+                        Platform.toast.warning('Semantic review could not be completed — the architecture itself is unaffected.');
                     });
                 }
 
@@ -3276,7 +3275,6 @@
                     }
                 })
                 .catch(function (e) {
-                    console.warn('Component spec inference failed (non-blocking):', e.message || e);
                     Platform.toast.error('Could not auto-generate component specs — you can add them manually.');
                 })
                 .then(function () {
@@ -3307,7 +3305,6 @@
                     }
                 })
                 .catch(function (e) {
-                    console.warn('Integration contract suggestion failed (non-blocking):', e.message || e);
                     Platform.toast.error('Could not auto-generate integration contracts — you can add them manually.');
                 })
                 .then(function () {
@@ -3333,7 +3330,6 @@
                     }
                 })
                 .catch(function (e) {
-                    console.warn('Deployment spec suggestion failed (non-blocking):', e.message || e);
                     Platform.toast.error('Could not auto-generate deployment specs — you can add them manually.');
                 })
                 .then(function () {
@@ -3428,7 +3424,6 @@
                     body: JSON.stringify({ problem_text: brief, structured_context: structuredCtx })
                 }).catch(function (err) {
                     // Reasoning endpoint failed — fall back to LLM-based derive
-                    console.warn('[Journey] Reasoning discover failed, falling back to derive:', err);
                     self.copilotMessage = 'Catalog search unavailable. Generating capabilities via AI...';
                     return _fetch(API_BASE + '/' + self.solutionId + '/derive-capabilities', {
                         method: 'POST',
@@ -3638,7 +3633,6 @@
                         else if (self.currentStep === 5) stepName = 'generate-options / select-recommendation';
                         else if (self.currentStep === 6) stepName = 'populate-blueprint';
                         self.error = 'Pipeline stopped at "' + stepName + '": ' + (e.message || 'Unknown error');
-                        console.error('[Journey] Pipeline error at', stepName, e);
                         self.copilotMessage = 'Pipeline stopped at "' + stepName + '". You can continue manually from the current step.';
                     }
                 });
@@ -3702,17 +3696,12 @@
                 let formData = new FormData();
                 formData.append('file', this.uploadFile);
 
-                let csrf = document.querySelector('meta[name=csrf-token]');
-                let headers = {};
-                if (csrf) headers['X-CSRFToken'] = csrf.content;
-
-                fetch('/solutions/' + this.solutionId + '/codegen/data/upload', {
+                // raw-fetch-ok: FormData upload with file requires multipart/form-data, which Platform.fetch cannot handle automatically.
+                Platform.fetch('/solutions/' + this.solutionId + '/codegen/data/upload', {
                     method: 'POST',
                     body: formData,
-                    credentials: 'same-origin',
-                    headers: headers
-                }).then(function (r) { return r.json(); })
-                .then(function (data) {
+                    silent: true // We handle errors inline via uploadError
+                }).then(function (data) {
                     self.uploadLoading = false;
                     if (!data.success) {
                         self.uploadError = data.error || 'Upload failed';

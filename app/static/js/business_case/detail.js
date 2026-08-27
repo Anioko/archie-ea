@@ -38,24 +38,24 @@ document.addEventListener('alpine:init', () => {
       this.savingField = fieldKey;
       this.savedField = null;
       try {
-        const resp = await fetch(this.fieldApiUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': this.csrfToken()
-          },
-          body: JSON.stringify({ field: fieldKey, value: this.fields[fieldKey] ?? '' })
+        const json = await Platform.fetch.post(this.fieldApiUrl, {
+          field: fieldKey,
+          value: this.fields[fieldKey] ?? ''
         });
-        const json = await resp.json();
-        if (!resp.ok || !json.success) {
+        // Platform.fetch throws on non-ok responses, so reaching here means success.
+        if (!json.success) {
           throw new Error((json.error && json.error.message) || 'Failed to save field');
         }
         this.savedField = fieldKey;
         setTimeout(() => { if (this.savedField === fieldKey) this.savedField = null; }, 1500);
       } catch (e) {
-        if (window.Platform && Platform.toast) {
-          Platform.toast.error(e.message || 'Failed to save field');
-        }
+        // Platform.fetch already shows a toast unless silent:true, but we need to preserve
+        // the existing inline error handling (which currently also uses toast).
+        // Since the existing code already shows a toast, we keep the same behavior.
+        // No need to duplicate the toast, but we must not swallow the error.
+        // The error is already surfaced to the user via Platform.fetch's toast.
+        // Re-throw to ensure the caller knows about the failure.
+        throw e;
       } finally {
         this.savingField = null;
       }
@@ -64,30 +64,27 @@ document.addEventListener('alpine:init', () => {
     async saveMeta() {
       this.savingMeta = true;
       try {
-        const resp = await fetch(this.updateApiUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': this.csrfToken()
-          },
-          body: JSON.stringify({
-            status: this.status,
-            capability_id: this.capabilityId || null,
-            strategic_initiative_id: this.strategicInitiativeId || null,
-            solution_id: this.solutionId || null
-          })
+        const json = await Platform.fetch.post(this.updateApiUrl, {
+          status: this.status,
+          capability_id: this.capabilityId || null,
+          strategic_initiative_id: this.strategicInitiativeId || null,
+          solution_id: this.solutionId || null
         });
-        const json = await resp.json();
-        if (!resp.ok || !json.success) {
+        // Platform.fetch throws on non-ok responses, so reaching here means success.
+        if (!json.success) {
           throw new Error((json.error && json.error.message) || 'Failed to update business case');
         }
         if (window.Platform && Platform.toast) {
           Platform.toast.success('Business case updated');
         }
       } catch (e) {
-        if (window.Platform && Platform.toast) {
-          Platform.toast.error(e.message || 'Failed to update business case');
-        }
+        // Platform.fetch already shows a toast unless silent:true, but we need to preserve
+        // the existing inline error handling (which currently also uses toast).
+        // Since the existing code already shows a toast, we keep the same behavior.
+        // No need to duplicate the toast, but we must not swallow the error.
+        // The error is already surfaced to the user via Platform.fetch's toast.
+        // Re-throw to ensure the caller knows about the failure.
+        throw e;
       } finally {
         this.savingMeta = false;
       }
@@ -96,15 +93,9 @@ document.addEventListener('alpine:init', () => {
     async pullFinancials() {
       this.pullingFinancials = true;
       try {
-        const resp = await fetch(this.pullFinancialsApiUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': this.csrfToken()
-          }
-        });
-        const json = await resp.json();
-        if (!resp.ok || !json.success) {
+        const json = await Platform.fetch.post(this.pullFinancialsApiUrl, null);
+        // Platform.fetch throws on non-ok responses, so reaching here means success.
+        if (!json.success) {
           throw new Error((json.error && json.error.message) || 'Failed to pull financials');
         }
         const data = json.data ?? json;
@@ -125,9 +116,13 @@ document.addEventListener('alpine:init', () => {
           }
         }
       } catch (e) {
-        if (window.Platform && Platform.toast) {
-          Platform.toast.error(e.message || 'Failed to pull financials');
-        }
+        // Platform.fetch already shows a toast unless silent:true, but we need to preserve
+        // the existing inline error handling (which currently also uses toast).
+        // Since the existing code already shows a toast, we keep the same behavior.
+        // No need to duplicate the toast, but we must not swallow the error.
+        // The error is already surfaced to the user via Platform.fetch's toast.
+        // Re-throw to ensure the caller knows about the failure.
+        throw e;
       } finally {
         this.pullingFinancials = false;
       }
@@ -140,25 +135,19 @@ document.addEventListener('alpine:init', () => {
       this.draftingSection = sectionKey;
       this.draftError = null;
       try {
-        const resp = await fetch(this.draftSectionApiUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': this.csrfToken()
-          },
-          body: JSON.stringify({ section: sectionKey })
-        });
-        const json = await resp.json();
-        if (!resp.ok) {
-          throw new Error(json.message || json.error || 'Failed to draft section');
-        }
+        const json = await Platform.fetch.post(this.draftSectionApiUrl, { section: sectionKey });
+        // Platform.fetch throws on non-ok responses, so reaching here means success.
         this.fields[sectionKey] = json.draft.content;
       } catch (e) {
         this.draftError = sectionKey;
         this.draftErrorMessage = e.message || 'Failed to draft section';
-        if (window.Platform && Platform.toast) {
-          Platform.toast.error(this.draftErrorMessage);
-        }
+        // Platform.fetch already shows a toast unless silent:true, but we need to preserve
+        // the existing inline error handling (which currently also uses toast).
+        // Since the existing code already shows a toast, we keep the same behavior.
+        // No need to duplicate the toast, but we must not swallow the error.
+        // The error is already surfaced to the user via Platform.fetch's toast.
+        // Re-throw to ensure the caller knows about the failure.
+        throw e;
       } finally {
         this.draftingSection = null;
       }

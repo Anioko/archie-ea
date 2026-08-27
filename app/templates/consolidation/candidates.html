@@ -1,13 +1,11 @@
 {% extends "layouts/admin_base.html" %}
+{% from 'macros/page_shell.html' import page_shell %}
 
 {% block title %}Consolidation Candidates{% endblock %}
 
 {% block content %}
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-    <div class="mb-8">
-        <h1 class="text-3xl font-bold text-foreground">Consolidation Candidates</h1>
-        <p class="text-muted-foreground mt-2">Applications identified for potential consolidation</p>
-    </div>
+    {{ page_shell(title='Consolidation Candidates', subtitle='Applications identified for potential consolidation') }}
 
     <div data-slot="card" class="rounded-xl border bg-card shadow-sm">
         <table class="w-full text-sm">

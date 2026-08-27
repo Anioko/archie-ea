@@ -1,4 +1,5 @@
 {% extends "layouts/admin_base.html" %}
+{% from 'macros/page_shell.html' import page_shell %}
 {% block title %}Edit — {{ application.name }}{% endblock %}
 
 {% block breadcrumb %}
@@ -11,17 +12,16 @@
 {% endblock %}
 
 {% block content %}
-<div class="container mx-auto max-w-3xl py-8 px-4">
+<div class="p-6 space-y-6 mx-auto max-w-3xl">
 
-  <nav class="flex items-center gap-2 text-sm text-muted-foreground mb-6">
-    <a href="{{ url_for('unified_applications.application_list') }}" class="hover:text-foreground">Applications</a>
-    <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
-    <a href="{{ url_for('unified_applications.application_detail', id=application.id) }}" class="hover:text-foreground">{{ application.name }}</a>
-    <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
-    <span class="text-foreground">Edit</span>
-  </nav>
-
-  <h1 class="text-2xl font-bold mb-6">Edit Application</h1>
+  {{ page_shell(
+      title='Edit Application',
+      breadcrumb=[
+          ('Applications', url_for('unified_applications.application_list')),
+          (application.name, url_for('unified_applications.application_detail', id=application.id)),
+          ('Edit', None)
+      ]
+  ) }}
 
   <form method="POST" action="{{ url_for('unified_applications.application_edit', id=application.id) }}" class="space-y-8">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

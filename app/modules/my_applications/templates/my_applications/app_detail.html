@@ -1,30 +1,11 @@
 {% extends 'layouts/admin_base.html' %}
+{% from 'macros/page_shell.html' import page_shell %}
 {% block title %}{{ app.name }} - My Applications{% endblock %}
 
 {% block content %}
-<div class="container mx-auto px-4 py-6">
-    <!-- Breadcrumb -->
-    <nav class="flex items-center gap-2 text-sm text-muted-foreground mb-6">
-        <a href="{{ url_for('my_applications.dashboard') }}" class="hover:text-foreground">My Applications</a>
-        <i data-lucide="chevron-right" class="w-4 h-4"></i>
-        <a href="{{ url_for('my_applications.app_list') }}" class="hover:text-foreground">Portfolio</a>
-        <i data-lucide="chevron-right" class="w-4 h-4"></i>
-        <span class="text-foreground">{{ app.name }}</span>
-    </nav>
-
+<div class="p-6 space-y-6 mx-auto">
     <!-- Header -->
-    <div class="flex items-start justify-between mb-6">
-        <div class="flex items-start gap-4">
-            <div class="w-16 h-16 bg-primary/10 rounded-xl flex items-center justify-center">
-                <i data-lucide="package" class="w-8 h-8 text-primary"></i>
-            </div>
-            <div>
-                <h1 class="text-2xl font-bold">{{ app.name }}</h1>
-                <a href="{{ url_for('my_applications.app_edit', app_id=app.id) }}"
-                   class="inline-flex items-center gap-2 px-3 py-1.5 mt-2 rounded-md border border-border text-sm hover:bg-accent transition-colors">
-                    <i data-lucide="pencil" class="w-4 h-4"></i> Edit application
-                </a>
-                <div class="flex items-center gap-3 mt-2">
+    {% macro _ps_meta() %}
                     {% if ownership %}
                     <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-primary/10 text-primary">
                         {{ ownership.ownership_type or 'Owner' }}
@@ -39,17 +20,29 @@
                         {% else %}bg-muted text-muted-foreground{% endif %}">
                         {{ lifecycle }}
                     </span>
-                </div>
-            </div>
-        </div>
-        <div class="flex items-center gap-2">
+    {% endmacro %}
+    {% macro _ps_actions() %}
+                <a href="{{ url_for('my_applications.app_edit', app_id=app.id) }}"
+                   class="inline-flex items-center gap-2 px-3 py-1.5 rounded-md border border-border text-sm hover:bg-accent transition-colors">
+                    <i data-lucide="pencil" class="w-4 h-4"></i> Edit application
+                </a>
             <a href="{{ url_for('unified_applications.application_detail', app_id=app.id) }}"
                class="inline-flex items-center gap-2 px-4 py-2 rounded-md border border-border hover:bg-accent transition-colors">
                 <i data-lucide="external-link" class="w-4 h-4"></i>
                 Full Details
             </a>
-        </div>
-    </div>
+    {% endmacro %}
+    {{ page_shell(
+        title=app.name,
+        icon='package',
+        breadcrumb=[
+            ('My Applications', url_for('my_applications.dashboard')),
+            ('Portfolio', url_for('my_applications.app_list')),
+            (app.name, None)
+        ],
+        meta_caller=_ps_meta,
+        actions_caller=_ps_actions
+    ) }}
 
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <!-- Main Content -->

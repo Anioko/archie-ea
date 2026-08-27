@@ -1,4 +1,5 @@
 {% extends "layouts/admin_base.html" %}
+{% from 'macros/page_shell.html' import page_shell %}
 {% from 'applications/rationalization/_disposition_tooltip.html' import disposition_badge %}
 {% block title %}Decision Workbench — Rationalization{% endblock %}
 
@@ -15,19 +16,16 @@
     </nav>
 
     {# ── Page Header ──────────────────────────────────────────────── #}
-    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-        <div>
-            <h1 class="text-2xl font-bold tracking-tight text-foreground">Decision Workbench</h1>
-            <p class="text-sm text-muted-foreground mt-1">Triage scored applications by readiness, disposition, and confidence</p>
-        </div>
-        <div class="flex items-center gap-3 text-sm text-muted-foreground">
+    {% macro _ps_actions() %}
+<div class="flex items-center gap-3 text-sm text-muted-foreground">
             <span x-show="totalCount > 0" x-cloak
                   x-text="results.length < totalCount ? 'Showing ' + results.length + ' of ' + totalCount + ' applications' : totalCount + ' applications'"></span>
             <button type="button" x-show="results.length < totalCount" x-cloak
                     @click="perPage = totalCount; page = 1; load()"
                     class="text-xs text-primary hover:underline font-medium">Load all</button>
         </div>
-    </div>
+    {% endmacro %}
+    {{ page_shell(title='Decision Workbench', subtitle='Triage scored applications by readiness, disposition, and confidence', actions_caller=_ps_actions) }}
 
     {% include 'applications/rationalization/_sub_nav.html' %}
 

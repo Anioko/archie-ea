@@ -133,9 +133,10 @@ function appPicker(solutionId, initialApps) {
             if (q.length < 2) { this.results = []; this.searchError = ''; return; }
             this.searching = true;
             try {
-                const res = await fetch('/api/enterprise/applications?search=' + encodeURIComponent(q) + '&limit=20');
-                if (!res.ok) throw new Error('Application search failed (HTTP ' + res.status + ')');
-                const data = await res.json();
+                const data = await Platform.fetch.get('/api/enterprise/applications', {
+                    search: q,
+                    limit: 20
+                }, { silent: true });
                 this.results = data.applications || data.results || data || [];
                 this.searchError = '';
             } catch (e) {
@@ -152,13 +153,9 @@ function appPicker(solutionId, initialApps) {
             this.linking = true;
             this.errorMsg = '';
             try {
-                const csrfToken = document.querySelector('meta[name=csrf-token]')?.content || '';
-                const res = await fetch('/solutions/' + this.solutionId + '/link-application', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken},
-                    body: JSON.stringify({application_id: app.id}),
-                });
-                const data = await res.json();
+                const data = await Platform.fetch.post('/solutions/' + this.solutionId + '/link-application', {
+                    application_id: app.id
+                }, { silent: true });
                 if (data.success) {
                     this.linkedApps.push({
                         id: app.id,
@@ -180,12 +177,7 @@ function appPicker(solutionId, initialApps) {
         async unlinkApp(appId) {
             this.errorMsg = '';
             try {
-                const csrfToken = document.querySelector('meta[name=csrf-token]')?.content || '';
-                const res = await fetch('/solutions/' + this.solutionId + '/unlink-application/' + appId, {
-                    method: 'DELETE',
-                    headers: {'X-CSRFToken': csrfToken},
-                });
-                const data = await res.json();
+                const data = await Platform.fetch.delete('/solutions/' + this.solutionId + '/unlink-application/' + appId, { silent: true });
                 if (data.success) {
                     this.linkedApps = this.linkedApps.filter(a => a.id !== appId);
                 } else {

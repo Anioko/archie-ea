@@ -27,11 +27,10 @@ function openCapabilityAPQCMapping(capabilityId, capabilityName) {
     if (modal && modal.openMappingModal) {
         modal.openMappingModal(capabilityId, capabilityName);
     } else {
-        console.error('APQC mapping modal not initialized');
-        if (typeof toast !== 'undefined') {
-            toast.error('Modal Error', {
-                description: 'APQC mapping modal not available. Please refresh the page.'
-            });
+        // `toast` is not a global anywhere in this app, so this branch used to
+        // report nothing at all: the button simply did nothing.
+        if (window.Platform && Platform.toast) {
+            Platform.toast.error('APQC mapping is not available — please refresh the page.');
         }
     }
 }
@@ -42,11 +41,10 @@ function openCapabilityArchimateMapping(capabilityId, capabilityName) {
     if (modal && modal.openMappingModal) {
         modal.openMappingModal(capabilityId, capabilityName);
     } else {
-        console.error('ArchiMate mapping modal not initialized');
-        if (typeof toast !== 'undefined') {
-            toast.error('Modal Error', {
-                description: 'ArchiMate mapping modal not available. Please refresh the page.'
-            });
+        // `toast` is not a global anywhere in this app, so this branch used to
+        // report nothing at all: the button simply did nothing.
+        if (window.Platform && Platform.toast) {
+            Platform.toast.error('ArchiMate mapping is not available — please refresh the page.');
         }
     }
 }
@@ -65,21 +63,16 @@ let acmApplicationsList = [];
 async function loadTechnicalTab() {
     try {
         // Load domains
-        let domainsResponse = await fetch('/capability-map/api/acm/domains');
+        let domainsData = await Platform.fetch('/capability-map/api/acm/domains', { silent: true });
         // Unchecked, a 500 parsed to `{}`: `domainsData.domains` was falsy, the render
         // was skipped, and the tab sat empty as if no domains existed.
-        if (!domainsResponse.ok) throw new Error('technical domains (HTTP ' + domainsResponse.status + ')');
-        let domainsData = await domainsResponse.json();
-
         if (domainsData.domains) {
             acmDomainsData = domainsData.domains;
             renderACMDomains(domainsData);
         }
 
         // Load capabilities
-        let capsResponse = await fetch('/capability-map/api/acm/capabilities');
-        if (!capsResponse.ok) throw new Error('technical capabilities (HTTP ' + capsResponse.status + ')');
-        let capsData = await capsResponse.json();
+        let capsData = await Platform.fetch('/capability-map/api/acm/capabilities', { silent: true });
 
         if (capsData.capabilities) {
             acmCapabilitiesData = capsData.capabilities;
@@ -93,7 +86,6 @@ async function loadTechnicalTab() {
 
         if (typeof lucide !== 'undefined') setTimeout(function() { lucide.createIcons(); }, 100);
     } catch (error) {
-        console.error('Error loading ACM data:', error);
         safeHTML(document.getElementById('acm-domains-grid'), '\
             <div class="col-span-full text-center text-destructive py-8">\
                 <i data-lucide="alert-circle" class="w-8 h-8 mx-auto mb-2"></i>\
@@ -105,17 +97,14 @@ async function loadTechnicalTab() {
 
 async function loadApplicationsForACMMapping() {
     try {
-        let response = await fetch('/api/v1/applications/?per_page=500');
+        let data = await Platform.fetch('/api/v1/applications/?per_page=500', { silent: true });
         // Unchecked, a 500 left the mapping dropdown holding only its
         // "Choose an application..." placeholder.
-        if (!response.ok) throw new Error('HTTP ' + response.status);
-        let data = await response.json();
         if (data.success && data.data && data.data.applications) {
             acmApplicationsList = data.data.applications;
             populateACMApplicationsDropdown();
         }
     } catch (error) {
-        console.error('Error loading applications for ACM mapping:', error);
         if (window.Platform && Platform.toast) Platform.toast.error('Could not load applications for mapping.');
     }
 }
@@ -408,11 +397,9 @@ function closeACMMappingModal() {
 async function loadACMApplicationsForCapability(capabilityId) {
     try {
         let id = String(capabilityId);
-        let response = await fetch('/capability-map/api/acm/capability/' + id + '/applications');
+        let data = await Platform.fetch('/capability-map/api/acm/capability/' + id + '/applications', { silent: true });
         // Unchecked, a 500 opened the mapping modal with an empty application list —
         // the existing mappings looked as though they had been cleared.
-        if (!response.ok) throw new Error('HTTP ' + response.status);
-        let data = await response.json();
 
         if (data.error) {
             showACMNotification('Error loading applications: ' + data.error, 'error');
@@ -461,7 +448,6 @@ async function loadACMApplicationsForCapability(capabilityId) {
             if (searchInput) searchInput.focus();
         }, 100);
     } catch (error) {
-        console.error('Error loading ACM applications:', error);
         showACMNotification('Error loading applications', 'error');
     }
 }
@@ -719,16 +705,7 @@ async function deleteACMMapping(mappingId, appId) {
 
 async function _doDeleteACMMapping(mappingId, appId) {
     try {
-        let csrfToken = document.querySelector('meta[name="csrf-token"]');
-        let response = await fetch('/capability-map/api/acm/mapping/' + mappingId, {
-            method: 'DELETE',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': csrfToken ? csrfToken.content : ''
-            }
-        });
-
-        let data = await response.json();
+        let data = await Platform.fetch.delete('/capability-map/api/acm/mapping/' + mappingId, { silent: true });
         if (data.success) {
             // Update local state
             acmSelectedApplications.delete(appId);
@@ -743,7 +720,6 @@ async function _doDeleteACMMapping(mappingId, appId) {
             showACMNotification('Error: ' + (data.error || 'Unknown error'), 'error');
         }
     } catch (error) {
-        console.error('Error deleting ACM mapping:', error);
         showACMNotification('Network error', 'error');
     }
 }
@@ -767,17 +743,7 @@ async function saveACMMappings() {
             };
         });
 
-        let csrfToken = document.querySelector('meta[name="csrf-token"]');
-        let response = await fetch('/capability-map/api/acm/mappings/bulk', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': csrfToken ? csrfToken.content : ''
-            },
-            body: JSON.stringify({ mappings: mappings })
-        });
-
-        let data = await response.json();
+        let data = await Platform.fetch.post('/capability-map/api/acm/mappings/bulk', { mappings: mappings }, { silent: true });
         if (data.success) {
             closeACMMappingModal();
             showACMNotification('Successfully saved ' + (data.created || 0) + ' new and updated ' + (data.updated || 0) + ' mappings', 'success');
@@ -786,7 +752,6 @@ async function saveACMMappings() {
             showACMNotification('Error: ' + (data.error || 'Unknown error'), 'error');
         }
     } catch (error) {
-        console.error('Error saving ACM mappings:', error);
         showACMNotification('Network error. Please try again.', 'error');
     }
 }
@@ -814,11 +779,7 @@ let processSelectedApplications = new Map();
 
 function openProcessMappingModal(processId, processName, processCode, processType) {
     // Check if user is authenticated before opening modal
-    fetch('/capability-map/api/check-auth')
-        .then(function(response) {
-            if (!response.ok) { throw new Error('check-auth request failed: ' + response.status); }
-            return response.json();
-        })
+    Platform.fetch('/capability-map/api/check-auth', { silent: true })
         .then(function(data) {
             if (data.authenticated) {
                 // User is authenticated, proceed with modal
@@ -847,7 +808,6 @@ function openProcessMappingModal(processId, processName, processCode, processTyp
             }
         })
         .catch(function(error) {
-            console.error('Error checking authentication:', error);
             showProcessNotification('Error checking authentication status', 'error');
         });
 }
@@ -867,11 +827,9 @@ function closeProcessMappingModal() {
 async function loadProcessApplicationsForProcess(processId) {
     try {
         let id = String(processId);
-        let response = await fetch('/capability-map/api/process-gaps/process/' + id + '/applications');
+        let data = await Platform.fetch('/capability-map/api/process-gaps/process/' + id + '/applications', { silent: true });
         // Unchecked, a 500 opened the mapping modal with an empty application list —
         // the existing mappings looked as though they had been cleared.
-        if (!response.ok) throw new Error('HTTP ' + response.status);
-        let data = await response.json();
 
         if (data.error) {
             showProcessNotification('Error loading applications: ' + data.error, 'error');
@@ -920,7 +878,6 @@ async function loadProcessApplicationsForProcess(processId) {
             if (searchInput) searchInput.focus();
         }, 100);
     } catch (error) {
-        console.error('Error loading process applications:', error);
         showProcessNotification('Error loading applications', 'error');
     }
 }
@@ -1119,11 +1076,9 @@ function updateProcessSelectionCount() {
 async function saveProcessMappings() {
     try {
         // Check authentication before saving
-        let authResponse = await fetch('/capability-map/api/check-auth');
+        let authData = await Platform.fetch('/capability-map/api/check-auth', { silent: true });
         // Unchecked, a 500 made `authenticated` undefined and the save aborted with
         // "Please log in" at a user who was logged in the whole time.
-        if (!authResponse.ok) throw new Error('could not verify your session (HTTP ' + authResponse.status + ')');
-        let authData = await authResponse.json();
 
         if (!authData.authenticated) {
             // FAR-001: Show login prompt without auto-redirect (was causing page to navigate away)
@@ -1148,18 +1103,7 @@ async function saveProcessMappings() {
             });
         });
 
-        let response = await fetch('/capability-map/api/process-gaps/mappings/bulk', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                mappings: mappings
-            })
-        });
-
-        if (!response.ok) throw new Error('HTTP ' + response.status);
-        let result = await response.json();
+        let result = await Platform.fetch.post('/capability-map/api/process-gaps/mappings/bulk', { mappings: mappings }, { silent: true });
 
         if (result.success) {
             showProcessNotification('Successfully saved ' + mappings.length + ' mappings', 'success');
@@ -1170,7 +1114,6 @@ async function saveProcessMappings() {
             showProcessNotification('Error saving mappings: ' + (result.error || 'Unknown error'), 'error');
         }
     } catch (error) {
-        console.error('Error saving process mappings:', error);
         showProcessNotification('Mappings were NOT saved — ' + ((error && error.message) || 'request failed'), 'error');
     }
 }
@@ -1201,8 +1144,7 @@ function showProcessNotification(message, type) {
 
 async function loadBusinessDomainCards() {
     try {
-        let response = await fetch('/capability-map/api/unified/domains');
-        let data = await response.json();
+        let data = await Platform.fetch('/capability-map/api/unified/domains', { silent: true });
 
         if (data.success) {
             // Update statistics
@@ -1217,7 +1159,6 @@ async function loadBusinessDomainCards() {
 
         if (typeof lucide !== 'undefined') setTimeout(function() { lucide.createIcons(); }, 100);
     } catch (error) {
-        console.error('Error loading business domains:', error);
         // The stat spans default to "0" in the template; a failed load must not
         // leave that in place looking like a real (zero) count.
         ['unified-domain-count', 'unified-cap-count', 'unified-mapped-count', 'unified-coverage'].forEach(function(id) {
@@ -1273,8 +1214,7 @@ function renderBusinessDomainCards(domains) {
 
 async function loadManufacturingDomainStats() {
     try {
-        let response = await fetch('/capability-map/api/manufacturing/domains');
-        let data = await response.json();
+        let data = await Platform.fetch('/capability-map/api/manufacturing/domains', { silent: true });
 
         if (data.success) {
             // Update statistics
@@ -1294,7 +1234,6 @@ async function loadManufacturingDomainStats() {
 
         if (typeof lucide !== 'undefined') setTimeout(function() { lucide.createIcons(); }, 100);
     } catch (error) {
-        console.error('Error loading manufacturing domains:', error);
         // The stat spans default to "0" in the template; a failed load must not
         // leave that in place looking like a real (zero) count.
         ['mfg-cap-count', 'mfg-mapped-count', 'mfg-coverage', 'mfg-avg-oee'].forEach(function(id) {
@@ -1326,8 +1265,7 @@ function updateMfgDomainCard(prefix, domainData) {
 
 async function loadProcessCategoryStats() {
     try {
-        let response = await fetch('/capability-map/api/process/categories');
-        let data = await response.json();
+        let data = await Platform.fetch('/capability-map/api/process/categories', { silent: true });
 
         if (data.success) {
             let categories = data.categories || {};
@@ -1347,7 +1285,6 @@ async function loadProcessCategoryStats() {
 
         if (typeof lucide !== 'undefined') setTimeout(function() { lucide.createIcons(); }, 100);
     } catch (error) {
-        console.error('Error loading process categories:', error);
         // The stat spans default to "0" in the template; a failed load must not
         // leave that in place looking like a real (zero) count.
         for (let i = 1; i <= 13; i++) {
@@ -1375,8 +1312,7 @@ let acmGapDomainStats = [];
 
 async function loadACMGapAnalysis() {
     try {
-        let response = await fetch('/capability-map/api/acm/gap-analysis');
-        let data = await response.json();
+        let data = await Platform.fetch('/capability-map/api/acm/gap-analysis', { silent: true });
 
         if (data.success) {
             acmGapData = data.capabilities || [];
@@ -1398,7 +1334,6 @@ async function loadACMGapAnalysis() {
 
         if (typeof lucide !== 'undefined') setTimeout(function() { lucide.createIcons(); }, 100);
     } catch (error) {
-        console.error('Error loading ACM gap analysis:', error);
         safeHTML(document.getElementById('acm-gap-table-body'), '\
             <tr>\
                 <td colspan="6" class="px-6 py-8 text-center text-destructive">\

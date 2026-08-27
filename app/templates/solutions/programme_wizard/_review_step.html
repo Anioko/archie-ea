@@ -1,0 +1,83 @@
+{# Review step. Every value shown here is read back from the Alpine form state,
+   so it is exactly what the submit payload will carry -- nothing is recomputed
+   or substituted. Absent optional values render as an em dash via display(),
+   never as 0 or an invented default. #}
+<section class="rounded-lg border border-border bg-card p-6" aria-labelledby="review-heading"
+         x-show="currentStep === 5" x-cloak data-testid="step-review">
+  <h2 id="review-heading" class="text-lg font-semibold text-foreground">Review and create</h2>
+  <p class="mt-1 text-sm text-muted-foreground">This is what will be recorded. Check it, then create the programme.</p>
+
+  <dl class="mt-4 grid gap-x-6 gap-y-3 sm:grid-cols-2">
+    <div class="sm:col-span-2">
+      <dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Programme name</dt>
+      <dd class="mt-1 text-sm text-foreground" data-testid="review-name" x-text="display(form.name)"></dd>
+    </div>
+    <div class="sm:col-span-2">
+      <dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Business objective</dt>
+      <dd class="mt-1 whitespace-pre-line text-sm text-foreground" data-testid="review-objective" x-text="display(form.objective)"></dd>
+    </div>
+    <div>
+      <dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Programme owner</dt>
+      <dd class="mt-1 text-sm text-foreground" data-testid="review-owner" x-text="display(selectedOwnerName)"></dd>
+    </div>
+    <div>
+      <dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Target date</dt>
+      <dd class="mt-1 text-sm text-foreground" data-testid="review-target-date"
+          x-text="form.target_date ? form.target_date : display(form.target_date_unavailable_reason)"></dd>
+    </div>
+    <div>
+      <dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Workstream type</dt>
+      <dd class="mt-1 text-sm text-foreground" data-testid="review-workstream" x-text="workstreamLabel"></dd>
+    </div>
+    <div>
+      <dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Business units in scope</dt>
+      <dd class="mt-1 text-sm text-foreground" data-testid="review-business-units" x-text="display(businessUnitList.join(', '))"></dd>
+    </div>
+    <div class="sm:col-span-2">
+      <dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Outcome</dt>
+      <dd class="mt-1 text-sm text-foreground" data-testid="review-outcome" x-text="display(form.outcome.statement)"></dd>
+    </div>
+    <div>
+      <dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Direction</dt>
+      <dd class="mt-1 text-sm text-foreground" data-testid="review-direction" x-text="directionLabel"></dd>
+    </div>
+    <div>
+      <dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Metric</dt>
+      <dd class="mt-1 text-sm text-foreground" data-testid="review-metric" x-text="display(form.outcome.measure.metric_name)"></dd>
+    </div>
+    <div>
+      <dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Unit</dt>
+      <dd class="mt-1 text-sm text-foreground" data-testid="review-unit"
+          x-text="display([form.outcome.measure.unit, form.outcome.measure.currency.toUpperCase()].filter(Boolean).join(' / '))"></dd>
+    </div>
+    <div>
+      <dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Aggregation</dt>
+      <dd class="mt-1 text-sm text-foreground" data-testid="review-aggregation" x-text="aggregationLabel"></dd>
+    </div>
+    <div>
+      <dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Baseline</dt>
+      <dd class="mt-1 text-sm text-foreground" data-testid="review-baseline"
+          x-text="form.outcome.measure.baseline_value !== '' && form.outcome.measure.baseline_value !== null
+                    ? form.outcome.measure.baseline_value
+                    : display(form.outcome.measure.unavailable_reason)"></dd>
+    </div>
+    <div>
+      <dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Target value</dt>
+      <dd class="mt-1 text-sm text-foreground" data-testid="review-target-value" x-text="display(form.outcome.measure.target_value)"></dd>
+    </div>
+  </dl>
+
+  <div x-show="incompleteSteps.length" x-cloak
+       class="mt-4 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive-emphasis"
+       role="alert" data-testid="review-incomplete">
+    <p class="font-medium">Some required detail is still missing.</p>
+    <ul class="mt-1 grid gap-1">
+      <template x-for="index in incompleteSteps" :key="index">
+        <li>
+          <button type="button" class="underline" @click="goTo(index)"
+                  x-text="steps[index].label + ' is incomplete'"></button>
+        </li>
+      </template>
+    </ul>
+  </div>
+</section>

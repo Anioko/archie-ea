@@ -1,4 +1,5 @@
 {% extends "layouts/admin_base.html" %}
+{% from 'macros/page_shell.html' import page_shell %}
 {% from "components/gantt_timeline.html" import gantt_timeline %}
 {% block title %}ADM Roadmap Timeline{% endblock %}
 
@@ -9,16 +10,13 @@
 
 {% block content %}
 <div class="p-6 space-y-4">
-    <div class="flex items-center justify-between">
-        <div>
-            <h1 class="text-lg font-semibold text-foreground">ADM Roadmap Timeline</h1>
-            <p class="text-sm text-muted-foreground">All architecture tasks visualised across TOGAF ADM phases</p>
-        </div>
-        <a href="{{ url_for('adm_kanban_view.index') }}"
+    {% macro _ps_actions() %}
+<a href="{{ url_for('adm_kanban_view.index') }}"
            class="px-3 py-1.5 text-sm border border-border rounded-md hover:bg-muted transition-colors text-foreground">
             ← Back to Kanban
         </a>
-    </div>
+    {% endmacro %}
+    {{ page_shell(title='ADM Roadmap Timeline', subtitle='All architecture tasks visualised across TOGAF ADM phases', actions_caller=_ps_actions) }}
 
     {{ gantt_timeline(
         endpoint=url_for('adm_kanban_v2.roadmap_timeline_all'),

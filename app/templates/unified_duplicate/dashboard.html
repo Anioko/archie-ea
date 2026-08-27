@@ -1,13 +1,11 @@
 {% extends "layouts/admin_base.html" %}
+{% from 'macros/page_shell.html' import page_shell %}
 
 {% block title %}Duplicate Detection Dashboard{% endblock %}
 
 {% block content %}
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-    <div class="mb-8">
-        <h1 class="text-3xl font-bold text-foreground">Duplicate Detection Dashboard</h1>
-        <p class="text-muted-foreground mt-2">Overview of duplicate detection and resolution</p>
-    </div>
+    {{ page_shell(title='Duplicate Detection Dashboard', subtitle='Overview of duplicate detection and resolution') }}
 
     <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         <div class="rounded-xl border-2 border-input bg-background p-4">

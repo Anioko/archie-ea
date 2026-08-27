@@ -1,4 +1,5 @@
 {% extends "layouts/admin_base.html" %}
+{% from 'macros/page_shell.html' import page_shell %}
 <!-- modal-a11y-ok -->
 
 {% block title %}Product Roadmap{% endblock %}
@@ -10,12 +11,8 @@
   x-init="init()"
 >
   <!-- Header -->
-  <div class="flex items-center justify-between mb-6">
-    <div>
-      <h1 class="text-2xl font-bold text-foreground">Product Roadmap</h1>
-      <p class="text-sm text-muted-foreground mt-1">Epics across Now &middot; Next &middot; Later horizons</p>
-    </div>
-    <div class="flex items-center gap-3">
+  {% macro _ps_actions() %}
+<div class="flex items-center gap-3">
       <span class="text-xs text-muted-foreground">On Track (Now):</span>
       <span
         class="px-3 py-1 rounded-full text-sm font-semibold"
@@ -24,7 +21,8 @@
       ></span>
       <span class="text-xs text-muted-foreground/60" x-text="'Total epics: ' + totalEpics"></span>
     </div>
-  </div>
+  {% endmacro %}
+  {{ page_shell(title='Product Roadmap', subtitle='Epics across Now · Next · Later horizons', actions_caller=_ps_actions) }}
 
   <!-- Error banner -->
   <div x-show="error" x-cloak class="mb-4 p-3 bg-destructive/5 border border-destructive/20 rounded text-destructive-emphasis text-sm" x-text="error"></div>
@@ -234,9 +232,7 @@ function productRoadmap() {
 
     async init() {
       try {
-        const res = await fetch('/api/product-roadmap');
-        if (!res.ok) { this.error = 'Failed to load roadmap'; return; }
-        const data = await res.json();
+        const data = await Platform.fetch('/api/product-roadmap', { silent: true });
         this.horizons = data.horizons || this.horizons;
         this.unscheduled = data.unscheduled || [];
         this.totalEpics = data.total_epics || 0;
@@ -271,26 +267,22 @@ function productRoadmap() {
 
       // Persist
       try {
-        const res = await fetch(`/api/product-roadmap/epics/${epic.id}/horizon`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ horizon: targetHorizon || '' }),
-        });
-        if (!res.ok) {
-          this.error = 'Failed to save horizon assignment';
-          // Revert optimistic update
-          this._removeEpicFromAll(epic.id);
-          epic.horizon = prevHorizon || null;
-          if (prevHorizon && this.horizons[prevHorizon]) {
-            this.horizons[prevHorizon].epics.push(epic);
-          } else {
-            this.unscheduled.push(epic);
-          }
-        } else {
-          this._recalcOnTrack();
-        }
+        await Platform.fetch.patch(`/api/product-roadmap/epics/${epic.id}/horizon`, { horizon: targetHorizon || '' }, { silent: true });
+        this._recalcOnTrack();
       } catch (e) {
-        this.error = 'Network error: ' + e.message;
+        if (e.type === 'NetworkError') {
+          this.error = 'Network error: ' + e.message;
+        } else {
+          this.error = 'Failed to save horizon assignment';
+        }
+        // Revert optimistic update
+        this._removeEpicFromAll(epic.id);
+        epic.horizon = prevHorizon || null;
+        if (prevHorizon && this.horizons[prevHorizon]) {
+          this.horizons[prevHorizon].epics.push(epic);
+        } else {
+          this.unscheduled.push(epic);
+        }
       }
     },
 

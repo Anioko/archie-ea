@@ -19,25 +19,17 @@
     async submitToARB() {
         this.loading = true;
         try {
-            const response = await fetch(`/strategic/api/arb/submit-capability/${this.capability.id}`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': document.querySelector('meta[name=&quot;csrf-token&quot;]')?.content ?? ''
-                },
-                body: JSON.stringify({
-                    justification: this.formData.justification,
-                    priority_override: this.formData.priority_override || null,
-                    estimated_timeline: this.formData.estimated_timeline || null,
-                    additional_context: {
-                        source_dashboard: 'investment_matrix',
-                        submitted_via: 'one_click_submission'
-                    }
-                })
-            });
+            const data = await Platform.fetch.post(`/strategic/api/arb/submit-capability/${this.capability.id}`, {
+                justification: this.formData.justification,
+                priority_override: this.formData.priority_override || null,
+                estimated_timeline: this.formData.estimated_timeline || null,
+                additional_context: {
+                    source_dashboard: 'investment_matrix',
+                    submitted_via: 'one_click_submission'
+                }
+            }, { silent: true });
 
-            const data = await response.json();
-
+            // Platform.fetch returns parsed data directly
             if (data.success) {
                 Platform.toast.success(`ARB submission created: ${data.review_number}`);
                 Platform.modal.close('arb-submission');
@@ -48,8 +40,20 @@
                 Platform.toast.error(data.error || 'Submission failed');
             }
         } catch (error) {
-            console.error('ARB submission error:', error);
-            Platform.toast.error('Failed to submit to ARB');
+            // Platform.fetch throws for network errors and non-ok responses
+            // Check if it's an HTTP error with data
+            if (error.type === 'HttpError' && error.data) {
+                // The server returned a non-ok response with JSON body
+                if (error.data.success === false) {
+                    Platform.toast.error(error.data.error || 'Submission failed');
+                } else {
+                    // Use the error message from Platform.fetch
+                    Platform.toast.error(error.message);
+                }
+            } else {
+                // Network error or other
+                Platform.toast.error('Failed to submit to ARB');
+            }
         } finally {
             this.loading = false;
         }

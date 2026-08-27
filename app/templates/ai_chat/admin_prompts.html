@@ -1,4 +1,5 @@
 {% extends 'layouts/admin_base.html' %}
+{% from 'macros/page_shell.html' import page_shell %}
 {% from 'components/modal.html' import modal %}
 
 {% block title %}AI Chat Persona Management{% endblock %}
@@ -6,14 +7,8 @@
 {% block content %}
 <div x-data="personaAdmin()" x-init="loadPersonas()">
     <!-- Page Header -->
-    <div class="flex items-center justify-between mb-6">
-        <div>
-            <h1 class="text-2xl font-bold tracking-tight text-foreground">AI Chat Persona Management</h1>
-            <p class="text-sm text-muted-foreground mt-1">
-                View and override AI chat persona configurations. Overrides are stored in the database and take precedence over defaults.
-            </p>
-        </div>
-        <div class="flex items-center gap-2">
+    {% macro _ps_actions() %}
+<div class="flex items-center gap-2">
             <span x-show="loading" x-cloak class="text-sm text-muted-foreground">Loading...</span>
             <button type="button" @click="loadPersonas()"
                     class="inline-flex items-center justify-center rounded-md text-sm font-medium
@@ -26,7 +21,8 @@
                 Refresh
             </button>
         </div>
-    </div>
+    {% endmacro %}
+    {{ page_shell(title='AI Chat Persona Management', subtitle='View and override AI chat persona configurations. Overrides are stored in the database and take precedence over defaults.', actions_caller=_ps_actions) }}
 
     <!-- Error banner -->
     <div x-show="errorMsg" x-cloak
@@ -269,21 +265,18 @@ document.addEventListener('alpine:init', function() {
                 this.loading = true;
                 this.errorMsg = '';
                 try {
-                    const resp = await fetch('/ai-chat/admin/prompts/data');
-                    if (!resp.ok) {
-                        if (resp.status === 403) {
-                            this.errorMsg = 'Access denied. Admin privileges required.';
-                            return;
-                        }
-                        throw new Error('Failed to load personas');
-                    }
-                    const data = await resp.json();
+                    const data = await Platform.fetch.get('/ai-chat/admin/prompts/data', null, { silent: true });
                     this.personas = data.personas || [];
                     this.$nextTick(function() {
                         if (typeof lucide !== 'undefined') lucide.createIcons();
                     });
                 } catch (err) {
-                    this.errorMsg = err.message || 'Failed to load persona data';
+                    // Platform.fetch throws on non-ok responses; err.status is available
+                    if (err.status === 403) {
+                        this.errorMsg = 'Access denied. Admin privileges required.';
+                    } else {
+                        this.errorMsg = err.message || 'Failed to load persona data';
+                    }
                 } finally {
                     this.loading = false;
                 }
@@ -368,16 +361,7 @@ document.addEventListener('alpine:init', function() {
                 };
 
                 try {
-                    let resp = await fetch('/ai-chat/admin/prompts/' + this.editForm.key + '/update', {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify(payload)
-                    });
-                    let data = await resp.json();
-                    if (!resp.ok) {
-                        this.errorMsg = data.error || 'Failed to save changes';
-                        return;
-                    }
+                    const data = await Platform.fetch.post('/ai-chat/admin/prompts/' + this.editForm.key + '/update', payload, { silent: true });
                     /* Update local state */
                     let idx = this.personas.findIndex(function(p) { return p.key === data.persona.key; });
                     if (idx >= 0) this.personas[idx] = data.persona;
@@ -385,7 +369,8 @@ document.addEventListener('alpine:init', function() {
                     this.successMsg = 'Persona "' + this.editForm.name + '" updated successfully.';
                     setTimeout(function() { this.successMsg = ''; }.bind(this), 4000);
                 } catch (err) {
-                    this.errorMsg = err.message || 'Network error saving persona';
+                    // Platform.fetch throws on non-ok responses; err.data may contain error details
+                    this.errorMsg = (err.data && err.data.error) || err.message || 'Network error saving persona';
                 }
             },
 
@@ -401,22 +386,15 @@ document.addEventListener('alpine:init', function() {
 
             async confirmReset() {
                 try {
-                    let resp = await fetch('/ai-chat/admin/prompts/' + this.resetKey + '/reset', {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/json'}
-                    });
-                    let data = await resp.json();
-                    if (!resp.ok) {
-                        this.errorMsg = data.error || 'Failed to reset persona';
-                        return;
-                    }
+                    const data = await Platform.fetch.post('/ai-chat/admin/prompts/' + this.resetKey + '/reset', null, { silent: true });
                     let idx = this.personas.findIndex(function(p) { return p.key === data.persona.key; });
                     if (idx >= 0) this.personas[idx] = data.persona;
                     Platform.modal.close('reset-persona-modal');
                     this.successMsg = 'Persona "' + this.resetName + '" reset to defaults.';
                     setTimeout(function() { this.successMsg = ''; }.bind(this), 4000);
                 } catch (err) {
-                    this.errorMsg = err.message || 'Network error resetting persona';
+                    // Platform.fetch throws on non-ok responses; err.data may contain error details
+                    this.errorMsg = (err.data && err.data.error) || err.message || 'Network error resetting persona';
                 }
             }
         };
