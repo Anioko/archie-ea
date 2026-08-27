@@ -117,3 +117,27 @@ def test_final_guard_binds_typed_evidence_projection_and_actor_semantics():
     assert "condition.evidence_submitted_by_id=NEW.actor_id" in sql
     assert "condition.verified_by_id=NEW.actor_id" in sql
     assert "condition.waived_by_id=NEW.actor_id" in sql
+    assert "evidence.organization_id=NEW.organization_id" in sql
+    assert "evidence.decision_brief_id IS NOT DISTINCT FROM decision.decision_brief_id" in sql
+    assert "evidence.solution_id IS NOT DISTINCT FROM decision.solution_id" in sql
+    assert "condition.fulfilment_evidence_id=evidence.id" in sql
+    assert "condition.submitted_evidence_id=evidence.id" in sql
+    assert "condition.evidence_submitted_by_id<>NEW.actor_id" in sql
+    assert "review.submitter_id<>NEW.actor_id" in sql
+
+
+def test_verify_guard_rejects_cross_scope_substitution_and_same_actor():
+    from app.models.arb_condition_event import _condition_event_final_sql
+
+    sql = _condition_event_final_sql('"public"')
+    required = (
+        "evidence.condition_id=NEW.condition_id",
+        "evidence.decision_event_id=NEW.decision_event_id",
+        "evidence.review_cycle_id=NEW.review_cycle_id",
+        "evidence.review_item_id=NEW.review_item_id",
+        "evidence.condition_revision=NEW.condition_revision - 1",
+        "condition.submitted_evidence_id=NEW.submitted_evidence_id",
+        "condition.fulfilment_evidence_id=NEW.submitted_evidence_id",
+        "condition.evidence_submitted_by_id<>NEW.actor_id",
+    )
+    assert all(predicate in sql for predicate in required)

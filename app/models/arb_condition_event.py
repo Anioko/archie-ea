@@ -75,7 +75,29 @@ LANGUAGE plpgsql SET search_path=pg_catalog,{schema} AS $$ BEGIN
  AND condition.submitted_evidence_id=evidence.id
  AND condition.evidence_submitted_by_id=NEW.actor_id)
  OR (NEW.event_type='verify' AND condition.verified_by_id=NEW.actor_id
- AND condition.submitted_evidence_id=NEW.submitted_evidence_id)
+ AND evidence.id=NEW.submitted_evidence_id
+ AND evidence.organization_id=NEW.organization_id
+ AND evidence.condition_id=NEW.condition_id
+ AND evidence.decision_event_id=NEW.decision_event_id
+ AND evidence.review_cycle_id=NEW.review_cycle_id
+ AND evidence.review_item_id=NEW.review_item_id
+ AND evidence.condition_revision=NEW.condition_revision - 1
+ AND evidence.subject_type=decision.subject_type
+ AND evidence.subject_id=decision.subject_id
+ AND evidence.decision_brief_id IS NOT DISTINCT FROM decision.decision_brief_id
+ AND evidence.solution_id IS NOT DISTINCT FROM decision.solution_id
+ AND evidence.architecture_model_id IS NOT DISTINCT FROM decision.architecture_model_id
+ AND evidence.adr_id IS NOT DISTINCT FROM decision.adr_id
+ AND evidence.decision_brief_version_id IS NOT DISTINCT FROM decision.decision_brief_version_id
+ AND evidence.solution_evidence_snapshot_id IS NOT DISTINCT FROM decision.solution_evidence_snapshot_id
+ AND evidence.subject_evidence_snapshot_id IS NOT DISTINCT FROM decision.subject_evidence_snapshot_id
+ AND condition.submitted_evidence_id=evidence.id
+ AND condition.fulfilment_evidence_id=evidence.id
+ AND condition.submitted_evidence_id=NEW.submitted_evidence_id
+ AND condition.fulfilment_evidence_id=NEW.submitted_evidence_id
+ AND condition.evidence_submitted_by_id IS NOT NULL
+ AND condition.evidence_submitted_by_id<>NEW.actor_id
+ AND review.submitter_id<>NEW.actor_id)
  OR (NEW.event_type='waive' AND condition.waived_by_id=NEW.actor_id
  AND condition.waiver_scope_json::jsonb IS NOT DISTINCT FROM NEW.waiver_scope_json::jsonb)
  OR (NEW.event_type='waiver_expired' AND condition.waiver_prior_status=NEW.to_state)))
