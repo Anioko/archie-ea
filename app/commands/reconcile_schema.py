@@ -64,6 +64,7 @@ _TRANSFORMATION_TABLES = (
     # UndefinedTable on every pass.
     "arb_submission_evidence_snapshots",
     "arb_review_cycles",
+    "arb_submission_events",
 )
 
 _TRANSFORMATION_FOREIGN_KEYS = (
@@ -374,6 +375,7 @@ def _create_transformation_tables(*, dry_run, existing_tables, added, failed):
     from app.models.transformation_decision import (  # noqa: F401
         ARBSubjectEvidenceSnapshot,
     )
+    from app.models.arb_submission_event import ARBSubmissionEvent  # noqa: F401
 
     for table_name in _TRANSFORMATION_TABLES:
         if table_name in existing_tables:
@@ -1151,10 +1153,14 @@ def _reconcile(dry_run=False):
             from app.models.transformation_decision import (
                 ensure_arb_subject_snapshot_immutability,
             )
+            from app.models.arb_submission_event import (
+                ensure_arb_submission_event_guards,
+            )
 
             connection = db.session.connection()
             ensure_arb_subject_snapshot_immutability(connection)
             ensure_arb_cycle_constraints(connection)
+            ensure_arb_submission_event_guards(connection)
             db.session.commit()
         except Exception as exc:  # noqa: BLE001 — report alongside schema failures
             db.session.rollback()
