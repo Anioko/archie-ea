@@ -557,6 +557,79 @@ def _typed_operation_blocked(reason_code, message):
 
 @arb_bp.route("/dashboard")
 @login_required
+# ── typed ARB governance workspace wiring ────────────────────────────────────
+# The typed read model, the typed partials and the Alpine component were each
+# landed correctly, but nothing joined them: no view called the read model and
+# no view passed `typed_queue`/`typed_review`, so arb/dashboard.html and
+# arb/review_detail.html always fell through to their legacy branch and the
+# whole typed workspace was unreachable in a browser. These two helpers are that
+# join. A read failure returns None so the dispatcher keeps rendering the legacy
+# body rather than showing a broken page.
+
+
+def _typed_actor():
+    """ActorContext from the session ONLY — never from the request.
+
+    Mirrors arb_condition_routes._actor. An authenticated principal with no
+    tenant cannot address a tenant row, so it gets no typed view at all.
+    """
+    from app.modules.transformation_room.domain import ActorContext
+
+    if not getattr(current_user, "is_authenticated", False):
+        return None
+    user_id = getattr(current_user, "id", None)
+    organization_id = getattr(current_user, "organization_id", None)
+    if not isinstance(user_id, int) or isinstance(user_id, bool) or user_id <= 0:
+        return None
+    if (
+        not isinstance(organization_id, int)
+        or isinstance(organization_id, bool)
+        or organization_id <= 0
+    ):
+        return None
+    role = getattr(current_user, "enterprise_role", None)
+    roles = frozenset({role}) if isinstance(role, str) and role else frozenset()
+    return ActorContext(user_id, organization_id, roles, _uuid.uuid4().hex)
+
+
+def _typed_queue_context():
+    actor = _typed_actor()
+    if actor is None:
+        return None
+    try:
+        from app.modules.transformation_room.arb_read_models import (
+            typed_arb_queue_view,
+        )
+
+        return typed_arb_queue_view(
+            actor=actor,
+            filters={
+                "state": request.args.get("state"),
+                "subject_type": request.args.get("subject_type"),
+                "q": request.args.get("q"),
+            },
+            page=request.args.get("page", 1, type=int) or 1,
+        )
+    except Exception:
+        current_app.logger.exception("typed ARB queue view failed")
+        return None
+
+
+def _typed_review_context(review_item_id):
+    actor = _typed_actor()
+    if actor is None:
+        return None
+    try:
+        from app.modules.transformation_room.arb_read_models import (
+            typed_arb_review_view,
+        )
+
+        return typed_arb_review_view(actor=actor, review_item_id=review_item_id)
+    except Exception:
+        current_app.logger.exception("typed ARB review view failed")
+        return None
+
+
 def dashboard_redirect():
     """Redirect /arb/dashboard to canonical /arb/ URL."""
     return redirect(url_for("arb.dashboard"))
@@ -838,6 +911,9 @@ def dashboard():
 
     return render_template(
         "arb/dashboard.html",
+        # The dispatcher renders the typed queue when this is present and
+        # falls back to the legacy body when it is None.
+        typed_queue=_typed_queue_context(),
         sessions=recent_sessions,
         status=request.args.get("status", "all"),
         pending_reviews=pending_reviews,
@@ -1348,6 +1424,9 @@ def review_detail(id):
 
     return render_template(
         "arb/review_detail.html",
+        # Same dispatch contract as the queue: typed workspace when the read
+        # model resolves this review for the current tenant, legacy otherwise.
+        typed_review=_typed_review_context(id),
         review=review,
         application_names=application_names,
         canonical_impact=canonical_impact,

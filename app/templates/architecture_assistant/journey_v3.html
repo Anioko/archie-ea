@@ -135,7 +135,10 @@
                         var url = (d.data && d.data.redirect) ? d.data.redirect : '';
                         if (url) window.location.href = url;
                     })
-                    .catch(() => {}) // Platform.fetch already showed toast
+                    .catch(() => { /* swallow-ok: silent is false above, so Platform.fetch
+                        has already shown the user a toast; this catch only stops the
+                        rejection escaping as an unhandled promise rejection, which the
+                        console gate would then report as a page error. */ })
                     .finally(() => { starting = false; });
             " :disabled="starting"
                 class="w-full max-w-xs py-3 rounded-lg bg-primary text-primary-foreground font-semibold text-sm flex items-center justify-center gap-2 hover:bg-primary/90 transition-colors shadow-lg shadow-primary/20 disabled:opacity-50">
