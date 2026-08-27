@@ -151,7 +151,10 @@ def approve_version(solution_id, version_id):
             conditions=data.get('conditions')
         )
         # PLT-014: Notify solution owner of version approval
-        solution = db.session.query(Solution).get(solution_id)
+        solution = db.session.execute(db.select(Solution).where(
+            Solution.id == solution_id,
+            Solution.organization_id == getattr(g, 'current_org_id', None),
+        )).scalar_one_or_none()  # explicit predicate: .get() skips the tenant filter on an identity-map hit
         if solution and getattr(solution, 'created_by_id', None):
             _notify_if_pref(
                 user_id=solution.created_by_id,
@@ -179,7 +182,10 @@ def reject_version(solution_id, version_id):
             rejection_reason=data.get('rejection_reason')
         )
         # PLT-014: Notify solution owner of version rejection
-        solution = db.session.query(Solution).get(solution_id)
+        solution = db.session.execute(db.select(Solution).where(
+            Solution.id == solution_id,
+            Solution.organization_id == getattr(g, 'current_org_id', None),
+        )).scalar_one_or_none()  # explicit predicate: .get() skips the tenant filter on an identity-map hit
         if solution and getattr(solution, 'created_by_id', None):
             _notify_if_pref(
                 user_id=solution.created_by_id,
@@ -592,20 +598,41 @@ def get_compliance_trail(solution_id):
 @solution_required
 def record_project_completion(solution_id):
     """Record project completion with outcomes."""
-    data = request.get_json()
-    
+    data = request.get_json() or {}
+
+    # Actor is the authenticated session ONLY. This took recorded_by_id straight
+    # from the request body with no session fallback at all, so a caller could
+    # attribute a completion record to any user -- the same class as the
+    # decided_by_id hole closed elsewhere in this file.
+    recorded_by = getattr(current_user, 'id', None)
+    if not recorded_by:
+        return jsonify({'success': False, 'reason_codes': ['actor_not_authorized']}), 403
+
+    # A missing go-live date defaulted to utcnow(), inventing a completion date
+    # indistinguishable from a recorded one. It is required.
+    raw_go_live = data.get('go_live_date')
+    if not raw_go_live:
+        return jsonify({'success': False, 'reason_codes': ['go_live_date_required']}), 400
+    try:
+        go_live_date = datetime.fromisoformat(str(raw_go_live).replace('Z', '+00:00'))
+    except ValueError:
+        return jsonify({'success': False, 'reason_codes': ['go_live_date_invalid']}), 400
+
     try:
         outcome = learning_service.record_project_completion(
             solution_id=solution_id,
-            go_live_date=datetime.fromisoformat(data.get('go_live_date', datetime.utcnow().isoformat())),
-            recorded_by_id=data.get('recorded_by_id'),
+            go_live_date=go_live_date,
+            recorded_by_id=recorded_by,
             predicted_duration_weeks=data.get('predicted_duration_weeks'),
             actual_duration_weeks=data.get('actual_duration_weeks'),
             predicted_cost_usd=data.get('predicted_cost_usd'),
             actual_cost_usd=data.get('actual_cost_usd')
         )
         # Notify solution owner (ENT-020) — PLT-017: check arb_decisions preference
-        solution = db.session.query(Solution).get(solution_id)
+        solution = db.session.execute(db.select(Solution).where(
+            Solution.id == solution_id,
+            Solution.organization_id == getattr(g, 'current_org_id', None),
+        )).scalar_one_or_none()  # explicit predicate: .get() skips the tenant filter on an identity-map hit
         if solution and getattr(solution, 'created_by_id', None):
             _notify_if_pref(
                 user_id=solution.created_by_id,
@@ -691,7 +718,13 @@ def record_outcome_full(solution_id):
             go_live = dt.fromisoformat(go_live.replace('Z', '+00:00')).date() if 'T' in go_live else dt.strptime(go_live, '%Y-%m-%d').date()
     except Exception:
         return jsonify({'error': 'Invalid go_live_date'}), 400
-    recorded_by = getattr(current_user, 'id', None) or data.get('recorded_by_id')
+    # Actor is the authenticated session ONLY. The previous `or data.get(
+    # 'recorded_by_id')` fallback let a caller attribute a governance outcome
+    # record to another user whenever current_user.id was falsy -- the same
+    # class as the decided_by_id hole closed elsewhere in this file.
+    recorded_by = getattr(current_user, 'id', None)
+    if not recorded_by:
+        return jsonify({'success': False, 'reason_codes': ['actor_not_authorized']}), 403
     try:
         outcome = learning_service.record_project_completion(
             solution_id=solution_id,
