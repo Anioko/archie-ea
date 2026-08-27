@@ -335,3 +335,10 @@ def init_cli(app):
         app.logger.info("\u2705 ARB/EA tenancy backfill CLI command registered")
     except Exception as e:
         app.logger.warning(f"\u26a0\ufe0f  Failed to register ARB/EA tenancy backfill CLI: {e}")
+
+    try:
+        from app.commands.process_arb_waiver_expiries import init_app as init_arb_expiry
+        init_arb_expiry(app)
+        app.logger.info("Typed ARB waiver expiry CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"Failed to register typed ARB waiver expiry CLI: {e}")

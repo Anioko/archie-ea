@@ -113,6 +113,23 @@ class Config:
     TRANSFORMATION_COMMAND_CAPABILITY_PREVIOUS_SECRETS = os.environ.get(
         "TRANSFORMATION_COMMAND_CAPABILITY_PREVIOUS_SECRETS", ""
     )
+    # Typed ARB waiver expiry is disabled until tenants, one service principal
+    # per tenant, and a scheduler capability are explicitly configured.
+    ARB_CONDITION_EXPIRY_CAPABILITY = os.environ.get(
+        "ARB_CONDITION_EXPIRY_CAPABILITY", ""
+    )
+    ARB_CONDITION_EXPIRY_PRINCIPALS = os.environ.get(
+        "ARB_CONDITION_EXPIRY_PRINCIPALS", "{}"
+    )
+    ARB_CONDITION_EXPIRY_ORGANIZATION_IDS = os.environ.get(
+        "ARB_CONDITION_EXPIRY_ORGANIZATION_IDS", ""
+    )
+    ARB_CONDITION_EXPIRY_BATCH_SIZE = os.environ.get(
+        "ARB_CONDITION_EXPIRY_BATCH_SIZE", "100"
+    )
+    ARB_CONDITION_EXPIRY_INTERVAL_MINUTES = os.environ.get(
+        "ARB_CONDITION_EXPIRY_INTERVAL_MINUTES", "5"
+    )
 
     # Session security — 8-hour session lifetime, 30-day remember-me cookie
     PERMANENT_SESSION_LIFETIME = timedelta(hours=8)

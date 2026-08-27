@@ -331,6 +331,53 @@ def init_scheduler(app):
             max_instances=1,
         )
 
+        # Typed ARB waiver expiry is opt-in and tenant-explicit. The database
+        # advisory lock in the batch service prevents duplicate Gunicorn
+        # schedulers from processing the same deployment concurrently.
+        if app.config.get("ARB_CONDITION_EXPIRY_ORGANIZATION_IDS"):
+            def run_arb_waiver_expiry():
+                with app.app_context():
+                    try:
+                        from app.modules.transformation_room.arb_waiver_expiry_batch_service import (
+                            ARBWaiverExpiryBatchService,
+                        )
+
+                        result = ARBWaiverExpiryBatchService.run_configured()
+                        import logging
+                        log = logging.getLogger(__name__)
+                        if result.failed_count:
+                            log.error(
+                                "APScheduler typed ARB waiver expiry partial failure: %s",
+                                result.as_dict(),
+                            )
+                        elif result.selected_count or not result.lock_acquired:
+                            log.info(
+                                "APScheduler typed ARB waiver expiry: %s",
+                                result.as_dict(),
+                            )
+                    except Exception as exc:
+                        import logging
+                        logging.getLogger(__name__).error(
+                            "APScheduler typed ARB waiver expiry error: %s", exc
+                        )
+
+            try:
+                expiry_interval_minutes = max(
+                    1, int(app.config["ARB_CONDITION_EXPIRY_INTERVAL_MINUTES"])
+                )
+            except (TypeError, ValueError) as exc:
+                raise ValueError(
+                    "ARB_CONDITION_EXPIRY_INTERVAL_MINUTES must be an integer"
+                ) from exc
+            scheduler.add_job(
+                func=run_arb_waiver_expiry,
+                trigger=IntervalTrigger(minutes=expiry_interval_minutes),
+                id="typed_arb_waiver_expiry",
+                name="Typed ARB Condition Waiver Expiry",
+                replace_existing=True,
+                max_instances=1,
+            )
+
         scheduler.start()
 
         def _shutdown_scheduler():
@@ -345,7 +392,7 @@ def init_scheduler(app):
         app.logger.info(
             "APScheduler started: EA workflows (5 min), "
             "maturity digest (Mon 8am), executive summary (Mon 7am), "
-            "Teams subscription renewal (12h)"
+            "Teams subscription renewal (12h), typed ARB waiver expiry (configured)"
         )
     except ImportError:
         app.logger.warning("APScheduler not available — EA workflow schedules disabled")

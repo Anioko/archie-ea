@@ -5,9 +5,11 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 import json
 import os
+import threading
 import uuid
 
 import pytest
+from sqlalchemy import func
 
 
 os.environ["TRANSFORMATION_COMMAND_CAPABILITY_SECRET"] = "74" * 32
@@ -413,6 +415,334 @@ def test_submit_verify_and_projection_commit_under_real_guards(
     assert expired.response["status"] == "pending"
     assert cycle.status == review.status == "approved_with_conditions"
     assert cycle.terminal_outcome == review.decision == "approved_with_conditions"
+
+
+def test_automatic_expiry_is_bounded_tenant_explicit_concurrent_and_retry_safe(
+    app, db_session, make_org, monkeypatch
+):
+    from app import db
+    from app.models.adr import ArchitectureDecisionRecord
+    from app.models.arb_condition_event import (
+        ARBConditionEvent,
+        ensure_arb_condition_event_guards,
+    )
+    from app.models.arb_condition_evidence import ensure_arb_condition_evidence_guards
+    from app.models.arb_decision_event import ARBCondition, ensure_arb_decision_guards
+    from app.models.architecture_review_board import (
+        ARBReviewCycle,
+        ensure_arb_cycle_constraints,
+    )
+    from app.models.transformation_db_guards import ensure_transformation_db_guards
+    from app.models.user import User
+    from app.modules.transformation_room.arb_condition_lifecycle_service import (
+        TypedARBConditionLifecycleService,
+    )
+    from app.modules.transformation_room.arb_decision_service import (
+        TypedARBDecisionService,
+    )
+    from app.modules.transformation_room.arb_submission_service import (
+        TypedARBSubmissionService,
+    )
+    from app.modules.transformation_room.arb_waiver_expiry_batch_service import (
+        ARBWaiverExpiryBatchService,
+    )
+    from app.modules.transformation_room.command_service import CommandService
+    from app.modules.transformation_room.domain import ActorContext
+
+    connection = db_session.connection()
+    ensure_transformation_db_guards(connection, capability_secrets=("74" * 32,))
+    ensure_arb_cycle_constraints(connection)
+    ensure_arb_decision_guards(connection)
+    ensure_arb_condition_evidence_guards(connection)
+    ensure_arb_condition_event_guards(connection)
+
+    suffix = uuid.uuid4().hex[:10]
+    organizations = (make_org(f"expiry-a-{suffix}"), make_org(f"expiry-b-{suffix}"))
+    organization_ids = tuple(organization.id for organization in organizations)
+    for organization in organizations:
+        db_session.info.setdefault("c3_cleanup_org_ids", set()).add(organization.id)
+    users = {}
+    for organization in organizations:
+        submitter = User(
+            organization_id=organization.id,
+            email=f"expiry-submit-{organization.id}-{suffix}@example.test",
+            enterprise_role="enterprise_architect",
+            confirmed=True,
+        )
+        principal = User(
+            organization_id=organization.id,
+            email=f"expiry-principal-{organization.id}-{suffix}@example.test",
+            enterprise_role="enterprise_architect",
+            confirmed=True,
+        )
+        db_session.add_all((submitter, principal))
+        db_session.flush()
+        users[organization.id] = (submitter.id, principal.id)
+    db_session.commit()
+
+    database_now = CommandService._database_now
+    real_now = database_now(db_session)
+    serial = 0
+
+    def create_waived(organization_id, *, due):
+        nonlocal serial
+        serial += 1
+        submitter_id, principal_id = users[organization_id]
+        adr = ArchitectureDecisionRecord(
+            organization_id=organization_id,
+            adr_number=int(suffix[:6], 16) + serial,
+            title=f"Automatic expiry {suffix} {serial}",
+            status="proposed",
+            context="A time-bound waiver needs automatic expiry.",
+            decision="Use the governed expiry worker.",
+            rationale="The lifecycle must remain auditable.",
+            consequences="Expired conditions block execution again.",
+            created_by=f"expiry-submit-{organization_id}-{suffix}@example.test",
+        )
+        db_session.add(adr)
+        db_session.commit()
+        submitter = ActorContext(
+            submitter_id, organization_id, frozenset(), f"expiry-submit-{serial}"
+        )
+        principal = ActorContext(
+            principal_id, organization_id, frozenset(), f"expiry-principal-{serial}"
+        )
+        submission = TypedARBSubmissionService.submit(
+            actor=submitter,
+            command_key=f"expiry-submission-{suffix}-{serial}",
+            subject_type="adr",
+            subject_id=adr.id,
+            assertions={"human_reviewed": True},
+        )
+        decision = TypedARBDecisionService.decide(
+            actor=principal,
+            command_key=f"expiry-decision-{suffix}-{serial}",
+            cycle_id=submission.object_ids["review_cycle_id"],
+            outcome="approved_with_conditions",
+            rationale="Approved with a time-bound control.",
+            conditions=[{"code": "C-1", "text": "Retain the compensating control."}],
+        )
+        condition_id = decision.object_ids["condition_ids"][0]
+        waiver_now = real_now - timedelta(days=2) if due else real_now
+        monkeypatch.setattr(
+            CommandService,
+            "_database_now",
+            staticmethod(lambda session, value=waiver_now: value),
+        )
+        TypedARBConditionLifecycleService.waive(
+            actor=principal,
+            command_key=f"expiry-waive-{suffix}-{serial}",
+            condition_id=condition_id,
+            reason="Temporary automatic-expiry test waiver",
+            expires_at=waiver_now + timedelta(days=1),
+            scope={"test": suffix, "serial": serial},
+            compensating_control="Daily automated control review",
+        )
+        monkeypatch.setattr(
+            CommandService, "_database_now", staticmethod(database_now)
+        )
+        db.session.remove()
+        condition = db.session.execute(
+            db.select(ARBCondition).where(
+                ARBCondition.id == condition_id,
+                ARBCondition.organization_id == organization_id,
+            )
+        ).scalar_one()
+        return condition_id, condition.revision, submission.object_ids["review_cycle_id"]
+
+    due = [
+        create_waived(organization_ids[0], due=True),
+        create_waived(organization_ids[0], due=True),
+        create_waived(organization_ids[1], due=True),
+    ]
+    not_due = create_waived(organization_ids[1], due=False)
+    monkeypatch.setitem(app.config, "ARB_CONDITION_EXPIRY_CAPABILITY", "batch-secret")
+    monkeypatch.setitem(
+        app.config,
+        "ARB_CONDITION_EXPIRY_PRINCIPALS",
+        {str(org_id): users[org_id][1] for org_id in organization_ids},
+    )
+
+    first = ARBWaiverExpiryBatchService.run(
+        organization_ids=reversed(organization_ids), batch_size=2
+    )
+    second = ARBWaiverExpiryBatchService.run(
+        organization_ids=organization_ids, batch_size=2
+    )
+    assert (first.selected_count, first.expired_count, first.failed_count) == (2, 2, 0)
+    assert (second.selected_count, second.expired_count, second.failed_count) == (1, 1, 0)
+
+    db.session.remove()
+    due_rows = db.session.execute(
+        db.select(ARBCondition).where(
+            ARBCondition.organization_id.in_(organization_ids),
+            ARBCondition.id.in_([item[0] for item in due]),
+        )
+    ).scalars().all()
+    future_row = db.session.execute(
+        db.select(ARBCondition).where(
+            ARBCondition.id == not_due[0],
+            ARBCondition.organization_id == organization_ids[1],
+        )
+    ).scalar_one()
+    assert {row.status for row in due_rows} == {"pending"}
+    assert future_row.status == "waived"
+    cycles = db.session.execute(
+        db.select(ARBReviewCycle).where(
+            ARBReviewCycle.organization_id.in_(organization_ids),
+            ARBReviewCycle.id.in_([item[2] for item in due] + [not_due[2]]),
+        )
+    ).scalars().all()
+    cycle_status = {cycle.id: cycle.status for cycle in cycles}
+    assert all(cycle_status[item[2]] == "approved_with_conditions" for item in due)
+    assert cycle_status[not_due[2]] == "approved"
+
+    first_condition_id, first_waived_revision, _ = due[0]
+    replay = TypedARBConditionLifecycleService.expire_waivers(
+        capability="batch-secret",
+        command_key=(
+            f"arb-waiver-expiry:{organization_ids[0]}:"
+            f"{first_condition_id}:{first_waived_revision + 1}"
+        ),
+        condition_id=first_condition_id,
+        organization_id=organization_ids[0],
+    )
+    assert replay.idempotent is True
+    assert db.session.execute(
+        db.select(func.count(ARBConditionEvent.id)).where(
+            ARBConditionEvent.organization_id == organization_ids[0],
+            ARBConditionEvent.condition_id == first_condition_id,
+            ARBConditionEvent.event_type == "waiver_expired",
+        )
+    ).scalar_one() == 1
+
+    held_due = create_waived(organization_ids[0], due=True)
+    free_due = create_waived(organization_ids[1], due=True)
+    lock_connection = db.engine.connect()
+    lock_transaction = lock_connection.begin()
+    try:
+        lock_connection.execute(
+            db.text(
+                "SELECT id FROM arb_canonical_conditions "
+                "WHERE id=:condition_id AND organization_id=:organization_id "
+                "FOR UPDATE"
+            ),
+            {
+                "condition_id": held_due[0],
+                "organization_id": organization_ids[0],
+            },
+        )
+        skip_locked = ARBWaiverExpiryBatchService.run(
+            organization_ids=organization_ids, batch_size=1
+        )
+        assert skip_locked.expired_count == 1
+        assert skip_locked.errors == ()
+    finally:
+        lock_transaction.rollback()
+        lock_connection.close()
+    db.session.remove()
+    assert db.session.execute(
+        db.select(ARBCondition.status).where(
+            ARBCondition.id == held_due[0],
+            ARBCondition.organization_id == organization_ids[0],
+        )
+    ).scalar_one() == "waived"
+    assert db.session.execute(
+        db.select(ARBCondition.status).where(
+            ARBCondition.id == free_due[0],
+            ARBCondition.organization_id == organization_ids[1],
+        )
+    ).scalar_one() == "pending"
+
+    monkeypatch.setitem(
+        app.config,
+        "ARB_CONDITION_EXPIRY_PRINCIPALS",
+        {str(organization_ids[0]): users[organization_ids[0]][1]},
+    )
+    partial = ARBWaiverExpiryBatchService.run(
+        organization_ids=organization_ids, batch_size=10
+    )
+    assert partial.selected_count == 1
+    assert partial.expired_count == 1
+    assert partial.failed_count == 0
+
+    failure_due = create_waived(organization_ids[1], due=True)
+    success_due = create_waived(organization_ids[0], due=True)
+    partial = ARBWaiverExpiryBatchService.run(
+        organization_ids=organization_ids, batch_size=10
+    )
+    assert partial.selected_count == 2
+    assert partial.expired_count == 1
+    assert partial.failed_count == 1
+    assert partial.errors[0]["organization_id"] == organization_ids[1]
+    assert partial.errors[0]["condition_id"] == failure_due[0]
+    db.session.remove()
+    assert db.session.execute(
+        db.select(ARBCondition.status).where(
+            ARBCondition.id == success_due[0],
+            ARBCondition.organization_id == organization_ids[0],
+        )
+    ).scalar_one() == "pending"
+    assert db.session.execute(
+        db.select(ARBCondition.status).where(
+            ARBCondition.id == failure_due[0],
+            ARBCondition.organization_id == organization_ids[1],
+        )
+    ).scalar_one() == "waived"
+
+    monkeypatch.setitem(
+        app.config,
+        "ARB_CONDITION_EXPIRY_PRINCIPALS",
+        {str(org_id): users[org_id][1] for org_id in organization_ids},
+    )
+    retried = ARBWaiverExpiryBatchService.run(
+        organization_ids=organization_ids, batch_size=10
+    )
+    assert (retried.selected_count, retried.expired_count, retried.failed_count) == (1, 1, 0)
+
+    overlap_due = create_waived(organization_ids[0], due=True)
+    entered = threading.Event()
+    release = threading.Event()
+    worker_result = {}
+    original_process = ARBWaiverExpiryBatchService._process_candidates
+
+    def pause_while_locked(cls, **kwargs):
+        entered.set()
+        assert release.wait(timeout=10)
+        return original_process(**kwargs)
+
+    monkeypatch.setattr(
+        ARBWaiverExpiryBatchService,
+        "_process_candidates",
+        classmethod(pause_while_locked),
+    )
+
+    def run_worker():
+        with app.app_context():
+            worker_result["value"] = ARBWaiverExpiryBatchService.run(
+                organization_ids=organization_ids, batch_size=10
+            )
+
+    thread = threading.Thread(target=run_worker)
+    thread.start()
+    assert entered.wait(timeout=10)
+    overlapping = ARBWaiverExpiryBatchService.run(
+        organization_ids=organization_ids, batch_size=10
+    )
+    assert overlapping.lock_acquired is False
+    assert overlapping.selected_count == 0
+    release.set()
+    thread.join(timeout=20)
+    assert not thread.is_alive()
+    assert worker_result["value"].expired_count == 1
+    assert worker_result["value"].failed_count == 0
+    db.session.remove()
+    assert db.session.execute(
+        db.select(ARBCondition.status).where(
+            ARBCondition.id == overlap_due[0],
+            ARBCondition.organization_id == organization_ids[0],
+        )
+    ).scalar_one() == "pending"
 
 
 def test_legacy_condition_reconcile_is_real_and_idempotent(app, _schema):

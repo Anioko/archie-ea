@@ -88,8 +88,10 @@ class TypedARBConditionLifecycleService:
         )
 
     @classmethod
-    def expire_waivers(cls, *, capability, command_key, condition_id):
-        actor = cls._scheduler_actor(capability)
+    def expire_waivers(
+        cls, *, capability, command_key, condition_id, organization_id=None
+    ):
+        actor = cls._scheduler_actor(capability, organization_id=organization_id)
         return cls._execute(
             actor=actor, command_key=command_key, condition_id=condition_id,
             event_type="waiver_expired", operation=cls.EXPIRE_OPERATION,
@@ -527,15 +529,41 @@ class TypedARBConditionLifecycleService:
         )
 
     @staticmethod
-    def _scheduler_actor(capability):
-        principal_id = current_app.config.get("ARB_CONDITION_EXPIRY_PRINCIPAL_ID")
+    def _scheduler_actor(capability, *, organization_id=None):
         secret = current_app.config.get("ARB_CONDITION_EXPIRY_CAPABILITY")
-        if not principal_id or not secret or not isinstance(capability, str) or not hmac.compare_digest(capability, secret):
+        if not secret or not isinstance(capability, str) or not hmac.compare_digest(capability, secret):
             raise NotAuthorised("arb_condition_expiry_capability_required")
-        organization_id = current_app.config.get("ARB_CONDITION_EXPIRY_ORGANIZATION_ID")
-        if not organization_id:
+        organization_id = organization_id or current_app.config.get(
+            "ARB_CONDITION_EXPIRY_ORGANIZATION_ID"
+        )
+        if not isinstance(organization_id, int) or organization_id <= 0:
             raise NotAuthorised("arb_condition_expiry_tenant_required")
+        principal_id = TypedARBConditionLifecycleService._configured_scheduler_principal(
+            organization_id
+        )
+        if not principal_id:
+            raise NotAuthorised("arb_condition_expiry_principal_invalid")
         return ActorContext(principal_id, organization_id, frozenset(), "arb-expiry-scheduler")
+
+    @staticmethod
+    def _configured_scheduler_principal(organization_id):
+        principals = current_app.config.get("ARB_CONDITION_EXPIRY_PRINCIPALS", {})
+        if isinstance(principals, str):
+            try:
+                principals = json.loads(principals)
+            except json.JSONDecodeError as error:
+                raise NotAuthorised("arb_condition_expiry_principal_config_invalid") from error
+        if not isinstance(principals, dict):
+            raise NotAuthorised("arb_condition_expiry_principal_config_invalid")
+        principal_id = principals.get(str(organization_id), principals.get(organization_id))
+        legacy_organization_id = current_app.config.get(
+            "ARB_CONDITION_EXPIRY_ORGANIZATION_ID"
+        )
+        if principal_id is None and legacy_organization_id == organization_id:
+            principal_id = current_app.config.get("ARB_CONDITION_EXPIRY_PRINCIPAL_ID")
+        if not isinstance(principal_id, int) or principal_id <= 0:
+            return None
+        return principal_id
 
     @staticmethod
     def _authorise_system_principal(session, actor, locked_user=None):
@@ -543,7 +571,9 @@ class TypedARBConditionLifecycleService:
             User.id == actor.user_id,
             User.organization_id == actor.organization_id,
         ).with_for_update()).scalar_one_or_none()
-        configured = current_app.config.get("ARB_CONDITION_EXPIRY_PRINCIPAL_ID")
+        configured = TypedARBConditionLifecycleService._configured_scheduler_principal(
+            actor.organization_id
+        )
         if user is None or actor.user_id != configured:
             raise NotAuthorised("arb_condition_expiry_principal_invalid")
 
