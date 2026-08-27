@@ -1,4 +1,5 @@
 {% extends 'layouts/admin_base.html' %}
+{% from 'macros/page_shell.html' import page_shell %}
 
 {% block title %}Impact Analysis: {{ element.name }}{% endblock %}
 
@@ -16,19 +17,7 @@
 <div class="p-6 space-y-6 mx-auto">
 
     <!-- Header -->
-    <div class="flex items-center justify-between">
-        <div>
-            <nav class="flex items-center gap-2 text-sm text-muted-foreground mb-2">
-                <a href="{{ url_for('archimate_crud.dashboard') }}" class="hover:text-foreground">Dashboard</a>
-                <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
-                <span>Impact Analysis</span>
-            </nav>
-            <h1 class="text-3xl font-bold">Impact Analysis: {{ element.name }}</h1>
-            <p class="text-muted-foreground mt-2">
-                What would be affected if this element changes or is retired?
-            </p>
-        </div>
-        <div class="flex gap-2">
+    {% macro _ps_actions() %}
             <a href="{{ url_for('architect_ui.impact_analysis', element_id=element.id) }}?hops=1"
                class="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2">
                 Direct only
@@ -39,8 +28,13 @@
                 <i data-lucide="code" class="h-4 w-4 mr-2" aria-hidden="true"></i>
                 JSON
             </a>
-        </div>
-    </div>
+    {% endmacro %}
+    {{ page_shell(
+        title='Impact Analysis: ' ~ element.name,
+        subtitle='What would be affected if this element changes or is retired?',
+        breadcrumb=[('Dashboard', url_for('archimate_crud.dashboard')), ('Impact Analysis', None)],
+        actions_caller=_ps_actions
+    ) }}
 
     <!-- Root element info -->
     <div class="border rounded-lg p-4 bg-muted/10 flex items-center gap-4">

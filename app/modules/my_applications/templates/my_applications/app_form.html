@@ -1,20 +1,19 @@
 {% extends 'layouts/admin_base.html' %}
+{% from 'macros/page_shell.html' import page_shell %}
 {% block title %}Edit {{ app.name }}{% endblock %}
 
 {% block content %}
 <div class="p-6 space-y-6 mx-auto max-w-3xl">
 
-  <div class="mb-6">
-    <a href="{{ url_for('my_applications.app_detail', app_id=app.id) }}"
-       class="text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5">
-      <i data-lucide="arrow-left" class="w-4 h-4"></i> Back to {{ app.name }}
-    </a>
-    <h1 class="text-2xl font-bold mt-2">Edit {{ app.name }}</h1>
-    <p class="text-muted-foreground">
-      You are recorded as an owner of this application. Changes here feed your
-      dashboard and the health overview.
-    </p>
-  </div>
+  {{ page_shell(
+      title='Edit ' ~ app.name,
+      subtitle='You are recorded as an owner of this application. Changes here feed your dashboard and the health overview.',
+      breadcrumb=[
+          ('My Applications', url_for('my_applications.dashboard')),
+          (app.name, url_for('my_applications.app_detail', app_id=app.id)),
+          ('Edit', None)
+      ]
+  ) }}
 
   <form method="POST" action="{{ url_for('my_applications.app_edit', app_id=app.id) }}" class="space-y-6">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

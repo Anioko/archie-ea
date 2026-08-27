@@ -1,14 +1,12 @@
 {% extends "layouts/admin_base.html" %}
+{% from 'macros/page_shell.html' import page_shell %}
 {% block title %}AI Confidence Calibration{% endblock %}
 {% block content %}
-<div class="p-6">
-    <h1 class="text-2xl font-semibold text-foreground mb-2">AI Confidence Calibration</h1>
-    <p class="text-sm text-muted-foreground mb-6">
-        Tracks whether AI confidence labels match actual architect acceptance rates.
-        Architects record verdicts (accepted / modified / rejected) on individual suggestions;
-        this page aggregates those verdicts by confidence tier so you can spot
-        over-confident or under-confident AI outputs.
-    </p>
+<div class="p-6 space-y-6">
+    {{ page_shell(
+        title='AI Confidence Calibration',
+        subtitle='Tracks whether AI confidence labels match actual architect acceptance rates. Architects record verdicts (accepted / modified / rejected) on individual suggestions; this page aggregates those verdicts by confidence tier so you can spot over-confident or under-confident AI outputs.'
+    ) }}
 
     <div class="rounded-lg border border-border bg-card">
         <table class="w-full">

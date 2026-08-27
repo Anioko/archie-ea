@@ -1,4 +1,5 @@
 {% extends "layouts/admin_base.html" %}
+{% from 'macros/page_shell.html' import page_shell %}
 {% import 'components/breadcrumb.html' as breadcrumb %}
 
 {% block title %}Capability Hierarchy - Capability Map{% endblock %}
@@ -15,12 +16,7 @@
 {% block content %}
 <div class="space-y-6" x-data="hierarchyView()">
     <!-- Page Header -->
-    <div class="flex items-center justify-between">
-        <div class="flex items-center space-x-3">
-            <i data-lucide="git-branch" class="w-6 h-6 text-primary"></i>
-            <h1 class="text-3xl font-bold tracking-tight">Capability Hierarchy</h1>
-        </div>
-        <div class="flex items-center space-x-4">
+    {% macro _ps_actions() %}
             <button type="button" @click="expandAll()" class="text-sm text-muted-foreground hover:text-foreground transition-colors">
                 <i data-lucide="maximize-2" class="w-4 h-4 inline mr-1"></i>
                 Expand All
@@ -29,8 +25,8 @@
                 <i data-lucide="minimize-2" class="w-4 h-4 inline mr-1"></i>
                 Collapse All
             </button>
-        </div>
-    </div>
+    {% endmacro %}
+    {{ page_shell(title='Capability Hierarchy', icon='git-branch', actions_caller=_ps_actions) }}
     {% with active_view = 'hierarchy' %}{% include 'capability_map/_view_switcher.html' %}{% endwith %}
 
     <!-- Level Filter -->
