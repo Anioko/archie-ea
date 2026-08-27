@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import uuid
+from datetime import datetime, timezone
 
 import pytest
 
@@ -54,12 +55,13 @@ def _insert_receipt(
     generation=1,
     status="in_progress",
     natural_key=None,
+    predecessor_anchor="root",
 ):
     token = uuid.uuid4().hex
     request_digest = "a" * 64
     natural_key = natural_key or (
         f"arb-submission:{organization_id}:{subject['subject_type']}:"
-        f"{subject['subject_id']}"
+        f"{subject['subject_id']}:after:{predecessor_anchor}"
     )
     cursor.execute(
         """
@@ -228,6 +230,57 @@ def test_submission_event_rejects_foreign_actor_and_stale_generation(app, _schem
         connection.close()
 
 
+def test_submission_event_accepts_numeric_predecessor_anchor(app, _schema):
+    connection = _install_typed_schema(app)
+    try:
+        cursor = connection.cursor()
+        organization_id, user_id, _ = _seed_org_user_model(cursor, "successor-anchor")
+        subject = _seed_subject_material(
+            cursor, "architecture_model", organization_id, user_id, "successor-anchor"
+        )
+        predecessor_id, _review_id, _evidence_id = _insert_typed_graph(
+            cursor,
+            organization_id=organization_id,
+            user_id=user_id,
+            subject=subject,
+            cycle_status="returned_for_evidence",
+            closed_at=datetime.now(timezone.utc),
+            terminal_outcome="returned_for_evidence",
+            review_status="returned_for_evidence",
+            review_decision="returned_for_evidence",
+        )
+        cycle_id, review_id, evidence_id = _insert_typed_graph(
+            cursor,
+            organization_id=organization_id,
+            user_id=user_id,
+            subject=subject,
+            cycle_number=2,
+            predecessor_cycle_id=predecessor_id,
+        )
+        receipt_id, digest, natural_key = _insert_receipt(
+            cursor,
+            organization_id,
+            user_id,
+            subject=subject,
+            predecessor_anchor=str(predecessor_id),
+        )
+        _insert_event(
+            cursor, organization_id=organization_id, actor_id=user_id,
+            receipt_id=receipt_id, generation=1, subject=subject,
+            cycle_id=cycle_id, review_id=review_id, evidence_id=evidence_id,
+        )
+        _finalize_receipt(
+            cursor, organization_id=organization_id, actor_id=user_id,
+            receipt_id=receipt_id, request_digest=digest, natural_key=natural_key,
+            generation=1, cycle_id=cycle_id, review_id=review_id,
+            evidence_id=evidence_id,
+        )
+        connection.commit()
+    finally:
+        connection.rollback()
+        connection.close()
+
+
 def test_submission_event_rejects_cycle_review_membership_mismatch(app, _schema):
     connection = _install_typed_schema(app)
     try:
@@ -265,6 +318,8 @@ def test_submission_event_rejects_cycle_review_membership_mismatch(app, _schema)
     "provenance_case, expected",
     [
         ("wrong_subject_receipt", "natural key|receipt"),
+        ("wrong_anchor_receipt", "natural key|receipt"),
+        ("missing_anchor_receipt", "natural key|receipt"),
         ("in_progress_without_result", "succeeded|result"),
         ("different_submitter", "submitter|actor"),
         ("mismatched_result_ids", "result|object"),
@@ -296,7 +351,17 @@ def test_submission_event_rejects_incomplete_or_forged_command_provenance(
         if provenance_case == "wrong_subject_receipt":
             wrong_key = (
                 f"arb-submission:{organization_id}:architecture_model:"
-                f"{subject['subject_id'] + 999999}"
+                f"{subject['subject_id'] + 999999}:after:root"
+            )
+        elif provenance_case == "wrong_anchor_receipt":
+            wrong_key = (
+                f"arb-submission:{organization_id}:architecture_model:"
+                f"{subject['subject_id']}:after:999999"
+            )
+        elif provenance_case == "missing_anchor_receipt":
+            wrong_key = (
+                f"arb-submission:{organization_id}:architecture_model:"
+                f"{subject['subject_id']}"
             )
         receipt_id, digest, natural_key = _insert_receipt(
             cursor,

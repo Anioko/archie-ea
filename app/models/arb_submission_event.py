@@ -154,13 +154,17 @@ def _membership_sql(quoted_schema):
             JOIN operation_results result
               ON result.id = receipt.operation_result_id
              AND result.receipt_id = receipt.id
+            JOIN arb_review_cycles provenance_cycle
+              ON provenance_cycle.id = NEW.review_cycle_id
+             AND provenance_cycle.organization_id = NEW.organization_id
             WHERE receipt.id = NEW.command_receipt_id
               AND receipt.organization_id = NEW.organization_id
               AND receipt.actor_id = NEW.actor_id
               AND receipt.operation = 'arb.submit'
               AND receipt.natural_key =
                   'arb-submission:' || NEW.organization_id::text || ':' ||
-                  NEW.subject_type || ':' || NEW.subject_id::text
+                  NEW.subject_type || ':' || NEW.subject_id::text || ':after:' ||
+                  COALESCE(provenance_cycle.predecessor_cycle_id::text, 'root')
               AND receipt.status = 'succeeded'
               AND receipt.operation_result_id IS NOT NULL
               AND receipt.completed_at IS NOT NULL
