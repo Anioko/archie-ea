@@ -1,0 +1,219 @@
+{#
+  Typed ARB work queue / review ledger (blueprint section 5).
+
+  Consumes ``typed_arb_queue_view`` exactly. This partial NEVER extends a
+  layout and NEVER renders a page header, breadcrumb or <h1> — the outer page
+  owns all three.
+
+  Required context:
+    queue             the typed_arb_queue_view() mapping
+    queue_action_url  form target for the filter row (the current page URL)
+
+  On ``state == "failed"`` the read model returns page/page_size/total_items/
+  total_pages as None. Nothing here may render a 0 in their place: a zero count
+  is indistinguishable from a measured zero, and the route returns 503.
+#}
+{% from 'arb/partials/_typed_macros.html' import dash, ts, gov_status_badge, subject_identity %}
+{% from 'components/card.html' import card, card_content %}
+{% from 'components/alert.html' import alert as alert_box, alert_title, alert_description %}
+{% from 'components/empty_state.html' import empty_state %}
+{% from 'components/table.html' import table, table_header, table_body, table_row, table_cell %}
+
+{% set _filters = queue.filters or {} %}
+{% set _options = queue.filter_options or {} %}
+
+{% if queue.state == 'failed' %}
+    {% call alert_box(variant='destructive', icon='triangle-alert', class='mb-6') %}
+        {% call alert_title() %}The review ledger could not be read. Retry.{% endcall %}
+        {% call alert_description() %}
+            <p>No review counts are shown, because none could be read.</p>
+            {% if queue.reason %}
+            <p class="mt-2 break-all font-mono text-xs">Reason: {{ queue.reason }}</p>
+            {% endif %}
+            <p class="mt-3">
+                <a href="{{ queue_action_url }}"
+                   class="inline-flex h-9 items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                    <i data-lucide="rotate-cw" class="mr-2 h-4 w-4" aria-hidden="true"></i>Retry
+                </a>
+            </p>
+        {% endcall %}
+    {% endcall %}
+{% else %}
+
+<form method="get" action="{{ queue_action_url }}" class="mb-6" role="search" aria-label="Filter typed ARB reviews">
+    <div class="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+        <div class="min-w-0 flex-1 sm:max-w-xs">
+            <label for="arb-queue-q" class="mb-1.5 block text-sm font-medium text-foreground">Review number or subject title</label>
+            <input type="search" id="arb-queue-q" name="q" value="{{ _filters.get('q') or '' }}"
+                   class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+        </div>
+        <div class="min-w-0 sm:w-48">
+            <label for="arb-queue-state" class="mb-1.5 block text-sm font-medium text-foreground">State</label>
+            <select id="arb-queue-state" name="state"
+                    class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                <option value="">All states</option>
+                {% for option in _options.get('state', []) %}
+                <option value="{{ option.value }}" {% if _filters.get('state') == option.value %}selected{% endif %}>{{ option.label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="min-w-0 sm:w-56">
+            <label for="arb-queue-subject-type" class="mb-1.5 block text-sm font-medium text-foreground">Subject type</label>
+            <select id="arb-queue-subject-type" name="subject_type"
+                    class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                <option value="">All subject types</option>
+                {% for option in _options.get('subject_type', []) %}
+                <option value="{{ option.value }}" {% if _filters.get('subject_type') == option.value %}selected{% endif %}>{{ option.label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="flex items-center gap-2">
+            <button type="submit"
+                    class="inline-flex h-9 items-center justify-center whitespace-nowrap rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                Apply filters
+            </button>
+            <a href="{{ queue_action_url }}"
+               class="inline-flex h-9 items-center justify-center whitespace-nowrap rounded-md px-4 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                Clear filters
+            </a>
+        </div>
+    </div>
+</form>
+
+{% set _is_filtered = (_filters.get('q') or _filters.get('state') or _filters.get('subject_type')) %}
+
+{% if queue.state == 'empty' %}
+    {% call card() %}
+        {% call card_content(class='p-0') %}
+        {% if _is_filtered %}
+            {{ empty_state(
+                icon='filter',
+                title='No reviews match these filters.',
+                description='Change or clear the filters to see the typed reviews that exist.',
+                cta_text='Clear filters',
+                cta_href=queue_action_url,
+                cta_icon='x'
+            ) }}
+        {% else %}
+            {{ empty_state(
+                icon='clipboard-list',
+                title='No typed ARB reviews yet.',
+                description='Submissions begin from a Decision Brief, Solution, Architecture Model or ADR.'
+            ) }}
+        {% endif %}
+        {% endcall %}
+    {% endcall %}
+{% else %}
+
+{# ---- Desktop: real table with <th scope="col"> (blueprint section 14) ---- #}
+<div class="hidden md:block">
+    {% call card(class='overflow-hidden') %}
+        {% call card_content(class='p-0') %}
+        {% call table() %}
+            <caption class="sr-only">Typed ARB reviews awaiting a decision or condition action</caption>
+            {% call table_header() %}
+                <tr class="border-b">
+                    <th scope="col" class="h-12 px-4 text-left align-middle text-sm font-medium text-muted-foreground">Review</th>
+                    <th scope="col" class="h-12 px-4 text-left align-middle text-sm font-medium text-muted-foreground">Subject</th>
+                    <th scope="col" class="h-12 px-4 text-left align-middle text-sm font-medium text-muted-foreground">Status</th>
+                    <th scope="col" class="h-12 px-4 text-left align-middle text-sm font-medium text-muted-foreground">Required action</th>
+                    <th scope="col" class="h-12 px-4 text-left align-middle text-sm font-medium text-muted-foreground">Submitted</th>
+                    <th scope="col" class="h-12 px-4 text-right align-middle text-sm font-medium text-muted-foreground">
+                        <span class="sr-only">Open review</span>
+                    </th>
+                </tr>
+            {% endcall %}
+            {% call table_body() %}
+                {% for item in queue['items'] %}
+                {% call table_row() %}
+                    {% call table_cell(class='align-top') %}
+                        <div class="font-medium text-foreground">{{ dash(item.review_number) }}</div>
+                        <div class="text-xs text-muted-foreground">Cycle {{ dash(item.cycle_number) }}</div>
+                    {% endcall %}
+                    {% call table_cell(class='align-top') %}
+                        {{ subject_identity(item.subject_icon, item.subject_label, class='text-xs text-muted-foreground') }}
+                        <div class="mt-0.5 max-w-xs break-words font-medium text-foreground">{{ dash(item.subject_title) }}</div>
+                    {% endcall %}
+                    {% call table_cell(class='align-top') %}
+                        {{ gov_status_badge(item.projection_status) }}
+                        {% if item.is_historical_unverified %}
+                        <div class="mt-1 text-xs text-muted-foreground">Historical &#183; evidence unverified</div>
+                        {% endif %}
+                    {% endcall %}
+                    {% call table_cell(class='align-top text-sm') %}{{ dash(item.required_action_label) }}{% endcall %}
+                    {% call table_cell(class='align-top text-sm') %}
+                        <div>{{ ts(item.submitted_at) }}</div>
+                        <div class="text-xs text-muted-foreground">{{ dash(item.submitter_display) }}</div>
+                    {% endcall %}
+                    {% call table_cell(class='align-top text-right') %}
+                        <a href="{{ url_for('arb.review_detail', id=item.review_item_id) }}{{ item.required_action_anchor or '' }}"
+                           class="inline-flex h-8 items-center justify-center whitespace-nowrap rounded-md border border-input bg-background px-3 text-xs font-medium transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                            Open review<span class="sr-only"> {{ item.review_number }}</span>
+                        </a>
+                    {% endcall %}
+                {% endcall %}
+                {% endfor %}
+            {% endcall %}
+        {% endcall %}
+        {% endcall %}
+    {% endcall %}
+</div>
+
+{# ---- Mobile: one bordered card per cycle, labels repeated in text ---- #}
+<ul class="space-y-3 md:hidden" role="list">
+    {% for item in queue['items'] %}
+    <li class="rounded-xl border bg-card p-4 text-card-foreground shadow-sm">
+        <div class="flex flex-wrap items-start justify-between gap-2">
+            <div class="min-w-0">
+                <p class="text-xs text-muted-foreground">Review</p>
+                <p class="font-medium text-foreground">{{ dash(item.review_number) }} &#183; Cycle {{ dash(item.cycle_number) }}</p>
+            </div>
+            {{ gov_status_badge(item.projection_status) }}
+        </div>
+        <div class="mt-3">
+            <p class="text-xs text-muted-foreground">Subject</p>
+            {{ subject_identity(item.subject_icon, item.subject_label, class='text-xs text-muted-foreground') }}
+            <p class="break-words font-medium text-foreground">{{ dash(item.subject_title) }}</p>
+        </div>
+        <div class="mt-3">
+            <p class="text-xs text-muted-foreground">Required action</p>
+            <p class="text-sm text-foreground">{{ dash(item.required_action_label) }}</p>
+        </div>
+        <div class="mt-3">
+            <p class="text-xs text-muted-foreground">Submitted</p>
+            <p class="text-sm text-foreground">{{ ts(item.submitted_at) }} &#183; {{ dash(item.submitter_display) }}</p>
+        </div>
+        {% if item.is_historical_unverified %}
+        <p class="mt-3 text-xs text-muted-foreground">Historical review &#183; evidence snapshot could not be verified.</p>
+        {% endif %}
+        <a href="{{ url_for('arb.review_detail', id=item.review_item_id) }}{{ item.required_action_anchor or '' }}"
+           class="mt-4 inline-flex h-11 w-full items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            Open review<span class="sr-only"> {{ item.review_number }}</span>
+        </a>
+    </li>
+    {% endfor %}
+</ul>
+
+{# Pagination renders only when the read model actually supplies the numbers.
+   On a failed read they are None and this block never runs — no zero-filling. #}
+{% if queue.total_pages is not none and queue.total_pages > 1 %}
+{% set _qs %}{% if _filters.get('state') %}&amp;state={{ _filters.get('state') }}{% endif %}{% if _filters.get('subject_type') %}&amp;subject_type={{ _filters.get('subject_type') }}{% endif %}{% if _filters.get('q') %}&amp;q={{ _filters.get('q') | urlencode }}{% endif %}{% endset %}
+<nav class="mt-4 flex flex-wrap items-center justify-between gap-3" aria-label="Review ledger pagination">
+    <p class="text-sm text-muted-foreground">
+        Page {{ queue.page }} of {{ queue.total_pages }} &#183; {{ queue.total_items }} reviews
+    </p>
+    <div class="flex items-center gap-2">
+        {% if queue.page > 1 %}
+        <a href="{{ queue_action_url }}?page={{ queue.page - 1 }}{{ _qs }}"
+           class="inline-flex h-9 items-center justify-center rounded-md border border-input bg-background px-4 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Previous</a>
+        {% endif %}
+        {% if queue.page < queue.total_pages %}
+        <a href="{{ queue_action_url }}?page={{ queue.page + 1 }}{{ _qs }}"
+           class="inline-flex h-9 items-center justify-center rounded-md border border-input bg-background px-4 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Next</a>
+        {% endif %}
+    </div>
+</nav>
+{% endif %}
+
+{% endif %}
+{% endif %}

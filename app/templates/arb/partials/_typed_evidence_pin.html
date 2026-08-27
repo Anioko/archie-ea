@@ -1,0 +1,83 @@
+{#
+  Evidence pin band (blueprint section 6).
+
+  One quiet full-width card joining subject identity, cycle identity, the
+  pinned immutable snapshot and its provenance. It states only what the
+  snapshot persisted: it never claims the live subject is still identical, and
+  it never substitutes a live-subject value for an absent snapshot value.
+
+  Context: review (typed_arb_review_view mapping).
+  This partial renders no header, no breadcrumb and no <h1>.
+#}
+{% from 'arb/partials/_typed_macros.html' import dash, ts, dl_row, content_hash, subject_identity %}
+{% from 'components/card.html' import card, card_content %}
+
+{% set _identity = review.identity or {} %}
+{% set _subject = review.subject or {} %}
+{% set _evidence = review.evidence or {} %}
+
+{% call card(class='border-primary/30 bg-primary/5 mb-6') %}
+    {% call card_content(class='p-4 sm:p-6') %}
+    <div class="flex flex-wrap items-center justify-between gap-3">
+        <p class="flex items-center gap-2 text-sm font-medium text-foreground">
+            <i data-lucide="pin" class="h-4 w-4 shrink-0 text-primary" aria-hidden="true"></i>
+            Immutable evidence captured for this cycle
+        </p>
+        {% if _subject.canonical_url %}
+        <a href="{{ _subject.canonical_url }}"
+           class="inline-flex h-8 items-center justify-center rounded-md border border-input bg-background px-3 text-xs font-medium transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            <i data-lucide="external-link" class="mr-1.5 h-3.5 w-3.5" aria-hidden="true"></i>Open subject
+        </a>
+        {% else %}
+        {# The read model legitimately returns no canonical URL for some
+           subjects (a decision brief whose programme/workstream context is not
+           resolvable). A dead or guessed link would be worse than none. #}
+        <p class="text-xs text-muted-foreground">No canonical subject link is recorded for this subject.</p>
+        {% endif %}
+    </div>
+
+    <dl class="mt-4 grid grid-cols-1 gap-x-6 gap-y-1 sm:grid-cols-2 lg:grid-cols-3">
+        {% call dl_row('Subject') %}
+            {{ subject_identity(_subject.icon, _subject.label) }}
+            <div class="break-words">{{ dash(_subject.title) }}</div>
+            <div class="text-xs text-muted-foreground">ID {{ dash(_identity.subject_id) }}</div>
+        {% endcall %}
+        {% call dl_row('Review') %}
+            {{ dash(_identity.review_number) }}
+            <span class="text-muted-foreground">&#183; Cycle {{ dash(_identity.cycle_number) }}</span>
+            {% if _identity.predecessor_cycle_id %}
+            <div class="text-xs">
+                <span class="text-muted-foreground">Predecessor cycle</span>
+                <span class="font-mono">{{ _identity.predecessor_cycle_id }}</span>
+            </div>
+            {% endif %}
+        {% endcall %}
+        {{ dl_row('Pinned evidence', (_evidence.evidence_type or none) and (_evidence.evidence_type | replace('_', ' ') | capitalize)) }}
+        {{ dl_row('Evidence ID', _evidence.evidence_id, mono=true) }}
+        {{ dl_row('Version', _evidence.version) }}
+        {{ dl_row('Schema version', _evidence.schema_version) }}
+        {{ dl_row('Policy version', _evidence.policy_version) }}
+        {{ dl_row('Captured by', _evidence.captured_by_display) }}
+        {% call dl_row('Captured at') %}{{ ts(_evidence.captured_at) }}{% endcall %}
+        {% call dl_row('Content hash', mono=true) %}
+            {{ content_hash(_evidence.content_hash) }}
+            {% if _evidence.hash_state == 'verified' %}
+            <span class="mt-1 inline-flex items-center gap-1 text-xs text-success-emphasis">
+                <i data-lucide="shield-check" class="h-3.5 w-3.5" aria-hidden="true"></i>Hash verified
+            </span>
+            {% elif _evidence.hash_state == 'mismatch' %}
+            <span class="mt-1 inline-flex items-center gap-1 text-xs text-destructive-emphasis">
+                <i data-lucide="shield-alert" class="h-3.5 w-3.5" aria-hidden="true"></i>Hash mismatch
+            </span>
+            {% else %}
+            <span class="mt-1 inline-flex items-center gap-1 text-xs text-muted-foreground">
+                <i data-lucide="shield-off" class="h-3.5 w-3.5" aria-hidden="true"></i>Hash unavailable
+            </span>
+            {% endif %}
+            {% if _evidence.hash_reason %}
+            <span class="block text-xs text-muted-foreground">{{ _evidence.hash_reason }}</span>
+            {% endif %}
+        {% endcall %}
+    </dl>
+    {% endcall %}
+{% endcall %}

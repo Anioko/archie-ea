@@ -1,0 +1,213 @@
+{#
+  Decision task and recorded decision (blueprint section 6).
+
+  Authority comes from ``review.allowed_actions`` only. This template never
+  inspects ``current_user.enterprise_role``; the services enforce it again on
+  write, and a crafted request still receives 403.
+
+  The recorded decision EVENT and the current cycle PROJECTION are rendered as
+  two separate facts. An event recorded as approved_with_conditions can project
+  to approved once every condition resolves, and back again when a waiver
+  expires. The original event label is never rewritten to match the projection.
+
+  Context: review, decision_action_url.
+#}
+{% from 'arb/partials/_typed_macros.html' import dash, ts, gov_status_badge %}
+{% from 'components/card.html' import card, card_header, card_title, card_content %}
+{% from 'components/modal.html' import modal %}
+
+{% set _actions = review.allowed_actions or {} %}
+{% set _decision = review.decision or {} %}
+{% set _event = _decision.event %}
+{% set _projection = _decision.projection or {} %}
+{% set _keys = review.command_keys or {} %}
+{% set _ref = (review.identity.review_number or 'this review') %}
+{% set _cycle_ref = (review.identity.cycle_number if review.identity.cycle_number is not none else 'unknown') %}
+{% set _outcome_labels = {
+    'approved': 'Approve',
+    'approved_with_conditions': 'Approve with conditions',
+    'returned_for_evidence': 'Return for evidence',
+    'returned_for_options': 'Return for options',
+    'rejected': 'Reject'
+} %}
+
+<section id="decision" aria-labelledby="decision-heading" class="mb-6">
+{% call card() %}
+    {% call card_header() %}
+        {% call card_title(class='text-lg') %}
+            <span id="decision-heading">Decision</span>
+        {% endcall %}
+    {% endcall %}
+    {% call card_content(class='space-y-5') %}
+
+    {# ---- Recorded decision event: immutable, shown as recorded ---- #}
+    <div>
+        <h3 class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Recorded decision</h3>
+        {% if _event %}
+        <div class="mt-2 space-y-2">
+            <div>{{ gov_status_badge(_event.outcome) }}</div>
+            <dl class="space-y-2 text-sm">
+                <div>
+                    <dt class="text-xs text-muted-foreground">Rationale</dt>
+                    <dd class="whitespace-pre-wrap break-words text-foreground">{{ dash(_event.rationale) }}</dd>
+                </div>
+                <div>
+                    <dt class="text-xs text-muted-foreground">Recorded by</dt>
+                    <dd class="text-foreground">{{ dash(_event.actor_display) }}</dd>
+                </div>
+                <div>
+                    <dt class="text-xs text-muted-foreground">Recorded at</dt>
+                    <dd class="text-foreground">{{ ts(_event.recorded_at) }}</dd>
+                </div>
+            </dl>
+        </div>
+        {% else %}
+        <p class="mt-2 text-sm text-muted-foreground">No decision has been recorded for this cycle.</p>
+        {% endif %}
+    </div>
+
+    {# ---- Current projection: distinct from the recorded event above ---- #}
+    <div class="border-t border-border pt-4">
+        <h3 class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Current projection</h3>
+        <div class="mt-2 space-y-2">
+            <div>{{ gov_status_badge(_projection.status) }}</div>
+            <dl class="space-y-2 text-sm">
+                <div>
+                    <dt class="text-xs text-muted-foreground">Conditions</dt>
+                    <dd class="text-foreground">{{ dash(_projection.condition_count) }} recorded &#183; {{ dash(_projection.blocking_condition_count) }} still blocking</dd>
+                </div>
+                <div>
+                    <dt class="text-xs text-muted-foreground">Cycle closed at</dt>
+                    <dd class="text-foreground">{{ ts(_projection.closed_at) }}</dd>
+                </div>
+            </dl>
+            {% if _projection.blocking_condition_count %}
+            <p class="rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-warning-emphasis">
+                Execution remains blocked while a blocking condition is unresolved.
+            </p>
+            {% endif %}
+        </div>
+    </div>
+
+    {# ---- Decision task ---- #}
+    <div class="border-t border-border pt-4">
+        {% if _actions.can_decide and _actions.decision_outcomes %}
+        <h3 class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Record the outcome</h3>
+        <div class="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+            {% for outcome in _actions.decision_outcomes %}
+            <button type="button"
+                    data-modal-open="arb-decision-{{ outcome }}"
+                    data-arb-decision-trigger
+                    class="inline-flex h-9 items-center justify-center whitespace-nowrap rounded-md px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50
+                           {% if outcome == 'rejected' %}bg-destructive text-destructive-foreground hover:bg-destructive/90{% elif outcome == 'approved' %}bg-primary text-primary-foreground hover:bg-primary/90{% else %}border border-input bg-background hover:bg-accent hover:text-accent-foreground{% endif %}">
+                {{ _outcome_labels.get(outcome, outcome | replace('_', ' ') | capitalize) }}
+            </button>
+            {% endfor %}
+        </div>
+        <div data-arb-decision-busy hidden role="status" aria-live="polite" class="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
+            <i data-lucide="loader-circle" class="h-4 w-4 animate-spin" aria-hidden="true"></i>
+            <span>Recording decision&#8230;</span>
+        </div>
+        {% else %}
+        <p class="text-sm text-muted-foreground">
+            {{ _actions.decision_denial_reason or 'You can inspect this review. A separate authorised decision maker must record the outcome.' }}
+        </p>
+        {% endif %}
+    </div>
+    {% endcall %}
+{% endcall %}
+</section>
+
+{# ---- Decision modals: one per authorised outcome, platform modal only ---- #}
+{% if _actions.can_decide %}
+{% for outcome in _actions.decision_outcomes %}
+{% set _label = _outcome_labels.get(outcome, outcome | replace('_', ' ') | capitalize) %}
+{% call modal(
+    id='arb-decision-' ~ outcome,
+    title=_label,
+    description='This records an immutable decision on ' ~ _ref ~ ', cycle ' ~ _cycle_ref ~ '. It cannot be edited or deleted afterwards.',
+    size=('lg' if outcome == 'approved_with_conditions' else 'default')
+) %}
+<form method="post" action="{{ decision_action_url }}" data-arb-decision-form class="space-y-4">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="outcome" value="{{ outcome }}">
+    <input type="hidden" name="command_key" value="{{ _keys.get('decision') or '' }}">
+
+    <div>
+        <label for="arb-rationale-{{ outcome }}" class="mb-1.5 block text-sm font-medium text-foreground">
+            Rationale <span class="text-destructive" aria-hidden="true">*</span>
+        </label>
+        <textarea id="arb-rationale-{{ outcome }}" name="rationale" rows="4" required maxlength="4000"
+                  aria-describedby="arb-rationale-help-{{ outcome }}"
+                  class="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"></textarea>
+        <p id="arb-rationale-help-{{ outcome }}" class="mt-1 text-xs text-muted-foreground">
+            Required. Up to 4,000 characters. Recorded permanently against this cycle.
+        </p>
+    </div>
+
+    {% if outcome == 'approved_with_conditions' %}
+    <fieldset x-data="{ rows: [0], next: 1 }" class="rounded-lg border border-border p-4">
+        <legend class="px-1 text-sm font-medium text-foreground">Conditions</legend>
+        <p class="mb-3 text-xs text-muted-foreground">
+            Every condition blocks execution until its evidence is verified or a waiver is granted.
+            A due date is optional and is never generated for you.
+        </p>
+        <template x-for="(row, index) in rows" :key="row">
+            <div class="mb-3 space-y-2 rounded-md border border-border p-3">
+                <div>
+                    <label class="mb-1 block text-sm font-medium text-foreground"
+                           :for="'arb-condition-description-' + row">
+                        Condition <span x-text="index + 1"></span> description
+                        <span class="text-destructive" aria-hidden="true">*</span>
+                    </label>
+                    <textarea :id="'arb-condition-description-' + row" name="condition_description" rows="2" required maxlength="2000"
+                              class="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"></textarea>
+                </div>
+                <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <div>
+                        <label class="mb-1 block text-sm font-medium text-foreground" :for="'arb-condition-category-' + row">
+                            Condition <span x-text="index + 1"></span> category (optional)
+                        </label>
+                        <input type="text" :id="'arb-condition-category-' + row" name="condition_category" maxlength="120"
+                               class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                    </div>
+                    <div>
+                        <label class="mb-1 block text-sm font-medium text-foreground" :for="'arb-condition-due-' + row">
+                            Condition <span x-text="index + 1"></span> due date (optional)
+                        </label>
+                        <input type="date" :id="'arb-condition-due-' + row" name="condition_due_date"
+                               class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                    </div>
+                </div>
+                <div class="flex justify-end">
+                    <button type="button" x-show="rows.length > 1" x-cloak
+                            @click="rows = rows.filter(function (r) { return r !== row; })"
+                            :aria-label="'Remove condition ' + (index + 1)"
+                            class="inline-flex h-8 items-center justify-center rounded-md px-3 text-xs font-medium text-destructive transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                        <i data-lucide="trash-2" class="mr-1.5 h-3.5 w-3.5" aria-hidden="true"></i>Remove
+                    </button>
+                </div>
+            </div>
+        </template>
+        <button type="button" @click="rows.push(next); next = next + 1;"
+                class="inline-flex h-8 items-center justify-center rounded-md border border-input bg-background px-3 text-xs font-medium transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            <i data-lucide="plus" class="mr-1.5 h-3.5 w-3.5" aria-hidden="true"></i>Add another condition
+        </button>
+    </fieldset>
+    {% endif %}
+
+    <div class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+        <button type="button" data-modal-close="arb-decision-{{ outcome }}"
+                class="inline-flex h-9 items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            Cancel
+        </button>
+        <button type="submit"
+                class="inline-flex h-9 items-center justify-center rounded-md px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50
+                       {% if outcome == 'rejected' %}bg-destructive text-destructive-foreground hover:bg-destructive/90{% else %}bg-primary text-primary-foreground hover:bg-primary/90{% endif %}">
+            {{ _label }} {{ _ref }}
+        </button>
+    </div>
+</form>
+{% endcall %}
+{% endfor %}
+{% endif %}

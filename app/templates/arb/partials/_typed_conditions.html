@@ -1,0 +1,474 @@
+{#
+  Conditions ledger (blueprint section 9).
+
+  One card per canonical ARBCondition, anchored at ``condition-<id>`` so the
+  queue's required-action anchor lands on the right card.
+
+  Deliberately NOT rendered here:
+    * no percentage progress bar — a percentage implies equal condition weight
+      and adds no decision value. A count is shown instead;
+    * no invented due date and no invented `pending` state — the read model
+      reports what is persisted, and an absent due date is an em dash;
+    * no green posture while a blocking condition is unresolved.
+
+  THE CAPTURE/SUBMIT HAZARD (lane 3 contract). Capture and submit are two
+  commands and capture deliberately does NOT advance the condition:
+
+      POST /arb/api/conditions/<id>/evidence            -> condition_evidence_id
+      POST /arb/api/conditions/<id>/evidence/<eid>/submit  (NO body)
+
+  If capture succeeds and submit then fails, re-running capture silently
+  creates a SECOND evidence record. So this markup carries a dedicated
+  "Evidence captured, not submitted" region holding the returned
+  condition_evidence_id, whose only control re-POSTs that id to /submit. While
+  that region is visible the capture trigger is hidden: there is no path from
+  this state back into a fresh capture.
+
+  The regions are toggled with the native ``hidden`` attribute (never x-show),
+  so they are correct before Alpine hydrates. app/static/js/arb/typed_governance.js
+  (lane 6) owns the toggling and the fetch; this template owns the contract:
+
+    [data-arb-condition]                 root, data-condition-id
+    [data-arb-capture-trigger]           opens the capture modal
+    [data-arb-captured-region]           the captured-not-submitted state
+    [data-arb-captured-evidence-id]      text node for the returned id
+    [data-arb-retry-submit]              re-submits data-evidence-id verbatim
+    [data-arb-error]                     role=alert, field-associated messages
+
+  Bodies are strictly allow-listed by lane 3: organization_id, actor ids,
+  condition status, cycle/review/decision ids, content_hash, source_checksum,
+  freshness_status, freshness_rule_version and condition_revision are rejected
+  with 400. No such field is present in any form below.
+
+  Context: review.
+#}
+{% from 'arb/partials/_typed_macros.html' import dash, ts, gov_status_badge, content_hash %}
+{% from 'components/card.html' import card, card_header, card_title, card_content %}
+{% from 'components/modal.html' import modal %}
+
+{% set _conditions = review.conditions or [] %}
+{% set _condition_actions = (review.allowed_actions or {}).get('conditions') or {} %}
+{% set _keys = review.command_keys or {} %}
+
+{% if _conditions %}
+{% set _resolved = _conditions | selectattr('status', 'in', ['fulfilled', 'waived']) | list | length %}
+<section id="conditions" aria-labelledby="conditions-heading" class="mb-6">
+    <div class="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+        <h2 id="conditions-heading" class="text-lg font-semibold text-foreground">Conditions</h2>
+        <p class="text-sm text-muted-foreground">{{ _resolved }} of {{ _conditions | length }} resolved</p>
+    </div>
+
+    <ul class="space-y-4" role="list">
+    {% for condition in _conditions %}
+    {% set _cid = condition.condition_id %}
+    {% set _act = _condition_actions.get(_cid) or {} %}
+    {% set _number = condition.condition_number if condition.condition_number is not none else loop.index %}
+    <li id="{{ condition.anchor }}" data-arb-condition data-condition-id="{{ _cid }}">
+    {% call card() %}
+        {% call card_header() %}
+            <div class="flex flex-wrap items-start justify-between gap-2">
+                {% call card_title(class='text-base') %}
+                    <span id="condition-heading-{{ _cid }}" tabindex="-1">Condition {{ _number }}</span>
+                {% endcall %}
+                {{ gov_status_badge(condition.status) }}
+            </div>
+        {% endcall %}
+        {% call card_content(class='space-y-4') %}
+        <p class="whitespace-pre-wrap break-words text-sm text-foreground">{{ dash(condition.description) }}</p>
+
+        <dl class="grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-3">
+            <div>
+                <dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Category</dt>
+                <dd class="text-sm text-foreground">{{ dash(condition.category) }}</dd>
+            </div>
+            <div>
+                <dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Due date</dt>
+                <dd class="text-sm text-foreground">{{ dash(condition.due_date) }}</dd>
+            </div>
+            <div>
+                <dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Responsible</dt>
+                <dd class="text-sm text-foreground">{{ dash(condition.responsible_display) }}</dd>
+            </div>
+        </dl>
+
+        {% if condition.blocks_execution %}
+        <p class="inline-flex items-center gap-1.5 rounded-md border border-warning/30 bg-warning/10 px-2.5 py-1 text-xs font-medium text-warning-emphasis">
+            <i data-lucide="lock" class="h-3.5 w-3.5" aria-hidden="true"></i>Blocks execution
+        </p>
+        {% endif %}
+
+        {# ---- Submitted evidence ---- #}
+        {% if condition.evidence %}
+        <div class="rounded-lg border border-border p-3">
+            <h3 class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Submitted evidence</h3>
+            <dl class="mt-2 grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-2">
+                <div class="min-w-0">
+                    <dt class="text-xs text-muted-foreground">Evidence ID</dt>
+                    <dd class="break-all font-mono text-xs text-foreground">{{ dash(condition.evidence.condition_evidence_id) }}</dd>
+                </div>
+                <div class="min-w-0">
+                    <dt class="text-xs text-muted-foreground">Source identity</dt>
+                    <dd class="break-words text-sm text-foreground">{{ dash(condition.evidence.source_identity) }}</dd>
+                </div>
+                <div class="min-w-0">
+                    <dt class="text-xs text-muted-foreground">Source type</dt>
+                    <dd class="text-sm text-foreground">
+                        {% if condition.evidence.source_type == 'manual_attestation' %}
+                        Manual attestation &#8212; a statement by a person, not a measurement
+                        {% else %}
+                        {{ dash(condition.evidence.source_type) }}
+                        {% endif %}
+                    </dd>
+                </div>
+                <div class="min-w-0">
+                    <dt class="text-xs text-muted-foreground">Source version</dt>
+                    <dd class="break-words text-sm text-foreground">{{ dash(condition.evidence.source_version) }}</dd>
+                </div>
+                <div class="min-w-0">
+                    <dt class="text-xs text-muted-foreground">Observed at</dt>
+                    <dd class="text-sm text-foreground">{{ ts(condition.evidence.observed_at) }}</dd>
+                </div>
+                <div class="min-w-0">
+                    <dt class="text-xs text-muted-foreground">Freshness</dt>
+                    <dd class="text-sm text-foreground">{{ dash(condition.evidence.freshness_status) }}</dd>
+                </div>
+                <div class="min-w-0">
+                    <dt class="text-xs text-muted-foreground">Submitted by</dt>
+                    <dd class="text-sm text-foreground">{{ dash(condition.evidence.submitted_by_display) }}</dd>
+                </div>
+                <div class="min-w-0">
+                    <dt class="text-xs text-muted-foreground">Submitted at</dt>
+                    <dd class="text-sm text-foreground">{{ ts(condition.evidence.submitted_at) }}</dd>
+                </div>
+                <div class="min-w-0 sm:col-span-2">
+                    <dt class="text-xs text-muted-foreground">Content hash</dt>
+                    <dd class="mt-0.5">{{ content_hash(condition.evidence.content_hash, copy_label='Copy evidence hash for condition ' ~ _number) }}</dd>
+                </div>
+            </dl>
+        </div>
+        {% endif %}
+
+        {% if condition.verified_at or condition.verified_by_display %}
+        <p class="text-sm text-muted-foreground">
+            Verified by {{ dash(condition.verified_by_display) }} at {{ ts(condition.verified_at) }}.
+        </p>
+        {% endif %}
+
+        {# ---- Waiver ---- #}
+        {% if condition.waiver %}
+        <div class="rounded-lg border border-warning/30 bg-warning/10 p-3">
+            <h3 class="text-xs font-medium uppercase tracking-wide text-warning-emphasis">Waiver</h3>
+            <p class="mt-1 text-xs text-warning-emphasis">A waiver does not remove this condition. It expires automatically.</p>
+            <dl class="mt-2 space-y-2">
+                <div>
+                    <dt class="text-xs text-muted-foreground">Reason</dt>
+                    <dd class="whitespace-pre-wrap break-words text-sm text-foreground">{{ dash(condition.waiver.reason) }}</dd>
+                </div>
+                <div>
+                    <dt class="text-xs text-muted-foreground">Scope</dt>
+                    <dd class="break-words text-sm text-foreground">
+                        {% if condition.waiver.scope is mapping %}{{ dash(condition.waiver.scope.get('description')) }}{% else %}{{ dash(condition.waiver.scope) }}{% endif %}
+                    </dd>
+                </div>
+                <div>
+                    <dt class="text-xs text-muted-foreground">Compensating control</dt>
+                    <dd class="whitespace-pre-wrap break-words text-sm text-foreground">{{ dash(condition.waiver.compensating_control) }}</dd>
+                </div>
+                <div>
+                    <dt class="text-xs text-muted-foreground">Approved by</dt>
+                    <dd class="text-sm text-foreground">{{ dash(condition.waiver.approved_by_display) }} at {{ ts(condition.waiver.waived_at) }}</dd>
+                </div>
+                <div>
+                    <dt class="text-xs text-muted-foreground">Expires at</dt>
+                    <dd class="text-sm text-foreground">{{ ts(condition.waiver.expires_at) }}</dd>
+                </div>
+                <div>
+                    <dt class="text-xs text-muted-foreground">Status restored on expiry</dt>
+                    <dd class="text-sm text-foreground">{{ dash(condition.waiver.prior_status) }}</dd>
+                </div>
+            </dl>
+        </div>
+        {% endif %}
+
+        {# ---- Condition event mini-history, in revision order ---- #}
+        {% if condition.events %}
+        <details class="rounded-lg border border-border">
+            <summary class="cursor-pointer px-3 py-2 text-xs font-medium text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                Condition history ({{ condition.events | length }})
+            </summary>
+            <ol class="space-y-2 border-t border-border p-3" role="list">
+                {% for event in condition.events %}
+                <li class="text-xs text-muted-foreground">
+                    <span class="font-medium text-foreground">{{ dash(event.event_type) }}</span>
+                    &#183; {{ dash(event.from_state) }} &rarr; {{ dash(event.to_state) }}
+                    &#183; revision {{ dash(event.condition_revision) }}
+                    &#183; {{ dash(event.actor_display) }}
+                    &#183; {{ ts(event.recorded_at) }}
+                </li>
+                {% endfor %}
+            </ol>
+        </details>
+        {% endif %}
+
+        {# ---- Captured-but-not-submitted recovery state (see header note) ---- #}
+        <div data-arb-captured-region hidden
+             class="rounded-lg border border-warning/30 bg-warning/10 p-3"
+             role="status" aria-live="polite">
+            <p class="text-sm font-medium text-warning-emphasis">Evidence captured, not submitted</p>
+            <p class="mt-1 text-xs text-warning-emphasis">
+                The evidence record exists and is immutable. Only the lifecycle submission failed.
+                Retry the submission &#8212; capturing again would create a second evidence record.
+            </p>
+            <p class="mt-2 text-xs text-muted-foreground">
+                Evidence ID <code class="break-all font-mono" data-arb-captured-evidence-id></code>
+            </p>
+            <button type="button"
+                    data-arb-retry-submit
+                    data-submit-url-template="/arb/api/conditions/{{ _cid }}/evidence/__EVIDENCE_ID__/submit"
+                    class="mt-3 inline-flex h-9 items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
+                    aria-label="Retry submitting captured evidence for condition {{ _number }}">
+                Retry submission
+            </button>
+        </div>
+
+        <div data-arb-error hidden role="alert" class="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive-emphasis"></div>
+
+        {# ---- Actions ---- #}
+        <div class="flex flex-col gap-2 border-t border-border pt-4 sm:flex-row sm:flex-wrap">
+            {% if _act.get('can_capture_evidence') %}
+            <button type="button"
+                    data-arb-capture-trigger
+                    data-modal-open="arb-condition-evidence-{{ _cid }}"
+                    class="inline-flex h-9 items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    aria-label="Submit evidence for condition {{ _number }}">
+                Submit evidence
+            </button>
+            {% endif %}
+            {% if _act.get('can_verify') %}
+            <button type="button"
+                    data-modal-open="arb-condition-verify-{{ _cid }}"
+                    class="inline-flex h-9 items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    aria-label="Verify evidence for condition {{ _number }}">
+                Verify evidence
+            </button>
+            {% endif %}
+            {% if _act.get('can_waive') %}
+            <button type="button"
+                    data-modal-open="arb-condition-waive-{{ _cid }}"
+                    class="inline-flex h-9 items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    aria-label="Grant waiver for condition {{ _number }}">
+                Grant waiver
+            </button>
+            {% endif %}
+            {% if not (_act.get('can_capture_evidence') or _act.get('can_verify') or _act.get('can_waive')) %}
+            <p class="text-sm text-muted-foreground">
+                {{ _act.get('capture_denial_reason') or _act.get('verify_denial_reason') or 'No action on this condition is available to you.' }}
+            </p>
+            {% endif %}
+        </div>
+        {% endcall %}
+    {% endcall %}
+    </li>
+
+    {# ---- Modals for this condition ---- #}
+    {% if _act.get('can_capture_evidence') %}
+    {% call modal(id='arb-condition-evidence-' ~ _cid, title='Submit evidence for condition ' ~ _number, size='lg') %}
+    <form data-arb-evidence-form
+          method="post"
+          action="/arb/api/conditions/{{ _cid }}/evidence"
+          data-condition-id="{{ _cid }}"
+          data-command-key="{{ _keys.get('condition:' ~ _cid ~ ':capture') or '' }}"
+          class="space-y-4"
+          x-data="{ mode: 'manual_attestation' }">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <fieldset>
+            <legend class="mb-2 text-sm font-medium text-foreground">Evidence source</legend>
+            <label class="flex items-start gap-2 text-sm text-foreground">
+                <input type="radio" name="mode" value="manual_attestation" x-model="mode" checked class="mt-1">
+                <span>
+                    <span class="font-medium">Manual attestation</span>
+                    <span class="block text-xs text-muted-foreground">A statement by a person. It is recorded as an attestation, not a measurement.</span>
+                </span>
+            </label>
+            <label class="mt-2 flex items-start gap-2 text-sm text-foreground">
+                <input type="radio" name="mode" value="source_backed" x-model="mode" class="mt-1">
+                <span>
+                    <span class="font-medium">Source-backed record</span>
+                    <span class="block text-xs text-muted-foreground">A named system of record. An expired or unverifiable source is rejected.</span>
+                </span>
+            </label>
+        </fieldset>
+
+        <div x-show="mode === 'manual_attestation'" x-cloak class="space-y-3">
+            <div>
+                <label for="arb-attestation-statement-{{ _cid }}" class="mb-1.5 block text-sm font-medium text-foreground">
+                    Statement <span class="text-destructive" aria-hidden="true">*</span>
+                </label>
+                <textarea id="arb-attestation-statement-{{ _cid }}" name="statement" rows="3" maxlength="2000"
+                          aria-describedby="arb-attestation-help-{{ _cid }}"
+                          class="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"></textarea>
+                <p id="arb-attestation-help-{{ _cid }}" class="mt-1 text-xs text-muted-foreground">Up to 2,000 characters.</p>
+            </div>
+            <div>
+                <label for="arb-attestation-observed-{{ _cid }}" class="mb-1.5 block text-sm font-medium text-foreground">
+                    Observed at <span class="text-destructive" aria-hidden="true">*</span>
+                </label>
+                <input type="datetime-local" id="arb-attestation-observed-{{ _cid }}" name="observed_at"
+                       class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+            </div>
+        </div>
+
+        <div x-show="mode === 'source_backed'" x-cloak class="space-y-3">
+            <div>
+                <label for="arb-source-identity-{{ _cid }}" class="mb-1.5 block text-sm font-medium text-foreground">
+                    Source identity <span class="text-destructive" aria-hidden="true">*</span>
+                </label>
+                <input type="text" id="arb-source-identity-{{ _cid }}" name="source_identity" maxlength="255"
+                       class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+            </div>
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div>
+                    <label for="arb-source-type-{{ _cid }}" class="mb-1.5 block text-sm font-medium text-foreground">Source type</label>
+                    <input type="text" id="arb-source-type-{{ _cid }}" name="source_type" maxlength="120"
+                           class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                </div>
+                <div>
+                    <label for="arb-source-version-{{ _cid }}" class="mb-1.5 block text-sm font-medium text-foreground">Source version</label>
+                    <input type="text" id="arb-source-version-{{ _cid }}" name="source_version" maxlength="120"
+                           class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                </div>
+                <div>
+                    <label for="arb-source-observed-{{ _cid }}" class="mb-1.5 block text-sm font-medium text-foreground">Observed at</label>
+                    <input type="datetime-local" id="arb-source-observed-{{ _cid }}" name="observed_at"
+                           class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                </div>
+                <div>
+                    <label for="arb-source-expires-{{ _cid }}" class="mb-1.5 block text-sm font-medium text-foreground">Expires at</label>
+                    <input type="datetime-local" id="arb-source-expires-{{ _cid }}" name="expires_at"
+                           aria-describedby="arb-source-expires-help-{{ _cid }}"
+                           class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                    <p id="arb-source-expires-help-{{ _cid }}" class="mt-1 text-xs text-muted-foreground">An already-expired record is rejected.</p>
+                </div>
+            </div>
+            <div>
+                <label for="arb-source-value-{{ _cid }}" class="mb-1.5 block text-sm font-medium text-foreground">Value</label>
+                <textarea id="arb-source-value-{{ _cid }}" name="value" rows="3"
+                          class="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"></textarea>
+            </div>
+        </div>
+
+        <p class="text-xs text-muted-foreground">
+            The content hash, checksum and freshness outcome are derived by the server and are not asked for here.
+        </p>
+
+        <div class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <button type="button" data-modal-close="arb-condition-evidence-{{ _cid }}"
+                    class="inline-flex h-9 items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Cancel</button>
+            <button type="submit"
+                    class="inline-flex h-9 items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50">
+                Submit evidence for condition {{ _number }}
+            </button>
+        </div>
+    </form>
+    {% endcall %}
+    {% endif %}
+
+    {% if _act.get('can_verify') %}
+    {% call modal(id='arb-condition-verify-' ~ _cid, title='Verify evidence for condition ' ~ _number) %}
+    <form data-arb-verify-form
+          method="post"
+          action="/arb/api/conditions/{{ _cid }}/evidence/{{ condition.evidence.condition_evidence_id if condition.evidence else '' }}/verify"
+          data-condition-id="{{ _cid }}"
+          data-command-key="{{ _keys.get('condition:' ~ _cid ~ ':verify') or '' }}"
+          class="space-y-4">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <p class="text-sm text-foreground">
+            You are verifying evidence
+            <code class="break-all font-mono text-xs">{{ dash(condition.evidence.condition_evidence_id if condition.evidence else none) }}</code>
+            from source
+            <span class="font-medium">{{ dash(condition.evidence.source_identity if condition.evidence else none) }}</span>.
+        </p>
+        <p class="text-xs text-muted-foreground">
+            Hash <code class="break-all font-mono">{{ dash(condition.evidence.content_hash if condition.evidence else none) }}</code>
+        </p>
+        <p class="text-sm text-muted-foreground">
+            Verification is immutable and is recorded against you. You cannot verify evidence you submitted.
+        </p>
+        <div class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <button type="button" data-modal-close="arb-condition-verify-{{ _cid }}"
+                    class="inline-flex h-9 items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Cancel</button>
+            <button type="submit"
+                    class="inline-flex h-9 items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                Verify evidence for condition {{ _number }}
+            </button>
+        </div>
+    </form>
+    {% endcall %}
+    {% endif %}
+
+    {% if _act.get('can_waive') %}
+    {% call modal(id='arb-condition-waive-' ~ _cid, title='Grant waiver for condition ' ~ _number, size='lg') %}
+    <form data-arb-waive-form
+          method="post"
+          action="/arb/api/conditions/{{ _cid }}/waive"
+          data-condition-id="{{ _cid }}"
+          data-command-key="{{ _keys.get('condition:' ~ _cid ~ ':waive') or '' }}"
+          class="space-y-4">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <p class="rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-warning-emphasis">
+            A waiver does not remove this condition. It expires automatically.
+        </p>
+        <div>
+            <label for="arb-waive-reason-{{ _cid }}" class="mb-1.5 block text-sm font-medium text-foreground">
+                Reason <span class="text-destructive" aria-hidden="true">*</span>
+            </label>
+            <textarea id="arb-waive-reason-{{ _cid }}" name="reason" rows="3" required maxlength="2000"
+                      aria-describedby="arb-waive-reason-help-{{ _cid }}"
+                      class="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"></textarea>
+            <p id="arb-waive-reason-help-{{ _cid }}" class="mt-1 text-xs text-muted-foreground">Required. Up to 2,000 characters.</p>
+        </div>
+        <div>
+            <label for="arb-waive-expires-{{ _cid }}" class="mb-1.5 block text-sm font-medium text-foreground">
+                Expires at <span class="text-destructive" aria-hidden="true">*</span>
+            </label>
+            <input type="datetime-local" id="arb-waive-expires-{{ _cid }}" name="expires_at" required
+                   aria-describedby="arb-waive-expires-help-{{ _cid }}"
+                   class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+            <p id="arb-waive-expires-help-{{ _cid }}" class="mt-1 text-xs text-muted-foreground">
+                Must be in the future and no more than 365 days away. A value outside that window is rejected.
+            </p>
+        </div>
+        <div>
+            <label for="arb-waive-scope-{{ _cid }}" class="mb-1.5 block text-sm font-medium text-foreground">
+                Scope <span class="text-destructive" aria-hidden="true">*</span>
+            </label>
+            <textarea id="arb-waive-scope-{{ _cid }}" name="scope" rows="2" required maxlength="2000"
+                      aria-describedby="arb-waive-scope-help-{{ _cid }}"
+                      class="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"></textarea>
+            <p id="arb-waive-scope-help-{{ _cid }}" class="mt-1 text-xs text-muted-foreground">Describe in plain words exactly what this waiver covers.</p>
+        </div>
+        <div>
+            <label for="arb-waive-control-{{ _cid }}" class="mb-1.5 block text-sm font-medium text-foreground">
+                Compensating control <span class="text-destructive" aria-hidden="true">*</span>
+            </label>
+            <textarea id="arb-waive-control-{{ _cid }}" name="compensating_control" rows="2" required maxlength="2000"
+                      aria-describedby="arb-waive-control-help-{{ _cid }}"
+                      class="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"></textarea>
+            <p id="arb-waive-control-help-{{ _cid }}" class="mt-1 text-xs text-muted-foreground">Required. Up to 2,000 characters.</p>
+        </div>
+        <div class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <button type="button" data-modal-close="arb-condition-waive-{{ _cid }}"
+                    class="inline-flex h-9 items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Cancel</button>
+            <button type="submit"
+                    class="inline-flex h-9 items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                Grant waiver for condition {{ _number }}
+            </button>
+        </div>
+    </form>
+    {% endcall %}
+    {% endif %}
+    {% endfor %}
+    </ul>
+</section>
+{% endif %}

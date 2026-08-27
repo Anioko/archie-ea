@@ -1,0 +1,96 @@
+{#
+  Subject dossier (blueprint section 7).
+
+  All four governed subject types render through this one frame. The read model
+  already resolved the subject-specific field set into ``evidence.sections`` —
+  an ordered list of {key, label, value} taken verbatim from the pinned
+  immutable record. This partial renders those named fields and nothing else:
+  no live-subject value is substituted for an absent snapshot value, and no
+  score, readiness or progress figure is computed here.
+
+  Long canonical JSON is not the primary UI. Exact IDs, schema/policy versions
+  and hashes live in the collapsed "Technical provenance" section.
+
+  Context: review (typed_arb_review_view mapping).
+#}
+{% from 'arb/partials/_typed_macros.html' import dash, ts, snapshot_value, content_hash, subject_identity %}
+{% from 'components/card.html' import card, card_header, card_title, card_description, card_content %}
+
+{% set _subject = review.subject or {} %}
+{% set _evidence = review.evidence or {} %}
+{% set _identity = review.identity or {} %}
+{% set _sections = _evidence.sections or [] %}
+
+{% call card(class='mb-6') %}
+    {% call card_header() %}
+        {% call card_title(class='text-lg') %}Dossier{% endcall %}
+        {% call card_description() %}
+            {{ subject_identity(_subject.icon, _subject.label) }}
+            &#183; rendered from the pinned immutable record, not the live subject.
+        {% endcall %}
+    {% endcall %}
+    {% call card_content() %}
+    {% if _sections %}
+    <dl class="divide-y divide-border">
+        {% for section in _sections %}
+        <div class="grid grid-cols-1 gap-1 py-3 sm:grid-cols-3 sm:gap-4">
+            <dt class="text-sm font-medium text-foreground">{{ section.label }}</dt>
+            <dd class="min-w-0 text-sm text-foreground sm:col-span-2">{{ snapshot_value(section.value) }}</dd>
+        </div>
+        {% endfor %}
+    </dl>
+    {% else %}
+    <p class="text-sm text-muted-foreground">
+        The pinned record stores no named dossier sections for this subject.
+    </p>
+    {% endif %}
+
+    <details class="mt-6 rounded-lg border border-border">
+        <summary class="cursor-pointer px-4 py-3 text-sm font-medium text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            Technical provenance
+        </summary>
+        <dl class="grid grid-cols-1 gap-x-6 gap-y-3 border-t border-border p-4 sm:grid-cols-2">
+            <div class="min-w-0">
+                <dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Review item ID</dt>
+                <dd class="mt-0.5 break-all font-mono text-xs text-foreground">{{ dash(_identity.review_item_id) }}</dd>
+            </div>
+            <div class="min-w-0">
+                <dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Review cycle ID</dt>
+                <dd class="mt-0.5 break-all font-mono text-xs text-foreground">{{ dash(_identity.review_cycle_id) }}</dd>
+            </div>
+            <div class="min-w-0">
+                <dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Subject type and ID</dt>
+                <dd class="mt-0.5 break-all font-mono text-xs text-foreground">{{ dash(_identity.subject_type) }} / {{ dash(_identity.subject_id) }}</dd>
+            </div>
+            <div class="min-w-0">
+                <dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Evidence type and ID</dt>
+                <dd class="mt-0.5 break-all font-mono text-xs text-foreground">{{ dash(_evidence.evidence_type) }} / {{ dash(_evidence.evidence_id) }}</dd>
+            </div>
+            <div class="min-w-0">
+                <dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Schema version</dt>
+                <dd class="mt-0.5 break-all font-mono text-xs text-foreground">{{ dash(_evidence.schema_version) }}</dd>
+            </div>
+            <div class="min-w-0">
+                <dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Policy version</dt>
+                <dd class="mt-0.5 break-all font-mono text-xs text-foreground">{{ dash(_evidence.policy_version) }}</dd>
+            </div>
+            <div class="min-w-0">
+                <dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Captured at</dt>
+                <dd class="mt-0.5 text-xs text-foreground">{{ ts(_evidence.captured_at) }}</dd>
+            </div>
+            <div class="min-w-0 sm:col-span-2">
+                <dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Content hash</dt>
+                <dd class="mt-0.5 break-all font-mono text-xs text-foreground">{{ content_hash(_evidence.content_hash) }}</dd>
+            </div>
+            <div class="min-w-0">
+                <dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Predecessor cycle ID</dt>
+                <dd class="mt-0.5 break-all font-mono text-xs text-foreground">{{ dash(_identity.predecessor_cycle_id) }}</dd>
+            </div>
+            <div class="min-w-0">
+                <dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Successor cycle ID</dt>
+                <dd class="mt-0.5 break-all font-mono text-xs text-foreground">{{ dash(_identity.successor_cycle_id) }}</dd>
+            </div>
+        </dl>
+    </details>
+    {% endcall %}
+{% endcall %}
