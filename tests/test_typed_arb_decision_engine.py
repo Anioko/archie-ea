@@ -1,0 +1,277 @@
+"""RED contracts for Package C2's typed ARB terminal decision engine."""
+
+from __future__ import annotations
+
+import importlib
+from types import SimpleNamespace
+
+import pytest
+
+from app.modules.transformation_room.domain import (
+    ActorContext,
+    CommandConflict,
+    CommandResult,
+    DomainMutationResult,
+    NotAuthorised,
+)
+
+
+TERMINAL_OUTCOMES = (
+    "approved",
+    "approved_with_conditions",
+    "rejected",
+    "returned_for_evidence",
+    "returned_for_options",
+)
+
+
+def _decision_module():
+    try:
+        return importlib.import_module(
+            "app.modules.transformation_room.arb_decision_service"
+        )
+    except ModuleNotFoundError:
+        pytest.fail(
+            "Package C2 requires app.modules.transformation_room."
+            "arb_decision_service.TypedARBDecisionService"
+        )
+
+
+def _actor(*, user_id=73, org_id=41, roles=frozenset({"platform_admin"})):
+    return ActorContext(user_id, org_id, roles, "typed-arb-decision-contract")
+
+
+def _result(*, created=True, cycle_id=501, review_id=502, event_id=503):
+    ids = {
+        "review_cycle_id": cycle_id,
+        "review_item_id": review_id,
+        "decision_event_id": event_id,
+    }
+    return CommandResult(
+        created=created,
+        idempotent=not created,
+        operation_result_id=504,
+        object_ids=ids,
+        response={**ids, "status": "approved"},
+    )
+
+
+@pytest.mark.parametrize("outcome", TERMINAL_OUTCOMES)
+def test_every_terminal_outcome_uses_one_exact_cycle_scoped_command(monkeypatch, outcome):
+    module = _decision_module()
+    captured = {}
+    calls = []
+
+    monkeypatch.setattr(
+        module.TypedARBDecisionService,
+        "authorise_decision",
+        classmethod(
+            lambda cls, session, actor, cycle_id: calls.append(
+                ("authority", actor.user_id, actor.organization_id, cycle_id)
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        module.TypedARBDecisionService,
+        "_decide_locked",
+        classmethod(
+            lambda cls, **kwargs: (
+                calls.append(
+                    (
+                        "locked",
+                        kwargs["cycle_id"],
+                        kwargs["outcome"],
+                        kwargs["rationale"],
+                        kwargs["conditions"],
+                    )
+                ),
+                DomainMutationResult(
+                    object_ids={
+                        "review_cycle_id": 501,
+                        "review_item_id": 502,
+                        "decision_event_id": 503,
+                    },
+                    response={"status": outcome},
+                    outbox_events=(),
+                ),
+            )[1]
+        ),
+    )
+
+    def execute(**kwargs):
+        captured.update(kwargs)
+        kwargs["authorizer"](
+            SimpleNamespace(), kwargs["actor"], kwargs["operation"], kwargs["natural_key"]
+        )
+        mutation = kwargs["handler"](SimpleNamespace(), SimpleNamespace())
+        assert isinstance(mutation, DomainMutationResult)
+        return _result()
+
+    monkeypatch.setattr(module.CommandService, "execute", execute)
+    conditions = (
+        [{"code": "SEC-1", "text": "Complete threat model"}]
+        if outcome == "approved_with_conditions"
+        else []
+    )
+
+    module.TypedARBDecisionService.decide(
+        actor=_actor(roles=frozenset({"viewer"})),
+        command_key=f"decision-{outcome}",
+        cycle_id=501,
+        outcome=outcome,
+        rationale="Recorded by the board",
+        conditions=conditions,
+    )
+
+    assert captured["operation"] == "arb.decision.record"
+    assert captured["natural_key"] == "arb-decision:41:501"
+    assert captured["payload"] == {
+        "cycle_id": 501,
+        "outcome": outcome,
+        "rationale": "Recorded by the board",
+        "conditions": conditions,
+    }
+    assert calls == [
+        ("authority", 73, 41, 501),
+        ("locked", 501, outcome, "Recorded by the board", conditions),
+    ]
+
+
+def test_authorizer_rejects_wrong_operation_or_natural_key(monkeypatch):
+    module = _decision_module()
+    captured = {}
+    monkeypatch.setattr(
+        module.TypedARBDecisionService,
+        "authorise_decision",
+        classmethod(lambda cls, session, actor, cycle_id: None),
+    )
+
+    def execute(**kwargs):
+        captured.update(kwargs)
+        return _result()
+
+    monkeypatch.setattr(module.CommandService, "execute", execute)
+    module.TypedARBDecisionService.decide(
+        actor=_actor(), command_key="decision", cycle_id=501,
+        outcome="approved", rationale="Approved", conditions=[],
+    )
+
+    with pytest.raises(NotAuthorised, match="arb_decision_command_mismatch"):
+        captured["authorizer"](
+            SimpleNamespace(), _actor(), "arb.submit", "arb-decision:41:501"
+        )
+    with pytest.raises(NotAuthorised, match="arb_decision_command_mismatch"):
+        captured["authorizer"](
+            SimpleNamespace(), _actor(), "arb.decision.record", "arb-decision:41:999"
+        )
+
+
+def test_same_command_replay_returns_stable_graph_and_does_not_run_handler(monkeypatch):
+    module = _decision_module()
+    winner = _result()
+    handler_calls = 0
+    monkeypatch.setattr(
+        module.TypedARBDecisionService,
+        "authorise_decision",
+        classmethod(lambda cls, session, actor, cycle_id: None),
+    )
+
+    def execute(**kwargs):
+        nonlocal handler_calls
+        # CommandService reconciles the immutable result without invoking handler.
+        assert callable(kwargs["handler"])
+        return winner
+
+    monkeypatch.setattr(module.CommandService, "execute", execute)
+    args = dict(
+        actor=_actor(), command_key="same", cycle_id=501,
+        outcome="rejected", rationale="Evidence is insufficient", conditions=[],
+    )
+    first = module.TypedARBDecisionService.decide(**args)
+    replay = module.TypedARBDecisionService.decide(**args)
+
+    assert first.object_ids == replay.object_ids
+    assert handler_calls == 0
+
+
+def test_replay_revalidates_current_server_decision_authority(monkeypatch):
+    module = _decision_module()
+    checks = []
+
+    def authority(cls, session, actor, cycle_id):
+        checks.append(cycle_id)
+        if len(checks) == 2:
+            raise NotAuthorised("arb_decision_not_authorised")
+
+    monkeypatch.setattr(
+        module.TypedARBDecisionService,
+        "authorise_decision",
+        classmethod(authority),
+    )
+
+    def execute(**kwargs):
+        kwargs["authorizer"](
+            SimpleNamespace(), kwargs["actor"], kwargs["operation"], kwargs["natural_key"]
+        )
+        return _result(created=len(checks) == 1)
+
+    monkeypatch.setattr(module.CommandService, "execute", execute)
+    args = dict(
+        actor=_actor(roles=frozenset({"platform_admin"})), command_key="revoked",
+        cycle_id=501, outcome="approved", rationale="Approved", conditions=[],
+    )
+    module.TypedARBDecisionService.decide(**args)
+    with pytest.raises(NotAuthorised, match="arb_decision_not_authorised"):
+        module.TypedARBDecisionService.decide(**args)
+    assert checks == [501, 501]
+
+
+@pytest.mark.parametrize(
+    ("cycle_status", "expected_reason"),
+    (
+        ("historical_unverified", "historical_unverified_cycle_not_decidable"),
+        ("approved", "arb_cycle_already_terminal"),
+        ("rejected", "arb_cycle_already_terminal"),
+        ("returned_for_evidence", "arb_cycle_already_terminal"),
+    ),
+)
+def test_locked_engine_rejects_historical_and_terminal_cycles(
+    monkeypatch, cycle_status, expected_reason
+):
+    module = _decision_module()
+    cycle = SimpleNamespace(
+        id=501,
+        organization_id=41,
+        status=cycle_status,
+        closed_at=None if cycle_status == "historical_unverified" else object(),
+    )
+    session = SimpleNamespace()
+    monkeypatch.setattr(
+        module.TypedARBDecisionService,
+        "_load_cycle_and_review_for_update",
+        classmethod(lambda cls, session, actor, cycle_id: (cycle, SimpleNamespace(id=502))),
+    )
+
+    with pytest.raises(CommandConflict, match=expected_reason):
+        module.TypedARBDecisionService._decide_locked(
+            session=session,
+            actor=_actor(),
+            cycle_id=501,
+            outcome="approved",
+            rationale="Approved",
+            conditions=[],
+            claim=SimpleNamespace(receipt_id=701, generation=1),
+        )
+
+
+def test_projection_and_event_contract_are_explicit_on_service_type():
+    module = _decision_module()
+    service = module.TypedARBDecisionService
+
+    assert service.TERMINAL_OUTCOMES == frozenset(TERMINAL_OUTCOMES)
+    assert service.OPEN_STATUSES == frozenset(
+        {"submitted", "under_review", "pending_information", "pending_info", "pending"}
+    )
+    assert service.DECISION_EVENT_TYPE == "decided"
+    assert callable(service._load_cycle_and_review_for_update)
+    assert callable(service._assert_cycle_review_projection_equal)
