@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import json
 from types import SimpleNamespace
 
 import pytest
@@ -497,7 +498,8 @@ def test_named_decision_authority_is_denied_after_canonical_authority_expires(
         (
             SimpleNamespace(
                 scalar_one_or_none=lambda: SimpleNamespace(
-                    id=801, workstream_id=901, decision_authority_id=73
+                    id=802, brief_id=801, workstream_id=901,
+                    decision_authority_id=73,
                 )
             ),
             SimpleNamespace(
@@ -518,6 +520,98 @@ def test_named_decision_authority_is_denied_after_canonical_authority_expires(
     assert module.TypedARBDecisionService._has_decision_brief_authority(
         session,
         _actor(),
-        SimpleNamespace(decision_brief_id=801),
+        SimpleNamespace(decision_brief_id=801, decision_brief_version_id=802),
         for_update=True,
     ) is False
+
+
+def test_decision_brief_authority_uses_pinned_version_not_mutable_brief(monkeypatch):
+    module = _decision_module()
+    results = iter(
+        (
+            SimpleNamespace(
+                scalar_one_or_none=lambda: SimpleNamespace(
+                    id=802, brief_id=801, workstream_id=901,
+                    decision_authority_id=73,
+                )
+            ),
+            SimpleNamespace(
+                scalar_one_or_none=lambda: SimpleNamespace(id=901, programme_id=1001)
+            ),
+            SimpleNamespace(first=lambda: None),
+        )
+    )
+    session = SimpleNamespace(execute=lambda statement: next(results))
+    monkeypatch.setattr(
+        module,
+        "_decision_brief_service",
+        lambda: SimpleNamespace(
+            _user_has_decision_authority=lambda *args, **kwargs: True
+        ),
+    )
+
+    assert module.TypedARBDecisionService._has_decision_brief_authority(
+        session, _actor(),
+        SimpleNamespace(decision_brief_id=801, decision_brief_version_id=802),
+        for_update=True,
+    ) is True
+
+
+def test_decision_input_limits_are_enforced_before_command_claim(monkeypatch):
+    module = _decision_module()
+    claimed = False
+
+    def execute(**kwargs):
+        nonlocal claimed
+        claimed = True
+
+    monkeypatch.setattr(module.CommandService, "execute", execute)
+    assert len(
+        module.TypedARBDecisionService._canonical_conditions(
+            [{"code": f"C-{index}", "text": "x"} for index in range(50)]
+        )
+    ) == 50
+    with pytest.raises(ValueError, match="at most 50"):
+        module.TypedARBDecisionService.decide(
+            actor=_actor(), command_key="too-many", cycle_id=501,
+            outcome="approved_with_conditions", rationale="Valid",
+            conditions=[{"code": f"C-{index}", "text": "x"} for index in range(51)],
+        )
+    with pytest.raises(ValueError, match="10000"):
+        module.TypedARBDecisionService.decide(
+            actor=_actor(), command_key="long-rationale", cycle_id=501,
+            outcome="approved", rationale="x" * 10001,
+        )
+    with pytest.raises(ValueError, match="control characters"):
+        module.TypedARBDecisionService.decide(
+            actor=_actor(), command_key="bad-rationale", cycle_id=501,
+            outcome="approved", rationale="bad\nreason",
+        )
+    assert claimed is False
+
+
+def test_canonical_conditions_accept_64kib_and_reject_one_byte_more():
+    module = _decision_module()
+    conditions = [
+        {"code": f"C-{index:02d}", "text": "x"} for index in range(17)
+    ]
+    canonical = module.TypedARBDecisionService._canonical_conditions(conditions)
+    current = len(
+        json.dumps(canonical, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+        .encode("utf-8")
+    )
+    remaining = 65536 - current
+    for condition in conditions:
+        added = min(3999, remaining)
+        condition["text"] += "x" * added
+        remaining -= added
+    assert remaining == 0
+    assert len(
+        json.dumps(
+            module.TypedARBDecisionService._canonical_conditions(conditions),
+            sort_keys=True, separators=(",", ":"), ensure_ascii=False,
+        ).encode("utf-8")
+    ) == 65536
+    conditions[-1]["text"] += "x"
+    with pytest.raises(ValueError, match="64 KiB"):
+        module.TypedARBDecisionService._canonical_conditions(conditions)
