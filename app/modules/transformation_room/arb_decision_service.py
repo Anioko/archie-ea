@@ -5,10 +5,19 @@ from __future__ import annotations
 from copy import deepcopy
 from datetime import date, datetime, timezone
 
-from sqlalchemy import select, text
+from sqlalchemy import or_, select, text
 
-from app.models.architecture_review_board import ARBReviewCycle, ARBReviewItem
+from app.models.architecture_review_board import (
+    ARBBoardMember,
+    ARBReviewCycle,
+    ARBReviewItem,
+)
 from app.models.arb_decision_event import ARBCondition, ARBDecisionEvent
+from app.models.transformation_decision import DecisionBrief
+from app.models.transformation_programme import (
+    ProgrammeRoleAssignment,
+    ProgrammeWorkstream,
+)
 from app.models.user import User
 from app.modules.transformation_room.arb_submission_service import (
     TypedARBSubmissionService,
@@ -32,6 +41,7 @@ _DECISION_ROLES = frozenset(
         "organization_admin",
         "administrator",
         "decision_authority",
+        "arb_member",
     }
 )
 _TYPED_COLUMNS = (
@@ -45,6 +55,12 @@ _TYPED_COLUMNS = (
     "solution_evidence_snapshot_id",
     "subject_evidence_snapshot_id",
 )
+
+
+def _decision_brief_service():
+    from app.modules.transformation_room.decision_service import DecisionBriefService
+
+    return DecisionBriefService
 
 
 class TypedARBDecisionService:
@@ -71,19 +87,38 @@ class TypedARBDecisionService:
 
     @staticmethod
     def _canonical_conditions(conditions):
+        def normalized(value, field, limit, *, optional=False):
+            if value is None and optional:
+                return None
+            value = str(value or "")
+            if any(ord(character) < 32 or ord(character) == 127 for character in value):
+                raise ValueError(f"condition {field} contains control characters")
+            value = " ".join(value.split())
+            if not value:
+                if optional:
+                    return None
+                raise ValueError(f"condition {field} is required")
+            if len(value) > limit:
+                raise ValueError(f"condition {field} exceeds {limit} characters")
+            return value
+
         canonical = []
         seen = set()
         for ordinal, raw in enumerate(conditions or (), start=1):
             if not isinstance(raw, dict):
                 raise ValueError("conditions must be objects")
-            number = str(
-                raw.get("condition_number") or raw.get("code") or f"COND-{ordinal}"
-            ).strip()
-            description = str(
-                raw.get("description") or raw.get("text") or ""
-            ).strip()
-            if not number or not description or number in seen:
-                raise ValueError("condition number and description must be unique and nonblank")
+            number = normalized(
+                raw.get("condition_number") or raw.get("code") or f"COND-{ordinal}",
+                "condition_number",
+                80,
+            )
+            description = normalized(
+                raw.get("description") or raw.get("text"),
+                "description",
+                4000,
+            )
+            if number in seen:
+                raise ValueError("condition numbers must be unique after normalization")
             seen.add(number)
             due = raw.get("due_date")
             if isinstance(due, datetime):
@@ -99,9 +134,9 @@ class TypedARBDecisionService:
                 {
                     "condition_number": number,
                     "description": description,
-                    "category": str(raw["category"]).strip()
-                    if raw.get("category") is not None
-                    else None,
+                    "category": normalized(
+                        raw.get("category"), "category", 80, optional=True
+                    ),
                     "due_date": due.isoformat() if due else None,
                     "blocks_execution": True,
                 }
@@ -181,11 +216,7 @@ class TypedARBDecisionService:
         if for_update:
             user_statement = user_statement.with_for_update()
         user = session.execute(user_statement).scalar_one_or_none()
-        if user is None or not (
-            user.is_org_admin
-            or user.is_platform_admin
-            or user.enterprise_role in _DECISION_ROLES
-        ):
+        if user is None:
             raise NotAuthorised("arb_decision_not_authorised")
         cycle, review = cls._load_cycle_and_review(
             session, actor, cycle_id, for_update=False
@@ -193,6 +224,96 @@ class TypedARBDecisionService:
         if review.submitter_id == user.id:
             raise NotAuthorised("arb_decision_separation_of_duties")
         cls._assert_cycle_review_projection_equal(cycle, review)
+        if cycle.subject_type == "decision_brief":
+            if not cls._has_decision_brief_authority(
+                session, actor, cycle, for_update=for_update
+            ):
+                raise NotAuthorised("arb_decision_not_authorised")
+            return
+        role_authorized = (
+            user.is_org_admin
+            or user.is_platform_admin
+            or user.enterprise_role in _DECISION_ROLES
+        )
+        if not role_authorized and not cls._has_board_authority(
+            session, actor, review, for_update=for_update
+        ):
+            raise NotAuthorised("arb_decision_not_authorised")
+
+    @staticmethod
+    def _has_board_authority(session, actor, review, *, for_update):
+        if review.arb_session_id is None:
+            return False
+        statement = select(ARBBoardMember).where(
+            ARBBoardMember.organization_id == actor.organization_id,
+            ARBBoardMember.arb_session_id == review.arb_session_id,
+            ARBBoardMember.user_id == actor.user_id,
+            ARBBoardMember.voting_member.is_(True),
+            ARBBoardMember.attendance_status.notin_(("declined", "absent")),
+        )
+        if for_update:
+            statement = statement.execution_options(
+                populate_existing=True
+            ).with_for_update()
+        return session.execute(statement).scalar_one_or_none() is not None
+
+    @staticmethod
+    def _has_decision_brief_authority(session, actor, cycle, *, for_update):
+        brief_statement = select(DecisionBrief).where(
+            DecisionBrief.id == cycle.decision_brief_id,
+            DecisionBrief.organization_id == actor.organization_id,
+        )
+        if for_update:
+            brief_statement = brief_statement.execution_options(
+                populate_existing=True
+            ).with_for_update()
+        brief = session.execute(brief_statement).scalar_one_or_none()
+        if brief is None:
+            return False
+        workstream_statement = select(ProgrammeWorkstream).where(
+            ProgrammeWorkstream.organization_id == actor.organization_id,
+            ProgrammeWorkstream.id == brief.workstream_id,
+        )
+        if for_update:
+            workstream_statement = workstream_statement.execution_options(
+                populate_existing=True
+            ).with_for_update()
+        workstream = session.execute(workstream_statement).scalar_one_or_none()
+        if workstream is None:
+            return False
+        assignment_statement = (
+            select(ProgrammeRoleAssignment)
+            .where(
+                ProgrammeRoleAssignment.organization_id == actor.organization_id,
+                ProgrammeRoleAssignment.programme_id == workstream.programme_id,
+                or_(
+                    ProgrammeRoleAssignment.workstream_id.is_(None),
+                    ProgrammeRoleAssignment.workstream_id == workstream.id,
+                ),
+                ProgrammeRoleAssignment.user_id == actor.user_id,
+                ProgrammeRoleAssignment.role == "decision_authority",
+                ProgrammeRoleAssignment.effective_from <= date.today(),
+                or_(
+                    ProgrammeRoleAssignment.effective_to.is_(None),
+                    ProgrammeRoleAssignment.effective_to >= date.today(),
+                ),
+            )
+            .order_by(ProgrammeRoleAssignment.id)
+        )
+        if for_update:
+            assignment_statement = assignment_statement.execution_options(
+                populate_existing=True
+            ).with_for_update()
+        assigned = session.execute(assignment_statement).first() is not None
+        named_or_assigned = brief.decision_authority_id == actor.user_id or assigned
+        return named_or_assigned and _decision_brief_service()._user_has_decision_authority(
+            session,
+            actor.organization_id,
+            workstream.programme_id,
+            workstream.id,
+            actor.user_id,
+            lock=for_update,
+        )
 
     @classmethod
     def _load_cycle_and_review(cls, session, actor, cycle_id, *, for_update):
