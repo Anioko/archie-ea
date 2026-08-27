@@ -265,6 +265,20 @@ def governed(_app, seeded, live_server):
             db.session.commit()
             out[key] = adr.id
 
+        # An Architecture Model subject, so journey A can exercise a second
+        # subject type through the same typed ingress (ARB-UI-3 partially
+        # fixed by lane 2: the ingress now accepts architecture_model).
+        from app.models.models import ArchitectureModel
+
+        model = ArchitectureModel(
+            name="Typed ARB journey model %s" % suffix,
+            organization_id=org_id,
+            user_id=submitter.id,
+        )
+        db.session.add(model)
+        db.session.commit()
+        out["architecture_model"] = model.id
+
         out["org_id"] = org_id
 
         # --- a genuinely separate tenant, for journey F --------------------
@@ -414,6 +428,14 @@ def _cleanup(db, out):
                     cursor.execute(
                         "DELETE FROM architecture_decision_records WHERE id = ANY(%s)",
                         (adr_ids,))
+                if out.get("architecture_model"):
+                    cursor.execute(
+                        "DELETE FROM arb_review_cycles WHERE subject_type = "
+                        "'architecture_model' AND subject_id = %s",
+                        (out["architecture_model"],))
+                    cursor.execute(
+                        "DELETE FROM architecture_models WHERE id = %s",
+                        (out["architecture_model"],))
             finally:
                 cursor.execute("SET session_replication_role = %s" % original)
             raw.commit()
@@ -784,17 +806,17 @@ def test_journey_a_typed_submission_is_canonical_and_idempotent(
     """§15 A.1-3 and A.6, for each of the four subject types."""
     if subject_type == "decision_brief":
         pytest.xfail(
-            "ARB-UI-3: decision_brief has no ARB submission ingress. "
-            "TypedARBSubjectIngress.SUPPORTED_SUBJECT_TYPES is "
-            "{'adr','architecture_model'} and TypedARBSubmissionService.submit "
-            "has no other caller, so §15 A cannot be run for this subject."
+            "ARB-UI-3 is FIXED (lane 2): SUPPORTED_SUBJECT_TYPES now includes "
+            "decision_brief. This stays xfail for a different and narrower "
+            "reason - FIXTURE COST, not a missing ingress. A Decision Brief is "
+            "only submittable once a real frozen version exists, which needs "
+            "the whole committed chain (programme -> workstream -> candidate -> "
+            "options -> evidence -> brief, plus freeze_options and "
+            "freeze_brief) spanning three other test modules' fixtures. There "
+            "is nothing to stub. Covered at the route level by "
+            "tests/test_typed_arb_submission_routes.py."
         )
-    if subject_type == "architecture_model":
-        pytest.xfail(
-            "ARB-UI-3 (related): no browser-reachable create path seeds an "
-            "ArchitectureModel subject in the smoke tenant, so the fourth "
-            "subject cannot be exercised end to end here."
-        )
+
     if subject_type == "solution":
         pytest.xfail(
             "ARB-UI-3 (related): the Solution ingress is evidence-gated through "
@@ -804,8 +826,57 @@ def test_journey_a_typed_submission_is_canonical_and_idempotent(
         )
 
     page = actor(SUBMITTER)
+
+    if subject_type == "architecture_model":
+        # ARB-UI-3 is fixed: the ingress accepts architecture_model. A bare
+        # model is correctly REFUSED, so what is assertable end to end here is
+        # §13's 422 blocker contract rather than §15 A's success frame.
+        status, blocked = _api(
+            page, live_server,
+            "/api/arb/subjects/architecture_model/%d/submit"
+            % governed["architecture_model"],
+            body={"human_reviewed": True},
+            idempotency_key="journey-a-am-%s" % uuid.uuid4().hex[:8],
+        )
+        assert status == 422, blocked
+        assert blocked["success"] is False
+        codes = set(blocked["reason_codes"])
+        assert {"architecture_model_version_required",
+                "architecture_model_elements_required"} <= codes, blocked
+        for blocker in blocked["missing_evidence"]:
+            assert blocker.get("code"), "a blocker with no stable code: %r" % blocker
+        assert blocked["request_id"], blocked
+        assert "Traceback" not in json.dumps(blocked)
+
+        # §13: a 422 blocker never creates or links a review.
+        from app import db
+        from app.models.architecture_review_board import ARBReviewCycle
+
+        with _app.app_context():
+            cycles = db.session.execute(
+                db.select(db.func.count(ARBReviewCycle.id)).where(
+                    ARBReviewCycle.subject_type == "architecture_model",
+                    ARBReviewCycle.subject_id == governed["architecture_model"],
+                )
+            ).scalar_one()
+        assert cycles == 0, (
+            "a 422 evidence blocker still created %d review cycle(s) - §13 "
+            "forbids it: the subject must stay unlinked until it is ready"
+            % cycles
+        )
+        pytest.xfail(
+            "ARB-UI-3 is FIXED (lane 2) and the 422 blocker contract above is "
+            "asserted for real. The SUCCESS half of §15 A stays unreached for "
+            "FIXTURE COST, not a missing ingress: a submittable Architecture "
+            "Model needs a version plus real ArchiMate elements, which is a "
+            "modelling fixture rather than a row. Success path is covered at "
+            "route level by tests/test_typed_arb_submission_routes.py."
+        )
+
     key = "journey-a-%s-%s" % (subject_type, uuid.uuid4().hex[:8])
-    subject_id = governed["adr_a"]
+    subject_id = (governed["architecture_model"]
+                  if subject_type == "architecture_model"
+                  else governed["adr_a"])
 
     status, first = _api(
         page, live_server,
