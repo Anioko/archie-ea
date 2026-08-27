@@ -1,4 +1,5 @@
 {% extends "layouts/admin_base.html" %}
+{% from 'macros/page_shell.html' import page_shell %}
 <!-- modal-a11y-ok -->
 
 {% block title %}Backlog Prioritisation — MoSCoW / WSJF / RICE{% endblock %}
@@ -24,8 +25,10 @@ input.score-input { width: 60px; border: 1px solid #d1d5db; border-radius: 4px;
 {% block content %}
 <div class="p-6 space-y-6 mx-auto" x-data="prioritisationApp()">
 
-  <h1 class="text-2xl font-bold mb-2">Backlog Prioritisation</h1>
-  <p class="text-muted-foreground mb-6">Classify requirements with MoSCoW, score them with WSJF or RICE.</p>
+  {{ page_shell(
+      title='Backlog Prioritisation',
+      subtitle='Classify requirements with MoSCoW, score them with WSJF or RICE.'
+  ) }}
 
   <!-- Tab bar -->
   <div class="flex gap-2 mb-6 border-b border-border">

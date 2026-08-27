@@ -1,16 +1,15 @@
 {% extends "layouts/admin_base.html" %}
+{% from 'macros/page_shell.html' import page_shell %}
 
 {% block title %}Compare Capabilities{% endblock %}
 
 {% block content %}
 <div class="p-6 space-y-6 mx-auto">
     <!-- Header -->
-    <div class="mb-6">
-        <a href="{{ url_for('abacus_consolidation.index') }}" class="text-primary hover:text-primary mb-2 inline-block">
-            ← Back to Consolidation
-        </a>
-        <h1 class="text-3xl font-bold text-foreground">Compare Capabilities</h1>
-    </div>
+    {{ page_shell(
+        title='Compare Capabilities',
+        breadcrumb=[('Consolidation', url_for('abacus_consolidation.index')), ('Compare Capabilities', None)]
+    ) }}
 
     <!-- Side-by-Side Comparison -->
     <div class="grid grid-cols-2 gap-6 mb-8">

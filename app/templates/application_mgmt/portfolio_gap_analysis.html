@@ -1,4 +1,5 @@
 {% extends 'layouts/admin_base.html' %}
+{% from 'macros/page_shell.html' import page_shell %}
 {% block title %}Enterprise Portfolio Gap Analysis{% endblock %}
 
 {% block content %}
@@ -254,8 +255,8 @@
 
 <div class="portfolio-gap-container">
   <!-- Header -->
+  {{ page_shell(title='Enterprise Portfolio Gap Analysis') }}
   <div class="portfolio-header">
-    <h1>Enterprise Portfolio Gap Analysis</h1>
     <div class="portfolio-meta">
       <span><strong>Total Applications:</strong> {{ total_applications }}</span>
       <span>•</span>

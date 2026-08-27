@@ -1,4 +1,5 @@
 {% extends "layouts/admin_base.html" %}
+{% from 'macros/page_shell.html' import page_shell %}
 {% import 'components/breadcrumb.html' as breadcrumb %}
 
 {% block title %}{{ tree_label }} Tree{% endblock %}
@@ -54,13 +55,8 @@
     {% endcall %}
 
     <!-- Header -->
-    <div class="flex items-center justify-between">
-        <div class="flex items-center space-x-3">
-            <i data-lucide="network" class="w-6 h-6 text-primary"></i>
-            <h1 class="text-3xl font-bold tracking-tight">{{ tree_label }}</h1>
-            <span class="text-sm text-muted-foreground" x-text="`${visibleCount} of ${nodeCount} shown`"></span>
-        </div>
-        <div class="flex items-center space-x-2">
+    {% macro _ps_sub() %}<span x-text="`${visibleCount} of ${nodeCount} shown`"></span>{% endmacro %}
+    {% macro _ps_actions() %}
             <div class="inline-flex items-center rounded-md border border-input bg-background text-sm">
                 <span class="px-3 py-2 text-muted-foreground border-r border-input">Depth</span>
                 <template x-for="d in [1, 2, 3]" :key="d">
@@ -73,8 +69,8 @@
             <button type="button" @click="addRoot()" class="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-md border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors">
                 <i data-lucide="plus" class="w-4 h-4"></i> Add Root
             </button>
-        </div>
-    </div>
+    {% endmacro %}
+    {{ page_shell(title=tree_label, icon='network', subtitle_caller=_ps_sub, actions_caller=_ps_actions) }}
 
     <!-- Tree + Detail -->
     <div class="flex gap-6">

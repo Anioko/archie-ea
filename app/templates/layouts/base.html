@@ -59,7 +59,7 @@
   {{ nav.render_nav(current_user, dropdown=strategic_dropdown) }}
   {% endblock %}
 
-  <div id="main-content" class="container mx-auto px-4 py-6">
+  <div id="main-content" class="px-4 py-6">
     {% include 'partials/_flashes.html' %}
     {# When extended, the content block contains all the html of the webpage #}
     {% block content %}

@@ -1,9 +1,74 @@
 {% extends 'layouts/admin_base.html' %}
+{% from 'macros/page_shell.html' import page_shell %}
 
 {% block title %}{{ selected_layer.title }}{% endblock %}
 
 {% block content %}
 <div class="space-y-6" x-data="archDashboard()">
+    {# The page header lives here rather than in _repository_workspace.html so
+       the page owns its own header, as every other screen does. The single
+       domain-colour rail is the layer orientation signature; all surfaces and
+       actions stay neutral. -mb-6 cancels page_shell's own bottom margin so the
+       rail section keeps the parent's space-y-6 rhythm rather than doubling it. #}
+    <section class="border-l-4 pl-4 -mb-6" style="border-left-color: hsl(var({{ selected_layer.color_token }}));" data-testid="architecture-page-header">
+    {% macro _ps_sub() %}<span class="block max-w-3xl">{{ selected_layer.description }}
+                <span aria-hidden="true">&mdash;</span>
+                <span x-text="layerTotalKnown ? layerTotal + ' repository ' + (layerTotal === 1 ? 'item' : 'items') : 'repository total unavailable'">repository total unavailable</span></span>{% endmacro %}
+    {# display:contents keeps page_shell's own flex row as the layout parent, so
+       this wrapper only carries the data-testid the smoke harness looks for. #}
+    {% macro _ps_actions() %}<div class="contents" data-testid="architecture-page-actions">
+<button type="button" data-testid="btn-create-element" @click="openCreateModal()"
+                    class="inline-flex h-9 items-center justify-center gap-1.5 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
+                    aria-label="Create element">
+                <i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i>
+                Create element
+            </button>
+            <div class="hidden h-6 border-l border-input sm:block" aria-hidden="true"></div>
+            <a href="{{ url_for('architect_ui.import_oef') }}" data-testid="btn-import-oef"
+               class="inline-flex h-9 items-center justify-center gap-1.5 rounded-md border border-input bg-background px-3 py-2 text-sm font-medium transition-colors hover:bg-accent"
+               aria-label="Import Open Exchange Format architecture">
+                <i data-lucide="upload" class="h-4 w-4" aria-hidden="true"></i>Import
+            </a>
+            <a href="{{ url_for('architect_ui.export_oef') }}" data-testid="btn-export-oef"
+               class="inline-flex h-9 items-center justify-center gap-1.5 rounded-md border border-input bg-background px-3 py-2 text-sm font-medium transition-colors hover:bg-accent"
+               aria-label="Export architecture as Open Exchange Format">
+                <i data-lucide="download" class="h-4 w-4" aria-hidden="true"></i>Export
+            </a>
+            <div class="hidden h-6 border-l border-input sm:block" aria-hidden="true"></div>
+            <button type="button" data-testid="btn-run-validation" @click="runValidation()" :disabled="validating"
+                    class="inline-flex h-9 items-center justify-center gap-1.5 rounded-md border border-input bg-background px-3 py-2 text-sm font-medium transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
+                    aria-label="Validate ArchiMate repository">
+                <i data-lucide="shield-check" class="h-4 w-4" aria-hidden="true"></i>
+                <span x-text="validating ? 'Validating…' : 'Validate'">Validate</span>
+            </button>
+            <a href="{{ url_for('archimate_crud.repository_health') }}" data-testid="btn-repository-health"
+               class="inline-flex h-9 items-center justify-center gap-1.5 rounded-md border border-input bg-background px-3 py-2 text-sm font-medium transition-colors hover:bg-accent"
+               aria-label="Open repository health">
+                <i data-lucide="activity" class="h-4 w-4" aria-hidden="true"></i>Health
+            </a>
+            <a href="{{ url_for('architecture.vendor_templates') }}" data-testid="btn-vendor-templates"
+               class="inline-flex h-9 items-center justify-center gap-1.5 rounded-md border border-input bg-background px-3 py-2 text-sm font-medium transition-colors hover:bg-accent"
+               aria-label="Open vendor architecture templates">
+                <i data-lucide="building-2" class="h-4 w-4" aria-hidden="true"></i>Templates
+            </a>
+            <button type="button" data-testid="btn-ai-generate-element" @click="openAiGenerateModal()"
+                    class="inline-flex h-9 items-center justify-center gap-1.5 rounded-md border border-input bg-background px-3 py-2 text-sm font-medium transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
+                    aria-label="Generate architecture element with AI">
+                <i data-lucide="sparkles" class="h-4 w-4" aria-hidden="true"></i>Generate with AI
+            </button>
+        </div>{% endmacro %}
+    {{ page_shell(
+        title=selected_layer.title,
+        breadcrumb=[
+            ('Home', url_for('main.index')),
+            ('Architecture', url_for('archimate_crud.dashboard')),
+            (selected_layer.short_name, None)
+        ],
+        subtitle_caller=_ps_sub,
+        actions_caller=_ps_actions
+    ) }}
+    </section>
+
     {% include 'archimate_crud/partials/_repository_workspace.html' %}
 
     <!-- Health panel slide-out -->

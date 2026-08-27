@@ -1,9 +1,9 @@
 {% extends 'layouts/admin_base.html' %}
+{% from 'macros/page_shell.html' import page_shell %}
 {% import 'components/card.html' as card %}
 {% import 'components/badge.html' as badge %}
 {% import 'components/tabs.html' as tabs %}
 {% import 'components/progress.html' as progress %}
-{% import 'components/breadcrumb.html' as breadcrumb %}
 {% from 'components/metrics_card.html' import metrics_card %}
 {% from 'components/detail_meta.html' import detail_meta_item %}
 {% from 'components/skeleton.html' import skeleton_table %}
@@ -12,20 +12,18 @@
 
 {% block content %}
 <div class="space-y-6" x-data="jobDetail({{ job.id if job else 0 }})">
-    <!-- Breadcrumb -->
-    {% call breadcrumb.breadcrumb() %}
-        {% call breadcrumb.breadcrumb_item(href=url_for('admin.dashboard')) %}
-            <i data-lucide="home" class="h-4 w-4" aria-hidden="true"></i>
-        {% endcall %}
-        {{ breadcrumb.breadcrumb_separator() }}
-        {% call breadcrumb.breadcrumb_item(href=url_for('batch_import_view.dashboard')) %}
-            Batch Import
-        {% endcall %}
-        {{ breadcrumb.breadcrumb_separator() }}
-        {% call breadcrumb.breadcrumb_item(active=true) %}
-            <span x-text="job?.name || 'Loading...'"></span>
-        {% endcall %}
-    {% endcall %}
+    {# The job name was the card's <h1>; it is the page's title, so it moves into
+       page_shell (server-rendered — the job is loaded by the view). The card keeps
+       the live status tile, badge, meta row and actions, which are job state, not
+       page identity. #}
+    {{ page_shell(
+        title=job.name if job else 'Import Job',
+        breadcrumb=[
+            ('Home', url_for('admin.dashboard')),
+            ('Batch Import', url_for('batch_import_view.dashboard')),
+            (job.name if job else 'Import Job', None)
+        ]
+    ) }}
 
     <!-- Job Header -->
     {% call card.card() %}
@@ -37,7 +35,6 @@
                     </div>
                     <div>
                         <div class="flex items-center gap-3">
-                            <h1 class="text-2xl font-bold tracking-tight" x-text="job?.name"></h1>
                             <span
                                 :class="getStatusBadgeClass(job?.status)"
                                 class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold"

@@ -1,5 +1,6 @@
 {# app/templates/adm_kanban/gap_analysis.html #}
 {% extends "layouts/admin_base.html" %}
+{% from 'macros/page_shell.html' import page_shell %}
 
 {% block title %}Gap Analysis — ADM Kanban{% endblock %}
 
@@ -7,20 +8,7 @@
 <div class="space-y-6">
 
     {# -- Header --------------------------------------------------------- #}
-    <div class="flex items-center justify-between">
-        <div>
-            <div class="flex items-center gap-2">
-                <a href="{{ url_for('adm_kanban_view.index') }}"
-                   class="text-muted-foreground hover:text-foreground transition-colors text-sm">
-                    ← ADM Kanban
-                </a>
-            </div>
-            <h1 class="text-xl font-semibold text-foreground mt-1">Gap Analysis</h1>
-            <p class="text-sm text-muted-foreground">
-                ArchiMate 3.2 Gap elements and the WorkPackages that close them (TOGAF Phase E/F)
-            </p>
-        </div>
-        <div class="flex items-center gap-3">
+    {% macro _ps_actions() %}
             <div class="text-center">
                 <div class="text-2xl font-bold {% if (gaps|length + computed_gap_count) > 0 %}text-destructive{% else %}text-success{% endif %}">{{ gaps|length + computed_gap_count }}</div>
                 <div class="text-xs text-muted-foreground">Total Gaps</div>
@@ -43,8 +31,13 @@
                class="px-3 py-1.5 text-xs font-medium bg-muted text-muted-foreground hover:bg-muted/80 rounded border border-border transition-colors">
                 Plateau Roadmap →
             </a>
-        </div>
-    </div>
+    {% endmacro %}
+    {{ page_shell(
+        title='Gap Analysis',
+        subtitle='ArchiMate 3.2 Gap elements and the WorkPackages that close them (TOGAF Phase E/F)',
+        breadcrumb=[('ADM Kanban', url_for('adm_kanban_view.index')), ('Gap Analysis', None)],
+        actions_caller=_ps_actions
+    ) }}
 
     {# -- Computed portfolio gaps (from gap_analysis_service) --------------- #}
     {% if computed_gaps %}

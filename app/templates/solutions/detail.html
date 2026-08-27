@@ -120,6 +120,17 @@
 
   <div class="max-w-6xl mx-auto px-6 py-6 space-y-6">
 
+    {# This page had no <h1> anywhere — the solution name was an <h2> inside the
+       title card. page_shell now carries it, and the title card below keeps the
+       governance badge, the ARB submit button and the rest of its content. #}
+    {{ page_shell(
+        title=solution.name,
+        breadcrumb=[
+            ('Solutions', url_for('solution_design.list_solutions')),
+            (solution.name, None)
+        ]
+    ) }}
+
     {# ══════════════════════════════════════════════════════════════ #}
     {#  TITLE CARD                                                    #}
     {# ══════════════════════════════════════════════════════════════ #}
@@ -127,7 +138,6 @@
       <div class="flex items-start justify-between gap-4">
         <div class="min-w-0">
           <div class="flex items-center gap-3 mb-1">
-            <h2 class="text-xl font-bold text-foreground">{{ solution.name }}</h2>
             <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-2xs font-semibold {{ status_badge_class }}">
               <span class="w-1.5 h-1.5 rounded-full {{ status_dot_class }}"></span>{{ (solution.governance_status or 'Draft') | replace('_', ' ') | title }}
             </span>

@@ -1,7 +1,10 @@
 {% extends 'layouts/admin_base.html' %}
+{% from 'macros/page_shell.html' import page_shell %}
 {% block title %}Error{% endblock %}
 
 {% block content %}
+    <div class="p-6 space-y-6">
+    {{ page_shell(title='Error ' ~ (status_code or ''), icon='x-circle') }}
     <div class="max-w-2xl mx-auto mt-8">
         <div class="rounded-lg border bg-card text-card-foreground shadow-sm p-6">
             <div class="flex items-center gap-4 mb-4">
@@ -9,8 +12,8 @@
                     <i data-lucide="x-circle" class="h-6 w-6 text-destructive"></i>
                 </div>
                 <div>
-                    <h1 class="scroll-m-20 text-4xl font-extrabold tracking-tight">{{ status_code or 'Error' }}</h1>
-                    <h3 class="text-2xl font-semibold tracking-tight mt-1">Something went wrong</h3>
+                    <p class="scroll-m-20 text-4xl font-extrabold tracking-tight">{{ status_code or 'Error' }}</p>
+                    <h2 class="text-2xl font-semibold tracking-tight mt-1">Something went wrong</h2>
                 </div>
             </div>
             
@@ -46,5 +49,6 @@
                 </a>
             </div>
         </div>
+    </div>
     </div>
 {% endblock %}

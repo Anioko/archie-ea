@@ -1,4 +1,5 @@
 {% extends 'layouts/admin_base.html' %}
+{% from 'macros/page_shell.html' import page_shell %}
 
 {% block title %}Rationalization Assessment{% endblock %}
 
@@ -7,17 +8,15 @@
 {% block content %}
 <div class="space-y-6">
   <!-- Header -->
-  <div class="mb-8">
-    <nav class="flex items-center gap-2 text-sm text-muted-foreground mb-4">
-      <a href="{{ url_for('main.index') }}" class="hover:text-foreground">Dashboard</a>
-      <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
-      <a href="{{ url_for('dashboard_pages.rationalization_dashboard') }}" class="hover:text-foreground">TIME Framework</a>
-      <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
-      <span class="text-foreground font-medium">Assessment Questionnaire</span>
-    </nav>
-    <h1 class="text-3xl font-bold">Application Rationalization Assessment</h1>
-    <p class="text-muted-foreground mt-2">Complete this questionnaire to enrich application data for TIME framework scoring</p>
-  </div>
+  {{ page_shell(
+      title='Application Rationalization Assessment',
+      subtitle='Complete this questionnaire to enrich application data for TIME framework scoring',
+      breadcrumb=[
+          ('Dashboard', url_for('main.index')),
+          ('TIME Framework', url_for('dashboard_pages.rationalization_dashboard')),
+          ('Assessment Questionnaire', None)
+      ]
+  ) }}
 
   <!-- Progress -->
   <div class="bg-card border rounded-lg p-6 mb-6">

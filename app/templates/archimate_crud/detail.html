@@ -1,4 +1,5 @@
 {% extends 'layouts/admin_base.html' %}
+{% from 'macros/page_shell.html' import page_shell %}
 
 {% block title %}{{ element_type }}: {{ element.name if element.name else (element.title if element.title else 'Unnamed') }}{% endblock %}
 
@@ -20,9 +21,10 @@
 <div class="p-6 space-y-6 mx-auto" x-data="archimateDetail">
 
     <!-- Breadcrumb + Header -->
-    <div class="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
-        <div class="min-w-0">
-            <nav class="flex items-center gap-2 text-sm text-muted-foreground mb-2">
+    {# The layer crumb is an Alpine tab-switch, not a link, so this nav is kept
+       verbatim rather than folded into page_shell's (label, href) breadcrumb
+       slot, which would silently drop the @click. #}
+    <nav class="flex items-center gap-2 text-sm text-muted-foreground mb-2">
                 <a href="{{ url_for('archimate_crud.dashboard') }}" class="hover:text-foreground">Architecture</a>
                 <i data-lucide="chevron-right" class="h-3 w-3 shrink-0" aria-hidden="true"></i>
                 <span class="hover:text-foreground cursor-pointer" @click="activeTab='details'">{{ layer_label }}</span>
@@ -30,12 +32,33 @@
                 <a href="{{ url_for('archimate_crud.list_elements', layer=layer, element_type=element_type) }}" class="hover:text-foreground">{{ element_type }}</a>
                 <i data-lucide="chevron-right" class="h-3 w-3 shrink-0" aria-hidden="true"></i>
                 <span class="text-foreground truncate max-w-xs">{{ elem_name }}</span>
-            </nav>
+    </nav>
 
-            <h1 class="text-2xl font-bold leading-tight">{{ elem_name }}</h1>
+    {% macro _ps_actions() %}
+            <a href="{{ url_for('architect_ui.impact_analysis', element_id=element.id) }}"
+               class="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 px-3 py-2">
+                <i data-lucide="zap" class="h-4 w-4 mr-1.5" aria-hidden="true"></i>Impact
+            </a>
+            <a href="{{ url_for('archimate_crud.update_element', layer=layer, element_type=element_type, element_id=element.id) }}"
+               class="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 px-3 py-2">
+                <i data-lucide="pencil" class="h-4 w-4 mr-1.5" aria-hidden="true"></i>Edit
+            </a>
+            <button type="button" @click="deleteElement()"
+                    class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-destructive text-destructive-foreground hover:bg-destructive/90 h-9 px-3 py-2"
+                    aria-label="Delete element">
+                <i data-lucide="trash-2" class="h-4 w-4 mr-1.5" aria-hidden="true"></i>Delete
+            </button>
+            <button type="button" @click="downloadDiagram()"
+                    class="inline-flex items-center justify-center rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/30 hover:bg-primary/20 h-9 px-3 py-2"
+                    aria-label="Export ArchiMate diagram as SVG">
+                <svg class="w-3 h-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                Export Diagram
+            </button>
+    {% endmacro %}
+    {{ page_shell(title=elem_name, actions_caller=_ps_actions) }}
 
             <!-- Identity badges -->
-            <div class="flex flex-wrap items-center gap-2 mt-3">
+            <div class="flex flex-wrap items-center gap-2 -mt-3">
                 <span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold bg-primary/5 text-primary border-primary/20">
                     <i data-lucide="layers" class="h-3 w-3 mr-1" aria-hidden="true"></i>{{ element_type }}
                 </span>
@@ -68,31 +91,6 @@
                 </span>
                 {% endif %}
             </div>
-        </div>
-
-        <!-- Actions -->
-        <div class="flex shrink-0 gap-2">
-            <a href="{{ url_for('architect_ui.impact_analysis', element_id=element.id) }}"
-               class="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 px-3 py-2">
-                <i data-lucide="zap" class="h-4 w-4 mr-1.5" aria-hidden="true"></i>Impact
-            </a>
-            <a href="{{ url_for('archimate_crud.update_element', layer=layer, element_type=element_type, element_id=element.id) }}"
-               class="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 px-3 py-2">
-                <i data-lucide="pencil" class="h-4 w-4 mr-1.5" aria-hidden="true"></i>Edit
-            </a>
-            <button type="button" @click="deleteElement()"
-                    class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-destructive text-destructive-foreground hover:bg-destructive/90 h-9 px-3 py-2"
-                    aria-label="Delete element">
-                <i data-lucide="trash-2" class="h-4 w-4 mr-1.5" aria-hidden="true"></i>Delete
-            </button>
-            <button type="button" @click="downloadDiagram()"
-                    class="inline-flex items-center justify-center rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/30 hover:bg-primary/20 h-9 px-3 py-2"
-                    aria-label="Export ArchiMate diagram as SVG">
-                <svg class="w-3 h-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
-                Export Diagram
-            </button>
-        </div>
-    </div>
 
     <!-- Description banner (if present) -->
     {% if element.description %}
