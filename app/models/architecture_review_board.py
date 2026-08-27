@@ -1166,6 +1166,14 @@ def _arb_history_function_sql(quoted_schema):
                 AND NEW.status <> OLD.status
                 AND NEW.condition_projection_revision =
                     COALESCE(OLD.condition_projection_revision, 0) + 1
+                AND EXISTS (
+                    SELECT 1 FROM arb_condition_events condition_event
+                    WHERE condition_event.review_cycle_id = NEW.id
+                      AND condition_event.organization_id = NEW.organization_id
+                      AND condition_event.projection_status = NEW.status
+                      AND condition_event.projection_revision =
+                          NEW.condition_projection_revision
+                )
             ) THEN
                 RAISE EXCEPTION 'closed ARB review cycle history is immutable'
                     USING ERRCODE = '55000';
@@ -1212,6 +1220,14 @@ def _arb_history_function_sql(quoted_schema):
                    AND NEW.status <> OLD.status
                    AND NEW.condition_projection_revision =
                        COALESCE(OLD.condition_projection_revision, 0) + 1
+                   AND EXISTS (
+                       SELECT 1 FROM arb_condition_events condition_event
+                       WHERE condition_event.review_item_id = NEW.id
+                         AND condition_event.organization_id = NEW.organization_id
+                         AND condition_event.projection_status = NEW.status
+                         AND condition_event.projection_revision =
+                             NEW.condition_projection_revision
+                   )
                ) THEN
                 RAISE EXCEPTION 'typed ARB condition projection is invalid'
                     USING ERRCODE = '55000';

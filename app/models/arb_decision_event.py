@@ -217,6 +217,28 @@ LANGUAGE plpgsql SET search_path=pg_catalog,{schema} AS $$ BEGIN
 """
 
 
+def _condition_reconcile_sql(schema):
+    lifecycle = next(
+        str(item.sqltext)
+        for item in ARBCondition.__table__.constraints
+        if item.name == "ck_arb_condition_lifecycle"
+    )
+    return f"""
+UPDATE {schema}.arb_canonical_conditions SET revision = 1 WHERE revision IS NULL;
+ALTER TABLE {schema}.arb_canonical_conditions ALTER COLUMN revision SET DEFAULT 1;
+ALTER TABLE {schema}.arb_canonical_conditions ALTER COLUMN revision SET NOT NULL;
+ALTER TABLE {schema}.arb_canonical_conditions DROP CONSTRAINT IF EXISTS ck_arb_condition_lifecycle;
+ALTER TABLE {schema}.arb_canonical_conditions ADD CONSTRAINT ck_arb_condition_lifecycle CHECK ({lifecycle}) NOT VALID;
+ALTER TABLE {schema}.arb_canonical_conditions VALIDATE CONSTRAINT ck_arb_condition_lifecycle;
+ALTER TABLE {schema}.arb_canonical_conditions DROP CONSTRAINT IF EXISTS fk_arb_condition_submitted_evidence;
+ALTER TABLE {schema}.arb_canonical_conditions ADD CONSTRAINT fk_arb_condition_submitted_evidence FOREIGN KEY (submitted_evidence_id) REFERENCES {schema}.arb_condition_evidence_records(id) ON DELETE RESTRICT NOT VALID;
+ALTER TABLE {schema}.arb_canonical_conditions VALIDATE CONSTRAINT fk_arb_condition_submitted_evidence;
+ALTER TABLE {schema}.arb_canonical_conditions DROP CONSTRAINT IF EXISTS fk_arb_condition_fulfilment_evidence;
+ALTER TABLE {schema}.arb_canonical_conditions ADD CONSTRAINT fk_arb_condition_fulfilment_evidence FOREIGN KEY (fulfilment_evidence_id) REFERENCES {schema}.arb_condition_evidence_records(id) ON DELETE RESTRICT NOT VALID;
+ALTER TABLE {schema}.arb_canonical_conditions VALIDATE CONSTRAINT fk_arb_condition_fulfilment_evidence;
+"""
+
+
 def ensure_arb_decision_guards(connection):
     if connection.dialect.name != "postgresql":
         return
@@ -225,6 +247,10 @@ def ensure_arb_decision_guards(connection):
     connection.exec_driver_sql(_decision_membership_sql(q))
     connection.exec_driver_sql(_decision_open_state_sql(q))
     connection.exec_driver_sql(_condition_membership_sql(q))
+    if connection.exec_driver_sql(
+        "SELECT to_regclass(current_schema() || '.arb_condition_evidence_records')"
+    ).scalar() is not None:
+        connection.exec_driver_sql(_condition_reconcile_sql(q))
     connection.exec_driver_sql(f"""CREATE OR REPLACE FUNCTION {q}.archie_guard_arb_decision_immutable() RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog AS $$ BEGIN
  IF TG_OP='DELETE' THEN RAISE EXCEPTION 'ARB decision history is append-only' USING ERRCODE='55000'; END IF;
  IF TG_TABLE_NAME='arb_decision_events' THEN RAISE EXCEPTION 'ARB decision events are append-only' USING ERRCODE='55000'; END IF;

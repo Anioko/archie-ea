@@ -53,10 +53,32 @@ def _condition_event_final_sql(schema):
     return f"""
 CREATE OR REPLACE FUNCTION {schema}.archie_validate_arb_condition_event_final() RETURNS trigger
 LANGUAGE plpgsql SET search_path=pg_catalog,{schema} AS $$ BEGIN
- IF NOT EXISTS (SELECT 1 FROM arb_canonical_conditions condition WHERE condition.id=NEW.condition_id
+ IF NOT EXISTS (SELECT 1 FROM arb_canonical_conditions condition
+ JOIN arb_decision_events decision ON decision.id=condition.decision_event_id
+ JOIN arb_review_cycles cycle ON cycle.id=condition.review_cycle_id
+ JOIN arb_review_items review ON review.id=condition.review_item_id
+ LEFT JOIN arb_condition_evidence_records evidence ON evidence.id=NEW.submitted_evidence_id
+ WHERE condition.id=NEW.condition_id
  AND condition.organization_id=NEW.organization_id AND condition.status=NEW.to_state
  AND condition.revision=NEW.condition_revision AND condition.decision_event_id=NEW.decision_event_id
- AND condition.review_cycle_id=NEW.review_cycle_id AND condition.review_item_id=NEW.review_item_id)
+ AND condition.review_cycle_id=NEW.review_cycle_id AND condition.review_item_id=NEW.review_item_id
+ AND decision.organization_id=NEW.organization_id AND decision.subject_type=NEW.subject_type
+ AND decision.subject_id=NEW.subject_id AND cycle.organization_id=NEW.organization_id
+ AND review.organization_id=NEW.organization_id AND cycle.status=NEW.projection_status
+ AND review.status=NEW.projection_status
+ AND cycle.condition_projection_revision=NEW.projection_revision
+ AND review.condition_projection_revision=NEW.projection_revision
+ AND ((NEW.event_type='submit_evidence' AND evidence.condition_id=NEW.condition_id
+ AND evidence.decision_event_id=NEW.decision_event_id AND evidence.review_cycle_id=NEW.review_cycle_id
+ AND evidence.review_item_id=NEW.review_item_id AND evidence.organization_id=NEW.organization_id
+ AND evidence.condition_revision=NEW.condition_revision - 1
+ AND condition.submitted_evidence_id=evidence.id
+ AND condition.evidence_submitted_by_id=NEW.actor_id)
+ OR (NEW.event_type='verify' AND condition.verified_by_id=NEW.actor_id
+ AND condition.submitted_evidence_id=NEW.submitted_evidence_id)
+ OR (NEW.event_type='waive' AND condition.waived_by_id=NEW.actor_id
+ AND condition.waiver_scope_json::jsonb IS NOT DISTINCT FROM NEW.waiver_scope_json::jsonb)
+ OR (NEW.event_type='waiver_expired' AND condition.waiver_prior_status=NEW.to_state)))
  THEN RAISE EXCEPTION 'ARB condition event final state or membership is invalid' USING ERRCODE='23514'; END IF;
  IF NOT EXISTS (SELECT 1 FROM users actor WHERE actor.id=NEW.actor_id AND actor.organization_id=NEW.organization_id)
  THEN RAISE EXCEPTION 'ARB condition event actor is outside tenant' USING ERRCODE='23514'; END IF;

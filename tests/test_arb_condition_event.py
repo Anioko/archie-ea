@@ -53,10 +53,18 @@ def test_condition_event_guards_prove_source_final_state_and_exact_operation():
 
 
 def test_cycle_and_review_expose_condition_projection_revision():
-    from app.models.architecture_review_board import ARBReviewCycle, ARBReviewItem
+    from app.models.architecture_review_board import (
+        ARBReviewCycle,
+        ARBReviewItem,
+        _arb_history_function_sql,
+    )
 
     assert "condition_projection_revision" in ARBReviewCycle.__table__.columns
     assert "condition_projection_revision" in ARBReviewItem.__table__.columns
+    sql = _arb_history_function_sql('"public"')
+    assert "FROM arb_condition_events condition_event" in sql
+    assert "condition_event.projection_status = NEW.status" in sql
+    assert "condition_event.projection_revision" in sql
 
 
 def test_reconcile_registers_condition_event_table():
@@ -81,3 +89,31 @@ def test_reconcile_installs_condition_event_guards(app, _schema):
             "trg_arb_condition_event_source", "trg_arb_condition_event_final",
             "trg_arb_condition_event_immutable",
         }
+
+
+def test_condition_reconcile_sql_converges_revision_check_and_evidence_fks():
+    from app.models.arb_decision_event import _condition_reconcile_sql
+
+    sql = _condition_reconcile_sql('"public"')
+    assert "UPDATE \"public\".arb_canonical_conditions SET revision = 1" in sql
+    assert "ALTER COLUMN revision SET DEFAULT 1" in sql
+    assert "ALTER COLUMN revision SET NOT NULL" in sql
+    assert "ck_arb_condition_lifecycle" in sql and "VALIDATE CONSTRAINT" in sql
+    assert "fk_arb_condition_submitted_evidence" in sql
+    assert "fk_arb_condition_fulfilment_evidence" in sql
+
+
+def test_final_guard_binds_typed_evidence_projection_and_actor_semantics():
+    from app.models.arb_condition_event import _condition_event_final_sql
+
+    sql = _condition_event_final_sql('"public"')
+    assert "decision.subject_type=NEW.subject_type" in sql
+    assert "cycle.status=NEW.projection_status" in sql
+    assert "review.status=NEW.projection_status" in sql
+    assert "cycle.condition_projection_revision=NEW.projection_revision" in sql
+    assert "review.condition_projection_revision=NEW.projection_revision" in sql
+    assert "evidence.condition_id=NEW.condition_id" in sql
+    assert "evidence.condition_revision=NEW.condition_revision - 1" in sql
+    assert "condition.evidence_submitted_by_id=NEW.actor_id" in sql
+    assert "condition.verified_by_id=NEW.actor_id" in sql
+    assert "condition.waived_by_id=NEW.actor_id" in sql
