@@ -77,6 +77,7 @@ def test_condition_evidence_is_a_dedicated_tenant_immutable_aggregate():
         "solution_evidence_snapshot_id",
         "subject_evidence_snapshot_id",
         "value_json",
+        "canonical_document",
         "content_hash",
         "source_identity",
         "source_type",
@@ -138,6 +139,7 @@ def test_hash_source_and_freshness_are_append_only_guarded():
         if hasattr(constraint, "sqltext")
     )
     assert "length(content_hash) = 64" in checks
+    assert "sha256(convert_to(canonical_document" in checks
     assert "length(source_checksum) = 64" in checks
     assert "freshness_status" in checks
     assert module.IMMUTABLE_CONDITION_EVIDENCE_FIELDS >= {
@@ -162,6 +164,9 @@ def test_hash_source_and_freshness_are_append_only_guarded():
     assert "materialisation.request_digest=receipt.request_digest" in guard_sql
     assert "'condition_evidence_id',NEW.id" in guard_sql
     assert "NEW.condition_revision" in guard_sql
+    assert "NEW.canonical_document::jsonb" in guard_sql
+    assert "sha256(convert_to(NEW.canonical_document" in guard_sql
+    assert "canonical document disagrees with stored fields" in guard_sql
 
 
 @pytest.mark.parametrize("subject_type", SUBJECT_TYPES)
@@ -266,6 +271,12 @@ def test_capture_rejects_unknown_input_and_verifies_canonical_hash():
     canonical = service._canonical_evidence(evidence)
     good_hash = service._compute_content_hash(canonical)
     assert service._canonical_evidence({**evidence, "content_hash": good_hash}) == canonical
+    document = service._canonical_document(canonical)
+    record = SimpleNamespace(canonical_document=document)
+    assert (
+        _model_module().ARBConditionEvidenceRecord.recompute_content_hash(record)
+        == good_hash
+    )
     with pytest.raises(ValueError, match="does not match"):
         service._canonical_evidence({**evidence, "content_hash": "0" * 64})
     with pytest.raises(ValueError, match="candidate-scoped"):

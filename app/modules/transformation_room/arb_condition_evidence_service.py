@@ -131,8 +131,11 @@ class TypedARBConditionEvidenceService:
         if len(encoded) > cls.MAX_EVIDENCE_BYTES:
             raise ValueError("condition evidence exceeds 64 KiB")
         computed_hash = cls._compute_content_hash(result)
-        if supplied_content_hash is not None and supplied_content_hash.lower() != computed_hash:
-            raise ValueError("content_hash does not match condition evidence")
+        if supplied_content_hash is not None:
+            if not isinstance(supplied_content_hash, str) or (
+                supplied_content_hash.lower() != computed_hash
+            ):
+                raise ValueError("content_hash does not match condition evidence")
         return result
 
     @staticmethod
@@ -159,8 +162,14 @@ class TypedARBConditionEvidenceService:
     @staticmethod
     def _compute_content_hash(evidence):
         return hashlib.sha256(
-            json.dumps(evidence, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+            TypedARBConditionEvidenceService._canonical_document(evidence).encode("utf-8")
         ).hexdigest()
+
+    @staticmethod
+    def _canonical_document(evidence):
+        return json.dumps(
+            evidence, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+        )
 
     @classmethod
     def _load_condition_graph(cls, session, actor, condition_id, *, for_update):
@@ -280,6 +289,7 @@ class TypedARBConditionEvidenceService:
         now = CommandService._database_now(session)
         cls._validate_freshness_at_capture(evidence, now)
         typed_values = {name: getattr(decision, name) for name in _TYPED_COLUMNS}
+        canonical_document = cls._canonical_document(evidence)
         record = ARBConditionEvidenceRecord(
             organization_id=actor.organization_id,
             condition_id=condition.id,
@@ -289,7 +299,8 @@ class TypedARBConditionEvidenceService:
             review_item_id=review.id,
             **typed_values,
             value_json=evidence["value_json"],
-            content_hash=cls._compute_content_hash(evidence),
+            canonical_document=canonical_document,
+            content_hash=hashlib.sha256(canonical_document.encode("utf-8")).hexdigest(),
             source_identity=evidence["source_identity"],
             source_type=evidence["source_type"],
             source_version=evidence["source_version"],

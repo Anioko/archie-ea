@@ -974,6 +974,48 @@ def _backfill_roadmap_organizations(*, dry_run, existing_tables, added, failed):
         )
 
 
+def _ensure_condition_evidence_canonical_document(
+    *, dry_run, existing_tables, added, failed
+):
+    """Make the hash preimage mandatory without inventing it for legacy rows."""
+    from sqlalchemy import inspect, text
+
+    table_name = "arb_condition_evidence_records"
+    if table_name not in existing_tables:
+        return
+    columns = {column["name"]: column for column in inspect(db.engine).get_columns(table_name)}
+    column = columns.get("canonical_document")
+    if column is None or not column.get("nullable", True):
+        return
+    label = f"{table_name}.canonical_document :: SET NOT NULL"
+    try:
+        gaps = db.session.execute(
+            text(
+                "SELECT count(*) FROM arb_condition_evidence_records "
+                "WHERE canonical_document IS NULL "
+                "/* tenancy-ok: reconcile measures all tenants without exposing rows */"
+            )
+        ).scalar_one()
+        if gaps:
+            raise RuntimeError(
+                f"{gaps} historical condition-evidence row(s) lack their exact hash preimage"
+            )
+        if dry_run:
+            added.append(label)
+            return
+        db.session.execute(
+            text(
+                "ALTER TABLE arb_condition_evidence_records "
+                "ALTER COLUMN canonical_document SET NOT NULL"
+            )
+        )
+        db.session.commit()
+        added.append(label)
+    except Exception as exc:  # noqa: BLE001 — explicit blocking schema gap
+        db.session.rollback()
+        failed.append(f"{label}: {str(exc)[:120]}")
+
+
 def _reconcile(dry_run=False):
     """Return (added, failed, missing_tables, blocking) lists of "table.column".
 
@@ -1088,6 +1130,12 @@ def _reconcile(dry_run=False):
         failed=failed,
     )
     _ensure_membership_triggers(
+        dry_run=dry_run,
+        existing_tables=existing_tables,
+        added=added,
+        failed=failed,
+    )
+    _ensure_condition_evidence_canonical_document(
         dry_run=dry_run,
         existing_tables=existing_tables,
         added=added,

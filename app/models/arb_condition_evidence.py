@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import hashlib
-import json
 
 from sqlalchemy import event
 
@@ -62,6 +61,7 @@ class ARBConditionEvidenceRecord(TenantMixin, db.Model):
     solution_evidence_snapshot_id = db.Column(db.Integer, db.ForeignKey("arb_submission_evidence_snapshots.id", ondelete="RESTRICT"))
     subject_evidence_snapshot_id = db.Column(db.Integer, db.ForeignKey("arb_subject_evidence_snapshots.id", ondelete="RESTRICT"))
     value_json = db.Column(db.JSON, nullable=False)
+    canonical_document = db.Column(db.Text, nullable=False)
     content_hash = db.Column(db.String(64), nullable=False)
     source_identity = db.Column(db.String(1024), nullable=False)
     source_type = db.Column(db.String(80), nullable=False)
@@ -80,6 +80,10 @@ class ARBConditionEvidenceRecord(TenantMixin, db.Model):
     __table_args__ = (
         db.CheckConstraint(_TYPED_SHAPE, name="ck_arb_condition_evidence_typed_shape"),
         db.CheckConstraint("length(content_hash) = 64", name="ck_arb_condition_evidence_hash"),
+        db.CheckConstraint(
+            "encode(sha256(convert_to(canonical_document,'UTF8')),'hex') = content_hash",
+            name="ck_arb_condition_evidence_document_hash",
+        ),
         db.CheckConstraint("length(source_checksum) = 64", name="ck_arb_condition_evidence_source_hash"),
         db.CheckConstraint("freshness_status IN ('fresh','stale','unknown','not_applicable')", name="ck_arb_condition_evidence_freshness"),
         db.CheckConstraint("command_generation > 0", name="ck_arb_condition_evidence_generation"),
@@ -87,31 +91,8 @@ class ARBConditionEvidenceRecord(TenantMixin, db.Model):
         db.UniqueConstraint("organization_id", "condition_id", "content_hash", name="uq_arb_condition_evidence_content"),
     )
 
-    @staticmethod
-    def _iso(value):
-        if value is None:
-            return None
-        return value.isoformat().replace("+00:00", "Z")
-
-    def canonical_document(self):
-        return {
-            "freshness_expires_at": self._iso(self.freshness_expires_at),
-            "freshness_rule_version": self.freshness_rule_version,
-            "freshness_status": self.freshness_status,
-            "observed_at": self._iso(self.observed_at),
-            "source_checksum": self.source_checksum,
-            "source_identity": self.source_identity,
-            "source_type": self.source_type,
-            "source_version": self.source_version,
-            "value_json": self.value_json,
-        }
-
     def recompute_content_hash(self):
-        encoded = json.dumps(
-            self.canonical_document(), sort_keys=True, separators=(",", ":"),
-            ensure_ascii=False,
-        ).encode("utf-8")
-        return hashlib.sha256(encoded).hexdigest()
+        return hashlib.sha256(self.canonical_document.encode("utf-8")).hexdigest()
 
 
 def _membership_sql(schema):
@@ -138,6 +119,27 @@ LANGUAGE plpgsql SET search_path=pg_catalog,{schema} AS $$ BEGIN
  THEN RAISE EXCEPTION 'ARB condition evidence membership is invalid' USING ERRCODE='23514'; END IF;
  IF NOT EXISTS (SELECT 1 FROM users actor WHERE actor.id=NEW.created_by_id AND actor.organization_id=NEW.organization_id)
  THEN RAISE EXCEPTION 'ARB condition evidence actor is outside tenant' USING ERRCODE='23514'; END IF;
+ IF encode(sha256(convert_to(NEW.canonical_document,'UTF8')),'hex') <> NEW.content_hash
+ THEN RAISE EXCEPTION 'ARB condition evidence content hash is invalid' USING ERRCODE='23514'; END IF;
+ BEGIN
+  IF jsonb_typeof(NEW.canonical_document::jsonb) <> 'object'
+   OR (NEW.canonical_document::jsonb->>'source_identity') IS DISTINCT FROM NEW.source_identity
+   OR (NEW.canonical_document::jsonb->>'source_type') IS DISTINCT FROM NEW.source_type
+   OR (NEW.canonical_document::jsonb->>'source_version') IS DISTINCT FROM NEW.source_version
+   OR (NEW.canonical_document::jsonb->>'source_checksum') IS DISTINCT FROM NEW.source_checksum
+   OR (NEW.canonical_document::jsonb->>'freshness_status') IS DISTINCT FROM NEW.freshness_status
+   OR (NEW.canonical_document::jsonb->>'freshness_rule_version') IS DISTINCT FROM NEW.freshness_rule_version
+   OR (NEW.canonical_document::jsonb->'value_json') IS DISTINCT FROM NEW.value_json::jsonb
+   OR (NEW.canonical_document::jsonb->>'observed_at')::timestamptz IS DISTINCT FROM NEW.observed_at
+   OR (CASE WHEN NEW.freshness_expires_at IS NULL
+      THEN NEW.canonical_document::jsonb->'freshness_expires_at' <> 'null'::jsonb
+      ELSE (NEW.canonical_document::jsonb->>'freshness_expires_at')::timestamptz IS DISTINCT FROM NEW.freshness_expires_at END)
+   OR (SELECT array_agg(key ORDER BY key) FROM jsonb_object_keys(NEW.canonical_document::jsonb) key)
+      IS DISTINCT FROM ARRAY['freshness_expires_at','freshness_rule_version','freshness_status','observed_at','source_checksum','source_identity','source_type','source_version','value_json']::text[]
+  THEN RAISE EXCEPTION 'ARB condition evidence canonical document disagrees with stored fields' USING ERRCODE='23514'; END IF;
+ EXCEPTION WHEN invalid_text_representation OR datetime_field_overflow THEN
+  RAISE EXCEPTION 'ARB condition evidence canonical document is invalid' USING ERRCODE='23514';
+ END;
  IF NOT EXISTS (SELECT 1 FROM command_idempotency_records receipt
  JOIN operation_results result ON result.id=receipt.operation_result_id AND result.receipt_id=receipt.id
  JOIN command_materialisations materialisation ON materialisation.receipt_id=receipt.id
