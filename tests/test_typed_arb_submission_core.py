@@ -16,6 +16,7 @@ import pytest
 
 from app.modules.transformation_room.domain import (
     ActorContext,
+    CommandConflict,
     CommandResult,
     DomainMutationResult,
     GovernedSubject,
@@ -39,6 +40,14 @@ def _isolate_command_boundary_from_database_authority(monkeypatch):
         module.TypedARBSubmissionService,
         "authorise_submit",
         classmethod(lambda cls, session, actor, subject_type, subject_id: None),
+    )
+    monkeypatch.setattr(
+        module.TypedARBSubmissionService,
+        "_submission_anchor",
+        classmethod(
+            lambda cls, session, organization_id, subject_type, subject_id: "root"
+        ),
+        raising=False,
     )
 
 
@@ -187,7 +196,9 @@ def test_submit_routes_all_subject_types_through_one_command_and_atomic_handler(
     }
     assert captured["operation"] == "arb.submit"
     assert captured["idempotency_key"] == f"submit-{subject_type}"
-    assert captured["natural_key"] == f"arb-submission:41:{subject_type}:9001"
+    assert captured["natural_key"] == (
+        f"arb-submission:41:{subject_type}:9001:after:root"
+    )
     assert captured["payload"] == {
         "subject_type": subject_type,
         "subject_id": 9001,
@@ -276,7 +287,7 @@ def test_subordinate_write_failure_escapes_handler_so_command_service_can_roll_b
         )
 
 
-def test_open_cycle_natural_key_is_subject_scoped_not_command_scoped(monkeypatch):
+def test_first_submission_and_open_cycle_retries_keep_root_anchor(monkeypatch):
     module = _submission_module()
     adapter = _AdapterProbe("adr", 41, "arb_subject_evidence_snapshot", 103, [])
     natural_keys = []
@@ -293,7 +304,140 @@ def test_open_cycle_natural_key_is_subject_scoped_not_command_scoped(monkeypatch
             assertions={"human_reviewed": True},
         )
 
-    assert natural_keys == ["arb-submission:41:adr:9001"] * 2
+    assert natural_keys == ["arb-submission:41:adr:9001:after:root"] * 2
+
+
+def test_terminal_cycle_becomes_anchor_for_successor(monkeypatch):
+    module = _submission_module()
+    adapter = _AdapterProbe("adr", 41, "arb_subject_evidence_snapshot", 103, [])
+    captured = {}
+    monkeypatch.setattr(module, "get_arb_subject_adapter", lambda value: adapter)
+    monkeypatch.setattr(
+        module.TypedARBSubmissionService,
+        "_submission_anchor",
+        classmethod(
+            lambda cls, session, organization_id, subject_type, subject_id: 515
+        ),
+    )
+    monkeypatch.setattr(
+        module.CommandService,
+        "execute",
+        lambda **kwargs: captured.update(kwargs) or _command_result(),
+    )
+
+    module.TypedARBSubmissionService.submit(
+        actor=_actor(), command_key="successor", subject_type="adr", subject_id=9001
+    )
+
+    assert captured["natural_key"] == "arb-submission:41:adr:9001:after:515"
+
+
+def test_open_successor_retries_keep_its_predecessor_anchor(monkeypatch):
+    module = _submission_module()
+    adapter = _AdapterProbe("adr", 41, "arb_subject_evidence_snapshot", 103, [])
+    natural_keys = []
+    monkeypatch.setattr(module, "get_arb_subject_adapter", lambda value: adapter)
+    monkeypatch.setattr(
+        module.TypedARBSubmissionService,
+        "_submission_anchor",
+        classmethod(
+            lambda cls, session, organization_id, subject_type, subject_id: 515
+        ),
+    )
+    monkeypatch.setattr(
+        module.CommandService,
+        "execute",
+        lambda **kwargs: natural_keys.append(kwargs["natural_key"])
+        or _command_result(created=len(natural_keys) == 1),
+    )
+
+    for key in ("successor-winner", "lost-browser-key"):
+        module.TypedARBSubmissionService.submit(
+            actor=_actor(), command_key=key, subject_type="adr", subject_id=9001
+        )
+
+    assert natural_keys == ["arb-submission:41:adr:9001:after:515"] * 2
+
+
+def test_authorizer_accepts_replay_after_winner_opens_same_anchor(monkeypatch):
+    module = _submission_module()
+    adapter = _AdapterProbe("adr", 41, "arb_subject_evidence_snapshot", 103, [])
+    captured = {}
+    monkeypatch.setattr(module, "get_arb_subject_adapter", lambda value: adapter)
+    monkeypatch.setattr(
+        module.CommandService,
+        "execute",
+        lambda **kwargs: captured.update(kwargs) or _command_result(created=False),
+    )
+
+    module.TypedARBSubmissionService.submit(
+        actor=_actor(), command_key="replay", subject_type="adr", subject_id=9001
+    )
+    captured["authorizer"](
+        SimpleNamespace(),
+        _actor(),
+        "arb.submit",
+        "arb-submission:41:adr:9001:after:root",
+    )
+
+
+def test_authorizer_rejects_anchor_that_changed_before_claim_revalidation(monkeypatch):
+    module = _submission_module()
+    adapter = _AdapterProbe("adr", 41, "arb_subject_evidence_snapshot", 103, [])
+    captured = {}
+    anchors = iter(("root", 515))
+    monkeypatch.setattr(module, "get_arb_subject_adapter", lambda value: adapter)
+    monkeypatch.setattr(
+        module.TypedARBSubmissionService,
+        "_submission_anchor",
+        classmethod(
+            lambda cls, session, organization_id, subject_type, subject_id: next(anchors)
+        ),
+    )
+    monkeypatch.setattr(
+        module.CommandService,
+        "execute",
+        lambda **kwargs: captured.update(kwargs) or _command_result(),
+    )
+
+    module.TypedARBSubmissionService.submit(
+        actor=_actor(), command_key="raced", subject_type="adr", subject_id=9001
+    )
+    with pytest.raises(CommandConflict, match="arb_submission_anchor_changed"):
+        captured["authorizer"](
+            SimpleNamespace(),
+            _actor(),
+            "arb.submit",
+            "arb-submission:41:adr:9001:after:root",
+        )
+
+
+def test_locked_handler_fails_closed_when_anchor_changes_before_lock(monkeypatch):
+    module = _submission_module()
+    adapter = _AdapterProbe("adr", 41, "arb_subject_evidence_snapshot", 103, [])
+    subject = adapter.load(_actor(), 9001)
+    anchors = iter(("root", 515))
+    monkeypatch.setattr(
+        module.TypedARBSubmissionService,
+        "_submission_anchor",
+        classmethod(
+            lambda cls, session, organization_id, subject_type, subject_id: next(anchors)
+        ),
+    )
+    monkeypatch.setattr(
+        module.TypedARBSubmissionService,
+        "_lock_subject_submission",
+        classmethod(lambda cls, session, actor, subject: None),
+    )
+
+    claimed = module.TypedARBSubmissionService._submission_anchor(
+        object(), 41, "adr", 9001
+    )
+    with pytest.raises(CommandConflict, match="arb_submission_anchor_changed"):
+        module.TypedARBSubmissionService._submit_locked(
+            session=object(), actor=_actor(), subject=subject, adapter=adapter,
+            assertions={}, claim=SimpleNamespace(), claimed_anchor=claimed,
+        )
 
 
 def test_first_cycle_lock_key_is_deterministic_and_subject_scoped():
