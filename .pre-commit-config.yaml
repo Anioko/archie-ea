@@ -43,9 +43,11 @@ repos:
     hooks:
       - id: ruff
         name: ruff (correctness subset, changed files)
-        # --force-exclude makes ruff honour ruff.toml's exclude list even when
-        # pre-commit passes explicit filenames.
-        args: ["--force-exclude", "--select", "F821,F811,F822,E9"]
+        # Do NOT add --force-exclude here: the upstream hook's entry is already
+        # `ruff check --force-exclude`, so repeating it makes ruff exit 2 with
+        # "the argument '--force-exclude' cannot be used multiple times" -- the
+        # hook then failed on every commit without ever linting anything.
+        args: ["--select", "F821,F811,F822,E9"]
 
   - repo: local
     hooks:
