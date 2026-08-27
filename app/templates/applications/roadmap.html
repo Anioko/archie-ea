@@ -290,16 +290,11 @@
 
       async init() {
         try {
-          const [pr, cr] = await Promise.all([
-            fetch('/capability-map/api/roadmap/plateaus'),
-            fetch('/api/capabilities/grouped'),
+          const [pd, cd] = await Promise.all([
+            Platform.fetch.get('/capability-map/api/roadmap/plateaus'),
+            Platform.fetch.get('/api/capabilities/grouped'),
           ]);
-          if (!pr.ok) throw new Error('Failed to load plateaus (' + pr.status + ')');
-          const pd = await pr.json();
           this.plateaus = pd.plateaus || [];
-
-          if (!cr.ok) throw new Error('Failed to load capabilities (' + cr.status + ')');
-          const cd = await cr.json();
           const grouped = cd.capabilities || cd;
           this.capabilities = Object.values(grouped).flat();
         } catch (e) {
@@ -412,24 +407,12 @@
           archimate_element_id: this.form.archimate_element_id || null,
         };
 
-        const method = this.isEditing ? 'PUT' : 'POST';
         const url = this.isEditing ? `${endpointBase}/${this.form.id}` : endpointBase;
 
         try {
-          const response = await fetch(url, {
-            method,
-            headers: {
-              'Content-Type': 'application/json',
-              'X-CSRFToken': csrfToken
-            },
-            body: JSON.stringify(payload)
-          });
-
-          const data = await response.json();
-          if (!response.ok || data.error) {
-            throw new Error(data.error || 'Unable to save work package');
-          }
-
+          const data = this.isEditing
+            ? await Platform.fetch.put(url, payload)
+            : await Platform.fetch.post(url, payload);
           const saved = data.work_package;
           if (this.isEditing) {
             this.items = this.items.map(item => item.id === saved.id ? saved : item);
@@ -452,16 +435,7 @@
         }
 
         try {
-          const response = await fetch(`${endpointBase}/${item.id}`, {
-            method: 'DELETE',
-            headers: {
-              'X-CSRFToken': csrfToken
-            }
-          });
-          const data = await response.json();
-          if (!response.ok || data.error) {
-            throw new Error(data.error || 'Unable to delete work package');
-          }
+          await Platform.fetch.delete(`${endpointBase}/${item.id}`);
           this.items = this.items.filter(current => current.id !== item.id);
         } catch (error) {
           Platform.alert(error.message || 'Unable to delete work package');

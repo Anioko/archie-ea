@@ -146,7 +146,7 @@
                         type="checkbox"
                         name="enabled"
                         value="1"
-                        {% if cfg.get('enabled', False) %}checked{% endif %}
+                        {% if cfg.get('enabled') == True or cfg.get('enabled') == 1 or cfg.get('enabled')|string|lower in ['1', 'true'] %}checked{% endif %}
                         class="h-4 w-4 rounded border-input text-primary focus:ring-ring"
                     >
                     <span class="text-sm font-medium">Enable M365 Integration</span>
@@ -173,35 +173,31 @@
 </div>
 
 <script>
-document.getElementById('btn-test-auth').addEventListener('click', function () {
+document.getElementById('btn-test-auth').addEventListener('click', async function () {
     let btn = this;
     let resultEl = document.getElementById('test-result');
     btn.disabled = true;
     btn.textContent = 'Testing…';
     resultEl.className = 'hidden px-4 sm:px-6 pb-4 text-sm';
 
-    fetch('{{ url_for("m365_connector.m365_test") }}', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': document.querySelector('[name=csrf_token]').value
-        }
-    })
-    .then(function (r) { return r.json(); })
-    .then(function (data) {
+    try {
+        // Platform.fetch.post returns the parsed JSON response directly.
+        // Pass silent: true to suppress global toast because we show inline error.
+        const data = await Platform.fetch.post('{{ url_for("m365_connector.m365_test") }}', null, { silent: true });
         let ok = data.status === 'ok';
         resultEl.textContent = data.message;
         resultEl.className = 'px-4 sm:px-6 pb-4 text-sm ' +
             (ok ? 'text-success' : 'text-destructive');
-    })
-    .catch(function () {
-        resultEl.textContent = 'Request failed — check the browser console.';
+    } catch (error) {
+        // Platform.fetch throws a structured PlatformError on any non-ok response.
+        // We must surface the failure to the user, not swallow it.
+        // Use the error message if available, otherwise generic text.
+        resultEl.textContent = error.message || 'Request failed — check the browser console.';
         resultEl.className = 'px-4 sm:px-6 pb-4 text-sm text-destructive';
-    })
-    .finally(function () {
+    } finally {
         btn.disabled = false;
         btn.textContent = 'Test Auth';
-    });
+    }
 });
 </script>
 {% endblock %}

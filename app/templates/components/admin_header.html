@@ -404,13 +404,7 @@
                 const nid = el.getAttribute('data-notif-id');
                 const src = el.getAttribute('data-notif-source') || 'notification';
                 if (!nid) return;
-                fetch('/api/notifications/' + nid + '/mark-read?source=' + src, {
-                    method: 'POST', credentials: 'same-origin',
-                    headers: {
-                        'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || '',
-                        'X-Requested-With': 'XMLHttpRequest',
-                    },
-                }).catch(function() {
+                Platform.fetch.post('/api/notifications/' + nid + '/mark-read?source=' + src, null, { silent: true }).catch(function() {
                     // Fire-and-forget alongside the <a> navigation the click already
                     // triggers; a failed mark-read just means it shows unread again
                     // on the next poll, which is harmless.
@@ -430,9 +424,8 @@
     }
 
     function pollNotifications() {
-        const fetchFn = (window.Platform && window.Platform.fetch) || window.apiFetch;
-        if (!fetchFn) return;
-        fetchFn('/api/notifications', { silent: true })
+        if (!window.Platform || !window.Platform.fetch) return;
+        Platform.fetch.get('/api/notifications', undefined, { silent: true })
             .then(function(data) {
                 notifItems = data.items || [];
                 const count = data.unread_count || 0;
@@ -476,14 +469,7 @@
             renderNotifications();
 
             // Persist to backend
-            fetch('/api/notifications/mark-all-read', {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: {
-                    'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || '',
-                    'X-Requested-With': 'XMLHttpRequest',
-                },
-            }).catch(function() {
+            Platform.fetch.post('/api/notifications/mark-all-read', null, { silent: true }).catch(function() {
                 // The optimistic UI above already shows "all read"; if this didn't
                 // actually persist, the next 60s poll will silently bring the unread
                 // items back with no explanation, so tell the user now instead.
@@ -506,9 +492,8 @@
     const buList     = document.getElementById('bu-scope-list');
 
     function loadBuScope() {
-        let fetchFn = (window.Platform && window.Platform.fetch) || window.apiFetch;
-        if (!fetchFn) return;
-        fetchFn('/api/bu-scope', { silent: true })
+        if (!window.Platform || !window.Platform.fetch) return;
+        Platform.fetch.get('/api/bu-scope', undefined, { silent: true })
             .then(function(data) {
                 let items = data.business_units || [];
                 const currentId = data.current_bu_id;
@@ -532,16 +517,7 @@
                     buList.querySelectorAll('.bu-scope-item').forEach(function(el) {
                         el.addEventListener('click', function() {
                             let id = el.getAttribute('data-bu-id');
-                            fetch('/api/bu-scope', {
-                                method: 'POST', credentials: 'same-origin',
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                    'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || '',
-                                    'X-Requested-With': 'XMLHttpRequest',
-                                },
-                                body: JSON.stringify({ bu_id: id || null }),
-                            }).then(function(r) {
-                                if (!r.ok) throw new Error('HTTP ' + r.status);
+                            Platform.fetch.post('/api/bu-scope', { bu_id: id || null }, { silent: true }).then(function() {
                                 window.location.reload();
                             }).catch(function() {
                                 if (window.Platform && Platform.toast) {
@@ -758,9 +734,8 @@
         if (q.length < 2) return;
         clearTimeout(_searchDebounce);
         _searchDebounce = setTimeout(function() {
-            const fetchFn = (window.Platform && window.Platform.fetch) ? window.Platform.fetch : window.fetch;
-            fetchFn('/api/sidebar/search?q=' + encodeURIComponent(q))
-                .then(function(r) { return r.json ? r.json() : r; })
+            if (!window.Platform || !window.Platform.fetch) return;
+            Platform.fetch.get('/api/sidebar/search', { q: q }, { silent: true })
                 .then(function(data) {
                     if (searchInput.value.toLowerCase() !== q) return; // stale
                     const results = data.results || data || [];

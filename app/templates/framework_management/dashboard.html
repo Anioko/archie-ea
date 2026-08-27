@@ -61,19 +61,15 @@ function frameworkStats() {
     error: '',
     load() {
       this.error = '';
-      fetch('/framework-management/api/statistics')
-        .then(r => {
-          // fetch does not reject on 4xx/5xx.
-          if (!r.ok) throw new Error('statistics request failed: ' + r.status);
-          return r.json();
-        })
+      Platform.fetch.get('/framework-management/api/statistics')
         .then(d => { this.stats = d; })
-        .catch(() => {
+        .catch((err) => {
           // Leave stats empty so every tile renders an em dash — an unloaded
           // count must not be shown as a number of any kind.
           this.stats = {};
           this.error = 'Could not load framework statistics.';
-          Platform.toast.error(this.error);
+          // The error toast is already shown by Platform.fetch (unless silent:true).
+          // We still set the inline error state for the UI.
         });
     }
   }

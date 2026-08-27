@@ -4,7 +4,13 @@
 {% block title %}{{ definition.workflow_name }}{% endblock %}
 
 {% block content %}
-{% set approval_steps = definition.steps|selectattr('requires_approval', 'defined')|selectattr('requires_approval')|list|length + definition.steps|selectattr('step_type', 'equalto', 'approval')|list|length %}
+{% set ns = namespace(count=0) %}
+{% for step in definition.steps %}
+  {% if (step.requires_approval is defined and step.requires_approval) or step.step_type == 'approval' %}
+    {% set ns.count = ns.count + 1 %}
+  {% endif %}
+{% endfor %}
+{% set approval_steps = ns.count %}
 {% set outputs_map = {
     'APP_ONBOARDING': ['Application Portfolio Entry', 'APQC Process Mappings', 'ArchiMate Elements', 'Gap Analysis Report'],
     'GAP_REMEDIATION': ['Gap Analysis Report', 'Remediation Roadmap', 'Task Assignments'],
@@ -379,16 +385,14 @@
                 const label = action === 'cancel' ? 'Cancel' : 'Retry';
                 if (!(await Platform.modal.confirm(label + ' ' + ids.length + ' workflow(s)?'))) return;
                 this.processing = true;
-                const csrf = document.querySelector('meta[name=csrf-token]')?.content || '';
                 let ok = 0, fail = 0;
                 for (const id of ids) {
                     try {
-                        const r = await fetch('/api/ea-workflows/instances/' + id + '/' + action, {
-                            method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
-                            body: JSON.stringify({ reason: 'Batch ' + action })
-                        });
-                        (await r.json()).success ? ok++ : fail++;
-                    } catch { fail++; }
+                        const result = await Platform.fetch.post('/api/ea-workflows/instances/' + id + '/' + action, { reason: 'Batch ' + action }, { silent: true });
+                        result.success ? ok++ : fail++;
+                    } catch {
+                        fail++;
+                    }
                 }
                 this.processing = false;
                 this.selected = [];

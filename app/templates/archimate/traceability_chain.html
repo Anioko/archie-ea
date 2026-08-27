@@ -20,7 +20,7 @@
                 @change="if($event.target.value){location.href='?solution_id='+$event.target.value}else{location.href=location.pathname}">
             <option value="">All Solutions</option>
             {% for sol in solutions_list %}
-            <option value="{{ sol.id }}" {% if current_solution_id == sol.id %}selected{% endif %}>{{ sol.name }}</option>
+            <option value="{{ sol.id }}" {% if current_solution_id is not none and current_solution_id | string == sol.id | string %}selected{% endif %}>{{ sol.name }}</option>
             {% endfor %}
         </select>
         {% if current_solution_id %}
@@ -33,7 +33,7 @@
     <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {% for key, label in [('drivers_with_goals', 'Drivers → Goals'), ('goals_with_requirements', 'Goals → Requirements'), ('requirements_with_capabilities', 'Requirements → Capabilities'), ('capabilities_with_apps', 'Capabilities → Applications')] %}
         {% set metric = gap_analysis.coverage[key] %}
-        {% set pct = ((metric.count / metric.total * 100) if metric.total > 0 else 0) | round(0) | int %}
+        {% set pct = ((metric.count / metric.total * 100) if metric.total is not none and metric.total > 0 else 0) | round(0) | int %}
         <div class="rounded-md border border-border bg-card p-3">
             <div class="flex items-center justify-between mb-1.5">
                 <span class="text-xs font-medium text-foreground">{{ label }}</span>
@@ -617,7 +617,6 @@ function traceabilityChain() {
             if (!this.linkSource || !this.linkTargetId) return;
             this.linkSaving = true;
             this.linkError = '';
-            const csrfToken = document.querySelector('meta[name=csrf-token]')?.content || '';
             let url = '';
             let body = {};
             if (this.linkType === 'driver-goal') {
@@ -631,20 +630,13 @@ function traceabilityChain() {
                 return;
             }
             try {
-                const resp = await fetch(url, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
-                    body: JSON.stringify(body),
-                });
-                const data = await resp.json();
-                if (!resp.ok) {
-                    this.linkError = data.error || 'Link failed';
-                    return;
-                }
+                await Platform.fetch.post(url, body, { silent: true });
                 this.linkModalOpen = false;
                 window.location.reload();
-            } catch (e) {
-                this.linkError = 'Network error';
+            } catch (error) {
+                // Platform.fetch throws a structured PlatformError with .data property
+                const errorData = error.data;
+                this.linkError = (errorData && (errorData.error || errorData.message)) || 'Link failed';
             } finally {
                 this.linkSaving = false;
             }
@@ -655,19 +647,17 @@ function traceabilityChain() {
             this.editSaving = true;
             this.editError = '';
             try {
-                const csrfToken = document.querySelector('meta[name=csrf-token]')?.content || '';
-                const resp = await fetch('/archimate/api/elements/' + this.editElement.id, {
-                    method: 'PATCH',
-                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken},
-                    body: JSON.stringify({name: this.editElement.name, description: this.editElement.description}),
-                });
-                const data = await resp.json();
-                if (!resp.ok) { this.editError = data.error || 'Save failed'; return; }
+                const data = await Platform.fetch.patch('/archimate/api/elements/' + this.editElement.id,
+                    { name: this.editElement.name, description: this.editElement.description },
+                    { silent: true }
+                );
                 const chipEl = document.querySelector('[data-element-id="' + this.editElement.id + '"]');
                 if (chipEl) chipEl.textContent = data.name;
                 this.editModalOpen = false;
-            } catch (e) {
-                this.editError = 'Network error';
+            } catch (error) {
+                // Platform.fetch throws a structured PlatformError with .data property
+                const errorData = error.data;
+                this.editError = (errorData && (errorData.error || errorData.message)) || 'Save failed';
             } finally {
                 this.editSaving = false;
             }

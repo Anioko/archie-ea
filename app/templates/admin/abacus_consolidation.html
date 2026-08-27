@@ -80,7 +80,8 @@
 
                 <button type="button"
                     @click="autoMergeHighConfidence()"
-                    class="px-4 py-2 bg-success text-primary-foreground rounded-md hover:bg-success"
+                    :disabled="duplicates.filter(d => d.similarity > 95).length === 0"
+                    class="px-4 py-2 bg-success text-success-foreground rounded-md hover:bg-success/80 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                     Auto-Merge (>95%)
                 </button>
@@ -281,11 +282,7 @@ function consolidationManager() {
 
         loadCandidates() {
             this.loadError = null;
-            fetch('{{ url_for("abacus_consolidation.get_candidates") }}?threshold=' + this.threshold)
-                .then(res => {
-                    if (!res.ok) throw new Error('Could not load duplicate candidates (HTTP ' + res.status + ')');
-                    return res.json();
-                })
+            Platform.fetch.get('{{ url_for("abacus_consolidation.get_candidates") }}', { threshold: this.threshold }, { silent: true })
                 .then(data => {
                     this.duplicates = data.candidates || [];
                 })
@@ -310,17 +307,11 @@ function consolidationManager() {
             if (!(await Platform.modal.confirm('Are you sure you want to merge these capabilities?'))) return;
 
             try {
-                const response = await fetch('{{ url_for("abacus_consolidation.merge_capabilities") }}', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''},
-                    body: JSON.stringify({
-                        source_id: abacusId,
-                        target_id: manualId,
-                        strategy: this.mergeStrategy
-                    })
-                });
-
-                const result = await response.json();
+                const result = await Platform.fetch.post('{{ url_for("abacus_consolidation.merge_capabilities") }}', {
+                    source_id: abacusId,
+                    target_id: manualId,
+                    strategy: this.mergeStrategy
+                }, { silent: true });
 
                 if (result.success) {
                     this.showStatus(result.message, 'success');
@@ -346,16 +337,10 @@ function consolidationManager() {
             });
 
             try {
-                const response = await fetch('{{ url_for("abacus_consolidation.bulk_merge") }}', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''},
-                    body: JSON.stringify({
-                        pairs: pairs,
-                        strategy: this.mergeStrategy
-                    })
-                });
-
-                const result = await response.json();
+                const result = await Platform.fetch.post('{{ url_for("abacus_consolidation.bulk_merge") }}', {
+                    pairs: pairs,
+                    strategy: this.mergeStrategy
+                }, { silent: true });
 
                 if (result.success) {
                     this.showStatus(`Successfully merged ${result.merged} pairs`, 'success');
@@ -386,15 +371,7 @@ function consolidationManager() {
         async rejectPair(abacusId, manualId) {
             const rejectUrlTemplate = '{{ url_for("abacus_consolidation.reject_merge", abacus_id=0, manual_id=0) }}';
             try {
-                const response = await fetch(rejectUrlTemplate.replace('/0/0', '/' + abacusId + '/' + manualId), {
-                    method: 'POST',
-                    headers: {'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''}
-                });
-
-                if (!response.ok) {
-                    this.showStatus('Failed to mark as not a duplicate (HTTP ' + response.status + ')', 'error');
-                    return;
-                }
+                await Platform.fetch.post(rejectUrlTemplate.replace('/0/0', '/' + abacusId + '/' + manualId), null, { silent: true });
 
                 this.duplicates = this.duplicates.filter(
                     d => !(d.abacus_id === abacusId && d.manual_id === manualId)

@@ -30,7 +30,7 @@
                 <select name="industry" class="ml-2 rounded-lg border-2 border-input px-3 py-1.5 text-sm" aria-label="Industry">
                     <option value="">All Industries</option>
                     {% for fw in frameworks %}
-                    <option value="{{ fw.industry_code }}" {% if selected_industry == fw.industry_code %}selected{% endif %}>
+                    <option value="{{ fw.industry_code }}" {% if selected_industry|default('')|string == fw.industry_code|string %}selected{% endif %}>
                         {{ fw.industry_name }}
                     </option>
                     {% endfor %}
@@ -117,20 +117,15 @@
 <script>
 async function acceptRecommendation(id) {
     try {
-        const response = await fetch(`/api/vendors/recommendations`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': '{{ csrf_token() }}'
-            }
-        });
-        const data = await response.json();
+        // Platform.fetch.post automatically injects CSRF token and serializes body to JSON
+        const data = await Platform.fetch.post(`/api/vendors/recommendations`, null, { silent: true });
         if (data.success) {
             location.reload();
         } else {
             Platform.toast.error('Error: ' + data.error);
         }
     } catch (error) {
+        // Platform.fetch throws on non-ok responses, surface the error to user
         Platform.toast.error('Error: ' + error.message);
     }
 }
@@ -142,21 +137,15 @@ async function rejectRecommendation(id) {
     if (!reason) return;
 
     try {
-        const response = await fetch(`/api/vendors/recommendations`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': '{{ csrf_token() }}'
-            },
-            body: JSON.stringify({ reason })
-        });
-        const data = await response.json();
+        // Platform.fetch.post automatically injects CSRF token and serializes plain object body to JSON
+        const data = await Platform.fetch.post(`/api/vendors/recommendations`, { reason }, { silent: true });
         if (data.success) {
             location.reload();
         } else {
             Platform.toast.error('Error: ' + data.error);
         }
     } catch (error) {
+        // Platform.fetch throws on non-ok responses, surface the error to user
         Platform.toast.error('Error: ' + error.message);
     }
 }

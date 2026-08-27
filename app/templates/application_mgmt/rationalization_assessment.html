@@ -323,7 +323,7 @@
       <div class="bg-card border rounded-lg p-6">
         <h2 class="text-xl font-semibold mb-4 flex items-center gap-2">
           <i data-lucide="git-branch" class="h-5 w-5 text-primary" aria-hidden="true"></i>
-          Dependencies & Duplication
+          Dependencies &amp; Duplication
         </h2>
         <div class="space-y-6">
           <div class="question-card border rounded-lg p-4 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
@@ -374,7 +374,7 @@
       <div class="bg-card border rounded-lg p-6">
         <h2 class="text-xl font-semibold mb-4 flex items-center gap-2">
           <i data-lucide="check-circle" class="h-5 w-5 text-success" aria-hidden="true"></i>
-          Review & Submit
+          Review &amp; Submit
         </h2>
         <div id="review-summary" class="space-y-4">
           <p class="text-muted-foreground">Review your answers before submitting.</p>
@@ -521,8 +521,8 @@ document.getElementById('application-select').addEventListener('change', async (
     return;
   }
   try {
-    const res = await fetch(`/dashboard/api/rationalization/calculate/${appId}`, { method: 'POST', headers: {'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''} });
-    const data = await res.json();
+    const data = await Platform.fetch.post(`/dashboard/api/rationalization/calculate/${appId}`, null, { silent: true });
+    // Platform.fetch returns parsed data directly; success structure is same
     if (data.success) {
       document.getElementById('current-score').textContent = data.data.overall_score || 'N/A';
       document.getElementById('current-action').textContent = data.data.time_action || 'N/A';
@@ -553,12 +553,8 @@ document.getElementById('assessment-form').addEventListener('submit', async (e) 
   data.application_id = appId;
 
   try {
-    const res = await fetch('/dashboard/api/rationalization/assessment', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data)
-    });
-    const result = await res.json();
+    const result = await Platform.fetch.post('/dashboard/api/rationalization/assessment', data, { silent: true });
+    // Platform.fetch returns parsed result directly
     if (result.success) {
       Platform.toast.info('Assessment submitted successfully!');
       window.location.href = '{{ url_for("dashboard_pages.rationalization_dashboard") }}';

@@ -432,8 +432,7 @@ function batchImportDashboard() {
             if (!silent) this.loading = true;
 
             try {
-                const response = await fetch('/api/batch-import/jobs');
-                const data = await response.json();
+                const data = await Platform.fetch.get('/api/batch-import/jobs', null, { silent: true });
 
                 if (data.success) {
                     this.jobs = data.jobs;
@@ -456,11 +455,7 @@ function batchImportDashboard() {
 
         async startJob(jobId) {
             try {
-                const response = await fetch(`/api/batch-import/jobs/${jobId}/start`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
-                });
-                const data = await response.json();
+                const data = await Platform.fetch.post(`/api/batch-import/jobs/${jobId}/start`, null, { silent: true });
 
                 if (data.success) {
                     this.showToast('Job started successfully', 'success');
@@ -475,11 +470,7 @@ function batchImportDashboard() {
 
         async pauseJob(jobId) {
             try {
-                const response = await fetch(`/api/batch-import/jobs/${jobId}/pause`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
-                });
-                const data = await response.json();
+                const data = await Platform.fetch.post(`/api/batch-import/jobs/${jobId}/pause`, null, { silent: true });
 
                 if (data.success) {
                     this.showToast('Job paused', 'success');
@@ -494,11 +485,7 @@ function batchImportDashboard() {
 
         async resumeJob(jobId) {
             try {
-                const response = await fetch(`/api/batch-import/jobs/${jobId}/resume`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
-                });
-                const data = await response.json();
+                const data = await Platform.fetch.post(`/api/batch-import/jobs/${jobId}/resume`, null, { silent: true });
 
                 if (data.success) {
                     this.showToast('Job resumed', 'success');
@@ -518,11 +505,7 @@ function batchImportDashboard() {
 
         async cancelJob(jobId) {
             try {
-                const response = await fetch(`/api/batch-import/jobs/${jobId}/cancel`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
-                });
-                const data = await response.json();
+                const data = await Platform.fetch.post(`/api/batch-import/jobs/${jobId}/cancel`, null, { silent: true });
 
                 if (data.success) {
                     this.showToast('Job cancelled', 'success');

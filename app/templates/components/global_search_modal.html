@@ -47,26 +47,33 @@
             
             this.loading = true;
             try {
-                const response = await fetch(`/api/sidebar/search?q=${encodeURIComponent(this.query)}`);
-                if (!response.ok) throw new Error('Search failed (HTTP ' + response.status + ')');
-                const data = await response.json();
+                // Use Platform.fetch.get for automatic CSRF, JSON parsing, and error handling
+                // silent:true prevents duplicate toast because we show inline error state
+                const data = await Platform.fetch.get('/api/sidebar/search', 
+                    { q: this.query },
+                    { silent: true }
+                );
                 this.results = data.results || [];
                 this.selectedIndex = 0;
                 this.searchError = null;
             } catch (error) {
                 // A search that never ran must not read as "No results found".
+                // Platform.fetch throws on network errors and non-ok responses
                 this.results = [];
-                this.searchError = error.message || 'Search failed';
+                // Ensure error.message exists to avoid TypeError if error is null/undefined
+                this.searchError = (error && error.message) || 'Search failed';
             } finally {
                 this.loading = false;
             }
         },
         
         navigateDown() {
+            if (this.results.length === 0) return;
             this.selectedIndex = Math.min(this.selectedIndex + 1, this.results.length - 1);
         },
         
         navigateUp() {
+            if (this.results.length === 0) return;
             this.selectedIndex = Math.max(this.selectedIndex - 1, 0);
         },
         
@@ -100,8 +107,7 @@
         x-transition:leave-end="opacity-0"
         @click="open = false"
         class="modal-backdrop fixed inset-0 bg-background/80 transition-opacity duration-200"
-        style="display: none; z-index: var(--modal-z, 1000);"
-        :style="{ display: open ? 'block' : 'none' }"
+        style="z-index: var(--modal-z, 1000);"
     ></div>
     
     <!-- Modal -->
@@ -117,8 +123,7 @@
         aria-modal="true"
         aria-label="Global search"
         class="modal-panel fixed top-[15vh] left-1/2 -translate-x-1/2 w-full max-w-2xl px-4"
-        style="display: none; z-index: calc(var(--modal-z, 1000) + 1);"
-        :style="{ display: open ? 'block' : 'none' }"
+        style="z-index: calc(var(--modal-z, 1000) + 1);"
     >
         <div class="cmd-palette overflow-hidden">
             <!-- Search Input -->

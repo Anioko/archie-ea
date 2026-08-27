@@ -483,22 +483,19 @@ function investmentSuggestionsPanel() {
         async generate() {
             this.loading = true;
             this.error = null;
-            const csrf = document.querySelector('meta[name=csrf-token]')?.content || '';
             try {
-                const r = await fetch('/architecture/api/investment-priorities/ai-suggest', {
+                const d = await Platform.fetch('/architecture/api/investment-priorities/ai-suggest', {
                     method: 'POST',
-                    headers: {'X-CSRFToken': csrf, 'Content-Type': 'application/json'}
+                    headers: { 'Content-Type': 'application/json' },
+                    silent: true
                 });
-                if (!r.ok) {
-                    const d = await r.json().catch(() => ({}));
-                    throw new Error(d.message || d.error || `AI suggestions failed (HTTP ${r.status})`);
-                }
-                const d = await r.json();
                 this.suggestions = d.suggestions;
                 this.summary = d.summary;
             } catch (e) {
                 this.error = e.message || 'AI priority suggestions failed';
                 if (window.Platform && Platform.toast) Platform.toast.error(this.error);
+                // rethrow to surface failure
+                throw e;
             } finally {
                 this.loading = false;
                 if (window.lucide) lucide.createIcons();

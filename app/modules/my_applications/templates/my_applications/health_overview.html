@@ -77,25 +77,21 @@
                     <div class="font-medium">{{ item.name }}</div>
                     <button type="button"
                             @click="
-                                loading['{{ item.id }}'] = true;
-                                error['{{ item.id }}'] = null;
-                                fetch('{{ url_for('my_applications.ai_health_assessment', app_id=item.id) }}', {
-                                    method: 'POST',
-                                    headers: { 'X-CSRFToken': '{{ csrf_token() }}' },
-                                }).then(resp => {
-                                    if (!resp.ok) throw resp;
-                                    return resp.json();
-                                }).then(data => {
-                                    result['{{ item.id }}'] = data.assessment;
-                                    open['{{ item.id }}'] = true;
-                                }).catch(err => {
-                                    if (err && err.json) {
-                                        err.json().then(body => { error['{{ item.id }}'] = body.message || body.error || 'AI health assessment failed.'; });
-                                    } else {
-                                        error['{{ item.id }}'] = 'AI health assessment failed.';
+                                (async () => {
+                                    loading['{{ item.id }}'] = true;
+                                    error['{{ item.id }}'] = null;
+                                    try {
+                                        const data = await Platform.fetch.post('{{ url_for('my_applications.ai_health_assessment', app_id=item.id) }}', null, { silent: true });
+                                        result['{{ item.id }}'] = data.assessment;
+                                        open['{{ item.id }}'] = true;
+                                    } catch (err) {
+                                        const body = err.data;
+                                        error['{{ item.id }}'] = (body && (body.message || body.error)) || err.message || 'AI health assessment failed.';
+                                        open['{{ item.id }}'] = true;
+                                    } finally {
+                                        loading['{{ item.id }}'] = false;
                                     }
-                                    open['{{ item.id }}'] = true;
-                                }).finally(() => { loading['{{ item.id }}'] = false; });
+                                })()
                             "
                             :disabled="loading['{{ item.id }}']"
                             :class="{ 'opacity-50': loading['{{ item.id }}'] }"

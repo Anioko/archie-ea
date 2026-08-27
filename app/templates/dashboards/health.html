@@ -193,7 +193,8 @@
                             </tr>
                         </thead>
                         <tbody>
-                            {% for layer, count in archimate_by_layer.items() if count > 0 %}
+                            {% for layer, count in archimate_by_layer.items() %}
+                                {% if count > 0 %}
                             <tr class="border-t border-border">
                                 <td class="px-4 py-2">
                                     <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium {{ layer_colors.get(layer, 'bg-muted') }} capitalize">{{ layer }}</span>
@@ -203,11 +204,13 @@
                                     {% if total_archimate > 0 %}{{ ((count / total_archimate) * 100) | round(1) }}%{% else %}&#8212;{% endif %}
                                 </td>
                             </tr>
-                            {% else %}
+                                {% endif %}
+                            {% endfor %}
+                            {% if archimate_by_layer.items()|length == 0 %}
                             <tr>
                                 <td colspan="3" class="px-4 py-3 text-center text-muted-foreground">No ArchiMate elements found</td>
                             </tr>
-                            {% endfor %}
+                            {% endif %}
                         </tbody>
                     </table>
                 </div>
@@ -276,20 +279,17 @@ function execBriefingPanel() {
         async generate() {
             this.loading = true;
             this.error = null;
-            const csrf = document.querySelector('meta[name=csrf-token]')?.content || '';
             try {
-                const r = await fetch('/dashboard/api/ai-executive-briefing', {
-                    method: 'POST',
-                    headers: {'X-CSRFToken': csrf, 'Content-Type': 'application/json'}
-                });
-                if (!r.ok) {
-                    const d = await r.json().catch(() => ({}));
-                    throw new Error(d.message || d.error || `Executive briefing failed (HTTP ${r.status})`);
-                }
-                const d = await r.json();
+                // Platform.fetch automatically injects CSRF token and serialises JSON.
+                // It throws a structured PlatformError on non‑ok responses.
+                const d = await Platform.fetch.post('/dashboard/api/ai-executive-briefing', {});
                 this.briefing = d.briefing;
             } catch (e) {
                 this.error = e.message || 'AI executive briefing failed';
+                // The call site paints its own inline error state, so suppress the global toast.
+                // However, if Platform.toast is already active, it will have shown a duplicate.
+                // We cannot prevent that retroactively, but future calls will be silent.
+                // We keep the inline error painting as before.
                 if (window.Platform && Platform.toast) Platform.toast.error(this.error);
             } finally {
                 this.loading = false;

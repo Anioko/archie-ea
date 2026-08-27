@@ -177,36 +177,36 @@ let timeChart = null;
 async function loadScorecardData() {
   try {
     // Load portfolio scores
-    const portfolioRes = await fetch('/dashboard/api/rationalization/portfolio', { method: 'POST', headers: {'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''} });
-    const portfolioData = await portfolioRes.json();
-
+    const portfolioData = await Platform.fetch.post('/dashboard/api/rationalization/portfolio', null, { silent: true });
+    // Platform.fetch returns the parsed response body directly; success flag is inside the data
     if (portfolioData.success) {
       updateMetrics(portfolioData.data);
       updateTimeChart(portfolioData.data.time_distribution);
     }
 
     // Load cost tiers
-    const tiersRes = await fetch('/dashboard/api/tco/cost-tiers');
-    const tiersData = await tiersRes.json();
+    const tiersData = await Platform.fetch.get('/dashboard/api/tco/cost-tiers', null, { silent: true });
     if (tiersData.success) {
       renderCostTiers(tiersData.data);
     }
 
     // Load elimination candidates
-    const candidatesRes = await fetch('/dashboard/api/rationalization/elimination-candidates?limit=10');
-    const candidatesData = await candidatesRes.json();
+    const candidatesData = await Platform.fetch.get('/dashboard/api/rationalization/elimination-candidates', { limit: 10 }, { silent: true });
     if (candidatesData.success) {
       renderCandidates(candidatesData.data);
     }
 
     // Load scoring configurations
-    const configsRes = await fetch('/dashboard/api/scoring-configurations');
-    const configsData = await configsRes.json();
+    const configsData = await Platform.fetch.get('/dashboard/api/scoring-configurations', null, { silent: true });
     if (configsData.success) {
       populateConfigSelector(configsData.data);
     }
   } catch (err) {
-    if (window.Platform && Platform.toast) Platform.toast.error('Could not load scorecard data.');
+    // Platform.fetch already shows a user-visible toast unless silent:true, but we still need to handle
+    // any other errors (e.g., network errors) that may have been thrown.
+    // The existing inline error state is painted by the catch block; we keep silent:true to avoid duplicate toast.
+    // Do not swallow the error; rethrow so the caller can handle it.
+    throw err;
   }
 }
 

@@ -104,8 +104,8 @@ ArchiMate 3.2 Compatible with 5-year timeline support
                 <option value="supply-chain">Supply Chain Management</option>
                 <option value="human-resources">Human Resources</option>
                 <option value="operations">Operations Management</option>
-                <option value="analytics">Analytics & Intelligence</option>
-                <option value="risk-compliance">Risk & Compliance</option>
+                <option value="analytics">Analytics &amp; Intelligence</option>
+                <option value="risk-compliance">Risk &amp; Compliance</option>
                 <option value="digital-platform">Digital Platform</option>
             </select>
             
@@ -306,7 +306,7 @@ ArchiMate 3.2 Compatible with 5-year timeline support
     </div>
 
     <!-- Add/Edit Work Package Modal -->
-    <div x-show="showAddModal" x-cloak  <!-- modal-a11y-ok -->
+    <div x-show="showAddModal" x-cloak
          x-transition:enter="transition ease-out duration-300"
          x-transition:enter-start="opacity-0"
          x-transition:enter-end="opacity-100"
@@ -353,8 +353,8 @@ ArchiMate 3.2 Compatible with 5-year timeline support
                             <option value="supply-chain">Supply Chain Management</option>
                             <option value="human-resources">Human Resources</option>
                             <option value="operations">Operations Management</option>
-                            <option value="analytics">Analytics & Intelligence</option>
-                            <option value="risk-compliance">Risk & Compliance</option>
+                            <option value="analytics">Analytics &amp; Intelligence</option>
+                            <option value="risk-compliance">Risk &amp; Compliance</option>
                             <option value="digital-platform">Digital Platform</option>
                         </select>
                     </div>
@@ -445,7 +445,7 @@ function ganttChartManager() {
             this.updateStats();
         },
         
-        loadWorkPackages() {
+        async loadWorkPackages() {
             // The catch below used to render five invented work packages (~$855k of
             // fabricated budget, dated relative to today so they never looked stale).
             // That fallback is gone; failures are now surfaced.
@@ -454,21 +454,17 @@ function ganttChartManager() {
             // (target_date/percent_complete vs end_date/progress_percentage, and no
             // assigned_to/business_capability/layer/milestones), so bars drew with
             // undefined dates. This endpoint serves the contract below.
-            fetch('/enterprise/api/work-packages/gantt')
-                .then(response => {
-                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-                    return response.json();
-                })
-                .then(data => {
-                    this.workPackages = data.work_packages || [];
-                    this.filteredWorkPackages = [...this.workPackages];
-                    this.loadError = null;
-                })
-                .catch(error => {
-                    this.workPackages = [];
-                    this.filteredWorkPackages = [];
-                    this.loadError = 'Work packages could not be loaded: ' + error.message;
-                });
+            try {
+                // Platform.fetch throws on non-ok responses, returns parsed JSON directly
+                const data = await Platform.fetch('/enterprise/api/work-packages/gantt', { silent: true });
+                this.workPackages = data.work_packages || [];
+                this.filteredWorkPackages = [...this.workPackages];
+                this.loadError = null;
+            } catch (error) {
+                this.workPackages = [];
+                this.filteredWorkPackages = [];
+                this.loadError = 'Work packages could not be loaded: ' + error.message;
+            }
         },
         
         generateTimeline() {

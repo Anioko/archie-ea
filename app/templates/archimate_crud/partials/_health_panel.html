@@ -1,15 +1,18 @@
 <!-- Health panel content — loaded inside slide-out -->
-<div class="p-4 space-y-4" x-data="{ health: null, loading: true }" x-init="
-    fetch('/architecture/api/health-scorecard', {headers: {'X-Requested-With': 'XMLHttpRequest'}})
-        .then(r => r.json())
+<div class="p-4 space-y-4" x-data="{ health: null, loading: true, error: null }" x-init="
+    Platform.fetch.get('/architecture/api/health-scorecard', null, { silent: true, headers: {'X-Requested-With': 'XMLHttpRequest'} })
         .then(d => { health = d; loading = false; })
-        .catch(() => { loading = false; })
+        .catch(err => { loading = false; error = err; })
 ">
     <div x-show="loading" class="flex items-center justify-center py-12">
         <svg class="h-5 w-5 animate-spin text-muted-foreground" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
             <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
         </svg>
+    </div>
+    <div x-show="error" class="text-center py-12 text-destructive">
+        <p class="font-medium">Failed to load health data</p>
+        <p class="text-sm text-muted-foreground mt-1" x-text="error.message"></p>
     </div>
     <template x-if="health && !loading">
         <div class="space-y-4">

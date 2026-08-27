@@ -27,9 +27,10 @@
 
          async loadSprints() {
              try {
-                 const r = await fetch('/api/sprints?board_id=0', { headers: { 'Accept': 'application/json' } });
-                 if (!r.ok) { this.sprints = []; return; }
-                 this.sprints = await r.json();
+                 this.sprints = await Platform.fetch.get('/api/sprints?board_id=0', null, {
+                     headers: { 'Accept': 'application/json' },
+                     silent: true,
+                 });
              } catch (e) {
                  this.sprints = [];
              }
@@ -40,11 +41,10 @@
              this.loading = true;
              this.error = null;
              try {
-                 const r = await fetch(`/api/sprints/${this.selectedSprintId}/burndown`);
-                 if (!r.ok) { this.burndownData = null; this.loading = false; return; }
-                 this.burndownData = await r.json();
+                 this.burndownData = await Platform.fetch.get(`/api/sprints/${this.selectedSprintId}/burndown`, null, { silent: true });
                  this.$nextTick(() => this.renderBurndown());
              } catch (e) {
+                 this.burndownData = null;
                  this.error = 'Failed to load burndown data.';
              } finally {
                  this.loading = false;
@@ -53,9 +53,7 @@
 
          async loadVelocity() {
              try {
-                 const r = await fetch('/api/sprints/velocity');
-                 if (!r.ok) { this.velocityData = null; return; }
-                 this.velocityData = await r.json();
+                 this.velocityData = await Platform.fetch.get('/api/sprints/velocity', null, { silent: true });
                  this.$nextTick(() => this.renderVelocity());
              } catch (e) {
                  this.velocityData = null;
@@ -156,7 +154,7 @@
      }">
 
     <!-- Page header -->
-    {{ page_shell(title='Sprint Charts', subtitle='Velocity & burndown analytics') }}
+    {{ page_shell(title='Sprint Charts', subtitle='Velocity &amp; burndown analytics') }}
 
     <!-- Burndown chart -->
     <section aria-labelledby="burndown-heading">

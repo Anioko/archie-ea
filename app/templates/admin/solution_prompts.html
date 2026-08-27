@@ -239,20 +239,17 @@ document.addEventListener('alpine:init', function() {
                 this.loading = true;
                 this.errorMsg = '';
                 try {
-                    let resp = await fetch('/admin/solution-prompts/data');
-                    if (!resp.ok) {
-                        if (resp.status === 403) {
-                            this.errorMsg = 'Access denied. Admin privileges required.';
-                            return;
-                        }
-                        throw new Error('Failed to load prompts');
-                    }
-                    let data = await resp.json();
+                    let data = await Platform.fetch('/admin/solution-prompts/data');
                     this.prompts = data.prompts || [];
                     this.$nextTick(function() {
                         if (typeof lucide !== 'undefined') lucide.createIcons();
                     });
                 } catch (err) {
+                    // Platform.fetch throws on non-ok responses; we need to handle 403 specially
+                    if (err.status === 403) {
+                        this.errorMsg = 'Access denied. Admin privileges required.';
+                        return;
+                    }
                     this.errorMsg = err.message || 'Failed to load prompt data';
                 } finally {
                     this.loading = false;
@@ -300,6 +297,8 @@ document.addEventListener('alpine:init', function() {
                 });
             },
 
+            // CSRF token is automatically handled by Platform.fetch; no need for manual extraction
+            // This method is kept for compatibility but not used in migrated code
             _csrfToken: function() {
                 const el = document.querySelector('meta[name=csrf-token]');
                 return el ? el.content : '';
@@ -315,21 +314,11 @@ document.addEventListener('alpine:init', function() {
                 }
 
                 try {
-                    let resp = await fetch('/admin/solution-prompts/' + this.editKey + '/update', {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/json', 'X-CSRFToken': this._csrfToken()},
-                        body: JSON.stringify({ prompt_text: promptText })
-                    });
-                    let text = await resp.text();
-                    let data;
-                    try { data = JSON.parse(text); } catch(e) {
-                        this.errorMsg = 'Server returned invalid response. Please refresh the page and try again.';
-                        return;
-                    }
-                    if (!resp.ok) {
-                        this.errorMsg = data.error || 'Failed to save changes';
-                        return;
-                    }
+                    // Platform.fetch automatically serializes plain objects to JSON and adds CSRF token
+                    let data = await Platform.fetch.post('/admin/solution-prompts/' + this.editKey + '/update', 
+                        { prompt_text: promptText },
+                        { silent: true }  // We show our own success/error messages inline
+                    );
                     let idx = this.prompts.findIndex(function(p) { return p.key === data.prompt.key; });
                     if (idx >= 0) this.prompts[idx] = data.prompt;
                     Platform.modal.close('edit-prompt-modal');
@@ -337,7 +326,10 @@ document.addEventListener('alpine:init', function() {
                     let self = this;
                     setTimeout(function() { self.successMsg = ''; }, 5000);
                 } catch (err) {
-                    this.errorMsg = err.message || 'Network error saving prompt';
+                    // Platform.fetch throws on non-ok responses; we need to extract error details
+                    // The error object may have a .data property with server-provided error info
+                    const serverError = err.data && (err.data.error || err.data.message);
+                    this.errorMsg = serverError || err.message || 'Network error saving prompt';
                 }
             },
 
@@ -353,20 +345,11 @@ document.addEventListener('alpine:init', function() {
 
             async confirmReset() {
                 try {
-                    let resp = await fetch('/admin/solution-prompts/' + this.resetKey + '/reset', {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/json', 'X-CSRFToken': this._csrfToken()}
-                    });
-                    let text = await resp.text();
-                    let data;
-                    try { data = JSON.parse(text); } catch(e) {
-                        this.errorMsg = 'Server returned invalid response. Please refresh the page and try again.';
-                        return;
-                    }
-                    if (!resp.ok) {
-                        this.errorMsg = data.error || 'Failed to reset prompt';
-                        return;
-                    }
+                    // Platform.fetch automatically adds CSRF token and serializes body (none in this case)
+                    let data = await Platform.fetch.post('/admin/solution-prompts/' + this.resetKey + '/reset', 
+                        null,
+                        { silent: true }  // We show our own success/error messages inline
+                    );
                     let idx = this.prompts.findIndex(function(p) { return p.key === data.prompt.key; });
                     if (idx >= 0) this.prompts[idx] = data.prompt;
                     Platform.modal.close('reset-prompt-modal');
@@ -374,7 +357,9 @@ document.addEventListener('alpine:init', function() {
                     let self = this;
                     setTimeout(function() { self.successMsg = ''; }, 5000);
                 } catch (err) {
-                    this.errorMsg = err.message || 'Network error resetting prompt';
+                    // Platform.fetch throws on non-ok responses; extract server error details
+                    const serverError = err.data && (err.data.error || err.data.message);
+                    this.errorMsg = serverError || err.message || 'Network error resetting prompt';
                 }
             }
         };

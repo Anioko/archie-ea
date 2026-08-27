@@ -288,9 +288,12 @@ function governanceDashboard() {
         // `if (response.ok)` alone silently left every metric at its 0 initialiser,
         // so the page reported "Compliance Rate 0%" when it had simply never loaded.
         async fetchJson(url) {
-            const response = await fetch(url);
-            if (!response.ok) throw new Error(`${url} returned HTTP ${response.status}`);
-            return await response.json();
+            try {
+                return await Platform.fetch(url, { silent: true });
+            } catch (error) {
+                // Re-throw with the same message format as before
+                throw new Error(`${url} returned HTTP ${error.status || 'unknown'}`);
+            }
         },
 
         async loadMetrics() {

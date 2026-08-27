@@ -55,13 +55,7 @@
                 this.loading = true;
                 this.error = null;
                 try {
-                    const resp = await fetch('{{ url_for('procurement.spend_ai_recommendations') }}', {
-                        method: 'POST',
-                        headers: { 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || '' }
-                    });
-                    const body = await resp.json();
-                    if (!resp.ok) throw new Error(body.message || body.error || ('Request failed (' + resp.status + ')'));
-                    this.result = body;
+                    this.result = await Platform.fetch.post('{{ url_for('procurement.spend_ai_recommendations') }}', null, { silent: true });
                 } catch (e) {
                     this.error = e.message || 'AI spend recommendations failed - check your connection and try again.';
                 } finally {
@@ -138,7 +132,7 @@
                     </div>
                     <div class="flex items-center gap-2">
                         <div class="flex-1 h-2 bg-muted rounded-full overflow-hidden">
-                            {% set pct = (data.annual_cost / summary.total_annual_cost * 100) if summary.total_annual_cost > 0 else 0 %}
+                            {% set pct = (data.annual_cost|default(0) / summary.total_annual_cost|default(0) * 100) if summary.total_annual_cost|default(0) > 0 else 0 %}
                             <div class="h-full bg-primary rounded-full" style="width: {{ pct }}%"></div>
                         </div>
                         <span class="text-xs text-muted-foreground w-12 text-right">{{ "{:.1f}".format(pct) }}%</span>

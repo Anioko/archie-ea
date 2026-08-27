@@ -119,12 +119,15 @@
                         this.loading = true;
                         this.error = null;
                         try {
-                            const resp = await fetch('{{ url_for('procurement.compliance_ai_remediation', license_id=license.id) }}', {
-                                method: 'POST',
-                                headers: { 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || '' }
-                            });
-                            const body = await resp.json();
-                            if (!resp.ok) throw new Error(body.message || body.error || ('Request failed (' + resp.status + ')'));
+                            // silent: this card paints its own inline error below, so
+                            // the wrapper's toast would be a duplicate. CSRF is
+                            // injected for us, and a non-2xx throws rather than
+                            // returning a body that could be read as a result.
+                            const body = await Platform.fetch.post(
+                                '{{ url_for('procurement.compliance_ai_remediation', license_id=license.id) }}',
+                                undefined,
+                                { silent: true }
+                            );
                             this.remediation = body.remediation;
                         } catch (e) {
                             this.error = e.message || 'AI remediation failed - check your connection and try again.';

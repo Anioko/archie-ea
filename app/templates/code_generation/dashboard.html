@@ -83,13 +83,7 @@ function loadContext(mode, contextId) {
         ? `{{ url_for("code_generation.get_application_context", app_id=0) }}`.replace('/0', `/${contextId}`)
         : `{{ url_for("code_generation.get_architecture_context", view_id=0) }}`.replace('/0', `/${contextId}`);
 
-    fetch(endpoint)
-        .then(response => {
-            // fetch does not reject on 4xx/5xx — without this the failure would
-            // fall through to `data.success` being undefined and render nothing.
-            if (!response.ok) throw new Error('context request failed: ' + response.status);
-            return response.json();
-        })
+    Platform.fetch(endpoint, { silent: true })
         .then(data => {
             if (!data.success) throw new Error(data.error || 'context unavailable');
             displayContext(data, mode);
@@ -101,11 +95,7 @@ function loadContext(mode, contextId) {
 }
 
 function loadTemplates() {
-    fetch('{{ url_for("code_generation.list_templates") }}')
-        .then(response => {
-            if (!response.ok) throw new Error('templates request failed: ' + response.status);
-            return response.json();
-        })
+    Platform.fetch('{{ url_for("code_generation.list_templates") }}', { silent: true })
         .then(data => {
             if (!data.success) throw new Error(data.error || 'templates unavailable');
             displayTemplates(data.templates);
@@ -218,29 +208,22 @@ function generateCode() {
     };
 
     // Generate code
-    fetch('{{ url_for("code_generation.generate_code") }}', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(requestData)
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            displayResults(data.artifacts);
-            showNotification(`Generated ${data.artifacts.length} code artifacts`, 'success');
-        } else {
-            showNotification(data.error || 'Generation failed', 'error');
-        }
-    })
-    .catch(error => {
-        showNotification('Generation failed: ' + error.message, 'error');
-    })
-    .finally(() => {
-        generateBtn.disabled = false;
-        generateBtn.textContent = originalText;
-    });
+    Platform.fetch.post('{{ url_for("code_generation.generate_code") }}', requestData, { silent: true })
+        .then(data => {
+            if (data.success) {
+                displayResults(data.artifacts);
+                showNotification(`Generated ${data.artifacts.length} code artifacts`, 'success');
+            } else {
+                showNotification(data.error || 'Generation failed', 'error');
+            }
+        })
+        .catch(error => {
+            showNotification('Generation failed: ' + error.message, 'error');
+        })
+        .finally(() => {
+            generateBtn.disabled = false;
+            generateBtn.textContent = originalText;
+        });
 }
 
 function displayResults(artifacts) {

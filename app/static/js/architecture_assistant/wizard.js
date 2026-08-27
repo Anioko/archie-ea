@@ -1136,9 +1136,8 @@ function architectureWizard() {
         height: 400,
       });
 
-      // raw-fetch-ok: need to inspect raw response for status before parsing JSON
-      fetch('/solutions/' + this.solutionId + '/archimate-elements', { credentials: 'same-origin' })
-        .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      // Use Platform.fetch which throws on non-ok responses and parses JSON automatically
+      Platform.fetch.get('/solutions/' + this.solutionId + '/archimate-elements', null, { silent: true })
         .then(function(data) {
           let allElements = [];
           let layers = data.elements_by_layer || {};

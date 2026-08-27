@@ -85,7 +85,7 @@
                     {{ element.status }}
                 </span>
                 {% endif %}
-                {% if relationships|length > 0 %}
+                {% if relationships and relationships|length > 0 %}
                 <span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold bg-muted text-foreground border-border">
                     <i data-lucide="git-merge" class="h-3 w-3 mr-1" aria-hidden="true"></i>{{ relationships|length }} relationship{{ 's' if relationships|length != 1 else '' }}
                 </span>
@@ -298,11 +298,14 @@ document.addEventListener('alpine:init', () => {
         async deleteElement() {
             if (!(await Platform.modal.confirm('Delete "' + {{ elem_name | tojson }} + '"? This cannot be undone.'))) return;
             try {
-                const resp = await fetch(
+                const data = await Platform.fetch(
                     '{{ url_for("archimate_crud.delete_element", layer=layer, element_type=element_type, element_id=element.id) }}',
-                    { method: 'POST', headers: { 'Content-Type': 'application/json' } }
+                    { 
+                        method: 'POST', 
+                        headers: { 'Content-Type': 'application/json' },
+                        silent: true 
+                    }
                 );
-                const data = await resp.json();
                 if (data.success) {
                     window.location.href = '{{ url_for("archimate_crud.list_elements", layer=layer, element_type=element_type) }}';
                 } else {

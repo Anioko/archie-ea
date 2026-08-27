@@ -149,16 +149,10 @@ function sprintAnalytics(sprintId) {
             this.loading = true;
             this.error = null;
             try {
-                const r = await fetch(`/api/sprints/${this.sprintId}/analytics`, {
-                    credentials: 'same-origin',
+                this.analytics = await Platform.fetch(`/api/sprints/${this.sprintId}/analytics`, {
                     headers: { 'Accept': 'application/json' },
+                    silent: true, // because we handle errors inline
                 });
-                if (!r.ok) {
-                    this.error = `Failed to load analytics (HTTP ${r.status})`;
-                    this.loading = false;
-                    return;
-                }
-                this.analytics = await r.json();
                 this.$nextTick(() => {
                     this.renderThroughputChart();
                     this.renderCycleTimeChart();
@@ -166,7 +160,12 @@ function sprintAnalytics(sprintId) {
                     lucide.createIcons();
                 });
             } catch (e) {
-                this.error = 'Network error: ' + e.message;
+                // Platform.fetch throws on non-ok responses and network errors
+                if (e.status) {
+                    this.error = `Failed to load analytics (HTTP ${e.status})`;
+                } else {
+                    this.error = 'Network error: ' + e.message;
+                }
             } finally {
                 this.loading = false;
             }

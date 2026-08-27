@@ -67,11 +67,11 @@
             <label class="text-sm text-muted-foreground">Show contracts expiring within:</label>
             <select name="days" onchange="this.form.submit()"
                     class="px-3 py-2 rounded-md border border-input bg-background text-sm" aria-label="Days">
-                <option value="30" {{ 'selected' if days_filter == 30 }}>30 days</option>
-                <option value="60" {{ 'selected' if days_filter == 60 }}>60 days</option>
-                <option value="90" {{ 'selected' if days_filter == 90 }}>90 days</option>
-                <option value="180" {{ 'selected' if days_filter == 180 }}>180 days</option>
-                <option value="365" {{ 'selected' if days_filter == 365 }}>1 year</option>
+                <option value="30" {% if days_filter|int == 30 %}selected{% endif %}>30 days</option>
+                <option value="60" {% if days_filter|int == 60 %}selected{% endif %}>60 days</option>
+                <option value="90" {% if days_filter|int == 90 %}selected{% endif %}>90 days</option>
+                <option value="180" {% if days_filter|int == 180 %}selected{% endif %}>180 days</option>
+                <option value="365" {% if days_filter|int == 365 %}selected{% endif %}>1 year</option>
             </select>
         </form>
     </div>
@@ -94,12 +94,10 @@
                     this.loading = true;
                     this.error = null;
                     try {
-                        const resp = await fetch('{{ url_for('procurement.contract_ai_renewal_brief', contract_id=item.contract.id) }}', {
+                        const body = await Platform.fetch('{{ url_for('procurement.contract_ai_renewal_brief', contract_id=item.contract.id) }}', {
                             method: 'POST',
-                            headers: { 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || '' }
+                            silent: true
                         });
-                        const body = await resp.json();
-                        if (!resp.ok) throw new Error(body.message || body.error || ('Request failed (' + resp.status + ')'));
                         this.brief = body.brief;
                     } catch (e) {
                         this.error = e.message || 'AI renewal brief failed - check your connection and try again.';

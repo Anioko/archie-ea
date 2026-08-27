@@ -362,10 +362,7 @@
             async loadGates() {
                 this.loading = true;
                 try {
-                    const resp = await fetch('/admin/api/governance-gates', {
-                        headers: { 'X-CSRFToken': CSRF },
-                    });
-                    const data = await resp.json();
+                    const data = await Platform.fetch('/admin/api/governance-gates', { silent: true });
                     if (data.success) {
                         this.dbGates = data.gates;
                     } else {
@@ -433,17 +430,13 @@
                     const url = this.editingGate
                         ? '/admin/api/governance-gates/' + this.editingGate.id
                         : '/admin/api/governance-gates';
-                    const method = this.editingGate ? 'PUT' : 'POST';
-
-                    const resp = await fetch(url, {
-                        method,
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-CSRFToken': CSRF,
-                        },
-                        body: JSON.stringify(payload),
-                    });
-                    const data = await resp.json();
+                    
+                    let data;
+                    if (this.editingGate) {
+                        data = await Platform.fetch.put(url, payload, { silent: true });
+                    } else {
+                        data = await Platform.fetch.post(url, payload, { silent: true });
+                    }
 
                     if (data.success) {
                         this.dismissModal();
@@ -464,15 +457,7 @@
 
             async toggleGate(gate) {
                 try {
-                    const resp = await fetch('/admin/api/governance-gates/' + gate.id, {
-                        method: 'PUT',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-CSRFToken': CSRF,
-                        },
-                        body: JSON.stringify({ enabled: !gate.enabled }),
-                    });
-                    const data = await resp.json();
+                    const data = await Platform.fetch.put('/admin/api/governance-gates/' + gate.id, { enabled: !gate.enabled }, { silent: true });
                     if (data.success) {
                         gate.enabled = data.gate.enabled;
                         this.showMessage(

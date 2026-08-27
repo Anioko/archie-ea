@@ -55,20 +55,13 @@
            this.error = null;
            this.extracted = null;
            try {
-             const resp = await fetch('{{ url_for('procurement.contract_ai_extract') }}', {
-               method: 'POST',
-               headers: {
-                 'Content-Type': 'application/json',
-                 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''
-               },
-               body: JSON.stringify({ text: this.text })
-             });
-             const body = await resp.json();
-             if (!resp.ok) {
-               this.error = body.message || body.error || ('Extraction failed (' + resp.status + ')');
+             try {
+               const body = await Platform.fetch.post('{{ url_for('procurement.contract_ai_extract') }}', { text: this.text });
+               this.extracted = body.extracted;
+             } catch (err) {
+               this.error = err.message || ('Extraction failed (' + (err.status || 'unknown') + ')');
                return;
              }
-             this.extracted = body.extracted;
            } catch (e) {
              this.error = 'Extraction request failed - check your connection and try again.';
            } finally {
@@ -199,7 +192,12 @@
             <option value="">Not specified</option>
             {% for vendor in vendors %}
             <option value="{{ vendor.id }}"
-              {% if (form.get('vendor_id') | int if form.get('vendor_id') else (contract.vendor_id if contract else 0)) == vendor.id %}selected{% endif %}>
+              {% if form and form.get('vendor_id') is not none %}
+                {% set form_val = form.get('vendor_id') | int %}
+                {% if form_val == vendor.id %}selected{% endif %}
+              {% elif contract and contract.vendor_id == vendor.id %}
+                selected
+              {% endif %}>
               {{ vendor.name }}
             </option>
             {% endfor %}
@@ -306,7 +304,11 @@
       </div>
       <div class="flex items-center gap-2">
         <input type="checkbox" id="auto_renewal" name="auto_renewal"
-               {% if (form.get('auto_renewal') if form else None) == 'on' or (contract and contract.auto_renewal and not form) %}checked{% endif %}
+               {% if form and form.get('auto_renewal') == 'on' %}
+                 checked
+               {% elif contract and contract.auto_renewal and not form %}
+                 checked
+               {% endif %}
                class="rounded border-input">
         <label for="auto_renewal" class="text-sm">Renews automatically</label>
       </div>
@@ -325,14 +327,16 @@
               if (this.query.length < 2) { this.results = []; this.showDropdown = false; return; }
               this.searching = true;
               try {
-                  const resp = await fetch('/api/users', { headers: { 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || '' } });
-                  if (!resp.ok) throw new Error('users request failed: ' + resp.status);
-                  const data = await resp.json();
-                  if (data.success) {
-                      const q = this.query.toLowerCase();
-                      this.results = data.users.filter(u => u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q)).slice(0, 5);
-                      this.showDropdown = this.results.length > 0;
-                      this._searchErrorShown = false;
+                  try {
+                    const data = await Platform.fetch.get('/api/users');
+                    if (data.success) {
+                        const q = this.query.toLowerCase();
+                        this.results = data.users.filter(u => u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q)).slice(0, 5);
+                        this.showDropdown = this.results.length > 0;
+                        this._searchErrorShown = false;
+                    }
+                  } catch (err) {
+                    throw new Error('users request failed: ' + (err.status || 'unknown'));
                   }
               } catch (e) {
                   if (!this._searchErrorShown) {

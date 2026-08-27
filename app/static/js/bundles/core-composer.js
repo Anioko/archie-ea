@@ -635,7 +635,7 @@
         try {
             let response;
             try {
-                response = await global.fetch(url, fetchOptions);
+                response = await global.fetch(url, fetchOptions); // raw-fetch-ok: core implementation must use native fetch
             } catch (networkErr) {
                 let netMsg = options.errorMsg || ('Network error: ' + (networkErr.message || 'Request failed'));
                 if (!silent && global.Platform.toast) {
@@ -835,7 +835,7 @@
             } catch (e) {
                 log.warn('CSRF injection skipped', e);
             }
-            return nativeFetch(input, init);
+            return nativeFetch(input, init); // raw-fetch-ok: CSRF safety net must call native fetch to avoid recursion
         };
     }());
 
@@ -1717,7 +1717,7 @@
 
     // --- Hook into fetch to reset timer on every request ---
     // Platform.fetch calls global.fetch internally, so wrapping global.fetch
-    // catches both Platform.fetch and any direct fetch() usage.
+    // catches both Platform.fetch and any direct fetch() usage.  // raw-fetch-ok: this IS the fetch hook -- it wraps global.fetch so every request resets the idle timer
     function hookFetch() {
         if (typeof global.fetch !== 'function') return;
         const nativeFetch = global.fetch;

@@ -371,22 +371,17 @@ function solutionWorkspace() {
             if (!this.form.problem.trim()) return;
             this.loading = true; this.error = null; this.results = null;
             try {
-                const resp = await fetch('/architecture/solutions-architecture/analyze', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || '' },
-                    body: JSON.stringify({
-                        problem_description: this.form.problem,
-                        budget_min: this.form.budget_min ? parseFloat(this.form.budget_min) : null,
-                        budget_max: this.form.budget_max ? parseFloat(this.form.budget_max) : null,
-                        timeline_months: this.form.timeline_months ? parseInt(this.form.timeline_months) : null,
-                        user_count: this.form.user_count ? parseInt(this.form.user_count) : null,
-                        is_critical: this.form.is_critical,
-                        organization_size: 'enterprise',
-                        compliance_requirements: this.form.compliance,
-                        existing_constraints: this.form.constraints ? [this.form.constraints] : []
-                    })
-                });
-                const data = await resp.json();
+                const data = await Platform.fetch.post('/architecture/solutions-architecture/analyze', {
+                    problem_description: this.form.problem,
+                    budget_min: this.form.budget_min ? parseFloat(this.form.budget_min) : null,
+                    budget_max: this.form.budget_max ? parseFloat(this.form.budget_max) : null,
+                    timeline_months: this.form.timeline_months ? parseInt(this.form.timeline_months) : null,
+                    user_count: this.form.user_count ? parseInt(this.form.user_count) : null,
+                    is_critical: this.form.is_critical,
+                    organization_size: 'enterprise',
+                    compliance_requirements: this.form.compliance,
+                    existing_constraints: this.form.constraints ? [this.form.constraints] : []
+                }, { silent: true });
                 if (data.success) {
                     this.results = data;
                     this.$nextTick(() => { if (typeof lucide !== 'undefined') lucide.createIcons(); });
@@ -403,12 +398,12 @@ function solutionWorkspace() {
         async saveAsSolution(rec) {
             this.savingOption = rec.option_type;
             try {
-                const resp = await fetch('/architecture/solutions-architecture/save-solution', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || '' },
-                    body: JSON.stringify({ name: this.form.problem.substring(0, 100), problem_description: this.form.problem, option_type: rec.option_type, estimated_cost: rec.estimated_cost || null })
-                });
-                const data = await resp.json();
+                const data = await Platform.fetch.post('/architecture/solutions-architecture/save-solution', {
+                    name: this.form.problem.substring(0, 100),
+                    problem_description: this.form.problem,
+                    option_type: rec.option_type,
+                    estimated_cost: rec.estimated_cost || null
+                }, { silent: true });
                 if (data.success) {
                     this.savedSolutions = Object.assign({}, this.savedSolutions, { [rec.option_type]: data.solution_id });
                     this.$nextTick(() => { if (typeof lucide !== 'undefined') lucide.createIcons(); });

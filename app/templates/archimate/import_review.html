@@ -176,9 +176,7 @@ function importReview() {
             const url = '/archimate/api/import-review/items'
                 + (this.includeReviewed ? '?include_reviewed=1' : '');
             try {
-                const r = await fetch(url, { credentials: 'same-origin' });
-                if (!r.ok) throw new Error('HTTP ' + r.status);
-                const d = await r.json();
+                const d = await Platform.fetch(url, { silent: true });
                 this.items = d.items || [];
                 this.groups = d.groups || [];
                 this.elementTypes = d.element_types || [];
@@ -214,34 +212,32 @@ function importReview() {
         },
 
         async _post(url, body) {
-            const token = document.querySelector('meta[name=csrf-token]');
-            return fetch(url, {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: Object.assign(
-                    { 'Content-Type': 'application/json' },
-                    token ? { 'X-CSRFToken': token.content } : {}
-                ),
-                body: JSON.stringify(body),
-            });
+            // Platform.fetch.post automatically injects CSRF token and serializes plain objects to JSON
+            return Platform.fetch.post(url, body, { silent: true });
         },
 
         async accept() {
-            const r = await this._post('/archimate/api/import-review/accept', this._split());
-            const d = await r.json();
-            this.message = d.success ? `Confirmed ${d.accepted}.` : (d.error || 'Failed.');
-            await this.load();
+            try {
+                const d = await this._post('/archimate/api/import-review/accept', this._split());
+                this.message = d.success ? `Confirmed ${d.accepted}.` : (d.error || 'Failed.');
+                await this.load();
+            } catch (e) {
+                this.message = 'Failed to confirm: ' + e.message;
+            }
         },
 
         async retype() {
             const body = Object.assign({ type: this.retypeTo },
                                        { element_ids: this._split().element_ids });
-            const r = await this._post('/archimate/api/import-review/retype', body);
-            const d = await r.json();
-            this.message = d.success ? `Retyped ${d.changed} to ${this.retypeTo}.`
-                                     : (d.error || 'Failed.');
-            this.retypeTo = '';
-            await this.load();
+            try {
+                const d = await this._post('/archimate/api/import-review/retype', body);
+                this.message = d.success ? `Retyped ${d.changed} to ${this.retypeTo}.`
+                                         : (d.error || 'Failed.');
+                this.retypeTo = '';
+                await this.load();
+            } catch (e) {
+                this.message = 'Failed to retype: ' + e.message;
+            }
         },
     };
 }

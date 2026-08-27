@@ -42,11 +42,11 @@
             value=correction_count|string,
             icon='check-circle',
             description='Total corrections submitted',
-            value_class='text-success' if correction_count > 0 else 'text-muted-foreground'
+            value_class=('text-success' if correction_count > 0 else 'text-muted-foreground')
         ) }}
         {{ metrics_card(
             title='Pending Review',
-            value=(total_with_elements - correction_count if total_with_elements > correction_count else 0)|string,
+            value=((total_with_elements - correction_count) if total_with_elements > correction_count else 0)|string,
             icon='clock',
             description='Elements awaiting confirmation'
         ) }}
@@ -194,40 +194,33 @@
 </div>
 
 <script>
-const CSRF_TOKEN = "{{ csrf_token() }}";
-
 function reportCorrectionError(message) {
     if (window.Platform && Platform.toast) {
         Platform.toast.error(message);
+    } else {
+        // If Platform.toast is not available, throw an error to ensure the failure is not swallowed.
+        throw new Error('Platform.toast not available: ' + message);
     }
 }
 
 function markCorrect(elementId) {
-    fetch(`/dashboard/api/archimate-elements/${elementId}/correct`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': CSRF_TOKEN,
-        },
-        body: JSON.stringify({ action: 'approve' }),
-    })
-    .then(res => res.json())
-    .then(data => {
-        if (data.success !== false) {
-            const row = document.getElementById(`row-${elementId}`);
-            if (row) {
-                row.classList.add('opacity-50');
-                const actionsEl = document.getElementById(`actions-${elementId}`);
-                if (actionsEl) {
-                    actionsEl.innerHTML = '<span class="inline-flex items-center gap-1 text-xs text-success-emphasis font-medium"><i data-lucide="check-circle" class="h-3 w-3"></i>Confirmed</span>';
-                    if (window.lucide) { lucide.createIcons(); }
+    Platform.fetch.post(`/dashboard/api/archimate-elements/${elementId}/correct`, { action: 'approve' }, { silent: true })
+        .then(data => {
+            if (data.success !== false) {
+                const row = document.getElementById(`row-${elementId}`);
+                if (row) {
+                    row.classList.add('opacity-50');
+                    const actionsEl = document.getElementById(`actions-${elementId}`);
+                    if (actionsEl) {
+                        actionsEl.innerHTML = '<span class="inline-flex items-center gap-1 text-xs text-success-emphasis font-medium"><i data-lucide="check-circle" class="h-3 w-3"></i>Confirmed</span>';
+                        if (window.lucide) { lucide.createIcons(); }
+                    }
                 }
+            } else {
+                reportCorrectionError(data.error || 'Could not confirm this element. It has not been changed.');
             }
-        } else {
-            reportCorrectionError(data.error || 'Could not confirm this element. It has not been changed.');
-        }
-    })
-    .catch(() => reportCorrectionError('Could not reach the server to confirm this element. It has not been changed.'));
+        })
+        .catch(() => reportCorrectionError('Could not reach the server to confirm this element. It has not been changed.'));
 }
 
 function toggleFixForm(elementId) {
@@ -255,33 +248,25 @@ function submitFix(elementId) {
     if (correctedName) { payload.name = correctedName; }
     if (correctedType) { payload.type = correctedType; }
 
-    fetch(`/dashboard/api/archimate-elements/${elementId}/correct`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': CSRF_TOKEN,
-        },
-        body: JSON.stringify(payload),
-    })
-    .then(res => res.json())
-    .then(data => {
-        if (data.success !== false) {
-            const row = document.getElementById(`row-${elementId}`);
-            if (row) {
-                row.classList.add('bg-warning/5');
-                const actionsEl = document.getElementById(`actions-${elementId}`);
-                if (actionsEl) {
-                    actionsEl.innerHTML = '<span class="inline-flex items-center gap-1 text-xs text-warning-emphasis font-medium"><i data-lucide="edit-2" class="h-3 w-3"></i>Corrected</span>';
-                    if (window.lucide) { lucide.createIcons(); }
+    Platform.fetch.post(`/dashboard/api/archimate-elements/${elementId}/correct`, payload, { silent: true })
+        .then(data => {
+            if (data.success !== false) {
+                const row = document.getElementById(`row-${elementId}`);
+                if (row) {
+                    row.classList.add('bg-warning/5');
+                    const actionsEl = document.getElementById(`actions-${elementId}`);
+                    if (actionsEl) {
+                        actionsEl.innerHTML = '<span class="inline-flex items-center gap-1 text-xs text-warning-emphasis font-medium"><i data-lucide="edit-2" class="h-3 w-3"></i>Corrected</span>';
+                        if (window.lucide) { lucide.createIcons(); }
+                    }
+                    const fixForm = document.getElementById(`fix-form-${elementId}`);
+                    if (fixForm) { fixForm.classList.add('hidden'); }
                 }
-                const fixForm = document.getElementById(`fix-form-${elementId}`);
-                if (fixForm) { fixForm.classList.add('hidden'); }
+            } else {
+                reportCorrectionError(data.error || 'Could not save this correction. It has not been applied.');
             }
-        } else {
-            reportCorrectionError(data.error || 'Could not save this correction. It has not been applied.');
-        }
-    })
-    .catch(() => reportCorrectionError('Could not reach the server to save this correction. It has not been applied.'));
+        })
+        .catch(() => reportCorrectionError('Could not reach the server to save this correction. It has not been applied.'));
 }
 
 /* CSP-safe: delegate the row actions instead of inline onclick= (DESIGN.md). */

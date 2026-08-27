@@ -126,22 +126,19 @@ function testJiraConnection() {
         email: document.getElementById('email').value,
         api_token: document.getElementById('api_token').value
     };
-    fetch("{{ url_for('m365_connector.jira_config_test') }}", {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(data)
-    })
-    .then(r => r.json())
-    .then(res => {
-        result.textContent = res.message || JSON.stringify(res);
-        result.className = 'rounded-md border p-4 text-sm ' + (res.status === 'ok'
-            ? 'bg-primary/10 border-primary/20 text-foreground'
-            : 'bg-destructive/10 border-destructive/20 text-destructive');
-    })
-    .catch(e => {
-        result.textContent = 'Request failed: ' + e;
-        result.className = 'rounded-md border p-4 text-sm bg-destructive/10 border-destructive/20 text-destructive';
-    })
+    Platform.fetch.post("{{ url_for('m365_connector.jira_config_test') }}", data, { silent: true })
+        .then(res => {
+            result.textContent = res.message || JSON.stringify(res);
+            result.className = 'rounded-md border p-4 text-sm ' + (res.status === 'ok'
+                ? 'bg-primary/10 border-primary/20 text-foreground'
+                : 'bg-destructive/10 border-destructive/20 text-destructive');
+        })
+        .catch(e => {
+            // Platform.fetch throws a structured PlatformError on non-ok responses.
+            // The error's message is already user‑friendly; we display it inline.
+            result.textContent = e.message || 'Request failed';
+            result.className = 'rounded-md border p-4 text-sm bg-destructive/10 border-destructive/20 text-destructive';
+        });
     .finally(() => {
         btn.disabled = false;
         btn.textContent = 'Test Connection';

@@ -129,10 +129,7 @@ function connectorDashboard() {
         this.loading = true;
         this.error = null;
 
-        const response = await fetch('/integrations/api/connectors');
-        if (!response.ok) throw new Error('Failed to load connectors');
-
-        const data = await response.json();
+        const data = await Platform.fetch('/integrations/api/connectors', { silent: true });
         this.connectors = data.connectors;
       } catch (err) {
         this.error = err.message;
@@ -143,10 +140,7 @@ function connectorDashboard() {
 
     async viewDetails(connectorId) {
       try {
-        const response = await fetch(`/integrations/api/connectors/${connectorId}`);
-        if (!response.ok) throw new Error('Failed to load connector details');
-
-        const data = await response.json();
+        const data = await Platform.fetch(`/integrations/api/connectors/${connectorId}`, { silent: true });
         this.selectedConnector = data.connector;
         this.selectedConnectorSyncs = data.recent_syncs;
       } catch (err) {
@@ -156,11 +150,7 @@ function connectorDashboard() {
 
     async testConnection(connectorId) {
       try {
-        const response = await fetch(`/integrations/api/connectors/${connectorId}/test`, {
-          method: 'POST'
-        });
-        const data = await response.json();
-
+        const data = await Platform.fetch.post(`/integrations/api/connectors/${connectorId}/test`, null, { silent: true });
         if (data.success) {
           Platform.toast.success('Connection test successful!');
         } else {
@@ -173,11 +163,7 @@ function connectorDashboard() {
 
     async triggerSync(connectorId) {
       try {
-        const response = await fetch(`/integrations/api/connectors/${connectorId}/sync`, {
-          method: 'POST'
-        });
-        const data = await response.json();
-
+        const data = await Platform.fetch.post(`/integrations/api/connectors/${connectorId}/sync`, null, { silent: true });
         if (data.success) {
           Platform.toast.info('Sync triggered successfully!');
           await this.loadConnectors();

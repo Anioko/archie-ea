@@ -161,14 +161,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const sel = document.getElementById('viewer-viewpoint-select');
         const rolesEl = document.getElementById('viewer-viewpoint-roles');
         if (!sel) return;
-        fetch('/api/archimate/viewpoints', { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
-            .then(function(r) {
-                // fetch does not reject on 4xx/5xx; without this the selector kept
-                // its lone "All Elements" option and read as "this model has no
-                // viewpoints" rather than "the viewpoint list did not load".
-                if (!r.ok) throw new Error('HTTP ' + r.status);
-                return r.json();
-            })
+        Platform.fetch('/api/archimate/viewpoints', { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
             .then(function(vps) {
                 Object.keys(vps).forEach(function(key) {
                     if (key === 'basic') return;
@@ -199,6 +192,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     rolesEl.classList.remove('hidden', 'text-muted-foreground');
                     rolesEl.classList.add('text-destructive');
                 }
+                // Platform.fetch already shows a toast; we keep the inline error state.
+                // Do not swallow the error; it has been surfaced to the user.
+                // No fallback value is provided.
             });
     })();
 
@@ -293,19 +289,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 return;
             }
 
-            const response = await fetch('/api/architecture-assistant/generate-archimate-model', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    capability_id: assistantData.capability_id,
-                    solution_options: assistantData.solution_options,
-                    gap_analysis: assistantData.gap_analysis || {}
-                })
+            const result = await Platform.fetch.post('/api/architecture-assistant/generate-archimate-model', {
+                capability_id: assistantData.capability_id,
+                solution_options: assistantData.solution_options,
+                gap_analysis: assistantData.gap_analysis || {}
             });
-
-            const result = await response.json();
 
             if (result.success) {
                 currentModel = result.model;
@@ -464,21 +452,17 @@ document.addEventListener('DOMContentLoaded', function() {
 
     async function exportModelAsXML() {
         try {
-            const response = await fetch(`/api/architecture-assistant/export-archimate-model/${currentModel.id}`);
-            if (response.ok) {
-                const xml = await response.text();
-                const blob = new Blob([xml], { type: 'application/xml' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `${currentModel.name || 'archimate-model'}.xml`;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
-            } else {
-                showError('Failed to export model');
-            }
+            const xml = await Platform.fetch(`/api/architecture-assistant/export-archimate-model/${currentModel.id}`);
+            // Platform.fetch returns parsed body; for a text/xml response it returns a string.
+            const blob = new Blob([xml], { type: 'application/xml' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${currentModel.name || 'archimate-model'}.xml`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
         } catch (error) {
             showError('Failed to export model');
         }

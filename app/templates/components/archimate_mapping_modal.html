@@ -365,18 +365,13 @@ function archimateMappingModal() {
                     params.append('element_type', this.selectedElementType);
                 }
                 
-                const response = await fetch(`/capability-map/api/archimate/elements?${params}`);
-                if (!response.ok) throw new Error('Failed to load ArchiMate elements');
-                
-                const data = await response.json();
+                const data = await Platform.fetch.get(`/capability-map/api/archimate/elements`, Object.fromEntries(params));
                 this.allElements = data.elements || [];
                 this.filterElements();
             } catch (error) {
-                if (typeof toast !== 'undefined') {
-                    toast.error('Failed to load ArchiMate elements', {
-                        description: error.message
-                    });
-                }
+                // Platform.fetch already shows a user-visible toast for non‑silent errors.
+                // Re‑throw to prevent the caller from proceeding with incomplete data.
+                throw error;
             } finally {
                 this.loading = false;
             }
@@ -435,21 +430,7 @@ function archimateMappingModal() {
                     archimate_element_type: element.type
                 }));
                 
-                const response = await fetch('/capability-map/api/save-archimate-mappings', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.getAttribute('content') || ''
-                    },
-                    body: JSON.stringify({ mappings })
-                });
-                
-                if (!response.ok) {
-                    const error = await response.json();
-                    throw new Error(error.error || 'Failed to save mappings');
-                }
-                
-                const result = await response.json();
+                const result = await Platform.fetch.post('/capability-map/api/save-archimate-mappings', { mappings });
                 
                 if (typeof toast !== 'undefined') {
                     toast.success('ArchiMate Mappings Saved', {

@@ -276,10 +276,7 @@ function apqcMappingModal() {
         async loadProcesses() {
             this.loading = true;
             try {
-                const response = await fetch('/dashboard/api/apqc-processes');
-                if (!response.ok) throw new Error('Failed to load APQC processes');
-                
-                this.allProcesses = await response.json();
+                this.allProcesses = await Platform.fetch('/dashboard/api/apqc-processes', { silent: true });
                 this.filterProcesses();
             } catch (error) {
                 if (typeof toast !== 'undefined') {
@@ -287,6 +284,8 @@ function apqcMappingModal() {
                         description: error.message
                     });
                 }
+                // Re-throw to prevent swallowing the error
+                throw error;
             } finally {
                 this.loading = false;
             }
@@ -373,21 +372,9 @@ function apqcMappingModal() {
                                          this.impactLevel === 'medium' ? 3 : 2
                 }));
                 
-                const response = await fetch('/capability-map/api/save-apqc-mappings', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.getAttribute('content') || ''
-                    },
-                    body: JSON.stringify({ mappings })
-                });
-                
-                if (!response.ok) {
-                    const error = await response.json();
-                    throw new Error(error.error || 'Failed to save mappings');
-                }
-                
-                const result = await response.json();
+                // Platform.fetch automatically injects CSRF token and serializes plain objects to JSON.
+                // We pass the body as a plain object and remove manual headers.
+                const result = await Platform.fetch.post('/capability-map/api/save-apqc-mappings', { mappings });
                 
                 if (typeof toast !== 'undefined') {
                     toast.success('APQC Mappings Saved', {
@@ -405,6 +392,8 @@ function apqcMappingModal() {
                         description: error.message
                     });
                 }
+                // Re-throw to prevent swallowing the error
+                throw error;
             } finally {
                 this.saving = false;
             }

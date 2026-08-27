@@ -98,11 +98,12 @@
         const dec = document.getElementById('ai-decisions-count');
         const sol = document.getElementById('ai-solutions-count');
         try {
-          const resp = await fetch('/ai-chat/metrics', { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
-          // fetch does not reject on 4xx/5xx; without this the counters keep their
-          // placeholder dash and read as a measured "none yet".
-          if (!resp.ok) throw new Error('HTTP ' + resp.status);
-          const data = await resp.json();
+          const data = await Platform.fetch('/ai-chat/metrics', {
+              headers: { 'X-Requested-With': 'XMLHttpRequest' },
+              silent: true
+          });
+          // Platform.fetch throws on non-ok responses; the catch block will handle errors
+          // and set the placeholder dash (which otherwise would read as a measured "none yet").
           // A missing counter is not a measured zero — render the em dash instead.
           if (dec) dec.textContent = data.routine_decisions_automated ?? '—';
           if (sol) sol.textContent = data.solutions_touch_only_for_review ?? '—';

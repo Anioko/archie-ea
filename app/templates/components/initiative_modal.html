@@ -45,37 +45,38 @@
         this.loading = true;
         this.error = null;
 
-        fetch('{{ endpoint }}', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': document.querySelector('meta[name=&quot;csrf-token&quot;]')?.content
-                    || document.querySelector('input[name=&quot;csrf_token&quot;]')?.value || ''
-            },
-            body: JSON.stringify(this.formData)
-        })
-        .then(response => {
-            if (!response.ok) throw new Error('Network response was not ok');
-            return response.json();
-        })
-        .then(result => {
-            if (result.success) {
-                Platform.toast.success(result.message || 'Initiative created successfully');
-                Platform.modal.close('initiative-{{ id }}');
-                this.formData = {};
-                if (typeof refreshInitiatives === 'function') {
-                    refreshInitiatives();
-                }
-            } else {
-                this.error = result.error || 'Failed to create initiative';
-            }
-        })
-        .catch(err => {
-            this.error = 'Error: ' + (err.message || 'Unknown error');
-        })
-        .finally(() => {
+        try {
+            // Platform.fetch will throw a PlatformError on non‑ok responses.
+            // It automatically injects CSRF token and serialises plain‑object bodies to JSON.
+            // We pass { silent: true } because we paint our own inline error state.
+            Platform.fetch.post('{{ endpoint }}', this.formData, { silent: true })
+                .then(result => {
+                    // Platform.fetch returns the parsed response body directly.
+                    // The endpoint returns { success: true, message: ... } on success.
+                    if (result.success) {
+                        Platform.toast.success(result.message || 'Initiative created successfully');
+                        Platform.modal.close('initiative-{{ id }}');
+                        this.formData = {};
+                        if (typeof refreshInitiatives === 'function') {
+                            refreshInitiatives();
+                        }
+                    } else {
+                        this.error = result.error || 'Failed to create initiative';
+                    }
+                })
+                .catch(err => {
+                    // Platform.fetch throws a structured PlatformError.
+                    // We surface the failure to the user via the inline error state.
+                    this.error = 'Error: ' + (err.message || 'Unknown error');
+                })
+                .finally(() => {
+                    this.loading = false;
+                });
+        } catch (syncErr) {
+            // This catch handles any synchronous error before the fetch starts.
+            this.error = 'Error: ' + (syncErr.message || 'Unknown error');
             this.loading = false;
-        });
+        }
     }
 }"
      @open-initiative-{{ id }}.window="

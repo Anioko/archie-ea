@@ -133,7 +133,7 @@
         try {
             let response;
             try {
-                response = await global.fetch(url, fetchOptions);
+                response = await global.fetch(url, fetchOptions); // raw-fetch-ok: core implementation must use native fetch
             } catch (networkErr) {
                 let netMsg = options.errorMsg || ('Network error: ' + (networkErr.message || 'Request failed'));
                 if (!silent && global.Platform.toast) {
@@ -333,7 +333,7 @@
             } catch (e) {
                 log.warn('CSRF injection skipped', e);
             }
-            return nativeFetch(input, init);
+            return nativeFetch(input, init); // raw-fetch-ok: CSRF safety net must call native fetch to avoid recursion
         };
     }());
 
