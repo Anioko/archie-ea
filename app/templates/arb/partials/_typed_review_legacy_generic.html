@@ -1,0 +1,52 @@
+{#
+  `state == "legacy_generic"` — a review row that is not part of the typed
+  ARBReviewCycle graph (blueprint section 6).
+
+  It is shown visibly labelled and strictly read-only. The typed generic fields
+  (overall_score, mutable JSON conditions, implementation status, a separate
+  Solution decision) are deliberately NOT rendered: they have no immutable
+  evidence behind them, and showing them beside typed reviews would make an
+  unverifiable row look like a governed one.
+
+  The read model returns command_keys == {} and all-False actions for this
+  state, so no mutation control exists to render.
+
+  Renders no page header, breadcrumb or <h1>.
+
+  Context: review.
+#}
+{% from 'arb/partials/_typed_macros.html' import dash %}
+{% from 'components/card.html' import card, card_header, card_title, card_content %}
+
+<div class="mb-6 rounded-lg border border-border bg-muted p-4" role="status">
+    <p class="flex items-start gap-2 font-medium text-muted-foreground">
+        <i data-lucide="archive" class="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true"></i>
+        Legacy review &#8212; not part of the typed governance graph.
+    </p>
+    <p class="mt-2 text-sm text-muted-foreground">
+        This row predates typed ARB submission. It carries no immutable evidence snapshot, so it is
+        read-only here and contributes no verified governance posture.
+    </p>
+</div>
+
+{% call card() %}
+    {% call card_header() %}
+        {% call card_title(class='text-lg') %}Recorded legacy review{% endcall %}
+    {% endcall %}
+    {% call card_content() %}
+    <dl class="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
+        <div class="min-w-0">
+            <dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Title</dt>
+            <dd class="break-words text-sm text-foreground">{{ dash(review.subject.title if review.subject else none) }}</dd>
+        </div>
+        <div class="min-w-0">
+            <dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Review item ID</dt>
+            <dd class="break-all font-mono text-xs text-foreground">{{ dash((review.identity or {}).get('review_item_id')) }}</dd>
+        </div>
+        <div class="min-w-0 sm:col-span-2">
+            <dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Reason</dt>
+            <dd class="break-words text-sm text-foreground">{{ dash(review.reason) }}</dd>
+        </div>
+    </dl>
+    {% endcall %}
+{% endcall %}

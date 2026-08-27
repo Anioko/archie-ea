@@ -1,0 +1,133 @@
+{#
+  Typed ARB governance workspace — shared display macros.
+
+  These macros exist so the four subject dossiers, the queue and the review
+  workspace render identical semantics for the same read-model value. They are
+  display-only: they never compute, default or substitute a value. A value the
+  read model reports as ``None`` is genuinely not persisted, and renders as an
+  em dash (DESIGN.md null-display rule).
+
+  Never add a fallback here. `{{ dash(x or 'Unknown') }}` fabricates data.
+#}
+
+{# ---------------------------------------------------------------------------
+   Null display. `—` means "not persisted", never "zero" and never "unknown".
+   `false` and `0` are real persisted values and must survive.
+   --------------------------------------------------------------------------- #}
+{% macro dash(value) -%}
+{%- if value is none or (value is string and value | trim == '') -%}
+<span class="text-muted-foreground" aria-label="Not recorded">—</span>
+{%- else -%}{{ value }}{%- endif -%}
+{%- endmacro %}
+
+{# Timestamp display.
+   ARBSubmissionEvidenceSnapshot.captured_at is NAIVE while other typed
+   timestamps are tz-aware, so this must not touch tzinfo, localise, or
+   subtract from `now` — a computed age over a mixed-awareness pair raises,
+   and a guessed timezone is fabricated data. Absolute rendering only. #}
+{% macro ts(value) -%}
+{%- if value is none -%}
+<span class="text-muted-foreground" aria-label="Not recorded">—</span>
+{%- else -%}
+<time datetime="{{ value.isoformat() }}">{{ value.strftime('%d %b %Y %H:%M') }}</time>
+{%- endif -%}
+{%- endmacro %}
+
+{# ---------------------------------------------------------------------------
+   Governance status → semantic token (blueprint section 4).
+   `approved_with_conditions` is deliberately warning, never success: execution
+   is still blocked while a condition is unresolved.
+   --------------------------------------------------------------------------- #}
+{% macro gov_status_badge(status, class='') -%}
+{%- set tokens = {
+    'submitted':               'bg-info/10 text-info-emphasis border-info/30',
+    'under_review':            'bg-info/10 text-info-emphasis border-info/30',
+    'evidence_submitted':      'bg-info/10 text-info-emphasis border-info/30',
+    'pending_information':     'bg-warning/10 text-warning-emphasis border-warning/30',
+    'pending_info':            'bg-warning/10 text-warning-emphasis border-warning/30',
+    'pending':                 'bg-warning/10 text-warning-emphasis border-warning/30',
+    'approved':                'bg-success/10 text-success-emphasis border-success/30',
+    'fulfilled':               'bg-success/10 text-success-emphasis border-success/30',
+    'approved_with_conditions':'bg-warning/10 text-warning-emphasis border-warning/30',
+    'waived':                  'bg-warning/10 text-warning-emphasis border-warning/30',
+    'returned_for_evidence':   'bg-warning/10 text-warning-emphasis border-warning/30',
+    'returned_for_options':    'bg-warning/10 text-warning-emphasis border-warning/30',
+    'rejected':                'bg-destructive/10 text-destructive-emphasis border-destructive/30',
+    'historical_unverified':   'bg-muted text-muted-foreground border-border',
+    'legacy_generic':          'bg-muted text-muted-foreground border-border'
+} -%}
+{%- if status is none -%}
+{{ dash(none) }}
+{%- else -%}
+<span class="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-0.5 text-xs font-medium {{ tokens.get(status, 'bg-muted text-muted-foreground border-border') }} {{ class }}">
+    {{ status | replace('_', ' ') | capitalize }}
+</span>
+{%- endif -%}
+{%- endmacro %}
+
+{# Subject identity: icon plus label, never icon alone (a11y section 14). #}
+{% macro subject_identity(icon, label, class='') -%}
+<span class="inline-flex items-center gap-1.5 {{ class }}">
+    {%- if icon %}<i data-lucide="{{ icon }}" class="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true"></i>{% endif -%}
+    <span>{{ dash(label) }}</span>
+</span>
+{%- endmacro %}
+
+{# A definition-list row. `value_caller` renders rich content; otherwise the
+   scalar goes through `dash`. #}
+{% macro dl_row(label, value=none, mono=false) -%}
+<div class="min-w-0 py-1.5">
+    <dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">{{ label }}</dt>
+    <dd class="mt-0.5 text-sm text-foreground {% if mono %}font-mono break-all{% else %}break-words{% endif %}">
+        {%- if caller is defined and caller -%}{{ caller() }}{%- else -%}{{ dash(value) }}{%- endif -%}
+    </dd>
+</div>
+{%- endmacro %}
+
+{# Renders one read-model `sections[]` entry. The value is whatever the
+   immutable snapshot stored: scalar, list or mapping. Nothing is invented and
+   nothing is read from the live subject. #}
+{% macro snapshot_value(value) -%}
+{%- if value is none -%}
+{{ dash(none) }}
+{%- elif value is string -%}
+<span class="whitespace-pre-wrap break-words">{{ value }}</span>
+{%- elif value is mapping -%}
+{%- if value | length == 0 -%}{{ dash(none) }}{%- else -%}
+<dl class="space-y-1">
+    {%- for k, v in value.items() %}
+    <div class="flex flex-wrap gap-x-2">
+        <dt class="text-xs font-medium text-muted-foreground">{{ k | replace('_', ' ') | capitalize }}</dt>
+        <dd class="min-w-0 break-words text-xs text-foreground">{{ snapshot_value(v) }}</dd>
+    </div>
+    {%- endfor %}
+</dl>
+{%- endif -%}
+{%- elif value is sequence -%}
+{%- if value | length == 0 -%}{{ dash(none) }}{%- else -%}
+<ul class="list-disc space-y-1 pl-4">
+    {%- for item in value %}<li class="break-words">{{ snapshot_value(item) }}</li>{%- endfor %}
+</ul>
+{%- endif -%}
+{%- else -%}
+{{ value }}
+{%- endif -%}
+{%- endmacro %}
+
+{# Content hash: shortened visually, full value selectable, with a specifically
+   labelled keyboard-operable copy control (a11y section 14). #}
+{% macro content_hash(value, copy_label='Copy evidence hash') -%}
+{%- if value is none -%}
+{{ dash(none) }}
+{%- else -%}
+<span class="inline-flex max-w-full items-center gap-2">
+    <code class="min-w-0 truncate font-mono text-xs text-foreground" title="{{ value }}">{{ value }}</code>
+    <button type="button"
+            class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-input bg-background text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            data-arb-copy="{{ value }}"
+            aria-label="{{ copy_label }}">
+        <i data-lucide="copy" class="h-3.5 w-3.5" aria-hidden="true"></i>
+    </button>
+</span>
+{%- endif -%}
+{%- endmacro %}

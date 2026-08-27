@@ -1,0 +1,104 @@
+{#
+  historical_unverified — a first-class LOCKED state (blueprint section 7).
+
+  This is not an error and not an approved state. It is a migrated Solution,
+  Architecture Model or ADR cycle whose immutable evidence could not be proved.
+
+  Therefore, deliberately:
+    * no decide, resubmit, condition, evidence, verify, waive or reopen control
+      appears anywhere in this partial;
+    * no green/verified posture appears, even when the recorded legacy outcome
+      text reads "approved" — the recorded outcome is shown as recorded, in a
+      muted treatment, with the warning above it;
+    * the read model already returns command_keys == {} and all-False actions,
+      so there is nothing to render even if this template tried.
+
+  Renders no page header, breadcrumb or <h1>.
+
+  Context: review.
+#}
+{% from 'arb/partials/_typed_macros.html' import dash, ts %}
+{% from 'components/alert.html' import alert, alert_title, alert_description %}
+{% from 'components/card.html' import card, card_header, card_title, card_content %}
+
+{% set _identity = review.identity or {} %}
+{% set _subject = review.subject or {} %}
+{% set _evidence = review.evidence or {} %}
+{% set _decision = review.decision or {} %}
+
+<div class="mb-6 rounded-lg border border-warning/30 bg-warning/10 p-4" role="alert">
+    <p class="flex items-start gap-2 font-medium text-warning-emphasis">
+        <i data-lucide="triangle-alert" class="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true"></i>
+        Historical review &#8212; evidence snapshot could not be verified.
+    </p>
+    <p class="mt-2 text-sm text-warning-emphasis">
+        This cycle was migrated from a legacy record. Its evidence cannot be proved, so no
+        governance action can be taken on it and it contributes no verified posture.
+    </p>
+</div>
+
+{% call card(class='mb-6') %}
+    {% call card_header() %}
+        {% call card_title(class='text-lg') %}Legacy provenance{% endcall %}
+    {% endcall %}
+    {% call card_content() %}
+    <dl class="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
+        <div class="min-w-0">
+            <dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Review</dt>
+            <dd class="text-sm text-foreground">{{ dash(_identity.review_number) }} &#183; Cycle {{ dash(_identity.cycle_number) }}</dd>
+        </div>
+        <div class="min-w-0">
+            <dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Subject</dt>
+            <dd class="break-words text-sm text-foreground">{{ dash(_subject.label) }} &#183; {{ dash(_subject.title) }}</dd>
+        </div>
+        <div class="min-w-0">
+            <dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Migration gap reason</dt>
+            <dd class="break-words text-sm text-foreground">{{ dash(_evidence.migration_gap_reason) }}</dd>
+        </div>
+        <div class="min-w-0">
+            <dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Legacy source type</dt>
+            <dd class="break-words text-sm text-foreground">{{ dash(_evidence.legacy_source_type) }}</dd>
+        </div>
+        <div class="min-w-0">
+            <dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Legacy source ID</dt>
+            <dd class="break-all font-mono text-xs text-foreground">{{ dash(_evidence.legacy_source_id) }}</dd>
+        </div>
+        <div class="min-w-0">
+            <dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Recorded historical outcome</dt>
+            <dd class="text-sm">
+                {% if _decision.recorded_historical_outcome %}
+                <span class="inline-flex items-center rounded-md border border-border bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
+                    {{ _decision.recorded_historical_outcome | replace('_', ' ') | capitalize }}
+                </span>
+                <span class="mt-1 block text-xs text-muted-foreground">Recorded in the legacy system. Not verified here.</span>
+                {% else %}
+                {{ dash(none) }}
+                {% endif %}
+            </dd>
+        </div>
+        <div class="min-w-0">
+            <dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Evidence hash</dt>
+            <dd class="text-sm text-muted-foreground">Unavailable</dd>
+        </div>
+        {% if _subject.canonical_url %}
+        <div class="min-w-0 sm:col-span-2">
+            <dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Subject</dt>
+            <dd class="mt-1">
+                <a href="{{ _subject.canonical_url }}"
+                   class="inline-flex h-8 items-center justify-center rounded-md border border-input bg-background px-3 text-xs font-medium transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                    <i data-lucide="external-link" class="mr-1.5 h-3.5 w-3.5" aria-hidden="true"></i>Open subject
+                </a>
+            </dd>
+        </div>
+        {% endif %}
+    </dl>
+
+    {% if _identity.successor_cycle_id %}
+    <p class="mt-4 text-sm text-muted-foreground">
+        A later verified cycle exists for this subject. It is a separate cycle with its own evidence.
+    </p>
+    {% endif %}
+    {% endcall %}
+{% endcall %}
+
+{% include 'arb/partials/_typed_history.html' %}
