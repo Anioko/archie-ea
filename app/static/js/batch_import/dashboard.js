@@ -145,7 +145,6 @@ function batchImportDashboard() {
                     this.showToast(data.error || 'Failed to load import jobs', 'error');
                 }
             } catch (error) {
-                console.error('Failed to load jobs:', error);
                 if (!silent) {
                     this.showToast('Failed to load import jobs', 'error');
                 }
@@ -172,7 +171,6 @@ function batchImportDashboard() {
                     this.showToast(data.message || data.error || 'Failed to start job', 'error');
                 }
             } catch (error) {
-                console.error('Failed to start job:', error);
                 this.showToast('Failed to start job', 'error');
             }
         },
@@ -190,7 +188,6 @@ function batchImportDashboard() {
                     this.showToast(data.message || data.error || 'Failed to pause job', 'error');
                 }
             } catch (error) {
-                console.error('Failed to pause job:', error);
                 this.showToast('Failed to pause job', 'error');
             }
         },
@@ -208,7 +205,6 @@ function batchImportDashboard() {
                     this.showToast(data.message || data.error || 'Failed to resume job', 'error');
                 }
             } catch (error) {
-                console.error('Failed to resume job:', error);
                 this.showToast('Failed to resume job', 'error');
             }
         },
@@ -227,7 +223,6 @@ function batchImportDashboard() {
                     this.showToast(data.message || data.error || 'Failed to cancel job', 'error');
                 }
             } catch (error) {
-                console.error('Failed to cancel job:', error);
                 this.showToast('Failed to cancel job', 'error');
             } finally {
                 this.showCancelModal = false;
@@ -239,8 +234,10 @@ function batchImportDashboard() {
             if (type === undefined) type = 'info';
             if (window.showToast) {
                 window.showToast(message, type);
-            } else {
-
+            } else if (window.Platform && Platform.toast) {
+                // Without this the notification reached nobody when the page-local
+                // showToast helper was absent.
+                (Platform.toast[type] || Platform.toast.info)(message);
             }
         }
     };

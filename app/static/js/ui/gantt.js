@@ -19,7 +19,13 @@
     }
 
     let log   = global.Platform.log   ? global.Platform.log.child('gantt')   : { debug: function(){}, warn: function(){}, error: function(){} };
-    let error = global.Platform.error || { handle: function(e){ console.error(e); } };
+    // Platform.error normally owns user-facing reporting. If core/05-error.js is not
+    // loaded, fall back to a toast so a Gantt failure still reaches the user.
+    let error = global.Platform.error || { handle: function(e){
+        if (global.Platform.toast) {
+            global.Platform.toast.error((e && e.message) ? e.message : 'Something went wrong in the timeline.');
+        }
+    } };
 
     // ── Constants ────────────────────────────────────────────────────────────
     let ROW_HEIGHT          = 40;

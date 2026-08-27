@@ -235,7 +235,6 @@ function generateCode() {
         }
     })
     .catch(error => {
-        console.error('Generation failed:', error);
         showNotification('Generation failed: ' + error.message, 'error');
     })
     .finally(() => {

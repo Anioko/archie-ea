@@ -66,7 +66,6 @@ function loadAvailableApplications() {
         }
     })
     .catch(function(error) {
-        console.error('Error loading applications:', error);
         safeHTML(document.getElementById('app-list-container'),
             '<div class="p-8 text-center text-destructive">Error loading applications.</div>');
     });
@@ -212,7 +211,6 @@ function submitAddApplications() {
         }
     })
     .catch(function(error) {
-        console.error('Error adding applications:', error);
         Platform.toast.error('Error adding applications. Please try again.');
     });
 }

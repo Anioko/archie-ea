@@ -194,7 +194,6 @@ document.getElementById('generateBtn').addEventListener('click', async function(
 
   } catch (e) {
     safeHTML(previewArea, '<div class="text-center py-8"><i data-lucide="alert-circle" class="w-8 h-8 text-destructive mx-auto"></i><p class="mt-4 text-destructive">Error: ' + e.message + '</p></div>');
-    console.error('Generation error:', e);
   }
 });
 

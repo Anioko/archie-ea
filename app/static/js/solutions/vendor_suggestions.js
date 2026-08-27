@@ -47,7 +47,6 @@ function vendorSuggestionsMixin() {
                     self.vendorError = 'Could not load vendor suggestions — ' + (err && err.message ? err.message : 'request failed');
                     self.vendorLoading = false;
                     if (window.Platform && Platform.toast) Platform.toast.error(self.vendorError);
-                    console.error('Vendor suggestions error:', err);
                 });
         },
 
@@ -79,7 +78,6 @@ function vendorSuggestionsMixin() {
                 }
             })
             .catch(function(err) {
-                console.error('Vendor confirm error:', err);
                 if (window.Platform && Platform.toast) Platform.toast.error('Failed to confirm vendor');
             });
         },
@@ -160,7 +158,6 @@ function vendorSuggestionsMixin() {
             .catch(function(err) {
                 // The edit box used to just close, leaving the old price on screen and
                 // the user believing the correction was saved.
-                console.error('Price update error:', err);
                 if (window.Platform && Platform.toast) Platform.toast.error('Could not save the corrected price — it was not recorded.');
                 self.editingPrice = null;
             });
@@ -191,7 +188,6 @@ function vendorSuggestionsMixin() {
                 }
             })
             .catch(function(err) {
-                console.error('Coverage vote error:', err);
                 if (window.Platform && Platform.toast) Platform.toast.error('Failed to record vote');
             });
         },

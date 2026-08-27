@@ -92,7 +92,6 @@ window.showVendorProducts = async function(vendorId, vendorName) {
             throw new Error('Failed to load products');
         }
     } catch (error) {
-        console.error('Error loading vendor products:', error);
         safeHTML(panel,
             '<div class="text-center text-muted-foreground">' +
             '<i data-lucide="alert-triangle" class="w-12 h-12 mx-auto mb-4 opacity-50"></i>' +
@@ -220,7 +219,6 @@ async function loadApplicationsForVendorMapping() {
         await loadVendorMappings();
         if (typeof filterUnifiedApplications === 'function') filterUnifiedApplications();
     } catch (error) {
-        console.error('Error loading applications:', error);
         safeHTML(container,
             '<div class="text-center py-8 text-destructive">' +
             '<i data-lucide="alert-circle" class="w-8 h-8 mx-auto mb-2"></i>' +
@@ -250,7 +248,6 @@ async function loadVendorMappings() {
         // Without this, every application silently shows as "unmapped" — a false
         // negative, since app.mapped simply never gets set to true — rather than
         // an explained failure.
-        console.error('Error loading vendor mappings:', error);
         if (window.Platform && Platform.toast) Platform.toast.error('Could not load existing vendor mappings.');
     }
 }

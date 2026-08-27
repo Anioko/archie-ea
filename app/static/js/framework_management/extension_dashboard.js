@@ -203,7 +203,6 @@ function activateExtension() {
         }
     })
     .catch(function(error) {
-        console.error('Error activating extension:', error);
         if (statusEl) {
             statusEl.textContent = previousStatus || 'Inactive';
             statusEl.className = 'px-2 py-1 text-xs rounded-full bg-destructive/10 text-red-800';

@@ -40,7 +40,7 @@ document.addEventListener('DOMContentLoaded', function() {
   const paletteEl = document.getElementById('element-palette');
   const canvasEl = document.getElementById('solution-canvas');
   if (!canvasEl) {
-    console.warn('Solution Composer canvas element not found');
+    // No composer canvas on this page — nothing to initialise, nothing failed.
     return;
   }
 

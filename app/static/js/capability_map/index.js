@@ -244,7 +244,6 @@
             updateGapTabMetricCards(tableData.gap.data);
     
         } catch (error) {
-            console.error('Error loading data:', error);
             if (window.Platform && Platform.toast) Platform.toast.error('Failed to load capability data');
 
             // Display error in all table bodies
@@ -722,7 +721,6 @@
             window.URL.revokeObjectURL(url);
             document.body.removeChild(a);
         } catch (error) {
-            console.error('Error exporting data:', error);
             if (window.Platform && Platform.toast) Platform.toast.error('Error exporting data: ' + (error.message || 'Unknown error'));
         }
     }
@@ -948,7 +946,6 @@
                 renderRoadmapTimeline();
             }
         } catch (error) {
-            console.error('Error loading roadmap data:', error);
             if (window.Platform && Platform.toast) Platform.toast.error('Error loading roadmap data');
             const retryButton = `<button onclick="roadmapData.initialized = false; initRoadmapTab();" class="mt-4 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors">
                 <i data-lucide="refresh-cw" class="w-4 h-4 inline mr-2"></i>
@@ -1888,7 +1885,7 @@
         const hierarchyControls = getEl('hierarchy-controls');
     
         if (!btnAuto || !btnPersisted) {
-            console.warn('View toggle buttons not found');
+            showToast('Unable to switch roadmap view: the view controls did not load. Please refresh the page.', 'error');
             return;
         }
     
@@ -1981,7 +1978,6 @@
                 renderRoadmapTimeline();
             }
         } catch (error) {
-            console.error('Error loading persisted roadmap:', error);
 
             // Check if it's an empty state (no data) vs actual error
             const isEmptyState = error.message && error.message.includes('No gaps found');
@@ -2117,7 +2113,6 @@
                 showToast(data.error || 'Conversion failed', 'error');
             }
         } catch (error) {
-            console.error('Error converting gaps:', error);
             showToast('Error converting gaps', 'error');
         } finally {
             safeHTML(btn, originalText);
@@ -2693,29 +2688,20 @@
         lucide.createIcons();
     }
     
+    // Bulk status / owner / delete were never wired to an API: each one closed the
+    // modal, cleared the selection and toasted "Successfully ...", so the user was
+    // told a bulk edit -- including a bulk DELETE -- had been applied when nothing
+    // had happened. Reporting the truth is the only correct behaviour until the
+    // endpoints exist; the selection is deliberately left intact because nothing
+    // was changed.
+    function _bulkNotWired(action) {
+        document.querySelector('.fixed')?.remove();
+        showToast(`Bulk ${action} is not available yet — no changes were made.`, 'error');
+    }
+
     // Execute bulk status update
     async function executeBulkStatusUpdate() {
-        const statusSelect = getEl('bulk-status-select');
-        const newStatus = statusSelect.value;
-    
-        const items = Array.from(bulkSelectedItems);
-    
-        try {
-            // In a real implementation, this would call an API
-            // For now, we'll simulate the update
-            showToast(`Updating ${items.length} items to ${newStatus}...`, 'info');
-    
-            // Close modal
-            document.querySelector('.fixed')?.remove();
-    
-            // Clear selection
-            clearBulkSelection();
-    
-            showToast(`Successfully updated ${items.length} items`, 'success');
-        } catch (error) {
-            console.error('Bulk update error:', error);
-            showToast('Error updating items', 'error');
-        }
+        _bulkNotWired('status update');
     }
     
     // Bulk update owner
@@ -2765,22 +2751,7 @@
             return;
         }
     
-        const items = Array.from(bulkSelectedItems);
-    
-        try {
-            showToast(`Assigning ${items.length} items to ${newOwner}...`, 'info');
-    
-            // Close modal
-            document.querySelector('.fixed')?.remove();
-    
-            // Clear selection
-            clearBulkSelection();
-    
-            showToast(`Successfully assigned ${items.length} items to ${newOwner}`, 'success');
-        } catch (error) {
-            console.error('Bulk owner update error:', error);
-            showToast('Error assigning owner', 'error');
-        }
+        _bulkNotWired('owner assignment');
     }
     
     // Bulk delete
@@ -2825,22 +2796,7 @@
     
     // Execute bulk delete
     async function executeBulkDelete() {
-        const items = Array.from(bulkSelectedItems);
-    
-        try {
-            showToast(`Deleting ${items.length} items...`, 'info');
-    
-            // Close modal
-            document.querySelector('.fixed')?.remove();
-    
-            // Clear selection
-            clearBulkSelection();
-    
-            showToast(`Successfully deleted ${items.length} items`, 'success');
-        } catch (error) {
-            console.error('Bulk delete error:', error);
-            showToast('Error deleting items', 'error');
-        }
+        _bulkNotWired('delete');
     }
     
     // ============================================
@@ -3174,7 +3130,7 @@
     function toggleRoadmapExportMenu() {
         const menu = getEl('roadmap-export-menu');
         if (!menu) {
-            console.error('Export menu not found');
+            showToast('Unable to open the export menu: it did not load. Please refresh the page.', 'error');
             return;
         }
         menu.classList.toggle('hidden');
@@ -3210,7 +3166,6 @@
                 await exportAsSVG();
             }
         } catch (error) {
-            console.error('Export error:', error);
             showToast(`Error exporting roadmap: ${error.message}`, 'error');
         }
     }
@@ -3353,7 +3308,6 @@
     
             showToast('High-quality PDF exported successfully!', 'success');
         } catch (error) {
-            console.error('PDF export error:', error);
             showToast(`PDF export failed: ${error.message}`, 'error');
             throw error;
         }
@@ -3405,7 +3359,6 @@
                 showToast(`High-quality ${format.toUpperCase()} exported successfully!`, 'success');
             }, mimeType, quality);
         } catch (error) {
-            console.error('Image export error:', error);
             showToast(`${format.toUpperCase()} export failed: ${error.message}`, 'error');
             throw error;
         }
@@ -3458,7 +3411,6 @@
     
             showToast('SVG exported successfully!', 'success');
         } catch (error) {
-            console.error('SVG export error:', error);
             throw error;
         }
     }
@@ -3818,7 +3770,6 @@
                 showToast(data.error || 'Update failed', 'error');
             }
         } catch (error) {
-            console.error('Error saving gap:', error);
             showToast('Error saving changes', 'error');
         }
     }
@@ -4316,7 +4267,6 @@
                 showToast(data.error || 'Failed to add to roadmap', 'error');
             }
         } catch (error) {
-            console.error('Error adding to roadmap:', error);
             showToast('Error adding to roadmap', 'error');
         }
     }
@@ -4439,7 +4389,6 @@
             }
     
         } catch (error) {
-            console.error('Error bulk adding to roadmap:', error);
             showToast('Error adding capabilities to roadmap', 'error');
         }
     }
@@ -4823,7 +4772,6 @@
             updateProcessGapTable();
     
         } catch (error) {
-            console.error('Error loading process gap data:', error);
             if (window.Platform && Platform.toast) Platform.toast.error('Error loading process gap data');
             const retryButton = `<button onclick="processGapData.loaded = false; loadProcessGapData();" class="mt-4 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-purple-700 transition-colors">
                 <i data-lucide="refresh-cw" class="w-4 h-4 inline mr-2"></i>
@@ -5245,7 +5193,6 @@
             // AUDIT-CAP-002: Only show error if this is still the current request
             if (requestId === currentModalRequestId) {
                 setModalLoadingState(false);
-                console.error('Error loading applications:', error);
                 showNotification('Error loading applications', 'error');
             }
         }
@@ -5603,7 +5550,6 @@
             // Close modal
             closeMappingModal();
         } catch (error) {
-            console.error('Error saving mappings:', error);
             showNotification('Error saving mappings', 'error');
         }
     }
@@ -5632,7 +5578,6 @@
                         // Reload all table data to reflect the removal
                         await loadDataForAllTabs();
                     } catch (error) {
-                        console.error('Error deleting mapping:', error);
                         showNotification('Error removing mapping', 'error');
                     }
                 } }
@@ -5724,7 +5669,6 @@
                 showToast(data.error || 'Delete failed', 'error');
             }
         } catch (error) {
-            console.error('Error deleting item:', error);
             showToast('Error deleting item', 'error');
         }
     }

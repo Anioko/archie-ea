@@ -37,7 +37,6 @@ document.addEventListener('alpine:init', () => {
                 this.assignments = data.assignments || [];
                 this.stakeholders = this.deriveStakeholders(this.assignments);
             } catch (e) {
-                console.error('Failed to load RACI matrix data:', e);
                 this.capabilities = [];
                 this.assignments = [];
                 this.stakeholders = [];
@@ -137,7 +136,6 @@ document.addEventListener('alpine:init', () => {
                     }
                 }
             } catch (e) {
-                console.error('Failed to update RACI cell:', e);
                 if (window.Platform && Platform.toast) {
                     Platform.toast.error('Failed to update RACI cell.');
                 }
@@ -160,7 +158,6 @@ document.addEventListener('alpine:init', () => {
                 this.searchResults = json.results || [];
                 this._searchErrorShown = false;
             } catch (e) {
-                console.error('Stakeholder search failed:', e);
                 this.searchResults = [];
                 // Debounced on every keystroke — toast once per outage, not on every retry.
                 if (!this._searchErrorShown) {

@@ -381,7 +381,7 @@ body:has([data-workbench]) #main-content > div {
         };
         window.__cmReady = true;
     } catch(e) {
-        console.warn('[codegen] CodeMirror 6 load failed, using textarea fallback:', e.message);
+        // Editor enhancement unavailable; the plain textarea below stays usable.
         window.__cmReady = false;
     }
     document.dispatchEvent(new CustomEvent('codemirror:ready'));

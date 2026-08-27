@@ -22,8 +22,8 @@ async function loadQuickAccessItems(type, limit) {
       : "sidebar-vendors-quick-access";
   const container = document.getElementById(containerId);
 
+  // Container absent on pages that do not render this sidebar section.
   if (!container) {
-    console.debug(`[Sidebar] Container #${containerId} not found, skipping async load`);
     return;
   }
 
@@ -37,16 +37,30 @@ async function loadQuickAccessItems(type, limit) {
     });
 
     if (!response.ok) {
-      console.error(`[Sidebar] Failed to load ${type}: ${response.status}`);
+      renderQuickAccessUnavailable(container, type, `HTTP ${response.status}`);
       return;
     }
 
     const data = await response.json();
     renderQuickAccessItems(container, data.items, type);
   } catch (error) {
-    console.warn(`[Sidebar] Quick access for ${type} unavailable (network)`, error.message);
-    container.innerHTML = '';
+    renderQuickAccessUnavailable(container, type, error.message);
   }
+}
+
+/**
+ * Render an explicit unavailable state. Without this a failed request leaves an
+ * empty container, which reads as "no applications" — a failure disguised as data.
+ * @param {HTMLElement} container - DOM element to populate
+ * @param {string} type - 'applications' or 'vendors'
+ * @param {string} detail - Short failure detail
+ */
+function renderQuickAccessUnavailable(container, type, detail) {
+  safeHTML(container, `
+    <div class="px-2.5 py-3 text-xs text-destructive-emphasis">
+      Could not load ${type} (${detail})
+    </div>
+  `);
 }
 
 /**

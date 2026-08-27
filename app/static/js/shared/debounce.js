@@ -5,10 +5,10 @@
  * Both functions are idempotent — safe to load multiple times.
  *
  * Usage:
- *   var handler = debounce(function(e) { console.log(e); }, 300);
+ *   var handler = debounce(function(e) { search(e.target.value); }, 300);
  *   input.addEventListener('input', handler);
  *
- *   var scroller = throttle(function() { console.log('scroll'); }, 200);
+ *   var scroller = throttle(function() { updateStickyHeader(); }, 200);
  *   window.addEventListener('scroll', scroller);
  */
 

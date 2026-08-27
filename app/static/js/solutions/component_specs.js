@@ -83,7 +83,6 @@ function componentSpecsMixin() {
                 }
             })
             .catch(function (e) {
-                console.error('[component_specs] confirmSpec error:', e);
                 if (window.Platform && Platform.toast) Platform.toast.error('Confirm failed');
             });
         },

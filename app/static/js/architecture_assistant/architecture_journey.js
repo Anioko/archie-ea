@@ -49,7 +49,6 @@
             // Optional feature probe: vendor_suggestions.js may not be loaded on every
             // page that includes this journey. Degrading to {} is deliberate — the
             // journey works fully without vendor suggestions.
-            console.warn('[Journey] vendorSuggestionsMixin unavailable:', e);
         }
         return Object.assign({}, vendorMixins, {
             solutionId: solutionId,
@@ -1196,7 +1195,6 @@
                             ps.searchError = '';
                         })
                         .catch(function (e) {
-                            console.error('[Journey] Entity search failed for', endpoint, e);
                             ps.results = [];
                             ps.searchError = 'Search unavailable for this entity type';
                         })
@@ -1370,7 +1368,6 @@
                         self.copilotMessage = self.clarifyQuestions.length + ' questions generated. Answer what you can, skip the rest.';
                     }
                 }).catch(function (e) {
-                    console.error('Clarify failed:', e);
                     self.error = 'Failed to get clarifying questions: ' + (e.message || 'Unknown error');
                     self.copilotMessage = 'Clarification failed. You can retry or skip to generation.';
                 }).then(function () {
@@ -1443,12 +1440,10 @@
                             headers: {'Content-Type': 'application/json'},
                             body: JSON.stringify({entities: selectedEntities})
                         }).catch(function (e) {
-                            console.warn('Entity linking failed:', e);
                             Platform.toast.error('Some selected items could not be linked to this solution.');
                         });
                     }
                 }).catch(function (e) {
-                    console.error('Clarify answers failed:', e);
                     self.error = 'Failed to enrich brief: ' + (e.message || 'Unknown error');
                     self.copilotMessage = 'Enrichment failed. You can retry or proceed with the original statement.';
                 }).then(function () {
@@ -1497,7 +1492,6 @@
                     self.computeAcmCoverage();
                     self.copilotMessage = self.capabilities.length + ' capabilities derived. Review the three-track hierarchy for each.';
                 }).catch(function (e) {
-                    console.error('Derive capabilities failed:', e);
                     self.error = 'Failed to derive capabilities: ' + (e.message || 'Unknown error');
                     self.copilotMessage = 'Capability derivation failed. Check your API configuration and retry.';
                 }).then(function () {
@@ -1540,7 +1534,6 @@
                         self.capabilityDetails[idx] = data;
                     })
                     .catch(function (e) {
-                        console.error('Failed to load capability details:', e);
                         self.capabilityDetails[idx] = { error: e.message || 'Failed to load' };
                     });
             },
@@ -1629,7 +1622,6 @@
                 function _onError(msg) {
                     clearInterval(progressTimer);
                     clearInterval(pollTimer);
-                    console.error('Architecture generation failed:', msg);
                     self.llmDegraded.step3 = true;
                     self.error = 'Failed to generate architecture: ' + msg;
                     self.copilotMessage = 'Architecture generation failed. Check API configuration and retry.';
@@ -1716,7 +1708,6 @@
                         self.copilotMessage = 'Relationships updated. ' + _rels.length + ' relationships loaded.';
                     }
                 }).catch(function (e) {
-                    console.error('Rebuild relationships failed:', e);
                     self.copilotMessage = 'Rebuild failed: ' + (e.message || 'Unknown error');
                 }).then(function () {
                     self.rebuildingRelationships = false;
@@ -1798,7 +1789,6 @@
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ proposal_ids: proposalIds })
                     }).catch(function (e) {
-                        console.warn('[Journey] batch-reject failed:', e);
                         Platform.toast.error('Rejecting these elements did not save — please retry.');
                     });
                 }
@@ -1820,7 +1810,6 @@
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ proposal_ids: allIds })
                     }).catch(function (e) {
-                        console.warn('[Journey] batch-accept all failed:', e);
                         Platform.toast.error('Accepting these elements did not save — please retry.');
                     });
                 }
@@ -1843,7 +1832,6 @@
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ proposal_ids: allIds })
                     }).catch(function (e) {
-                        console.warn('[Journey] batch-reject failed:', e);
                         Platform.toast.error('Rejecting these elements did not save — please retry.');
                     });
                 }
@@ -2208,7 +2196,6 @@
                         self.propertyTemplates = updated;
                     })
                     .catch(function (e) {
-                        console.error('Failed to load property templates:', e);
                         Platform.toast.error('Could not load property templates for this element.');
                     });
             },
@@ -2316,7 +2303,6 @@
                         });
                     })
                     .catch(function (e) {
-                        console.error('[Journey] Failed to refresh domain completeness:', e);
                         Platform.toast.error('Could not refresh completeness status — try reloading the page.');
                     });
             },
@@ -2338,7 +2324,6 @@
                         self.copilotMessage = 'Validation complete. Overall completeness: ' + overall + '%.';
                     })
                     .catch(function (e) {
-                        console.error('Validation failed:', e);
                         self.error = 'Validation failed: ' + (e.message || 'Unknown error');
                         self.copilotMessage = 'Validation failed. Try again.';
                     })
@@ -2374,7 +2359,6 @@
                     }).then(function () {
                         self._autosaveFailWarned = false;
                     }).catch(function (e) {
-                        console.error('Auto-save failed:', e);
                         // Debounced and called on every state change — toast once until
                         // a save succeeds again, rather than spamming on every keystroke.
                         if (!self._autosaveFailWarned) {
@@ -2394,7 +2378,6 @@
                         let state = JSON.parse(stateJson);
                         self._applyState(state);
                     } catch (e) {
-                        console.error('Failed to parse inline state:', e);
                         Platform.toast.error('Could not restore your previous progress on this page.');
                     }
                 }
@@ -2444,7 +2427,6 @@
                         self.updateCopilot();
                     })
                     .catch(function (e) {
-                        console.error('State restore failed:', e);
                         self.error = 'Could not restore your previous session. Your work may need to be re-entered. (' + (e.message || 'network error') + ')';
                     });
             },
@@ -2500,7 +2482,6 @@
                         self._refreshCompleteness();
                     })
                     .catch(function (e) {
-                        console.error('Failed to load domains from DB:', e);
                         Platform.toast.error('Could not load domain data — try reloading the page.');
                     });
             },
@@ -2524,7 +2505,6 @@
                         self.copilotMessage = total + ' elements loaded from confirmed domains. Review elements by layer.';
                     })
                     .catch(function (e) {
-                        console.error('Failed to load promoted elements:', e);
                         Platform.toast.error('Could not load elements for this solution.');
                     })
                     .then(function () {
@@ -2561,7 +2541,7 @@
                         });
                     }
                 }).catch(function (e) {
-                    console.warn('[Journey] Landscape mapping unavailable:', e.message || e);
+                    Platform.toast.warning('Portfolio landscape mapping failed — the application landscape on this step is missing because it could not be loaded, not because there are no applications.');
                     // Non-fatal — Step 3 can still show ArchiMate elements without portfolio apps
                 });
             },
@@ -3030,7 +3010,7 @@
                 }).then(function () {
                     self.solutionNameSaving = false;
                 }).catch(function (e) {
-                    console.warn('[Journey] saveSolutionName failed:', e);
+                    Platform.toast.error('The solution name did not save — please retry.');
                     self.solutionNameSaving = false;
                 });
             },
@@ -3044,7 +3024,8 @@
                     self.genomeTemplates = data.templates || [];
                     self.loadingTemplates = false;
                 }).catch(function (e) {
-                    console.warn('[Journey] loadGenomeTemplates failed:', e);
+                    self.genomeTemplates = [];
+                    Platform.toast.error('Genome templates could not be loaded — the list is empty because of an error, not because none exist.');
                     self.loadingTemplates = false;
                 });
             },
@@ -3091,7 +3072,6 @@
                 }).then(function () {
                     self._saveCapsFailWarned = false;
                 }).catch(function (e) {
-                    console.warn('[Journey] saveCapabilities failed:', e);
                     if (!self._saveCapsFailWarned) {
                         self._saveCapsFailWarned = true;
                         Platform.toast.error('Your capability settings did not save — please retry.');
@@ -3123,7 +3103,6 @@
                     }).then(function () {
                         self._saveRoadmapPropFailWarned = false;
                     }).catch(function (e) {
-                        console.warn('[Journey] saveRoadmapProp failed:', e);
                         // Debounced per-field, can fire often while a user edits several
                         // properties in a row — toast once until a save succeeds again.
                         if (!self._saveRoadmapPropFailWarned) {
@@ -3252,12 +3231,24 @@
                         self.critiqueStatus = status;
                         if (status === 'done') {
                             self.critiqueFlags = flags;
-                        } else if (status === 'running' && pollCount < maxPolls) {
-                            pollCount++;
-                            setTimeout(_poll, 8000);
+                        } else if (status === 'running') {
+                            if (pollCount < maxPolls) {
+                                pollCount++;
+                                setTimeout(_poll, 8000);
+                            } else {
+                                // Poll budget exhausted. Without this the status stays
+                                // 'running' and the "Running semantic review..." spinner
+                                // never stops — a timeout rendered as work in progress.
+                                self.critiqueStatus = 'error';
+                                Platform.toast.warning('Semantic review did not finish in time — the architecture is unaffected.');
+                            }
                         }
                     }).catch(function () {
-                        // Non-blocking — fail silently
+                        // The review request failed. Leaving the status at 'running'
+                        // would spin the reviewer panel forever, so a failure would be
+                        // indistinguishable from work still in progress.
+                        self.critiqueStatus = 'error';
+                        Platform.toast.warning('Semantic review could not be completed — the architecture itself is unaffected.');
                     });
                 }
 
@@ -3280,7 +3271,6 @@
                     }
                 })
                 .catch(function (e) {
-                    console.warn('Component spec inference failed (non-blocking):', e.message || e);
                     Platform.toast.error('Could not auto-generate component specs — you can add them manually.');
                 })
                 .then(function () {
@@ -3311,7 +3301,6 @@
                     }
                 })
                 .catch(function (e) {
-                    console.warn('Integration contract suggestion failed (non-blocking):', e.message || e);
                     Platform.toast.error('Could not auto-generate integration contracts — you can add them manually.');
                 })
                 .then(function () {
@@ -3337,7 +3326,6 @@
                     }
                 })
                 .catch(function (e) {
-                    console.warn('Deployment spec suggestion failed (non-blocking):', e.message || e);
                     Platform.toast.error('Could not auto-generate deployment specs — you can add them manually.');
                 })
                 .then(function () {
@@ -3432,7 +3420,6 @@
                     body: JSON.stringify({ problem_text: brief, structured_context: structuredCtx })
                 }).catch(function (err) {
                     // Reasoning endpoint failed — fall back to LLM-based derive
-                    console.warn('[Journey] Reasoning discover failed, falling back to derive:', err);
                     self.copilotMessage = 'Catalog search unavailable. Generating capabilities via AI...';
                     return _fetch(API_BASE + '/' + self.solutionId + '/derive-capabilities', {
                         method: 'POST',
@@ -3642,7 +3629,6 @@
                         else if (self.currentStep === 5) stepName = 'generate-options / select-recommendation';
                         else if (self.currentStep === 6) stepName = 'populate-blueprint';
                         self.error = 'Pipeline stopped at "' + stepName + '": ' + (e.message || 'Unknown error');
-                        console.error('[Journey] Pipeline error at', stepName, e);
                         self.copilotMessage = 'Pipeline stopped at "' + stepName + '". You can continue manually from the current step.';
                     }
                 });

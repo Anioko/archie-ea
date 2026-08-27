@@ -7,7 +7,7 @@
 async function assessReview() {
     const url = window.__ARB_CONFIG__?.assessReviewUrl;
     if (!url) {
-        console.error('[arb/review_detail] assessReviewUrl not set in __ARB_CONFIG__');
+        Platform.toast.error('AI assessment is not configured for this review — the assessment endpoint is missing.');
         return;
     }
     try {
@@ -19,8 +19,7 @@ async function assessReview() {
             Platform.toast.error('Error assessing review: ' + (data.error || 'Unknown error'));
         }
     } catch (error) {
-        console.error('[arb/review_detail] Error:', error);
-        Platform.toast.error('Error assessing review');
+        Platform.toast.error('Error assessing review: ' + (error.message || error));
     }
 }
 

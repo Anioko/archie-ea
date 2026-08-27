@@ -66,9 +66,9 @@
             if (isDev) {
                 throw new Error(msg);
             } else {
-                // Production: warn but don't crash
+                // Production: warn but don't crash.
                 if (global.console && global.console.warn) {
-                    global.console.warn(msg);
+                    global.console.warn(msg);  // console-ok: build/load-order defect (a module bundled twice) with no user-actionable remedy; this is the namespace bootstrap, so Platform.toast does not exist yet, and dev throws instead.
                 }
                 return;
             }

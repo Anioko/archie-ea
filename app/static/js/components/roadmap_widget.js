@@ -57,7 +57,10 @@
     // Define all functions on window immediately
     window['initRoadmapWidget' + containerId] = function(cid, ep) {
         fetch(ep)
-            .then(r => r.json())
+            .then(r => {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.json();
+            })
             .then(data => {
                 if (data.success) {
                     const items = data.items || data.gaps || [];
@@ -78,9 +81,15 @@
 
                     window['renderRoadmapTimeline' + cid](cid);
                     window['updateStats' + cid](cid);
+                } else {
+                    throw new Error(data.error || 'The roadmap data could not be loaded.');
                 }
             })
-            .catch(err => console.error('Failed to load roadmap:', err));
+            .catch(err => {
+                if (window.Platform && Platform.toast) {
+                    Platform.toast.error('Failed to load the roadmap: ' + (err.message || 'unknown error'));
+                }
+            });
     };
     
     window['setRoadmapView' + containerId] = function(mode) {
@@ -387,7 +396,10 @@
     // Initialize widget
     function initRoadmapWidget(cid, ep) {
         fetch(ep)
-            .then(r => r.json())
+            .then(r => {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.json();
+            })
             .then(data => {
                 if (data.success) {
                     let wdata = window['roadmapData_' + cid];
@@ -415,9 +427,15 @@
                         let endStr = wdata.timelineEnd.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
                         rangeEl.textContent = startStr + ' - ' + endStr;
                     }
+                } else {
+                    throw new Error(data.error || 'The roadmap data could not be loaded.');
                 }
             })
-            .catch(err => console.error('Failed to load roadmap:', err));
+            .catch(err => {
+                if (window.Platform && Platform.toast) {
+                    Platform.toast.error('Failed to load the roadmap: ' + (err.message || 'unknown error'));
+                }
+            });
     }
     
     // View toggle

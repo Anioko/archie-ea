@@ -62,7 +62,7 @@
     }
 
     let log   = global.Platform.log   ? global.Platform.log.child('table')   : { debug: function(){}, warn: function(){}, error: function(){} };
-    let error = global.Platform.error || { handle: function(e){ console.error(e); }, boundary: function(fn){ return fn; } };
+    let error = global.Platform.error || { handle: function(e){ if (global.Platform.toast) { global.Platform.toast.error((e && e.message) || 'An unexpected table error occurred.'); } }, boundary: function(fn){ return fn; } };
 
     // ── Registry ──────────────────────────────────────────────────────────────
     let _instances = Object.create(null);

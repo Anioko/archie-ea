@@ -350,7 +350,8 @@ async function processExcelImport() {
 
   // AUDIT-IMP-005: Block concurrent submissions (race condition prevention)
   if (_importInProgress) {
-    console.warn('Import already in progress, ignoring duplicate click');
+    // Silently ignoring the click made the button look broken.
+    Platform.toast.info('An import is already running — please wait for it to finish.');
     return;
   }
   _importInProgress = true;

@@ -59,9 +59,9 @@ function trackingApp() {
                 self.depLoading = false;
             })
             .catch(function(err) {
-                console.error('Dependency risk load failed:', err);
                 self.depLoading = false;
                 self.depResults = [];
+                Platform.toast.error('Could not load dependency risk — the list is empty because the request failed.');
             });
         },
 
@@ -103,8 +103,8 @@ function trackingApp() {
                     }
                     self.importPreview = Array.isArray(data) ? data.slice(0, 10) : [];
                 } catch (err) {
-                    console.error('Import parse error:', err);
                     self.importPreview = [];
+                    Platform.toast.error('Could not read that file: ' + (err.message || 'unrecognised format'));
                 }
             };
             reader.readAsText(file);
@@ -174,9 +174,9 @@ function trackingApp() {
                 self.retLoading = false;
             })
             .catch(function(err) {
-                console.error('Retirement sequence load failed:', err);
                 self.retLoading = false;
                 self.retWaves = [];
+                Platform.toast.error('Could not load the retirement sequence — no waves are shown because the request failed.');
             });
         }
     };

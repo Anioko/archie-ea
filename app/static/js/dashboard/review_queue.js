@@ -23,12 +23,10 @@ function loadReviewQueue() {
                 displayReviewItems();
                 updatePendingCount(data.total_items);
             } else {
-                console.error('Failed to load review queue:', data.error);
                 if (window.Platform && Platform.toast) Platform.toast.error('Could not load the review queue.');
             }
         })
         .catch(function(error) {
-            console.error('Error loading review queue:', error);
             if (window.Platform && Platform.toast) Platform.toast.error('Could not load the review queue.');
         })
         .finally(function() {
@@ -203,7 +201,6 @@ function bulkApprove() {
                     }
                 })
                 .catch(function(error) {
-                    console.error('Error in bulk approve:', error);
                     Platform.toast.error('Error in bulk approve');
                 });
             } }
@@ -262,7 +259,6 @@ function bulkReject() {
                     }
                 })
                 .catch(function(error) {
-                    console.error('Error in bulk reject:', error);
                     Platform.toast.error('Error in bulk reject');
                 });
             } }
@@ -383,7 +379,6 @@ function submitReviewDecision(itemId, decision, notes) {
         }
     })
     .catch(function(error) {
-        console.error('Error submitting review:', error);
         Platform.toast.error('Error submitting review');
     });
 }
@@ -419,7 +414,6 @@ function saveThresholds() {
         }
     })
     .catch(function(error) {
-        console.error('Error saving thresholds:', error);
         Platform.toast.error('Error saving thresholds');
     });
 }

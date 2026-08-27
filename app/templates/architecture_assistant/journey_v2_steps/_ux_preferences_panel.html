@@ -250,7 +250,6 @@ function uxPreferences(solutionId) {
                 if (data.design_system?.primary_color) this.primaryColor = data.design_system.primary_color;
                 if (data.security?.require_auth) this.authRequirement = data.security.require_auth;
             } catch (err) {
-                console.warn('[ux-preferences] load failed:', err);
                 this.saveError = 'Could not load preferences — showing defaults.';
                 this.enrichment = { loaded: true };
             } finally {
@@ -296,7 +295,6 @@ function uxPreferences(solutionId) {
                 setTimeout(() => { this.saved = false; }, 3000);
             } catch (err) {
                 this.saveError = err.message || 'Could not save preferences. Please try again.';
-                console.warn('[ux-preferences] save failed:', err);
             } finally {
                 this.saving = false;
             }

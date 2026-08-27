@@ -312,7 +312,6 @@ function blueprintPage() {
                     }));
                 });
             } catch (e) {
-                console.warn('[blueprint] diagram render failed for ' + sectionId + ':', e);
                 self.diagramErrors[sectionId] = true;
             }
         },

@@ -84,9 +84,9 @@
             if (isDev) {
                 throw new Error(msg);
             } else {
-                // Production: warn but don't crash
+                // Production: warn but don't crash.
                 if (global.console && global.console.warn) {
-                    global.console.warn(msg);
+                    global.console.warn(msg);  // console-ok: build/load-order defect (a module bundled twice) with no user-actionable remedy; this is the namespace bootstrap, so Platform.toast does not exist yet, and dev throws instead.
                 }
                 return;
             }
@@ -356,9 +356,11 @@
         throw new Error('[Platform] core/00-namespace.js must be loaded before core/02-sanitize.js');
     }
 
-    let log = global.Platform.log
-        ? global.Platform.log.child('sanitize')
-        : { warn: function (m) { if (global.console) global.console.warn(m); } };
+    if (!global.Platform.log) {
+        throw new Error('[Platform] core/01-logger.js must be loaded before core/02-sanitize.js');
+    }
+
+    let log = global.Platform.log.child('sanitize');
 
     // ── DOMPurify config ─────────────────────────────────────────────────────
     // Allow standard HTML but strip all event handlers and dangerous protocols.
@@ -1319,7 +1321,7 @@
     // Log silently — do NOT show toasts for unhandled errors (too noisy).
     //
     // P-07: these handlers used to pass the raw Error/rejection value
-    // straight to log.error() as a positional arg. console.error() itself
+    // straight to log.error() as a positional arg. The browser devtools log itself
     // renders an Error fine interactively, but anything downstream that
     // stringifies the arguments (log capture, a headless test harness
     // reading console text, a future log-shipping hook) calls String()/

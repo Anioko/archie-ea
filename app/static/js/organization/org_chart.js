@@ -42,7 +42,6 @@ document.addEventListener('alpine:init', () => {
                     this.$nextTick(() => this.renderTree());
                 }
             } catch (e) {
-                console.error('Failed to load org chart data:', e);
                 // Counts are null, not 0: nothing was counted.
                 this.roots = [];
                 this.groups = [];

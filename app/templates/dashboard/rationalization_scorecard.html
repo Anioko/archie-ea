@@ -206,7 +206,6 @@ async function loadScorecardData() {
       populateConfigSelector(configsData.data);
     }
   } catch (err) {
-    console.error('Failed to load scorecard data:', err);
     if (window.Platform && Platform.toast) Platform.toast.error('Could not load scorecard data.');
   }
 }

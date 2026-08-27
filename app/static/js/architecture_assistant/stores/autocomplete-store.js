@@ -67,7 +67,6 @@ document.addEventListener('alpine:init', () => {
                 return data;
 
             } catch (e) {
-                console.error('Auto-complete failed:', e);
                 this.error = 'Auto-complete unavailable';
                 return null;
             } finally {
@@ -152,7 +151,6 @@ document.addEventListener('alpine:init', () => {
                 }));
 
             } catch (e) {
-                console.error('Failed to apply completions:', e);
                 if (window.Platform && window.Platform.toast) {
                     window.Platform.toast.error('Your accepted completions could not be applied — please retry.');
                 } else {

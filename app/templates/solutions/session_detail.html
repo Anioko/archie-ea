@@ -1384,7 +1384,6 @@ function sessionDetail() {
                 recalculated.sort((a, b) => b.score - a.score);
                 this.scenarioResults = recalculated;
             } catch (err) {
-                console.error('Scenario recalculation error:', err);
                 if (window.Platform && Platform.toast) Platform.toast.error('Failed to recalculate scenario');
             } finally {
                 this.scenarioLoading = false;

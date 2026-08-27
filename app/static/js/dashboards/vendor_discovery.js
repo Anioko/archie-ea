@@ -21,11 +21,12 @@ function loadCapabilities() {
             if (data.success) {
                 availableCapabilities = data.capabilities;
                 populateCapabilityList();
+            } else {
+                showError(data.error || 'Failed to load capabilities');
             }
         })
         .catch(function(error) {
-            console.error('Error loading capabilities:', error);
-            showError('Failed to load capabilities');
+            showError('Failed to load capabilities: ' + error.message);
         });
 }
 
@@ -231,8 +232,7 @@ function runDiscovery() {
     })
     .catch(function(error) {
         document.getElementById('loadingState').classList.add('hidden');
-        console.error('Error running discovery:', error);
-        showError('Failed to run vendor discovery');
+        showError('Failed to run vendor discovery: ' + error.message);
     });
 }
 

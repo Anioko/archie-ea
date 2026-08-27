@@ -455,7 +455,15 @@
 <script>
 (function() {
     if (typeof Alpine === 'undefined') {
-        console.error('[gantt_chart] Alpine.js not loaded');
+        // Without Alpine the chart never renders and the panel stays blank, which
+        // reads as "no roadmap". Say so instead.
+        document.querySelectorAll('[id^="gantt-chart-"]').forEach(function(el) {
+            el.textContent = 'The roadmap chart could not start (Alpine.js failed to load). Reload the page to try again.';
+            el.className = 'rounded-lg border border-destructive/30 bg-destructive/5 p-6 text-sm text-destructive-emphasis';
+        });
+        if (window.Platform && Platform.toast) {
+            Platform.toast.error('The roadmap chart could not start (Alpine.js failed to load).');
+        }
         return;
     }
 

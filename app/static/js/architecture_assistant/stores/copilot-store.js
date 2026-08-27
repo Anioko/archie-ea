@@ -68,7 +68,10 @@ document.addEventListener('alpine:init', () => {
                 }
             } catch (e) {
                 // Non-blocking — don't show errors for field reviews
-                console.warn('Copilot field review failed:', e);
+                // Unsolicited background advisory fired 2s after typing: a failure
+                // leaves the sidebar as it was and there is nothing the user must act
+                // on, so it is deliberately not surfaced. "Enhance All" (reviewStep)
+                // is the user-initiated path and does surface its failures.
             }
         },
 
@@ -105,7 +108,6 @@ document.addEventListener('alpine:init', () => {
                 return data;
 
             } catch (e) {
-                console.error('Copilot step review failed:', e);
                 this.suggestions = [];
                 this.error = 'AI suggestions unavailable';
                 // No template renders store.error, so without this the click is silent.

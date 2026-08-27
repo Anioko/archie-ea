@@ -1260,7 +1260,6 @@
 
       renderGantt(groups, tasks);
     } catch (e) {
-      console.error('[rdm-gantt] load failed:', e);
       const chartEl = document.getElementById('rdm-gantt-chart');
       if (chartEl) {
         chartEl.innerHTML = `

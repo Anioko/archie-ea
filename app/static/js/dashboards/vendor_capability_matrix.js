@@ -17,7 +17,6 @@ function loadMatrixData() {
             renderMatrix();
         })
         .catch(function(error) {
-            console.error('Error loading matrix data:', error);
             showError('Failed to load capability matrix data');
         });
 }

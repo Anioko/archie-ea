@@ -693,8 +693,7 @@ function ganttChartManager() {
                 link.href = canvas.toDataURL();
                 link.click();
             }).catch(error => {
-                console.error('Error generating PNG:', error);
-                Platform.toast.error('Error generating PNG export');
+                Platform.toast.error('Error generating PNG export: ' + (error.message || error));
             });
         },
         
@@ -716,8 +715,7 @@ function ganttChartManager() {
                 link.href = canvas.toDataURL('image/jpeg', 0.9);
                 link.click();
             }).catch(error => {
-                console.error('Error generating JPG:', error);
-                Platform.toast.error('Error generating JPG export');
+                Platform.toast.error('Error generating JPG export: ' + (error.message || error));
             });
         }
     };

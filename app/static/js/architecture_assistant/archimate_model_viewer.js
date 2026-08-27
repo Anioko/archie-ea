@@ -92,7 +92,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 showError(result.error || 'Failed to generate model');
             }
         } catch (error) {
-            console.error('Error generating model:', error);
             showError('Failed to generate ArchiMate model');
         }
     }
@@ -253,7 +252,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 showError('Failed to export model');
             }
         } catch (error) {
-            console.error('Error exporting model:', error);
             showError('Failed to export model');
         }
     }

@@ -285,7 +285,6 @@ function newImportForm() {
                     this.showToast(data.message || 'Failed to create import job', 'error');
                 }
             } catch (error) {
-                console.error('Failed to create import job:', error);
                 this.showToast('Failed to create import job', 'error');
             } finally {
                 this.submitting = false;
@@ -295,8 +294,10 @@ function newImportForm() {
         showToast(message, type) {
             if (window.showToast) {
                 window.showToast(message, type);
-            } else {
-
+            } else if (window.Platform && Platform.toast) {
+                // Without this branch a failed import reported itself to nobody.
+                const fn = Platform.toast[type] || Platform.toast.info;
+                fn(message);
             }
         }
     };

@@ -339,7 +339,6 @@ function confirmRollback() {
         }
     })
     .catch(function(error) {
-        console.error('Error rolling back import:', error);
         Platform.toast.error('Error rolling back import');
     })
     .finally(function() {

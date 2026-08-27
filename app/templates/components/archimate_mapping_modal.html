@@ -372,7 +372,6 @@ function archimateMappingModal() {
                 this.allElements = data.elements || [];
                 this.filterElements();
             } catch (error) {
-                console.error('Error loading ArchiMate elements:', error);
                 if (typeof toast !== 'undefined') {
                     toast.error('Failed to load ArchiMate elements', {
                         description: error.message
@@ -463,7 +462,6 @@ function archimateMappingModal() {
                 // Reload the page after a short delay
                 setTimeout(() => location.reload(), 1500);
             } catch (error) {
-                console.error('Error saving mappings:', error);
                 if (typeof toast !== 'undefined') {
                     toast.error('Failed to save mappings', {
                         description: error.message

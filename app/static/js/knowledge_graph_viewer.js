@@ -95,12 +95,10 @@ async function loadGraphData() {
             updateStatistics(data.metadata);
             renderGraph(graphData);
         } else {
-            console.error('Failed to load graph data:', data.error);
             Platform.toast.error('Failed to load graph data: ' + data.error);
         }
 
     } catch (error) {
-        console.error('Error loading graph:', error);
         Platform.toast.error('Error loading graph: ' + error.message);
     } finally {
         showLoading(false);
@@ -274,9 +272,10 @@ async function showNeighbors() {
                 edges: related.map(e => ({ source: selectedNode.id, target: e.id || e.name }))
             };
             renderGraph(subgraph);
+        } else {
+            Platform.toast.error('Could not load neighbours: ' + (data.error || 'unknown error'));
         }
     } catch (error) {
-        console.error('Error loading neighbors:', error);
         Platform.toast.error('Error loading neighbors: ' + error.message);
     }
 }
@@ -398,7 +397,6 @@ async function findPath() {
             resultDiv.style.display = 'block';
         }
     } catch (error) {
-        console.error('Error finding path:', error);
         Platform.toast.error('Error finding path: ' + error.message);
     }
 }

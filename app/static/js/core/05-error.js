@@ -143,7 +143,7 @@
     // Log silently — do NOT show toasts for unhandled errors (too noisy).
     //
     // P-07: these handlers used to pass the raw Error/rejection value
-    // straight to log.error() as a positional arg. console.error() itself
+    // straight to log.error() as a positional arg. The browser devtools log itself
     // renders an Error fine interactively, but anything downstream that
     // stringifies the arguments (log capture, a headless test harness
     // reading console text, a future log-shipping hook) calls String()/

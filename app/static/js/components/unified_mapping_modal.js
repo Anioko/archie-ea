@@ -302,7 +302,6 @@ async function loadTargets() {
 
         filterUnifiedTargets();
     } catch (error) {
-        console.error('Error loading targets:', error);
         safeHTML(container, '<div class="text-center py-8 text-destructive">' +
             '<i data-lucide="alert-circle" class="w-8 h-8 mx-auto mb-2"></i>' +
             '<p>Failed to load data. Please try again.</p>' +
@@ -750,7 +749,6 @@ async function loadUnifiedApplications(targetId) {
         let data = await response.json();
 
         if (data.error) {
-            console.error('Error loading applications:', data.error);
             if (container) {
                 safeHTML(container, '<div class="text-center py-8 text-destructive">' +
                     '<p>Error: ' + data.error + '</p>' +
@@ -783,7 +781,6 @@ async function loadUnifiedApplications(targetId) {
             if (searchInput) searchInput.focus();
         }, 100);
     } catch (error) {
-        console.error('Error loading applications:', error);
         if (container) {
             safeHTML(container, '<div class="text-center py-8 text-destructive">' +
                 '<p>Failed to load applications</p>' +
@@ -1365,7 +1362,6 @@ async function _saveUnifiedMappingsInner() {
 
         closeUnifiedMappingModal();
     } catch (error) {
-        console.error('Error saving mappings:', error);
         if (typeof showNotification === 'function') {
             showNotification('Error saving mappings', 'error');
         } else {
@@ -1435,7 +1431,6 @@ async function saveReverseMappings() {
             Platform.toast.error('Failed to save mappings. Please try again.');
         }
     } catch (error) {
-        console.error('Error saving reverse mappings:', error);
         Platform.toast.error('Error saving mappings: ' + error.message);
     }
 }
@@ -1483,9 +1478,10 @@ window.deleteUnifiedMapping = async function(mappingId, appId) {
             showNotification('Mapping removed successfully', 'success');
         }
     } catch (error) {
-        console.error('Error deleting mapping:', error);
         if (typeof showNotification === 'function') {
             showNotification('Error deleting mapping. Please try again.', 'error');
+        } else {
+            Platform.toast.error('Error deleting mapping. Please try again.');
         }
     }
 };

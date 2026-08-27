@@ -27,7 +27,6 @@
                     const data = await r.json();
                     this.boardId = data.board_id;
                 } catch (e) {
-                    console.warn("sprint_planning: could not resolve board_id", e);
                     if (window.Platform && Platform.toast) {
                         Platform.toast.error("Could not load the sprint board");
                     }
@@ -39,6 +38,7 @@
                 this.loading = true;
                 try {
                     const r = await fetch(`/api/sprints?board_id=${this.boardId}`);
+                    if (!r.ok) throw new Error("HTTP " + r.status);
                     const data = await r.json();
                     this.sprints = Array.isArray(data) ? data : [];
                     this.activeSprint =
@@ -46,8 +46,11 @@
                         this.sprints.find((s) => s.status === "planning") ||
                         null;
                 } catch (e) {
-                    console.warn("sprint_planning: loadSprints failed", e);
                     this.sprints = [];
+                    this.activeSprint = null;
+                    if (window.Platform && Platform.toast) {
+                        Platform.toast.error("Sprints could not be loaded — this list is empty because of an error, not because there are no sprints.");
+                    }
                 } finally {
                     this.loading = false;
                 }
@@ -72,7 +75,6 @@
                     this.showCreateForm = false;
                     await this.loadSprints();
                 } catch (e) {
-                    console.warn("sprint_planning: createSprint failed", e);
                     if (window.Platform && Platform.toast) Platform.toast.error("Could not create the sprint.");
                 }
             },
@@ -88,7 +90,6 @@
                     if (!r.ok) throw new Error("HTTP " + r.status);
                     await this.loadSprints();
                 } catch (e) {
-                    console.warn("sprint_planning: assignCard failed", e);
                     if (window.Platform && Platform.toast) Platform.toast.error("Could not assign the card to that sprint.");
                 }
             },

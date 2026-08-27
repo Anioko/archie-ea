@@ -3518,7 +3518,6 @@
           }
         } catch (err) {
           this.bulkResult = { success: false, error: 'Network error — please try again.' };
-          console.error('executeBulkAction error:', err);
         } finally {
           this.bulkProcessing = false;
           if (typeof lucide !== 'undefined') { lucide.createIcons(); }
@@ -3557,7 +3556,6 @@
           this.error = (err && err.status)
             ? 'Failed to load workbench data (HTTP ' + err.status + ')'
             : 'Network error — please try again.';
-          console.error('decisionWorkbench.load error:', err);
         } finally {
           this.loading = false;
           if (typeof lucide !== 'undefined') { lucide.createIcons(); }
@@ -3679,7 +3677,6 @@
           if (typeof lucide !== 'undefined') { lucide.createIcons(); }
         } catch (e) {
           this.error = 'Network error loading dossier.';
-          console.error('decisionDossier.loadDossier error:', e);
         } finally {
           this.loading = false;
         }

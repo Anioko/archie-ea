@@ -34,7 +34,6 @@ document.addEventListener('alpine:init', () => {
                 this.nodeCount = this.countNodes(this.treeData);
                 this.renderTree();
             } catch (e) {
-                console.error('Failed to load tree:', e);
                 this.treeData = null;
                 this.nodeCount = 0;
                 Platform.toast.error('Could not load the capability tree — the canvas is blank because the request failed.');
@@ -217,8 +216,7 @@ document.addEventListener('alpine:init', () => {
                 });
 
             } catch (e) {
-                console.error('Observable Plot render error:', e);
-                container.innerHTML = '<p class="p-6 text-sm text-muted-foreground">Tree rendering failed. Check console.</p>';
+                container.innerHTML = '<p class="p-6 text-sm text-destructive">Tree rendering failed: ' + (e.message || 'unknown error') + '</p>';
             }
 
             if (window.lucide) lucide.createIcons();
@@ -327,8 +325,7 @@ document.addEventListener('alpine:init', () => {
                 this.selected = saved;
                 await this.loadTree();
             } catch (e) {
-                console.error('Save error:', e);
-                Platform.toast.error('Save failed. Check console.');
+                Platform.toast.error('Save failed: ' + (e.message || 'unknown error'));
             }
         },
 
@@ -353,8 +350,7 @@ document.addEventListener('alpine:init', () => {
                 this.showDeleteConfirm = false;
                 await this.loadTree();
             } catch (e) {
-                console.error('Delete error:', e);
-                Platform.toast.error('Delete failed. Check console.');
+                Platform.toast.error('Delete failed: ' + (e.message || 'unknown error'));
             }
         },
     }));

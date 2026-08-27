@@ -28,9 +28,11 @@
         throw new Error('[Platform] core/00-namespace.js must be loaded before core/02-sanitize.js');
     }
 
-    let log = global.Platform.log
-        ? global.Platform.log.child('sanitize')
-        : { warn: function (m) { if (global.console) global.console.warn(m); } };
+    if (!global.Platform.log) {
+        throw new Error('[Platform] core/01-logger.js must be loaded before core/02-sanitize.js');
+    }
+
+    let log = global.Platform.log.child('sanitize');
 
     // ── DOMPurify config ─────────────────────────────────────────────────────
     // Allow standard HTML but strip all event handlers and dangerous protocols.

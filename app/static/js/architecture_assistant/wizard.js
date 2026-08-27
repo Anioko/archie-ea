@@ -1168,7 +1168,6 @@ function architectureWizard() {
         })
         .catch(function(err) {
           self.composerStatus = 'Error loading elements';
-          console.error('[Wizard Composer]', err);
         });
     },
 

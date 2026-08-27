@@ -90,7 +90,6 @@ class APQCBrowserManager {
                 this.showError('Failed to load APQC data: ' + data.error);
             }
         } catch (error) {
-            console.error('Error loading APQC data:', error);
             this.showError('Error loading APQC data');
         } finally {
             this.showLoading(false);
@@ -100,14 +99,18 @@ class APQCBrowserManager {
     async loadIndustryVariants() {
         try {
             const response = await fetch('/api/apqc/variants');
+            if (!response.ok) throw new Error('HTTP ' + response.status);
             const data = await response.json();
 
             if (data.success) {
                 this.populateIndustryFilter(data.variants || []);
+            } else {
+                // Without this branch an errored 200 left the industry filter empty,
+                // which reads as "this deployment has no industry variants".
+                throw new Error(data.error || 'request failed');
             }
         } catch (error) {
-            console.error('Error loading industry variants:', error);
-            this.showError('Error loading industry variants');
+            this.showError('Error loading industry variants: ' + (error.message || error));
         }
     }
 
@@ -203,7 +206,6 @@ class APQCBrowserManager {
                 this.showError('Failed to load process details: ' + data.error);
             }
         } catch (error) {
-            console.error('Error loading process details:', error);
             this.showError('Error loading process details');
         } finally {
             this.showLoading(false);
@@ -314,7 +316,6 @@ class APQCBrowserManager {
             }
         } catch (error) {
             if (error.name === 'AbortError') return; // superseded by a newer query
-            console.error('Error searching:', error);
             this.showError('Error searching');
         } finally {
             this.showLoading(false);
@@ -436,7 +437,6 @@ class APQCBrowserManager {
                 this.showError('Auto-link failed: ' + data.error);
             }
         } catch (error) {
-            console.error('Error auto-linking:', error);
             this.showError('Error auto-linking processes');
         }
     }

@@ -58,7 +58,6 @@ document.addEventListener('alpine:init', () => {
                 return data;
 
             } catch (e) {
-                console.error('Quality gate assessment failed:', e);
                 this.error = 'Quality assessment unavailable';
                 // No assessment exists, so nothing may be rendered as one.
                 this.assessment = null;
@@ -119,7 +118,6 @@ document.addEventListener('alpine:init', () => {
                 return data.can_advance;
 
             } catch (e) {
-                console.error('Can-advance check failed:', e);
                 // If the error looks like a login redirect (HTML response), redirect
                 if (e.message && e.message.includes('JSON')) {
                     window.location.href = '/account/login';

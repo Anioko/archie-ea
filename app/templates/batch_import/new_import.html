@@ -725,14 +725,15 @@ function newImportForm() {
         async loadAvailableApplications() {
             this.loadingApplications = true;
             try {
+                // fetch does not reject on 4xx/5xx, and an unchecked `data.success`
+                // left the picker empty -- a failure that read as "no applications".
                 const response = await fetch('/capability-map/api/applications?limit=100');
+                if (!response.ok) throw new Error('HTTP ' + response.status);
                 const data = await response.json();
-                if (data.success) {
-                    this.availableApplications = data.applications || [];
-                }
+                if (!data.success) throw new Error(data.message || data.error || 'request failed');
+                this.availableApplications = data.applications || [];
             } catch (error) {
-                console.error('Failed to load applications:', error);
-                this.showToast('Failed to load applications', 'error');
+                this.showToast('Failed to load applications — ' + (error && error.message ? error.message : 'request failed'), 'error');
             } finally {
                 this.loadingApplications = false;
             }
@@ -815,8 +816,7 @@ function newImportForm() {
                     this.showToast(data.message || data.error || 'Failed to create import job', 'error');
                 }
             } catch (error) {
-                console.error('Failed to create import job:', error);
-                this.showToast('Failed to create import job', 'error');
+                this.showToast('Failed to create import job — ' + (error && error.message ? error.message : 'request failed'), 'error');
             } finally {
                 this.submitting = false;
             }
@@ -825,7 +825,10 @@ function newImportForm() {
         showToast(message, type = 'info') {
             if (window.showToast) {
                 window.showToast(message, type);
-            } else {
+            } else if (window.Platform && Platform.toast && Platform.toast[type]) {
+                Platform.toast[type](message);
+            } else if (window.Platform && Platform.toast) {
+                Platform.toast.info(message);
             }
         }
     };

@@ -74,7 +74,6 @@ class BusinessOutputDisplay {
                 this.displayError('Failed to transform output');
             }
         } catch (error) {
-            console.error('Error transforming output:', error);
             this.displayError('Error transforming output');
         }
     }
@@ -688,7 +687,6 @@ class BusinessOutputDisplay {
                             }
                         });
                     } catch (error) {
-                        console.error('Chart rendering error:', error);
                         safeHTML(element, '<div class="p-4 text-sm text-muted-foreground">' +
                                 '<p class="font-medium mb-2">Visualization Data</p>' +
                                 '<pre class="text-xs overflow-auto">' + JSON.stringify(data, null, 2).substring(0, 500) + '</pre>' +

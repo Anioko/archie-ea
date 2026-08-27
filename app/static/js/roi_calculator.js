@@ -197,7 +197,9 @@ function getROIBadgeColor(roi) {
  */
 function exportToCSV(scenarios, filename = 'scenario_comparison.csv') {
     if (!scenarios || scenarios.length === 0) {
-        console.warn('No scenarios to export');
+        if (window.Platform && Platform.toast) {
+            Platform.toast.warning('There are no scenarios to export.');
+        }
         return;
     }
 

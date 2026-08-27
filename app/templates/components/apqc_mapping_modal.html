@@ -282,7 +282,6 @@ function apqcMappingModal() {
                 this.allProcesses = await response.json();
                 this.filterProcesses();
             } catch (error) {
-                console.error('Error loading APQC processes:', error);
                 if (typeof toast !== 'undefined') {
                     toast.error('Failed to load APQC processes', {
                         description: error.message
@@ -401,7 +400,6 @@ function apqcMappingModal() {
                 // Reload the page after a short delay
                 setTimeout(() => location.reload(), 1500);
             } catch (error) {
-                console.error('Error saving mappings:', error);
                 if (typeof toast !== 'undefined') {
                     toast.error('Failed to save mappings', {
                         description: error.message

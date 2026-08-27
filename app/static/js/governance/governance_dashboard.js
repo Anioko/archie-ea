@@ -97,7 +97,6 @@
                     .catch(function (err) {
                         self.errorMsg = 'Could not load capabilities. Please refresh.';
                         self.loading = false;
-                        console.error('Governance dashboard load error:', err);
                     });
             },
 
@@ -331,7 +330,6 @@
                 .catch(function (err) {
                     self.editSaving = false;
                     self.editError = 'Network error. Please try again.';
-                    console.error('Save governance error:', err);
                 });
             },
 

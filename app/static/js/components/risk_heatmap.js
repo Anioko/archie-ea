@@ -62,7 +62,6 @@ function riskHeatmap(initialRisks) {
                 }
             } catch (e) {
                 this.saveError = 'Network error — please try again';
-                console.error('Risk save error:', e);
             } finally {
                 this.saving = false;
             }

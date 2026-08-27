@@ -532,7 +532,6 @@ function confirmRollback() {
         }
     })
     .catch(error => {
-        console.error('Error rolling back import:', error);
         Platform.toast.error('Error rolling back import');
     })
     .finally(() => {
@@ -558,7 +557,6 @@ async function retryFailed(importId) {
             }
         })
         .catch(error => {
-            console.error('Error retrying failed records:', error);
             Platform.toast.error('Error retrying failed records');
         });
     }

@@ -32,6 +32,9 @@ function loadReviewQueue(previewData) {
                 if (data.success) {
                     reviewQueueItems = data.items || [];
                     renderReviewQueue(reviewQueueItems);
+                } else {
+                    safeHTML(document.getElementById('review-queue-content'),
+                        '<div class="text-destructive text-center py-8">Failed to load review queue: ' + (data.error || 'unknown error') + '</div>');
                 }
                 updateReviewCounts();
             })
@@ -48,7 +51,6 @@ function buildReviewItemsFromPreview(previewData) {
     let LOW_CONFIDENCE_THRESHOLD = 0.70;
 
     if (!previewData.applications || previewData.applications.length === 0) {
-        console.warn('No applications found in preview data');
         return items;
     }
 

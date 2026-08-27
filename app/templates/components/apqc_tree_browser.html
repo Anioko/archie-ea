@@ -110,7 +110,9 @@ document.addEventListener('click', function(e) {
   } catch(err) {
     // This is a document-level delegated click handler, so it must not throw
     // for every other click on the page over one malformed node's data-params.
-    console.error('[apqc-tree-browser] toggleAPQCNode parse error', err);
+    if (window.Platform && Platform.toast) {
+      Platform.toast.error('This process node could not be expanded — its data is malformed.');
+    }
   }
 });
 
@@ -256,7 +258,6 @@ async function searchAPQCProcesses(query) {
     }
     _apqcSearchErrorShown = false;
   } catch (error) {
-    console.error('APQC search error:', error);
     // Fires on every keystroke — toast once per outage, not on every retry.
     if (!_apqcSearchErrorShown) {
       _apqcSearchErrorShown = true;

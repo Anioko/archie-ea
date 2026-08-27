@@ -37,10 +37,13 @@ function loadContext(mode, contextId) {
         .then(function(data) {
             if (data.success) {
                 displayContext(data, mode);
+            } else {
+                // An errored 200 otherwise left the container on its loading
+                // placeholder, indistinguishable from context still arriving.
+                throw new Error(data.error || 'request failed');
             }
         })
         .catch(function(error) {
-            console.error('Failed to load context:', error);
             let contextContainer = document.getElementById('contextContainer');
             if (contextContainer) {
                 safeHTML(contextContainer, '<p class="text-sm text-destructive">Could not load context.</p>');
@@ -54,10 +57,11 @@ function loadTemplates() {
         .then(function(data) {
             if (data.success) {
                 displayTemplates(data.templates);
+            } else {
+                throw new Error(data.error || 'request failed');
             }
         })
         .catch(function(error) {
-            console.error('Failed to load templates:', error);
             let templateContainer = document.getElementById('templateList');
             if (templateContainer) {
                 safeHTML(templateContainer, '<p class="text-sm text-destructive">Could not load templates.</p>');
@@ -168,7 +172,6 @@ function generateCode() {
         }
     })
     .catch(function(error) {
-        console.error('Generation failed:', error);
         showNotification('Generation failed: ' + error.message, 'error');
     })
     .finally(function() {

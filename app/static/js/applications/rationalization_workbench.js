@@ -165,7 +165,6 @@ function workbenchApp() {
                 }
             })
             .catch(function(err) {
-                console.error('Workbench load failed:', err);
                 self.loading = false;
                 self.error = true;
             });
@@ -226,7 +225,6 @@ function workbenchApp() {
                 }
             })
             .catch(function(err) {
-                console.error('Bulk action error:', err);
                 Platform.toast.error('Bulk action request failed.');
             });
         },

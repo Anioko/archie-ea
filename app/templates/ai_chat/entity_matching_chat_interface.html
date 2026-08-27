@@ -851,7 +851,6 @@ function entityMatchingChat() {
         }
         
       } catch (error) {
-        console.error('Error sending message:', error);
         this.addMessage('assistant', 'Sorry, I encountered an error while processing your request. Please try again.');
       } finally {
         this.isTyping = false;

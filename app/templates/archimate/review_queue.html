@@ -94,7 +94,6 @@ function reviewQueue() {
                 if (!r.ok) throw new Error('The server returned HTTP ' + r.status + '.');
                 this.suggestions = (await r.json()).suggestions || [];
             } catch(e) {
-                console.error(e);
                 this.suggestions = [];
                 this.loadError = e.message || 'The request did not complete.';
             }

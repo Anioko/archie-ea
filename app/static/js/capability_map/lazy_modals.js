@@ -88,8 +88,8 @@
      * Resolve with the dialog's root element, loading it if it is not in the
      * DOM yet. Concurrent callers share one request.
      *
-     * Resolves with `null` — after telling the user through Platform.toast and
-     * logging the cause — when the fragment cannot be loaded. It does not
+     * Resolves with `null` — after telling the user through Platform.toast —
+     * when the fragment cannot be loaded. It does not
      * reject: every caller is an `@click` handler, so a rejection would surface
      * only as an unhandled promise. Callers MUST check the result and return
      * rather than operating on a dialog that is not there.
@@ -104,7 +104,6 @@
         }
         inFlight[modalId] = fetchAndInject(modalId).catch(function (err) {
             delete inFlight[modalId];
-            console.error('Lazy modal load failed:', err);
             if (global.Platform && global.Platform.toast) {
                 global.Platform.toast.error(
                     'The mapping dialog could not be loaded. Please try again.'

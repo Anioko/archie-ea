@@ -294,7 +294,6 @@ async function runDetection() {
       showToast('Detection failed: ' + (data.error || 'Unknown error'), 'error');
     }
   } catch (error) {
-    console.error('Detection error:', error);
     showToast('Detection failed: ' + error.message, 'error');
   } finally {
     btn.disabled = false;
@@ -333,7 +332,6 @@ async function _doAutoResolveExact() {
       showToast('Error: ' + (data.error || 'Unknown error'), 'error');
     }
   } catch (error) {
-    console.error('Error in auto-resolve:', error);
     showToast('Failed to auto-resolve: ' + error.message, 'error');
   } finally {
     setButtonLoading(btn, false);
@@ -356,7 +354,6 @@ async function scorePortfolio() {
       showToast('Error: ' + (data.error || 'Unknown error'), 'error');
     }
   } catch (error) {
-    console.error('Error scoring portfolio:', error);
     showToast('Failed to score portfolio: ' + error.message, 'error');
   } finally {
     setButtonLoading(btn, false);
@@ -610,7 +607,6 @@ async function checkRetirementBlockers() {
     }
 
   } catch (error) {
-    console.error('Error checking blockers:', error);
     showToast('Failed to check retirement blockers: ' + error.message, 'error');
   } finally {
     setButtonLoading(btn, false);
@@ -714,7 +710,6 @@ async function checkBlastRadius() {
     }
 
   } catch (error) {
-    console.error('Error checking blast radius:', error);
     showToast('Failed to check blast radius: ' + error.message, 'error');
   } finally {
     setButtonLoading(blastBtn, false);
@@ -950,7 +945,6 @@ async function analyzeOptions() {
     }
 
   } catch (error) {
-    console.error('Error analyzing options:', error);
     // Only show error fallback if score calculation itself failed
     displayFallbackOptions(appId, error.message);
   } finally {
@@ -1986,7 +1980,6 @@ async function loadPortfolioDependencies(page) {
   } catch (error) {
     if (elLoading) elLoading.classList.add('hidden');
     if (elEmpty) elEmpty.classList.remove('hidden');
-    console.error('Error loading portfolio dependencies:', error);
     showToast('Failed to load dependency risk data: ' + error.message, 'error');
   } finally {
     if (loadBtn) { loadBtn.disabled = false; }
@@ -2139,7 +2132,6 @@ async function loadDependencyImpact(appId, appName) {
         '<p class="text-sm mt-1">' + escapeHtml(error.message) + '</p>' +
       '</div>'
     );
-    console.error('Error loading dependency impact:', error);
     showToast('Failed to load dependency impact: ' + error.message, 'error');
   }
 }
@@ -2408,7 +2400,6 @@ async function loadRetirementSequence() {
         '<p class="text-xs text-muted-foreground mt-1">' + escapeHtml(err.message) + '</p>' +
       '</div>'
     );
-    console.error('loadRetirementSequence error:', err);
   }
 }
 
@@ -2606,7 +2597,6 @@ async function loadPortfolioWorkbench(filters, containerId) {
         '</div>'
       );
     }
-    console.error('loadPortfolioWorkbench error:', err);
     return null;
   }
 }
@@ -2640,7 +2630,6 @@ async function loadRoadmapStatus(appId, containerId) {
         '</div>'
       );
     }
-    console.error('loadRoadmapStatus error:', err);
     return null;
   }
 }
@@ -2722,7 +2711,6 @@ function renderRoadmapStatus(data, containerId) {
       } catch (err) {
         if (errorEl) { errorEl.textContent = 'Network error — please try again.'; errorEl.classList.remove('hidden'); }
         setButtonLoading(submitBtn, false);
-        console.error('createRoadmapItem error:', err);
       }
     });
   }

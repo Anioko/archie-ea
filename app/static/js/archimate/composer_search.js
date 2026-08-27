@@ -115,7 +115,6 @@ let ComposerSearch = (function() {
             .catch(function(err) {
                 UndoStack.resume();
                 _toast('error', 'Failed to switch viewpoint');
-                console.error('[Composer] viewpoint load error:', err);
                 self.viewpointLoading = false;
                 self.elementCount = 0;
                 self.relCount = 0;

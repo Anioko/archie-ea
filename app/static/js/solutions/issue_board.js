@@ -27,7 +27,11 @@ function issueBoard() {
       this.currentUserId = this.getCurrentUserId();
       
       if (!this.solutionId) {
-        console.warn('No solution ID found');
+        // The board cannot address any solution — say so rather than render an
+        // empty board that reads as "no issues".
+        if (window.Platform && Platform.toast && Platform.toast.error) {
+          Platform.toast.error('Issue board unavailable: no solution identified in this page URL.');
+        }
         return;
       }
 
@@ -48,7 +52,6 @@ function issueBoard() {
         this.issues = await response.json();
         this._issuesLoadErrorShown = false;
       } catch (error) {
-        console.error('Failed to load issues:', error);
         // setupPolling() calls this every 5s — only surface the failure once
         // per outage, not on every retry, to avoid a toast every 5 seconds.
         if (!this._issuesLoadErrorShown) {
@@ -159,7 +162,6 @@ function issueBoard() {
           this.selectedIssue = { ...updated };
         }
       } catch (error) {
-        console.error('Failed to transition issue:', error);
         if (window.Platform && Platform.toast && Platform.toast.error) {
           Platform.toast.error('Failed to update issue status. Please try again.');
         }
@@ -189,7 +191,6 @@ function issueBoard() {
           this.selectedIssue = { ...updated };
         }
       } catch (error) {
-        console.error('Failed to escalate issue:', error);
         if (window.Platform && Platform.toast && Platform.toast.error) {
           Platform.toast.error('Failed to escalate issue. Please try again.');
         }

@@ -122,7 +122,6 @@ function updateSyncStatus() {
         statusDetails.textContent = details;
     })
     .catch(function(error) {
-        console.error('Error fetching sync status:', error);
         document.getElementById('status-text').textContent = 'Error loading status';
         document.getElementById('status-details').textContent = 'Failed to check sync status.';
     });
@@ -169,7 +168,6 @@ function cancelCurrentJob() {
                     }
                 })
                 .catch(function(error) {
-                    console.error('Error cancelling job:', error);
                     Platform.toast.error('Error cancelling job: ' + error.message);
                 });
             } }
@@ -217,7 +215,6 @@ function updateImportedDataCounts() {
         }
     })
     .catch(function(error) {
-        console.error('Error fetching Abacus stats:', error);
         // Polled every 10s — toast once per outage, not on every retry, and reset
         // so a later outage (not just recovery) can surface again.
         if (!window._abacusStatsErrorShown) {

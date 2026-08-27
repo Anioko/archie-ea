@@ -55,7 +55,6 @@ function loadProcessSuggestions(appId) {
       }
     })
     .catch(function(error) {
-      console.error('Error loading suggestions:', error);
       showError('Failed to load process suggestions');
     })
     .finally(function() {
@@ -192,7 +191,6 @@ function acceptSuggestion(index) {
     }
   })
   .catch(function(error) {
-    console.error('Error accepting suggestion:', error);
     showError('Failed to accept process mapping');
   });
 }
@@ -259,7 +257,6 @@ function hideManualProcessMapping() {
         })
         .catch(function(error) {
           if (error.name === 'AbortError') return; // superseded by a newer query
-          console.error('Error searching processes:', error);
           // Toast once per outage, not on every retry.
           if (!_searchErrorShown) {
             _searchErrorShown = true;
@@ -327,7 +324,6 @@ function addManualProcessMapping() {
     }
   })
   .catch(function(error) {
-    console.error('Error adding manual mapping:', error);
     showError('Failed to add manual process mapping');
   });
 }

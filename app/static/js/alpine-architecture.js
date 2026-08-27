@@ -51,7 +51,8 @@
 'use strict';
 
 if (window.__ALPINE_ARCH_LOADED__) {
-    console.warn('[alpine-architecture] Already loaded — skipping re-registration.');
+    /* Already loaded — skip re-registration. Harmless: the first load's
+       components are already registered and remain in use. */
 } else {
     window.__ALPINE_ARCH_LOADED__ = true;
 

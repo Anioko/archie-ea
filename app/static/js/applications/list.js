@@ -310,7 +310,6 @@ function appPortfolio() {
         this.clearSelection();
         setTimeout(() => window.location.reload(), 800);
       } catch (err) {
-        console.error('[appPortfolio] bulk delete error:', err);
         Platform.toast.error('Delete failed. Please try again.');
         this.notify('Delete failed. Please try again.', 'error');
       }
@@ -424,15 +423,15 @@ function appPortfolio() {
           : requested;
         this.notify(describe(updated), updated === requested ? 'success' : 'warning');
         if (data && Array.isArray(data.errors) && data.errors.length > 0) {
-          console.warn('[appPortfolio] bulk update reported errors:', data.errors);
+          const detail = data.errors.map(e => (typeof e === 'string' ? e : (e && (e.error || e.message)) || 'unknown error')).slice(0, 3).join('; ');
+          this.notify(`${data.errors.length} application${data.errors.length !== 1 ? 's' : ''} could not be updated: ${detail}`, 'warning');
         }
         this.clearSelection();
         setTimeout(() => window.location.reload(), 800);
       } catch (err) {
         // Platform.fetch() already raised a toast for the failed request (it is
         // not called with silent:true here), so toasting again here would show
-        // the same failure twice. Just log it.
-        console.error('[appPortfolio] bulk update error:', err);
+        // the same failure twice, so nothing more is needed here.
       }
     },
 
@@ -479,7 +478,6 @@ function appPortfolio() {
         this.aiMap.result = data;
         this.aiMap.previewApplications = Array.isArray(data.applications) ? data.applications : [];
       } catch (err) {
-        console.error('[appPortfolio] AI map analysis error:', err);
         this.aiMap.error = (err && err.message) || 'AI mapping analysis failed.';
       } finally {
         this.aiMap.loading = false;
@@ -511,7 +509,6 @@ function appPortfolio() {
         this.notify(this.aiMap.acceptResult, 'success');
         setTimeout(() => window.location.reload(), 1200);
       } catch (err) {
-        console.error('[appPortfolio] AI map accept error:', err);
         this.aiMap.error = (err && err.message) || 'Saving the AI mappings failed.';
       } finally {
         this.aiMap.accepting = false;
@@ -624,7 +621,6 @@ function applicationCreateForm() {
           window.location.reload();
         }
       } catch (err) {
-        console.error('[applicationCreateForm] submit error:', err);
         // ARCH-041: err.data.errors is the API's {field: [msg, ...]} map.
         // Render each against its field rather than collapsing to one
         // generic string, and never fall back to err.message alone — that

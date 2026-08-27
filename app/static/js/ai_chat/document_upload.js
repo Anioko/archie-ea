@@ -72,13 +72,11 @@ function aiChatDocumentUploader() {
                     this.applicationsList = data;
                 }
             } catch (error) {
-                console.error('Error loading applications:', error);
                 // Fallback to application_mgmt route
                 try {
                     let fallbackData = await Platform.fetch('/dashboard/api/applications/table-data', { silent: true });
                     this.applicationsList = fallbackData.applications || fallbackData.data || [];
                 } catch (fallbackError) {
-                    console.error('Fallback also failed:', fallbackError);
                     Platform.toast.error('Could not load applications list');
                     this.showNotification('Could not load applications list', 'error');
                 }
@@ -99,13 +97,11 @@ function aiChatDocumentUploader() {
                     this.vendorsList = data.vendors;
                 }
             } catch (error) {
-                console.error('Error loading vendors:', error);
                 // Fallback to vendor organizations endpoint
                 try {
                     let fallbackData = await Platform.fetch('/dashboard/api/vendors/organizations', { silent: true });
                     this.vendorsList = fallbackData.vendors || fallbackData.organizations || fallbackData || [];
                 } catch (fallbackError) {
-                    console.error('Vendor fallback failed:', fallbackError);
                     Platform.toast.error('Could not load vendors list');
                     this.showNotification('Could not load vendors list', 'error');
                 }
@@ -122,8 +118,9 @@ function aiChatDocumentUploader() {
                     this.documentHistory = data.documents;
                 }
             } catch (error) {
-                // History is non-critical — log only, no user-visible toast.
-                console.warn('Could not load document history:', error);
+                // History load failed — surface it: an empty panel is
+                // indistinguishable from "no documents uploaded yet".
+                Platform.toast.warning('Could not load document history');
                 this.documentHistory = [];
             } finally {
                 this.loadingHistory = false;
@@ -162,7 +159,6 @@ function aiChatDocumentUploader() {
                     this.showNotification('Failed to delete document: ' + (data.error || 'Unknown error'), 'error');
                 }
             } catch (error) {
-                console.error('Delete error:', error);
                 let errorMsg = error.message || 'Unknown error occurred';
                 Platform.toast.error('Error deleting document: ' + errorMsg);
                 this.showNotification('Error deleting document: ' + errorMsg, 'error');
@@ -198,7 +194,6 @@ function aiChatDocumentUploader() {
                                 self.showNotification('Failed to analyze: ' + (data.error || 'Unknown error'), 'error');
                             }
                         } catch (error) {
-                            console.error('Analysis error:', error);
                             Platform.toast.error('Error analyzing document');
                             self.showNotification('Error analyzing document: ' + error.message, 'error');
                         } finally {
@@ -238,7 +233,6 @@ function aiChatDocumentUploader() {
                                 self.showNotification('Failed to re-analyze: ' + (data.error || 'Unknown error'), 'error');
                             }
                         } catch (error) {
-                            console.error('Re-analysis error:', error);
                             Platform.toast.error('Error re-analyzing document');
                             self.showNotification('Error re-analyzing: ' + error.message, 'error');
                         } finally {
@@ -428,7 +422,6 @@ function aiChatDocumentUploader() {
                 }
 
             } catch (error) {
-                console.error('Document preview error:', error);
                 Platform.toast.error('Failed to extract elements: ' + (error.message || 'Unknown error'));
                 this.showNotification('Failed to extract elements: ' + error.message, 'error');
             } finally {
@@ -487,7 +480,6 @@ function aiChatDocumentUploader() {
                 }
 
             } catch (error) {
-                console.error('Element creation error:', error);
                 Platform.toast.error('Failed to create elements: ' + (error.message || 'Unknown error'));
                 this.showNotification('Failed to create elements: ' + error.message, 'error');
             } finally {
@@ -570,7 +562,6 @@ function aiChatDocumentUploader() {
                 }
 
             } catch (error) {
-                console.error('Document analysis error:', error);
                 Platform.toast.error('Failed to analyze document: ' + (error.message || 'Unknown error'));
                 this.showNotification('Failed to analyze document: ' + error.message, 'error');
             } finally {
@@ -659,7 +650,6 @@ function aiChatDocumentUploader() {
                         silent: true
                     });
                 } catch (error) { /* swallow-ok: background training signal, not the user's edit; the edit below is applied locally either way and telling the user their correction "failed" would be false */
-                    console.warn('Failed to record feedback:', error);
                 }
             }
 
@@ -680,13 +670,6 @@ function aiChatDocumentUploader() {
             type = type || 'info';
             // Emit notification event
             this.$dispatch('show-notification', { message: message, type: type });
-            // Also use browser alert as fallback
-            if (type === 'error') {
-                console.error(message);
-            } else if (type === 'success') {
-
-            } else {
-            }
         },
 
         // Pure aggregation: groups created elements by type/layer and stores the
@@ -783,22 +766,6 @@ function aiChatDocumentUploader() {
             // Show notification with details
             this.showNotification(details, 'success');
 
-            // Also log to console for easy copy
-            console.group('Element Creation Summary');
-
-            if (Object.keys(byType).length > 0) {
-                console.table(byType);
-            }
-            if (Object.keys(byLayer).length > 0) {
-                console.table(byLayer);
-            }
-            if (elementNames.length > 0) {
-
-            }
-            if (errors && errors.length > 0) {
-                console.error('Errors:', errors);
-            }
-            console.groupEnd();
         },
 
         linkToEntity(match) {
