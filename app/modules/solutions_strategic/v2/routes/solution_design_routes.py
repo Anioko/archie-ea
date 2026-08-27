@@ -7147,6 +7147,16 @@ def toggle_arb_condition(solution_id: int, condition_index: int):
     """Toggle the completed status of an ARB condition."""
     solution = Solution.query.get_or_404(solution_id)
 
+    from app.modules.transformation_room.arb_decision_adapter import (
+        TypedARBDecisionAdapter,
+    )
+
+    if TypedARBDecisionAdapter.solution_has_typed_cycle(solution_id):
+        return jsonify({
+            "success": False,
+            "reason_codes": ["typed_condition_toggle_not_supported"],
+        }), 409
+
     try:
         from app.models.architecture_review_board import ARBReviewItem
 

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import timezone
 import hashlib
 import json
 import logging
@@ -16,11 +15,17 @@ from flask_login import current_user
 
 from app import db
 from app.models.architecture_review_board import ARBReviewCycle, ARBReviewItem
+from app.models.arb_decision_event import ARBCondition, ARBDecisionEvent
 from app.models.user import User
+from app.modules.transformation_room.arb_condition_evidence_service import (
+    TypedARBConditionEvidenceService,
+)
+from app.modules.transformation_room.arb_condition_lifecycle_service import (
+    TypedARBConditionLifecycleService,
+)
 from app.modules.transformation_room.arb_decision_service import (
     TypedARBDecisionService,
 )
-from app.modules.transformation_room.command_service import CommandService
 from app.modules.transformation_room.domain import (
     ActorContext,
     CommandConflict,
@@ -60,6 +65,7 @@ class LegacyARBDecisionResult:
     status: str | None = None
     outcome: str | None = None
     conditions: list[dict[str, Any]] = field(default_factory=list)
+    data: dict[str, Any] = field(default_factory=dict)
     idempotent: bool = False
     typed: bool = True
 
@@ -201,53 +207,27 @@ class TypedARBDecisionAdapter:
     def begin_review_from_request(
         cls, *, review_item_id: int
     ) -> LegacyARBDecisionResult:
-        """Project a typed cycle and its sole item to ``under_review``."""
+        """Reject the unaudited legacy begin-review mutation for typed cycles."""
         try:
             actor = cls._actor_from_request()
             resolved = cls._resolve_review(actor, review_item_id)
             if resolved is None:
                 return LegacyARBDecisionResult(False, typed=False)
             cycle, review = resolved
-            TypedARBDecisionService._lock_subject_decision(db.session, actor, cycle.id)
-            cycle, review = TypedARBDecisionService._load_cycle_and_review_for_update(
-                db.session, actor, cycle.id
-            )
-            TypedARBDecisionService._assert_cycle_review_projection_equal(cycle, review)
-            if cycle.status == "historical_unverified":
-                raise CommandConflict("historical_unverified_cycle_not_reviewable")
-            # Re-authorise even an idempotent projection replay.  A user whose
-            # server-side role changed after the first request must not retain
-            # decision authority through the already-under-review shortcut.
             TypedARBDecisionService.authorise_decision(
-                db.session, actor, cycle.id, for_update=True
+                db.session, actor, cycle.id, for_update=False
             )
-            if cycle.status == "under_review":
-                return LegacyARBDecisionResult(
-                    True,
-                    review_cycle_id=cycle.id,
-                    review_item_id=review.id,
-                    status="under_review",
-                    idempotent=True,
-                )
-            if cycle.status != "submitted" or cycle.closed_at is not None:
-                raise CommandConflict("arb_cycle_not_open_for_review")
-            now = CommandService._database_now(db.session)
-            cycle.status = "under_review"
-            review.status = "under_review"
-            review.reviewer_id = actor.user_id
-            review.review_started_at = now.astimezone(timezone.utc).replace(tzinfo=None)
-            db.session.commit()
             return LegacyARBDecisionResult(
-                True,
+                False,
+                ["typed_begin_review_not_supported"],
+                http_status=409,
                 review_cycle_id=cycle.id,
                 review_item_id=review.id,
-                status="under_review",
+                status=cycle.status,
             )
         except TransformationError as error:
-            db.session.rollback()
             return cls._failure(error)
         except Exception:
-            db.session.rollback()
             logger.exception("Typed ARB begin-review adapter failed")
             return LegacyARBDecisionResult(
                 False, ["review_not_confirmed"], http_status=503
@@ -271,6 +251,246 @@ class TypedARBDecisionAdapter:
         except TransformationError as error:
             return cls._failure(error)
         return cls.begin_review_from_request(review_item_id=review.id)
+
+    @classmethod
+    def transition_review_from_request(
+        cls, *, review_item_id: int, payload: Mapping[str, Any] | None
+    ) -> LegacyARBDecisionResult:
+        supplied = payload if isinstance(payload, Mapping) else {}
+        target = str(supplied.get("target_stage") or "").strip().lower()
+        if target not in {
+            "approved",
+            "approved_with_conditions",
+            "rejected",
+            "returned_for_evidence",
+            "returned_for_options",
+        }:
+            try:
+                actor = cls._actor_from_request()
+                resolved = cls._resolve_review(actor, review_item_id)
+                if resolved is None:
+                    return LegacyARBDecisionResult(False, typed=False)
+                cycle, review = resolved
+                return LegacyARBDecisionResult(
+                    False,
+                    ["typed_stage_transition_not_supported"],
+                    http_status=409,
+                    review_cycle_id=cycle.id,
+                    review_item_id=review.id,
+                    status=cycle.status,
+                )
+            except TransformationError as error:
+                return cls._failure(error)
+        return cls.decide_review_from_request(
+            review_item_id=review_item_id,
+            payload=supplied,
+            outcome=target,
+        )
+
+    @classmethod
+    def fulfill_condition_from_request(
+        cls, *, condition_id: int, payload: Mapping[str, Any] | None
+    ) -> LegacyARBDecisionResult:
+        try:
+            actor = cls._actor_from_request()
+            condition = cls._resolve_condition(actor, condition_id)
+            if condition is None:
+                return LegacyARBDecisionResult(False, typed=False)
+            supplied = payload if isinstance(payload, Mapping) else {}
+            action = str(supplied.get("action") or "").strip().lower()
+            if action == "submit_evidence":
+                evidence = supplied.get("evidence")
+                if not isinstance(evidence, Mapping):
+                    raise ValueError("typed condition evidence must be an object")
+                capture_key = cls._operation_command_key(
+                    operation="capture",
+                    actor=actor,
+                    object_id=condition_id,
+                    payload=evidence,
+                )
+                captured = TypedARBConditionEvidenceService.capture(
+                    actor=actor,
+                    command_key=capture_key,
+                    condition_id=condition_id,
+                    evidence=dict(evidence),
+                )
+                evidence_id = captured.object_ids["condition_evidence_id"]
+                submitted = TypedARBConditionLifecycleService.submit_evidence(
+                    actor=actor,
+                    command_key=cls._operation_command_key(
+                        operation="submit",
+                        actor=actor,
+                        object_id=condition_id,
+                        payload={"condition_evidence_id": evidence_id},
+                    ),
+                    condition_id=condition_id,
+                    condition_evidence_id=evidence_id,
+                )
+                data = {
+                    **dict(submitted.response),
+                    "condition_evidence_id": evidence_id,
+                    "idempotent": captured.idempotent and submitted.idempotent,
+                }
+            elif action == "verify":
+                evidence_id = cls._positive_int(supplied.get("condition_evidence_id"))
+                verified = TypedARBConditionLifecycleService.verify(
+                    actor=actor,
+                    command_key=cls._operation_command_key(
+                        operation="verify",
+                        actor=actor,
+                        object_id=condition_id,
+                        payload={"condition_evidence_id": evidence_id},
+                    ),
+                    condition_id=condition_id,
+                    condition_evidence_id=evidence_id,
+                )
+                data = {**dict(verified.response), "idempotent": verified.idempotent}
+            else:
+                return LegacyARBDecisionResult(
+                    False,
+                    ["typed_condition_fulfill_not_supported"],
+                    http_status=409,
+                )
+            return LegacyARBDecisionResult(True, data=data)
+        except ValueError:
+            return LegacyARBDecisionResult(
+                False, ["invalid_condition_request"], http_status=400
+            )
+        except TransformationError as error:
+            return cls._failure(error)
+        except Exception:
+            logger.exception("Typed ARB condition fulfillment adapter failed")
+            return LegacyARBDecisionResult(
+                False, ["condition_not_confirmed"], http_status=503
+            )
+
+    @classmethod
+    def waive_condition_from_request(
+        cls, *, condition_id: int, payload: Mapping[str, Any] | None
+    ) -> LegacyARBDecisionResult:
+        try:
+            actor = cls._actor_from_request()
+            condition = cls._resolve_condition(actor, condition_id)
+            if condition is None:
+                return LegacyARBDecisionResult(False, typed=False)
+            supplied = payload if isinstance(payload, Mapping) else {}
+            result = TypedARBConditionLifecycleService.waive(
+                actor=actor,
+                command_key=cls._operation_command_key(
+                    operation="waive",
+                    actor=actor,
+                    object_id=condition_id,
+                    payload=supplied,
+                ),
+                condition_id=condition_id,
+                reason=supplied.get("reason"),
+                expires_at=supplied.get("expires_at"),
+                scope=supplied.get("scope"),
+                compensating_control=supplied.get("compensating_control"),
+            )
+            return LegacyARBDecisionResult(
+                True,
+                data={**dict(result.response), "idempotent": result.idempotent},
+            )
+        except ValueError:
+            return LegacyARBDecisionResult(
+                False, ["invalid_condition_request"], http_status=400
+            )
+        except TransformationError as error:
+            return cls._failure(error)
+        except Exception:
+            logger.exception("Typed ARB condition waiver adapter failed")
+            return LegacyARBDecisionResult(
+                False, ["condition_not_confirmed"], http_status=503
+            )
+
+    @classmethod
+    def current_solution_lifecycle_from_request(
+        cls, *, solution_id: int
+    ) -> LegacyARBDecisionResult:
+        try:
+            actor = cls._actor_from_request()
+            try:
+                cycle = cls._resolve_solution_cycle(actor, solution_id, open_only=False)
+            except NotFound:
+                return LegacyARBDecisionResult(False, typed=False)
+            review = db.session.execute(
+                db.select(ARBReviewItem).where(
+                    ARBReviewItem.organization_id == actor.organization_id,
+                    ARBReviewItem.review_cycle_id == cycle.id,
+                )
+            ).scalar_one_or_none()
+            if review is None:
+                raise NotFound("arb_review_not_found")
+            decision = db.session.execute(
+                db.select(ARBDecisionEvent).where(
+                    ARBDecisionEvent.organization_id == actor.organization_id,
+                    ARBDecisionEvent.review_cycle_id == cycle.id,
+                )
+            ).scalar_one_or_none()
+            conditions = []
+            if decision is not None:
+                conditions = db.session.scalars(
+                    db.select(ARBCondition)
+                    .where(
+                        ARBCondition.organization_id == actor.organization_id,
+                        ARBCondition.decision_event_id == decision.id,
+                    )
+                    .order_by(ARBCondition.condition_number, ARBCondition.id)
+                ).all()
+            allowed = cls._typed_lifecycle_transitions(cycle.status, conditions)
+            condition_data = [
+                {
+                    "id": condition.id,
+                    "condition_number": condition.condition_number,
+                    "description": condition.description,
+                    "category": condition.category,
+                    "due_date": condition.due_date.isoformat()
+                    if condition.due_date
+                    else None,
+                    "status": condition.status,
+                    "revision": condition.revision,
+                }
+                for condition in conditions
+            ]
+            data = {
+                "governance_status": cycle.status,
+                "allowed_transitions": allowed,
+                "can_withdraw": False,
+                "arb_submission_date": review.submitted_at.isoformat()
+                if review.submitted_at
+                else None,
+                "arb_approval_date": decision.created_at.isoformat()
+                if decision is not None
+                and decision.outcome in {"approved", "approved_with_conditions"}
+                else None,
+                "arb_rejection_reason": decision.rationale
+                if decision is not None and decision.outcome == "rejected"
+                else None,
+                "review_cycle_id": cycle.id,
+                "review_item_id": review.id,
+                "decision_event_id": decision.id if decision is not None else None,
+                "terminal_outcome": cycle.terminal_outcome,
+                "conditions": condition_data,
+            }
+            return LegacyARBDecisionResult(True, status=cycle.status, data=data)
+        except TransformationError as error:
+            return cls._failure(error)
+
+    @classmethod
+    def legacy_solution_review_matches_request(
+        cls, *, solution_id: int, review_item_id: int
+    ) -> bool:
+        actor = cls._actor_from_request()
+        from app.models.solution_governance import SolutionARBReview
+
+        return db.session.execute(
+            db.select(SolutionARBReview.id).where(
+                SolutionARBReview.id == review_item_id,
+                SolutionARBReview.organization_id == actor.organization_id,
+                SolutionARBReview.solution_id == solution_id,
+            )
+        ).scalar_one_or_none() is not None
 
     @classmethod
     def review_is_typed(cls, review_item_id: int) -> bool:
@@ -334,6 +554,82 @@ class TypedARBDecisionAdapter:
         return cycle
 
     @staticmethod
+    def _resolve_condition(
+        actor: ActorContext, condition_id: int
+    ) -> ARBCondition | None:
+        condition_id = TypedARBDecisionAdapter._positive_int(condition_id)
+        return db.session.execute(
+            db.select(ARBCondition).where(
+                ARBCondition.id == condition_id,
+                ARBCondition.organization_id == actor.organization_id,
+            )
+        ).scalar_one_or_none()
+
+    @staticmethod
+    def _positive_int(value: Any) -> int:
+        if isinstance(value, bool):
+            raise ValueError("a positive integer is required")
+        try:
+            normalized = int(value)
+        except (TypeError, ValueError) as error:
+            raise ValueError("a positive integer is required") from error
+        if normalized <= 0:
+            raise ValueError("a positive integer is required")
+        return normalized
+
+    @staticmethod
+    def _operation_command_key(
+        *,
+        operation: str,
+        actor: ActorContext,
+        object_id: int,
+        payload: Mapping[str, Any],
+    ) -> str:
+        supplied = request.headers.get("Idempotency-Key")
+        if supplied is not None and not _COMMAND_KEY.fullmatch(supplied):
+            raise ValueError("invalid idempotency key")
+        identity = json.dumps(
+            {
+                "base_key": supplied,
+                "operation": operation,
+                "organization_id": actor.organization_id,
+                "user_id": actor.user_id,
+                "object_id": object_id,
+                "payload": dict(payload),
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+            default=str,
+        ).encode("utf-8")
+        return f"arb-condition-{operation}-{hashlib.sha256(identity).hexdigest()}"
+
+    @staticmethod
+    def _typed_lifecycle_transitions(
+        status: str, conditions: Sequence[ARBCondition]
+    ) -> list[str]:
+        if status in {
+            "submitted",
+            "under_review",
+            "pending_information",
+            "pending_info",
+            "pending",
+        }:
+            return [
+                "approved",
+                "approved_with_conditions",
+                "rejected",
+                "returned_for_evidence",
+                "returned_for_options",
+            ]
+        condition_statuses = {condition.status for condition in conditions}
+        allowed = []
+        if "pending" in condition_statuses:
+            allowed.extend(("submit_condition_evidence", "waive_condition"))
+        if "evidence_submitted" in condition_statuses:
+            allowed.extend(("verify_condition_evidence", "waive_condition"))
+        return list(dict.fromkeys(allowed))
+
+    @staticmethod
     def _actor_from_request() -> ActorContext:
         organization_id = getattr(g, "current_org_id", None)
         if (
@@ -381,6 +677,7 @@ class TypedARBDecisionAdapter:
             payload.get("decision_reason"),
             payload.get("reason"),
             payload.get("notes"),
+            payload.get("approval_notes"),
         )
         rationale = next(
             (value.strip() for value in candidates if isinstance(value, str) and value.strip()),

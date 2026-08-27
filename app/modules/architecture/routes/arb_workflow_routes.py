@@ -32,6 +32,9 @@ from flask_login import current_user, login_required
 
 from app.decorators import audit_log, require_roles
 from app.extensions import db
+from app.modules.transformation_room.arb_decision_adapter import (
+    TypedARBDecisionAdapter,
+)
 from app.services.arb_workflow_service import ARBWorkflowService
 
 arb_workflow_bp = Blueprint("arb_workflow", __name__, url_prefix="/api/arb-workflow")
@@ -94,7 +97,32 @@ def create_conditional_approval(review_item_id: int):
     Returns:
         JSON with approval result and condition details
     """
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
+    typed_result = TypedARBDecisionAdapter.decide_review_from_request(
+        review_item_id=review_item_id,
+        payload=data,
+        outcome="approved_with_conditions",
+    )
+    if typed_result.typed:
+        if not typed_result.success:
+            return jsonify({
+                "success": False,
+                "reason_codes": typed_result.reason_codes,
+            }), typed_result.http_status
+        return jsonify({
+            "success": True,
+            "data": {
+                "review_cycle_id": typed_result.review_cycle_id,
+                "review_item_id": typed_result.review_item_id,
+                "decision_event_id": typed_result.decision_event_id,
+                "condition_ids": typed_result.condition_ids,
+                "status": typed_result.status,
+                "outcome": typed_result.outcome,
+                "conditions": typed_result.conditions,
+                "idempotent": typed_result.idempotent,
+            },
+        })
+
     if not data or "conditions" not in data:
         return jsonify({"success": False, "error": "conditions array is required"}), 400
 
@@ -149,7 +177,19 @@ def fulfill_condition(condition_id: int):
     Returns:
         JSON with fulfillment result
     """
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
+    typed_result = TypedARBDecisionAdapter.fulfill_condition_from_request(
+        condition_id=condition_id,
+        payload=data,
+    )
+    if typed_result.typed:
+        if not typed_result.success:
+            return jsonify({
+                "success": False,
+                "reason_codes": typed_result.reason_codes,
+            }), typed_result.http_status
+        return jsonify({"success": True, "data": typed_result.data})
+
     if not data or "evidence" not in data:
         return jsonify({"success": False, "error": "evidence is required"}), 400
 
@@ -172,7 +212,6 @@ def fulfill_condition(condition_id: int):
 
 @arb_workflow_bp.route("/conditions/<int:condition_id>/waive", methods=["POST"])
 @login_required
-@require_roles("admin", "enterprise_architect")
 @audit_log("arb_condition_waive")
 def waive_condition(condition_id: int):
     """
@@ -186,7 +225,23 @@ def waive_condition(condition_id: int):
     Returns:
         JSON with waiver result
     """
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
+    typed_result = TypedARBDecisionAdapter.waive_condition_from_request(
+        condition_id=condition_id,
+        payload=data,
+    )
+    if typed_result.typed:
+        if not typed_result.success:
+            return jsonify({
+                "success": False,
+                "reason_codes": typed_result.reason_codes,
+            }), typed_result.http_status
+        return jsonify({"success": True, "data": typed_result.data})
+
+    # Keep the legacy endpoint's historical role gate after typed resolution.
+    # Typed authority is checked by the canonical service against locked rows.
+    require_roles("admin", "enterprise_architect")(lambda: None)()
+
     if not data or "reason" not in data:
         return jsonify({"success": False, "error": "reason is required"}), 400
 
@@ -599,9 +654,33 @@ def transition_stage(review_item_id: int):
     Returns:
         JSON with transition result
     """
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
     if not data or "target_stage" not in data:
         return jsonify({"success": False, "error": "target_stage is required"}), 400
+
+    typed_result = TypedARBDecisionAdapter.transition_review_from_request(
+        review_item_id=review_item_id,
+        payload=data,
+    )
+    if typed_result.typed:
+        if not typed_result.success:
+            return jsonify({
+                "success": False,
+                "reason_codes": typed_result.reason_codes,
+            }), typed_result.http_status
+        return jsonify({
+            "success": True,
+            "data": {
+                "review_cycle_id": typed_result.review_cycle_id,
+                "review_item_id": typed_result.review_item_id,
+                "decision_event_id": typed_result.decision_event_id,
+                "condition_ids": typed_result.condition_ids,
+                "status": typed_result.status,
+                "outcome": typed_result.outcome,
+                "conditions": typed_result.conditions,
+                "idempotent": typed_result.idempotent,
+            },
+        })
 
     # Force transition requires admin
     force = data.get("force", False)
@@ -777,6 +856,17 @@ def get_solution_lifecycle(solution_id: int):
     """
     Return the current lifecycle state and available transitions for a solution.
     """
+    typed_result = TypedARBDecisionAdapter.current_solution_lifecycle_from_request(
+        solution_id=solution_id
+    )
+    if typed_result.typed:
+        if not typed_result.success:
+            return jsonify({
+                "success": False,
+                "reason_codes": typed_result.reason_codes,
+            }), typed_result.http_status
+        return jsonify({"success": True, **typed_result.data})
+
     solution = _get_solution_or_404(solution_id)
     status = solution.governance_status or "draft"
     allowed_next = list(_LIFECYCLE_TRANSITIONS.get(status, set()))

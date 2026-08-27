@@ -16,7 +16,8 @@ again by an explicit, asserted teardown, exactly as
 
 from __future__ import annotations
 
-from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta, timezone
 import inspect
 import os
 from types import SimpleNamespace
@@ -41,6 +42,7 @@ from app.models.solution_architect_models import (
 )
 from app.models.solution_lifecycle_models import SolutionRisk
 from app.models.solution_models import Solution
+from app.models.solution_governance import SolutionARBReview, SolutionNotification
 from app.models.user import Permission, Role, User
 from app.modules.transformation_room.arb_submission_service import (
     TypedARBSubmissionService,
@@ -950,6 +952,46 @@ def _count_decisions(session, cycle_id):
     )
 
 
+def _conditional_payload(*, rationale="Approval requires verified evidence."):
+    return {
+        "conditions": [
+            {
+                "description": "Publish deployment evidence",
+                "category": "delivery",
+            }
+        ],
+        "approval_notes": rationale,
+    }
+
+
+def _condition_evidence():
+    now = datetime.now(timezone.utc)
+    return {
+        "source_identity": f"route-evidence:{uuid.uuid4().hex}",
+        "source_type": "cmdb",
+        "source_version": "1",
+        "source_checksum": "a" * 64,
+        "value_json": {"deployment_verified": True},
+        "observed_at": (now - timedelta(minutes=1)).isoformat(),
+        "freshness_rule_version": "arb-condition-v1",
+        "freshness_expires_at": (now + timedelta(days=1)).isoformat(),
+    }
+
+
+def _login_client(app, user_id):
+    from flask import has_app_context
+
+    client = app.test_client()
+    with client.session_transaction() as session:
+        session["_user_id"] = str(user_id)
+        session["_fresh"] = True
+    if has_app_context():
+        for cached in ("_login_user", "_current_user", "current_org_id", "current_org"):
+            if hasattr(g, cached):
+                delattr(g, cached)
+    return client
+
+
 def _call_arb_route(
     app,
     *,
@@ -962,15 +1004,23 @@ def _call_arb_route(
     json=None,
     headers=None,
 ):
-    from app.modules.architecture.routes import arb_routes
-
-    with app.test_request_context(
-        "/", method=method, data=data, json=json, headers=headers
-    ):
-        g.current_org_id = organization_id
-        login_user(db.session.get(User, user_id))
-        value = inspect.unwrap(getattr(arb_routes, function_name))(item_id)
-        return app.make_response(value)
+    del organization_id
+    route = {
+        "record_decision": f"/arb/reviews/{item_id}/decision",
+        "api_arb_begin_review": f"/arb/api/arb/{item_id}/review",
+        "api_arb_approve": f"/arb/api/arb/{item_id}/approve",
+        "api_arb_reject": f"/arb/api/arb/{item_id}/reject",
+        "api_arb_request_changes": f"/arb/api/arb/{item_id}/request-changes",
+        "reopen_decision": f"/arb/reviews/{item_id}/reopen",
+        "api_arb_get_implementation_status": (
+            f"/arb/api/arb/{item_id}/implementation-status"
+        ),
+        "api_arb_update_implementation_status": (
+            f"/arb/api/arb/{item_id}/implementation-status"
+        ),
+    }[function_name]
+    client = _login_client(app, user_id)
+    return client.open(route, method=method, data=data, json=json, headers=headers)
 
 
 def _call_route(
@@ -986,18 +1036,130 @@ def _call_route(
     json=None,
     headers=None,
 ):
-    with app.test_request_context(
-        "/", method=method, data=data, json=json, headers=headers
-    ):
-        g.current_org_id = organization_id
-        login_user(db.session.get(User, user_id))
-        value = inspect.unwrap(getattr(module, function_name))(*args)
-        return app.make_response(value)
+    del module, organization_id
+    if function_name == "record_arb_decision":
+        route = f"/api/solutions/{args[0]}/arb/{args[1]}/record-decision"
+    else:
+        action = {
+            "begin_arb_review": "begin-review",
+            "approve_solution": "approve",
+            "reject_solution": "reject",
+            "withdraw_solution": "withdraw",
+        }[function_name]
+        route = f"/api/arb-workflow/solutions/{args[0]}/{action}"
+    client = _login_client(app, user_id)
+    return client.open(route, method=method, data=data, json=json, headers=headers)
 
 
 @pytest.fixture
-def route_scope(app, _schema):
+def route_scope(app, _schema, request):
     """Committed tenant graph visible to the command service's own sessions."""
+    scope = SimpleNamespace(
+        organization_id=None,
+        foreign_organization_id=None,
+        submitter_id=None,
+        decider_id=None,
+        foreign_decider_id=None,
+        review_id=None,
+        cycle_id=None,
+        solution_id=None,
+        solution_review_id=None,
+        solution_cycle_id=None,
+        role_id=None,
+    )
+
+    def cleanup():
+        if scope.organization_id is None:
+            return
+        with app.app_context():
+            db.session.remove()
+            raw = db.engine.raw_connection()
+            try:
+                with raw.cursor() as cursor:
+                    cursor.execute("SET LOCAL session_replication_role = replica")
+                    for table_name in (
+                        "arb_condition_events",
+                        "arb_canonical_conditions",
+                        "arb_condition_evidence_records",
+                        "workbench_artifact_evidence",
+                        "arb_submission_evidence_snapshots",
+                    ):
+                        cursor.execute(
+                            f'DELETE FROM "{table_name}" '
+                            "WHERE organization_id IN (%s, %s)",
+                            (scope.organization_id, scope.foreign_organization_id),
+                        )
+                raw.commit()
+            finally:
+                raw.close()
+            with db.engine.begin() as connection:
+                connection.exec_driver_sql("SET LOCAL session_replication_role = replica")
+                for table_name in (
+                    "arb_decision_events",
+                    "arb_submission_events",
+                    "transformation_outbox_events",
+                    "operation_results",
+                    "command_materialisations",
+                    "command_idempotency_records",
+                    "arb_review_items",
+                    "arb_review_cycles",
+                    "solution_arb_reviews",
+                    "arb_subject_evidence_snapshots",
+                    "solution_risks",
+                    "solution_goals",
+                    "solution_drivers",
+                    "solutions",
+                    "solution_problem_definitions",
+                    "solution_analysis_sessions",
+                    "architecture_decision_records",
+                ):
+                    connection.execute(
+                        db.text(
+                            f'DELETE FROM "{table_name}" '
+                            "WHERE organization_id IN (:own, :foreign)"
+                        ),
+                        {
+                            "own": scope.organization_id,
+                            "foreign": scope.foreign_organization_id,
+                        },
+                    )
+                actor_ids = {
+                    "submitter": scope.submitter_id,
+                    "decider": scope.decider_id,
+                    "foreign_decider": scope.foreign_decider_id,
+                }
+                for table_name in ("soc2_audit_log", "solution_notifications"):
+                    connection.execute(
+                        db.text(
+                            f'DELETE FROM "{table_name}" '
+                            "WHERE user_id IN (:submitter, :decider, :foreign_decider)"
+                        ),
+                        actor_ids,
+                    )
+                connection.execute(
+                    db.text(
+                        "DELETE FROM users WHERE organization_id IN (:own, :foreign)"
+                    ),
+                    {
+                        "own": scope.organization_id,
+                        "foreign": scope.foreign_organization_id,
+                    },
+                )
+                connection.execute(
+                    db.text("DELETE FROM organizations WHERE id IN (:own, :foreign)"),
+                    {
+                        "own": scope.organization_id,
+                        "foreign": scope.foreign_organization_id,
+                    },
+                )
+                if scope.role_id is not None:
+                    connection.execute(
+                        db.text("DELETE FROM roles WHERE id = :role_id"),
+                        {"role_id": scope.role_id},
+                    )
+
+    # Register before the first committed write so setup exceptions cannot leak.
+    request.addfinalizer(cleanup)
     with app.app_context():
         own_suffix = uuid.uuid4().hex[:10]
         foreign_suffix = uuid.uuid4().hex[:10]
@@ -1010,7 +1172,10 @@ def route_scope(app, _schema):
         )
         db.session.add_all((org, foreign_org))
         db.session.flush()
+        scope.organization_id = org.id
+        scope.foreign_organization_id = foreign_org.id
         write_role = _write_role(db.session)
+        scope.role_id = write_role.id
         submitter = _user(db.session, org, write_role=write_role)
         decider = _user(
             db.session, org, role="chief_architect", admin=True, write_role=write_role
@@ -1022,6 +1187,9 @@ def route_scope(app, _schema):
             admin=True,
             write_role=write_role,
         )
+        scope.submitter_id = submitter.id
+        scope.decider_id = decider.id
+        scope.foreign_decider_id = foreign_decider.id
         solution, workspace = _solution_review(db.session, org, submitter)
         db.session.commit()
         _record, review = _typed_adr_review(db.session, org, submitter)
@@ -1049,96 +1217,13 @@ def route_scope(app, _schema):
                     },
                 },
             )
-        scope = SimpleNamespace(
-            organization_id=org.id,
-            foreign_organization_id=foreign_org.id,
-            submitter_id=submitter.id,
-            decider_id=decider.id,
-            foreign_decider_id=foreign_decider.id,
-            review_id=review.id,
-            cycle_id=review.review_cycle_id,
-            solution_id=solution.id,
-            solution_review_id=solution_result.object_ids["review_item_id"],
-            solution_cycle_id=solution_result.object_ids["review_cycle_id"],
-            role_id=write_role.id,
-        )
+        scope.review_id = review.id
+        scope.cycle_id = review.review_cycle_id
+        scope.solution_id = solution.id
+        scope.solution_review_id = solution_result.object_ids["review_item_id"]
+        scope.solution_cycle_id = solution_result.object_ids["review_cycle_id"]
         db.session.remove()
-        try:
-            yield scope
-        finally:
-            db.session.remove()
-            # These two tables are protected by an application-level SQLAlchemy
-            # hook in addition to PostgreSQL triggers.  Use the DBAPI connection
-            # for test-owner cleanup, matching the canonical integration fixture.
-            raw = db.engine.raw_connection()
-            try:
-                with raw.cursor() as cursor:
-                    cursor.execute("SET LOCAL session_replication_role = replica")
-                    for table_name in (
-                        "workbench_artifact_evidence",
-                        "arb_submission_evidence_snapshots",
-                    ):
-                        cursor.execute(
-                            f'DELETE FROM "{table_name}" '
-                            "WHERE organization_id IN (%s, %s)",
-                            (scope.organization_id, scope.foreign_organization_id),
-                        )
-                raw.commit()
-            finally:
-                raw.close()
-            with db.engine.begin() as connection:
-                connection.exec_driver_sql("SET LOCAL session_replication_role = replica")
-                for table_name in (
-                    "arb_canonical_conditions",
-                    "arb_decision_events",
-                    "arb_submission_events",
-                    "transformation_outbox_events",
-                    "operation_results",
-                    "command_materialisations",
-                    "command_idempotency_records",
-                    "arb_review_items",
-                    "arb_review_cycles",
-                    "arb_subject_evidence_snapshots",
-                    "solution_risks",
-                    "solution_goals",
-                    "solution_drivers",
-                    "solutions",
-                    "solution_problem_definitions",
-                    "solution_analysis_sessions",
-                    "architecture_decision_records",
-                ):
-                    connection.execute(
-                        db.text(
-                            f'DELETE FROM "{table_name}" '
-                            "WHERE organization_id IN (:own, :foreign)"
-                        ),
-                        {"own": scope.organization_id, "foreign": scope.foreign_organization_id},
-                    )
-                connection.execute(
-                    db.text(
-                        "DELETE FROM soc2_audit_log "
-                        "WHERE user_id IN (:submitter, :decider, :foreign_decider)"
-                    ),
-                    {
-                        "submitter": scope.submitter_id,
-                        "decider": scope.decider_id,
-                        "foreign_decider": scope.foreign_decider_id,
-                    },
-                )
-                connection.execute(
-                    db.text(
-                        "DELETE FROM users WHERE organization_id IN (:own, :foreign)"
-                    ),
-                    {"own": scope.organization_id, "foreign": scope.foreign_organization_id},
-                )
-                connection.execute(
-                    db.text("DELETE FROM organizations WHERE id IN (:own, :foreign)"),
-                    {"own": scope.organization_id, "foreign": scope.foreign_organization_id},
-                )
-                connection.execute(
-                    db.text("DELETE FROM roles WHERE id = :role_id"),
-                    {"role_id": scope.role_id},
-                )
+        yield scope
 
 
 @pytest.mark.parametrize(
@@ -1348,13 +1433,199 @@ def test_begin_review_projects_cycle_and_item_without_solution_status_write(
         json={"status": "approved"},
     )
 
-    assert response.status_code == 200
+    assert response.status_code == 409
+    assert response.get_json()["reason_codes"] == ["typed_begin_review_not_supported"]
     db.session.remove()
     cycle = db.session.get(ARBReviewCycle, route_scope.cycle_id)
     projected = db.session.get(ARBReviewItem, route_scope.review_id)
-    assert cycle.status == projected.status == "under_review"
-    assert projected.reviewer_id == route_scope.decider_id
-    assert projected.review_started_at is not None
+    assert cycle.status == projected.status == "submitted"
+    assert projected.reviewer_id is None
+    assert projected.review_started_at is None
+
+
+def test_registered_conditional_approval_is_typed_and_does_not_require_due_date(
+    app, route_scope
+):
+    client = _login_client(app, route_scope.decider_id)
+
+    response = client.post(
+        f"/api/arb-workflow/{route_scope.review_id}/conditional-approval",
+        json=_conditional_payload(),
+        headers={"Idempotency-Key": f"route-conditional-{uuid.uuid4().hex}"},
+    )
+
+    assert response.status_code == 200, response.get_json()
+    body = response.get_json()
+    assert body["success"] is True
+    assert body["data"]["status"] == "approved_with_conditions"
+    assert len(body["data"]["condition_ids"]) == 1
+    condition = db.session.get(ARBCondition, body["data"]["condition_ids"][0])
+    assert condition.due_date is None
+    assert _count_decisions(db.session, route_scope.cycle_id) == 1
+
+
+def test_registered_typed_transition_routes_decision_and_rejects_stage_mutation(
+    app, route_scope
+):
+    client = _login_client(app, route_scope.decider_id)
+
+    unsupported = client.post(
+        f"/api/arb-workflow/{route_scope.review_id}/transition",
+        json={"target_stage": "under_review", "notes": "Legacy stage mutation"},
+    )
+    decided = client.post(
+        f"/api/arb-workflow/{route_scope.review_id}/transition",
+        json={"target_stage": "rejected", "notes": "The evidence is insufficient."},
+        headers={"Idempotency-Key": f"route-transition-{uuid.uuid4().hex}"},
+    )
+
+    assert unsupported.status_code == 409
+    assert unsupported.get_json()["reason_codes"] == [
+        "typed_stage_transition_not_supported"
+    ]
+    assert decided.status_code == 200, decided.get_json()
+    assert decided.get_json()["data"]["status"] == "rejected"
+    db.session.remove()
+    assert db.session.get(ARBReviewCycle, route_scope.cycle_id).status == "rejected"
+
+
+def test_registered_typed_fulfill_requires_capture_submit_then_separate_verify(
+    app, route_scope
+):
+    decider_client = _login_client(app, route_scope.decider_id)
+    conditional = decider_client.post(
+        f"/api/arb-workflow/{route_scope.review_id}/conditional-approval",
+        json=_conditional_payload(),
+    ).get_json()["data"]
+    condition_id = conditional["condition_ids"][0]
+
+    submitter_client = _login_client(app, route_scope.submitter_id)
+    submitted = submitter_client.post(
+        f"/api/arb-workflow/conditions/{condition_id}/fulfill",
+        json={"action": "submit_evidence", "evidence": _condition_evidence()},
+        headers={"Idempotency-Key": f"route-evidence-{uuid.uuid4().hex}"},
+    )
+
+    assert submitted.status_code == 200, submitted.get_json()
+    submitted_data = submitted.get_json()["data"]
+    assert submitted_data["status"] == "evidence_submitted"
+    evidence_id = submitted_data["condition_evidence_id"]
+
+    verified = _login_client(app, route_scope.decider_id).post(
+        f"/api/arb-workflow/conditions/{condition_id}/fulfill",
+        json={"action": "verify", "condition_evidence_id": evidence_id},
+        headers={"Idempotency-Key": f"route-verify-{uuid.uuid4().hex}"},
+    )
+
+    assert verified.status_code == 200, verified.get_json()
+    assert verified.get_json()["data"]["status"] == "fulfilled"
+    db.session.remove()
+    assert db.session.get(ARBCondition, condition_id).status == "fulfilled"
+    assert db.session.get(ARBReviewCycle, route_scope.cycle_id).status == "approved"
+
+
+def test_registered_typed_waiver_uses_canonical_lifecycle_command(app, route_scope):
+    client = _login_client(app, route_scope.decider_id)
+    conditional = client.post(
+        f"/api/arb-workflow/{route_scope.review_id}/conditional-approval",
+        json=_conditional_payload(),
+    ).get_json()["data"]
+    condition_id = conditional["condition_ids"][0]
+
+    response = client.post(
+        f"/api/arb-workflow/conditions/{condition_id}/waive",
+        json={
+            "reason": "Temporary release exception",
+            "expires_at": (datetime.now(timezone.utc) + timedelta(days=30)).isoformat(),
+            "scope": {"release": "R1"},
+            "compensating_control": "Daily deployment evidence review",
+        },
+        headers={"Idempotency-Key": f"route-waive-{uuid.uuid4().hex}"},
+    )
+
+    assert response.status_code == 200, response.get_json()
+    assert response.get_json()["data"]["status"] == "waived"
+    db.session.remove()
+    assert db.session.get(ARBCondition, condition_id).status == "waived"
+    assert db.session.get(ARBReviewCycle, route_scope.cycle_id).status == "approved"
+
+
+def test_solution_condition_toggle_rejects_typed_json_mutation(app, route_scope):
+    client = _login_client(app, route_scope.decider_id)
+    conditional = client.post(
+        f"/api/arb-workflow/{route_scope.solution_review_id}/conditional-approval",
+        json=_conditional_payload(),
+    ).get_json()["data"]
+    condition_id = conditional["condition_ids"][0]
+    db.session.remove()
+    before = db.session.get(ARBReviewItem, route_scope.solution_review_id).conditions
+
+    response = _login_client(app, route_scope.decider_id).post(
+        f"/solutions/{route_scope.solution_id}/arb-condition/0/toggle"
+    )
+
+    assert response.status_code == 409, response.get_json()
+    assert response.get_json()["reason_codes"] == [
+        "typed_condition_toggle_not_supported"
+    ]
+    db.session.remove()
+    assert db.session.get(ARBReviewItem, route_scope.solution_review_id).conditions == before
+    assert db.session.get(ARBCondition, condition_id).status == "pending"
+
+
+def test_solution_lifecycle_get_uses_typed_graph_not_stale_solution_projection(
+    app, route_scope
+):
+    client = _login_client(app, route_scope.decider_id)
+    decision = client.post(
+        f"/api/arb-workflow/{route_scope.solution_review_id}/conditional-approval",
+        json=_conditional_payload(),
+    ).get_json()["data"]
+
+    response = client.get(
+        f"/api/arb-workflow/solutions/{route_scope.solution_id}/lifecycle"
+    )
+
+    assert response.status_code == 200
+    body = response.get_json()
+    assert body["governance_status"] == "approved_with_conditions"
+    assert body["review_cycle_id"] == route_scope.solution_cycle_id
+    assert body["review_item_id"] == route_scope.solution_review_id
+    assert body["decision_event_id"] == decision["decision_event_id"]
+    assert body["can_withdraw"] is False
+    assert body["allowed_transitions"] == ["submit_condition_evidence", "waive_condition"]
+    assert body["conditions"][0]["status"] == "pending"
+    assert db.session.get(Solution, route_scope.solution_id).governance_status == "draft"
+
+
+def test_registered_conditional_approval_serializes_concurrent_commands(
+    app, route_scope
+):
+    command_keys = [
+        f"route-concurrent-{uuid.uuid4().hex}",
+        f"route-concurrent-{uuid.uuid4().hex}",
+    ]
+
+    def decide(command_key):
+        client = _login_client(app, route_scope.decider_id)
+        response = client.post(
+            f"/api/arb-workflow/{route_scope.review_id}/conditional-approval",
+            json=_conditional_payload(),
+            headers={"Idempotency-Key": command_key},
+        )
+        return response.status_code, response.get_json()
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(executor.map(decide, command_keys))
+
+    assert all(status in {200, 409} for status, _body in results), results
+    assert any(status == 200 for status, _body in results), results
+    for status, body in results:
+        if status == 409:
+            assert body["reason_codes"] == ["decision_conflict"]
+
+    db.session.remove()
+    assert _count_decisions(db.session, route_scope.cycle_id) == 1
 
 
 @pytest.mark.parametrize(
@@ -1443,6 +1714,107 @@ def test_solution_governance_decision_uses_typed_cycle_and_server_actor(
     assert solution.governance_status == "draft"
 
 
+def test_solution_governance_typed_response_keeps_legacy_fields_and_notifies_once(
+    app, route_scope
+):
+    client = _login_client(app, route_scope.decider_id)
+    command_key = f"solution-response-{uuid.uuid4().hex}"
+    payload = {
+        "decision": "approved",
+        "decision_reason": "Pinned evidence is sufficient.",
+    }
+
+    first = client.post(
+        f"/api/solutions/{route_scope.solution_id}/arb/"
+        f"{route_scope.solution_review_id}/record-decision",
+        json=payload,
+        headers={"Idempotency-Key": command_key},
+    )
+    replay = client.post(
+        f"/api/solutions/{route_scope.solution_id}/arb/"
+        f"{route_scope.solution_review_id}/record-decision",
+        json=payload,
+        headers={"Idempotency-Key": command_key},
+    )
+
+    assert first.status_code == replay.status_code == 200
+    body = first.get_json()
+    assert {
+        "id",
+        "solution_id",
+        "submitted_at",
+        "arb_decision",
+        "decided_at",
+        "arb_attendees",
+        "conditions",
+        "compliance_areas_reviewed",
+        "next_steps",
+        "next_review_date",
+    }.issubset(body)
+    assert body["id"] == route_scope.solution_review_id
+    assert body["solution_id"] == route_scope.solution_id
+    assert body["arb_decision"] == "approved"
+    assert replay.get_json()["idempotent"] is True
+    db.session.remove()
+    notifications = db.session.scalars(
+        db.select(SolutionNotification).where(
+            SolutionNotification.solution_id == route_scope.solution_id,
+            SolutionNotification.user_id == route_scope.submitter_id,
+            SolutionNotification.type == "arb_submission",
+        )
+    ).all()
+    assert len(notifications) == 1
+
+
+def test_legacy_solution_decision_rejects_same_tenant_review_subject_collision(
+    app, route_scope
+):
+    collision_id = 8_000_000 + int(uuid.uuid4().hex[:5], 16)
+    with app.app_context():
+        other = Solution(
+            organization_id=route_scope.organization_id,
+            name=f"Legacy collision solution {uuid.uuid4().hex[:8]}",
+            description="Must not be decided through another solution URL.",
+            created_by_id=route_scope.submitter_id,
+            governance_status="draft",
+        )
+        db.session.add(other)
+        db.session.flush()
+        untyped = ARBReviewItem(
+            id=collision_id,
+            organization_id=route_scope.organization_id,
+            review_number=f"REV-COLLIDE-{uuid.uuid4().hex[:8]}",
+            title="Same-tenant untyped collision",
+            review_type="strategic",
+            status="under_review",
+            submitter_id=route_scope.submitter_id,
+        )
+        legacy = SolutionARBReview(
+            id=collision_id,
+            organization_id=route_scope.organization_id,
+            solution_id=other.id,
+            submitted_by_id=route_scope.submitter_id,
+            arb_decision="pending",
+        )
+        db.session.add_all((untyped, legacy))
+        db.session.commit()
+        other_id = other.id
+
+    client = _login_client(app, route_scope.decider_id)
+    response = client.post(
+        f"/api/solutions/{route_scope.solution_id}/arb/{collision_id}/record-decision",
+        json={
+            "decision": "approved",
+            "decision_reason": "Wrong URL subject must not adopt this review.",
+        },
+    )
+
+    assert response.status_code == 404
+    db.session.remove()
+    assert db.session.get(SolutionARBReview, collision_id).arb_decision == "pending"
+    assert db.session.get(Solution, other_id).governance_status == "draft"
+
+
 def test_solution_workflow_begin_and_reject_project_typed_review_only(
     app, route_scope
 ):
@@ -1467,15 +1839,16 @@ def test_solution_workflow_begin_and_reject_project_typed_review_only(
         json={"reason": "Controls are incomplete.", "decided_by_id": route_scope.submitter_id},
     )
 
-    assert begun.status_code == rejected.status_code == 200
-    assert begun.get_json()["governance_status"] == "under_review"
+    assert begun.status_code == 409
+    assert begun.get_json()["reason_codes"] == ["typed_begin_review_not_supported"]
+    assert rejected.status_code == 200
     assert rejected.get_json()["governance_status"] == "rejected"
     db.session.remove()
     cycle = db.session.get(ARBReviewCycle, route_scope.solution_cycle_id)
     review = db.session.get(ARBReviewItem, route_scope.solution_review_id)
     solution = db.session.get(Solution, route_scope.solution_id)
     assert cycle.status == review.status == "rejected"
-    assert review.reviewer_id == route_scope.decider_id
+    assert review.reviewer_id is None
     assert solution.governance_status == "draft"
 
 

@@ -524,8 +524,49 @@ def record_arb_decision(solution_id, review_id):
                 "success": False,
                 "reason_codes": typed_result.reason_codes,
             }), typed_result.http_status
-        return jsonify({
+        from app.models.architecture_review_board import ARBReviewCycle, ARBReviewItem
+        from app.models.arb_decision_event import ARBDecisionEvent
+
+        cycle = db.session.execute(
+            db.select(ARBReviewCycle).where(
+                ARBReviewCycle.id == typed_result.review_cycle_id,
+                ARBReviewCycle.organization_id == g.current_org_id,
+                ARBReviewCycle.subject_type == "solution",
+                ARBReviewCycle.subject_id == solution_id,
+                ARBReviewCycle.solution_id == solution_id,
+            )
+        ).scalar_one()
+        event = db.session.execute(
+            db.select(ARBDecisionEvent).where(
+                ARBDecisionEvent.id == typed_result.decision_event_id,
+                ARBDecisionEvent.organization_id == g.current_org_id,
+                ARBDecisionEvent.review_cycle_id == cycle.id,
+                ARBDecisionEvent.solution_id == solution_id,
+            )
+        ).scalar_one()
+        review = db.session.execute(
+            db.select(ARBReviewItem).where(
+                ARBReviewItem.id == typed_result.review_item_id,
+                ARBReviewItem.organization_id == g.current_org_id,
+                ARBReviewItem.review_cycle_id == cycle.id,
+                ARBReviewItem.subject_type == "solution",
+                ARBReviewItem.subject_id == solution_id,
+                ARBReviewItem.solution_id == solution_id,
+            )
+        ).scalar_one()
+        response = {
             "success": True,
+            "id": typed_result.review_item_id,
+            "solution_id": solution_id,
+            "submitted_at": review.submitted_at.isoformat()
+            if review.submitted_at
+            else None,
+            "arb_decision": typed_result.outcome,
+            "decided_at": event.created_at.isoformat() if event.created_at else None,
+            "arb_attendees": [],
+            "compliance_areas_reviewed": [],
+            "next_steps": None,
+            "next_review_date": None,
             "review_id": typed_result.review_item_id,
             "review_item_id": typed_result.review_item_id,
             "review_cycle_id": typed_result.review_cycle_id,
@@ -535,7 +576,40 @@ def record_arb_decision(solution_id, review_id):
             "outcome": typed_result.outcome,
             "conditions": typed_result.conditions,
             "idempotent": typed_result.idempotent,
-        }), 200
+        }
+        if not typed_result.idempotent:
+            solution = db.session.execute(
+                db.select(Solution).where(
+                    Solution.id == solution_id,
+                    Solution.organization_id == g.current_org_id,
+                )
+            ).scalar_one()
+            if solution.created_by_id:
+                _notify_if_pref(
+                    user_id=solution.created_by_id,
+                    pref_key="arb_decisions",  # secrets-safety-ok
+                    notification_type="arb_submission",
+                    message=(
+                        f"ARB decision for solution '{solution.name}': "
+                        f"{typed_result.outcome}."
+                    ),
+                    solution_id=solution_id,
+                )
+                try:
+                    db.session.commit()
+                except Exception:
+                    db.session.rollback()
+                    _log.exception(
+                        "Could not persist typed ARB owner notification for solution %s",
+                        solution_id,
+                    )
+        return jsonify(response), 200
+
+    if not TypedARBDecisionAdapter.legacy_solution_review_matches_request(
+        solution_id=solution_id,
+        review_item_id=review_id,
+    ):
+        return jsonify({"error": f"ARB review {review_id} not found"}), 404
 
     try:
         # The actor is the authenticated session, never `decided_by_id`.
