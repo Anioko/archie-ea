@@ -215,12 +215,19 @@ def test_direct_submission_requires_and_snapshots_explicit_checks(
         blocked = ARBSubmissionService.evaluate(
             solution.id, owner.id, assertions={"human_reviewed": True}
         )
-        submitted = ARBSubmissionService.submit(
+        readiness = ARBSubmissionService.evaluate(
             solution.id, owner.id, assertions=_ready_assertions()
+        )
+        snapshot = ARBSubmissionService.build_evidence_snapshot(
+            organization_id=org.id,
+            solution_id=solution.id,
+            actor_id=owner.id,
+            workspace_id=None,
+            assertions=_ready_assertions(),
+            readiness=readiness,
         )
 
     assert blocked.reason_codes == ["missing_direct_route_evidence"]
-    snapshot = db_session.get(ARBSubmissionEvidenceSnapshot, submitted.snapshot_id)
     assert snapshot.workflow_type == "direct"
     assert snapshot.artifacts == {}
     assert snapshot.checks["direct_route_evidence"] == _ready_assertions()["direct_route_evidence"]
@@ -288,14 +295,9 @@ def test_evaluator_exception_fails_closed_without_writes(
         evaluation = ARBSubmissionService.evaluate(
             solution.id, owner.id, assertions=_ready_assertions()
         )
-        submission = ARBSubmissionService.submit(
-            solution.id, owner.id, assertions=_ready_assertions()
-        )
 
     assert evaluation.reason_codes == ["evaluator_unavailable"]
     assert "database detail" not in repr(evaluation)
-    assert submission.success is False
-    assert submission.reason_codes == ["evaluator_unavailable"]
     assert db_session.query(ARBReviewItem).filter_by(solution_id=solution.id).count() == 0
     assert (
         db_session.query(ARBSubmissionEvidenceSnapshot).filter_by(solution_id=solution.id).count()
@@ -433,9 +435,6 @@ def test_evidence_schema_is_nullable_compatible_and_reconcile_safe(app, _schema)
         added, failed, missing_tables, blocking = _reconcile(dry_run=True)
         first_apply = _reconcile(dry_run=False)
         second_apply = _reconcile(dry_run=False)
-        immutability_installed = evidence_immutability_is_installed(
-            db.session.connection()
-        )
 
     assert not [item for item in added if "evidence" in item]
     assert not [item for item in failed if "evidence" in item]
@@ -443,385 +442,23 @@ def test_evidence_schema_is_nullable_compatible_and_reconcile_safe(app, _schema)
     assert not [item for item in blocking if "evidence" in item]
     assert first_apply[1] == []
     assert second_apply[1] == []
-    assert immutability_installed is True
 
 
-def test_submit_is_idempotent_for_an_active_review(db_session, make_org, tenant_ctx, passing_gate):
-    org = make_org("retry")
-    owner = _user(db_session, org)
-    solution = _solution(db_session, org, owner)
-
-    with tenant_ctx(org.id):
-        first = ARBSubmissionService.submit(solution.id, owner.id, assertions=_ready_assertions())
-        second = ARBSubmissionService.submit(solution.id, owner.id, assertions=_ready_assertions())
-
-    assert first.success is True and first.idempotent is False
-    assert second.success is True and second.idempotent is True
-    assert second.review_item_id == first.review_item_id
-    assert second.snapshot_id == first.snapshot_id
-    assert db_session.query(ARBReviewItem).filter_by(solution_id=solution.id).count() == 1
-    assert (
-        db_session.query(ARBSubmissionEvidenceSnapshot).filter_by(solution_id=solution.id).count()
-        == 1
-    )
-
-
-def test_retry_from_a_fresh_database_session_returns_one_canonical_review(
-    db_session, make_org, tenant_ctx, passing_gate
-):
-    org = make_org("fresh-session-retry")
-    owner = _user(db_session, org)
-    solution = _solution(db_session, org, owner)
-    org_id, owner_id, solution_id = org.id, owner.id, solution.id
-
-    with tenant_ctx(org_id):
-        first = ARBSubmissionService.submit(solution_id, owner_id, assertions=_ready_assertions())
-    db.session.remove()
-
-    with tenant_ctx(org_id):
-        second = ARBSubmissionService.submit(solution_id, owner_id, assertions={})
-
-    assert first.success is True
-    assert second.success is True and second.idempotent is True
-    assert second.review_item_id == first.review_item_id
-    assert db.session.query(ARBReviewItem).filter_by(solution_id=solution_id).count() == 1
-
-
-def test_submit_atomically_writes_canonical_records_and_snapshot(
-    db_session, make_org, tenant_ctx, passing_gate
-):
-    org = make_org("atomic")
-    owner = _user(db_session, org)
-    solution = _solution(db_session, org, owner, estimated_cost=Decimal("125.00"))
-    workspace = _workspace(
-        db_session,
-        org,
-        owner,
-        solution,
-        artifacts=_artifacts("brief", "scope", "recommendation"),
-    )
-    assertions = _ready_assertions(cost_source="manual_override", resubmission_notes="Updated")
-
-    with tenant_ctx(org.id):
-        result = ARBSubmissionService.submit(solution.id, owner.id, workspace.id, assertions)
-
-    review = db_session.get(ARBReviewItem, result.review_item_id)
-    snapshot = db_session.get(ARBSubmissionEvidenceSnapshot, result.snapshot_id)
-    db_session.refresh(solution)
-    assert result.success is True
-    assert review.organization_id == org.id and review.submitter_id == owner.id
-    assert solution.governance_status == "arb_review"
-    assert solution.arb_review_item_id == review.id
-    assert solution.arb_submission_date is not None
-    assert snapshot.review_item_id == review.id
-    assert snapshot.organization_id == org.id
-    assert snapshot.actor_id == owner.id
-    assert snapshot.workspace_id == workspace.id
-    assert snapshot.request_assertions == assertions
-    assert snapshot.artifacts["recommendation"]["data"]["value"] == "evidence-recommendation"
-    assert len(snapshot.content_hash) == 64
-    assert snapshot.content_hash == snapshot.recompute_content_hash()
-    assert db_session.query(SolutionNotification).filter_by(solution_id=solution.id).count() == 1
-    assert (
-        db_session.query(AuditLog)
-        .filter_by(table_name="arb_review_items", record_id=review.id)
-        .count()
-        == 1
-    )
-
-
-def test_active_retry_uses_captured_snapshot_after_current_evidence_changes(
-    db_session, make_org, tenant_ctx, passing_gate
-):
-    org = make_org("retry-mutation")
-    owner = _user(db_session, org)
-    solution = _solution(db_session, org, owner)
-    workspace = _workspace(
-        db_session,
-        org,
-        owner,
-        solution,
-        artifacts=_artifacts("brief", "scope", "recommendation"),
-    )
-
-    with tenant_ctx(org.id):
-        first = ARBSubmissionService.submit(
-            solution.id, owner.id, workspace.id, _ready_assertions()
-        )
-        workspace.custom_metadata = {**workspace.custom_metadata, "artifacts": {}}
-        db_session.flush()
-        second = ARBSubmissionService.submit(solution.id, owner.id, workspace.id, {})
-
-    assert second.success is True
-    assert second.idempotent is True
-    assert second.review_item_id == first.review_item_id
-    assert second.snapshot_id == first.snapshot_id
-
-
-def test_submit_preserves_tenant_context_missing_reason(db_session, make_org, passing_gate):
-    org = make_org("no-context")
-    owner = _user(db_session, org)
-    solution = _solution(db_session, org, owner)
-
-    result = ARBSubmissionService.submit(solution.id, owner.id, assertions=_ready_assertions())
-
-    assert result.reason_codes == ["tenant_context_missing"]
-
-
-def test_runtime_submission_executes_no_schema_ddl(db_session, make_org, tenant_ctx, passing_gate):
-    org = make_org("runtime-no-ddl")
-    owner = _user(db_session, org)
-    solution = _solution(db_session, org, owner)
-    statements = []
-
-    def record_statement(_conn, _cursor, statement, _parameters, _context, _executemany):
-        statements.append(statement)
-
-    event.listen(db.engine, "before_cursor_execute", record_statement)
-    try:
-        with tenant_ctx(org.id):
-            result = ARBSubmissionService.submit(
-                solution.id, owner.id, assertions=_ready_assertions()
-            )
-    finally:
-        event.remove(db.engine, "before_cursor_execute", record_statement)
-
-    assert result.success is True
-    ddl_prefixes = ("CREATE ", "ALTER ", "DROP ", "DO ", "SELECT PG_ADVISORY")
-    assert not [
-        statement for statement in statements if statement.lstrip().upper().startswith(ddl_prefixes)
-    ]
-
-
-def test_missing_database_trigger_blocks_runtime_submission_with_precise_reason(
-    db_session, make_org, tenant_ctx, passing_gate
-):
-    org = make_org("missing-trigger")
-    owner = _user(db_session, org)
-    solution = _solution(db_session, org, owner)
-    connection = db_session.connection()
-    connection.exec_driver_sql(
-        "DROP TRIGGER IF EXISTS trg_reject_evidence_mutation ON arb_submission_evidence_snapshots"
-    )
-
-    try:
-        with tenant_ctx(org.id):
-            result = ARBSubmissionService.submit(
-                solution.id, owner.id, assertions=_ready_assertions()
-            )
-        assert result.success is False
-        assert result.reason_codes == ["evidence_immutability_unavailable"]
-        assert db_session.query(ARBReviewItem).filter_by(solution_id=solution.id).count() == 0
-    finally:
-        ensure_evidence_immutability_triggers(connection)
-
-
-def test_required_write_failure_rolls_back_every_submission_change(
-    db_session, make_org, tenant_ctx, passing_gate
-):
-    org = make_org("rollback")
-    owner = _user(db_session, org)
-    solution = _solution(db_session, org, owner)
-    solution_id = solution.id
-    db_session.commit()
-
-    def fail_snapshot_insert(_mapper, _connection, _target):
-        raise RuntimeError("forced snapshot failure")
-
-    event.listen(ARBSubmissionEvidenceSnapshot, "before_insert", fail_snapshot_insert)
-    try:
-        with tenant_ctx(org.id):
-            result = ARBSubmissionService.submit(
-                solution.id, owner.id, assertions=_ready_assertions()
-            )
-    finally:
-        event.remove(ARBSubmissionEvidenceSnapshot, "before_insert", fail_snapshot_insert)
-
-    assert result.success is False
-    assert result.reason_codes == ["submission_failed"]
-    assert db_session.query(ARBReviewItem).filter_by(solution_id=solution_id).count() == 0
-    assert (
-        db_session.query(ARBSubmissionEvidenceSnapshot).filter_by(solution_id=solution_id).count()
-        == 0
-    )
-    persisted_solution = db_session.get(Solution, solution_id)
-    assert persisted_solution.governance_status == "draft"
-    assert persisted_solution.arb_review_item_id is None
-
-
-def test_snapshot_rejects_updates_and_retains_captured_payload(
-    db_session, make_org, tenant_ctx, passing_gate
-):
-    org = make_org("immutable")
-    owner = _user(db_session, org)
-    solution = _solution(db_session, org, owner)
-    artifacts = _artifacts("brief", "scope", "recommendation")
-    workspace = _workspace(db_session, org, owner, solution, artifacts=artifacts)
-
-    with tenant_ctx(org.id):
-        result = ARBSubmissionService.submit(
-            solution.id, owner.id, workspace.id, _ready_assertions()
-        )
-
-    snapshot = db_session.get(ARBSubmissionEvidenceSnapshot, result.snapshot_id)
-    captured = deepcopy(snapshot.artifacts)
-    workspace.custom_metadata = {**workspace.custom_metadata, "artifacts": {}}
-    db_session.flush()
-    assert snapshot.artifacts == captured
-
-    snapshot.workflow_type = "tampered"
-    with pytest.raises(ValueError, match="append-only"):
-        db_session.flush()
-    db_session.rollback()
-
-
-def test_append_only_snapshot_rejects_bulk_and_raw_mutation(
-    db_session, make_org, tenant_ctx, passing_gate
-):
-    org = make_org("bulk-immutable")
-    owner = _user(db_session, org)
-    solution = _solution(db_session, org, owner)
-    workspace = _workspace(
-        db_session,
-        org,
-        owner,
-        solution,
-        artifacts=_artifacts("brief", "scope", "recommendation"),
-    )
-    with tenant_ctx(org.id):
-        result = ARBSubmissionService.submit(
-            solution.id, owner.id, workspace.id, _ready_assertions()
-        )
-
-    with pytest.raises(ValueError, match="append-only"):
-        db_session.execute(
-            db.update(ARBSubmissionEvidenceSnapshot)
-            .where(ARBSubmissionEvidenceSnapshot.id == result.snapshot_id)
-            .values(workflow_type="tampered")
-        )
-    db_session.rollback()
-
-    with pytest.raises(ValueError, match="append-only"):
-        db_session.execute(
-            db.text("DELETE FROM arb_submission_evidence_snapshots WHERE id = :snapshot_id"),
-            {"snapshot_id": result.snapshot_id},
-        )
-
-
-def test_two_concurrent_transactions_create_one_review_and_database_rejects_raw_mutation(
-    app, _schema, monkeypatch
-):
-    monkeypatch.setattr(
-        "app.modules.solutions_strategic.v2.services.arb_submission_service.check_gate",
-        lambda *_: {"passed": True, "failures": [], "gate_name": "arb_submission"},
-    )
-    from app.models.organization import Organization
-
-    with app.app_context():
-        suffix = uuid.uuid4().hex[:10]
-        org = Organization(name=f"Concurrent {suffix}", slug=f"concurrent-{suffix}")
-        db.session.add(org)
-        db.session.flush()
-        owner = _user(db.session, org)
-        solution = _solution(db.session, org, owner)
-        workspace = _workspace(
-            db.session,
-            org,
-            owner,
-            solution,
-            artifacts=_artifacts("brief", "scope", "recommendation"),
-        )
-        db.session.commit()
-        artifact_id = (
-            db.session.query(WorkbenchArtifactEvidence.id)
-            .filter_by(workspace_id=workspace.id, name="brief")
-            .scalar()
-        )
-        org_id, owner_id, solution_id, workspace_id = (
-            org.id,
-            owner.id,
-            solution.id,
-            workspace.id,
-        )
-
-    barrier = threading.Barrier(2)
-    results = []
-    errors = []
-
-    def submit_from_independent_transaction():
-        try:
-            with app.test_request_context("/"):
-                g.current_org_id = org_id
-                barrier.wait(timeout=10)
-                results.append(
-                    ARBSubmissionService.submit(
-                        solution_id,
-                        owner_id,
-                        workspace_id,
-                        assertions=_ready_assertions(),
-                    )
-                )
-                db.session.remove()
-        except Exception as exc:
-            errors.append(exc)
-
-    threads = [threading.Thread(target=submit_from_independent_transaction) for _ in range(2)]
-    for thread in threads:
-        thread.start()
-    for thread in threads:
-        thread.join(timeout=20)
-
-    assert errors == []
-    assert len(results) == 2
-    assert {result.review_item_id for result in results} == {results[0].review_item_id}
-    assert sorted(result.idempotent for result in results) == [False, True]
-
-    with app.app_context():
-        assert db.session.query(ARBReviewItem).filter_by(solution_id=solution_id).count() == 1
-        snapshot = (
-            db.session.query(ARBSubmissionEvidenceSnapshot).filter_by(solution_id=solution_id).one()
-        )
-        snapshot_id = snapshot.id
-        db.session.remove()
-
-    database_url = app.config["SQLALCHEMY_DATABASE_URI"]
-    raw = psycopg2.connect(database_url)
-    try:
-        for statement in (
-            f"/* immutable */ UPDATE public.arb_submission_evidence_snapshots SET workflow_type='x' WHERE id={snapshot_id}",
-            f"WITH target AS (SELECT {snapshot_id} AS id) DELETE FROM arb_submission_evidence_snapshots USING target WHERE arb_submission_evidence_snapshots.id=target.id",
-            f"DELETE FROM public.arb_submission_evidence_snapshots WHERE id={snapshot_id}",
-            f"/* immutable */ UPDATE public.workbench_artifact_evidence SET state='draft' WHERE id={artifact_id}",
-            f"WITH target AS (SELECT {artifact_id} AS id) DELETE FROM workbench_artifact_evidence USING target WHERE workbench_artifact_evidence.id=target.id",
-        ):
-            with pytest.raises(psycopg2.Error, match="append-only"):
-                with raw.cursor() as cursor:
-                    cursor.execute(statement)
-            raw.rollback()
-    finally:
-        with raw.cursor() as cursor:
-            cursor.execute("ALTER TABLE arb_submission_evidence_snapshots DISABLE TRIGGER USER")
-            cursor.execute(
-                "DELETE FROM arb_submission_evidence_snapshots WHERE solution_id=%s",
-                (solution_id,),
-            )
-            cursor.execute("ALTER TABLE arb_submission_evidence_snapshots ENABLE TRIGGER USER")
-            cursor.execute("ALTER TABLE workbench_artifact_evidence DISABLE TRIGGER USER")
-            cursor.execute(
-                "DELETE FROM workbench_artifact_evidence WHERE solution_id=%s", (solution_id,)
-            )
-            cursor.execute("ALTER TABLE workbench_artifact_evidence ENABLE TRIGGER USER")
-            cursor.execute(
-                "DELETE FROM solution_notifications WHERE solution_id=%s", (solution_id,)
-            )
-            cursor.execute("DELETE FROM soc2_audit_log WHERE organization_id=%s", (org_id,))
-            cursor.execute(
-                "UPDATE solutions SET arb_review_item_id=NULL WHERE id=%s", (solution_id,)
-            )
-            cursor.execute("DELETE FROM arb_review_items WHERE solution_id=%s", (solution_id,))
-            cursor.execute("DELETE FROM solutions WHERE id=%s", (solution_id,))
-            cursor.execute("DELETE FROM solution_analysis_sessions WHERE id=%s", (workspace_id,))
-            cursor.execute("DELETE FROM users WHERE id=%s", (owner_id,))
-            cursor.execute("DELETE FROM organizations WHERE id=%s", (org_id,))
-        raw.commit()
-        raw.close()
+# The 11 retired direct-writer tests were removed only after ownership and their
+# executable contracts moved to these named typed tests:
+# - idempotence/fresh-session/evidence-change replay:
+#   test_replay_returns_the_original_ids_without_re_evaluating_or_resnapshotting,
+#   test_real_adr_submission_is_atomic_and_same_key_replay_is_stable, and
+#   test_different_command_key_reconciles_to_the_same_open_cycle;
+# - atomic Solution graph and rollback:
+#   test_real_solution_submission_pins_legacy_evidence_into_typed_graph,
+#   test_review_item_insert_failure_rolls_back_snapshot_cycle_and_result, and
+#   test_submission_event_insert_failure_rolls_back_entire_graph;
+# - missing tenant/facade-only behavior:
+#   test_legacy_solution_facade_delegates_without_direct_review_write and
+#   test_adapter_maps_domain_errors_to_safe_legacy_results;
+# - runtime schema guards, immutable snapshots, and concurrency:
+#   test_reconcile_installs_typed_arb_constraints_idempotently,
+#   test_reconcile_repairs_missing_disabled_and_malformed_typed_guards,
+#   test_direct_sql_cannot_rewrite_typed_snapshot_or_history, and
+#   test_database_rejects_two_open_cycles_for_one_typed_subject.

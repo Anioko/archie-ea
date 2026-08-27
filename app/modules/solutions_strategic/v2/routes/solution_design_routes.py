@@ -7027,31 +7027,20 @@ def _validate_solution_recommended_option(solution):
 def submit_solution_for_arb(solution_id: int):
     """Submit a solution for Architecture Review Board approval."""
     data = request.get_json(silent=True) or {}
-    from app.modules.solutions_strategic.v2.services.arb_submission_service import (
-        ARBSubmissionService,
+    from app.modules.transformation_room.arb_submission_adapter import (
+        TypedARBSubmissionAdapter,
     )
 
-    result = ARBSubmissionService.submit(
-        solution_id,
-        current_user.id,
-        assertions={
-            "human_reviewed": bool(data.get("ai_content_reviewed") or data.get("human_reviewed")),
-            "cost_source": data.get("cost_source"),
-            "direct_route_evidence": data.get("direct_route_evidence") or {},
-            "resubmission_notes": data.get("resubmission_notes"),
-        },
+    result = TypedARBSubmissionAdapter.submit_solution_from_request(
+        solution_id=solution_id,
+        payload=data,
     )
     if not result.success:
-        status = 404 if "solution_not_found" in result.reason_codes else 422
-        if "actor_not_authorized" in result.reason_codes:
-            status = 403
-        if "evaluator_unavailable" in result.reason_codes or "submission_failed" in result.reason_codes:
-            status = 503
         return jsonify({
             "success": False,
             "reason_codes": result.reason_codes,
             "missing_evidence": result.missing_evidence,
-        }), status
+        }), result.http_status
     return jsonify({
         "success": True,
         "message": "Solution submitted for ARB review",
@@ -7059,6 +7048,8 @@ def submit_solution_for_arb(solution_id: int):
         "review_number": result.review_number,
         "snapshot_id": result.snapshot_id,
         "idempotent": result.idempotent,
+        "review_cycle_id": result.review_cycle_id,
+        "canonical_url": result.canonical_url,
     })
 
 

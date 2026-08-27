@@ -2829,31 +2829,24 @@ def full_validate(solution_id):
 @_require_solution_owner
 def submit_arb(solution_id):
     """Submit through the canonical, evidence-gated ARB service."""
-    from app.modules.solutions_strategic.v2.services.arb_submission_service import ARBSubmissionService
+    from app.modules.transformation_room.arb_submission_adapter import (
+        TypedARBSubmissionAdapter,
+    )
 
     data = request.get_json() or {}
-    result = ARBSubmissionService.submit(
-        solution_id,
-        current_user.id,
-        assertions={
-            "human_reviewed": bool(data.get("ai_content_reviewed") or data.get("human_reviewed")),
-            "cost_source": data.get("cost_source"),
-            "direct_route_evidence": data.get("direct_route_evidence") or {},
-            "resubmission_notes": data.get("resubmission_notes"),
-        },
+    result = TypedARBSubmissionAdapter.submit_solution_from_request(
+        solution_id=solution_id,
+        payload=data,
     )
     if not result.success:
-        status = 403 if "actor_not_authorized" in result.reason_codes else 422
-        if "solution_not_found" in result.reason_codes:
-            status = 404
-        if "evaluator_unavailable" in result.reason_codes or "submission_failed" in result.reason_codes:
-            status = 503
         return jsonify({"success": False, "reason_codes": result.reason_codes,
-                        "missing_evidence": result.missing_evidence}), status
+                        "missing_evidence": result.missing_evidence}), result.http_status
     return api_success(data={"review_item_id": result.review_item_id,
                              "review_number": result.review_number,
                              "snapshot_id": result.snapshot_id,
-                             "idempotent": result.idempotent})
+                             "idempotent": result.idempotent,
+                             "review_cycle_id": result.review_cycle_id,
+                             "canonical_url": result.canonical_url})
 
 
 # ── Spec Inference Hooks (post-generation triggers) ──────────────

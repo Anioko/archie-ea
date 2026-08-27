@@ -1429,31 +1429,24 @@ def api_dashboard():
 @audit_log("arb_solution_review_submit")
 def api_submit_solution_review(solution_id):
     """API endpoint to auto-submit solution for ARB review."""
-    from app.modules.solutions_strategic.v2.services.arb_submission_service import ARBSubmissionService
+    from app.modules.transformation_room.arb_submission_adapter import (
+        TypedARBSubmissionAdapter,
+    )
 
     data = request.get_json(silent=True) or {}
-    result = ARBSubmissionService.submit(
-        solution_id,
-        current_user.id,
-        assertions={
-            "human_reviewed": bool(data.get("ai_content_reviewed") or data.get("human_reviewed")),
-            "cost_source": data.get("cost_source"),
-            "direct_route_evidence": data.get("direct_route_evidence") or {},
-            "resubmission_notes": data.get("resubmission_notes"),
-        },
+    result = TypedARBSubmissionAdapter.submit_solution_from_request(
+        solution_id=solution_id,
+        payload=data,
     )
     if not result.success:
-        status = 403 if "actor_not_authorized" in result.reason_codes else 422
-        if "solution_not_found" in result.reason_codes:
-            status = 404
-        if "evaluator_unavailable" in result.reason_codes or "submission_failed" in result.reason_codes:
-            status = 503
         return jsonify({"success": False, "reason_codes": result.reason_codes,
-                        "missing_evidence": result.missing_evidence}), status
+                        "missing_evidence": result.missing_evidence}), result.http_status
     return jsonify({"success": True, "review_id": result.review_item_id,
                     "review_item_id": result.review_item_id,
                     "review_number": result.review_number, "snapshot_id": result.snapshot_id,
-                    "idempotent": result.idempotent})
+                    "idempotent": result.idempotent,
+                    "review_cycle_id": result.review_cycle_id,
+                    "canonical_url": result.canonical_url})
 
 
 @arb_bp.route("/api/adr/<int:adr_id>/submit_review", methods=["POST"])

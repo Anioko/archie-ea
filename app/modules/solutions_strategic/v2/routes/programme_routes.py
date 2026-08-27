@@ -147,18 +147,44 @@ def _unavailable_transformation_posture(reason):
 @login_required
 def arb_escalate_finding():
     """Turn an AI architect finding into a tracked ARB review item."""
+    data = request.get_json(silent=True) or {}
+    solution_id = data.get("solution_id") or None
+    if solution_id is not None:
+        from app.modules.transformation_room.arb_submission_adapter import (
+            TypedARBSubmissionAdapter,
+        )
+
+        result = TypedARBSubmissionAdapter.submit_solution_from_request(
+            solution_id=solution_id,
+            payload=data,
+        )
+        if not result.success:
+            return jsonify({
+                "success": False,
+                "reason_codes": result.reason_codes,
+                "missing_evidence": result.missing_evidence,
+            }), result.http_status
+        return jsonify({
+            "success": True,
+            "review_number": result.review_number,
+            "id": result.review_item_id,
+            "review_cycle_id": result.review_cycle_id,
+            "snapshot_id": result.snapshot_id,
+            "canonical_url": result.canonical_url,
+            "idempotent": result.idempotent,
+        }), (200 if result.idempotent else 201)
+
     from app.modules.solutions_strategic.v2.services.arb_escalation_service import (
         ARBEscalationService,
     )
 
-    data = request.get_json(silent=True) or {}
     result = ARBEscalationService.escalate(
         title=data.get("title", ""),
         detail=data.get("detail", ""),
         category=data.get("category", ""),
         severity=data.get("severity", ""),
         user_id=current_user.id,
-        solution_id=data.get("solution_id") or None,
+        solution_id=None,
     )
     return jsonify(result), (201 if result.get("success") else 400)
 

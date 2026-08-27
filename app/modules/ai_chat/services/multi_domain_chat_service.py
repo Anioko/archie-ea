@@ -8080,13 +8080,15 @@ End with: "Type **'next'** to complete the design workflow."
                 }],
             }
 
-        from app.modules.solutions_strategic.v2.services.arb_submission_service import ARBSubmissionService
+        from app.modules.transformation_room.arb_submission_adapter import (
+            TypedARBSubmissionAdapter,
+        )
 
-        result = ARBSubmissionService.submit(
-            solution_id,
-            current_user.id,
-            workspace_id=workspace_id,
-            assertions=(context or {}).get("arb_assertions") or {},
+        result = TypedARBSubmissionAdapter.submit_solution_for_actor(
+            actor_id=current_user.id,
+            solution_id=solution_id,
+            trusted_workspace_id=workspace_id,
+            trusted_human_reviewed=False,
         )
         if not result.success:
             return {
@@ -8106,6 +8108,8 @@ End with: "Type **'next'** to complete the design workflow."
             "review_url": review_url,
             "already_submitted": result.idempotent,
             "idempotent": result.idempotent,
+            "review_cycle_id": result.review_cycle_id,
+            "canonical_url": result.canonical_url,
         }
 
     # ------------------------------------------------------------------

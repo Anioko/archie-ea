@@ -8,6 +8,7 @@ Design decisions:
   - Exceptions roll back and surface as {"success": False, "error": "..."}.
 """
 
+import hashlib
 import logging
 import re
 from dataclasses import dataclass
@@ -67,6 +68,40 @@ def _load_acting_user(user_id):
     if org_id is not None:
         query = query.filter_by(organization_id=org_id)
     return query.first()
+
+
+def _verified_solution_workspace_id(workspace_id, solution_id):
+    """Turn an untrusted tool argument into a tenant-bound workspace id."""
+    from flask import g
+
+    from app.models.solution_architect_models import SolutionAnalysisSession
+    from app.models.solution_models import Solution
+
+    organization_id = getattr(g, "current_org_id", None)
+    if type(workspace_id) is not int or type(solution_id) is not int:
+        return None
+    if not isinstance(organization_id, int) or organization_id <= 0:
+        return None
+
+    solution = db.session.execute(
+        db.select(Solution).where(
+            Solution.id == solution_id,
+            Solution.organization_id == organization_id,
+        )
+    ).scalar_one_or_none()
+    workspace = db.session.execute(
+        db.select(SolutionAnalysisSession).where(
+            SolutionAnalysisSession.id == workspace_id,
+            SolutionAnalysisSession.organization_id == organization_id,
+        )
+    ).scalar_one_or_none()
+    if solution is None or workspace is None:
+        return None
+
+    metadata_solution_id = (workspace.custom_metadata or {}).get("solution_id")
+    if solution.analysis_session_id == workspace.id or metadata_solution_id == solution.id:
+        return workspace.id
+    return None
 
 
 class ToolPermissionError(Exception):
@@ -247,7 +282,11 @@ class ToolExecutor:
                 return _permission_denied_result(tool_call.name, user)
 
         try:
-            return handler(_strip_tags_from_name_args(tool_call.arguments))
+            arguments = _strip_tags_from_name_args(tool_call.arguments)
+            if tool_call.name == "submit_for_arb_review":
+                tool_call_digest = hashlib.sha256(str(tool_call.id).encode("utf-8")).hexdigest()
+                arguments["_trusted_command_key"] = f"ai-tool-{tool_call_digest}"
+            return handler(arguments)
         except Exception as e:
             db.session.rollback()
             logger.exception("Tool %s failed", tool_call.name)
@@ -579,7 +618,17 @@ class ToolExecutor:
     # ------------------------------------------------------------------ #
 
     def _tool_submit_for_arb_review(self, args: dict) -> dict:
-        workspace_id = args.get("workspace_id")
+        command_key = args.pop("_trusted_command_key", None)
+        sol_r = self._resolver.resolve_solution(args["solution_name"])
+        if not sol_r["resolved"]:
+            return self._clarify("solution", sol_r)
+
+        # Tool arguments remain model-controlled at this edge even though the
+        # normal runner replaces workspace_id from request context. Re-resolve
+        # the binding from tenant-owned records before labelling it trusted.
+        workspace_id = _verified_solution_workspace_id(
+            args.get("workspace_id"), sol_r["id"]
+        )
         if workspace_id is None:
             return {
                 "success": False,
@@ -593,19 +642,16 @@ class ToolExecutor:
                 "error": "A trusted solution workbench is required for AI submission.",
             }
 
-        sol_r = self._resolver.resolve_solution(args["solution_name"])
-        if not sol_r["resolved"]:
-            return self._clarify("solution", sol_r)
-
-        from app.modules.solutions_strategic.v2.services.arb_submission_service import (
-            ARBSubmissionService,
+        from app.modules.transformation_room.arb_submission_adapter import (
+            TypedARBSubmissionAdapter,
         )
 
-        submission = ARBSubmissionService.submit(
-            sol_r["id"],
-            self.user_id,
-            workspace_id=workspace_id,
-            assertions={"human_reviewed": True},
+        submission = TypedARBSubmissionAdapter.submit_solution_for_actor(
+            actor_id=self.user_id,
+            solution_id=sol_r["id"],
+            trusted_workspace_id=workspace_id,
+            trusted_human_reviewed=True,
+            command_key=command_key,
         )
         if not submission.success:
             blocked = {
@@ -631,6 +677,8 @@ class ToolExecutor:
                 "review_number": submission.review_number,
                 "snapshot_id": submission.snapshot_id,
                 "idempotent": submission.idempotent,
+                "review_cycle_id": submission.review_cycle_id,
+                "canonical_url": submission.canonical_url,
             },
             "message": f"Submitted '{sol_r.get('name') or args['solution_name']}' for ARB review ({submission.review_number}).",
         }

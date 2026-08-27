@@ -55,6 +55,14 @@ class ARBEscalationService:
         title = (title or "").strip()
         if not title:
             return {"success": False, "error": "A finding title is required."}
+        if solution_id is not None:
+            return {
+                "success": False,
+                "error": (
+                    "Solution findings require the canonical evidence-gated "
+                    "submission endpoint."
+                ),
+            }
 
         try:
             review_number = ARBReviewItem.generate_review_number()

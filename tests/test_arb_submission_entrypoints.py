@@ -12,8 +12,8 @@ from app.models.solution_architect_models import SolutionAnalysisSession, Soluti
 from app.models.solution_models import Solution
 from app.models.user import User
 from app.modules.ai_chat.services.multi_domain_chat_service import MultiDomainChatService
-from app.modules.solutions_strategic.v2.services.arb_submission_service import (
-    ARBSubmissionResult,
+from app.modules.transformation_room.arb_submission_adapter import (
+    LegacyARBSubmissionResult,
 )
 
 
@@ -101,64 +101,53 @@ def test_http_submission_entrypoint_delegates_trusted_identity_without_mutating(
     solution = _solution(db_session, org, actor)
     calls = []
 
-    def submit(solution_id, actor_id, workspace_id=None, assertions=None):
-        calls.append((solution_id, actor_id, workspace_id, assertions))
-        return ARBSubmissionResult(
+    def submit(**kwargs):
+        calls.append(kwargs)
+        return LegacyARBSubmissionResult(
             True,
             review_item_id=71,
             review_number="REV-2026-ENTRY",
             snapshot_id=72,
+            review_cycle_id=73,
+            canonical_url=f"/solutions/{solution.id}?tab=governance",
         )
 
     monkeypatch.setattr(
-        "app.modules.solutions_strategic.v2.services.arb_submission_service."
-        "ARBSubmissionService.submit",
+        "app.modules.transformation_room.arb_submission_adapter."
+        "TypedARBSubmissionAdapter.submit_solution_from_request",
         submit,
     )
     module = __import__(module_name, fromlist=[function_name])
     before = db_session.query(ARBReviewItem).filter_by(solution_id=solution.id).count()
+    request_payload = {
+        "submitted_by_id": actor.id + 999,
+        "workflow_type": "brownfield",
+        "workspace_id": 888,
+        "ai_content_reviewed": True,
+        "cost_source": "manual_override",
+        "direct_route_evidence": {
+            "design_reviewed": True,
+            "security_impact_reviewed": True,
+            "data_impact_reviewed": True,
+        },
+    }
     response = _call_route(
         app,
         getattr(module, function_name),
         actor,
         org.id,
         solution.id,
-        {
-            "submitted_by_id": actor.id + 999,
-            "workflow_type": "brownfield",
-            "workspace_id": 888,
-            "ai_content_reviewed": True,
-            "cost_source": "manual_override",
-            "direct_route_evidence": {
-                "design_reviewed": True,
-                "security_impact_reviewed": True,
-                "data_impact_reviewed": True,
-            },
-        },
+        request_payload,
     )
 
     body = _json(response)
-    assert calls == [
-        (
-            solution.id,
-            actor.id,
-            None,
-            {
-                "human_reviewed": True,
-                "cost_source": "manual_override",
-                "direct_route_evidence": {
-                    "design_reviewed": True,
-                    "security_impact_reviewed": True,
-                    "data_impact_reviewed": True,
-                },
-                "resubmission_notes": None,
-            },
-        )
-    ]
+    assert calls == [{"solution_id": solution.id, "payload": request_payload}]
     assert body["success"] is True
     payload = body.get("data", body)
     assert payload["review_number"] == "REV-2026-ENTRY"
     assert payload["snapshot_id"] == 72
+    assert payload["review_cycle_id"] == 73
+    assert payload["canonical_url"] == f"/solutions/{solution.id}?tab=governance"
     assert solution.governance_status == "draft"
     assert db_session.query(ARBReviewItem).filter_by(solution_id=solution.id).count() == before
 
@@ -171,19 +160,21 @@ def test_legacy_chat_delegates_authenticated_actor_and_returns_canonical_retry(
     solution = _solution(db_session, org, actor)
     calls = []
 
-    def submit(solution_id, actor_id, workspace_id=None, assertions=None):
-        calls.append((solution_id, actor_id, workspace_id, assertions))
-        return ARBSubmissionResult(
+    def submit(**kwargs):
+        calls.append(kwargs)
+        return LegacyARBSubmissionResult(
             True,
             review_item_id=81,
             review_number="REV-2026-RETRY",
             snapshot_id=82,
             idempotent=True,
+            review_cycle_id=83,
+            canonical_url=f"/solutions/{solution.id}?tab=governance",
         )
 
     monkeypatch.setattr(
-        "app.modules.solutions_strategic.v2.services.arb_submission_service."
-        "ARBSubmissionService.submit",
+        "app.modules.transformation_room.arb_submission_adapter."
+        "TypedARBSubmissionAdapter.submit_solution_for_actor",
         submit,
     )
     service = object.__new__(MultiDomainChatService)
@@ -194,11 +185,18 @@ def test_legacy_chat_delegates_authenticated_actor_and_returns_canonical_retry(
             f"/submit-arb {solution.id}", {"_trusted_workspace_id": 55}
         )
 
-    assert calls == [(solution.id, actor.id, 55, {})]
+    assert calls == [{
+        "actor_id": actor.id,
+        "solution_id": solution.id,
+        "trusted_workspace_id": 55,
+        "trusted_human_reviewed": False,
+    }]
     assert result["success"] is True
     assert result["arb_id"] == 81
     assert result["snapshot_id"] == 82
     assert result["already_submitted"] is True
+    assert result["review_cycle_id"] == 83
+    assert result["canonical_url"] == f"/solutions/{solution.id}?tab=governance"
     assert solution.governance_status == "draft"
     assert db_session.query(ARBReviewItem).filter_by(solution_id=solution.id).count() == 0
 
@@ -212,12 +210,13 @@ def test_http_blocker_is_stable_and_does_not_expose_exception_text(
     actor = _actor(db_session, org)
     solution = _solution(db_session, org, actor)
     monkeypatch.setattr(
-        "app.modules.solutions_strategic.v2.services.arb_submission_service."
-        "ARBSubmissionService.submit",
-        lambda *args, **kwargs: ARBSubmissionResult(
+        "app.modules.transformation_room.arb_submission_adapter."
+        "TypedARBSubmissionAdapter.submit_solution_from_request",
+        lambda **_kwargs: LegacyARBSubmissionResult(
             False,
             ["actor_not_authorized"],
             [{"code": "actor_not_authorized", "action": "Ask a solution stakeholder"}],
+            http_status=403,
         ),
     )
 

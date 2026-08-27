@@ -113,6 +113,7 @@ def test_executor_requires_trusted_workspace_for_ai_submission(
 
     with tenant_ctx(org.id):
         executor = ToolExecutor(actor.id)
+        executor._user_can_write = lambda: True
         executor._resolver.resolve_solution = lambda _name: {
             "resolved": True,
             "id": solution.id,
@@ -136,19 +137,20 @@ def test_executor_delegates_to_canonical_service_with_trusted_identity(
     workspace = _workspace(db_session, org, actor, solution)
     calls = []
 
-    def submit(solution_id, actor_id, workspace_id=None, assertions=None):
-        calls.append((solution_id, actor_id, workspace_id, assertions))
+    def submit(**kwargs):
+        calls.append(kwargs)
         return ARBSubmissionResult(
             True, review_item_id=73, review_number="REV-2026-TEST", snapshot_id=91
         )
 
     monkeypatch.setattr(
-        "app.modules.solutions_strategic.v2.services.arb_submission_service."
-        "ARBSubmissionService.submit",
+        "app.modules.transformation_room.arb_submission_adapter."
+        "TypedARBSubmissionAdapter.submit_solution_for_actor",
         submit,
     )
     with tenant_ctx(org.id):
         executor = ToolExecutor(actor.id)
+        monkeypatch.setattr(executor, "_user_can_write", lambda: True)
         executor._resolver.resolve_solution = lambda _name: {
             "resolved": True,
             "id": solution.id,
@@ -162,7 +164,15 @@ def test_executor_delegates_to_canonical_service_with_trusted_identity(
             )
         )
 
-    assert calls == [(solution.id, actor.id, workspace.id, {"human_reviewed": True})]
+    assert calls == [{
+        "actor_id": actor.id,
+        "solution_id": solution.id,
+        "trusted_workspace_id": workspace.id,
+        "trusted_human_reviewed": True,
+        "command_key": (
+            "ai-tool-3ba8dced2e729b165dfb4e6a16f08d0f81338b045127b9a57cbc62f0853ec592"
+        ),
+    }]
     assert result["success"] is True
     assert result["result"] == {
         "solution": solution.name,
@@ -170,7 +180,50 @@ def test_executor_delegates_to_canonical_service_with_trusted_identity(
         "review_number": "REV-2026-TEST",
         "snapshot_id": 91,
         "idempotent": False,
+        "review_cycle_id": None,
+        "canonical_url": None,
     }
+    assert solution.governance_status == "draft"
+
+
+def test_executor_rejects_model_supplied_workspace_not_bound_to_solution(
+    db_session, make_org, tenant_ctx, monkeypatch
+):
+    org = make_org("ai-arb-tool-forged-workspace")
+    actor = _user(db_session, org)
+    solution = _solution(db_session, org, actor)
+    other_solution = _solution(db_session, org, actor)
+    forged_workspace = _workspace(db_session, org, actor, other_solution)
+
+    def must_not_submit(**_kwargs):
+        raise AssertionError("an unverified workspace reached the trusted adapter")
+
+    monkeypatch.setattr(
+        "app.modules.transformation_room.arb_submission_adapter."
+        "TypedARBSubmissionAdapter.submit_solution_for_actor",
+        must_not_submit,
+    )
+    with tenant_ctx(org.id):
+        executor = ToolExecutor(actor.id)
+        monkeypatch.setattr(executor, "_user_can_write", lambda: True)
+        executor._resolver.resolve_solution = lambda _name: {
+            "resolved": True,
+            "id": solution.id,
+            "name": solution.name,
+        }
+        result = executor.execute(
+            ToolCall(
+                "forged-workspace",
+                "submit_for_arb_review",
+                {
+                    "solution_name": solution.name,
+                    "workspace_id": forged_workspace.id,
+                },
+            )
+        )
+
+    assert result["success"] is False
+    assert result["reason_codes"] == ["trusted_workspace_required"]
     assert solution.governance_status == "draft"
 
 
@@ -183,9 +236,9 @@ def test_costed_executor_block_returns_canonical_architect_recovery(
     solution.estimated_cost = Decimal("250000.00")
     workspace = _workspace(db_session, org, actor, solution)
     monkeypatch.setattr(
-        "app.modules.solutions_strategic.v2.services.arb_submission_service."
-        "ARBSubmissionService.submit",
-        lambda *args, **kwargs: ARBSubmissionResult(
+        "app.modules.transformation_room.arb_submission_adapter."
+        "TypedARBSubmissionAdapter.submit_solution_for_actor",
+        lambda **_kwargs: ARBSubmissionResult(
             False,
             ["cost_source_required"],
             [{"code": "cost_source_required"}],
@@ -193,6 +246,7 @@ def test_costed_executor_block_returns_canonical_architect_recovery(
     )
     with tenant_ctx(org.id):
         executor = ToolExecutor(actor.id)
+        monkeypatch.setattr(executor, "_user_can_write", lambda: True)
         executor._resolver.resolve_solution = lambda _name: {
             "resolved": True,
             "id": solution.id,
@@ -225,9 +279,9 @@ def test_costed_workbench_block_returns_same_canonical_recovery(
     solution.estimated_cost = Decimal("250000.00")
     workspace = _workspace(db_session, org, actor, solution)
     monkeypatch.setattr(
-        "app.modules.solutions_strategic.v2.services.arb_submission_service."
-        "ARBSubmissionService.submit",
-        lambda *args, **kwargs: ARBSubmissionResult(
+        "app.modules.transformation_room.arb_submission_adapter."
+        "TypedARBSubmissionAdapter.submit_solution_for_actor",
+        lambda **_kwargs: ARBSubmissionResult(
             False, ["cost_source_required"], [{"code": "cost_source_required"}]
         ),
     )
@@ -297,9 +351,9 @@ def test_workbench_persists_artifact_evidence_then_records_only_canonical_succes
             [{"code": "governance_gate_failed", "action": "Complete governance checks"}],
         )
         monkeypatch.setattr(
-            "app.modules.solutions_strategic.v2.services.arb_submission_service."
-            "ARBSubmissionService.submit",
-            lambda *args, **kwargs: blocked_result,
+            "app.modules.transformation_room.arb_submission_adapter."
+            "TypedARBSubmissionAdapter.submit_solution_for_actor",
+            lambda **_kwargs: blocked_result,
         )
         blocked = kernel.submit_to_arb(workspace.id)
         assert blocked["success"] is False
@@ -315,9 +369,9 @@ def test_workbench_persists_artifact_evidence_then_records_only_canonical_succes
             snapshot_id=202,
         )
         monkeypatch.setattr(
-            "app.modules.solutions_strategic.v2.services.arb_submission_service."
-            "ARBSubmissionService.submit",
-            lambda *args, **kwargs: successful_result,
+            "app.modules.transformation_room.arb_submission_adapter."
+            "TypedARBSubmissionAdapter.submit_solution_for_actor",
+            lambda **_kwargs: successful_result,
         )
         submitted = kernel.submit_to_arb(workspace.id)
 
@@ -339,9 +393,9 @@ def test_workbench_does_not_report_canonical_success_as_submission_failure(
     workspace = _workspace(db_session, org, actor, solution)
     kernel = WorkbenchKernel(user_id=actor.id)
     monkeypatch.setattr(
-        "app.modules.solutions_strategic.v2.services.arb_submission_service."
-        "ARBSubmissionService.submit",
-        lambda *args, **kwargs: ARBSubmissionResult(
+        "app.modules.transformation_room.arb_submission_adapter."
+        "TypedARBSubmissionAdapter.submit_solution_for_actor",
+        lambda **_kwargs: ARBSubmissionResult(
             True, review_item_id=301, review_number="REV-2026-DURABLE", snapshot_id=302
         ),
     )

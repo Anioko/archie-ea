@@ -6,8 +6,10 @@ from decimal import Decimal
 
 import pytest
 
+from app import db
 from app.models.arb_submission_evidence import ARBSubmissionEvidenceSnapshot
 from app.models.architecture_review_board import ARBReviewItem
+from app.models.organization import Organization
 from app.models.solution_models import Solution
 from app.models.solution_architect_models import (
     DriverType,
@@ -25,6 +27,86 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _source(path):
     return (ROOT / path).read_text(encoding="utf-8")
+
+
+@pytest.fixture
+def committed_solution_endpoint_scope(app):
+    """Committed rows visible to the typed command's independent transaction."""
+    suffix = uuid.uuid4().hex[:12]
+    with app.app_context():
+        db.session.remove()
+        org = Organization(
+            name=f"ARB endpoint integration {suffix}",
+            slug=f"arb-endpoint-integration-{suffix}",
+        )
+        db.session.add(org)
+        db.session.flush()
+        actor = User(
+            email=f"arb-endpoint-{suffix}@example.test",
+            organization_id=org.id,
+            enterprise_role="enterprise_architect",
+            confirmed=True,
+        )
+        db.session.add(actor)
+        db.session.flush()
+        workspace = SolutionAnalysisSession(
+            name=f"ARB endpoint workspace {suffix}",
+            created_by_id=actor.id,
+            organization_id=org.id,
+        )
+        db.session.add(workspace)
+        db.session.flush()
+        solution = Solution(
+            name=f"ARB endpoint solution {suffix}",
+            description="Committed HTTP evidence-gate fixture",
+            organization_id=org.id,
+            created_by_id=actor.id,
+            governance_status="draft",
+            analysis_session_id=workspace.id,
+        )
+        db.session.add(solution)
+        db.session.commit()
+        scope = {
+            "organization_id": org.id,
+            "actor_id": actor.id,
+            "workspace_id": workspace.id,
+            "solution_id": solution.id,
+        }
+        db.session.remove()
+        try:
+            yield scope
+        finally:
+            db.session.remove()
+            with db.engine.begin() as connection:
+                connection.exec_driver_sql("SET LOCAL session_replication_role = replica")
+                for table_name in (
+                    "arb_submission_events",
+                    "transformation_outbox_events",
+                    "operation_results",
+                    "command_materialisations",
+                    "command_idempotency_records",
+                    "arb_review_items",
+                    "arb_review_cycles",
+                    "solution_risks",
+                    "solution_goals",
+                    "solution_drivers",
+                    "solution_problem_definitions",
+                    "solutions",
+                    "solution_analysis_sessions",
+                    "soc2_audit_log",
+                    "users",
+                ):
+                    connection.execute(
+                        db.text(
+                            f'DELETE FROM "{table_name}" '
+                            "WHERE organization_id = :organization_id"
+                        ),
+                        {"organization_id": scope["organization_id"]},
+                    )
+                connection.execute(
+                    db.text("DELETE FROM organizations WHERE id = :organization_id"),
+                    {"organization_id": scope["organization_id"]},
+                )
 
 
 def test_manual_arb_creation_rejects_solution_identity_before_legacy_service():
@@ -147,8 +229,8 @@ def test_parallel_solution_arb_service_fails_closed_before_query_or_write():
         SolutionARBService().submit_for_arb_review(999, submitted_by_id=123)
 
 
-def test_real_solution_endpoint_blocks_then_creates_one_canonical_snapshot(
-    app, client, db_session, make_org, login_as
+def test_solution_endpoint_routes_to_typed_adapter_without_direct_review_write(
+    app, client, db_session, make_org, login_as, monkeypatch
 ):
     app.config["SECRET_KEY"] = "arb-endpoint-integration-test"
     org = make_org("real-arb-endpoint")
@@ -216,42 +298,79 @@ def test_real_solution_endpoint_blocks_then_creates_one_canonical_snapshot(
     db_session.flush()
     solution_id = solution.id
     login_as(client, actor)
-
-    blocked = client.post(
-        f"/solutions/{solution_id}/submit-for-arb",
-        json={"human_reviewed": True},
+    from app.modules.transformation_room.arb_submission_adapter import (
+        LegacyARBSubmissionResult,
     )
-    assert blocked.status_code == 422, blocked.location
-    assert blocked.get_json()["reason_codes"] == ["missing_direct_route_evidence"]
-    assert ARBReviewItem.query.filter_by(solution_id=solution_id).count() == 0
 
-    assertions = {
+    monkeypatch.setattr(
+        "app.modules.transformation_room.arb_submission_adapter."
+        "TypedARBSubmissionAdapter.submit_solution_from_request",
+        lambda **_kwargs: LegacyARBSubmissionResult(
+            True,
+            review_item_id=901,
+            review_number="REV-2026-TYPED-ROUTE",
+            snapshot_id=902,
+            review_cycle_id=903,
+            canonical_url=f"/solutions/{solution_id}?tab=governance",
+        ),
+    )
+    response = client.post(f"/solutions/{solution_id}/submit-for-arb", json={
         "human_reviewed": True,
         "direct_route_evidence": {
             "design_reviewed": {"passed": True, "evidence": "Reviewed architecture diagrams and decisions."},
             "security_impact_reviewed": {"passed": True, "evidence": "Reviewed threat and control impacts."},
             "data_impact_reviewed": {"passed": True, "evidence": "Reviewed classification and lifecycle impacts."},
         },
-    }
-    cost_blocked = client.post(f"/solutions/{solution_id}/submit-for-arb", json=assertions)
-    assert cost_blocked.status_code == 422
-    assert cost_blocked.get_json()["reason_codes"] == ["cost_source_required"]
-    assert ARBReviewItem.query.filter_by(solution_id=solution_id).count() == 0
-    assertions["cost_source"] = "tco_engine"
-    unproven_engine = client.post(f"/solutions/{solution_id}/submit-for-arb", json=assertions)
-    assert unproven_engine.status_code == 422
-    assert unproven_engine.get_json()["reason_codes"] == ["cost_source_required"]
-    assert ARBReviewItem.query.filter_by(solution_id=solution_id).count() == 0
-    assertions["cost_source"] = "manual_override"
-    created = client.post(f"/solutions/{solution_id}/submit-for-arb", json=assertions)
-    assert created.status_code == 200, created.get_json()
-    body = created.get_json()
-    assert body["success"] is True
-    assert ARBReviewItem.query.filter_by(solution_id=solution_id).count() == 1
-    assert ARBSubmissionEvidenceSnapshot.query.filter_by(solution_id=solution_id).count() == 1
+        "cost_source": "manual_override",
+        "validation_result": {"passed": True},
+        "decided_by_id": actor.id + 1,
+    })
 
-    retried = client.post(f"/solutions/{solution_id}/submit-for-arb", json=assertions)
-    assert retried.status_code == 200
-    assert retried.get_json()["idempotent"] is True
-    assert ARBReviewItem.query.filter_by(solution_id=solution_id).count() == 1
-    assert ARBSubmissionEvidenceSnapshot.query.filter_by(solution_id=solution_id).count() == 1
+    assert response.status_code == 200
+    body = response.get_json()
+    assert body["success"] is True
+    assert body["review_item_id"] == 901
+    assert body["snapshot_id"] == 902
+    assert body["review_cycle_id"] == 903
+    assert body["canonical_url"] == f"/solutions/{solution_id}?tab=governance"
+    assert ARBReviewItem.query.filter_by(solution_id=solution_id).count() == 0
+    assert ARBSubmissionEvidenceSnapshot.query.filter_by(solution_id=solution_id).count() == 0
+
+
+def test_real_solution_endpoint_ignores_forged_evidence_and_writes_nothing(
+    app, client, login_as, committed_solution_endpoint_scope
+):
+    scope = committed_solution_endpoint_scope
+    login_as(client, scope["actor_id"])
+    response = client.post(
+        f"/solutions/{scope['solution_id']}/submit-for-arb",
+        json={
+            "human_reviewed": True,
+            "direct_route_evidence": {
+                name: {"passed": True, "evidence": "client claimed this passed"}
+                for name in (
+                    "design_reviewed",
+                    "security_impact_reviewed",
+                    "data_impact_reviewed",
+                )
+            },
+            "validation_result": {"passed": True},
+            "readiness": {"ready": True},
+            "decided_by_id": scope["actor_id"] + 1,
+            "actor_roles": ["platform_admin"],
+        },
+    )
+
+    assert response.status_code == 422, response.get_json()
+    body = response.get_json()
+    assert body["success"] is False
+    assert body["reason_codes"]
+    assert body["missing_evidence"]
+    with app.app_context():
+        assert ARBReviewItem.query.filter_by(solution_id=scope["solution_id"]).count() == 0
+        assert (
+            ARBSubmissionEvidenceSnapshot.query.filter_by(
+                solution_id=scope["solution_id"]
+            ).count()
+            == 0
+        )

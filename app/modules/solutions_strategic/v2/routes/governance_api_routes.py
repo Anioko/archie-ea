@@ -414,30 +414,23 @@ def get_blockers(solution_id):
 @solution_required
 def submit_for_arb(solution_id):
     """Submit solution to ARB for review."""
-    from app.modules.solutions_strategic.v2.services.arb_submission_service import ARBSubmissionService
+    from app.modules.transformation_room.arb_submission_adapter import (
+        TypedARBSubmissionAdapter,
+    )
 
     data = request.get_json(silent=True) or {}
-    result = ARBSubmissionService.submit(
-        solution_id,
-        current_user.id,
-        assertions={
-            "human_reviewed": bool(data.get("ai_content_reviewed") or data.get("human_reviewed")),
-            "cost_source": data.get("cost_source"),
-            "direct_route_evidence": data.get("direct_route_evidence") or {},
-            "resubmission_notes": data.get("submission_notes") or data.get("resubmission_notes"),
-        },
+    result = TypedARBSubmissionAdapter.submit_solution_from_request(
+        solution_id=solution_id,
+        payload=data,
     )
     if not result.success:
-        status = 403 if "actor_not_authorized" in result.reason_codes else 422
-        if "solution_not_found" in result.reason_codes:
-            status = 404
-        if "evaluator_unavailable" in result.reason_codes or "submission_failed" in result.reason_codes:
-            status = 503
         return jsonify({"success": False, "reason_codes": result.reason_codes,
-                        "missing_evidence": result.missing_evidence}), status
+                        "missing_evidence": result.missing_evidence}), result.http_status
     return jsonify({"success": True, "review_item_id": result.review_item_id,
                     "review_number": result.review_number, "snapshot_id": result.snapshot_id,
-                    "idempotent": result.idempotent}), 201 if not result.idempotent else 200
+                    "idempotent": result.idempotent,
+                    "review_cycle_id": result.review_cycle_id,
+                    "canonical_url": result.canonical_url}), 201 if not result.idempotent else 200
 
 
 @governance_api_bp.route('/solutions/<int:solution_id>/arb/status', methods=['GET'])

@@ -6,7 +6,6 @@ from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import datetime
 import logging
-import uuid
 from decimal import Decimal
 from typing import Any
 
@@ -16,12 +15,8 @@ from app import db
 from app.models.arb_submission_evidence import (
     ARBSubmissionEvidenceSnapshot,
     WorkbenchArtifactEvidence,
-    evidence_immutability_is_installed,
 )
-from app.models.architecture_review_board import ARBReviewItem, ARB_OPEN_STATUSES
-from app.models.audit_log import AuditLog
 from app.models.solution_architect_models import SolutionAnalysisSession, SolutionRecommendation
-from app.models.solution_governance import SolutionNotification
 from app.models.solution_models import Solution
 from app.models.user import User
 from app.modules.solutions_strategic.v2.services.governance_gate_service import check_gate
@@ -62,6 +57,9 @@ class ARBSubmissionResult:
     review_number: str | None = None
     snapshot_id: int | None = None
     idempotent: bool = False
+    review_cycle_id: int | None = None
+    canonical_url: str | None = None
+    http_status: int = 200
 
 
 class ARBSubmissionService:
@@ -329,143 +327,17 @@ class ARBSubmissionService:
         workspace_id: int | None = None,
         assertions: dict[str, Any] | None = None,
     ) -> ARBSubmissionResult:
-        assertions = deepcopy(assertions or {})
-        try:
-            organization_id = getattr(g, "current_org_id", None) if has_request_context() else None
-            if organization_id is None:
-                return ARBSubmissionResult(False, ["tenant_context_missing"])
-            if not evidence_immutability_is_installed(db.session.connection()):
-                return ARBSubmissionResult(False, ["evidence_immutability_unavailable"])
-            solution = db.session.execute(
-                db.select(Solution)
-                .where(
-                    Solution.id == solution_id,
-                    Solution.organization_id == organization_id,
-                )
-                .with_for_update(of=Solution)
-            ).scalar_one_or_none()
-            if solution is None:
-                return ARBSubmissionResult(False, ["solution_not_found"])
+        from app.modules.transformation_room.arb_submission_adapter import (
+            TypedARBSubmissionAdapter,
+        )
 
-            active = (
-                db.session.execute(
-                    db.select(ARBReviewItem).where(
-                        ARBReviewItem.organization_id == organization_id,
-                        ARBReviewItem.solution_id == solution_id,
-                        ARBReviewItem.status.in_(ARB_OPEN_STATUSES),
-                    )
-                )
-                .scalars()
-                .first()
-            )
-            if active is not None:
-                identity_failure = cls._validate_retry_identity(
-                    solution, actor_id, workspace_id, organization_id
-                )
-                if identity_failure is not None:
-                    return ARBSubmissionResult(False, [identity_failure])
-                snapshot = db.session.execute(
-                    db.select(ARBSubmissionEvidenceSnapshot).where(
-                        ARBSubmissionEvidenceSnapshot.organization_id == organization_id,
-                        ARBSubmissionEvidenceSnapshot.review_item_id == active.id,
-                    )
-                ).scalar_one_or_none()
-                if snapshot is None:
-                    return ARBSubmissionResult(False, ["active_review_snapshot_missing"])
-                if snapshot.workspace_id != workspace_id:
-                    return ARBSubmissionResult(False, ["workspace_identity_mismatch"])
-                return ARBSubmissionResult(
-                    True,
-                    review_item_id=active.id,
-                    review_number=active.review_number,
-                    snapshot_id=snapshot.id,
-                    idempotent=True,
-                )
-            try:
-                readiness = cls._evaluate(
-                    solution_id,
-                    actor_id,
-                    workspace_id,
-                    assertions,
-                    active_review=False,
-                )
-            except Exception:
-                logger.exception("ARB readiness evaluation failed during submission")
-                readiness = ARBReadinessResult(
-                    False,
-                    ["evaluator_unavailable"],
-                    [{"code": "evaluator_unavailable"}],
-                )
-            if not readiness.ready:
-                return ARBSubmissionResult(
-                    False, readiness.reason_codes, readiness.missing_evidence
-                )
-
-            now = datetime.utcnow()
-            is_resubmission = solution.governance_status == "rejected"
-            notes = assertions.get("resubmission_notes") or ""
-            description = f"Review request for solution: {solution.description or solution.name}"
-            if is_resubmission and notes:
-                description = f"[Resubmission] {notes}\n\nOriginal: {description}"
-            review = ARBReviewItem(
-                organization_id=organization_id,
-                review_number=f"REV-{now:%Y}-{uuid.uuid4().hex[:12].upper()}",
-                title=f"{'Resubmission: ' if is_resubmission else ''}Solution Review: {solution.name}",
-                description=description,
-                review_type="solution",
-                priority="medium",
-                status="submitted",
-                submitter_id=actor_id,
-                solution_id=solution.id,
-                submitted_at=now,
-            )
-            db.session.add(review)
-            db.session.flush()
-
-            snapshot = cls.build_evidence_snapshot(
-                organization_id=organization_id,
-                review_item_id=review.id,
-                solution_id=solution.id,
-                workspace_id=workspace_id,
-                actor_id=actor_id,
-                captured_at=now,
-                assertions=assertions,
-                readiness=readiness,
-            )
-
-            solution.governance_status = "arb_review"
-            solution.arb_submission_date = now
-            solution.arb_review_item_id = review.id
-            db.session.add(
-                SolutionNotification(
-                    solution_id=solution.id,
-                    user_id=solution.created_by_id or actor_id,
-                    type="arb_submission",
-                    message=f"Solution '{solution.name}' submitted for ARB review.",
-                )
-            )
-            db.session.add(
-                AuditLog(
-                    organization_id=organization_id,
-                    user_id=actor_id,
-                    action="create",
-                    table_name="arb_review_items",
-                    record_id=review.id,
-                    new_value={"status": "submitted", "snapshot_hash": snapshot.content_hash},
-                )
-            )
-            db.session.flush()
-            db.session.commit()
-            return ARBSubmissionResult(
-                True,
-                review_item_id=review.id,
-                review_number=review.review_number,
-                snapshot_id=snapshot.id,
-            )
-        except Exception:
-            db.session.rollback()
-            logger.exception("Atomic ARB submission failed")
-            return ARBSubmissionResult(False, ["submission_failed"])
+        supplied = assertions if isinstance(assertions, dict) else {}
+        return TypedARBSubmissionAdapter.submit_solution_for_actor(
+            actor_id=actor_id,
+            solution_id=solution_id,
+            trusted_workspace_id=workspace_id,
+            trusted_human_reviewed=supplied.get("human_reviewed") is True,
+        )
 
     @staticmethod
     def _actor_can_access(actor, solution):

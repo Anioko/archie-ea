@@ -914,15 +914,15 @@ class WorkbenchKernel:
                 "reason_codes": ["workspace_solution_missing"],
                 "missing_evidence": [{"code": "workspace_solution_missing"}],
             }
-        from app.modules.solutions_strategic.v2.services.arb_submission_service import (
-            ARBSubmissionService,
+        from app.modules.transformation_room.arb_submission_adapter import (
+            TypedARBSubmissionAdapter,
         )
 
-        submission = ARBSubmissionService.submit(
-            solution_id,
-            self.user_id,
-            workspace_id=workspace_id,
-            assertions={"human_reviewed": True},
+        submission = TypedARBSubmissionAdapter.submit_solution_for_actor(
+            actor_id=self.user_id,
+            solution_id=solution_id,
+            trusted_workspace_id=workspace_id,
+            trusted_human_reviewed=False,
         )
         if not submission.success:
             blocked = {
@@ -944,6 +944,8 @@ class WorkbenchKernel:
             "review_number": submission.review_number,
             "snapshot_id": submission.snapshot_id,
             "idempotent": submission.idempotent,
+            "review_cycle_id": submission.review_cycle_id,
+            "canonical_url": submission.canonical_url,
         }
         for state in (
             ArtifactState.DRAFT.value,
