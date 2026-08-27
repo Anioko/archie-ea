@@ -232,6 +232,56 @@ def test_existing_command_table_is_upgraded_before_new_guarded_tables(
         assert "command_materialisations" in inspect(db.engine).get_table_names()
 
 
+def test_pre_expiry_schema_reconciles_checkpoint_and_runs_empty_batch(
+    app, pre_feature_transformation_schema, monkeypatch
+):
+    """A long-lived database can enable expiry without a preceding init-db."""
+    schema_name, isolated_engine = pre_feature_transformation_schema
+    from app.modules.transformation_room.arb_waiver_expiry_batch_service import (
+        ARBWaiverExpiryBatchService,
+    )
+
+    with isolated_engine.connect() as connection:
+        assert "arb_waiver_expiry_checkpoints" not in inspect(
+            connection
+        ).get_table_names(schema=schema_name)
+
+    with app.app_context():
+        monkeypatch.setitem(
+            app.config, "ARB_CONDITION_EXPIRY_CAPABILITY", "reconcile-expiry-test"
+        )
+        added, failed, missing, _blocking = _reconcile(dry_run=False)
+        assert failed == []
+        assert "table.arb_waiver_expiry_checkpoints :: CREATE TABLE" in added
+        assert "arb_waiver_expiry_checkpoints" not in missing
+
+        result = ARBWaiverExpiryBatchService.run(
+            organization_ids=[1], batch_size=1
+        )
+        assert result.selected_count == 0
+        assert result.failed_count == 0
+
+        with isolated_engine.connect() as connection:
+            checkpoint = connection.execute(
+                text(
+                    "SELECT organization_ids_json, cursor_condition_id "
+                    f'FROM "{schema_name}".arb_waiver_expiry_checkpoints'
+                )
+            ).one()
+        assert checkpoint.organization_ids_json == [1]
+        assert checkpoint.cursor_condition_id is None
+
+        second_added, second_failed, second_missing, _blocking = _reconcile(
+            dry_run=True
+        )
+        assert second_failed == []
+        assert "arb_waiver_expiry_checkpoints" not in second_missing
+        assert not any(
+            item.startswith("table.arb_waiver_expiry_checkpoints")
+            for item in second_added
+        )
+
+
 def test_pre_task6_evidence_waiver_constraint_reconciles_idempotently(
     app, pre_feature_transformation_schema
 ):

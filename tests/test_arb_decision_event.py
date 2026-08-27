@@ -47,6 +47,7 @@ def test_decision_schema_is_registered_for_additive_reconciliation():
 
     assert "arb_decision_events" in _TRANSFORMATION_TABLES
     assert "arb_canonical_conditions" in _TRANSFORMATION_TABLES
+    assert "arb_waiver_expiry_checkpoints" in _TRANSFORMATION_TABLES
 
 
 def test_decision_guard_sql_binds_terminal_projection_and_command_envelopes():

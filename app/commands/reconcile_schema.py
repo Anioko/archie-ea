@@ -67,6 +67,7 @@ _TRANSFORMATION_TABLES = (
     "arb_submission_events",
     "arb_decision_events",
     "arb_canonical_conditions",
+    "arb_waiver_expiry_checkpoints",
     "arb_condition_evidence_records",
     "arb_condition_events",
 )
@@ -380,7 +381,11 @@ def _create_transformation_tables(*, dry_run, existing_tables, added, failed):
         ARBSubjectEvidenceSnapshot,
     )
     from app.models.arb_submission_event import ARBSubmissionEvent  # noqa: F401
-    from app.models.arb_decision_event import ARBCondition, ARBDecisionEvent  # noqa: F401
+    from app.models.arb_decision_event import (  # noqa: F401
+        ARBCondition,
+        ARBDecisionEvent,
+        ARBWaiverExpiryCheckpoint,
+    )
     from app.models.arb_condition_evidence import ARBConditionEvidenceRecord  # noqa: F401
     from app.models.arb_condition_event import ARBConditionEvent  # noqa: F401
 
