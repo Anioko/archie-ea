@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+import json
 import os
 import uuid
 
@@ -10,6 +11,19 @@ import pytest
 
 
 os.environ["TRANSFORMATION_COMMAND_CAPABILITY_SECRET"] = "74" * 32
+
+
+_C3_CLEANUP_TABLES = (
+    "archie_command_claim_challenges",
+    "arb_condition_events", "arb_canonical_conditions",
+    "arb_condition_evidence_records", "arb_decision_events",
+    "arb_submission_events", "operation_results",
+    "command_materialisations", "command_idempotency_records",
+    "arb_review_items", "arb_review_cycles",
+    "arb_subject_evidence_snapshots",
+    "architecture_decision_records", "users",
+)
+_C3_CLEANUP_ASSERT_TABLES = _C3_CLEANUP_TABLES
 
 
 @pytest.fixture
@@ -32,15 +46,7 @@ def db_session(app, _schema):
                         original_role = cursor.fetchone()[0]
                         cursor.execute("SET session_replication_role = replica")
                         try:
-                            for table in (
-                                "arb_condition_events", "arb_canonical_conditions",
-                                "arb_condition_evidence_records", "arb_decision_events",
-                                "arb_submission_events", "operation_results",
-                                "command_materialisations", "command_idempotency_records",
-                                "arb_review_items", "arb_review_cycles",
-                                "arb_subject_evidence_snapshots",
-                                "architecture_decision_records", "users",
-                            ):
+                            for table in _C3_CLEANUP_TABLES:
                                 cursor.execute(
                                     f'DELETE FROM "{table}" WHERE organization_id = ANY(%s)',
                                     (list(organization_ids),),
@@ -60,6 +66,30 @@ def db_session(app, _schema):
                             f"SET session_replication_role = {original_role}"
                         )
                         raw.commit()
+                        cursor.execute("SHOW session_replication_role")
+                        restored_role = cursor.fetchone()[0]
+                        residual = {}
+                        for table in _C3_CLEANUP_ASSERT_TABLES:
+                            cursor.execute(
+                                f'SELECT count(*) FROM "{table}" '
+                                "WHERE organization_id = ANY(%s)",
+                                (list(organization_ids),),
+                            )
+                            count = cursor.fetchone()[0]
+                            if count:
+                                residual[table] = count
+                        cursor.execute(
+                            "SELECT count(*) FROM organizations WHERE id = ANY(%s)",
+                            (list(organization_ids),),
+                        )
+                        organization_count = cursor.fetchone()[0]
+                        if organization_count:
+                            residual["organizations"] = organization_count
+                        if restored_role != original_role or residual:
+                            raise AssertionError(
+                                "C3 cleanup did not restore database state: "
+                                f"role={restored_role!r}, residual={residual!r}"
+                            )
                 finally:
                     raw.close()
 
@@ -67,6 +97,9 @@ def db_session(app, _schema):
 def test_submit_verify_and_projection_commit_under_real_guards(
     app, db_session, make_org, monkeypatch
 ):
+    from sqlalchemy.exc import DBAPIError
+
+    from app import db
     from app.models.arb_condition_event import ensure_arb_condition_event_guards
     from app.models.arb_condition_evidence import ensure_arb_condition_evidence_guards
     from app.models.arb_decision_event import (
@@ -154,6 +187,75 @@ def test_submit_verify_and_projection_commit_under_real_guards(
     )
     condition_id = decision.object_ids["condition_ids"][0]
     waiver_condition_id = decision.object_ids["condition_ids"][1]
+    legacy_insert = db.text("""
+        INSERT INTO arb_canonical_conditions (
+            organization_id, decision_event_id, review_cycle_id, review_item_id,
+            condition_number, description, blocks_execution, status, revision,
+            fulfilled_at, fulfilled_by_id, fulfilment_evidence_id,
+            verified_at, verified_by_id, legacy_lifecycle_provenance
+        )
+        SELECT organization_id, decision_event_id, review_cycle_id, review_item_id,
+               :condition_number, :description, TRUE, 'fulfilled', 1,
+               clock_timestamp(), :actor_id, NULL,
+               clock_timestamp(), :actor_id, CAST(:provenance AS json)
+        FROM arb_canonical_conditions
+        WHERE id=:source_condition_id AND organization_id=:organization_id
+        RETURNING id
+    """)
+    legacy_provenance = {
+        "classification": "pre_c3_fulfilment",
+        "legacy_fulfilment_evidence_id": None,
+    }
+    legacy_parameters = {
+        "condition_number": f"C-LEGACY-{suffix}",
+        "description": "Pre-C3 fulfilled condition",
+        "actor_id": verifier.id,
+        "provenance": json.dumps(legacy_provenance),
+        "source_condition_id": condition_id,
+        "organization_id": org.id,
+    }
+    with pytest.raises(
+        DBAPIError, match="legacy ARB condition provenance is reconcile-only"
+    ):
+        db_session.execute(legacy_insert, legacy_parameters)
+        db_session.commit()
+    db_session.rollback()
+
+    db_session.execute(db.text("SET LOCAL session_replication_role = replica"))
+    legacy_condition_id = db_session.execute(
+        legacy_insert, legacy_parameters
+    ).scalar_one()
+    db_session.commit()
+    assert db_session.execute(
+        db.text("SHOW session_replication_role")
+    ).scalar_one() == "origin"
+    mutated_provenance = {
+        "classification": "pre_c3_fulfilment",
+        "legacy_fulfilment_evidence_id": 999,
+    }
+    with pytest.raises(DBAPIError, match="legacy ARB condition provenance is immutable"):
+        db_session.execute(
+            db.text(
+                "UPDATE arb_canonical_conditions "
+                "SET legacy_lifecycle_provenance=CAST(:provenance AS json) "
+                "WHERE id=:condition_id AND organization_id=:organization_id"
+            ),
+            {
+                "provenance": json.dumps(mutated_provenance),
+                "condition_id": legacy_condition_id,
+                "organization_id": org.id,
+            },
+        )
+    db_session.rollback()
+    assert db_session.execute(
+        db.text(
+            "SELECT legacy_lifecycle_provenance::jsonb "
+            "FROM arb_canonical_conditions "
+            "WHERE id=:condition_id AND organization_id=:organization_id"
+        ),
+        {"condition_id": legacy_condition_id, "organization_id": org.id},
+    ).scalar_one() == legacy_provenance
+
     now = datetime.now(timezone.utc)
     evidence = TypedARBConditionEvidenceService.capture(
         actor=submitter_actor, command_key=f"capture-{suffix}",
@@ -167,7 +269,40 @@ def test_submit_verify_and_projection_commit_under_real_guards(
             "freshness_expires_at": (now + timedelta(days=1)).isoformat(),
         },
     )
+    with pytest.raises(
+        DBAPIError, match="ARB condition lifecycle mutation lacks exact event provenance"
+    ):
+        db_session.execute(
+            db.text(
+                "UPDATE arb_canonical_conditions "
+                "SET status='evidence_submitted', revision=revision + 1, "
+                "submitted_evidence_id=:evidence_id, "
+                "evidence_submitted_by_id=:actor_id, "
+                "evidence_submitted_at=clock_timestamp() "
+                "WHERE id=:condition_id AND organization_id=:organization_id"
+            ),
+            {
+                "evidence_id": evidence.object_ids["condition_evidence_id"],
+                "actor_id": submitter.id,
+                "condition_id": condition_id,
+                "organization_id": org.id,
+            },
+        )
+    db_session.rollback()
+    assert db_session.execute(
+        db.text(
+            "SELECT status FROM arb_canonical_conditions "
+            "WHERE id=:condition_id AND organization_id=:organization_id"
+        ),
+        {"condition_id": condition_id, "organization_id": org.id},
+    ).scalar_one() == "pending"
+
     submitted = TypedARBConditionLifecycleService.submit_evidence(
+        actor=submitter_actor, command_key=f"evidence-submit-{suffix}",
+        condition_id=condition_id,
+        condition_evidence_id=evidence.object_ids["condition_evidence_id"],
+    )
+    submitted_replay = TypedARBConditionLifecycleService.submit_evidence(
         actor=submitter_actor, command_key=f"evidence-submit-{suffix}",
         condition_id=condition_id,
         condition_evidence_id=evidence.object_ids["condition_evidence_id"],
@@ -176,8 +311,58 @@ def test_submit_verify_and_projection_commit_under_real_guards(
     cycle = db_session.get(ARBReviewCycle, submission.object_ids["review_cycle_id"])
     review = db_session.get(ARBReviewItem, submission.object_ids["review_item_id"])
     assert submitted.response["projection_status"] == "approved_with_conditions"
+    assert submitted_replay.object_ids == submitted.object_ids
     assert cycle.status == review.status == "approved_with_conditions"
     assert cycle.terminal_outcome == review.decision == "approved_with_conditions"
+
+    submitted_condition = db_session.get(ARBCondition, condition_id)
+    submitted_evidence_state = (
+        submitted_condition.submitted_evidence_id,
+        submitted_condition.evidence_submitted_by_id,
+        submitted_condition.evidence_submitted_at,
+    )
+    database_now = CommandService._database_now
+    waiver_now = database_now(db_session) - timedelta(days=2)
+    monkeypatch.setattr(
+        CommandService, "_database_now", staticmethod(lambda session: waiver_now),
+    )
+    TypedARBConditionLifecycleService.waive(
+        actor=verifier_actor, command_key=f"evidence-waive-{suffix}",
+        condition_id=condition_id,
+        reason="Temporary evidence review exception",
+        expires_at=waiver_now + timedelta(days=1),
+        scope={"evidence": "deployment-proof"},
+        compensating_control="Daily evidence review",
+    )
+    db_session.expire_all()
+    monkeypatch.setitem(app.config, "ARB_CONDITION_EXPIRY_PRINCIPAL_ID", verifier.id)
+    monkeypatch.setitem(app.config, "ARB_CONDITION_EXPIRY_ORGANIZATION_ID", org.id)
+    monkeypatch.setitem(
+        app.config, "ARB_CONDITION_EXPIRY_CAPABILITY", "c3-expiry-capability"
+    )
+    monkeypatch.setattr(CommandService, "_database_now", staticmethod(database_now))
+    restored = TypedARBConditionLifecycleService.expire_waivers(
+        capability="c3-expiry-capability",
+        command_key=f"evidence-expiry-{suffix}",
+        condition_id=condition_id,
+    )
+    db_session.expire_all()
+    restored_condition = db_session.get(ARBCondition, condition_id)
+    assert restored.response["status"] == "evidence_submitted"
+    assert restored_condition.status == "evidence_submitted"
+    assert restored_condition.revision == 4
+    assert (
+        restored_condition.submitted_evidence_id,
+        restored_condition.evidence_submitted_by_id,
+        restored_condition.evidence_submitted_at,
+    ) == submitted_evidence_state
+    assert restored_condition.waived_at is None
+    assert restored_condition.waived_by_id is None
+    assert restored_condition.waiver_reason is None
+    assert restored_condition.waiver_expires_at is None
+    assert restored_condition.compensating_control is None
+    assert restored_condition.waiver_prior_status is None
+    assert restored_condition.waiver_scope_json is None
 
     verified = TypedARBConditionLifecycleService.verify(
         actor=verifier_actor, command_key=f"verify-{suffix}",
@@ -201,8 +386,6 @@ def test_submit_verify_and_projection_commit_under_real_guards(
         organization_id=org.id
     ).count() == 1
 
-    database_now = CommandService._database_now
-    waiver_now = database_now(db_session) - timedelta(days=2)
     monkeypatch.setattr(
         CommandService, "_database_now", staticmethod(lambda session: waiver_now),
     )
@@ -219,11 +402,6 @@ def test_submit_verify_and_projection_commit_under_real_guards(
     assert cycle.status == "approved"
     assert cycle.terminal_outcome == "approved_with_conditions"
 
-    monkeypatch.setitem(app.config, "ARB_CONDITION_EXPIRY_PRINCIPAL_ID", verifier.id)
-    monkeypatch.setitem(app.config, "ARB_CONDITION_EXPIRY_ORGANIZATION_ID", org.id)
-    monkeypatch.setitem(
-        app.config, "ARB_CONDITION_EXPIRY_CAPABILITY", "c3-expiry-capability"
-    )
     monkeypatch.setattr(CommandService, "_database_now", staticmethod(database_now))
     expired = TypedARBConditionLifecycleService.expire_waivers(
         capability="c3-expiry-capability", command_key=f"expiry-{suffix}",
@@ -235,3 +413,147 @@ def test_submit_verify_and_projection_commit_under_real_guards(
     assert expired.response["status"] == "pending"
     assert cycle.status == review.status == "approved_with_conditions"
     assert cycle.terminal_outcome == review.decision == "approved_with_conditions"
+
+
+def test_legacy_condition_reconcile_is_real_and_idempotent(app, _schema):
+    from app import db
+    from app.models.arb_decision_event import _condition_reconcile_sql
+
+    schema = f"c3_legacy_{uuid.uuid4().hex}"
+    with app.app_context():
+        engine = db.engine
+    quote = engine.dialect.identifier_preparer.quote
+    quoted_schema = quote(schema)
+
+    def snapshot(connection):
+        return connection.exec_driver_sql(f"""
+            SELECT to_jsonb(condition)
+            FROM {quoted_schema}.arb_canonical_conditions AS condition
+            ORDER BY condition.id
+        """).scalars().all()
+
+    try:
+        with engine.begin() as connection:
+            connection.exec_driver_sql(f"CREATE SCHEMA {quoted_schema}")
+            connection.exec_driver_sql(f"""
+                CREATE TABLE {quoted_schema}.evidence_records (
+                    id integer PRIMARY KEY
+                );
+                CREATE TABLE {quoted_schema}.arb_condition_evidence_records (
+                    id integer PRIMARY KEY,
+                    organization_id integer NOT NULL,
+                    condition_id integer NOT NULL,
+                    decision_event_id integer NOT NULL,
+                    review_cycle_id integer NOT NULL,
+                    review_item_id integer NOT NULL
+                );
+                CREATE TABLE {quoted_schema}.arb_canonical_conditions (
+                    id integer PRIMARY KEY,
+                    organization_id integer NOT NULL,
+                    decision_event_id integer NOT NULL,
+                    review_cycle_id integer NOT NULL,
+                    review_item_id integer NOT NULL,
+                    status varchar(30) NOT NULL,
+                    revision integer,
+                    submitted_evidence_id integer,
+                    evidence_submitted_by_id integer,
+                    evidence_submitted_at timestamptz,
+                    fulfilled_at timestamptz,
+                    fulfilled_by_id integer,
+                    fulfilment_evidence_id integer,
+                    verified_at timestamptz,
+                    verified_by_id integer,
+                    waived_at timestamptz,
+                    waived_by_id integer,
+                    waiver_reason text,
+                    waiver_expires_at timestamptz,
+                    compensating_control text,
+                    waiver_prior_status varchar(30),
+                    waiver_scope_json json,
+                    CONSTRAINT ck_arb_condition_status
+                        CHECK (status IN ('pending','fulfilled','waived')),
+                    CONSTRAINT arb_canonical_conditions_fulfilment_evidence_id_fkey
+                        FOREIGN KEY (fulfilment_evidence_id)
+                        REFERENCES {quoted_schema}.evidence_records(id)
+                );
+                INSERT INTO {quoted_schema}.evidence_records (id)
+                VALUES (701), (702);
+                INSERT INTO {quoted_schema}.arb_condition_evidence_records (
+                    id, organization_id, condition_id, decision_event_id,
+                    review_cycle_id, review_item_id
+                ) VALUES (702, 1, 2, 12, 22, 32);
+                INSERT INTO {quoted_schema}.arb_canonical_conditions (
+                    id, organization_id, decision_event_id, review_cycle_id,
+                    review_item_id, status, revision, fulfilled_at,
+                    fulfilled_by_id, fulfilment_evidence_id, verified_at,
+                    verified_by_id, waived_at, waived_by_id, waiver_reason,
+                    waiver_expires_at, compensating_control
+                ) VALUES
+                    (1, 1, 11, 21, 31, 'fulfilled', NULL,
+                     TIMESTAMPTZ '2026-01-01 10:00:00+00', 101, 701,
+                     NULL, NULL, NULL, NULL, NULL, NULL, NULL),
+                    (2, 1, 12, 22, 32, 'fulfilled', 3,
+                     TIMESTAMPTZ '2026-01-02 10:00:00+00', 102, 702,
+                     TIMESTAMPTZ '2026-01-02 10:00:00+00', 103,
+                     NULL, NULL, NULL, NULL, NULL),
+                    (3, 1, 13, 23, 33, 'waived', 5,
+                     NULL, NULL, NULL, NULL, NULL,
+                     TIMESTAMPTZ '2026-01-03 10:00:00+00', 104,
+                     'Legacy waiver', TIMESTAMPTZ '2026-01-04 10:00:00+00',
+                     'Legacy control');
+            """)
+
+        with engine.begin() as connection:
+            connection.exec_driver_sql(_condition_reconcile_sql(quoted_schema))
+            first = snapshot(connection)
+            foreign_keys = connection.exec_driver_sql("""
+                SELECT constraint_row.conname, target.relname
+                FROM pg_constraint AS constraint_row
+                JOIN pg_class AS source ON source.oid=constraint_row.conrelid
+                JOIN pg_namespace AS namespace ON namespace.oid=source.relnamespace
+                JOIN pg_class AS target ON target.oid=constraint_row.confrelid
+                WHERE namespace.nspname=%s
+                  AND source.relname='arb_canonical_conditions'
+                  AND constraint_row.contype='f'
+                ORDER BY constraint_row.conname
+            """, (schema,)).fetchall()
+
+        first_by_id = {row["id"]: row for row in first}
+        assert set(first_by_id) == {1, 2, 3}
+        assert first_by_id[1]["status"] == "fulfilled"
+        assert first_by_id[1]["revision"] == 1
+        assert first_by_id[1]["fulfilment_evidence_id"] is None
+        assert first_by_id[1]["verified_at"] == first_by_id[1]["fulfilled_at"]
+        assert first_by_id[1]["verified_by_id"] == 101
+        assert first_by_id[1]["legacy_lifecycle_provenance"] == {
+            "classification": "pre_c3_fulfilment",
+            "legacy_fulfilment_evidence_id": 701,
+        }
+        assert first_by_id[2]["status"] == "fulfilled"
+        assert first_by_id[2]["revision"] == 3
+        assert first_by_id[2]["fulfilment_evidence_id"] == 702
+        assert first_by_id[2]["verified_by_id"] == 103
+        assert first_by_id[2]["legacy_lifecycle_provenance"] is None
+        assert first_by_id[3]["status"] == "waived"
+        assert first_by_id[3]["revision"] == 5
+        assert first_by_id[3]["legacy_lifecycle_provenance"] == {
+            "classification": "pre_c3_waiver"
+        }
+        assert foreign_keys == [
+            (
+                "fk_arb_condition_fulfilment_evidence",
+                "arb_condition_evidence_records",
+            ),
+            (
+                "fk_arb_condition_submitted_evidence",
+                "arb_condition_evidence_records",
+            ),
+        ]
+
+        with engine.begin() as connection:
+            connection.exec_driver_sql(_condition_reconcile_sql(quoted_schema))
+            second = snapshot(connection)
+        assert second == first
+    finally:
+        with engine.begin() as connection:
+            connection.exec_driver_sql(f"DROP SCHEMA IF EXISTS {quoted_schema} CASCADE")
