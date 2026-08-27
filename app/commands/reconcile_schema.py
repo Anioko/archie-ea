@@ -63,6 +63,10 @@ _TRANSFORMATION_TABLES = (
     # predates the submission-evidence feature: arb_review_cycles fails with
     # UndefinedTable on every pass.
     "arb_submission_evidence_snapshots",
+    # Declared alongside the snapshot table in app/models/arb_submission_evidence.py
+    # and equally required by the typed evidence path; omitting it is the same
+    # class of miss as the tables above.
+    "workbench_artifact_evidence",
     "arb_review_cycles",
     "arb_submission_events",
     "arb_decision_events",
@@ -122,17 +126,18 @@ _TRANSFORMATION_FOREIGN_KEYS = (
         "RESTRICT",
     ),
     (
-        "fk_strategic_roadmap_items_organization",
-        "strategic_roadmap_items",
-        "organization_id",
-        "organizations",
-        "id",
-        # CASCADE, not RESTRICT like its neighbours: this is TenantMixin's
-        # organization_id, which declares ON DELETE CASCADE, and every other
-        # tenant table cascades. _ensure_transformation_foreign_keys DROPs the
-        # live constraint before re-adding this one, so RESTRICT here actively
-        # replaced a correct CASCADE and made this the single table that blocks
-        # deleting an organization.
+        # CASCADE, not RESTRICT: organization_id comes from TenantMixin, which
+        # declares ON DELETE CASCADE for every tenant table, so this entry was
+        # the one place contradicting the ORM. It did two kinds of harm, found
+        # independently by two lanes:
+        #   - _ensure_transformation_foreign_keys DROPs the live constraint
+        #     before re-adding it, so RESTRICT here actively replaced a correct
+        #     CASCADE and made this the single table blocking organization
+        #     deletion.
+        #   - schema-drift could therefore never go green: the detector compared
+        #     the models (CASCADE) against a database this command had just
+        #     forced to RESTRICT, on every pass.
+        # The models are the source of truth; this list has to follow them.
         "CASCADE",
     ),
     (
