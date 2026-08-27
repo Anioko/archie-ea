@@ -135,8 +135,15 @@ class TypedARBSubmissionService:
         subject = adapter.load(actor, subject_id)
         cls._validate_loaded_subject(actor, subject, subject_type, subject_id)
         cls.authorise_submit(db.session, actor, subject_type, subject_id)
+        claimed_anchor = cls._submission_anchor(
+            db.session,
+            actor.organization_id,
+            subject_type,
+            subject_id,
+        )
         natural_key = (
             f"arb-submission:{actor.organization_id}:{subject_type}:{subject_id}"
+            f":after:{claimed_anchor}"
         )
         payload = {
             "subject_type": subject_type,
@@ -157,6 +164,13 @@ class TypedARBSubmissionService:
             cls._validate_loaded_subject(
                 runtime_actor, current, subject_type, subject_id
             )
+            if cls._submission_anchor(
+                session,
+                runtime_actor.organization_id,
+                subject_type,
+                subject_id,
+            ) != claimed_anchor:
+                raise CommandConflict("arb_submission_anchor_changed")
 
         return CommandService.execute(
             actor=actor,
@@ -173,6 +187,7 @@ class TypedARBSubmissionService:
                 adapter=adapter,
                 assertions=supplied_assertions,
                 claim=claim,
+                claimed_anchor=claimed_anchor,
             ),
         )
 
@@ -229,8 +244,26 @@ class TypedARBSubmissionService:
         )
 
     @classmethod
-    def _submit_locked(cls, *, session, actor, subject, adapter, assertions, claim):
+    def _submit_locked(
+        cls,
+        *,
+        session,
+        actor,
+        subject,
+        adapter,
+        assertions,
+        claim,
+        claimed_anchor,
+    ):
         cls._lock_subject_submission(session, actor, subject)
+        current_anchor = cls._submission_anchor(
+            session,
+            actor.organization_id,
+            subject.subject_type,
+            subject.subject_id,
+        )
+        if current_anchor != claimed_anchor:
+            raise CommandConflict("arb_submission_anchor_changed")
         with _adapter_session(session):
             # Adapter.snapshot performs the subject-specific FOR UPDATE and then
             # re-evaluates. The initial evaluation supplies its comparison input.
@@ -277,6 +310,29 @@ class TypedARBSubmissionService:
         return int.from_bytes(
             hashlib.sha256(identity).digest()[:8], byteorder="big", signed=True
         )
+
+    @classmethod
+    def _submission_anchor(
+        cls, session, organization_id, subject_type, subject_id
+    ):
+        latest = session.execute(
+            select(ARBReviewCycle)
+            .where(
+                ARBReviewCycle.organization_id == organization_id,
+                ARBReviewCycle.subject_type == subject_type,
+                ARBReviewCycle.subject_id == subject_id,
+            )
+            .order_by(
+                ARBReviewCycle.cycle_number.desc(),
+                ARBReviewCycle.id.desc(),
+            )
+            .limit(1)
+        ).scalar_one_or_none()
+        if latest is None:
+            return "root"
+        if latest.closed_at is None:
+            return latest.predecessor_cycle_id or "root"
+        return latest.id
 
     @classmethod
     def _lock_subject_submission(cls, session, actor, subject):
