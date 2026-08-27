@@ -221,6 +221,15 @@ def test_http_adapter_rejects_malformed_idempotency_key_before_submission(
             ["human_review_required"],
             422,
         ),
+        (
+            BlockedByEvidence(
+                "arb_subject_not_ready",
+                reason_codes=["evaluator_unavailable"],
+                missing_evidence=[{"code": "evaluator_unavailable"}],
+            ),
+            ["evaluator_unavailable"],
+            503,
+        ),
         (CommandConflict("arb_readiness_stale"), ["arb_readiness_stale"], 409),
         (CommandConflict("secret-internal-detail"), ["submission_conflict"], 409),
         (KnownPreCommitTransient("database_timeout"), ["submission_failed"], 503),

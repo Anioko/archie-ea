@@ -351,6 +351,23 @@ class CommandService:
                 natural_key_resolver=natural_key_resolver,
                 authorizer=None,
             )
+        except _NaturalKeyContenderConflict:
+            # A concurrent command can materialise the same natural key while
+            # this handler is waiting on its domain lock.  The failed envelope
+            # transaction has rolled back at this point, so ask the atomic
+            # claim procedure to attach this receipt to the winner.  That path
+            # re-runs authorization before exposing the immutable result.
+            reconciled = cls.claim_or_reconcile(
+                actor=actor,
+                operation=operation,
+                idempotency_key=idempotency_key,
+                request_digest=digest,
+                natural_key=natural_key,
+                authorizer=authorizer,
+            )
+            if isinstance(reconciled, CommandResult):
+                return reconciled
+            raise CommandConflict("natural_key_contender_reconciliation_incomplete")
         except KnownPreCommitTransient as error:
             cls.mark_retryable(
                 actor=actor,

@@ -14,6 +14,9 @@ from flask_login import current_user
 
 from app import db
 from app.models.architecture_review_board import ARBReviewCycle
+from app.models.solution_architect_models import SolutionDriver, SolutionGoal
+from app.models.solution_lifecycle_models import SolutionRisk
+from app.models.solution_models import Solution
 from app.models.user import User
 from app.modules.transformation_room.arb_submission_service import (
     TypedARBSubmissionService,
@@ -88,12 +91,18 @@ class TypedARBSubmissionAdapter:
                 workspace_id=trusted_workspace_id,
                 human_reviewed=human_reviewed,
             )
+            assertions = cls._server_assertions(
+                actor=actor,
+                solution_id=solution_id,
+                workspace_id=trusted_workspace_id,
+                human_reviewed=human_reviewed,
+            )
             return cls._submit(
                 actor=actor,
                 command_key=command_key,
                 solution_id=solution_id,
                 workspace_id=trusted_workspace_id,
-                human_reviewed=human_reviewed,
+                assertions=assertions,
             )
         except ValueError:
             return LegacyARBSubmissionResult(
@@ -129,12 +138,18 @@ class TypedARBSubmissionAdapter:
                 workspace_id=trusted_workspace_id,
                 human_reviewed=trusted_human_reviewed is True,
             )
+            assertions = cls._server_assertions(
+                actor=actor,
+                solution_id=solution_id,
+                workspace_id=trusted_workspace_id,
+                human_reviewed=trusted_human_reviewed is True,
+            )
             return cls._submit(
                 actor=actor,
                 command_key=resolved_key,
                 solution_id=solution_id,
                 workspace_id=trusted_workspace_id,
-                human_reviewed=trusted_human_reviewed is True,
+                assertions=assertions,
             )
         except ValueError:
             return LegacyARBSubmissionResult(
@@ -153,7 +168,7 @@ class TypedARBSubmissionAdapter:
         command_key: str,
         solution_id: int,
         workspace_id: int | None,
-        human_reviewed: bool,
+        assertions: Mapping[str, Any],
     ) -> LegacyARBSubmissionResult:
         try:
             result = TypedARBSubmissionService.submit_legacy_solution(
@@ -161,7 +176,7 @@ class TypedARBSubmissionAdapter:
                 command_key=command_key,
                 solution_id=solution_id,
                 workspace_id=workspace_id,
-                assertions={"human_reviewed": human_reviewed},
+                assertions=assertions,
             )
         except TransformationError as error:
             return cls._failure(error)
@@ -187,6 +202,80 @@ class TypedARBSubmissionAdapter:
             canonical_url=response.get("canonical_url"),
             http_status=200 if result.idempotent else 201,
         )
+
+    @staticmethod
+    def _server_assertions(
+        *,
+        actor: ActorContext,
+        solution_id: int,
+        workspace_id: int | None,
+        human_reviewed: bool,
+    ) -> dict[str, Any]:
+        """Derive all non-human evidence from tenant-owned persisted records."""
+        solution = db.session.execute(
+            db.select(Solution).where(
+                Solution.id == solution_id,
+                Solution.organization_id == actor.organization_id,
+            )
+        ).scalar_one_or_none()
+        if solution is None:
+            raise NotFound("arb_subject_not_found")
+
+        assertions: dict[str, Any] = {"human_reviewed": human_reviewed is True}
+        if workspace_id is None:
+            problem_id = db.session.execute(
+                db.select(SolutionDriver.problem_id)
+                .join(
+                    SolutionGoal,
+                    SolutionGoal.problem_id == SolutionDriver.problem_id,
+                )
+                .where(
+                    SolutionDriver.organization_id == actor.organization_id,
+                    SolutionGoal.organization_id == actor.organization_id,
+                    SolutionDriver.problem.has(session_id=solution.analysis_session_id),
+                )
+                .limit(1)
+            ).scalar_one_or_none()
+            risk_id = db.session.execute(
+                db.select(SolutionRisk.id)
+                .where(
+                    SolutionRisk.organization_id == actor.organization_id,
+                    SolutionRisk.solution_id == solution.id,
+                )
+                .limit(1)
+            ).scalar_one_or_none()
+            evidence: dict[str, dict[str, Any]] = {}
+            if problem_id is not None and risk_id is not None:
+                evidence["design_reviewed"] = {
+                    "passed": True,
+                    "evidence": (
+                        "Persisted governance evidence: driver/goal problem "
+                        f"{problem_id}, solution risk {risk_id}."
+                    ),
+                }
+            if isinstance(solution.security_lead, str) and solution.security_lead.strip():
+                evidence["security_impact_reviewed"] = {
+                    "passed": True,
+                    "evidence": "Persisted security lead assignment reviewed.",
+                }
+            if (
+                isinstance(solution.data_protection_officer, str)
+                and solution.data_protection_officer.strip()
+            ):
+                evidence["data_impact_reviewed"] = {
+                    "passed": True,
+                    "evidence": "Persisted data protection officer assignment reviewed.",
+                }
+            if evidence:
+                assertions["direct_route_evidence"] = evidence
+
+        if (
+            human_reviewed is True
+            and solution.estimated_cost is not None
+            and solution.estimated_cost != 0
+        ):
+            assertions["cost_source"] = "manual_override"
+        return assertions
 
     @staticmethod
     def _actor_from_request() -> ActorContext:
@@ -295,11 +384,16 @@ class TypedARBSubmissionAdapter:
         if isinstance(error, BlockedByEvidence):
             reason_codes = error.details.get("reason_codes")
             missing = error.details.get("missing_evidence")
+            safe_reasons = (
+                list(reason_codes)
+                if isinstance(reason_codes, list)
+                else ["arb_subject_not_ready"]
+            )
             return LegacyARBSubmissionResult(
                 False,
-                list(reason_codes) if isinstance(reason_codes, list) else ["arb_subject_not_ready"],
+                safe_reasons,
                 list(missing) if isinstance(missing, list) else [],
-                http_status=422,
+                http_status=503 if "evaluator_unavailable" in safe_reasons else 422,
             )
         if isinstance(error, CommandConflict):
             reason = (

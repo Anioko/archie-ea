@@ -29,6 +29,7 @@ from app.modules.transformation_room.domain import (
     DomainMutationResult,
     GovernedSubject,
     NotAuthorised,
+    NotFound,
 )
 
 
@@ -140,6 +141,13 @@ class TypedARBSubmissionService:
         subject = adapter.load(actor, subject_id)
         cls._validate_loaded_subject(actor, subject, subject_type, subject_id)
         cls.authorise_submit(db.session, actor, subject_type, subject_id)
+        cls._authorise_submission_context(
+            db.session,
+            actor,
+            subject_type,
+            subject_id,
+            supplied_assertions,
+        )
         existing_receipt = cls._existing_command_receipt(
             db.session, actor, command_key
         )
@@ -172,6 +180,13 @@ class TypedARBSubmissionService:
                 raise NotAuthorised("arb_submission_command_mismatch")
             if runtime_actor.organization_id != actor.organization_id:
                 raise NotAuthorised("arb_submission_actor_mismatch")
+            cls._authorise_submission_context(
+                session,
+                runtime_actor,
+                subject_type,
+                subject_id,
+                supplied_assertions,
+            )
             cls.authorise_submit(
                 session, runtime_actor, subject_type, subject_id
             )
@@ -216,6 +231,51 @@ class TypedARBSubmissionService:
                 claimed_anchor=claimed_anchor,
             ),
         )
+
+    @classmethod
+    def _authorise_submission_context(
+        cls,
+        session,
+        actor,
+        subject_type,
+        subject_id,
+        assertions,
+    ):
+        """Revalidate Solution workspace identity before any replay result."""
+        if subject_type != "solution":
+            return
+        workspace_id = assertions.get("workspace_id")
+        if workspace_id is None:
+            return
+        if type(workspace_id) is not int or workspace_id <= 0:
+            raise NotFound("arb_submission_workspace_not_found")
+
+        from app.models.solution_architect_models import SolutionAnalysisSession
+        from app.models.solution_models import Solution
+
+        solution = session.execute(
+            select(Solution).where(
+                Solution.id == subject_id,
+                Solution.organization_id == actor.organization_id,
+            )
+        ).scalar_one_or_none()
+        workspace = session.execute(
+            select(SolutionAnalysisSession).where(
+                SolutionAnalysisSession.id == workspace_id,
+                SolutionAnalysisSession.organization_id == actor.organization_id,
+            )
+        ).scalar_one_or_none()
+        if solution is None or workspace is None:
+            raise NotFound("arb_submission_workspace_not_found")
+        metadata_solution_id = (workspace.custom_metadata or {}).get("solution_id")
+        if (
+            workspace.created_by_id != actor.user_id
+            or (
+                solution.analysis_session_id != workspace.id
+                and metadata_solution_id != solution.id
+            )
+        ):
+            raise NotFound("arb_submission_workspace_not_found")
 
     @classmethod
     def authorise_submit(cls, session, actor, subject_type, subject_id):
@@ -282,6 +342,24 @@ class TypedARBSubmissionService:
         claimed_anchor,
     ):
         cls._lock_subject_submission(session, actor, subject)
+        cls._authorise_submission_context(
+            session,
+            actor,
+            subject.subject_type,
+            subject.subject_id,
+            assertions,
+        )
+        # A natural-key contender may have claimed while the first command was
+        # still running. Re-check after the subject lock, when the winner's
+        # immutable materialisation is visible, before evaluating or snapshotting.
+        materialised = CommandService.resolve_materialisation(
+            session,
+            actor=actor,
+            operation=cls.OPERATION,
+            claim=claim,
+        )
+        if materialised is not None:
+            return materialised
         current_anchor = cls._submission_anchor(
             session,
             actor.organization_id,

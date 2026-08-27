@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import uuid
 
+from flask import g
+import psycopg2
 import pytest
 from sqlalchemy import event, select, text
 from sqlalchemy.orm import Session
@@ -25,6 +28,7 @@ from app.models.transformation_execution import CommandIdempotencyRecord, Operat
 from app.models.organization import Organization
 from app.models.arb_submission_evidence import (
     ARBSubmissionEvidenceSnapshot,
+    WorkbenchArtifactEvidence,
     ensure_evidence_immutability_triggers,
 )
 from app.models.solution_architect_models import (
@@ -64,6 +68,8 @@ class _ADRScope:
 class _SolutionScope:
     actor: ActorContext
     organization_id: int
+    user_id: int
+    workspace_id: int
     solution_id: int
 
 
@@ -228,6 +234,20 @@ def solution_scope(app, _schema):
         )
         db.session.add_all((driver, goal, solution))
         db.session.flush()
+        workspace.custom_metadata = {
+            "workspace_type": "greenfield",
+            "solution_id": solution.id,
+        }
+        for name in ("brief", "scope", "recommendation"):
+            WorkbenchArtifactEvidence.capture(
+                organization_id=organization.id,
+                workspace_id=workspace.id,
+                solution_id=solution.id,
+                name=name,
+                state="persisted",
+                payload={"name": name, "source": "integration-fixture"},
+                actor_id=user.id,
+            )
         db.session.add(
             SolutionRisk(
                 organization_id=organization.id,
@@ -249,6 +269,8 @@ def solution_scope(app, _schema):
                 f"typed-arb-solution-{suffix}",
             ),
             organization_id=organization.id,
+            user_id=user.id,
+            workspace_id=workspace.id,
             solution_id=solution.id,
         )
         db.session.remove()
@@ -259,7 +281,12 @@ def solution_scope(app, _schema):
             raw = db.engine.raw_connection()
             try:
                 with raw.cursor() as cursor:
-                    cursor.execute("SET session_replication_role = replica")
+                    cursor.execute("SET LOCAL session_replication_role = replica")
+                    cursor.execute(
+                        "DELETE FROM workbench_artifact_evidence "
+                        "WHERE organization_id = %s",
+                        (scope.organization_id,),
+                    )
                     cursor.execute(
                         "DELETE FROM arb_submission_evidence_snapshots "
                         "WHERE organization_id = %s",
@@ -686,6 +713,171 @@ def test_real_solution_submission_pins_legacy_evidence_into_typed_graph(
             )
         ).one()
         assert constraint == (True, True)
+
+
+def test_solution_replay_rejects_workspace_bound_to_another_solution(
+    app, solution_scope, tenant_ctx
+):
+    with app.app_context(), tenant_ctx(solution_scope.organization_id):
+        other_workspace = SolutionAnalysisSession(
+            organization_id=solution_scope.organization_id,
+            name="Foreign solution workspace",
+            created_by_id=solution_scope.user_id,
+        )
+        db.session.add(other_workspace)
+        db.session.flush()
+        other_solution = Solution(
+            organization_id=solution_scope.organization_id,
+            name="Other governed solution",
+            description="Workspace must not replay another solution's receipt.",
+            created_by_id=solution_scope.user_id,
+            analysis_session_id=other_workspace.id,
+            governance_status="draft",
+        )
+        db.session.add(other_solution)
+        db.session.flush()
+        other_workspace.custom_metadata = {
+            "workspace_type": "greenfield",
+            "solution_id": other_solution.id,
+        }
+        db.session.commit()
+
+        first = TypedARBSubmissionService.submit_legacy_solution(
+            actor=solution_scope.actor,
+            command_key="solution-workspace-replay",
+            solution_id=solution_scope.solution_id,
+            workspace_id=solution_scope.workspace_id,
+            assertions={"human_reviewed": True},
+        )
+        with pytest.raises(NotFound, match="arb_submission_workspace_not_found"):
+            TypedARBSubmissionService.submit_legacy_solution(
+                actor=solution_scope.actor,
+                command_key="solution-workspace-replay",
+                solution_id=solution_scope.solution_id,
+                workspace_id=other_workspace.id,
+                assertions={"human_reviewed": True},
+            )
+
+    assert first.created is True
+    with Session(db.engine) as session:
+        assert session.scalar(
+            select(db.func.count())
+            .select_from(ARBReviewCycle)
+            .where(
+                ARBReviewCycle.organization_id == solution_scope.organization_id,
+                ARBReviewCycle.solution_id == solution_scope.solution_id,
+            )
+        ) == 1
+
+
+def test_concurrent_solution_submissions_converge_on_one_real_cycle(
+    app, solution_scope
+):
+    def submit(command_key):
+        with app.test_request_context("/"):
+            g.current_org_id = solution_scope.organization_id
+            result = TypedARBSubmissionService.submit_legacy_solution(
+                actor=solution_scope.actor,
+                command_key=command_key,
+                solution_id=solution_scope.solution_id,
+                workspace_id=solution_scope.workspace_id,
+                assertions={"human_reviewed": True},
+            )
+            db.session.remove()
+            return result
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(
+            pool.map(submit, ("solution-race-one", "solution-race-two"))
+        )
+
+    assert {result.object_ids["review_cycle_id"] for result in results} == {
+        results[0].object_ids["review_cycle_id"]
+    }
+    assert sorted(result.idempotent for result in results) == [False, True]
+    with Session(db.engine) as session:
+        assert session.scalar(
+            select(db.func.count())
+            .select_from(ARBReviewCycle)
+            .where(
+                ARBReviewCycle.organization_id == solution_scope.organization_id,
+                ARBReviewCycle.solution_id == solution_scope.solution_id,
+            )
+        ) == 1
+        assert session.scalar(
+            select(db.func.count())
+            .select_from(ARBSubmissionEvidenceSnapshot)
+            .where(
+                ARBSubmissionEvidenceSnapshot.organization_id
+                == solution_scope.organization_id,
+                ARBSubmissionEvidenceSnapshot.solution_id
+                == solution_scope.solution_id,
+            )
+        ) == 1
+
+
+def test_solution_snapshot_failure_rolls_back_cycle_review_and_event(
+    app, solution_scope, tenant_ctx
+):
+    def fail_snapshot(_mapper, _connection, _target):
+        raise RuntimeError("forced solution snapshot failure")
+
+    event.listen(ARBSubmissionEvidenceSnapshot, "before_insert", fail_snapshot)
+    try:
+        with app.app_context(), tenant_ctx(solution_scope.organization_id), pytest.raises(
+            RuntimeError, match="forced solution snapshot failure"
+        ):
+            TypedARBSubmissionService.submit_legacy_solution(
+                actor=solution_scope.actor,
+                command_key="solution-snapshot-rollback",
+                solution_id=solution_scope.solution_id,
+                workspace_id=solution_scope.workspace_id,
+                assertions={"human_reviewed": True},
+            )
+    finally:
+        event.remove(ARBSubmissionEvidenceSnapshot, "before_insert", fail_snapshot)
+
+    with Session(db.engine) as session:
+        for model in (
+            ARBSubmissionEvidenceSnapshot,
+            ARBReviewCycle,
+            ARBReviewItem,
+            ARBSubmissionEvent,
+        ):
+            assert session.scalar(
+                select(db.func.count())
+                .select_from(model)
+                .where(model.organization_id == solution_scope.organization_id)
+            ) == 0
+        solution = session.get(Solution, solution_scope.solution_id)
+        assert solution.governance_status == "draft"
+        assert solution.arb_review_item_id is None
+
+
+def test_real_solution_snapshot_is_database_immutable(
+    app, solution_scope, tenant_ctx
+):
+    with app.app_context(), tenant_ctx(solution_scope.organization_id):
+        result = TypedARBSubmissionService.submit_legacy_solution(
+            actor=solution_scope.actor,
+            command_key="solution-snapshot-immutable",
+            solution_id=solution_scope.solution_id,
+            workspace_id=solution_scope.workspace_id,
+            assertions={"human_reviewed": True},
+        )
+
+    raw = db.engine.raw_connection()
+    try:
+        with pytest.raises(psycopg2.Error, match="append-only"):
+            with raw.cursor() as cursor:
+                cursor.execute(
+                    "UPDATE arb_submission_evidence_snapshots "
+                    "SET workflow_type='tampered' WHERE id=%s",
+                    (result.object_ids["evidence_id"],),
+                )
+    finally:
+        raw.rollback()
+        raw.close()
 
 
 def test_different_command_key_reconciles_to_the_same_open_cycle(app, adr_scope):

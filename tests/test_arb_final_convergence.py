@@ -8,7 +8,7 @@ import pytest
 
 from app import db
 from app.models.arb_submission_evidence import ARBSubmissionEvidenceSnapshot
-from app.models.architecture_review_board import ARBReviewItem
+from app.models.architecture_review_board import ARBReviewCycle, ARBReviewItem
 from app.models.organization import Organization
 from app.models.solution_models import Solution
 from app.models.solution_architect_models import (
@@ -77,6 +77,18 @@ def committed_solution_endpoint_scope(app):
             yield scope
         finally:
             db.session.remove()
+            raw = db.engine.raw_connection()
+            try:
+                with raw.cursor() as cursor:
+                    cursor.execute("SET LOCAL session_replication_role = replica")
+                    cursor.execute(
+                        "DELETE FROM arb_submission_evidence_snapshots "
+                        "WHERE organization_id = %s",
+                        (scope["organization_id"],),
+                    )
+                raw.commit()
+            finally:
+                raw.close()
             with db.engine.begin() as connection:
                 connection.exec_driver_sql("SET LOCAL session_replication_role = replica")
                 for table_name in (
@@ -374,3 +386,81 @@ def test_real_solution_endpoint_ignores_forged_evidence_and_writes_nothing(
             ).count()
             == 0
         )
+
+
+def test_real_ready_solution_endpoint_derives_evidence_and_commits_typed_graph(
+    app, client, login_as, committed_solution_endpoint_scope
+):
+    scope = committed_solution_endpoint_scope
+    with app.app_context():
+        solution = db.session.get(Solution, scope["solution_id"])
+        solution.security_lead = "security.lead@example.test"
+        solution.data_protection_officer = "dpo@example.test"
+        solution.estimated_cost = Decimal("250000.00")
+        problem = SolutionProblemDefinition(
+            session_id=scope["workspace_id"],
+            problem_description="Canonical persisted HTTP readiness evidence",
+            organization_id=scope["organization_id"],
+        )
+        db.session.add(problem)
+        db.session.flush()
+        driver = SolutionDriver(
+            problem_id=problem.id,
+            name="Persisted route driver",
+            driver_type=DriverType.TECHNOLOGY,
+            organization_id=scope["organization_id"],
+        )
+        db.session.add(driver)
+        db.session.flush()
+        db.session.add_all(
+            [
+                SolutionGoal(
+                    problem_id=problem.id,
+                    driver_id=driver.id,
+                    name="Persisted route goal",
+                    organization_id=scope["organization_id"],
+                ),
+                SolutionRisk(
+                    solution_id=scope["solution_id"],
+                    risk_name="Persisted route risk",
+                    risk_description="Canonical risk evidence",
+                    organization_id=scope["organization_id"],
+                ),
+            ]
+        )
+        db.session.commit()
+        db.session.remove()
+
+    login_as(client, scope["actor_id"])
+    response = client.post(
+        f"/solutions/{scope['solution_id']}/submit-for-arb",
+        json={
+            "human_reviewed": True,
+            "direct_route_evidence": {
+                "design_reviewed": {"passed": False, "evidence": "forged"},
+            },
+            "cost_source": "tco_engine",
+            "validation_result": {"passed": False},
+            "decided_by_id": scope["actor_id"] + 1,
+        },
+    )
+
+    assert response.status_code == 200, response.get_json()
+    body = response.get_json()
+    assert body["success"] is True
+    assert body["review_item_id"]
+    assert body["snapshot_id"]
+    assert body["review_cycle_id"]
+    with app.app_context():
+        snapshot = db.session.get(ARBSubmissionEvidenceSnapshot, body["snapshot_id"])
+        cycle = db.session.get(ARBReviewCycle, body["review_cycle_id"])
+        review = db.session.get(ARBReviewItem, body["review_item_id"])
+        assert snapshot.review_item_id == review.id
+        assert cycle.id == review.review_cycle_id
+        assert snapshot.request_assertions["cost_source"] == "manual_override"
+        assert all(
+            item["passed"] is True
+            for item in snapshot.request_assertions["direct_route_evidence"].values()
+        )
+        assert "validation_result" not in snapshot.request_assertions
+        assert "decided_by_id" not in snapshot.request_assertions

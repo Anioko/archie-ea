@@ -146,7 +146,6 @@ def ensure_evidence_immutability_triggers(connection):
     connection.exec_driver_sql(
         "SELECT pg_advisory_xact_lock(hashtext('archie_evidence_immutability_triggers'))"
     )
-    _ensure_snapshot_review_fk(connection)
     connection.exec_driver_sql(
         """
         CREATE OR REPLACE FUNCTION reject_archie_evidence_mutation()
@@ -158,6 +157,8 @@ def ensure_evidence_immutability_triggers(connection):
         $$
         """
     )
+    _ensure_snapshot_review_fk(connection)
+    _ensure_evidence_triggers(connection)
 
 
 def _ensure_snapshot_review_fk(connection):
@@ -206,6 +207,9 @@ def _ensure_snapshot_review_fk(connection):
         "FOREIGN KEY (review_item_id) REFERENCES arb_review_items(id) "
         "DEFERRABLE INITIALLY DEFERRED"
     )
+
+
+def _ensure_evidence_triggers(connection):
     connection.exec_driver_sql(
         """
         DO $$
