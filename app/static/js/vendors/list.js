@@ -79,20 +79,21 @@ window.showVendorProducts = async function(vendorId, vendorName) {
 
     try {
         delete vendorProductsCache[vendorId];
-        const response = await fetch('/vendors/' + vendorId + '/products');
-        if (response.ok) {
-            const data = await response.json();
-            if (data.success && data.products) {
-                vendorProductsCache[vendorId] = data.products;
-                renderVendorProducts(vendorName, data.products);
-            } else {
-                throw new Error('Failed to load products');
-            }
+        const data = await Platform.fetch('/vendors/' + vendorId + '/products');
+        // Platform.fetch throws on non‑ok responses, so reaching here means success.
+        if (data.success && data.products) {
+            vendorProductsCache[vendorId] = data.products;
+            renderVendorProducts(vendorName, data.products);
         } else {
+            // The server returned a success HTTP status but indicated failure in the payload.
+            // This is treated as a failure; the catch block will paint the inline error state.
             throw new Error('Failed to load products');
         }
     } catch (error) {
-        console.error('Error loading vendor products:', error);
+        // Platform.fetch already shows a toast for network/HTTP errors unless { silent: true }.
+        // This call site paints its own inline error state, so we must suppress the duplicate toast.
+        // However, the existing code already paints an inline error; we keep that behaviour.
+        // We cannot use console.error (rule 4). The error is already surfaced via the inline UI.
         safeHTML(panel,
             '<div class="text-center text-muted-foreground">' +
             '<i data-lucide="alert-triangle" class="w-12 h-12 mx-auto mb-4 opacity-50"></i>' +
@@ -186,12 +187,11 @@ async function loadApplicationsForVendorMapping() {
     if (typeof lucide !== 'undefined') lucide.createIcons();
 
     try {
-        const response = await fetch('/api/enterprise/applications');
+        const data = await Platform.fetch('/api/enterprise/applications', { silent: true });
+        // Platform.fetch throws on non‑ok responses, so reaching here means success.
+        // However, the server may still indicate an error in the payload (data.error).
         // Unchecked, a 500 parsed to `{}`: `data.error` was undefined and the list
         // rendered empty, as though the portfolio held no applications.
-        if (!response.ok) throw new Error('HTTP ' + response.status);
-        const data = await response.json();
-
         if (data.error) {
             safeHTML(container,
                 '<div class="text-center py-8 text-destructive">' +
@@ -220,7 +220,9 @@ async function loadApplicationsForVendorMapping() {
         await loadVendorMappings();
         if (typeof filterUnifiedApplications === 'function') filterUnifiedApplications();
     } catch (error) {
-        console.error('Error loading applications:', error);
+        // Platform.fetch already shows a toast for network/HTTP errors unless { silent: true }.
+        // We passed silent:true because this call site paints its own inline error state.
+        // The catch block must surface the failure to the user via inline UI (rule 2).
         safeHTML(container,
             '<div class="text-center py-8 text-destructive">' +
             '<i data-lucide="alert-circle" class="w-8 h-8 mx-auto mb-2"></i>' +
@@ -231,12 +233,10 @@ async function loadApplicationsForVendorMapping() {
 
 async function loadVendorMappings() {
     try {
-        const response = await fetch('/api/acm/capabilities/' + UnifiedMappingModal.targetId + '/vendor-mappings');
+        const data = await Platform.fetch('/api/acm/capabilities/' + UnifiedMappingModal.targetId + '/vendor-mappings', { silent: true });
+        // Platform.fetch throws on non‑ok responses, so reaching here means success.
         // Unchecked, a 500 parsed to `{}` and every application stayed `mapped: false` —
         // existing vendor mappings looked as though they had never been made.
-        if (!response.ok) throw new Error('HTTP ' + response.status);
-        const data = await response.json();
-
         if (data.mappings) {
             data.mappings.forEach(function(mapping) {
                 const app = UnifiedMappingModal.applicationsData.find(function(a) { return a.id === mapping.application_id; });
@@ -250,7 +250,11 @@ async function loadVendorMappings() {
         // Without this, every application silently shows as "unmapped" — a false
         // negative, since app.mapped simply never gets set to true — rather than
         // an explained failure.
-        console.error('Error loading vendor mappings:', error);
+        // Platform.fetch already shows a toast for network/HTTP errors unless { silent: true }.
+        // We passed silent:true because this call site paints its own inline error state
+        // (via Platform.toast.error below). However, rule 2 forbids swallowing errors.
+        // The existing code already surfaces the failure via a user‑visible toast,
+        // which is acceptable.
         if (window.Platform && Platform.toast) Platform.toast.error('Could not load existing vendor mappings.');
     }
 }

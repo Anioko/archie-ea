@@ -26,7 +26,7 @@
     var appendSystemMessage = render.appendSystemMessage;
     /* The template used to shadow `fetch` with a CSRF-injecting wrapper for
        its whole inline block. Outside that block the wrapper has to be named. */
-    var fetch = ArchieChat.transport.apiFetch;
+    // No longer needed because we use Platform.fetch directly.
 
     function personaConfig() { return window.personaConfig || {}; }
     function userInput() { return document.getElementById('user-input'); }
@@ -56,12 +56,11 @@
 
     async function loadDomainContext(domain) {
         try {
-            const response = await fetch(`/ai-chat/context/${domain}`);
+            const data = await Platform.fetch(`/ai-chat/context/${domain}`);
             // Unchecked, a 500 fell through to the else-branch below and rendered
             // "No specific context available for <domain>" — a load failure dressed
             // up as an empty model.
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            const data = await response.json();
+            // Platform.fetch throws on non-ok responses, so we only reach here on success.
 
             const contextContainer = document.getElementById('domain-context');
             contextContainer.innerHTML = '';
@@ -216,16 +215,10 @@
         lucide.createIcons();
 
         try {
-            const response = await fetch('/ai-chat/nl-query', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    query: query,
-                    persona: state.currentPersona
-                })
-            });
-
-            const data = await response.json();
+            const data = await Platform.fetch.post('/ai-chat/nl-query', {
+                query: query,
+                persona: state.currentPersona
+            }, { silent: true }); // silent: true because we paint our own inline error state
 
             if (data.success) {
                 countSpan.textContent = data.result_count + ' found';
@@ -364,9 +357,8 @@
 
         try {
             const persona = state.currentPersona || '';
-            const resp = await fetch('/ai-chat/recommendations?persona=' + encodeURIComponent(persona));
-            if (!resp.ok) throw new Error('recommendations ' + resp.status);
-            const data = await resp.json();
+            const data = await Platform.fetch.get('/ai-chat/recommendations', { persona: persona }, { silent: true });
+            // Platform.fetch.get throws on non-ok responses, so we only reach here on success.
 
             const alerts = Array.isArray(data.alerts) ? data.alerts : [];
             const recs = Array.isArray(data.recommendations) ? data.recommendations : [];
@@ -499,14 +491,13 @@
         lucide.createIcons();
 
         try {
-            const response = await fetch(`/ai-chat/recommendations?persona=${state.currentPersona}&refresh=${refresh}`);
-            /* fetch does not reject on 4xx/5xx, and this endpoint answers 500
-               with {"error": ..., "alerts": [], "recommendations": []} — a shape
-               indistinguishable from "nothing to report" unless the status is
-               checked. Without this, an outage rendered as a clean empty state
-               and a health score of 0%, which reads as a measured zero. */
-            if (!response.ok) throw new Error('recommendations ' + response.status);
-            const data = await response.json();
+            const data = await Platform.fetch.get('/ai-chat/recommendations', {
+                persona: state.currentPersona,
+                refresh: refresh
+            }, { silent: true });
+            /* Platform.fetch.get throws on non-ok responses, so we only reach here on success.
+               The wrapper ensures that a 500 with {"error": ...} will throw, preventing
+               an outage from being rendered as a clean empty state. */
 
             /* null, not 0: a health score that was never computed must render
                as an em dash, because 0% is a legitimate measured value and the
@@ -663,17 +654,12 @@
             async extractAfterMessage(conversation) {
                 if (!this.isGenomeMode) return;
                 try {
-                    const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
-                    const resp = await fetch('/api/codegen/genome/extract', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-CSRFToken': csrf,
-                        },
-                        body: JSON.stringify({ conversation, current_genome: this.genome })
-                    });
-                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
-                    const data = await resp.json();
+                    const data = await Platform.fetch.post('/api/codegen/genome/extract', {
+                        conversation: conversation,
+                        current_genome: this.genome
+                    }, { silent: true });
+                    // Platform.fetch.post throws on non-ok responses, so we only reach here on success.
+                    // The wrapper also ensures CSRF token is injected automatically.
                     if (!data.success) throw new Error('extraction did not succeed');
 
                     this.genome = data.genome_partial;

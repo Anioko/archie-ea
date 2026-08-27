@@ -60,7 +60,7 @@ function fetchModelsFromAPI(freeOnly, search) {
     if (freeOnly) params.set('free_only', 'true');
     if (search) params.set('search', search);
     params.set('limit', '100');
-    return fetch('/api/v1/llm/openrouter/models?' + params.toString()).then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); });
+    return Platform.fetch.get('/api/v1/llm/openrouter/models', Object.fromEntries(params), { silent: true });
 }
 
 // ===== Inline model browser (inside the form) =====
@@ -357,12 +357,7 @@ orModalSaveBtn.addEventListener('click', function() {
     orModalSaveBtn.textContent = 'Saving...';
 
     let modelStr = modalSelectedModels.map(function(m) { return m.id; }).join(', ');
-    fetch('/admin/api-settings/update-model', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
-        body: JSON.stringify({ provider: 'openrouter', model: modelStr })
-    })
-    .then(function(r) { return r.json(); })
+    Platform.fetch.post('/admin/api-settings/update-model', { provider: 'openrouter', model: modelStr })
     .then(function(data) {
         if (data.success) {
             closeOrModal();
@@ -373,7 +368,7 @@ orModalSaveBtn.addEventListener('click', function() {
             orModalSaveBtn.textContent = 'Save Models';
         }
     })
-    .catch(function() {
+    .catch(function(err) {
         Platform.toast.error('Request failed.');
         orModalSaveBtn.disabled = false;
         orModalSaveBtn.textContent = 'Save Models';
@@ -402,8 +397,7 @@ envModalBackdrop.addEventListener('click', closeEnvModal);
 
 function fetchEnvKeys() {
     safeHTML(envKeysBody, '<div class="flex items-center justify-center py-8 text-muted-foreground"><span class="mr-2">Scanning...</span></div>');
-    fetch('/admin/api-settings/env-keys')
-        .then(function(r) { return r.json(); })
+    Platform.fetch.get('/admin/api-settings/env-keys')
         .then(function(data) {
             if (!data.success || data.keys.length === 0) {
                 safeHTML(envKeysBody, '<p class="text-sm text-muted-foreground text-center py-8">No API keys found in environment variables.</p>');
@@ -431,7 +425,7 @@ function fetchEnvKeys() {
             html += '</div>';
             safeHTML(envKeysBody, html);
         })
-        .catch(function() {
+        .catch(function(err) {
             safeHTML(envKeysBody, '<p class="text-sm text-destructive text-center py-8">Failed to scan environment variables.</p>');
         });
 }
@@ -444,12 +438,7 @@ document.getElementById('env-import-btn').addEventListener('click', function() {
     }
     let updateExisting = document.getElementById('env-update-existing').checked;
 
-    fetch('/admin/api-settings/load-env', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
-        body: JSON.stringify({ keys: selected, update_existing: updateExisting })
-    })
-    .then(function(r) { return r.json(); })
+    Platform.fetch.post('/admin/api-settings/load-env', { keys: selected, update_existing: updateExisting })
     .then(function(data) {
         if (data.success) {
             closeEnvModal();
@@ -458,5 +447,5 @@ document.getElementById('env-import-btn').addEventListener('click', function() {
             Platform.toast.error('Import failed: ' + (data.error || 'Unknown error'));
         }
     })
-    .catch(function() { Platform.toast.error('Import request failed.'); });
+    .catch(function(err) { Platform.toast.error('Import request failed.'); });
 });

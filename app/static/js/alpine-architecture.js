@@ -61,9 +61,12 @@ if (window.__ALPINE_ARCH_LOADED__) {
      * ========================================================================= */
 
     function _fetch(url, opts) {
-        if (window.Platform && window.Platform.fetch) return window.Platform.fetch(url, opts);
-        if (window.apiFetch) return window.apiFetch(url, opts);
-        return fetch(url, opts).then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); });
+        // Merge opts with silent:true to suppress duplicate toast (error shown by component)
+        const mergedOpts = Object.assign({}, opts || {}, { silent: true });
+        if (window.Platform && window.Platform.fetch) return window.Platform.fetch(url, mergedOpts);
+        if (window.apiFetch) return window.apiFetch(url, mergedOpts);
+        // Platform.fetch should be available; if not, the loading order is broken.
+        return Promise.reject(new Error('Platform.fetch not available'));
     }
 
     function _toast(type, msg) {

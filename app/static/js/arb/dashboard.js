@@ -52,11 +52,8 @@ function arbReviewCreateModal() {
     loadFormData() {
       const url = window.__ARB_CONFIG__?.formDataUrl;
       if (!url || this.formDataLoaded) return;
-      fetch(url, {
-        method: 'GET',
-        headers: { 'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || '' }
-      })
-        .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      // Platform.fetch throws on non-ok responses; we catch to paint inline error state
+      Platform.fetch.get(url, null, { silent: true })
         .then(data => {
           if (data.success) {
             this.formOptions.solutions = data.solutions || [];
@@ -123,16 +120,8 @@ function arbReviewCreateModal() {
         capability_impacts: capability_impacts,
         capability_impact_type: impactType
       };
-      fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Requested-With': 'XMLHttpRequest',
-          'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || ''
-        },
-        body: JSON.stringify(payload)
-      })
-        .then(r => r.json())
+      // Platform.fetch.post serialises plain‑object body to JSON and injects CSRF automatically
+      Platform.fetch.post(url, payload, { silent: true })
         .then(data => {
           this.submitting = false;
           if (!data.success) {

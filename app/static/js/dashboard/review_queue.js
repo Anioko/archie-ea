@@ -15,21 +15,19 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 function loadReviewQueue() {
-    fetch('/api/review-queue')
-        .then(function(response) { return response.json(); })
+    Platform.fetch('/api/review-queue')
         .then(function(data) {
-            if (data.success) {
-                reviewItems = data.items;
-                displayReviewItems();
-                updatePendingCount(data.total_items);
-            } else {
-                console.error('Failed to load review queue:', data.error);
-                if (window.Platform && Platform.toast) Platform.toast.error('Could not load the review queue.');
-            }
+            reviewItems = data.items;
+            displayReviewItems();
+            updatePendingCount(data.total_items);
         })
         .catch(function(error) {
-            console.error('Error loading review queue:', error);
-            if (window.Platform && Platform.toast) Platform.toast.error('Could not load the review queue.');
+            // This .catch IS the handler -- there is no block after it. Without
+            // surfacing here a failed load renders as an empty queue, which a
+            // reviewer cannot tell from having nothing to review.
+            Platform.toast.error(
+                'Review queue could not be loaded: ' + (error && error.message ? error.message : 'request failed')
+            );
         })
         .finally(function() {
             document.getElementById('loading').classList.add('hidden');
@@ -168,43 +166,36 @@ function bulkApprove() {
         buttons: [
             { text: 'Cancel', class: 'px-4 py-2 text-sm font-medium text-foreground bg-background border border-border rounded-md hover:bg-muted', action: 'cancel', handler: function() {} },
             { text: 'Approve', class: 'px-4 py-2 text-sm font-medium text-primary-foreground bg-emerald-600 border border-transparent rounded-md hover:bg-emerald-700', action: 'approve', handler: function() {
-                fetch('/api/review-queue/bulk-approve', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
+                Platform.fetch.post('/api/review-queue/bulk-approve', {
+                    item_ids: itemIds,
+                    decision_reason: 'Bulk approved',
+                    reviewer_role: 'architect',
+                    reviewer_experience_level: 'senior',
+                    quality_assessment: {
+                        accuracy: { score: 0.9, weight: 0.4 },
+                        completeness: { score: 0.8, weight: 0.3 },
+                        relevance: { score: 0.7, weight: 0.3 }
                     },
-                    body: JSON.stringify({
-                        item_ids: itemIds,
-                        decision_reason: 'Bulk approved',
-                        reviewer_role: 'architect',
-                        reviewer_experience_level: 'senior',
-                        quality_assessment: {
-                            accuracy: { score: 0.9, weight: 0.4 },
-                            completeness: { score: 0.8, weight: 0.3 },
-                            relevance: { score: 0.7, weight: 0.3 }
-                        },
-                        identified_issues: [],
-                        suggested_improvements: [],
-                        human_confidence_estimate: 0.9,
-                        ai_accuracy_assessment: 4,
-                        correction_made: false,
-                        corrected_data: {},
-                        review_duration_seconds: 30
-                    })
+                    identified_issues: [],
+                    suggested_improvements: [],
+                    human_confidence_estimate: 0.9,
+                    ai_accuracy_assessment: 4,
+                    correction_made: false,
+                    corrected_data: {},
+                    review_duration_seconds: 30
                 })
-                .then(function(response) { return response.json(); })
                 .then(function(data) {
-                    if (data.success) {
-                        selectedItems.clear();
-                        loadReviewQueue();
-                        Platform.toast.success('Bulk approval completed: ' + data.successful_count + ' approved, ' + data.failed_count + ' failed');
-                    } else {
-                        Platform.toast.error('Bulk approval failed: ' + data.error);
-                    }
+                    selectedItems.clear();
+                    loadReviewQueue();
+                    Platform.toast.success('Bulk approval completed: ' + data.successful_count + ' approved, ' + data.failed_count + ' failed');
                 })
                 .catch(function(error) {
-                    console.error('Error in bulk approve:', error);
-                    Platform.toast.error('Error in bulk approve');
+                    // This .catch IS the handler -- there is no block after it. Without
+                    // surfacing here a failed load renders as an empty queue, which a
+                    // reviewer cannot tell from having nothing to review.
+                    Platform.toast.error(
+                        'Review queue could not be loaded: ' + (error && error.message ? error.message : 'request failed')
+                    );
                 });
             } }
         ]
@@ -227,43 +218,36 @@ function bulkReject() {
         buttons: [
             { text: 'Cancel', class: 'px-4 py-2 text-sm font-medium text-foreground bg-background border border-border rounded-md hover:bg-muted', action: 'cancel', handler: function() {} },
             { text: 'Reject', class: 'px-4 py-2 text-sm font-medium text-destructive-foreground bg-destructive border border-transparent rounded-md hover:bg-destructive/90', action: 'reject', handler: function() {
-                fetch('/api/review-queue/bulk-reject', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
+                Platform.fetch.post('/api/review-queue/bulk-reject', {
+                    item_ids: itemIds,
+                    decision_reason: 'Bulk rejected',
+                    reviewer_role: 'architect',
+                    reviewer_experience_level: 'senior',
+                    quality_assessment: {
+                        accuracy: { score: 0.3, weight: 0.4 },
+                        completeness: { score: 0.5, weight: 0.3 },
+                        relevance: { score: 0.4, weight: 0.3 }
                     },
-                    body: JSON.stringify({
-                        item_ids: itemIds,
-                        decision_reason: 'Bulk rejected',
-                        reviewer_role: 'architect',
-                        reviewer_experience_level: 'senior',
-                        quality_assessment: {
-                            accuracy: { score: 0.3, weight: 0.4 },
-                            completeness: { score: 0.5, weight: 0.3 },
-                            relevance: { score: 0.4, weight: 0.3 }
-                        },
-                        identified_issues: [],
-                        suggested_improvements: [],
-                        human_confidence_estimate: 0.3,
-                        ai_accuracy_assessment: 2,
+                    identified_issues: [],
+                    suggested_improvements: [],
+                    human_confidence_estimate: 0.3,
+                    ai_accuracy_assessment: 2,
                         correction_made: false,
                         corrected_data: {},
                         review_duration_seconds: 30
-                    })
                 })
-                .then(function(response) { return response.json(); })
                 .then(function(data) {
-                    if (data.success) {
-                        selectedItems.clear();
-                        loadReviewQueue();
-                        Platform.toast.success('Bulk rejection completed: ' + data.successful_count + ' rejected, ' + data.failed_count + ' failed');
-                    } else {
-                        Platform.toast.error('Bulk rejection failed: ' + data.error);
-                    }
+                    selectedItems.clear();
+                    loadReviewQueue();
+                    Platform.toast.success('Bulk rejection completed: ' + data.successful_count + ' rejected, ' + data.failed_count + ' failed');
                 })
                 .catch(function(error) {
-                    console.error('Error in bulk reject:', error);
-                    Platform.toast.error('Error in bulk reject');
+                    // This .catch IS the handler -- there is no block after it. Without
+                    // surfacing here a failed load renders as an empty queue, which a
+                    // reviewer cannot tell from having nothing to review.
+                    Platform.toast.error(
+                        'Review queue could not be loaded: ' + (error && error.message ? error.message : 'request failed')
+                    );
                 });
             } }
         ]
@@ -349,42 +333,35 @@ function submitReviewDecision(itemId, decision, notes) {
     notes = notes || '';
     let endpoint = decision === 'approve' ? '/api/review-queue/' + itemId + '/approve' : '/api/review-queue/' + itemId + '/reject';
 
-    fetch(endpoint, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
+    Platform.fetch.post(endpoint, {
+        decision_type: decision,
+        decision_reason: notes || (decision + ' by reviewer'),
+        reviewer_id: 1,
+        reviewer_role: 'architect',
+        reviewer_experience_level: 'senior',
+        quality_assessment: {
+            accuracy: { score: decision === 'approve' ? 0.9 : 0.3, weight: 0.4 },
+            completeness: { score: 0.8, weight: 0.3 },
+            relevance: { score: 0.7, weight: 0.3 }
         },
-        body: JSON.stringify({
-            decision_type: decision,
-            decision_reason: notes || (decision + ' by reviewer'),
-            reviewer_id: 1,
-            reviewer_role: 'architect',
-            reviewer_experience_level: 'senior',
-            quality_assessment: {
-                accuracy: { score: decision === 'approve' ? 0.9 : 0.3, weight: 0.4 },
-                completeness: { score: 0.8, weight: 0.3 },
-                relevance: { score: 0.7, weight: 0.3 }
-            },
-            identified_issues: [],
-            suggested_improvements: [],
-            human_confidence_estimate: decision === 'approve' ? 0.9 : 0.3,
-            ai_accuracy_assessment: decision === 'approve' ? 4 : 2,
-            correction_made: false,
-            corrected_data: {},
-            review_duration_seconds: 30
-        })
+        identified_issues: [],
+        suggested_improvements: [],
+        human_confidence_estimate: decision === 'approve' ? 0.9 : 0.3,
+        ai_accuracy_assessment: decision === 'approve' ? 4 : 2,
+        correction_made: false,
+        corrected_data: {},
+        review_duration_seconds: 30
     })
-    .then(function(response) { return response.json(); })
     .then(function(data) {
-        if (data.success) {
-            loadReviewQueue();
-        } else {
-            Platform.toast.error('Failed to submit review: ' + data.error);
-        }
+        loadReviewQueue();
     })
     .catch(function(error) {
-        console.error('Error submitting review:', error);
-        Platform.toast.error('Error submitting review');
+        // This .catch IS the handler -- there is no block after it. Without
+        // surfacing here a failed load renders as an empty queue, which a
+        // reviewer cannot tell from having nothing to review.
+        Platform.toast.error(
+            'Review queue could not be loaded: ' + (error && error.message ? error.message : 'request failed')
+        );
     });
 }
 
@@ -395,32 +372,25 @@ function updateThreshold(type, value) {
 function saveThresholds() {
     let autoAccept = document.getElementById('auto-accept-threshold').value;
 
-    fetch('/api/review-queue/thresholds', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            threshold_name: 'User Configured Thresholds',
-            threshold_type: 'global',
-            minimum_confidence: (autoAccept - 30) / 100,
-            auto_approval_threshold: autoAccept / 100,
-            rejection_threshold: 0.3,
-            requires_human_review: true,
-            user_id: 1
-        })
+    Platform.fetch.post('/api/review-queue/thresholds', {
+        threshold_name: 'User Configured Thresholds',
+        threshold_type: 'global',
+        minimum_confidence: (autoAccept - 30) / 100,
+        auto_approval_threshold: autoAccept / 100,
+        rejection_threshold: 0.3,
+        requires_human_review: true,
+        user_id: 1
     })
-    .then(function(response) { return response.json(); })
     .then(function(data) {
-        if (data.success) {
-            Platform.toast.success('Thresholds saved successfully');
-        } else {
-            Platform.toast.error('Failed to save thresholds: ' + data.error);
-        }
+        Platform.toast.success('Thresholds saved successfully');
     })
     .catch(function(error) {
-        console.error('Error saving thresholds:', error);
-        Platform.toast.error('Error saving thresholds');
+        // This .catch IS the handler -- there is no block after it. Without
+        // surfacing here a failed load renders as an empty queue, which a
+        // reviewer cannot tell from having nothing to review.
+        Platform.toast.error(
+            'Review queue could not be loaded: ' + (error && error.message ? error.message : 'request failed')
+        );
     });
 }
 

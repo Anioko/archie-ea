@@ -885,7 +885,7 @@
     if (createSolCancel) createSolCancel.addEventListener('click', closeCreateSolutionModal);
     const createSolForm = document.getElementById('ai-chat-create-solution-form');
     if (createSolForm) {
-        createSolForm.addEventListener('submit', function(e) {
+        createSolForm.addEventListener('submit', async function(e) {
             e.preventDefault();
             const titleEl = document.getElementById('ai-chat-solution-title');
             const briefEl = document.getElementById('ai-chat-solution-brief');
@@ -896,24 +896,23 @@
             if (!title || !brief) return;
             if (submitBtn) submitBtn.disabled = true;
             if (statusEl) { statusEl.classList.remove('hidden'); statusEl.textContent = 'Creating solution and generating draft…'; }
-            fetch('/solutions/create-with-draft', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json', 'X-CSRFToken': window.getCSRFToken ? window.getCSRFToken() : ''},
-                body: JSON.stringify({ title: title, brief: brief })
-            }).then(function(resp) { return resp.json().then(function(data) { return { ok: resp.ok, data: data }; }, function() { return { ok: false, data: {} }; }); })
-              .then(function(r) {
-                  if (submitBtn) submitBtn.disabled = false;
-                  if (r.ok && r.data.redirect) {
-                      closeCreateSolutionModal();
-                      appendSystemMessage('Solution created — redirecting to detail page…', 'info');
-                      setTimeout(function() { window.location.href = r.data.redirect; }, 800);
-                  } else {
-                      if (statusEl) statusEl.textContent = 'Error: ' + (r.data.error || 'Could not create solution');
-                  }
-              }).catch(function(err) {
-                  if (submitBtn) submitBtn.disabled = false;
-                  if (statusEl) statusEl.textContent = 'Network error: ' + err.message;
-              });
+            try {
+                const data = await Platform.fetch.post('/solutions/create-with-draft', 
+                    { title: title, brief: brief },
+                    { silent: true }
+                );
+                if (submitBtn) submitBtn.disabled = false;
+                if (data.redirect) {
+                    closeCreateSolutionModal();
+                    appendSystemMessage('Solution created — redirecting to detail page…', 'info');
+                    setTimeout(function() { window.location.href = data.redirect; }, 800);
+                } else {
+                    if (statusEl) statusEl.textContent = 'Error: ' + (data.error || 'Could not create solution');
+                }
+            } catch (err) {
+                if (submitBtn) submitBtn.disabled = false;
+                if (statusEl) statusEl.textContent = 'Network error: ' + (err.message || 'Request failed');
+            }
         });
     }
 

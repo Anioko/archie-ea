@@ -29,25 +29,21 @@ document.addEventListener('alpine:init', () => {
       this.starting = true;
       this.error = '';
       try {
-        const response = await fetch('/architecture-journey/start-architecture', {
-          method: 'POST',
-          credentials: 'same-origin',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || '',
-          },
-          body: JSON.stringify({
-            title: this.title,
-            intent: this.intent,
-            selected_layers: this.layers,
-            selected_deliverables: this.deliverables,
-            outcome_type: this.outcomeType,
-          }),
-        });
-        const payload = await response.json();
-        if (!response.ok) throw new Error(payload.error || 'The journey could not be created.');
+        // Platform.fetch will automatically inject CSRF token and serialize plain object to JSON.
+        // It throws a structured PlatformError on non-ok responses, which we catch below.
+        const payload = await Platform.fetch.post('/architecture-journey/start-architecture', {
+          title: this.title,
+          intent: this.intent,
+          selected_layers: this.layers,
+          selected_deliverables: this.deliverables,
+          outcome_type: this.outcomeType,
+        }, { silent: true }); // silent: true because we paint our own inline error state
+        // Platform.fetch returns the parsed response body directly (already JSON).
+        // The server returns a { data: { redirect: ... } } structure on success.
         window.location.assign(payload.data.redirect);
       } catch (error) {
+        // Platform.fetch throws a PlatformError with a message suitable for user display.
+        // We preserve the existing inline error painting.
         this.error = error.message || 'The journey could not be created.';
         this.starting = false;
       }
@@ -58,19 +54,15 @@ document.addEventListener('alpine:init', () => {
       this.startingSolution = true;
       this.error = '';
       try {
-        const response = await fetch('/architecture-journey/start', {
-          method: 'POST',
-          credentials: 'same-origin',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || '',
-          },
-          body: '{}',
-        });
-        const payload = await response.json();
-        if (!response.ok) throw new Error(payload.error || 'Solution design could not be started.');
+        // Platform.fetch will automatically inject CSRF token and serialize plain object to JSON.
+        // Passing an empty object as body ensures correct JSON serialization.
+        const payload = await Platform.fetch.post('/architecture-journey/start', {}, { silent: true });
+        // Platform.fetch returns the parsed response body directly (already JSON).
+        // The server returns a { data: { redirect: ... } } structure on success.
         window.location.assign(payload.data.redirect);
       } catch (error) {
+        // Platform.fetch throws a PlatformError with a message suitable for user display.
+        // We preserve the existing inline error painting.
         this.error = error.message || 'Solution design could not be started.';
         this.startingSolution = false;
       }

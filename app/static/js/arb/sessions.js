@@ -27,15 +27,7 @@ function arbSessionModal() {
       this.submitting = true;
       this.errorMsg = '';
       const url = window.__ARB_CONFIG__?.createSessionUrl || '/arb/sessions/create';
-      fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || ''
-        },
-        body: JSON.stringify(this.formData)
-      })
-        .then(r => r.json())
+      Platform.fetch.post(url, this.formData, { silent: true })
         .then(data => {
           this.submitting = false;
           if (!data.success) {
@@ -46,9 +38,16 @@ function arbSessionModal() {
           showToast({ title: 'Session scheduled successfully', variant: 'default' });
           setTimeout(() => window.location.reload(), 800);
         })
-        .catch(() => {
+        .catch(err => {
           this.submitting = false;
-          this.errorMsg = 'Network error. Please try again.';
+          // Platform.fetch throws for network errors or HTTP errors (non-ok responses)
+          if (err.type === 'HttpError' && err.data && err.data.errors) {
+            // This is a validation error (e.g., 400) with field-specific messages
+            this.errorMsg = Object.values(err.data.errors || {}).join(' ') || 'An error occurred.';
+          } else {
+            // Network error or other HTTP error without field errors
+            this.errorMsg = 'Network error. Please try again.';
+          }
         });
     }
   };

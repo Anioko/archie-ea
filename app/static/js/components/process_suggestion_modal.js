@@ -41,11 +41,7 @@ function loadProcessSuggestions(appId) {
   document.getElementById('suggestions-list').classList.add('hidden');
   document.getElementById('no-suggestions').classList.add('hidden');
 
-  return fetch('/api/applications/' + appId + '/process-suggestions')
-    .then(function(response) {
-      if (!response.ok) throw new Error('HTTP ' + response.status);
-      return response.json();
-    })
+  return Platform.fetch.get('/api/applications/' + appId + '/process-suggestions')
     .then(function(data) {
       if (data.suggestions && data.suggestions.length > 0) {
         currentSuggestions = data.suggestions;
@@ -55,7 +51,6 @@ function loadProcessSuggestions(appId) {
       }
     })
     .catch(function(error) {
-      console.error('Error loading suggestions:', error);
       showError('Failed to load process suggestions');
     })
     .finally(function() {
@@ -161,38 +156,27 @@ function getConfidenceLabel(confidence) {
 function acceptSuggestion(index) {
   let suggestion = currentSuggestions[index];
 
-  return fetch('/api/applications/' + currentApplicationId + '/process-links', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      process_id: suggestion.process_id,
-      confidence: suggestion.confidence,
-      auto_generated: true,
-      notes: 'Auto-mapped with ' + Math.round(suggestion.confidence * 100) + '% confidence: ' + suggestion.match_reason
-    })
+  return Platform.fetch.post('/api/applications/' + currentApplicationId + '/process-links', {
+    process_id: suggestion.process_id,
+    confidence: suggestion.confidence,
+    auto_generated: true,
+    notes: 'Auto-mapped with ' + Math.round(suggestion.confidence * 100) + '% confidence: ' + suggestion.match_reason
   })
-  .then(function(response) {
-    if (response.ok) {
-      let suggestionEl = document.getElementById('suggestion-' + index);
-      if (suggestionEl) suggestionEl.remove();
+  .then(function() {
+    let suggestionEl = document.getElementById('suggestion-' + index);
+    if (suggestionEl) suggestionEl.remove();
 
-      let remainingSuggestions = document.querySelectorAll('#suggestions-list > div').length;
-      document.getElementById('suggestions-summary').textContent =
-        remainingSuggestions + ' suggestion' + (remainingSuggestions !== 1 ? 's' : '') + ' remaining';
+    let remainingSuggestions = document.querySelectorAll('#suggestions-list > div').length;
+    document.getElementById('suggestions-summary').textContent =
+      remainingSuggestions + ' suggestion' + (remainingSuggestions !== 1 ? 's' : '') + ' remaining';
 
-      showSuccess('Process mapping accepted successfully');
+    showSuccess('Process mapping accepted successfully');
 
-      if (remainingSuggestions === 0) {
-        showNoSuggestions();
-      }
-    } else {
-      throw new Error('Failed to accept suggestion');
+    if (remainingSuggestions === 0) {
+      showNoSuggestions();
     }
   })
   .catch(function(error) {
-    console.error('Error accepting suggestion:', error);
     showError('Failed to accept process mapping');
   });
 }
@@ -248,18 +232,13 @@ function hideManualProcessMapping() {
       _searchTimer = setTimeout(function() {
       if (_searchAbort) _searchAbort.abort();
       _searchAbort = new AbortController();
-      fetch('/api/applications/processes/search?q=' + encodeURIComponent(query), { signal: _searchAbort.signal })
-        .then(function(response) {
-          if (!response.ok) throw new Error('HTTP ' + response.status);
-          return response.json();
-        })
+      Platform.fetch.get('/api/applications/processes/search?q=' + encodeURIComponent(query), null, { signal: _searchAbort.signal })
         .then(function(processes) {
           displayProcessSearchResults(processes);
           _searchErrorShown = false;
         })
         .catch(function(error) {
           if (error.name === 'AbortError') return; // superseded by a newer query
-          console.error('Error searching processes:', error);
           // Toast once per outage, not on every retry.
           if (!_searchErrorShown) {
             _searchErrorShown = true;
@@ -306,28 +285,17 @@ function addManualProcessMapping() {
 
   let notes = document.getElementById('mapping-notes').value.trim();
 
-  return fetch('/api/applications/' + currentApplicationId + '/process-links', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      process_id: selectedProcess.id,
-      auto_generated: false,
-      notes: notes || 'Manual mapping'
-    })
+  return Platform.fetch.post('/api/applications/' + currentApplicationId + '/process-links', {
+    process_id: selectedProcess.id,
+    auto_generated: false,
+    notes: notes || 'Manual mapping'
   })
-  .then(function(response) {
-    if (response.ok) {
-      showSuccess('Manual process mapping added successfully');
-      hideManualProcessMapping();
-      loadProcessSuggestions(currentApplicationId);
-    } else {
-      throw new Error('Failed to add manual mapping');
-    }
+  .then(function() {
+    showSuccess('Manual process mapping added successfully');
+    hideManualProcessMapping();
+    loadProcessSuggestions(currentApplicationId);
   })
   .catch(function(error) {
-    console.error('Error adding manual mapping:', error);
     showError('Failed to add manual process mapping');
   });
 }

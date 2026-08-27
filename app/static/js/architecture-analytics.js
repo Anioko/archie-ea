@@ -41,15 +41,14 @@ class ArchitectureAnalytics {
       const url = `${this.apiBaseUrl}/${endpoint}?${queryString}`;
       this.log(`Fetching: ${url}`);
 
-      const response = await fetch(url, {
-        headers: { 'Accept': 'application/json' }
+      // Platform.fetch automatically injects CSRF token for mutating methods,
+      // serializes plain objects to JSON, and throws on non-ok responses.
+      // We pass { silent: true } because the caller paints its own inline error state.
+      const data = await Platform.fetch(url, {
+        headers: { 'Accept': 'application/json' },
+        silent: true
       });
 
-      if (!response.ok) {
-        throw new Error(`API error: ${response.status}`);
-      }
-
-      const data = await response.json();
       this.log(`Fetched analytics data`, data);
       return data;
     } catch (error) {

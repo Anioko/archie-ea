@@ -41,7 +41,6 @@ async function loadQuickAccessItems(type, limit) {
   const container = document.querySelector(`[data-quick-access="${type}"]`);
 
   if (!container) {
-    console.debug(`[Sidebar] Container [data-quick-access="${type}"] not found, skipping async load`);
     return;
   }
 
@@ -49,41 +48,30 @@ async function loadQuickAccessItems(type, limit) {
     // ✅ FIX: Validate API endpoint exists (fallback provided)
     const apiEndpoint = window.SIDEBAR_API_ENDPOINT || "/api/sidebar/quick-access";
     
-    const response = await fetch(
-      `${apiEndpoint}?type=${encodeURIComponent(type)}&limit=${limit}`,
-      {
-        method: "GET",
-        credentials: "same-origin",
-        headers: {
-          "X-Requested-With": "XMLHttpRequest",
-          "Accept": "application/json",
-        },
-      }
-    );
-
-    // ✅ FIX: Provide user feedback on API error
-    if (!response.ok) {
-      showErrorFeedback(container, `Failed to load ${type} (Error ${response.status})`);
-      return;
-    }
-
-    // ✅ FIX: Validate response is JSON
-    const contentType = response.headers.get("content-type");
-    if (!contentType || !contentType.includes("application/json")) {
-      showErrorFeedback(container, "Invalid server response");
-      return;
-    }
-
-    // ✅ FIX: Parse and validate response structure
+    // Use Platform.fetch.get for automatic CSRF, error handling, and JSON parsing
+    // Pass silent:true because we paint our own inline error state via showErrorFeedback
     let data;
     try {
-      data = await response.json();
-    } catch (parseError) {
-      showErrorFeedback(container, "Server returned invalid data");
+      data = await Platform.fetch.get(
+        `${apiEndpoint}?type=${encodeURIComponent(type)}&limit=${limit}`,
+        null, // no query params (already in URL)
+        {
+          headers: {
+            "X-Requested-With": "XMLHttpRequest",
+            "Accept": "application/json",
+          },
+          silent: true, // suppress global toast; we show inline error
+        }
+      );
+    } catch (fetchError) {
+      // Platform.fetch throws on network errors or non-ok responses
+      // Extract user-friendly message from the error
+      const errorMessage = fetchError.message || `Failed to load ${type}`;
+      showErrorFeedback(container, errorMessage);
       return;
     }
 
-    // ✅ FIX: Validate data structure
+    // ✅ FIX: Validate data structure (Platform.fetch returns parsed body)
     if (!data || !Array.isArray(data.items)) {
       showErrorFeedback(container, "Invalid server response structure");
       return;

@@ -248,7 +248,7 @@ function appPortfolio() {
       const params = new URLSearchParams(window.location.search);
       params.delete('export');
       try {
-        const resp = await fetch(`/applications/export/csv?${params.toString()}`);
+        const resp = await fetch(`/applications/export/csv?${params.toString()}`); // raw-fetch-ok: need raw blob for download
         if (!resp.ok) throw new Error(`Export failed (${resp.status})`);
         if (resp.headers.get('X-Export-Empty') === '1') {
           this.notify('No applications match the current filters — nothing to export.', 'default');

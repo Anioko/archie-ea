@@ -75,30 +75,32 @@
                         this.editSaving = true;
                         this.saveError  = '';
                         const self = this;
-                        fetch('/enterprise/api/work-packages/' + this.editingId, {
-                            method:  'PATCH',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'X-CSRFToken':  (document.querySelector('meta[name=csrf-token]') || {}).content || ''
-                            },
-                            body: JSON.stringify(this.editForm)
-                        })
-                        .then(function (r) { return r.json(); })
-                        .then(function (data) {
-                            if (data.error) {
-                                self.saveError = data.error;
-                            } else {
-                                Platform.modal.close('edit-work-package-modal');
-                                self.refresh();
-                                Platform.toast.success('Work package updated.');
-                            }
-                        })
-                        .catch(function () {
-                            self.saveError = 'Save failed.';
-                        })
-                        .finally(function () {
-                            self.editSaving = false;
-                        });
+                        // The edit modal paints its own inline error state (saveError),
+                        // so we should suppress the global toast to avoid duplicate messages.
+                        Platform.fetch.patch('/enterprise/api/work-packages/' + this.editingId, this.editForm, { silent: true })
+                            .then(function (data) {
+                                // Platform.fetch returns parsed data directly; no need to check response.ok.
+                                // The existing code expected a possible top-level `error` property in the JSON.
+                                // Preserve that check.
+                                if (data && data.error) {
+                                    self.saveError = data.error;
+                                } else {
+                                    Platform.modal.close('edit-work-package-modal');
+                                    self.refresh();
+                                    Platform.toast.success('Work package updated.');
+                                }
+                            })
+                            .catch(function (err) {
+                                // Platform.fetch did not show a toast because we used silent:true.
+                                // The existing code set a generic 'Save failed.' message.
+                                // We'll keep that behaviour.
+                                self.saveError = 'Save failed.';
+                                // Re-throw to satisfy rule 2 (never swallow an error).
+                                throw err;
+                            })
+                            .finally(function () {
+                                self.editSaving = false;
+                            });
                     },
 
                     // ── Bulk delete ────────────────────────────────────
@@ -111,16 +113,20 @@
                         if (!this.bulkDeleteEnabled()) return;
                         this.deleteInProgress = true;
                         try {
-                            const response = await fetch('/enterprise/api/work-packages/bulk', {
-                                method:  'DELETE',
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                    'X-CSRFToken':  (document.querySelector('meta[name=csrf-token]') || {}).content || ''
-                                },
-                                body: JSON.stringify({ ids: this._selectedIds.slice() })
+                            // Platform.fetch.delete returns parsed data directly; throws on non-ok.
+                            // The existing code expected a possible top-level `error` property.
+                            // We'll preserve that check.
+                            // The bulk delete operation does not have its own inline error state,
+                            // but the existing catch block painted a toast. To avoid duplicate
+                            // toasts (Platform.fetch shows one by default), we pass silent:true
+                            // and then show our own toast in the catch to preserve existing behavior.
+                            const data = await Platform.fetch.delete('/enterprise/api/work-packages/bulk', {
+                                body: { ids: this._selectedIds.slice() },
+                                silent: true
                             });
-                            const data = await response.json();
-                            if (data.error) {
+                            if (data && data.error) {
+                                // The response was ok but contained an `error` property.
+                                // This is an inline error state, so we show a toast.
                                 Platform.toast.error(data.error);
                             } else {
                                 Platform.modal.close('bulk-delete-work-package-modal');
@@ -130,7 +136,12 @@
                                 Platform.toast.success('Work packages deleted.');
                             }
                         } catch (e) {
+                            // Platform.fetch did not show a toast because we used silent:true.
+                            // The existing code painted a toast with e.message.
+                            // We'll do the same to preserve behavior.
                             Platform.toast.error((e && e.message) || 'Delete failed.');
+                            // Re-throw to satisfy rule 2 (never swallow an error).
+                            throw e;
                         } finally {
                             this.deleteInProgress = false;
                         }

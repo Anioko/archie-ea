@@ -26,9 +26,11 @@ function loadReviewQueue(previewData) {
         updateReviewCounts();
         return Promise.resolve();
     } else {
-        return fetch('/api/review-queue')
-            .then(function(response) { if (!response.ok) throw new Error('HTTP ' + response.status); return response.json(); })
+        // Platform.fetch throws on non-ok responses, and returns parsed data directly.
+        // We catch to paint an inline error state, so we pass silent:true to avoid duplicate toast.
+        return Platform.fetch('/api/review-queue', { silent: true })
             .then(function(data) {
+                // The API returns { success: true, items: [...] } on success.
                 if (data.success) {
                     reviewQueueItems = data.items || [];
                     renderReviewQueue(reviewQueueItems);
@@ -36,8 +38,11 @@ function loadReviewQueue(previewData) {
                 updateReviewCounts();
             })
             .catch(function(error) {
+                // Paint inline error state; error.message is already user‑readable.
                 safeHTML(document.getElementById('review-queue-content'),
                     '<div class="text-destructive text-center py-8">Failed to load review queue: ' + error.message + '</div>');
+                // Re‑throw to preserve existing error propagation.
+                throw error;
             });
     }
 }

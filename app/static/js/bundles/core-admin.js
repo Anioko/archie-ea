@@ -1538,7 +1538,7 @@
     // which is why keep-alive below is throttled rather than fired per event.
     let lastActivityPing = 0;
 
-    function onActivity() {
+    async function onActivity() {
         const now = Date.now();
         resetTimer();
         if (now - lastActivityPing < ACTIVITY_THROTTLE) return;
@@ -1548,9 +1548,7 @@
         // background poll cannot keep an abandoned tab alive, so ping the
         // login page's cheap sibling instead only when the user really acted.
         try {
-            const xhr = new XMLHttpRequest();
-            xhr.open('GET', KEEPALIVE_URL, true);
-            xhr.send();
+            await Platform.fetch.get(KEEPALIVE_URL, null, { silent: true });
         } catch (e) {
             log.debug('keepalive ping failed (non-fatal)');
         }
@@ -1635,27 +1633,20 @@
         }, 1000);
     }
 
-    function extendSession() {
-        const xhr = new XMLHttpRequest();
-        // KEEPALIVE_URL, not /health: /health is deliberately exempt from the
-        // server-side idle check, so pinging it would reset this timer while
-        // the server carried on counting down — the client would then report a
-        // live session that the next real request finds expired.
-        xhr.open('GET', KEEPALIVE_URL, true);
-        xhr.onload = function () {
+    async function extendSession() {
+        try {
+            await Platform.fetch.get(KEEPALIVE_URL, null, { silent: true });
             dismissWarning();
             resetTimer();
             log.debug('session extended');
             if (global.Platform.toast) {
                 global.Platform.toast.success('Session extended');
             }
-        };
-        xhr.onerror = function () {
+        } catch (e) {
             dismissWarning();
             resetTimer();
             log.warn('health ping failed — timer reset anyway');
-        };
-        xhr.send();
+        }
     }
 
     // --- A-08: reactive re-auth prompt ---

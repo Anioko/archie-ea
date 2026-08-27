@@ -92,9 +92,7 @@ document.addEventListener('alpine:init', () => {
             try {
                 let url = '/solutions/api/archimate-all-elements?search=' + encodeURIComponent(query);
                 if (layerFilter) url += '&layer=' + encodeURIComponent(layerFilter);
-                const res = await fetch(url, { credentials: 'same-origin' });
-                if (!res.ok) throw new Error('HTTP ' + res.status);
-                const data = await res.json();
+                const data = await Platform.fetch(url, { credentials: 'same-origin', silent: true });
                 this._searchErrorShown = false;
                 return (data.elements || data || []).slice(0, 10);
             } catch (e) {
@@ -255,45 +253,33 @@ document.addEventListener('alpine:init', () => {
 
                 for (const el of allElements) {
                     try {
-                        const res = await fetch('/api/solutions/' + this.solutionId + '/elements', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            credentials: 'same-origin',
-                            body: JSON.stringify({
-                                archimate_element_id: el.id,
-                                layer: el.layer || 'application',
-                            }),
-                        });
-                        if (res.ok || res.status === 409) {
+                        await Platform.fetch.post('/api/solutions/' + this.solutionId + '/elements', {
+                            archimate_element_id: el.id,
+                            layer: el.layer || 'application',
+                        }, { credentials: 'same-origin', silent: true });
+                        elementsLinked++;
+                    } catch (e) {
+                        // Platform.fetch throws on non-ok responses, including 409.
+                        // We treat 409 as success because the element is already linked.
+                        if (e.status === 409) {
                             elementsLinked++;
                         } else {
-                            errors.push('Link ' + el.name + ': HTTP ' + res.status);
+                            errors.push('Link ' + el.name + ': ' + (e.message || 'HTTP ' + (e.status || 'unknown')));
                         }
-                    } catch (e) {
-                        errors.push('Link ' + el.name + ': ' + e.message);
                     }
                 }
 
                 // Create proposed relationships (step 1)
                 for (const rel of this.proposedRels) {
                     try {
-                        const res = await fetch('/api/solutions/' + this.solutionId + '/relationships', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            credentials: 'same-origin',
-                            body: JSON.stringify({
-                                source_element_id: rel.source_id,
-                                target_element_id: rel.target_id,
-                                relationship_type: rel.type,
-                            }),
-                        });
-                        if (res.ok) {
-                            relsCreated++;
-                        } else {
-                            errors.push('Rel ' + rel.source_name + '->' + rel.target_name + ': HTTP ' + res.status);
-                        }
+                        await Platform.fetch.post('/api/solutions/' + this.solutionId + '/relationships', {
+                            source_element_id: rel.source_id,
+                            target_element_id: rel.target_id,
+                            relationship_type: rel.type,
+                        }, { credentials: 'same-origin', silent: true });
+                        relsCreated++;
                     } catch (e) {
-                        errors.push('Rel ' + rel.source_name + '->' + rel.target_name + ': ' + e.message);
+                        errors.push('Rel ' + rel.source_name + '->' + rel.target_name + ': ' + (e.message || 'HTTP ' + (e.status || 'unknown')));
                     }
                 }
 
@@ -301,23 +287,14 @@ document.addEventListener('alpine:init', () => {
                 for (const [key, accessType] of Object.entries(this.accessMap)) {
                     const [appId, dataId] = key.split('-').map(Number);
                     try {
-                        const res = await fetch('/api/solutions/' + this.solutionId + '/relationships', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            credentials: 'same-origin',
-                            body: JSON.stringify({
-                                source_element_id: appId,
-                                target_element_id: dataId,
-                                relationship_type: 'access',
-                            }),
-                        });
-                        if (res.ok) {
-                            relsCreated++;
-                        } else {
-                            errors.push('Access rel: HTTP ' + res.status);
-                        }
+                        await Platform.fetch.post('/api/solutions/' + this.solutionId + '/relationships', {
+                            source_element_id: appId,
+                            target_element_id: dataId,
+                            relationship_type: 'access',
+                        }, { credentials: 'same-origin', silent: true });
+                        relsCreated++;
                     } catch (e) {
-                        errors.push('Access rel: ' + e.message);
+                        errors.push('Access rel: ' + (e.message || 'HTTP ' + (e.status || 'unknown')));
                     }
                 }
 
@@ -325,23 +302,14 @@ document.addEventListener('alpine:init', () => {
                 for (const [appId, nodeId] of Object.entries(this.deploymentMap)) {
                     if (!nodeId) continue;
                     try {
-                        const res = await fetch('/api/solutions/' + this.solutionId + '/relationships', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            credentials: 'same-origin',
-                            body: JSON.stringify({
-                                source_element_id: parseInt(nodeId),
-                                target_element_id: parseInt(appId),
-                                relationship_type: 'assignment',
-                            }),
-                        });
-                        if (res.ok) {
-                            relsCreated++;
-                        } else {
-                            errors.push('Deploy rel: HTTP ' + res.status);
-                        }
+                        await Platform.fetch.post('/api/solutions/' + this.solutionId + '/relationships', {
+                            source_element_id: parseInt(nodeId),
+                            target_element_id: parseInt(appId),
+                            relationship_type: 'assignment',
+                        }, { credentials: 'same-origin', silent: true });
+                        relsCreated++;
                     } catch (e) {
-                        errors.push('Deploy rel: ' + e.message);
+                        errors.push('Deploy rel: ' + (e.message || 'HTTP ' + (e.status || 'unknown')));
                     }
                 }
 
