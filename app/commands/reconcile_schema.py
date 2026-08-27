@@ -138,6 +138,11 @@ _TRANSFORMATION_FOREIGN_KEYS = (
         #     the models (CASCADE) against a database this command had just
         #     forced to RESTRICT, on every pass.
         # The models are the source of truth; this list has to follow them.
+        "fk_strategic_roadmap_items_organization",
+        "strategic_roadmap_items",
+        "organization_id",
+        "organizations",
+        "id",
         "CASCADE",
     ),
     (
