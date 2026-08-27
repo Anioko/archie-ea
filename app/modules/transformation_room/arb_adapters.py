@@ -264,10 +264,24 @@ class DecisionBriefARBAdapter(_ImmutableAdapter):
         return PinnedEvidence("decision_brief_version", version.id, version.content_hash)
 
     def canonical_url(self, subject):
+        """Deep link to the workstream decision surface, or None.
+
+        The link walks DecisionBriefVersion.workstream_id ->
+        ProgrammeWorkstream.programme_id, and either row can legitimately be
+        absent (a brief whose workstream was removed).  A deep link is a
+        convenience, not evidence: return None so the caller renders no link,
+        rather than guessing an ID and sending the reader to another
+        workstream's decision page.  Never let a missing link fail a
+        submission that the evidence gates have already allowed.
+        """
         _require_subject(subject, self.subject_type)
+        try:
+            workstream = _load_decision_brief_workstream(subject)
+        except NotFound:
+            return None
         return (
-            f"/solutions/programmes/{load_programme_id(subject)}/workstreams/"
-            f"{load_workstream_id(subject)}/decision"
+            f"/solutions/programmes/{workstream.programme_id}/workstreams/"
+            f"{workstream.id}/decision"
         )
 
     @staticmethod
