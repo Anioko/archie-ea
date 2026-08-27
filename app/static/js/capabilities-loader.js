@@ -25,24 +25,20 @@ class CapabilityLoader {
    */
   async fetchCapabilities(endpoint, params) {
     try {
-      const queryString = new URLSearchParams(params).toString();
-      const url = `${this.apiBaseUrl}/${endpoint}?${queryString}`;
+      const url = `${this.apiBaseUrl}/${endpoint}`;
       this.log(`Fetching: ${url}`);
 
-      const response = await fetch(url, {
+      // Platform.fetch.get automatically appends params as query string,
+      // throws on non-ok responses, and returns parsed JSON
+      const data = await Platform.fetch.get(url, params, {
         headers: { 'Accept': 'application/json' }
       });
-
-      if (!response.ok) {
-        throw new Error(`API error: ${response.status}`);
-      }
-
-      const data = await response.json();
       const mappings = data.data || data.mappings || [];
       this.log(`Fetched ${mappings.length} records`);
       return mappings;
     } catch (error) {
       this.log('Error fetching:', error);
+      // Re-throw to preserve existing error handling in callers
       throw error;
     }
   }

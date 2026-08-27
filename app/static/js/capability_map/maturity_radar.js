@@ -40,14 +40,11 @@
             return;
         }
 
-        fetch('/capability-map/api/unified-capabilities')
-            .then(function (r) {
-                // fetch does not reject on 4xx/5xx: without this the catch below
-                // never ran and a failed load fell through to the same "no
-                // capabilities" panel a genuinely empty portfolio shows.
-                if (!r.ok) { throw new Error('HTTP ' + r.status); }
-                return r.json();
-            })
+        // Platform.fetch throws on non-ok responses, so the catch block runs for HTTP errors
+        // as well as network errors, preventing a failed load from falling through to the
+        // same "no capabilities" panel a genuinely empty portfolio shows.
+        // We pass { silent: true } because we paint our own inline error state and show a toast below.
+        Platform.fetch('/capability-map/api/unified-capabilities', { silent: true })
             .then(function (data) {
                 var caps = data.unified_capabilities || data.capabilities || [];
                 loading.classList.add('hidden');

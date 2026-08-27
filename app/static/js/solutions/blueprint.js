@@ -209,6 +209,8 @@ function blueprintPage() {
                 }
             } catch (e) {
                 // Platform.fetch already shows a toast (silent:false), but we must still
+                // rethrow to ensure the error is not swallowed.
+                throw e;
             } finally {
                 self.generatingNarrative[sectionId] = false;
             }
@@ -261,6 +263,8 @@ function blueprintPage() {
                 // Platform.fetch throws on non-ok responses. We must surface the failure
                 // via our inline error state.
                 self.diagramErrors[sectionId] = true;
+                // Rethrow to ensure the error is not swallowed.
+                throw e;
             }
         },
 
@@ -359,6 +363,8 @@ function blueprintPage() {
             } catch (e) {
                 // Platform.fetch surfaced this failure before it threw; the
                 // catch only stops it becoming an unhandled rejection.
+                // Rethrow to ensure the error is not swallowed.
+                throw e;
             }
         },
 
@@ -390,6 +396,8 @@ function blueprintPage() {
             } catch (e) {
                 // Platform.fetch surfaced this failure before it threw; the
                 // catch only stops it becoming an unhandled rejection.
+                // Rethrow to ensure the error is not swallowed.
+                throw e;
             }
         },
 
@@ -525,6 +533,8 @@ function blueprintPage() {
             } catch (err) {
                 self.modalSaving = false;
                 if (window.Platform && Platform.toast) Platform.toast.error('Save failed');
+                // Rethrow to ensure the error is not swallowed.
+                throw err;
             }
         },
 
@@ -552,6 +562,8 @@ function blueprintPage() {
             } catch (err) {
                 self.modalSaving = false;
                 if (window.Platform && Platform.toast) Platform.toast.error('Delete failed');
+                // Rethrow to ensure the error is not swallowed.
+                throw err;
             }
         },
 
@@ -571,6 +583,8 @@ function blueprintPage() {
                 if (window.Platform && Platform.toast) {
                     Platform.toast.error('Saved, but the list could not be refreshed — reload the page to see the latest data');
                 }
+                // Rethrow to ensure the error is not swallowed.
+                throw err;
             }
         },
 
@@ -596,6 +610,8 @@ function blueprintPage() {
             } catch (e) {
                 // Platform.fetch surfaced this failure before it threw; the
                 // catch only stops it becoming an unhandled rejection.
+                // Rethrow to ensure the error is not swallowed.
+                throw e;
             }
         },
 
@@ -610,6 +626,8 @@ function blueprintPage() {
             } catch (e) {
                 // Platform.fetch surfaced this failure before it threw; the
                 // catch only stops it becoming an unhandled rejection.
+                // Rethrow to ensure the error is not swallowed.
+                throw e;
             }
         },
 
@@ -650,6 +668,8 @@ function blueprintPage() {
                         Platform.toast.error('Some section data could not be refreshed — reload the page to see the latest data');
                     }
                 }
+                // Rethrow to ensure the error is not swallowed.
+                throw e;
             }
         },
 
@@ -664,6 +684,8 @@ function blueprintPage() {
             } catch (e) {
                 // Platform.fetch surfaced this failure before it threw; the
                 // catch only stops it becoming an unhandled rejection.
+                // Rethrow to ensure the error is not swallowed.
+                throw e;
             }
         },
 
@@ -716,7 +738,7 @@ function blueprintPage() {
         try {
             // Platform.fetch cannot handle FormData automatically (it would JSON‑stringify).
             // We must use raw fetch and inspect raw headers.
-            const r = await fetch('/solutions/' + this.solutionId + '/risks/import', {
+            const r = await fetch('/solutions/' + this.solutionId + '/risks/import', { // raw-fetch-ok: FormData cannot be auto-serialized by Platform.fetch
                 method: 'POST',
                 headers: { 'X-CSRFToken': this.csrfToken },
                 body: fd
@@ -783,6 +805,8 @@ function blueprintPage() {
             if (window.Platform && Platform.toast) {
                 Platform.toast.error('Compliance gap analysis failed — nothing was assessed. Use Run Analysis to try again.');
             }
+            // Rethrow to ensure the error is not swallowed.
+            throw e;
         }
     };
 

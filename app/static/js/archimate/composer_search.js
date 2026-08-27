@@ -17,6 +17,7 @@ let ComposerSearch = (function() {
         let createNode = helpers.createNode;
         let guessLayer = helpers.guessLayer;
         let _toast = helpers._toast;
+        // Platform.fetch will handle CSRF automatically; csrfToken helper may still be used elsewhere
 
         // CMP-058: extract helpers that selectViewpoint() requires at call time
         let UndoStack = helpers.UndoStack;
@@ -24,6 +25,9 @@ let ComposerSearch = (function() {
         let applyLayerBanding = helpers.applyLayerBanding;
 
         let VIEWPOINT_PALETTE_MAP = helpers.VIEWPOINT_PALETTE_MAP;
+
+        // Ensure Platform.fetch is available globally
+        const Platform = window.Platform;
 
         let methods = {
 
@@ -42,8 +46,7 @@ let ComposerSearch = (function() {
             let url = '/archimate/viewpoints-api/' + vpId + '/data';
             if (self.solutionId) url += '?solution_id=' + self.solutionId;
 
-            fetch(url, { credentials: 'same-origin' })
-            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            Platform.fetch(url, { silent: true })
             .then(function(data) {
                 /* ── Invariant 1: Scope required ── */
                 if (data.scope_required) {
@@ -115,7 +118,7 @@ let ComposerSearch = (function() {
             .catch(function(err) {
                 UndoStack.resume();
                 _toast('error', 'Failed to switch viewpoint');
-                console.error('[Composer] viewpoint load error:', err);
+                // Platform.fetch already logged the error; we keep the inline error state
                 self.viewpointLoading = false;
                 self.elementCount = 0;
                 self.relCount = 0;
@@ -149,11 +152,12 @@ let ComposerSearch = (function() {
             if (layerFilter) url += '&layer=' + encodeURIComponent(layerFilter);
             if (self.solutionOnlyFilter && self.solutionId) url += '&solution_id=' + self.solutionId;
 
-            fetch(url, { credentials: 'same-origin' })
-                .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
-                .then(function(resp) {
-                    let data = resp.data || resp || [];
-                    self.searchResults = Array.isArray(data) ? data.filter(function(el) {
+            Platform.fetch.get(url, null, { silent: true })
+                .then(function(data) {
+                    // Platform.fetch returns parsed data directly
+                    let resp = data;
+                    let dataArray = resp.data || resp || [];
+                    self.searchResults = Array.isArray(dataArray) ? dataArray.filter(function(el) {
                         if (self.canvasElements[el.id]) return false;
                         /* Client-side layer filter fallback if API doesn't support it */
                         if (layerFilter && el.layer && el.layer.toLowerCase() !== layerFilter) return false;
@@ -179,12 +183,7 @@ let ComposerSearch = (function() {
             self.closeSearch();
             self.statusText = 'Creating...';
 
-            fetch('/api/architecture-assistant/create-element', {
-                method: 'POST', credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                body: JSON.stringify({ name: name, type: type, layer: layer }),
-            })
-            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            Platform.fetch.post('/api/architecture-assistant/create-element', { name: name, type: type, layer: layer }, { silent: true })
             .then(function(data) {
                 let elem = data.element || data;
                 if (elem.id) {
@@ -462,8 +461,7 @@ let ComposerSearch = (function() {
             let url = '/archimate/api/matrix?row_type=' + encodeURIComponent(self.matrixRowType)
                     + '&col_type=' + encodeURIComponent(self.matrixColType);
             if (self.solutionId) url += '&solution_id=' + self.solutionId;
-            fetch(url, { credentials: 'same-origin' })
-            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            Platform.fetch.get(url, null, { silent: true })
             .then(function(data) {
                 self.matrixRows = data.rows || [];
                 self.matrixCols = data.columns || [];

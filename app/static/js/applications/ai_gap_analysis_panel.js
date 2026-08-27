@@ -57,11 +57,10 @@ function aiGapAnalysisPanel() {
             const section = self.sections[sectionKey];
             section.error = null;
 
-            fetch(self.urls[sectionKey], { headers: { 'Accept': 'application/json' } })
-                .then(function(r) {
-                    if (!r.ok) throw new Error('HTTP ' + r.status);
-                    return r.json();
-                })
+            Platform.fetch(self.urls[sectionKey], {
+                headers: { 'Accept': 'application/json' },
+                silent: true
+            })
                 .then(function(json) {
                     const payload = json.data !== undefined ? json.data : json;
                     if (sectionKey === 'summary') {

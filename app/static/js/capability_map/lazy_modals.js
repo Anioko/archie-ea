@@ -63,14 +63,17 @@
         if (!url) {
             throw new Error('Lazy modal host is missing; cannot load ' + modalId);
         }
-        var resp = await fetch(url, {
-            credentials: 'same-origin',
-            headers: { 'X-Requested-With': 'XMLHttpRequest' }
-        });
-        if (!resp.ok) {
-            throw new Error('Failed to load ' + modalId + ' (HTTP ' + resp.status + ')');
+        try {
+            // Platform.fetch automatically injects CSRF token and handles errors
+            var html = await Platform.fetch(url, {
+                headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                // The caller already handles errors via toast, so we don't need an additional toast
+                silent: true
+            });
+        } catch (err) {
+            // Platform.fetch throws on non-ok responses; rethrow with a descriptive message
+            throw new Error('Failed to load ' + modalId + ' (HTTP ' + (err.status || 'unknown') + ')');
         }
-        var html = await resp.text();
 
         var holder = document.createElement('template');
         holder.innerHTML = html;

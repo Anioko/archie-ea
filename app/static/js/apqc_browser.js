@@ -79,8 +79,7 @@ class APQCBrowserManager {
     async loadAPQCData() {
         try {
             this.showLoading(true);
-            const response = await fetch('/api/apqc/tree');
-            const data = await response.json();
+            const data = await Platform.fetch('/api/apqc/tree');
 
             if (data.success) {
                 this.apqcData = data.tree || [];
@@ -90,7 +89,6 @@ class APQCBrowserManager {
                 this.showError('Failed to load APQC data: ' + data.error);
             }
         } catch (error) {
-            console.error('Error loading APQC data:', error);
             this.showError('Error loading APQC data');
         } finally {
             this.showLoading(false);
@@ -99,14 +97,12 @@ class APQCBrowserManager {
 
     async loadIndustryVariants() {
         try {
-            const response = await fetch('/api/apqc/variants');
-            const data = await response.json();
+            const data = await Platform.fetch('/api/apqc/variants');
 
             if (data.success) {
                 this.populateIndustryFilter(data.variants || []);
             }
         } catch (error) {
-            console.error('Error loading industry variants:', error);
             this.showError('Error loading industry variants');
         }
     }
@@ -193,8 +189,7 @@ class APQCBrowserManager {
     async selectNode(nodeId) {
         try {
             this.showLoading(true);
-            const response = await fetch(`/api/apqc/process/${nodeId}`);
-            const data = await response.json();
+            const data = await Platform.fetch(`/api/apqc/process/${nodeId}`);
 
             if (data.success) {
                 this.selectedProcess = data.process;
@@ -203,7 +198,6 @@ class APQCBrowserManager {
                 this.showError('Failed to load process details: ' + data.error);
             }
         } catch (error) {
-            console.error('Error loading process details:', error);
             this.showError('Error loading process details');
         } finally {
             this.showLoading(false);
@@ -303,8 +297,12 @@ class APQCBrowserManager {
 
         try {
             this.showLoading(true);
-            const response = await fetch(`/api/apqc/search?q=${encodeURIComponent(query)}&level=${this.currentFilters.level}&industry=${this.currentFilters.industry}&limit=20`, { signal: this._searchAbort.signal });
-            const data = await response.json();
+            const data = await Platform.fetch.get(`/api/apqc/search`, {
+                q: query,
+                level: this.currentFilters.level,
+                industry: this.currentFilters.industry,
+                limit: 20
+            }, { signal: this._searchAbort.signal });
 
             if (data.success) {
                 this.searchResults = data.matches || [];
@@ -314,7 +312,6 @@ class APQCBrowserManager {
             }
         } catch (error) {
             if (error.name === 'AbortError') return; // superseded by a newer query
-            console.error('Error searching:', error);
             this.showError('Error searching');
         } finally {
             this.showLoading(false);
@@ -419,24 +416,16 @@ class APQCBrowserManager {
 
     async autoLinkProcess(parentId) {
         try {
-            const response = await fetch('/api/apqc/auto-link', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    process_id: parentId
-                })
+            const data = await Platform.fetch.post('/api/apqc/auto-link', {
+                process_id: parentId
             });
 
-            const data = await response.json();
             if (data.success) {
                 this.showSuccess(`Auto-linked ${data.auto_link_parents.length} parent processes`);
             } else {
                 this.showError('Auto-link failed: ' + data.error);
             }
         } catch (error) {
-            console.error('Error auto-linking:', error);
             this.showError('Error auto-linking processes');
         }
     }

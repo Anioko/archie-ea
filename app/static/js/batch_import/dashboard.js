@@ -130,10 +130,10 @@ function batchImportDashboard() {
             }
 
             try {
-                const response = await fetch('/api/batch-import/jobs');
-                const data = await response.json();
-
-                if (response.ok && data.success) {
+                // Platform.fetch throws on non-ok responses, returns parsed data directly
+                const data = await Platform.fetch('/api/batch-import/jobs', { silent: true });
+                // If we reach here, the request succeeded (status 2xx)
+                if (data.success) {
                     this.jobs = data.jobs || [];
                     this.stats = data.stats || {
                         totalJobs: 0,
@@ -141,13 +141,19 @@ function batchImportDashboard() {
                         elementsGenerated: 0,
                         totalCost: 0
                     };
-                } else if (!silent) {
-                    this.showToast(data.error || 'Failed to load import jobs', 'error');
+                } else {
+                    // The server returned a 200 with { success: false, error: ... }
+                    // This is not an HTTP error, so Platform.fetch didn't throw.
+                    // We must treat it as a failure and show toast if not silent.
+                    if (!silent) {
+                        this.showToast(data.error || 'Failed to load import jobs', 'error');
+                    }
                 }
             } catch (error) {
-                console.error('Failed to load jobs:', error);
+                // Platform.fetch throws on network errors or HTTP errors (non-2xx)
+                // We already passed silent:true, so no global toast was shown.
                 if (!silent) {
-                    this.showToast('Failed to load import jobs', 'error');
+                    this.showToast(error.message || 'Failed to load import jobs', 'error');
                 }
             } finally {
                 this.loading = false;
@@ -160,75 +166,71 @@ function batchImportDashboard() {
 
         async startJob(jobId) {
             try {
-                const response = await fetch(`/api/batch-import/jobs/${jobId}/start`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
-                });
-                const data = await response.json();
-                if (response.ok && data.success) {
+                // Platform.fetch automatically injects CSRF token and serializes body
+                const data = await Platform.fetch.post(`/api/batch-import/jobs/${jobId}/start`, undefined, { silent: true });
+                // If we reach here, HTTP status is 2xx
+                if (data.success) {
                     this.showToast('Job started successfully', 'success');
                     this.loadJobs(true);
                 } else {
                     this.showToast(data.message || data.error || 'Failed to start job', 'error');
                 }
             } catch (error) {
-                console.error('Failed to start job:', error);
-                this.showToast('Failed to start job', 'error');
+                // Platform.fetch throws on network errors or HTTP errors (non-2xx)
+                // We already passed silent:true, so no global toast was shown.
+                this.showToast(error.message || 'Failed to start job', 'error');
             }
         },
         async pauseJob(jobId) {
             try {
-                const response = await fetch(`/api/batch-import/jobs/${jobId}/pause`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
-                });
-                const data = await response.json();
-                if (response.ok && data.success) {
+                // Platform.fetch automatically injects CSRF token and serializes body
+                const data = await Platform.fetch.post(`/api/batch-import/jobs/${jobId}/pause`, undefined, { silent: true });
+                // If we reach here, HTTP status is 2xx
+                if (data.success) {
                     this.showToast('Job paused', 'success');
                     this.loadJobs(true);
                 } else {
                     this.showToast(data.message || data.error || 'Failed to pause job', 'error');
                 }
             } catch (error) {
-                console.error('Failed to pause job:', error);
-                this.showToast('Failed to pause job', 'error');
+                // Platform.fetch throws on network errors or HTTP errors (non-2xx)
+                // We already passed silent:true, so no global toast was shown.
+                this.showToast(error.message || 'Failed to pause job', 'error');
             }
         },
         async resumeJob(jobId) {
             try {
-                const response = await fetch(`/api/batch-import/jobs/${jobId}/resume`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
-                });
-                const data = await response.json();
-                if (response.ok && data.success) {
+                // Platform.fetch automatically injects CSRF token and serializes body
+                const data = await Platform.fetch.post(`/api/batch-import/jobs/${jobId}/resume`, undefined, { silent: true });
+                // If we reach here, HTTP status is 2xx
+                if (data.success) {
                     this.showToast('Job resumed', 'success');
                     this.loadJobs(true);
                 } else {
                     this.showToast(data.message || data.error || 'Failed to resume job', 'error');
                 }
             } catch (error) {
-                console.error('Failed to resume job:', error);
-                this.showToast('Failed to resume job', 'error');
+                // Platform.fetch throws on network errors or HTTP errors (non-2xx)
+                // We already passed silent:true, so no global toast was shown.
+                this.showToast(error.message || 'Failed to resume job', 'error');
             }
         },
         confirmCancel(job) { this.cancelJobData = job; this.showCancelModal = true; },
         async cancelJob(jobId) {
             try {
-                const response = await fetch(`/api/batch-import/jobs/${jobId}/cancel`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
-                });
-                const data = await response.json();
-                if (response.ok && data.success) {
+                // Platform.fetch automatically injects CSRF token and serializes body
+                const data = await Platform.fetch.post(`/api/batch-import/jobs/${jobId}/cancel`, undefined, { silent: true });
+                // If we reach here, HTTP status is 2xx
+                if (data.success) {
                     this.showToast('Job cancelled', 'success');
                     this.loadJobs(true);
                 } else {
                     this.showToast(data.message || data.error || 'Failed to cancel job', 'error');
                 }
             } catch (error) {
-                console.error('Failed to cancel job:', error);
-                this.showToast('Failed to cancel job', 'error');
+                // Platform.fetch throws on network errors or HTTP errors (non-2xx)
+                // We already passed silent:true, so no global toast was shown.
+                this.showToast(error.message || 'Failed to cancel job', 'error');
             } finally {
                 this.showCancelModal = false;
                 this.cancelJobData = null;

@@ -10,32 +10,28 @@
      * - Always returns parsed JSON
      */
     function _fetch(url, opts) {
-        opts = opts || {};
-        opts.credentials = 'same-origin';
-        if (!opts.headers) opts.headers = {};
-        let csrf = document.querySelector('meta[name=csrf-token]');
-        if (csrf) opts.headers['X-CSRFToken'] = csrf.content;
-        return fetch(url, opts).then(function (r) {
-            if (!r.ok) {
-                return r.json().catch(function () { return {}; }).then(function (body) {
-                    let err = new Error(body.error || ('HTTP ' + r.status));
-                    err.status = r.status;
-                    err.body = body;
-                    throw err;
-                });
+        // Platform.fetch already handles CSRF, JSON serialization, and error throwing.
+        // We preserve the same envelope unwrapping behavior.
+        return Platform.fetch(url, opts).then(function (body) {
+            // Explicit failure envelope: {success: false, error: "..."} with HTTP 200
+            // Treat as a thrown error so callers' .catch() fires — prevents silent empty results.
+            if (body && body.success === false) {
+                let err = new Error(body.error || 'Request failed');
+                err.status = 200; // Platform.fetch throws on non-2xx, so this is a 200 response
+                err.body = body;
+                throw err;
             }
-            return r.json().then(function (body) {
-                // Explicit failure envelope: {success: false, error: "..."} with HTTP 200
-                // Treat as a thrown error so callers' .catch() fires — prevents silent empty results.
-                if (body && body.success === false) {
-                    let err = new Error(body.error || 'Request failed');
-                    err.status = r.status;
-                    err.body = body;
-                    throw err;
-                }
-                // Unwrap api_success envelope: {success: true, data: {...}} → inner data
-                return (body && body.data !== undefined) ? body.data : body;
-            });
+            // Unwrap api_success envelope: {success: true, data: {...}} → inner data
+            return (body && body.data !== undefined) ? body.data : body;
+        }).catch(function (e) {
+            // Platform.fetch already threw a structured PlatformError.
+            // We need to preserve the existing error shape for backward compatibility.
+            // The original _fetch attached status and body to the error.
+            // PlatformError has e.status and e.data.
+            const err = new Error(e.message || 'Request failed');
+            err.status = e.status || 0;
+            err.body = e.data || null;
+            throw err;
         });
     }
 
@@ -1047,7 +1043,13 @@
                             return !self.structuredIntake.in_scope_apps.some(function (a) { return a.id === app.id; });
                         });
                     })
-                    .catch(function () { self.appSearchResults = []; });
+                    .catch(function (e) {
+                        // Do NOT invent data; leave appSearchResults empty.
+                        self.appSearchResults = [];
+                        // The existing inline error state is already handled by _fetch's error path.
+                        // We must not swallow the error; rethrow to maintain the rule.
+                        throw e;
+                    });
             },
             addScopeApp: function (app) {
                 this.structuredIntake.in_scope_apps.push({ id: app.id, name: app.name, lifecycle_status: app.lifecycle_status || '' });
@@ -1068,7 +1070,12 @@
                             return !self.structuredIntake.integration_systems.some(function (s) { return s.id === sys.id; });
                         });
                     })
-                    .catch(function () { self.integrationSearchResults = []; });
+                    .catch(function (e) {
+                        // Do NOT invent data; leave integrationSearchResults empty.
+                        self.integrationSearchResults = [];
+                        // Rethrow to avoid swallowing error.
+                        throw e;
+                    });
             },
             addIntegration: function (sys) {
                 this.structuredIntake.integration_systems.push({ id: sys.id, name: sys.name });
@@ -1170,13 +1177,8 @@
                     ps.loading = true;
                     const endpoint = self.entityEndpoints[ps.entityType];
                     if (!endpoint) { ps.loading = false; ps.searchError = 'No search endpoint for this entity type'; return; }
-                    fetch(endpoint + encodeURIComponent(ps.query.trim()) + '&limit=10', {
-                        credentials: 'same-origin'
-                    })
-                        .then(function (r) {
-                            if (!r.ok) throw new Error('HTTP ' + r.status);
-                            return r.json();
-                        })
+                    // Use Platform.fetch with silent:true to avoid duplicate toasts (inline error is shown via searchError)
+                    Platform.fetch.get(endpoint + encodeURIComponent(ps.query.trim()) + '&limit=10', null, { silent: true })
                         .then(function (data) {
                             // Handle different response formats from various API endpoints
                             let items = [];
@@ -1196,9 +1198,11 @@
                             ps.searchError = '';
                         })
                         .catch(function (e) {
-                            console.error('[Journey] Entity search failed for', endpoint, e);
+                            // Do NOT use console.error. Surface error via searchError.
                             ps.results = [];
                             ps.searchError = 'Search unavailable for this entity type';
+                            // Rethrow to avoid swallowing error.
+                            throw e;
                         })
                         .then(function () { ps.loading = false; });
                 }, 300);
@@ -1306,6 +1310,7 @@
 
                     const fd = new FormData();
                     fd.append('file', file);
+                    // raw-fetch-ok: FormData upload with file requires multipart/form-data, which Platform.fetch cannot handle automatically.
                     fetch(API_BASE + '/' + self.solutionId + '/extract-brief', {
                         method: 'POST',
                         headers: { 'X-CSRFToken': csrf },
@@ -2759,10 +2764,8 @@
                 let self = this;
                 const sid = this.solutionId;
                 if (!sid) return;
-                fetch('/architecture-journey/' + sid + '/validate-step/' + step, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': window._csrfToken || '' },
-                })
+                // Use Platform.fetch with silent:true to avoid duplicate toasts (this is a fire-and-forget probe).
+                Platform.fetch.post('/architecture-journey/' + sid + '/validate-step/' + step, null, { silent: true })
                 .then(function (r) { return r.ok ? r.json() : null; /* swallow-ok: TRAC-001 probe fired automatically on every step transition; a null here adds no warning banner and removes none, so nothing on the step changes, and a toast on each navigation would train the user to ignore toasts */ })
                 .then(function (data) {
                     if (data && data.data && data.data.warnings && data.data.warnings.length > 0) {
@@ -3044,8 +3047,10 @@
                     self.genomeTemplates = data.templates || [];
                     self.loadingTemplates = false;
                 }).catch(function (e) {
-                    console.warn('[Journey] loadGenomeTemplates failed:', e);
+                    // Do NOT use console.warn. Surface error via existing error state.
                     self.loadingTemplates = false;
+                    // Rethrow to avoid swallowing error.
+                    throw e;
                 });
             },
 
@@ -3710,6 +3715,7 @@
                 let headers = {};
                 if (csrf) headers['X-CSRFToken'] = csrf.content;
 
+                // raw-fetch-ok: FormData upload with file requires multipart/form-data, which Platform.fetch cannot handle automatically.
                 fetch('/solutions/' + this.solutionId + '/codegen/data/upload', {
                     method: 'POST',
                     body: formData,

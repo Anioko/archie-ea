@@ -38,31 +38,32 @@ function riskHeatmap(initialRisks) {
             this.saveError = '';
             const url = `/api/solution-risks/${this.editRisk.id}`;
             try {
-                const csrfToken = document.querySelector('[name=csrf_token]')?.value || '';
-                const resp = await fetch(url, {
-                    method: 'PATCH',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': csrfToken,
-                    },
-                    body: JSON.stringify({
-                        probability: this.editRisk.probability,
-                        impact: this.editRisk.impact,
-                        status: this.editRisk.status,
-                        owner: this.editRisk.owner,
-                        mitigation: this.editRisk.mitigation,
-                    }),
-                });
-                if (resp.ok) {
-                    const idx = this.risks.findIndex(r => r.id === this.editRisk.id);
-                    if (idx !== -1) this.risks[idx] = { ...this.editRisk };
-                    this.editOpen = false;
-                } else {
-                    this.saveError = `Save failed (${resp.status})`;
-                }
+                // Platform.fetch.patch automatically injects CSRF token and serializes plain objects to JSON.
+                // It throws a structured PlatformError on non-ok responses, which we catch below.
+                // We pass { silent: true } because we paint our own inline error state (this.saveError).
+                await Platform.fetch.patch(url, {
+                    probability: this.editRisk.probability,
+                    impact: this.editRisk.impact,
+                    status: this.editRisk.status,
+                    owner: this.editRisk.owner,
+                    mitigation: this.editRisk.mitigation,
+                }, { silent: true });
+                // If we reach here, the request succeeded (204 No Content returns null).
+                const idx = this.risks.findIndex(r => r.id === this.editRisk.id);
+                if (idx !== -1) this.risks[idx] = { ...this.editRisk };
+                this.editOpen = false;
             } catch (e) {
-                this.saveError = 'Network error — please try again';
-                console.error('Risk save error:', e);
+                // Platform.fetch throws on network errors or non-ok responses.
+                // We must surface the failure to the user via this.saveError.
+                // Do NOT swallow the error or substitute placeholder data.
+                if (e.type === 'HttpError') {
+                    // e.status contains the HTTP status code.
+                    this.saveError = `Save failed (${e.status})`;
+                } else {
+                    // NetworkError or other PlatformError.
+                    this.saveError = 'Network error — please try again';
+                }
+                // Do NOT use console.error in shipped code; the error is already surfaced to the user via this.saveError.
             } finally {
                 this.saving = false;
             }

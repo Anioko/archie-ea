@@ -57,7 +57,7 @@
         if (freeOnly) params.set('free_only', 'true');
         if (search) params.set('search', search);
         params.set('limit', '100');
-        return fetch('/api/v1/llm/openrouter/models?' + params.toString()).then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); });
+        return Platform.fetch.get('/api/v1/llm/openrouter/models', Object.fromEntries(params), { silent: true });
     }
 
     function escapeHtml(str) {
@@ -359,27 +359,24 @@
         orModalSaveBtn.textContent = 'Saving...';
 
         const modelStr = modalSelectedModels.map(m => m.id).join(', ');
-        fetch('/admin/api-settings/update-model', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
-            body: JSON.stringify({ provider: 'openrouter', model: modelStr })
-        })
-        .then(r => r.json())
-        .then(data => {
-            if (data.success) {
-                closeOrModal();
-                location.reload();
-            } else {
-                Platform.toast.error('Failed to save: ' + (data.error || 'Unknown error'));
+        Platform.fetch.post('/admin/api-settings/update-model', { provider: 'openrouter', model: modelStr }, { silent: true })
+            .then(data => {
+                if (data.success) {
+                    closeOrModal();
+                    location.reload();
+                } else {
+                    Platform.toast.error('Failed to save: ' + (data.error || 'Unknown error'));
+                    orModalSaveBtn.disabled = false;
+                    orModalSaveBtn.textContent = 'Save Models';
+                }
+            })
+            .catch(err => {
+                Platform.toast.error('Request failed. Please try again.');
                 orModalSaveBtn.disabled = false;
                 orModalSaveBtn.textContent = 'Save Models';
-            }
-        })
-        .catch(() => {
-            Platform.toast.error('Request failed. Please try again.');
-            orModalSaveBtn.disabled = false;
-            orModalSaveBtn.textContent = 'Save Models';
-        });
+                // Re-throw to preserve error propagation
+                throw err;
+            });
     });
 
     // ===== Load from .env Modal =====
@@ -404,8 +401,7 @@
 
     function fetchEnvKeys() {
         envKeysBody.innerHTML = '<div class="flex items-center justify-center py-8 text-muted-foreground"><span class="mr-2">Scanning...</span></div>'; /* safe-html */
-        fetch('/admin/api-settings/env-keys')
-            .then(r => r.json())
+        Platform.fetch.get('/admin/api-settings/env-keys', null, { silent: true })
             .then(data => {
                 if (!data.success || data.keys.length === 0) {
                     envKeysBody.innerHTML = '<p class="text-sm text-muted-foreground text-center py-8">No API keys found in environment variables.</p>'; /* safe-html */
@@ -436,6 +432,8 @@
             })
             .catch(() => {
                 envKeysBody.innerHTML = '<p class="text-sm text-destructive text-center py-8">Failed to scan environment variables.</p>'; /* safe-html */
+                // Re-throw to preserve error propagation
+                throw new Error('Failed to scan environment variables');
             });
     }
 
@@ -447,19 +445,18 @@
         }
         const updateExisting = document.getElementById('env-update-existing').checked;
 
-        fetch('/admin/api-settings/load-env', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
-            body: JSON.stringify({ keys: selected, update_existing: updateExisting })
-        })
-        .then(r => r.json())
-        .then(data => {
-            if (data.success) {
-                closeEnvModal();
-                location.reload();
-            } else {
-                Platform.toast.error('Import failed: ' + (data.error || 'Unknown error'));
-            }
-        })
-        .catch(() => Platform.toast.error('Import request failed. Please try again.'));
+        Platform.fetch.post('/admin/api-settings/load-env', { keys: selected, update_existing: updateExisting }, { silent: true })
+            .then(data => {
+                if (data.success) {
+                    closeEnvModal();
+                    location.reload();
+                } else {
+                    Platform.toast.error('Import failed: ' + (data.error || 'Unknown error'));
+                }
+            })
+            .catch(() => {
+                Platform.toast.error('Import request failed. Please try again.');
+                // Re-throw to preserve error propagation
+                throw new Error('Import request failed');
+            });
     });

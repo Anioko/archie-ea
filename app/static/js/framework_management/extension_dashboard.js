@@ -167,7 +167,7 @@ function loadActivityLog() {
     }
 }
 
-function activateExtension() {
+async function activateExtension() {
     // API call to activate extension
     let statusEl = document.getElementById('extensionStatus');
     let previousStatus = statusEl ? statusEl.textContent : '';
@@ -176,17 +176,11 @@ function activateExtension() {
         statusEl.className = 'px-2 py-1 text-xs rounded-full bg-amber-100 text-amber-800';
     }
 
-    fetch('/framework-management/api/activate-extension', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
+    try {
+        const data = await Platform.fetch.post('/framework-management/api/activate-extension', {
             extension_name: extensionName
-        })
-    })
-    .then(function(response) { return response.json(); })
-    .then(function(data) {
+        }, { silent: true }); // suppress global toast because we show our own error
+
         if (data.success) {
             document.getElementById('extensionStatus').textContent = 'Active';
             document.getElementById('extensionStatus').className = 'px-2 py-1 text-xs rounded-full bg-emerald-500/10 text-green-800';
@@ -201,15 +195,13 @@ function activateExtension() {
             }
             showExtensionError('Failed to activate extension: ' + (data.message || 'unknown error'));
         }
-    })
-    .catch(function(error) {
-        console.error('Error activating extension:', error);
+    } catch (error) {
         if (statusEl) {
             statusEl.textContent = previousStatus || 'Inactive';
             statusEl.className = 'px-2 py-1 text-xs rounded-full bg-destructive/10 text-red-800';
         }
-        showExtensionError('Error activating extension. Please retry.');
-    });
+        showExtensionError('Error activating extension: ' + (error.message || 'Please retry.'));
+    }
 }
 
 function showExtensionError(message) {

@@ -24,12 +24,11 @@ document.addEventListener('alpine:init', () => {
         async loadData() {
             this.loading = true;
             try {
-                const resp = await fetch('/organization/chart/api/data');
+                // Platform.fetch throws on non-ok responses, returning parsed data directly.
+                const data = await Platform.fetch('/organization/chart/api/data');
                 // Unchecked, a 500 parsed to `{}`: roots and groups came out empty and
                 // the chart rendered blank, reading as "no org structure modelled".
-                if (!resp.ok) throw new Error('HTTP ' + resp.status);
-                const json = await resp.json();
-                const data = json.data ?? json;
+                // (Now handled by Platform.fetch throwing before reaching this point.)
 
                 this.fallback = !!data.fallback;
                 this.actorCount = data.actor_count || 0;
@@ -42,17 +41,22 @@ document.addEventListener('alpine:init', () => {
                     this.$nextTick(() => this.renderTree());
                 }
             } catch (e) {
-                console.error('Failed to load org chart data:', e);
                 // Counts are null, not 0: nothing was counted.
                 this.roots = [];
                 this.groups = [];
                 this.actorCount = null;
                 this.relationshipCount = null;
+                // The component already paints its own inline error state (blank canvas),
+                // so we pass silent:true to avoid a duplicate global toast.
+                // However, we still need to inform the user that the request failed.
+                // The existing toast below is the user‑visible error path; we keep it.
                 if (window.Platform && Platform.toast) {
                     // duration 0: with counts null the page renders nothing at all, so
                     // this toast is the only thing on screen — it must not time out.
                     Platform.toast.error('Could not load the org chart — the canvas is blank because the request failed.', { duration: 0 });
                 }
+                // Rethrow to propagate the failure (rule 2).
+                throw e;
             } finally {
                 this.loading = false;
             }

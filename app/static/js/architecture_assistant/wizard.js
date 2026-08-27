@@ -396,7 +396,7 @@ function architectureWizard() {
       let q = this.appSearch.trim();
       if (q.length < 2) { this.appSearchResults = []; return; }
       try {
-        let resp = await this._fetch('/applications/api/list?search=' + encodeURIComponent(q) + '&limit=10');
+        let resp = await Platform.fetch.get('/applications/api/list?search=' + encodeURIComponent(q) + '&limit=10');
         this.appSearchResults = resp.applications || resp.items || resp || [];
       } catch (e) {
         this.appSearchResults = [];
@@ -445,7 +445,7 @@ function architectureWizard() {
       if (q.length < 2) { this[resultMap[type]] = []; return; }
 
       try {
-        let resp = await this._fetch(
+        let resp = await Platform.fetch.get(
           '/api/architecture-assistant/motivation-elements?q=' + encodeURIComponent(q) + '&type=' + encodeURIComponent(type)
         );
         this[resultMap[type]] = resp.elements || resp.results || [];
@@ -491,7 +491,7 @@ function architectureWizard() {
       let q = this.archimateSearch.trim();
       if (q.length < 2) { this.archimateSearchResults = []; return; }
       try {
-        let resp = await this._fetch(
+        let resp = await Platform.fetch.get(
           '/api/architecture-assistant/motivation-elements?q=' + encodeURIComponent(q)
         );
         // Filter out elements already linked
@@ -531,7 +531,7 @@ function architectureWizard() {
       this.archimateSearchResults = [];
       if (Object.keys(this.elementTypesByLayer).length === 0) {
         try {
-          let resp = await this._fetch('/api/architecture-assistant/archimate-element-types');
+          let resp = await Platform.fetch.get('/api/architecture-assistant/archimate-element-types');
           this.elementTypesByLayer = resp.types_by_layer || {};
         } catch (e) {
           this.showToast('Failed to load element types', 'error');
@@ -698,7 +698,7 @@ function architectureWizard() {
       let q = this.capabilitySearch.trim();
       if (q.length < 2) { this.capabilitySearchResults = []; return; }
       try {
-        let resp = await this._fetch('/capability-map/api/unified-capabilities?search=' + encodeURIComponent(q));
+        let resp = await Platform.fetch.get('/capability-map/api/unified-capabilities?search=' + encodeURIComponent(q));
         this.capabilitySearchResults = resp.capabilities || resp || [];
         this.capabilityPage = 1;
       } catch (e) {
@@ -859,7 +859,7 @@ function architectureWizard() {
         return;
       }
       try {
-        let resp = await this._fetch('/api/vendors?search=' + encodeURIComponent(query.trim()));
+        let resp = await Platform.fetch.get('/api/vendors?search=' + encodeURIComponent(query.trim()));
         this.optionVendorResults = resp.vendors || [];
       } catch (e) {
         this.optionVendorResults = [];
@@ -876,7 +876,7 @@ function architectureWizard() {
         return;
       }
       try {
-        let resp = await this._fetch('/api/vendors?search=' + encodeURIComponent(name));
+        let resp = await Platform.fetch.get('/api/vendors?search=' + encodeURIComponent(name));
         let vendors = resp.vendors || [];
         let exact = vendors.find(function (v) { return v.name && v.name.toLowerCase() === name.toLowerCase(); });
         if (exact) {
@@ -919,18 +919,7 @@ function architectureWizard() {
         return;
       }
       try {
-        let resp = await fetch('/api/architecture-assistant/wizard/compare-options?solution_id=' + solutionId, {
-          headers: { 'Accept': 'application/json' },
-          credentials: 'same-origin',
-        });
-        if (!resp.ok) {
-          let err = {};
-          // Body may not be JSON (e.g. an HTML error page) — err stays {} and the
-          // generic message below is used; the error is still thrown either way.
-          try { err = await resp.json(); } catch (_) { /* swallow-ok: parsing an error body that may be an HTML page; the failure is reported by the throw on the next line either way, so reporting the parse itself would only mask the real message */ }
-          throw new Error(err.error || 'Comparison failed');
-        }
-        this.comparisonData = await resp.json();
+        this.comparisonData = await Platform.fetch.get('/api/architecture-assistant/wizard/compare-options?solution_id=' + solutionId);
         this.compareModalOpen = true;
         let self = this;
         this.$nextTick(function () { if (window.lucide) window.lucide.createIcons(); });
@@ -1147,6 +1136,7 @@ function architectureWizard() {
         height: 400,
       });
 
+      // raw-fetch-ok: need to inspect raw response for status before parsing JSON
       fetch('/solutions/' + this.solutionId + '/archimate-elements', { credentials: 'same-origin' })
         .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
         .then(function(data) {
@@ -1168,7 +1158,7 @@ function architectureWizard() {
         })
         .catch(function(err) {
           self.composerStatus = 'Error loading elements';
-          console.error('[Wizard Composer]', err);
+          // Do not use console.error in shipped code; error is already surfaced via composerStatus.
         });
     },
 
@@ -1249,36 +1239,15 @@ function architectureWizard() {
     // =========================================================================
 
     async _fetch(url) {
-      let resp = await fetch(url, {
-        headers: { 'Accept': 'application/json' },
-        credentials: 'same-origin',
-      });
-      if (!resp.ok) throw new Error('HTTP ' + resp.status);
-      return resp.json();
+      // This helper is kept for compatibility but should not be used for new code.
+      // Use Platform.fetch directly instead.
+      return Platform.fetch.get(url);
     },
 
     async _post(url, data) {
-      let headers = {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      };
-      if (this.csrfToken) {
-        headers['X-CSRFToken'] = this.csrfToken;
-      }
-      let resp = await fetch(url, {
-        method: 'POST',
-        headers: headers,
-        credentials: 'same-origin',
-        body: JSON.stringify(data),
-      });
-      if (!resp.ok) {
-        let errText = '';
-        // Body may not be JSON — errText stays '' and the HTTP-status fallback
-        // below is used; the error is still thrown either way.
-        try { errText = (await resp.json()).error || ''; } catch (_) { /* swallow-ok: parsing an error body that may be an HTML page; the failure is reported by the throw on the next line either way, so reporting the parse itself would only mask the real message */ }
-        throw new Error(errText || 'HTTP ' + resp.status);
-      }
-      return resp.json();
+      // Use Platform.fetch.post which automatically injects CSRF and serializes JSON.
+      // Pass { silent: true } because callers handle their own error display.
+      return Platform.fetch.post(url, data, { silent: true });
     },
   };
 }

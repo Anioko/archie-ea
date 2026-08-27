@@ -195,11 +195,7 @@ async function loadTargets() {
             url = '/capability-map/api/unified-capabilities';
         }
 
-        let response = await fetch(url);
-        /* Unchecked, a 500 parsed cleanly and every `data.x || []` below fell back to
-           an empty array — the picker opened saying there was nothing to map to. */
-        if (!response.ok) throw new Error('HTTP ' + response.status);
-        let data = await response.json();
+        let data = await Platform.fetch(url, { silent: true });
 
         if (data.error) {
             safeHTML(container, '<div class="text-center py-8 text-destructive">' +
@@ -743,11 +739,7 @@ async function loadUnifiedApplications(targetId) {
             url = '/api/vendors/' + id + '/applications';
         }
 
-        let response = await fetch(url);
-        /* Unchecked, a 500 left applicationsData empty and the modal listed no
-           applications — the existing mappings looked as though they were gone. */
-        if (!response.ok) throw new Error('HTTP ' + response.status);
-        let data = await response.json();
+        let data = await Platform.fetch(url, { silent: true });
 
         if (data.error) {
             console.error('Error loading applications:', data.error);
@@ -1327,20 +1319,7 @@ async function _saveUnifiedMappingsInner() {
             body.vendor_product_id = UnifiedMappingModal.vendorProductId;
         }
 
-        let csrfMeta = document.querySelector('meta[name="csrf-token"]');
-        let response = await fetch(url, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': csrfMeta ? csrfMeta.content : ''
-            },
-            body: JSON.stringify(body)
-        });
-
-        // Unchecked, a 500 parsed to `{}`: `data.error` was undefined, so the code fell
-        // through and reported "Successfully saved mapping(s)" for a save that failed.
-        if (!response.ok) throw new Error('HTTP ' + response.status);
-        let data = await response.json();
+        let data = await Platform.fetch.post(url, body);
 
         if (data.error) {
             if (typeof showNotification === 'function') {
@@ -1402,21 +1381,14 @@ async function saveReverseMappings() {
                 }]
             };
 
-            let csrfMeta = document.querySelector('meta[name="csrf-token"]');
-            let response = await fetch(UnifiedMappingModal.apiEndpoint + '/mappings', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': csrfMeta ? csrfMeta.content : ''
-                },
-                body: JSON.stringify(body)
-            });
-
-            if (!response.ok) { errorCount++; continue; }
-            let data = await response.json();
-            if (data.success || data.created > 0) {
-                successCount++;
-            } else {
+            try {
+                let data = await Platform.fetch.post(UnifiedMappingModal.apiEndpoint + '/mappings', body, { silent: true });
+                if (data.success || data.created > 0) {
+                    successCount++;
+                } else {
+                    errorCount++;
+                }
+            } catch (error) {
                 errorCount++;
             }
         }
@@ -1456,18 +1428,7 @@ window.deleteUnifiedMapping = async function(mappingId, appId) {
             url = '/api/vendors/application-mappings/' + mappingId;
         }
 
-        let csrfMeta = document.querySelector('meta[name="csrf-token"]');
-        let response = await fetch(url, {
-            method: 'DELETE',
-            headers: {
-                'X-CSRFToken': csrfMeta ? csrfMeta.content : ''
-            }
-        });
-
-        // Unchecked, a 500 parsed to `{}` and the row disappeared from the modal as
-        // though the mapping had been deleted, while it was still in the database.
-        if (!response.ok) throw new Error('HTTP ' + response.status);
-        let data = await response.json();
+        let data = await Platform.fetch.delete(url);
 
         if (data.error) {
             if (typeof showNotification === 'function') {

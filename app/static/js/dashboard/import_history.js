@@ -323,28 +323,28 @@ function closeRollbackModal() {
 function confirmRollback() {
     if (!rollbackImportId) return;
 
-    fetch('/applications/rollback-import/' + rollbackImportId, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        }
-    })
-    .then(function(response) { return response.json(); })
-    .then(function(data) {
-        if (data.success) {
-            Platform.toast.success('Import rolled back successfully');
-            loadImportHistory();
-        } else {
-            Platform.toast.error('Failed to rollback import: ' + data.error);
-        }
-    })
-    .catch(function(error) {
-        console.error('Error rolling back import:', error);
-        Platform.toast.error('Error rolling back import');
-    })
-    .finally(function() {
-        closeRollbackModal();
-    });
+    Platform.fetch.post('/applications/rollback-import/' + rollbackImportId, null, { silent: true })
+        .then(function(data) {
+            // Platform.fetch returns parsed response directly; success is indicated by the absence of an exception.
+            // The existing code expects a `success` property; we assume the API returns { success: true } on success.
+            if (data && data.success) {
+                Platform.toast.success('Import rolled back successfully');
+                loadImportHistory();
+            } else {
+                // If the API returns a non‑ok response, Platform.fetch would have thrown before reaching here.
+                // This branch handles a successful response with `success: false`.
+                Platform.toast.error('Failed to rollback import: ' + (data.error || 'Unknown error'));
+            }
+        })
+        .catch(function(error) {
+            // Platform.fetch already shows a toast unless silent:true; we passed silent:true to avoid duplicate toasts.
+            // However, we still need to surface the failure to the user via the existing inline error path.
+            // The existing code used Platform.toast.error in the catch; we preserve that behaviour.
+            Platform.toast.error('Error rolling back import');
+        })
+        .finally(function() {
+            closeRollbackModal();
+        });
 }
 
 function retryFailed() {

@@ -71,19 +71,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 return;
             }
 
-            let response = await fetch('/api/architecture-assistant/generate-archimate-model', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    capability_id: assistantData.capability_id,
-                    solution_options: assistantData.solution_options,
-                    gap_analysis: assistantData.gap_analysis || {}
-                })
+            let result = await Platform.fetch.post('/api/architecture-assistant/generate-archimate-model', {
+                capability_id: assistantData.capability_id,
+                solution_options: assistantData.solution_options,
+                gap_analysis: assistantData.gap_analysis || {}
             });
-
-            let result = await response.json();
 
             if (result.success) {
                 currentModel = result.model;
@@ -92,7 +84,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 showError(result.error || 'Failed to generate model');
             }
         } catch (error) {
-            console.error('Error generating model:', error);
             showError('Failed to generate ArchiMate model');
         }
     }
@@ -237,23 +228,18 @@ document.addEventListener('DOMContentLoaded', function() {
 
     async function exportModelAsXML() {
         try {
-            let response = await fetch('/api/architecture-assistant/export-archimate-model/' + currentModel.id);
-            if (response.ok) {
-                let xml = await response.text();
-                let blob = new Blob([xml], { type: 'application/xml' });
-                let url = URL.createObjectURL(blob);
-                let a = document.createElement('a');
-                a.href = url;
-                a.download = (currentModel.name || 'archimate-model') + '.xml';
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
-            } else {
-                showError('Failed to export model');
-            }
+            let xml = await Platform.fetch.get('/api/architecture-assistant/export-archimate-model/' + currentModel.id);
+            // Platform.fetch returns parsed response body directly; for XML endpoints it returns text
+            let blob = new Blob([xml], { type: 'application/xml' });
+            let url = URL.createObjectURL(blob);
+            let a = document.createElement('a');
+            a.href = url;
+            a.download = (currentModel.name || 'archimate-model') + '.xml';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
         } catch (error) {
-            console.error('Error exporting model:', error);
             showError('Failed to export model');
         }
     }

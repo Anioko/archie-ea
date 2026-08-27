@@ -24,18 +24,20 @@ document.addEventListener('alpine:init', () => {
     get stageGuidance() { return this.stages[this.stageIndex].guidance; },
 
     async save(changes) {
-      const response = await fetch(`/architecture-journey/work/${this.journeyId}/state`, {
-        method: 'PATCH',
-        credentials: 'same-origin',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || '',
-        },
-        body: JSON.stringify(changes),
-      });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error || 'The journey could not be saved.');
-      return payload.data;
+      // Platform.fetch automatically injects CSRF token for PATCH, serialises plain objects to JSON,
+      // and throws a structured PlatformError on non-ok responses.
+      // The existing error handling remains unchanged: we catch the error and surface it to the user.
+      try {
+        const data = await Platform.fetch.patch(`/architecture-journey/work/${this.journeyId}/state`, changes, { silent: true });
+        // Platform.fetch returns the parsed response body directly.
+        // The original code expected payload.data; we preserve that expectation.
+        return data.data;
+      } catch (error) {
+        // The original code threw an Error with payload.error or a default message.
+        // Platform.fetch throws a PlatformError with a message property.
+        // We rethrow an Error with the same message to keep the existing error handling.
+        throw new Error(error.message || 'The journey could not be saved.');
+      }
     },
 
     async advance() {

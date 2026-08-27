@@ -8,27 +8,40 @@
 
 window.deleteSolution = async function(solutionId, solutionName) {
     function doDelete() {
-        let csrf = document.querySelector('meta[name="csrf-token"]');
-        fetch('/solutions/' + solutionId + '/delete', {
+        // Platform.fetch automatically injects CSRF token and serializes plain objects to JSON
+        Platform.fetch('/solutions/' + solutionId + '/delete', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': csrf ? csrf.content : ''
-            }
+            // No need to set Content-Type or X-CSRFToken headers manually
+            // Platform.fetch will throw a structured PlatformError on non-ok response
         })
-        .then(function(r) { return r.json(); })
         .then(function(data) {
+            // Platform.fetch returns parsed response body directly
+            // data is the parsed JSON from the server
             if (data.success) {
                 if (window.Platform && Platform.toast) Platform.toast.success('Deleted "' + solutionName + '"');
                 setTimeout(function() { window.location.reload(); }, 400);
             } else {
+                // This branch is only reachable if the server returns a 200 with success:false,
+                // because Platform.fetch throws on non-ok HTTP responses.
                 if (window.Platform && Platform.toast) Platform.toast.error(data.error || 'Failed to delete');
                 else Platform.toast.error(data.error || 'Failed to delete solution');
             }
         })
         .catch(function(err) {
-            if (window.Platform && Platform.toast) Platform.toast.error('Delete failed: ' + (err.message || err));
-            else Platform.toast.error('Delete failed: ' + (err.message || err));
+            // Platform.fetch already shows a user-visible error toast by default,
+            // but we still need to handle the error to prevent unhandled rejection.
+            // The toast is already shown, so we don't need to show another one.
+            // However, the original code attempted to show a toast in the catch block,
+            // which would duplicate the toast. We'll keep the catch to log (if needed)
+            // but not show a duplicate toast.
+            // Since console output is forbidden, we'll just rethrow to surface the error.
+            // However, rethrowing would break the existing flow, so we'll let the error
+            // propagate silently (the global toast already shown).
+            // We'll not add any fallback value per rule #2.
+            // The error is already surfaced via Platform.fetch's built-in toast.
+            // We'll just ensure no duplicate toast is shown.
+            // The original code had duplicate toast calls; we'll remove them.
+            // No further action needed.
         });
     }
 
@@ -161,25 +174,27 @@ function solutionDrawer() {
       const createUrl = window.__SOLUTION_LIST_CONFIG__?.createSolutionUrl || '/solutions/create';
       const listUrl = window.__SOLUTION_LIST_CONFIG__?.listSolutionsUrl || '/solutions/';
       const payload = Object.assign({}, this.formData, { application_ids: [], element_ids: [], drawer_mode: true });
-      fetch(createUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || ''
-        },
-        body: JSON.stringify(payload)
-      })
-        .then(r => r.json())
+      // Platform.fetch automatically injects CSRF token and serializes plain objects to JSON
+      // We pass { silent: true } because we handle inline error state ourselves (this.errorMsg)
+      Platform.fetch.post(createUrl, payload, { silent: true })
         .then(data => {
           this.submitting = false;
-          if (!data.success) { this.errorMsg = data.error || 'An error occurred.'; return; }
+          // Platform.fetch throws on non-ok HTTP responses, so data is only reached on success
+          if (!data.success) { 
+            // This branch is only reachable if the server returns a 200 with success:false
+            this.errorMsg = data.error || 'An error occurred.'; 
+            return; 
+          }
           this.drawerOpen = false;
           showToast({ title: 'Solution created successfully', variant: 'default' });
           setTimeout(() => { window.location.href = listUrl; }, 800);
         })
-        .catch(() => {
+        .catch(err => {
           this.submitting = false;
-          this.errorMsg = 'Network error. Please try again.';
+          // Platform.fetch already shows a toast unless silent:true, but we passed silent:true
+          // to avoid duplicate error messages. We need to set inline error state.
+          // The error message is available in err.message
+          this.errorMsg = err.message || 'Network error. Please try again.';
         });
     }
   };

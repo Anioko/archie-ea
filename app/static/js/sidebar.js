@@ -23,28 +23,21 @@ async function loadQuickAccessItems(type, limit) {
   const container = document.getElementById(containerId);
 
   if (!container) {
-    console.debug(`[Sidebar] Container #${containerId} not found, skipping async load`);
+    // Container not found, skipping async load
     return;
   }
 
   try {
-    const response = await fetch(`/api/sidebar/quick-access?type=${type}&limit=${limit}`, {
-      method: "GET",
-      credentials: "same-origin",
-      headers: {
-        "X-Requested-With": "XMLHttpRequest",
-      },
+    const data = await Platform.fetch.get(`/api/sidebar/quick-access?type=${type}&limit=${limit}`, null, {
+      // The call site paints its own inline error state via container.innerHTML = '' below,
+      // so suppress the global toast to avoid duplicate user-visible errors.
+      silent: true,
     });
-
-    if (!response.ok) {
-      console.error(`[Sidebar] Failed to load ${type}: ${response.status}`);
-      return;
-    }
-
-    const data = await response.json();
     renderQuickAccessItems(container, data.items, type);
   } catch (error) {
-    console.warn(`[Sidebar] Quick access for ${type} unavailable (network)`, error.message);
+    // Platform.fetch throws on any non-ok response or network error.
+    // We must surface the failure to the user by clearing the container,
+    // which leaves the sidebar section empty (no invented data).
     container.innerHTML = '';
   }
 }

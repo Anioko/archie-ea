@@ -54,13 +54,10 @@
         var container = document.getElementById('capmodel-container');
         if (!loading || !container) return;
 
-        fetch('/capability-map/api/unified-capabilities')
-            .then(function (r) {
-                // Unchecked, a 500 parsed cleanly, `caps` came out empty and the tab
-                // showed its "no capabilities" empty state for a load that failed.
-                if (!r.ok) throw new Error('HTTP ' + r.status);
-                return r.json();
-            })
+        // Use Platform.fetch which throws on non‑ok responses, returns parsed data directly,
+        // and shows a user‑visible error toast unless { silent: true }.
+        // This call site paints its own inline error state, so we pass silent:true to avoid duplicate toasts.
+        Platform.fetch('/capability-map/api/unified-capabilities', { silent: true })
             .then(function (data) {
                 var caps = data.unified_capabilities || data.capabilities || [];
                 loading.classList.add('hidden');

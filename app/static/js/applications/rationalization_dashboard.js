@@ -166,9 +166,15 @@ function rationalizationDashboard() {
             // Platform.fetch returns parsed JSON, but the export endpoint returns a blob.
             // We cannot use Platform.fetch for binary responses; keep raw fetch with CSRF injection.
             // raw-fetch-ok: binary response (blob) not supported by Platform.fetch wrapper.
+            // The global fetch patch in core/03-fetch.js automatically injects X-CSRFToken for same-origin mutating requests.
+            // Therefore we can drop the manual X-CSRFToken header.
+            // However, we still need to set Content-Type to application/json because the endpoint expects JSON.
+            // The global patch does not set Content-Type, so we must keep that header.
+            // The body must be a JSON string; we keep JSON.stringify.
+            // Note: The global patch will add X-CSRFToken header automatically, so we don't need csrfToken variable.
             fetch('/applications/rationalization/api/export', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ format: self.exportFormat, scope: {} })
             })
             .then(function(r) {

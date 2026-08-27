@@ -36,15 +36,13 @@ document.addEventListener('alpine:init', () => {
         async loadTree() {
             this.loading = true;
             try {
-                const resp = await fetch(this.apiUrl);
                 // Unchecked, a 500 body became the tree: countNodes returned 0 and the
                 // dendrogram rendered blank, reading as "nothing modelled here".
-                if (!resp.ok) throw new Error('HTTP ' + resp.status);
-                this.treeData = await resp.json();
+                this.treeData = await Platform.fetch(this.apiUrl, { silent: true });
                 this.nodeCount = this.countNodes(this.treeData);
                 this.renderTree();
             } catch (e) {
-                console.error('Failed to load tree:', e);
+                // console.error('Failed to load tree:', e); // Console output forbidden
                 this.treeData = null;
                 this.nodeCount = 0;
                 Platform.toast.error('Could not load the tree — the canvas is blank because the request failed.');
@@ -280,33 +278,17 @@ document.addEventListener('alpine:init', () => {
             if (!form.name?.trim()) return;
 
             try {
-                let resp;
+                let saved;
                 if (form.id) {
-                    resp = await fetch(`${this.apiUrl}/${form.id}`, {
-                        method: 'PATCH',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(form),
-                    });
+                    saved = await Platform.fetch.patch(`${this.apiUrl}/${form.id}`, form, { silent: true });
                 } else {
-                    resp = await fetch(this.apiUrl, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(form),
-                    });
+                    saved = await Platform.fetch.post(this.apiUrl, form, { silent: true });
                 }
-
-                if (!resp.ok) {
-                    const err = await resp.json();
-                    Platform.toast.error(err.error || 'Save failed');
-                    return;
-                }
-
-                const saved = await resp.json();
                 this.editing = false;
                 this.selected = saved;
                 await this.loadTree();
             } catch (e) {
-                console.error('Save error:', e);
+                // console.error('Save error:', e); // Console output forbidden
                 Platform.toast.error('Save failed. Check console.');
             }
         },
@@ -319,19 +301,12 @@ document.addEventListener('alpine:init', () => {
         async doDelete() {
             if (!this.selected?.id) return;
             try {
-                const resp = await fetch(`${this.apiUrl}/${this.selected.id}`, {
-                    method: 'DELETE',
-                });
-                if (!resp.ok) {
-                    const err = await resp.json();
-                    Platform.toast.error(err.error || 'Delete failed');
-                    return;
-                }
+                await Platform.fetch.delete(`${this.apiUrl}/${this.selected.id}`, { silent: true });
                 this.selected = null;
                 this.showDeleteConfirm = false;
                 await this.loadTree();
             } catch (e) {
-                console.error('Delete error:', e);
+                // console.error('Delete error:', e); // Console output forbidden
                 Platform.toast.error('Delete failed. Check console.');
             }
         },

@@ -20,23 +20,13 @@ function vendorSuggestionsMixin() {
             self.vendorError = null;
 
             const params = capabilityIds.join(',');
-            fetch('/api/solutions/' + solutionId + '/suggestions/vendors?capability_ids=' + params, {
-                credentials: 'same-origin',
-                headers: (function() {
-                    const h = {};
-                    let csrf = document.querySelector('meta[name=csrf-token]');
-                    if (csrf) h['X-CSRFToken'] = csrf.content;
-                    return h;
-                }())
-            })
-                .then(function(r) {
-                    // fetch does not reject on 4xx/5xx: without this the error body
-                    // parses cleanly, capability_suggestions is undefined, and the
-                    // step renders "no vendor suggestions" for a server failure.
-                    if (!r.ok) throw new Error('Could not load vendor suggestions (HTTP ' + r.status + ')');
-                    return r.json();
-                })
+            // Platform.fetch.get automatically appends query parameters when params is an object.
+            // But here we already have a comma-separated string, so we'll build the URL manually.
+            const url = '/api/solutions/' + solutionId + '/suggestions/vendors?capability_ids=' + params;
+            // Use { silent: true } because we set vendorError for inline error display
+            Platform.fetch.get(url, {}, { silent: true })
                 .then(function(data) {
+                    // Platform.fetch returns the parsed response body directly.
                     // Unwrap api_success envelope if present
                     let payload = (data && data.data !== undefined) ? data.data : data;
                     self.vendorSuggestions = payload.capability_suggestions || [];
@@ -46,42 +36,39 @@ function vendorSuggestionsMixin() {
                     self.vendorSuggestions = [];
                     self.vendorError = 'Could not load vendor suggestions — ' + (err && err.message ? err.message : 'request failed');
                     self.vendorLoading = false;
+                    // Platform.fetch already shows a toast unless silent:true, but we passed silent:true.
+                    // However, we still want to show a toast for network errors? The original code did.
+                    // The original code showed toast via Platform.toast.error.
+                    // Since we passed silent:true, we need to show toast ourselves for consistency.
                     if (window.Platform && Platform.toast) Platform.toast.error(self.vendorError);
-                    console.error('Vendor suggestions error:', err);
                 });
         },
 
         confirmVendor: function(solutionId, pricingId, index, vendorIndex) {
             let self = this;
-            let csrf = document.querySelector('meta[name=csrf-token]');
-            let headers = {'Content-Type': 'application/json'};
-            if (csrf) headers['X-CSRFToken'] = csrf.content;
-
-            fetch('/api/solutions/' + solutionId + '/suggestions/vendors/confirm', {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: headers,
-                body: JSON.stringify({pricing_id: pricingId})
-            })
-            .then(function(r) {
-                // A failed confirm must not slip past `if (payload.success)` unreported.
-                if (!r.ok) throw new Error('HTTP ' + r.status);
-                return r.json();
-            })
-            .then(function(data) {
-                let payload = (data && data.data !== undefined) ? data.data : data;
-                if (payload.success) {
-                    let suggestion = self.vendorSuggestions[index];
-                    if (suggestion && suggestion.vendors && suggestion.vendors[vendorIndex]) {
-                        suggestion.vendors[vendorIndex].data_source_type = 'architect_confirmed';
-                        suggestion.vendors[vendorIndex].confirmed_by_count = payload.confirmed_by_count;
+            // Platform.fetch.post automatically handles CSRF and JSON serialization
+            Platform.fetch.post('/api/solutions/' + solutionId + '/suggestions/vendors/confirm', {pricing_id: pricingId})
+                .then(function(data) {
+                    // Platform.fetch returns the parsed response body directly.
+                    let payload = (data && data.data !== undefined) ? data.data : data;
+                    if (payload.success) {
+                        let suggestion = self.vendorSuggestions[index];
+                        if (suggestion && suggestion.vendors && suggestion.vendors[vendorIndex]) {
+                            suggestion.vendors[vendorIndex].data_source_type = 'architect_confirmed';
+                            suggestion.vendors[vendorIndex].confirmed_by_count = payload.confirmed_by_count;
+                        }
                     }
-                }
-            })
-            .catch(function(err) {
-                console.error('Vendor confirm error:', err);
-                if (window.Platform && Platform.toast) Platform.toast.error('Failed to confirm vendor');
-            });
+                })
+                .catch(function(err) {
+                    // Platform.fetch already shows a toast by default, so we don't need to add another.
+                    // However, the original code had a specific error message.
+                    // Platform.fetch will show the error message from the server or a generic one.
+                    // We'll keep the existing toast call for consistency, but Platform.fetch already shows one.
+                    // To avoid duplicate toasts, we could pass { silent: true } and show our own.
+                    // But the original code shows a generic message, while Platform.fetch shows server message.
+                    // Let's keep Platform.fetch's default behavior (no silent flag) and remove the extra toast.
+                    // The original console.error is forbidden, so we remove it.
+                });
         },
 
         rejectVendor: function(index, vendorIndex) {
@@ -134,66 +121,46 @@ function vendorSuggestionsMixin() {
             const edit = self.editingPrice;
             if (!edit) return;
             const vendor = self.vendorSuggestions[edit.index].vendors[edit.vendorIndex];
-            let csrf = document.querySelector('meta[name=csrf-token]');
-            let headers = {'Content-Type': 'application/json'};
-            if (csrf) headers['X-CSRFToken'] = csrf.content;
-
-            fetch('/api/solutions/' + solutionId + '/suggestions/vendors/update-pricing', {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: headers,
-                body: JSON.stringify({pricing_id: vendor.pricing_id, annual_cost: parseFloat(edit.value)})
-            })
-            .then(function(r) {
-                if (!r.ok) throw new Error('HTTP ' + r.status);
-                return r.json();
-            })
-            .then(function(data) {
-                let payload = (data && data.data !== undefined) ? data.data : data;
-                if (payload.success) {
-                    vendor.annual_cost = payload.annual_cost;
-                    vendor.data_source_type = 'architect_confirmed';
-                    vendor.confirmed_by_count = payload.confirmed_by_count;
-                }
-                self.editingPrice = null;
-            })
-            .catch(function(err) {
-                // The edit box used to just close, leaving the old price on screen and
-                // the user believing the correction was saved.
-                console.error('Price update error:', err);
-                if (window.Platform && Platform.toast) Platform.toast.error('Could not save the corrected price — it was not recorded.');
-                self.editingPrice = null;
-            });
+            // Platform.fetch.post automatically handles CSRF and JSON serialization
+            Platform.fetch.post('/api/solutions/' + solutionId + '/suggestions/vendors/update-pricing', 
+                {pricing_id: vendor.pricing_id, annual_cost: parseFloat(edit.value)})
+                .then(function(data) {
+                    let payload = (data && data.data !== undefined) ? data.data : data;
+                    if (payload.success) {
+                        vendor.annual_cost = payload.annual_cost;
+                        vendor.data_source_type = 'architect_confirmed';
+                        vendor.confirmed_by_count = payload.confirmed_by_count;
+                    }
+                    self.editingPrice = null;
+                })
+                .catch(function(err) {
+                    // The edit box used to just close, leaving the old price on screen and
+                    // the user believing the correction was saved.
+                    // Platform.fetch already shows a toast by default, so we don't need to add another.
+                    // However, the original error message is specific. Platform.fetch will show server message.
+                    // We'll keep the existing behavior by passing a custom errorMsg? Not possible without options.
+                    // We'll rely on Platform.fetch's default toast.
+                    self.editingPrice = null;
+                });
         },
 
         // --- Coverage voting ---
         voteCoverage: function(solutionId, mappingId, voteUp, index, vendorIndex) {
             let self = this;
-            let csrf = document.querySelector('meta[name=csrf-token]');
-            let headers = {'Content-Type': 'application/json'};
-            if (csrf) headers['X-CSRFToken'] = csrf.content;
-
-            fetch('/api/solutions/' + solutionId + '/suggestions/vendors/vote-coverage', {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: headers,
-                body: JSON.stringify({mapping_id: mappingId, vote_up: voteUp})
-            })
-            .then(function(r) {
-                if (!r.ok) throw new Error('HTTP ' + r.status);
-                return r.json();
-            })
-            .then(function(data) {
-                let payload = (data && data.data !== undefined) ? data.data : data;
-                if (payload.success && self.vendorSuggestions[index] && self.vendorSuggestions[index].vendors[vendorIndex]) {
-                    self.vendorSuggestions[index].vendors[vendorIndex].coverage_pct = payload.coverage_percentage;
-                    self.vendorSuggestions[index].vendors[vendorIndex].confirmed_by_count = payload.confirmed_by_count;
-                }
-            })
-            .catch(function(err) {
-                console.error('Coverage vote error:', err);
-                if (window.Platform && Platform.toast) Platform.toast.error('Failed to record vote');
-            });
+            // Platform.fetch.post automatically handles CSRF and JSON serialization
+            Platform.fetch.post('/api/solutions/' + solutionId + '/suggestions/vendors/vote-coverage', 
+                {mapping_id: mappingId, vote_up: voteUp})
+                .then(function(data) {
+                    let payload = (data && data.data !== undefined) ? data.data : data;
+                    if (payload.success && self.vendorSuggestions[index] && self.vendorSuggestions[index].vendors[vendorIndex]) {
+                        self.vendorSuggestions[index].vendors[vendorIndex].coverage_pct = payload.coverage_percentage;
+                        self.vendorSuggestions[index].vendors[vendorIndex].confirmed_by_count = payload.confirmed_by_count;
+                    }
+                })
+                .catch(function(err) {
+                    // Platform.fetch already shows a toast by default, so we don't need to add another.
+                    // The original console.error is forbidden, so we remove it.
+                });
         },
 
         // Helper: extract capability IDs from the confirmed/accepted domain elements.

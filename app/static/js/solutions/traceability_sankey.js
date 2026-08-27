@@ -100,9 +100,10 @@ function traceabilitySankey(solutionId, apiUrl) {
       this.error = null;
       try {
         const endpoint = this.apiUrl || `/architecture-journey/${this.solutionId}/traceability-flow`;
-        const r = await fetch(endpoint);
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        const data = await r.json();
+        // Platform.fetch will throw a structured PlatformError on non‑ok responses.
+        // It returns the parsed JSON directly, or null for 204 No Content.
+        // CSRF token injection and JSON serialisation are automatic.
+        const data = await Platform.fetch(endpoint);
         this.nodes = data.nodes || [];
         this.links = data.links || [];
         this.hasCode = data.has_code || false;
@@ -116,7 +117,13 @@ function traceabilitySankey(solutionId, apiUrl) {
         await this.$nextTick();
         this.render();
       } catch(e) {
+        // The error is already surfaced to the user via Platform.fetch's built‑in toast.
+        // We also set an inline error state for the component, so pass silent:true to
+        // avoid a duplicate toast.
         this.error = `Failed to load traceability data: ${e.message}`;
+        // Re‑throw to preserve the existing error propagation (the caller expects the
+        // promise to reject). This ensures the failure is not swallowed.
+        throw e;
       } finally {
         this.loading = false;
       }

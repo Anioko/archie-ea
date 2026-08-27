@@ -119,43 +119,32 @@
     // Format: { 'gap-123': true, 'wp-456': true, 'wp-789': false }
     const expandedRows = new Map();
     
-    // Fetch with timeout and retry — wraps native fetch with AbortController timeout.
-    // Platform.fetch handles loading indicators; this adds timeout protection for long API calls.
+    // Fetch with timeout and retry — wraps Platform.fetch with timeout protection for long API calls.
     async function fetchWithTimeout(url, options = {}, timeout = 30000) {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), timeout);
-
-        // Inject CSRF token for mutating methods
-        const method = (options.method || 'GET').toUpperCase();
-        if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
-            options.headers = options.headers || {};
-            if (!options.headers['X-CSRFToken']) {
-                const meta = document.querySelector('meta[name="csrf-token"]');
-                if (meta) options.headers['X-CSRFToken'] = meta.content || '';
-            }
-        }
+        // Platform.fetch already handles CSRF token injection, loading indicators, and error toasting.
+        // We'll use a Promise.race to implement timeout on top of Platform.fetch.
+        // Pass silent: true to prevent duplicate toasts from Platform.fetch when timeout occurs
+        const fetchPromise = Platform.fetch(url, { ...options, silent: true })
+            .catch(error => {
+                // Re-throw the error so it can be caught by the caller
+                throw error;
+            });
+        
+        const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => {
+                const timeoutMsg = 'Request timeout - server took too long to respond';
+                reject(new Error(timeoutMsg));
+            }, timeout);
+        });
 
         try {
-            const response = await fetch(url, {
-                ...options,
-                credentials: 'include',
-                signal: controller.signal
-            });
-            clearTimeout(timeoutId);
-
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
-
-            return response;
+            const result = await Promise.race([fetchPromise, timeoutPromise]);
+            return result;
         } catch (error) {
-            clearTimeout(timeoutId);
-            if (error.name === 'AbortError') {
-                const timeoutMsg = 'Request timeout - server took too long to respond';
-                if (window.Platform && Platform.toast) Platform.toast.error(timeoutMsg);
-                throw new Error(timeoutMsg);
+            // Show toast for timeout errors only
+            if (error.message === 'Request timeout - server took too long to respond') {
+                if (window.Platform && Platform.toast) Platform.toast.error(error.message);
             }
-            if (window.Platform && Platform.toast) Platform.toast.error(error.message || 'Network request failed');
             throw error;
         }
     }
@@ -205,8 +194,7 @@
     async function loadDataForAllTabs() {
         try {
             // Load unified data (source for all capability tabs)
-            const unifiedResponse = await fetchWithTimeout('/capability-map/api/unified-capabilities');
-            const unifiedData = await unifiedResponse.json();
+            const unifiedData = await fetchWithTimeout('/capability-map/api/unified-capabilities');
             if (unifiedData.unified_capabilities || unifiedData.capabilities) {
                 // Normalize unified array from possible keys
                 const unifiedArr = unifiedData.unified_capabilities || unifiedData.capabilities || [];
@@ -244,9 +232,6 @@
             updateGapTabMetricCards(tableData.gap.data);
     
         } catch (error) {
-            console.error('Error loading data:', error);
-            if (window.Platform && Platform.toast) Platform.toast.error('Failed to load capability data');
-
             // Display error in all table bodies
             const errorMsg = error.message || 'Failed to load capability data. Please check your connection and try again.';
             displayTableError('unified', errorMsg);
@@ -706,6 +691,7 @@
     // Export functions — uses raw fetch for blob download (not JSON)
     async function exportData(format) {
         try {
+            // raw-fetch-ok: blob download requires Response object, not parsed body
             const response = await fetch(`/capability-map/api/export-mappings?format=${format}`, {
                 credentials: 'include'
             });
@@ -722,7 +708,6 @@
             window.URL.revokeObjectURL(url);
             document.body.removeChild(a);
         } catch (error) {
-            console.error('Error exporting data:', error);
             if (window.Platform && Platform.toast) Platform.toast.error('Error exporting data: ' + (error.message || 'Unknown error'));
         }
     }
@@ -902,8 +887,7 @@
     
         try {
             // Fetch comprehensive gap analysis from new API
-            const response = await fetchWithTimeout('/capability-map/api/roadmap/gaps');
-            const data = await response.json();
+            const data = await fetchWithTimeout('/capability-map/api/roadmap/gaps');
     
             if (data.success && data.gaps) {
                 // Store statistics
@@ -948,8 +932,6 @@
                 renderRoadmapTimeline();
             }
         } catch (error) {
-            console.error('Error loading roadmap data:', error);
-            if (window.Platform && Platform.toast) Platform.toast.error('Error loading roadmap data');
             const retryButton = `<button onclick="roadmapData.initialized = false; initRoadmapTab();" class="mt-4 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors">
                 <i data-lucide="refresh-cw" class="w-4 h-4 inline mr-2"></i>
                 Retry
@@ -1938,8 +1920,7 @@
         lucide.createIcons();
     
         try {
-            const response = await fetchWithTimeout('/capability-map/api/roadmap/archimate-gaps');
-            const data = await response.json();
+            const data = await fetchWithTimeout('/capability-map/api/roadmap/archimate-gaps');
     
             if (data.success) {
                 roadmapData.persistedGaps = data.gaps || [];
@@ -1981,8 +1962,6 @@
                 renderRoadmapTimeline();
             }
         } catch (error) {
-            console.error('Error loading persisted roadmap:', error);
-
             // Check if it's an empty state (no data) vs actual error
             const isEmptyState = error.message && error.message.includes('No gaps found');
             if (!isEmptyState && window.Platform && Platform.toast) Platform.toast.error('Error loading persisted roadmap');
@@ -2117,7 +2096,6 @@
                 showToast(data.error || 'Conversion failed', 'error');
             }
         } catch (error) {
-            console.error('Error converting gaps:', error);
             showToast('Error converting gaps', 'error');
         } finally {
             safeHTML(btn, originalText);
@@ -3818,7 +3796,6 @@
                 showToast(data.error || 'Update failed', 'error');
             }
         } catch (error) {
-            console.error('Error saving gap:', error);
             showToast('Error saving changes', 'error');
         }
     }
@@ -4316,7 +4293,6 @@
                 showToast(data.error || 'Failed to add to roadmap', 'error');
             }
         } catch (error) {
-            console.error('Error adding to roadmap:', error);
             showToast('Error adding to roadmap', 'error');
         }
     }
@@ -4439,7 +4415,6 @@
             }
     
         } catch (error) {
-            console.error('Error bulk adding to roadmap:', error);
             showToast('Error adding capabilities to roadmap', 'error');
         }
     }
@@ -4800,8 +4775,7 @@
         lucide.createIcons();
     
         try {
-            const response = await fetchWithTimeout('/capability-map/api/process-gaps');
-            const data = await response.json();
+            const data = await fetchWithTimeout('/capability-map/api/process-gaps');
     
             if (data.error) {
                 throw new Error(data.error);
@@ -4823,8 +4797,6 @@
             updateProcessGapTable();
     
         } catch (error) {
-            console.error('Error loading process gap data:', error);
-            if (window.Platform && Platform.toast) Platform.toast.error('Error loading process gap data');
             const retryButton = `<button onclick="processGapData.loaded = false; loadProcessGapData();" class="mt-4 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-purple-700 transition-colors">
                 <i data-lucide="refresh-cw" class="w-4 h-4 inline mr-2"></i>
                 Retry
@@ -5603,7 +5575,6 @@
             // Close modal
             closeMappingModal();
         } catch (error) {
-            console.error('Error saving mappings:', error);
             showNotification('Error saving mappings', 'error');
         }
     }
@@ -5632,7 +5603,6 @@
                         // Reload all table data to reflect the removal
                         await loadDataForAllTabs();
                     } catch (error) {
-                        console.error('Error deleting mapping:', error);
                         showNotification('Error removing mapping', 'error');
                     }
                 } }
@@ -5724,7 +5694,6 @@
                 showToast(data.error || 'Delete failed', 'error');
             }
         } catch (error) {
-            console.error('Error deleting item:', error);
             showToast('Error deleting item', 'error');
         }
     }
@@ -5940,8 +5909,7 @@
         let container = document.getElementById('heatmap-container');
         if (!loading || !container) return;
 
-        fetch('/capability-map/api/unified-capabilities')
-            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+        Platform.fetch('/capability-map/api/unified-capabilities')
             .then(function(data) {
                 let caps = data.unified_capabilities || data.capabilities || [];
                 if (caps.length === 0) {
