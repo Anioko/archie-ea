@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from datetime import date, datetime, timezone
+import json
 
 from sqlalchemy import or_, select, text
 
@@ -13,7 +14,7 @@ from app.models.architecture_review_board import (
     ARBReviewItem,
 )
 from app.models.arb_decision_event import ARBCondition, ARBDecisionEvent
-from app.models.transformation_decision import DecisionBrief
+from app.models.transformation_decision import DecisionBriefVersion
 from app.models.transformation_programme import (
     ProgrammeRoleAssignment,
     ProgrammeWorkstream,
@@ -84,6 +85,9 @@ class TypedARBDecisionService:
             "pending",
         }
     )
+    MAX_CONDITIONS = 50
+    MAX_CONDITIONS_JSON_BYTES = 64 * 1024
+    MAX_RATIONALE_CHARS = 10_000
 
     @staticmethod
     def _canonical_conditions(conditions):
@@ -102,9 +106,12 @@ class TypedARBDecisionService:
                 raise ValueError(f"condition {field} exceeds {limit} characters")
             return value
 
+        supplied = list(conditions or ())
+        if len(supplied) > TypedARBDecisionService.MAX_CONDITIONS:
+            raise ValueError("at most 50 conditions are allowed")
         canonical = []
         seen = set()
-        for ordinal, raw in enumerate(conditions or (), start=1):
+        for ordinal, raw in enumerate(supplied, start=1):
             if not isinstance(raw, dict):
                 raise ValueError("conditions must be objects")
             number = normalized(
@@ -142,6 +149,14 @@ class TypedARBDecisionService:
                 }
             )
         canonical.sort(key=lambda condition: condition["condition_number"])
+        encoded = json.dumps(
+            canonical,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ).encode("utf-8")
+        if len(encoded) > TypedARBDecisionService.MAX_CONDITIONS_JSON_BYTES:
+            raise ValueError("canonical conditions exceed 64 KiB")
         return canonical
 
     @classmethod
@@ -166,6 +181,10 @@ class TypedARBDecisionService:
         rationale = rationale.strip() if isinstance(rationale, str) else ""
         if not rationale:
             raise ValueError("rationale is required")
+        if len(rationale) > cls.MAX_RATIONALE_CHARS:
+            raise ValueError("rationale exceeds 10000 characters")
+        if any(ord(character) < 32 or ord(character) == 127 for character in rationale):
+            raise ValueError("rationale contains control characters")
         supplied_conditions = cls._canonical_conditions(conditions)
         if outcome == "approved_with_conditions":
             if not supplied_conditions:
@@ -259,20 +278,21 @@ class TypedARBDecisionService:
 
     @staticmethod
     def _has_decision_brief_authority(session, actor, cycle, *, for_update):
-        brief_statement = select(DecisionBrief).where(
-            DecisionBrief.id == cycle.decision_brief_id,
-            DecisionBrief.organization_id == actor.organization_id,
+        version_statement = select(DecisionBriefVersion).where(
+            DecisionBriefVersion.id == cycle.decision_brief_version_id,
+            DecisionBriefVersion.brief_id == cycle.decision_brief_id,
+            DecisionBriefVersion.organization_id == actor.organization_id,
         )
         if for_update:
-            brief_statement = brief_statement.execution_options(
+            version_statement = version_statement.execution_options(
                 populate_existing=True
             ).with_for_update()
-        brief = session.execute(brief_statement).scalar_one_or_none()
-        if brief is None:
+        version = session.execute(version_statement).scalar_one_or_none()
+        if version is None:
             return False
         workstream_statement = select(ProgrammeWorkstream).where(
             ProgrammeWorkstream.organization_id == actor.organization_id,
-            ProgrammeWorkstream.id == brief.workstream_id,
+            ProgrammeWorkstream.id == version.workstream_id,
         )
         if for_update:
             workstream_statement = workstream_statement.execution_options(
@@ -305,7 +325,7 @@ class TypedARBDecisionService:
                 populate_existing=True
             ).with_for_update()
         assigned = session.execute(assignment_statement).first() is not None
-        named_or_assigned = brief.decision_authority_id == actor.user_id or assigned
+        named_or_assigned = version.decision_authority_id == actor.user_id or assigned
         return named_or_assigned and _decision_brief_service()._user_has_decision_authority(
             session,
             actor.organization_id,
