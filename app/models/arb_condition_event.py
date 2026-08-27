@@ -58,6 +58,14 @@ LANGUAGE plpgsql SET search_path=pg_catalog,{schema} AS $$ BEGIN
  JOIN arb_review_cycles cycle ON cycle.id=condition.review_cycle_id
  JOIN arb_review_items review ON review.id=condition.review_item_id
  LEFT JOIN arb_condition_evidence_records evidence ON evidence.id=NEW.submitted_evidence_id
+ LEFT JOIN arb_condition_events submission_event
+ ON submission_event.condition_id=NEW.condition_id
+ AND submission_event.event_type='submit_evidence'
+ AND submission_event.submitted_evidence_id=evidence.id
+ AND submission_event.organization_id=NEW.organization_id
+ AND submission_event.decision_event_id=NEW.decision_event_id
+ AND submission_event.review_cycle_id=NEW.review_cycle_id
+ AND submission_event.review_item_id=NEW.review_item_id
  WHERE condition.id=NEW.condition_id
  AND condition.organization_id=NEW.organization_id AND condition.status=NEW.to_state
  AND condition.revision=NEW.condition_revision AND condition.decision_event_id=NEW.decision_event_id
@@ -81,7 +89,8 @@ LANGUAGE plpgsql SET search_path=pg_catalog,{schema} AS $$ BEGIN
  AND evidence.decision_event_id=NEW.decision_event_id
  AND evidence.review_cycle_id=NEW.review_cycle_id
  AND evidence.review_item_id=NEW.review_item_id
- AND evidence.condition_revision=NEW.condition_revision - 1
+ AND submission_event.condition_revision=evidence.condition_revision + 1
+ AND submission_event.condition_revision<NEW.condition_revision
  AND evidence.subject_type=decision.subject_type
  AND evidence.subject_id=decision.subject_id
  AND evidence.decision_brief_id IS NOT DISTINCT FROM decision.decision_brief_id

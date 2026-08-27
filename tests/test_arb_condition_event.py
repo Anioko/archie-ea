@@ -113,7 +113,10 @@ def test_final_guard_binds_typed_evidence_projection_and_actor_semantics():
     assert "cycle.condition_projection_revision=NEW.projection_revision" in sql
     assert "review.condition_projection_revision=NEW.projection_revision" in sql
     assert "evidence.condition_id=NEW.condition_id" in sql
-    assert "evidence.condition_revision=NEW.condition_revision - 1" in sql
+    assert "submission_event.event_type='submit_evidence'" in sql
+    assert "submission_event.condition_revision=evidence.condition_revision + 1" in sql
+    assert "submission_event.condition_revision<NEW.condition_revision" in sql
+    assert "submission_event.submitted_evidence_id=evidence.id" in sql
     assert "condition.evidence_submitted_by_id=NEW.actor_id" in sql
     assert "condition.verified_by_id=NEW.actor_id" in sql
     assert "condition.waived_by_id=NEW.actor_id" in sql
@@ -135,9 +138,20 @@ def test_verify_guard_rejects_cross_scope_substitution_and_same_actor():
         "evidence.decision_event_id=NEW.decision_event_id",
         "evidence.review_cycle_id=NEW.review_cycle_id",
         "evidence.review_item_id=NEW.review_item_id",
-        "evidence.condition_revision=NEW.condition_revision - 1",
+        "submission_event.condition_revision=evidence.condition_revision + 1",
+        "submission_event.condition_revision<NEW.condition_revision",
+        "submission_event.submitted_evidence_id=evidence.id",
         "condition.submitted_evidence_id=NEW.submitted_evidence_id",
         "condition.fulfilment_evidence_id=NEW.submitted_evidence_id",
         "condition.evidence_submitted_by_id<>NEW.actor_id",
     )
     assert all(predicate in sql for predicate in required)
+
+
+def test_verify_uses_prior_submission_event_not_adjacent_evidence_revision():
+    """Waive/expiry revisions may intervene without changing immutable evidence."""
+    from app.models.arb_condition_event import _condition_event_final_sql
+
+    sql = _condition_event_final_sql('"public"')
+    assert "submission_event.condition_revision=evidence.condition_revision + 1" in sql
+    assert "submission_event.condition_revision<NEW.condition_revision" in sql
