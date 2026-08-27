@@ -48,7 +48,19 @@ _EVIDENCE_COLUMNS = {
     ),
     "adr": ("subject_evidence_snapshot_id", "arb_subject_evidence_snapshot"),
 }
-_SUBMIT_ROLES = frozenset(
+# Who may SUBMIT a governed subject (ADR, Architecture Model, Solution,
+# Decision Brief) into an ARB review cycle.
+#
+# Deliberately NOT the same set as _EVIDENCE_CAPTURE_ROLES in
+# arb_condition_evidence_service: authoring a submission is a design-authorship
+# authority, so every domain-specialist architect holds it, as does
+# `platform_admin`. Board membership alone (`arb_member`) does not — a board
+# member reviews and attests rather than submits.
+#
+# Membership is governance policy, not a refactor target: changing it changes
+# who can act on real governed records. tests/test_typed_arb_submission_routes
+# pins it so any edit is deliberate and visible in review.
+_SUBJECT_SUBMIT_ROLES = frozenset(
     {
         "chief_architect",
         "enterprise_architect",
@@ -288,7 +300,7 @@ class TypedARBSubmissionService:
         ).scalar_one_or_none()
         if user is None:
             raise NotAuthorised("arb_submission_not_authorised")
-        if user.is_org_admin or user.is_platform_admin or user.enterprise_role in _SUBMIT_ROLES:
+        if user.is_org_admin or user.is_platform_admin or user.enterprise_role in _SUBJECT_SUBMIT_ROLES:
             return
         if subject_type == "solution":
             from app.models.solution_models import Solution

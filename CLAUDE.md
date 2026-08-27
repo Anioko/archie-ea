@@ -60,8 +60,21 @@ product-direction questions with no technically-correct answer.
 python scripts/verify.py          # every gate that can run here
 python scripts/verify.py --json   # machine-readable
 python scripts/verify.py --gate boot-health     # one gate
-python scripts/verify.py --tag static           # fast static gates only (~5s)
+python scripts/verify.py --tag static           # fast static gates only
 ```
+
+**`--tag static` is NOT the full set, and a green one is not a clean tree.** It
+excludes `broken-surfaces`, `dynamic-link-prefixes` and `csrf-coverage`'s boot half —
+they boot Flask to read the real `url_map`, so they cannot run in CI's dependency-free
+static job — and it excludes `nav-verified`, which carries no tags at all and is
+therefore unreachable from *every* `--tag` invocation. `broken-surfaces` sat red on
+deployed main behind exactly this: the pre-deploy command everyone ran could not see
+it, and its "31 passed, 0 failed" line read as proof.
+
+Any filtered run (`--tag` or `--gate`) now ends with an explicit list of the gates it
+did not run and the words `PARTIAL RUN`, and `--json` carries `partial_run` /
+`not_run`. **The only command whose green means "clean" is the bare
+`python scripts/verify.py`** — run that before a deploy, never a tag subset.
 
 This is the executable form of `app/templates/macros/ZERO_TOLERANCE_PROTOCOL.md`.
 **Do not report work as complete without a green run**, and do not treat a `SKIP` as a

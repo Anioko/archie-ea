@@ -25,7 +25,19 @@ from app.modules.transformation_room.domain import (
 )
 
 
-_SUBMIT_ROLES = frozenset(
+# Who may ATTEST that a condition has been met by capturing evidence against it.
+#
+# Deliberately NOT the same set as _SUBJECT_SUBMIT_ROLES in
+# arb_submission_service: submitting a subject for review and attesting that a
+# board-set condition is discharged are different authorities. This set adds
+# `arb_member` (a board member attests, but does not author submissions) and
+# omits the domain-specialist architect roles and `platform_admin` (an
+# operational capability, not a governance attestation authority).
+#
+# Membership is governance policy, not a refactor target: changing it changes
+# who can act on real governed records. tests/test_typed_arb_submission_routes
+# pins it so any edit is deliberate and visible in review.
+_EVIDENCE_CAPTURE_ROLES = frozenset(
     {"chief_architect", "enterprise_architect", "solution_architect", "architect", "arb_member"}
 )
 _TYPED_COLUMNS = (
@@ -260,7 +272,7 @@ class TypedARBConditionEvidenceService:
             or decision.actor_id == user.id
             or user.is_org_admin
             or user.is_platform_admin
-            or user.enterprise_role in _SUBMIT_ROLES
+            or user.enterprise_role in _EVIDENCE_CAPTURE_ROLES
         ):
             raise NotAuthorised("arb_condition_evidence_not_authorised")
         cls._assert_exact_typed_membership(condition, decision, cycle, review)
