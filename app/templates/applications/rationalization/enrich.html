@@ -190,7 +190,6 @@ function enrichmentApp() {
                 });
             })
             .catch(function(err) {
-                console.error('Enrich load failed:', err);
                 self.loading = false;
                 self.error = true;
             });
@@ -226,8 +225,7 @@ function enrichmentApp() {
             })
             .catch(function(err) {
                 app._saving = false;
-                console.error('Save failed:', err);
-                Platform.toast.error('Save request failed.');
+                Platform.toast.error('Save request failed: ' + (err.message || err));
             });
         },
 
@@ -259,8 +257,7 @@ function enrichmentApp() {
             })
             .catch(function(err) {
                 app._rescoring = false;
-                console.error('Re-score failed:', err);
-                Platform.toast.error('Re-score request failed.');
+                Platform.toast.error('Re-score request failed: ' + (err.message || err));
             });
         }
     };

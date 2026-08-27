@@ -27,7 +27,11 @@ function issueBoard() {
       this.currentUserId = this.getCurrentUserId();
       
       if (!this.solutionId) {
-        console.warn('No solution ID found');
+        // The board cannot address any solution — say so rather than render an
+        // empty board that reads as "no issues".
+        if (window.Platform && Platform.toast && Platform.toast.error) {
+          Platform.toast.error('Issue board unavailable: no solution identified in this page URL.');
+        }
         return;
       }
 

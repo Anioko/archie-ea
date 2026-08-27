@@ -3287,7 +3287,6 @@
         };
     });
     } catch (e) {
-        console.error('[Workbench] Component registration failed:', e);
         document.addEventListener('DOMContentLoaded', () => {
             const wb = document.querySelector('[x-data*="codegenWorkbench"]');
             if (wb) {

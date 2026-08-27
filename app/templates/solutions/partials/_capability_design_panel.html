@@ -297,7 +297,6 @@ function capabilityDesignPanel() {
                 const data = await resp.json();
                 this.availableCapabilities = data.capabilities || data.results || data || [];
             } catch (e) {
-                console.error('Failed to load capabilities:', e);
                 if (window.Platform && Platform.toast) Platform.toast.error(e.message || 'Failed to load capabilities');
             }
         },
@@ -328,7 +327,6 @@ function capabilityDesignPanel() {
                 });
                 this.loadAnalysis();
             } catch (e) {
-                console.error('Failed to add capability:', e);
                 if (window.Platform && Platform.toast) Platform.toast.error(e.message || 'Failed to add capability');
             }
         },
@@ -354,7 +352,6 @@ function capabilityDesignPanel() {
                 const data = await resp.json();
                 this.discoveredCapabilities = data.suggestions || [];
             } catch (e) {
-                console.error('Failed to discover capabilities:', e);
                 if (window.Platform && Platform.toast) Platform.toast.error(e.message || 'Failed to discover capabilities');
             } finally {
                 this.discovering = false;
@@ -376,7 +373,6 @@ function capabilityDesignPanel() {
                     this.selectedCapabilities = this.analysisData.selected_capabilities;
                 }
             } catch (e) {
-                console.error('Failed to load analysis:', e);
                 if (window.Platform && Platform.toast) Platform.toast.error(e.message || 'Failed to load capability analysis');
             } finally {
                 this.analysisLoading = false;

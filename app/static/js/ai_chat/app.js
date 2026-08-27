@@ -122,9 +122,13 @@
             wrap?.classList.remove('hidden');
             emptyNote?.classList.add('hidden');
         } catch (error) {
+            // Do not reuse the "no models configured" wording here: the model list
+            // failed to load, which is not the same as there being none.
             wrap?.classList.add('hidden');
-            emptyNote?.classList.remove('hidden');
-            console.error('Error loading models:', error);
+            if (emptyNote) {
+                emptyNote.textContent = `The model list could not be loaded (${error.message || error}) — responses use the platform default.`;
+                emptyNote.classList.remove('hidden');
+            }
         }
     }
 

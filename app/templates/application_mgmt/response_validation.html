@@ -175,9 +175,10 @@ async function loadComparison() {
       renderComparison(comparisonData);
       updateStats(data.data.stats);
       document.getElementById('resolve-all-btn').disabled = data.data.stats.conflicts === 0;
+    } else {
+      Platform.toast.error(data.error || 'Could not load the data comparison.');
     }
   } catch (err) {
-    console.error('Failed to load comparison:', err);
     Platform.toast.error('Could not load the data comparison.');
   }
 }
@@ -305,7 +306,6 @@ async function confirmResolution() {
       Platform.toast.error(result.error || 'Could not save the resolution.');
     }
   } catch (err) {
-    console.error('Failed to resolve:', err);
     Platform.toast.error('Could not save the resolution. Please try again.');
   }
 }
@@ -337,7 +337,6 @@ async function resolveAllConflicts() {
       conflict.status = 'resolved';
       conflict.resolved_value = conflict.abacus_value;
     } catch (err) {
-      console.error(`Failed to resolve ${conflict.field}:`, err);
       failedCount += 1;
       // conflict.status stays 'conflict' — do NOT mark it resolved when the write failed.
     }

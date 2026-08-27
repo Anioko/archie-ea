@@ -241,8 +241,10 @@ function batchImportDashboard() {
             if (type === undefined) type = 'info';
             if (window.showToast) {
                 window.showToast(message, type);
-            } else {
-
+            } else if (window.Platform && Platform.toast) {
+                // Without this the notification reached nobody when the page-local
+                // showToast helper was absent.
+                (Platform.toast[type] || Platform.toast.info)(message);
             }
         }
     };

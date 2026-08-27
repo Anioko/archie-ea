@@ -496,7 +496,6 @@ function duplicateDetection() {
                         succeeded++;
                     }
                 } catch (error) {
-                    console.error('Bulk action failed for group ' + ids[i] + ':', error);
                     failed.push(ids[i]);
                 }
             }

@@ -69,7 +69,9 @@ function getMergeCSRFToken() {
   let metaTag = document.querySelector('meta[name="csrf-token"]');
   let metaToken = metaTag ? metaTag.content : null;
   if (metaToken) return metaToken;
-  console.warn('getMergeCSRFToken: No CSRF token found in form input or meta tag');
+  // Without a CSRF token every merge request is rejected by the server. Say so
+  // now rather than letting the user click Merge and get an opaque failure.
+  showMergeToast('Your session security token is missing — reload the page before merging.', 'error');
   return '';
 }
 

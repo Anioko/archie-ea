@@ -32,9 +32,8 @@
                     this.loading = false;
                 })
                 .catch(err => {
-                    console.error('Failed to load risk details:', err);
                     this.loading = false;
-                    window.toast && window.toast.error('Failed to load risk details');
+                    Platform.toast.error('Failed to load risk details: ' + (err.message || 'request failed'));
                 });
         },
 
@@ -109,8 +108,7 @@
                 setTimeout(() => window.location.reload(), 1500);
 
             } catch (err) {
-                console.error('Failed to save mitigation:', err);
-                window.toast && window.toast.error('Failed to save mitigation plan');
+                Platform.toast.error('Failed to save mitigation plan: ' + (err.message || 'request failed'));
             } finally {
                 this.saving = false;
             }

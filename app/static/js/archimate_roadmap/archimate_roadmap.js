@@ -225,8 +225,6 @@ function archimateRoadmapManager() {
 
 
                 safeHTML(headerElement, headerHTML);
-            } else {
-
             }
         },
 
@@ -569,7 +567,6 @@ function archimateRoadmapManager() {
                 link.href = canvas.toDataURL('image/png', 1.0);
                 link.click();
             }).catch(function(error) {
-                console.error('Error generating PNG:', error);
                 Platform.toast.error('Error generating PNG export');
             });
         },
@@ -588,7 +585,6 @@ function archimateRoadmapManager() {
                 link.href = canvas.toDataURL('image/jpeg', 0.95);
                 link.click();
             }).catch(function(error) {
-                console.error('Error generating JPG:', error);
                 Platform.toast.error('Error generating JPG export');
             });
         },

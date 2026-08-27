@@ -680,7 +680,6 @@ class BusinessOutputDisplay {
                             }
                         });
                     } catch (error) {
-                        console.error('Chart rendering error:', error);
                         safeHTML(element, '<div class="p-4 text-sm text-muted-foreground">' +
                                 '<p class="font-medium mb-2">Visualization Data</p>' +
                                 '<pre class="text-xs overflow-auto">' + JSON.stringify(data, null, 2).substring(0, 500) + '</pre>' +

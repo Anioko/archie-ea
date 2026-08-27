@@ -291,7 +291,6 @@ document.addEventListener('alpine:init', () => {
                 }
                 this.loadError = false;
             } catch (err) {
-                console.error('Failed to load comparison data', err);
                 this.loadError = true;
             } finally {
                 this.loading = false;

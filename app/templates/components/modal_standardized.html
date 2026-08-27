@@ -133,7 +133,6 @@ function myModalData() {
         Platform.modal.close('my-modal', data); // Close modal with result
         
       } catch (error) {
-        console.error('Form submission error:', error);
         this.errorMessage = error.message || 'An error occurred. Please try again.';
       } finally {
         this.submitting = false;

@@ -254,7 +254,6 @@ function vendorAnalysisList() {
         this.summary = data.summary || this.summary;
         this.pagination = data.pagination || this.pagination;
       } catch (e) {
-        console.error('Error loading analyses:', e);
         Platform.toast.error(e.message || 'Failed to load vendor analyses');
       } finally {
         this.loading = false;
@@ -299,7 +298,6 @@ function vendorAnalysisList() {
         this.deleteTargetName = '';
         await this.loadAnalyses(this.pagination.page);
       } catch (e) {
-        console.error('Error deleting analysis:', e);
         Platform.toast.error(e.message || 'Failed to delete vendor analysis');
       }
     }

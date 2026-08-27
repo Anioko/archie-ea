@@ -776,7 +776,6 @@ document.addEventListener('DOMContentLoaded', function() {
             });
 
         } catch (error) {
-            console.error('Failed to load settings:', error);
             if (window.Platform && Platform.toast) {
                 Platform.toast.error('Could not load saved settings; showing defaults instead.');
             }
@@ -805,7 +804,6 @@ document.addEventListener('DOMContentLoaded', function() {
             if (banner) { banner.classList.remove('hidden'); setTimeout(() => banner.classList.add('hidden'), 3000); }
             showSuccess('Settings saved successfully');
         } catch (error) {
-            console.error('Failed to save settings:', error);
             showError('Failed to save settings');
         } finally {
             document.getElementById('btn-save-all').disabled = false;
@@ -831,7 +829,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
             showSuccess('Settings exported successfully');
         } catch (error) {
-            console.error('Failed to export settings:', error);
             showError('Failed to export settings');
         }
     }
@@ -875,14 +872,15 @@ document.addEventListener('DOMContentLoaded', function() {
             document.getElementById('backup-frequency').value = 'weekly';
             document.getElementById('retention-period').value = '90';
 
-            // Update settings object
-            await loadSettings();
+            // NOT loadSettings(): that re-reads the SAVED settings and writes them
+            // back over the defaults just applied, so the reset visibly undid itself
+            // while still reporting success. The form now holds the defaults and is
+            // unsaved until the user presses Save.
             hasUnsavedChanges = true;
 
             resetModal.classList.add('hidden');
-            showSuccess('Settings reset to defaults');
+            showSuccess('Settings reset to defaults — press Save to apply them.');
         } catch (error) {
-            console.error('Failed to reset settings:', error);
             showError('Failed to reset settings');
         }
     }

@@ -315,7 +315,12 @@
 <script>
 function exportMappingData() {
     fetch('/api/hybrid-mapping/export')
-        .then(response => response.json())
+        .then(response => {
+            // Without this an error body (or an HTML 500 page) would be written to
+            // disk as the export file and read as data.
+            if (!response.ok) throw new Error('HTTP ' + response.status);
+            return response.json();
+        })
         .then(data => {
             const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
             const url = window.URL.createObjectURL(blob);
@@ -326,7 +331,6 @@ function exportMappingData() {
             window.URL.revokeObjectURL(url);
         })
         .catch(error => {
-            console.error('Export failed:', error);
             toast.error('Export Failed', {
                 description: 'Unable to export the data. Please try again.',
                 duration: 5000

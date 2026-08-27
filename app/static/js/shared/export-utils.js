@@ -102,7 +102,6 @@ class ExportManager {
             return true;
 
         } catch (error) {
-            console.error('PNG export error:', error);
 
             if (showToast) {
                 window.toast?.dismissAll();
@@ -175,7 +174,6 @@ class ExportManager {
             return true;
 
         } catch (error) {
-            console.error('JPG export error:', error);
 
             if (showToast) {
                 window.toast?.dismissAll();

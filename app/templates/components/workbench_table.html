@@ -115,7 +115,7 @@
          role="status" aria-live="polite">
         <span class="font-medium" x-text="selectionCount() + ' selected'"></span>
         <div class="h-4 w-px bg-border"></div>
-        <button type="button" @click="if (typeof confirmBulkDelete === 'function') confirmBulkDelete(); else console.warn('confirmBulkDelete not defined')"
+        <button type="button" @click="if (typeof confirmBulkDelete === 'function') { confirmBulkDelete(); } else if (window.Platform && Platform.toast) { Platform.toast.error('Bulk delete is not available on this page.'); }"
                 class="inline-flex items-center gap-1.5 text-destructive-emphasis hover:text-destructive-emphasis/80 font-medium transition-colors">
             <i data-lucide="trash-2" class="h-4 w-4" aria-hidden="true"></i>
             Delete selected

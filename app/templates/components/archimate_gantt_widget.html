@@ -38,9 +38,27 @@ Usage:
                     d.filteredWorkPackages = d.work_packages;
                     window['renderArchimateGantt' + containerId]();
                     window['updateArchimateStats' + containerId]();
+                } else {
+                    window['archimateGanttFailed' + containerId](data.error || 'Unknown error');
                 }
             })
-            .catch(err => console.error('Failed to load Archimate Gantt:', err));
+            .catch(err => window['archimateGanttFailed' + containerId](err.message || err));
+    };
+
+    // A failed load must not leave the "No work packages to display" empty state
+    // standing: that is a failure rendered as data.
+    window['archimateGanttFailed' + containerId] = function(detail) {
+        const container = document.getElementById('archimate-timeline-' + containerId);
+        if (container) {
+            container.innerHTML = '';
+            const msg = document.createElement('div');
+            msg.className = 'p-8 text-center text-sm text-destructive-emphasis';
+            msg.textContent = 'Could not load the roadmap (' + detail + ').';
+            container.appendChild(msg);
+        }
+        if (window.Platform && Platform.toast) {
+            Platform.toast.error('Could not load the roadmap: ' + detail);
+        }
     };
 
     window['renderArchimateGantt' + containerId] = function() {

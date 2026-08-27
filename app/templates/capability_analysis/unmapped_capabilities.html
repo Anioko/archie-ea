@@ -208,7 +208,6 @@ function exportCapabilities() {
             window.URL.revokeObjectURL(url);
         })
         .catch(error => {
-            console.error('Export failed:', error);
             Platform.toast.error('Export failed. Please try again.');
         });
 }

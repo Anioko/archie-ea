@@ -1870,7 +1870,7 @@
         const hierarchyControls = getEl('hierarchy-controls');
     
         if (!btnAuto || !btnPersisted) {
-            console.warn('View toggle buttons not found');
+            showToast('Unable to switch roadmap view: the view controls did not load. Please refresh the page.', 'error');
             return;
         }
     
@@ -2671,29 +2671,20 @@
         lucide.createIcons();
     }
     
+    // Bulk status / owner / delete were never wired to an API: each one closed the
+    // modal, cleared the selection and toasted "Successfully ...", so the user was
+    // told a bulk edit -- including a bulk DELETE -- had been applied when nothing
+    // had happened. Reporting the truth is the only correct behaviour until the
+    // endpoints exist; the selection is deliberately left intact because nothing
+    // was changed.
+    function _bulkNotWired(action) {
+        document.querySelector('.fixed')?.remove();
+        showToast(`Bulk ${action} is not available yet — no changes were made.`, 'error');
+    }
+
     // Execute bulk status update
     async function executeBulkStatusUpdate() {
-        const statusSelect = getEl('bulk-status-select');
-        const newStatus = statusSelect.value;
-    
-        const items = Array.from(bulkSelectedItems);
-    
-        try {
-            // In a real implementation, this would call an API
-            // For now, we'll simulate the update
-            showToast(`Updating ${items.length} items to ${newStatus}...`, 'info');
-    
-            // Close modal
-            document.querySelector('.fixed')?.remove();
-    
-            // Clear selection
-            clearBulkSelection();
-    
-            showToast(`Successfully updated ${items.length} items`, 'success');
-        } catch (error) {
-            console.error('Bulk update error:', error);
-            showToast('Error updating items', 'error');
-        }
+        _bulkNotWired('status update');
     }
     
     // Bulk update owner
@@ -2743,22 +2734,7 @@
             return;
         }
     
-        const items = Array.from(bulkSelectedItems);
-    
-        try {
-            showToast(`Assigning ${items.length} items to ${newOwner}...`, 'info');
-    
-            // Close modal
-            document.querySelector('.fixed')?.remove();
-    
-            // Clear selection
-            clearBulkSelection();
-    
-            showToast(`Successfully assigned ${items.length} items to ${newOwner}`, 'success');
-        } catch (error) {
-            console.error('Bulk owner update error:', error);
-            showToast('Error assigning owner', 'error');
-        }
+        _bulkNotWired('owner assignment');
     }
     
     // Bulk delete
@@ -2803,22 +2779,7 @@
     
     // Execute bulk delete
     async function executeBulkDelete() {
-        const items = Array.from(bulkSelectedItems);
-    
-        try {
-            showToast(`Deleting ${items.length} items...`, 'info');
-    
-            // Close modal
-            document.querySelector('.fixed')?.remove();
-    
-            // Clear selection
-            clearBulkSelection();
-    
-            showToast(`Successfully deleted ${items.length} items`, 'success');
-        } catch (error) {
-            console.error('Bulk delete error:', error);
-            showToast('Error deleting items', 'error');
-        }
+        _bulkNotWired('delete');
     }
     
     // ============================================
@@ -3152,7 +3113,7 @@
     function toggleRoadmapExportMenu() {
         const menu = getEl('roadmap-export-menu');
         if (!menu) {
-            console.error('Export menu not found');
+            showToast('Unable to open the export menu: it did not load. Please refresh the page.', 'error');
             return;
         }
         menu.classList.toggle('hidden');
@@ -3188,7 +3149,6 @@
                 await exportAsSVG();
             }
         } catch (error) {
-            console.error('Export error:', error);
             showToast(`Error exporting roadmap: ${error.message}`, 'error');
         }
     }
@@ -3331,7 +3291,6 @@
     
             showToast('High-quality PDF exported successfully!', 'success');
         } catch (error) {
-            console.error('PDF export error:', error);
             showToast(`PDF export failed: ${error.message}`, 'error');
             throw error;
         }
@@ -3383,7 +3342,6 @@
                 showToast(`High-quality ${format.toUpperCase()} exported successfully!`, 'success');
             }, mimeType, quality);
         } catch (error) {
-            console.error('Image export error:', error);
             showToast(`${format.toUpperCase()} export failed: ${error.message}`, 'error');
             throw error;
         }
@@ -3436,7 +3394,6 @@
     
             showToast('SVG exported successfully!', 'success');
         } catch (error) {
-            console.error('SVG export error:', error);
             throw error;
         }
     }
@@ -5217,7 +5174,6 @@
             // AUDIT-CAP-002: Only show error if this is still the current request
             if (requestId === currentModalRequestId) {
                 setModalLoadingState(false);
-                console.error('Error loading applications:', error);
                 showNotification('Error loading applications', 'error');
             }
         }

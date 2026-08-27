@@ -13,7 +13,6 @@
 class ArchitectureAnalytics {
   constructor(options = {}) {
     this.apiBaseUrl = options.apiBaseUrl || '/api/architecture/analytics';
-    this.debug = options.debug || false;
     this.chartColors = {
       core: '#10b981',      // green
       supporting: '#3b82f6', // blue
@@ -21,12 +20,6 @@ class ArchitectureAnalytics {
       gap: '#ef4444',        // red
       warning: '#f59e0b'     // amber
     };
-  }
-
-  log(msg, data) {
-    if (this.debug) {
-
-    }
   }
 
   /**
@@ -52,7 +45,8 @@ class ArchitectureAnalytics {
       this.log(`Fetched analytics data`, data);
       return data;
     } catch (error) {
-      this.log('Error fetching analytics:', error);
+      // Value-returning: rethrow so callers render their own error state rather
+      // than reading `undefined` as "no analytics for this scope".
       throw error;
     }
   }
@@ -89,8 +83,7 @@ class ArchitectureAnalytics {
         lucide.createIcons();
       }
     } catch (error) {
-      console.error('Error rendering heatmap:', error);
-      safeHTML(container, this.renderErrorState('Failed to load heatmap'));
+      safeHTML(container, this.renderErrorState(`Failed to load heatmap: ${error.message}`));
     }
   }
 
@@ -264,8 +257,7 @@ class ArchitectureAnalytics {
         lucide.createIcons();
       }
     } catch (error) {
-      console.error('Error rendering dependency graph:', error);
-      safeHTML(container, this.renderErrorState('Failed to load dependency graph'));
+      safeHTML(container, this.renderErrorState(`Failed to load dependency graph: ${error.message}`));
     }
   }
 
@@ -391,8 +383,7 @@ class ArchitectureAnalytics {
         lucide.createIcons();
       }
     } catch (error) {
-      console.error('Error rendering gap analysis:', error);
-      safeHTML(container, this.renderErrorState('Failed to load gap analysis'));
+      safeHTML(container, this.renderErrorState(`Failed to load gap analysis: ${error.message}`));
     }
   }
 
@@ -571,8 +562,7 @@ class ArchitectureAnalytics {
         lucide.createIcons();
       }
     } catch (error) {
-      console.error('Error rendering quality attributes:', error);
-      safeHTML(container, this.renderErrorState('Failed to load quality attributes'));
+      safeHTML(container, this.renderErrorState(`Failed to load quality attributes: ${error.message}`));
     }
   }
 
@@ -744,8 +734,7 @@ class ArchitectureAnalytics {
         lucide.createIcons();
       }
     } catch (error) {
-      console.error('Error rendering architecture patterns:', error);
-      safeHTML(container, this.renderErrorState('Failed to load architecture patterns'));
+      safeHTML(container, this.renderErrorState(`Failed to load architecture patterns: ${error.message}`));
     }
   }
 
@@ -887,8 +876,7 @@ class ArchitectureAnalytics {
         lucide.createIcons();
       }
     } catch (error) {
-      console.error('Error rendering investment portfolio:', error);
-      safeHTML(container, this.renderErrorState('Failed to load investment portfolio'));
+      safeHTML(container, this.renderErrorState(`Failed to load investment portfolio: ${error.message}`));
     }
   }
 
@@ -1021,4 +1009,4 @@ class ArchitectureAnalytics {
 }
 
 // Initialize global instance
-const architectureAnalytics = new ArchitectureAnalytics({ debug: false });
+const architectureAnalytics = new ArchitectureAnalytics({});

@@ -266,13 +266,24 @@ document.addEventListener('DOMContentLoaded', function() {
     // Load sync status
     function loadSyncStatus() {
         fetch('{{ url_for("admin.servicenow_sync_status") }}')
-            .then(res => res.json())
-            .then(data => {
-                if (data.synced_applications !== undefined) {
-                    appsCountEl.textContent = data.synced_applications;
-                }
+            .then(res => {
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                return res.json();
             })
-            .catch(err => console.error('Failed to load sync status:', err));
+            .then(data => {
+                // An em dash where the count is unknown -- never a 0, which would be
+                // indistinguishable from a measured "nothing synced".
+                appsCountEl.textContent = (data.synced_applications !== undefined && data.synced_applications !== null)
+                    ? data.synced_applications
+                    : '—';
+            })
+            .catch(err => {
+                appsCountEl.textContent = '—';
+                appsCountEl.title = 'Sync status could not be loaded';
+                if (window.Platform && Platform.toast) {
+                    Platform.toast.error('Could not load the ServiceNow sync status.');
+                }
+            });
     }
 
     // Test connection

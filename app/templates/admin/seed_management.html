@@ -125,7 +125,6 @@ function seedManager() {
                     this.categories = data.categories;
                 }
             } catch (e) {
-                console.error('Failed to refresh seed status:', e);
                 // seed/seedAll already set this.message to their own success/failure result;
                 // this only means the category list on screen may now be stale, so append
                 // rather than overwrite whatever that message already said.

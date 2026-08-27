@@ -48,7 +48,6 @@
                 Platform.toast.error(data.error || 'Submission failed');
             }
         } catch (error) {
-            console.error('ARB submission error:', error);
             Platform.toast.error('Failed to submit to ARB');
         } finally {
             this.loading = false;

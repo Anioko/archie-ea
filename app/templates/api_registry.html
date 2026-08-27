@@ -243,7 +243,6 @@ function apiRegistry() {
                 this.specs = data.data || [];
                 this.total = data.total || 0;
             } catch (err) {
-                console.error('Failed to load API specs:', err);
                 this.loadError = true;
             } finally {
                 this.loading = false;
@@ -265,7 +264,6 @@ function apiRegistry() {
                 const data = await res.json();
                 this.specs = this.specs.concat(data.data || []);
             } catch (err) {
-                console.error('Failed to load more specs:', err);
                 this.page -= 1;
                 if (window.Platform && Platform.toast) Platform.toast.error('Could not load more specs.');
             }
@@ -287,7 +285,6 @@ function apiRegistry() {
                     spec.spec_content = data.data.spec_content;
                     spec.description = spec.description || data.data.description;
                 } catch (err) {
-                    console.error('Failed to load spec detail:', err);
                     Platform.toast.error('Failed to load API spec details: ' + err.message);
                 }
             }

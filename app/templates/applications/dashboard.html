@@ -817,7 +817,8 @@
                 // lives inside a double-quoted x-data attribute, and an embedded
                 // double-quote here terminates that attribute early, handing
                 // Alpine a truncated expression (SyntaxError: Unexpected token).
-                console.warn('Failed to load capability suggestions:', e);
+                // swallow-ok: optional AI enrichment card stays hidden on failure, exactly as it does when there are no suggestions.
+                void e;
             }
             finally { this.loading = false; this.loaded = true; }
         },
@@ -836,8 +837,7 @@
                     Platform.toast.error(data.error || 'Could not accept that suggestion.');
                 }
             } catch (e) {
-                console.warn('Accept error:', e);
-                Platform.toast.error('Could not accept that suggestion.');
+                Platform.toast.error('Could not accept that suggestion: ' + (e.message || e));
             }
         }
     }" x-init="loadSuggestions()" x-cloak x-show="loaded && suggestions.length > 0"

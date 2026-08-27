@@ -157,6 +157,7 @@ function renderQuickAccessItems(container, items, type) {
 
   // FIX: Use DocumentFragment for performance
   const fragment = document.createDocumentFragment();
+  let skippedItems = 0;
 
   // Determine endpoint and URL key based on type
   const urlBase = type === "applications" ? "/applications" : "/applications/vendors";
@@ -199,8 +200,9 @@ function renderQuickAccessItems(container, items, type) {
       fragment.appendChild(link);
       
     } catch (itemError) {
-      console.error("[Sidebar] Error rendering item:", itemError);
-      // Skip this item but continue with others
+      // Skip this item but continue with others; the count is surfaced below so
+      // a silently shortened list is not mistaken for a complete one.
+      skippedItems += 1;
       continue;
     }
   }
@@ -209,13 +211,19 @@ function renderQuickAccessItems(container, items, type) {
   safeHTML(container, "");
   container.appendChild(fragment);
 
+  if (skippedItems > 0 && window.Platform && Platform.toast && Platform.toast.warning) {
+    Platform.toast.warning(
+      `${skippedItems} sidebar ${type} shortcut(s) could not be displayed.`
+    );
+  }
+
   // ✅ FIX: Re-initialize Lucide icons for newly inserted elements
   try {
     if (typeof lucide !== "undefined" && typeof lucide.createIcons === "function") {
       lucide.createIcons();
     }
   } catch (lucideError) {
-    console.warn("[Sidebar] Failed to initialize icons:", lucideError);
-    // Icons won't show but content still readable
+    // swallow-ok: icons won't render but every label stays readable, so there
+    // is nothing here the user can act on.
   }
 }

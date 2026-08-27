@@ -53,7 +53,6 @@ function capabilityRoadmapManager() {
                     this.selectedImportance = serverData.selectedImportance;
                 }
             } catch (error) {
-                console.error('Error parsing server data:', error);
                 this.selectedImportance = '';
             }
 
@@ -76,7 +75,6 @@ function capabilityRoadmapManager() {
 
                 // Work packages loaded successfully
             } catch (error) {
-                console.error('Error parsing work packages:', error);
                 this.workPackages = [];
                 // Fallback to API call
                 this.loadWorkPackages();
@@ -248,7 +246,6 @@ function capabilityRoadmapManager() {
                 ).join('');
 
                 safeHTML(headerElement, headerHTML);
-            } else {
             }
         },
 
@@ -446,7 +443,6 @@ function capabilityRoadmapManager() {
                 link.click();
 
             } catch (error) {
-                console.error('Export error:', error);
                 this.showNotification('Failed to generate professional export', 'error');
             } finally {
                 document.body.removeChild(loadingDiv);

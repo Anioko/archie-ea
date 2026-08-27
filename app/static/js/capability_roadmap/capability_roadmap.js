@@ -27,11 +27,10 @@ function openCapabilityAPQCMapping(capabilityId, capabilityName) {
     if (modal && modal.openMappingModal) {
         modal.openMappingModal(capabilityId, capabilityName);
     } else {
-        console.error('APQC mapping modal not initialized');
-        if (typeof toast !== 'undefined') {
-            toast.error('Modal Error', {
-                description: 'APQC mapping modal not available. Please refresh the page.'
-            });
+        // `toast` is not a global anywhere in this app, so this branch used to
+        // report nothing at all: the button simply did nothing.
+        if (window.Platform && Platform.toast) {
+            Platform.toast.error('APQC mapping is not available — please refresh the page.');
         }
     }
 }
@@ -42,11 +41,10 @@ function openCapabilityArchimateMapping(capabilityId, capabilityName) {
     if (modal && modal.openMappingModal) {
         modal.openMappingModal(capabilityId, capabilityName);
     } else {
-        console.error('ArchiMate mapping modal not initialized');
-        if (typeof toast !== 'undefined') {
-            toast.error('Modal Error', {
-                description: 'ArchiMate mapping modal not available. Please refresh the page.'
-            });
+        // `toast` is not a global anywhere in this app, so this branch used to
+        // report nothing at all: the button simply did nothing.
+        if (window.Platform && Platform.toast) {
+            Platform.toast.error('ArchiMate mapping is not available — please refresh the page.');
         }
     }
 }

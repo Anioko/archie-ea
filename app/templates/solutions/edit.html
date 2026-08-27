@@ -176,9 +176,10 @@
                                     this.results = data.users.filter(u => u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q)).slice(0, 5);
                                     this.showDropdown = this.results.length > 0;
                                     this._searchErrorShown = false;
+                                } else {
+                                    throw new Error(data.error || 'User search failed');
                                 }
                             } catch (e) {
-                                console.error('User search error:', e);
                                 // Fires on every debounced keystroke — toast once
                                 // per outage rather than once per character typed.
                                 if (!this._searchErrorShown) {

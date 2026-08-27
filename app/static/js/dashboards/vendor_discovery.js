@@ -20,6 +20,8 @@ function loadCapabilities() {
             if (data.success) {
                 availableCapabilities = data.capabilities;
                 populateCapabilityList();
+            } else {
+                showError(data.error || 'Failed to load capabilities');
             }
         })
         .catch(function(error) {

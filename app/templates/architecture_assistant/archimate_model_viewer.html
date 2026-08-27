@@ -190,7 +190,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 });
             })
             .catch(function(e) {
-                console.warn('Could not load viewpoints', e);
                 // Say the filter is unavailable, next to the filter itself — an
                 // empty dropdown is otherwise indistinguishable from a model that
                 // genuinely has only the default viewpoint.
@@ -207,7 +206,13 @@ document.addEventListener('DOMContentLoaded', function() {
         try {
             return JSON.parse(localStorage.getItem(MODEL_CACHE_KEY) || '{}');
         } catch (e) {
-            console.warn('Failed to read model cache', e);
+            // The stored cache is unreadable. Drop it rather than re-reading a
+            // corrupt value on every call, and say so — otherwise a lost cache
+            // is indistinguishable from never having generated a model.
+            try { localStorage.removeItem(MODEL_CACHE_KEY); } catch (_) { /* storage unavailable */ }
+            if (window.Platform && Platform.toast) {
+                Platform.toast.warning('Your locally cached models could not be read and have been cleared.');
+            }
             return {};
         }
     }
@@ -308,7 +313,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 showError(result.error || 'Failed to generate model');
             }
         } catch (error) {
-            console.error('Error generating model:', error);
             showError('Failed to generate ArchiMate model');
         }
     }
@@ -474,7 +478,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 showError('Failed to export model');
             }
         } catch (error) {
-            console.error('Error exporting model:', error);
             showError('Failed to export model');
         }
     }

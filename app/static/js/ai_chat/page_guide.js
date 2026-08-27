@@ -205,7 +205,6 @@
                     operation: 'load',
                     error: error && error.message ? error.message : 'Unknown page guide load failure'
                 });
-                console.error('Failed to load page guide', error);
             });
         });
 
@@ -270,7 +269,6 @@
                         operation: 'send',
                         error: error && error.message ? error.message : 'Unknown page guide send failure'
                     });
-                    console.error('Failed to send page guide message', error);
                 }
             });
         }
@@ -289,7 +287,6 @@
                         operation: 'clear',
                         error: error && error.message ? error.message : 'Unknown page guide clear failure'
                     });
-                    console.error('Failed to clear page guide history', error);
                 }
             });
         }

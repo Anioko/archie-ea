@@ -407,7 +407,6 @@ function vendorAnalysisDetail(analysisId) {
       try {
         this.domains = await Platform.fetch.get('/dashboard/api/business-domains', null, { silent: true });
       } catch (e) {
-        console.error('loadDomains:', e);
         this.domains = [];
         this.showToast('Could not load business domains', 'error');
       }
@@ -420,7 +419,6 @@ function vendorAnalysisDetail(analysisId) {
         if (this.capabilityType) url += '&specialization_type=' + encodeURIComponent(this.capabilityType);
         this.capOptionsL1 = await Platform.fetch.get(url, null, { silent: true });
       } catch (e) {
-        console.error('loadL1Capabilities:', e);
         this.capOptionsL1 = [];
         this.showToast('Could not load capabilities', 'error');
       }
@@ -439,7 +437,6 @@ function vendorAnalysisDetail(analysisId) {
           capability_ids: parents.map(function(c) { return c.id; }), target_level: targetLevel
         }, { silent: true });
       } catch (e) {
-        console.error('loadChildCaps:', e);
         this[optionsKey] = [];
         this.showToast('Could not load related capabilities', 'error');
       }
@@ -451,7 +448,6 @@ function vendorAnalysisDetail(analysisId) {
       try {
         this.procOptionsL1 = await Platform.fetch.get('/dashboard/api/apqc-processes', { level: 1 }, { silent: true });
       } catch (e) {
-        console.error('loadAPQCL1:', e);
         this.procOptionsL1 = [];
         this.showToast('Could not load APQC processes', 'error');
       }
@@ -465,7 +461,6 @@ function vendorAnalysisDetail(analysisId) {
           parent_ids: parents.map(function(p) { return p.id; }), target_level: targetLevel
         }, { silent: true });
       } catch (e) {
-        console.error('loadProcChildren:', e);
         this[optionsKey] = [];
         this.showToast('Could not load related processes', 'error');
       }
@@ -478,7 +473,6 @@ function vendorAnalysisDetail(analysisId) {
         if (this.vsFilterDomain) url += '?domain_id=' + this.vsFilterDomain;
         this.vsOptions = await Platform.fetch.get(url, null, { silent: true });
       } catch (e) {
-        console.error('loadValueStreamOptions:', e);
         this.vsOptions = [];
         this.showToast('Could not load value streams', 'error');
       }
@@ -503,7 +497,6 @@ function vendorAnalysisDetail(analysisId) {
         this.rankedVendors = this.analysis.vendors || [];
         this.comparisonVendors = this.analysis.vendors || [];
       } catch (e) {
-        console.error('loadExistingAnalysis:', e);
         this.showToast('Could not load this analysis', 'error');
       }
     },
@@ -533,7 +526,6 @@ function vendorAnalysisDetail(analysisId) {
         this.selectedVendorIds = new Set();
         this.$nextTick(function() { if (typeof lucide !== 'undefined') lucide.createIcons(); });
       } catch (e) {
-        console.error('discoverVendorsByCaps:', e);
         this.showToast(e && e.type === 'NetworkError' ? 'Vendor discovery error' : 'Vendor discovery failed', 'error');
       }
       finally { this.loadingVendors = false; }
@@ -560,7 +552,6 @@ function vendorAnalysisDetail(analysisId) {
         this.selectedVendorIds = new Set();
         this.$nextTick(function() { if (typeof lucide !== 'undefined') lucide.createIcons(); });
       } catch (e) {
-        console.error('discoverVendorsByProcs:', e);
         this.showToast(e && e.type === 'NetworkError' ? 'Vendor discovery error' : 'Vendor discovery failed', 'error');
       }
       finally { this.loadingVendors = false; }
@@ -623,12 +614,13 @@ function vendorAnalysisDetail(analysisId) {
         }, { silent: true });
         return caps.map(function(c) { return c.id; });
       } catch (e) {
-        // Falls through to an empty return; getCapabilityIdsForPayload() already
-        // toasts "No capabilities could be resolved..." for a zero-length result,
-        // which covers this failure path too.
-        console.error('resolveProcessCapabilityIds:', e);
+        // A failure is NOT "no capabilities matched" -- returning [] here made the
+        // caller toast "No capabilities could be resolved from selected processes",
+        // which misdiagnoses a network/server failure as an empty result. Return
+        // null so the caller aborts, and say what actually went wrong.
+        this.showToast((e && e.data && e.data.error) || 'Could not resolve capabilities for the selected processes', 'error');
+        return null;
       }
-      return [];
     },
 
     async getCapabilityIdsForPayload() {
@@ -639,6 +631,7 @@ function vendorAnalysisDetail(analysisId) {
       }
       if (this.selectionMode === 'processes') {
         const resolved = await this.resolveProcessCapabilityIds();
+        if (resolved === null) return null;   // load failed; already reported
         if (resolved.length === 0) {
           this.showToast('No capabilities could be resolved from selected processes', 'error');
           return null;
@@ -750,7 +743,6 @@ function vendorAnalysisDetail(analysisId) {
           }
         }
       } catch (e) {
-        console.error(e);
         this.showToast('Error running analysis', 'error');
       } finally {
         this.runningAnalysis = false;
@@ -770,7 +762,6 @@ function vendorAnalysisDetail(analysisId) {
         const self = this;
         this.$nextTick(function() { self.renderCharts(); });
       } catch (e) {
-        console.error('loadComparison:', e);
         this.showToast('Could not load the comparison data', 'error');
       } finally {
         this.loadingComparison = false;
@@ -785,7 +776,6 @@ function vendorAnalysisDetail(analysisId) {
         this.rankedVendors = data.vendors || [];
         this.$nextTick(function() { if (typeof lucide !== 'undefined') lucide.createIcons(); });
       } catch (e) {
-        console.error('loadResults:', e);
         this.showToast('Could not load the ranked results', 'error');
       } finally {
         this.loadingDecision = false;
@@ -871,7 +861,6 @@ function vendorAnalysisDetail(analysisId) {
         self.$nextTick(function() { self.renderCharts(); });
         setTimeout(function() { self.manualScoreSaving[saveKey] = ''; }, 1500);
       } catch (e) {
-        console.error('setManualScore:', e);
         self.showToast((e && e.data && e.data.error) || 'Failed to save score', 'error');
         self.manualScoreSaving[saveKey] = 'error';
         // Only a network failure resets the pill back to idle; an HTTP error from the
@@ -905,7 +894,6 @@ function vendorAnalysisDetail(analysisId) {
           self.$nextTick(function() { self.renderCharts(); });
         })
         .catch(function(e) {
-          console.error('clearManualScore:', e);
           self.manualScoreSaving[saveKey] = 'error';
           self.showToast((e && e.data && e.data.error) || 'Failed to clear score', 'error');
         });
@@ -922,7 +910,6 @@ function vendorAnalysisDetail(analysisId) {
         this.requirements = data.requirements || [];
         this.$nextTick(function() { if (typeof lucide !== 'undefined') lucide.createIcons(); });
       } catch (e) {
-        console.error('loadRequirements:', e);
         this.showToast('Could not load requirements', 'error');
       }
     },
@@ -947,7 +934,6 @@ function vendorAnalysisDetail(analysisId) {
           self.showToast(data.error || 'Failed to add requirement', 'error');
         }
       } catch (e) {
-        console.error('addRequirement:', e);
         self.showToast((e && e.data && e.data.error) || 'Error adding requirement', 'error');
       }
     },
@@ -977,7 +963,6 @@ function vendorAnalysisDetail(analysisId) {
           self.showToast(data.error || 'Failed to update', 'error');
         }
       } catch (e) {
-        console.error('saveEditReq:', e);
         self.showToast((e && e.data && e.data.error) || 'Error updating requirement', 'error');
       }
       this.editingReqId = null;
@@ -992,7 +977,6 @@ function vendorAnalysisDetail(analysisId) {
         self.requirements = self.requirements.filter(function(r) { return r.id !== reqId; });
         self.showToast('Requirement deleted', 'success');
       } catch (e) {
-        console.error('deleteRequirement:', e);
         self.showToast((e && e.data && e.data.error) || 'Failed to delete', 'error');
       }
     },
@@ -1029,7 +1013,6 @@ function vendorAnalysisDetail(analysisId) {
         }, { silent: true });
         self.$nextTick(function() { if (typeof lucide !== 'undefined') lucide.createIcons(); });
       } catch (e) {
-        console.error('cycleFulfillment:', e);
         req.fulfillment[String(vendorId)] = current;
         self.showToast((e && e.data && e.data.error) || 'Error saving fulfillment', 'error');
         self.$nextTick(function() { if (typeof lucide !== 'undefined') lucide.createIcons(); });
@@ -1070,7 +1053,6 @@ function vendorAnalysisDetail(analysisId) {
           this.scenarios = data.scenarios || [];
         }
       } catch (e) {
-        console.error('loadScenarios:', e);
         this.showToast('Could not load saved scenarios', 'error');
       }
       this.loadingScenarios = false;
@@ -1325,7 +1307,6 @@ function vendorAnalysisDetail(analysisId) {
         let cData = await Platform.fetch.get('/dashboard/api/vendor-analysis/' + this.analysisId + '/stakeholders/consensus', null, { silent: true });
         if (cData.success) this.stakeholderConsensus = cData;
       } catch (e) {
-        console.error('Failed to load stakeholders:', e);
         this.showToast('Could not load stakeholders', 'error');
       }
       this.loadingStakeholders = false;

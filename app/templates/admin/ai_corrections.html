@@ -196,6 +196,12 @@
 <script>
 const CSRF_TOKEN = "{{ csrf_token() }}";
 
+function reportCorrectionError(message) {
+    if (window.Platform && Platform.toast) {
+        Platform.toast.error(message);
+    }
+}
+
 function markCorrect(elementId) {
     fetch(`/dashboard/api/archimate-elements/${elementId}/correct`, {
         method: 'POST',
@@ -218,10 +224,10 @@ function markCorrect(elementId) {
                 }
             }
         } else {
-            console.error('Correction failed:', data.error || data);
+            reportCorrectionError(data.error || 'Could not confirm this element. It has not been changed.');
         }
     })
-    .catch(err => console.error('Request failed:', err));
+    .catch(() => reportCorrectionError('Could not reach the server to confirm this element. It has not been changed.'));
 }
 
 function toggleFixForm(elementId) {
@@ -272,10 +278,10 @@ function submitFix(elementId) {
                 if (fixForm) { fixForm.classList.add('hidden'); }
             }
         } else {
-            console.error('Fix submission failed:', data.error || data);
+            reportCorrectionError(data.error || 'Could not save this correction. It has not been applied.');
         }
     })
-    .catch(err => console.error('Request failed:', err));
+    .catch(() => reportCorrectionError('Could not reach the server to save this correction. It has not been applied.'));
 }
 
 /* CSP-safe: delegate the row actions instead of inline onclick= (DESIGN.md). */

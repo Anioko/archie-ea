@@ -36,6 +36,10 @@ function loadContext(mode, contextId) {
         .then(function(data) {
             if (data.success) {
                 displayContext(data, mode);
+            } else {
+                // An errored 200 otherwise left the container on its loading
+                // placeholder, indistinguishable from context still arriving.
+                throw new Error(data.error || 'request failed');
             }
         })
         .catch(function(error) {
@@ -52,6 +56,8 @@ function loadTemplates() {
         .then(function(data) {
             if (data.success) {
                 displayTemplates(data.templates);
+            } else {
+                throw new Error(data.error || 'request failed');
             }
         })
         .catch(function(error) {

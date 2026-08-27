@@ -2428,7 +2428,6 @@ function composerApp() {
                      * failure is not an emergency, but the user must be told
                      * once rather than never — surfaced once per session,
                      * not every 10s. */
-                    console.warn('Auto-persist to local browser storage failed:', e.message);
                     if (!self._localAutosaveWarned) {
                         self._localAutosaveWarned = true;
                         _toast('warning', 'Local browser backup is full or unavailable — your work is still being saved to the server.');
@@ -3079,7 +3078,6 @@ function composerApp() {
                 });
             })
             .catch(function(err) {
-                console.error('[Composer] load error:', err);
                 _toast('error', 'Failed to load diagram: ' + ((err && err.message) || err));
                 self.statusText = 'Error loading data';
             });

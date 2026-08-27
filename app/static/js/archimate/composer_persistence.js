@@ -854,7 +854,6 @@ let ComposerPersistence = (function() {
                 });
             })
             .catch(function(err) {
-                console.error('[Composer] saved viewpoint load error:', err);
                 _toast('error', 'Failed to load viewpoint — try clicking the tab again');
                 self.graph.clear();
                 self.canvasElements = {};
@@ -1346,8 +1345,8 @@ let ComposerPersistence = (function() {
                     pdf.save((self.activeViewpointName || 'architecture-report') + '.pdf');
                     self.statusText = 'Report exported (' + pageNum + ' pages)';
                 } catch(e) {
-                    console.error('Report export error:', e);
                     self.statusText = 'Export failed: ' + e.message;
+                    _toast('error', 'Report export failed: ' + (e.message || e));
                 }
                 URL.revokeObjectURL(url);
             };
@@ -1769,12 +1768,12 @@ let ComposerPersistence = (function() {
                 pptx.writeFile({ fileName: safeName + '.pptx' }).then(function() {
                     self.statusText = 'PowerPoint exported (' + elements.length + ' elements, ' + links.length + ' relationships)';
                 }).catch(function(err) {
-                    console.error('PPTX export error:', err);
                     self.statusText = 'PowerPoint export failed: ' + (err.message || err);
+                    _toast('error', 'PowerPoint export failed: ' + (err.message || err));
                 });
             } catch (e) {
-                console.error('PPTX export error:', e);
                 self.statusText = 'PowerPoint export failed: ' + e.message;
+                _toast('error', 'PowerPoint export failed: ' + (e.message || e));
             }
         },
 
@@ -2465,7 +2464,6 @@ let ComposerPersistence = (function() {
                 });
             })
             .catch(function(err) {
-                console.error('[Composer] snapshot view error:', err);
                 self.statusText = 'Snapshot load error';
                 _toast('error', 'Failed to load snapshot');
             });

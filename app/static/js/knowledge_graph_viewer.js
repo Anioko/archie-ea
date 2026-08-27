@@ -266,6 +266,8 @@ async function showNeighbors() {
                 edges: related.map(e => ({ source: selectedNode.id, target: e.id || e.name }))
             };
             renderGraph(subgraph);
+        } else {
+            Platform.toast.error('Could not load neighbours: ' + (data.error || 'unknown error'));
         }
     } catch (error) {
         Platform.toast.error('Error loading neighbors: ' + error.message);

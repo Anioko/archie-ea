@@ -30,7 +30,6 @@ function loadData() {
         renderTemplates();
         renderInstances();
     }).catch(function(error) {
-        // console.error('Error loading data:', error); // Console output forbidden
         notifyFrameworkError('Failed to load framework data. Please retry.');
     });
 }
@@ -237,7 +236,6 @@ function activateExtension(extensionId) {
             }
         })
         .catch(function(error) {
-            // console.error('Error activating extension:', error); // Console output forbidden
             Platform.toast.error('Error activating extension');
         });
 }
@@ -261,7 +259,6 @@ async function applyTemplate(templateId) {
             }
         })
         .catch(function(error) {
-            // console.error('Error applying template:', error); // Console output forbidden
             Platform.toast.error('Error applying template');
         });
 }
@@ -289,7 +286,6 @@ document.getElementById('deployForm').addEventListener('submit', function(e) {
             }
         })
         .catch(function(error) {
-            // console.error('Error deploying configuration:', error); // Console output forbidden
             Platform.toast.error('Error deploying configuration');
         });
 });

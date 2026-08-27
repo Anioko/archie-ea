@@ -688,7 +688,6 @@ document.addEventListener('alpine:init', function() {
                 // incognito mode or when the quota is exceeded. Losing the
                 // wizard-state autosave is not worth interrupting the user —
                 // they can still submit the form normally.
-                console.warn('Failed to save wizard state to sessionStorage:', e);
             }
         },
 
@@ -728,7 +727,13 @@ document.addEventListener('alpine:init', function() {
                 }
                 return true;
             } catch (e) {
-                console.warn('Failed to restore wizard state from sessionStorage:', e);
+                // A saved draft exists but cannot be read. Drop it so the next
+                // save starts clean, and say so — a silently blank form reads as
+                // "nothing was ever saved".
+                try { sessionStorage.removeItem(this._storageKey); } catch (_) { /* storage unavailable */ }
+                if (window.Platform && window.Platform.toast) {
+                    window.Platform.toast.warning('Your saved draft could not be restored — please re-enter this form.');
+                }
                 return false;
             }
         },
@@ -744,9 +749,7 @@ document.addEventListener('alpine:init', function() {
 
         init() {
             // Restore saved wizard state on page load
-            let restored = this.restoreFromSessionStorage();
-            if (restored) {
-            }
+            this.restoreFromSessionStorage();
 
             // Watch for form data changes and persist to sessionStorage
             this.$watch('formData', function() { this.saveToSessionStorage(); }.bind(this), { deep: true });

@@ -109,7 +109,6 @@
             lucide.createIcons();
 
         } catch (error) {
-            console.error('Error loading domain context:', error);
             // Surface the failure — otherwise the panel is left showing whatever the
             // previous domain rendered (or nothing), which reads as "no context" rather
             // than "the load failed".
@@ -668,7 +667,6 @@
                     this._refreshItems();
                     this._extractErrorShown = false;
                 } catch (e) {
-                    console.warn('Genome extraction failed:', e);
                     // Called after every answer while in genome mode — toast once per
                     // outage, not on every message, or a bad run spams the user.
                     if (!this._extractErrorShown) {

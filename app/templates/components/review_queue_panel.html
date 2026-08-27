@@ -122,18 +122,25 @@ async function loadReviewQueue(previewData) {
       renderReviewQueue(reviewQueueItems);
     } else {
       const response = await fetch('/api/review-queue');
+      // fetch does not reject on 4xx/5xx, and an unchecked `data.success` left the
+      // panel on its previous/empty state -- a failure that read as "nothing to review".
+      if (!response.ok) throw new Error('HTTP ' + response.status);
       const data = await response.json();
 
-      if (data.success) {
-        reviewQueueItems = data.items || [];
-        renderReviewQueue(reviewQueueItems);
-      }
+      if (!data.success) throw new Error(data.error || 'request failed');
+      reviewQueueItems = data.items || [];
+      renderReviewQueue(reviewQueueItems);
     }
 
     updateReviewCounts();
   } catch (error) {
-    document.getElementById('review-queue-content').innerHTML =
-      `<div class="text-destructive-emphasis text-center py-8">Failed to load review queue: ${error.message}</div>`;
+    const target = document.getElementById('review-queue-content');
+    target.replaceChildren();
+    const errEl = document.createElement('div');
+    errEl.className = 'text-destructive-emphasis text-center py-8';
+    // textContent, not innerHTML: the message can now carry server-supplied text.
+    errEl.textContent = 'Failed to load review queue: ' + (error && error.message ? error.message : 'request failed');
+    target.appendChild(errEl);
   }
 }
 
@@ -143,7 +150,7 @@ function buildReviewItemsFromPreview(previewData) {
   const LOW_CONFIDENCE_THRESHOLD = 0.70; // Only show items below 70% confidence
 
   if (!previewData.applications || previewData.applications.length === 0) {
-    console.warn('No applications found in preview data');
+    // Genuinely empty preview -- renderReviewQueue() draws its empty state.
     return items;
   }
 

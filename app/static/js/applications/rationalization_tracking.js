@@ -102,8 +102,8 @@ function trackingApp() {
                     }
                     self.importPreview = Array.isArray(data) ? data.slice(0, 10) : [];
                 } catch (err) {
-                    console.error('Import parse error:', err);
                     self.importPreview = [];
+                    Platform.toast.error('Could not read that file: ' + (err.message || 'unrecognised format'));
                 }
             };
             reader.readAsText(file);

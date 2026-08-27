@@ -101,6 +101,10 @@ class APQCBrowserManager {
 
             if (data.success) {
                 this.populateIndustryFilter(data.variants || []);
+            } else {
+                // Without this branch an errored 200 left the industry filter empty,
+                // which reads as "this deployment has no industry variants".
+                throw new Error(data.error || 'request failed');
             }
         } catch (error) {
             this.showError('Error loading industry variants');

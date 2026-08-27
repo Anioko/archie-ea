@@ -221,8 +221,11 @@ document.addEventListener('alpine:init', () => {
                 });
 
             } catch (e) {
-                console.error('Observable Plot render error:', e);
-                container.innerHTML = '<p class="p-6 text-sm text-muted-foreground">Tree rendering failed. Check console.</p>';
+                container.replaceChildren();
+                const errEl = document.createElement('p');
+                errEl.className = 'p-6 text-sm text-destructive';
+                errEl.textContent = 'Tree rendering failed — ' + (e && e.message ? e.message : 'unexpected error');
+                container.appendChild(errEl);
             }
 
             if (window.lucide) lucide.createIcons();
