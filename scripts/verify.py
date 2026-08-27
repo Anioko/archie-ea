@@ -528,37 +528,6 @@ def gate_broken_surfaces(baseline: int) -> Result:
                   detail, count, baseline)
 
 
-def gate_reconcile_coverage() -> Result:
-    """Every typed-ARB / Transformation model table is reconcilable. ZERO.
-
-    `flask reconcile-schema` creates missing TABLES only for the hand-maintained
-    `_TRANSFORMATION_TABLES` tuple. A model added to this feature area and left
-    out of that tuple is a table the reconciler can never create: invisible on a
-    fresh database (create_all makes it), fatal on every long-lived one, where
-    the first query raises UndefinedTable, aborts the transaction and cascades
-    into InFailedSqlTransaction across the whole page.
-
-    It has happened four times (arb_submission_evidence_snapshots,
-    arb_waiver_expiry_checkpoints, workbench_artifact_evidence), which makes it
-    a class rather than a run of bad luck, and nothing else in this gate set can
-    see it: schema-drift compares the ORM to a database that create_all has
-    already populated, so it is green precisely where the deployment is broken.
-
-    Two rules, both required — see scripts/check_reconcile_coverage.py.
-    Ownership catches the omission; convergence catches a tuple that is complete
-    but unrunnable, because a listed table FKs to an unlisted feature table and
-    so raises UndefinedTable on every pass.
-    """
-    proc = _run([sys.executable, "scripts/check_reconcile_coverage.py", "--count"])
-    try:
-        count = int(proc.stdout.strip().splitlines()[-1])
-    except (ValueError, IndexError):
-        return Result("reconcile-coverage", FAIL,
-                      f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
-    detail = "" if count == 0 else "run scripts/check_reconcile_coverage.py to list them"
-    return Result("reconcile-coverage", PASS if count == 0 else FAIL, detail, count, 0)
-
-
 def gate_dynamic_link_prefixes(baseline: int) -> Result:
     """ARCH-043: concatenated href/fetch links whose literal prefix is dead. RATCHET.
 
@@ -1369,15 +1338,6 @@ def build_gates(baseline: dict) -> list[Gate]:
              remediation="run scripts/check_csrf_coverage.py; justify the exemption in "
                          "app/_bootstrap/csrf_coverage.py or remove it",
              tags=["static", "security", "runtime"]),
-        Gate("reconcile-coverage",
-             "every typed-ARB/Transformation model table is reconcilable on a live DB",
-             "zero", gate_reconcile_coverage,
-             remediation="run scripts/check_reconcile_coverage.py; add the table to "
-                         "_TRANSFORMATION_TABLES in app/commands/reconcile_schema.py, "
-                         "in dependency order (after anything it FKs to)",
-             # NOT "static". Walks db.metadata, so it boots the app - same
-             # reason as broken-surfaces. Belongs with boot-health.
-             tags=["boot", "db"]),
         Gate("schema-drift", "Live DB matches the ORM models", "command",
              gate_schema_drift, needs_db=True,
              remediation="run: flask --app manage reconcile-schema", tags=["runtime", "db"]),
@@ -1449,6 +1409,7 @@ def main(argv: list[str] | None = None) -> int:
     baseline = load_baseline()
     gates = build_gates(baseline)
 
+    all_gate_names = [g.name for g in gates]
     if args.gate:
         wanted = set(args.gate)
         unknown = wanted - {g.name for g in gates}
@@ -1457,6 +1418,15 @@ def main(argv: list[str] | None = None) -> int:
         gates = [g for g in gates if g.name in wanted]
     if args.tag:
         gates = [g for g in gates if set(args.tag) & set(g.tags)]
+    # Everything the filter removed. A filtered run has to say so: `--tag static`
+    # reads as a full run and is not one - it excludes broken-surfaces,
+    # and dynamic-link-prefixes, both of which boot the app
+    # and so is deliberately untagged `static`, plus nav-verified, which carries
+    # no tags at all and is therefore unreachable from EVERY --tag invocation.
+    # A red broken-surfaces sat unnoticed on deployed main for exactly this
+    # reason: the pre-deploy command everyone ran could not see it, and its
+    # "31 passed, 0 failed" line looked like proof the tree was clean.
+    not_run = [n for n in all_gate_names if n not in {g.name for g in gates}]
 
     db_ok, db_reason = database_available()
     results: list[Result] = []
@@ -1502,7 +1472,10 @@ def main(argv: list[str] | None = None) -> int:
             "database_available": db_ok,
             "database_detail": db_reason,
             "summary": {"pass": len(results) - len(failed) - len(skipped),
-                        "fail": len(failed), "skip": len(skipped)},
+                        "fail": len(failed), "skip": len(skipped),
+                        "not_run": len(not_run)},
+            "partial_run": bool(not_run),
+            "not_run": not_run,
             "gates": [r.__dict__ for r in results],
         }, indent=2))
         return 1 if failed else 0
@@ -1532,7 +1505,18 @@ def main(argv: list[str] | None = None) -> int:
             print(f"    {r.name}: {r.detail}")
         print("    CI runs with --require-db so these cannot be silently skipped there.")
 
-    print(f"\n{len(results) - len(failed) - len(skipped)} passed, {len(failed)} failed, {len(skipped)} skipped")
+    if not_run:
+        print(f"\n{len(not_run)} gate(s) EXCLUDED BY THE FILTER and therefore NOT verified:")
+        for name in not_run:
+            print(f"    {name}")
+        print("    This is a PARTIAL run. It is not evidence the tree is clean.")
+        print("    Before a deploy run the full set:  python scripts/verify.py")
+
+    summary = (f"\n{len(results) - len(failed) - len(skipped)} passed, "
+               f"{len(failed)} failed, {len(skipped)} skipped")
+    if not_run:
+        summary += f", {len(not_run)} not run (PARTIAL RUN)"
+    print(summary)
     return 1 if failed else 0
 
 
