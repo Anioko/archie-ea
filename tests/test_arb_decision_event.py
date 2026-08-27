@@ -57,6 +57,14 @@ def test_decision_guard_sql_binds_terminal_projection_and_command_envelopes():
     assert "review.submitter_id <> NEW.actor_id" in sql
     assert "cycle.terminal_outcome = NEW.outcome" in sql
     assert "review.decision = NEW.outcome" in sql
+    assert (
+        "review.conditions::jsonb IS NOT DISTINCT FROM "
+        "NEW.conditions_json::jsonb"
+    ) in sql
+    assert "review.decision_date IS NOT NULL" in sql
+    assert "review.review_completed_at IS NOT NULL" in sql
+    assert "review.decision_date=cycle.closed_at" in sql
+    assert "review.review_completed_at=cycle.closed_at" in sql
     assert "'arb-decision:' || NEW.organization_id::text || ':'" in sql
     assert "receipt.operation='arb.decision.record'" in sql
     assert "receipt.status = 'succeeded'" in sql
@@ -65,6 +73,21 @@ def test_decision_guard_sql_binds_terminal_projection_and_command_envelopes():
     assert "result.object_ids::jsonb" in sql
     assert "condition_ids" in sql
     assert "canonical conditions disagree" in sql
+
+
+def test_direct_sql_projection_guard_rejects_null_or_mismatched_review_completion():
+    """The deferred SQL itself must reject every incomplete review projection."""
+    from app.models.arb_decision_event import _decision_membership_sql
+
+    sql = _decision_membership_sql('"public"')
+    required_predicates = {
+        "review.conditions::jsonb IS NOT DISTINCT FROM NEW.conditions_json::jsonb",
+        "review.decision_date IS NOT NULL",
+        "review.review_completed_at IS NOT NULL",
+        "review.decision_date=cycle.closed_at",
+        "review.review_completed_at=cycle.closed_at",
+    }
+    assert all(predicate in sql for predicate in required_predicates)
 
 
 def test_open_state_guard_proves_real_pretransition_projection():
