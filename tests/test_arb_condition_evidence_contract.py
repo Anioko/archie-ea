@@ -62,6 +62,7 @@ def test_condition_evidence_is_a_dedicated_tenant_immutable_aggregate():
     required = {
         "organization_id",
         "condition_id",
+        "condition_revision",
         "decision_event_id",
         "review_cycle_id",
         "review_item_id",
@@ -161,8 +162,25 @@ def test_acceptance_uses_exact_condition_scoped_command(monkeypatch, subject_typ
     captured = {}
     monkeypatch.setattr(
         module.TypedARBConditionEvidenceService,
+        "_load_condition_graph",
+        classmethod(
+            lambda cls, session, actor, condition_id, for_update: (
+                SimpleNamespace(id=601, revision=1),
+                SimpleNamespace(),
+                SimpleNamespace(),
+                SimpleNamespace(),
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        module.TypedARBConditionEvidenceService,
+        "_assert_exact_typed_membership",
+        staticmethod(lambda condition, decision, cycle, review: None),
+    )
+    monkeypatch.setattr(
+        module.TypedARBConditionEvidenceService,
         "authorise_acceptance",
-        classmethod(lambda cls, session, actor, condition_id: None),
+        classmethod(lambda cls, session, actor, condition_id, **kwargs: None),
     )
     monkeypatch.setattr(
         module.TypedARBConditionEvidenceService,
@@ -207,19 +225,20 @@ def test_acceptance_uses_exact_condition_scoped_command(monkeypatch, subject_typ
     )
 
     assert result.object_ids["condition_evidence_id"] == 701
-    assert captured["operation"] == "arb.condition.evidence.accept"
-    assert captured["natural_key"] == "arb-condition-evidence:41:601"
-    assert captured["payload"] == {"condition_id": 601, "evidence": payload}
+    assert captured["operation"] == "arb.condition.evidence.capture"
+    assert captured["natural_key"] == "arb-condition-evidence:41:601:1"
+    assert captured["payload"]["condition_id"] == 601
+    assert captured["payload"]["condition_revision"] == 1
+    assert captured["payload"]["evidence"]["freshness_status"] == "fresh"
 
 
 def test_locked_acceptance_contract_requires_exact_pending_request_and_fresh_record():
     module = _service_module()
     service = module.TypedARBConditionEvidenceService
-    assert service.ACCEPTED_CONDITION_STATUS == "fulfilled"
+    assert service.ACCEPTED_CONDITION_STATUS == "evidence_submitted"
     assert service.REQUIRED_PRIOR_STATUS == "pending"
     assert service.ACCEPTABLE_FRESHNESS == frozenset({"fresh", "not_applicable"})
     assert callable(service._load_condition_graph_for_update)
     assert callable(service._assert_exact_typed_membership)
     assert callable(service._compute_content_hash)
     assert callable(service._reject_candidate_scope_fields)
-
