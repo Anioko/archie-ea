@@ -40,6 +40,19 @@ CONVERGENCE
     be complete by ownership and still be unrunnable by ordering; both rules are
     needed.
 
+FK SPEC
+    `_TRANSFORMATION_FOREIGN_KEYS` is a second hand-maintained tuple, of
+    (name, source table, source column, target table, target column, ondelete).
+    Where it disagrees with the ORM the reconciler asks Postgres for a
+    constraint that already exists under that name with a different definition,
+    so the ADD is a no-op, the next dry-run reports the same drift, and
+    reconcile-schema never converges. Found live on this branch:
+    fk_strategic_roadmap_items_organization is specified RESTRICT while
+    TenantMixin declares ondelete="CASCADE", which pins schema-drift red on
+    every database forever. Same root cause as the other two rules — a
+    hand-maintained list drifting from the models — so it belongs in the same
+    gate.
+
 Scope is an explicit module list rather than "any module that already
 contributes a table", because `app/models/architecture_review_board.py` is a
 legacy module that predates the feature: only `arb_review_cycles` participates,
@@ -95,16 +108,21 @@ def _boot():
             "- it belongs alongside boot-health." % (type(exc).__name__, str(exc)[:300])
         )
     try:
-        from app.commands.reconcile_schema import _TRANSFORMATION_TABLES
+        from app.commands.reconcile_schema import (
+            _TRANSFORMATION_FOREIGN_KEYS,
+            _TRANSFORMATION_TABLES,
+        )
     except Exception as exc:  # noqa: BLE001
         raise SystemExit(
             "check_reconcile_coverage cannot run: could not read "
-            "_TRANSFORMATION_TABLES from app/commands/reconcile_schema.py "
-            "(%s: %s). If that tuple was renamed, update this checker - do not "
-            "delete the gate." % (type(exc).__name__, str(exc)[:300])
+            "_TRANSFORMATION_TABLES / _TRANSFORMATION_FOREIGN_KEYS from "
+            "app/commands/reconcile_schema.py (%s: %s). If those tuples were "
+            "renamed, update this checker - do not delete the gate."
+            % (type(exc).__name__, str(exc)[:300])
         )
     with app.app_context():
-        return db.metadata, tuple(_TRANSFORMATION_TABLES)
+        return (db.metadata, tuple(_TRANSFORMATION_TABLES),
+                tuple(_TRANSFORMATION_FOREIGN_KEYS))
 
 
 def _feature_tables(metadata) -> dict[str, str]:
@@ -130,7 +148,7 @@ def _feature_tables(metadata) -> dict[str, str]:
 
 
 def findings() -> list[dict]:
-    metadata, declared = _boot()
+    metadata, declared, fk_specs = _boot()
     declared_set = set(declared)
     owned = _feature_tables(metadata)
     out: list[dict] = []
@@ -182,6 +200,61 @@ def findings() -> list[dict]:
                           "_TRANSFORMATION_TABLES: reconcile-schema raises "
                           "UndefinedTable on every pass and can never converge"
                           % target,
+            })
+
+    # FK SPEC
+    for spec in fk_specs:
+        name, src_table, src_col, tgt_table, tgt_col, ondelete = spec[:6]
+        table = metadata.tables.get(src_table)
+        if table is None:
+            out.append({
+                "kind": "fk-spec-phantom-table",
+                "table": name,
+                "module": "app/commands/reconcile_schema.py",
+                "detail": "names source table %r, which no model maps" % src_table,
+            })
+            continue
+        column = table.columns.get(src_col)
+        if column is None:
+            out.append({
+                "kind": "fk-spec-phantom-column",
+                "table": name,
+                "module": "app/commands/reconcile_schema.py",
+                "detail": "names %s.%s, which the model does not declare"
+                          % (src_table, src_col),
+            })
+            continue
+        model_fks = list(column.foreign_keys)
+        if not model_fks:
+            # The ORM declares no FK on this column at all. reconcile-schema
+            # installing one is deliberate (several are added ahead of the
+            # model), so this is not a finding — there is nothing to disagree
+            # with.
+            continue
+        fk = model_fks[0]
+        actual_target = "%s.%s" % (fk.column.table.name, fk.column.name)
+        expected_target = "%s.%s" % (tgt_table, tgt_col)
+        actual_ondelete = (fk.ondelete or "NO ACTION").upper()
+        if actual_target != expected_target:
+            out.append({
+                "kind": "fk-spec-mismatch",
+                "table": name,
+                "module": "app/commands/reconcile_schema.py",
+                "detail": "targets %s but the model declares %s; the ADD is a "
+                          "no-op against the existing constraint, so "
+                          "reconcile-schema reports the same drift forever"
+                          % (expected_target, actual_target),
+            })
+        elif actual_ondelete != ondelete.upper():
+            out.append({
+                "kind": "fk-spec-mismatch",
+                "table": name,
+                "module": "app/commands/reconcile_schema.py",
+                "detail": "specifies ON DELETE %s but the model declares %s; "
+                          "the constraint already exists under this name, so "
+                          "the ADD is a no-op and schema-drift stays red on "
+                          "every database forever"
+                          % (ondelete.upper(), actual_ondelete),
             })
     return out
 
