@@ -63,6 +63,10 @@ _TRANSFORMATION_TABLES = (
     # predates the submission-evidence feature: arb_review_cycles fails with
     # UndefinedTable on every pass.
     "arb_submission_evidence_snapshots",
+    # Declared alongside the snapshot table in app/models/arb_submission_evidence.py
+    # and equally required by the typed evidence path; omitting it is the same
+    # class of miss as the tables above.
+    "workbench_artifact_evidence",
     "arb_review_cycles",
 )
 
@@ -116,12 +120,19 @@ _TRANSFORMATION_FOREIGN_KEYS = (
         "RESTRICT",
     ),
     (
+        # CASCADE, not RESTRICT: organization_id comes from TenantMixin, which
+        # declares ondelete="CASCADE" for every tenant table. This entry used to
+        # say RESTRICT, so reconcile-schema rewrote the constraint away from the
+        # ORM definition on every pass and schema-drift could never go green --
+        # the detector compared the models (CASCADE) against a database this
+        # command had just forced to RESTRICT. The models are the source of
+        # truth; this list has to follow them.
         "fk_strategic_roadmap_items_organization",
         "strategic_roadmap_items",
         "organization_id",
         "organizations",
         "id",
-        "RESTRICT",
+        "CASCADE",
     ),
     (
         "fk_strategic_roadmap_items_programme_workstream",
