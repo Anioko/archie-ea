@@ -33,6 +33,11 @@ _TYPED_COLUMNS = (
     "architecture_model_id", "adr_id", "decision_brief_version_id",
     "solution_evidence_snapshot_id", "subject_evidence_snapshot_id",
 )
+_EVIDENCE_KEYS = frozenset({
+    "source_identity", "source_type", "source_version", "source_checksum",
+    "value_json", "observed_at", "freshness_rule_version", "freshness_status",
+    "freshness_expires_at", "content_hash",
+})
 
 
 class TypedARBConditionEvidenceService:
@@ -41,6 +46,9 @@ class TypedARBConditionEvidenceService:
     ACCEPTED_CONDITION_STATUS = "evidence_submitted"
     ACCEPTABLE_FRESHNESS = frozenset({"fresh", "not_applicable"})
     MAX_EVIDENCE_BYTES = 64 * 1024
+    FRESH_RULE = "arb-condition-v1"
+    NOT_APPLICABLE_RULE = "arb-condition-not-applicable-v1"
+    NOT_APPLICABLE_SOURCE_TYPES = frozenset({"manual_attestation"})
 
     @classmethod
     def capture(cls, *, actor, command_key, condition_id, evidence):
@@ -88,6 +96,9 @@ class TypedARBConditionEvidenceService:
         if not isinstance(evidence, dict):
             raise ValueError("evidence must be an object")
         cls._reject_candidate_scope_fields(evidence)
+        unknown = set(evidence).difference(_EVIDENCE_KEYS)
+        if unknown:
+            raise ValueError("condition evidence contains unsupported fields")
         required = (
             "source_identity", "source_type", "source_version", "source_checksum",
             "value_json", "observed_at", "freshness_rule_version",
@@ -116,8 +127,6 @@ class TypedARBConditionEvidenceService:
         result["freshness_expires_at"] = (
             cls._iso_datetime(expires, "freshness_expires_at") if expires else None
         )
-        if result["freshness_expires_at"] and result["freshness_expires_at"] <= result["observed_at"]:
-            raise ValueError("freshness_expires_at must be after observed_at")
         encoded = json.dumps(result, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
         if len(encoded) > cls.MAX_EVIDENCE_BYTES:
             raise ValueError("condition evidence exceeds 64 KiB")
@@ -184,6 +193,30 @@ class TypedARBConditionEvidenceService:
         return condition, decision, cycle, review
 
     @classmethod
+    def _lock_condition_graph(cls, session, actor, condition_id, cycle_identity):
+        cycle = session.execute(select(ARBReviewCycle).where(
+            ARBReviewCycle.id == cycle_identity.id,
+            ARBReviewCycle.organization_id == actor.organization_id,
+        ).with_for_update()).scalar_one_or_none()
+        if cycle is None:
+            raise NotFound("arb_condition_not_found")
+        review = session.execute(select(ARBReviewItem).where(
+            ARBReviewItem.id == cycle_identity.review_item_id,
+            ARBReviewItem.organization_id == actor.organization_id,
+        ).with_for_update()).scalar_one_or_none()
+        decision = session.execute(select(ARBDecisionEvent).where(
+            ARBDecisionEvent.id == cycle_identity.decision_event_id,
+            ARBDecisionEvent.organization_id == actor.organization_id,
+        ).with_for_update()).scalar_one_or_none()
+        condition = session.execute(select(ARBCondition).where(
+            ARBCondition.id == condition_id,
+            ARBCondition.organization_id == actor.organization_id,
+        ).with_for_update()).scalar_one_or_none()
+        if any(value is None for value in (review, decision, condition)):
+            raise NotFound("arb_condition_not_found")
+        return condition, decision, cycle, review
+
+    @classmethod
     def _load_condition_graph_for_update(cls, session, actor, condition_id):
         return cls._load_condition_graph(
             session, actor, condition_id, for_update=True
@@ -225,23 +258,27 @@ class TypedARBConditionEvidenceService:
 
     @classmethod
     def _accept_locked(cls, *, session, actor, condition_id, claimed_revision, evidence, claim):
-        condition, decision, cycle, review = cls._load_condition_graph_for_update(
-            session, actor, condition_id
+        unlocked = cls._load_condition_graph(
+            session, actor, condition_id, for_update=False
+        )
+        unlocked_condition, _, unlocked_cycle, unlocked_review = unlocked
+        TypedARBSubmissionService._lock_subject_submission(session, actor, unlocked_cycle)
+        identity = type("ConditionLockIdentity", (), {
+            "id": unlocked_cycle.id,
+            "review_item_id": unlocked_review.id,
+            "decision_event_id": unlocked_condition.decision_event_id,
+        })()
+        condition, decision, cycle, review = cls._lock_condition_graph(
+            session, actor, condition_id, identity
         )
         cls._assert_exact_typed_membership(condition, decision, cycle, review)
-        session.execute(
-            select(ARBReviewCycle.id).where(
-                ARBReviewCycle.id == cycle.id,
-                ARBReviewCycle.organization_id == actor.organization_id,
-            ).with_for_update()
-        )
-        TypedARBSubmissionService._lock_subject_submission(session, actor, cycle)
         cls.authorise_acceptance(session, actor, condition_id, for_update=True)
         if getattr(condition, "revision", 1) != claimed_revision:
             raise CommandConflict("arb_condition_revision_changed")
         if condition.status != cls.REQUIRED_PRIOR_STATUS:
             raise CommandConflict("arb_condition_not_pending")
         now = CommandService._database_now(session)
+        cls._validate_freshness_at_capture(evidence, now)
         typed_values = {name: getattr(decision, name) for name in _TYPED_COLUMNS}
         record = ARBConditionEvidenceRecord(
             organization_id=actor.organization_id,
@@ -268,6 +305,8 @@ class TypedARBConditionEvidenceService:
         )
         session.add(record)
         session.flush()
+        if record.content_hash != record.recompute_content_hash():
+            raise CommandConflict("arb_condition_evidence_hash_round_trip_failed")
         ids = {
             "condition_id": condition.id,
             "condition_evidence_id": record.id,
@@ -279,6 +318,28 @@ class TypedARBConditionEvidenceService:
             response={**ids, "status": "captured", "lifecycle_transitioned": False},
             outbox_events=(),
         )
+
+    @classmethod
+    def _validate_freshness_at_capture(cls, evidence, now):
+        observed = datetime.fromisoformat(evidence["observed_at"].replace("Z", "+00:00"))
+        expires = (
+            datetime.fromisoformat(evidence["freshness_expires_at"].replace("Z", "+00:00"))
+            if evidence["freshness_expires_at"] else None
+        )
+        if observed > now:
+            raise ValueError("observed_at cannot be in the future")
+        if evidence["freshness_status"] == "fresh":
+            if evidence["freshness_rule_version"] != cls.FRESH_RULE:
+                raise ValueError("unsupported freshness rule")
+            if expires is None or expires <= now:
+                raise ValueError("fresh evidence must expire after server time")
+            return
+        if (
+            evidence["freshness_rule_version"] != cls.NOT_APPLICABLE_RULE
+            or evidence["source_type"] not in cls.NOT_APPLICABLE_SOURCE_TYPES
+            or expires is not None
+        ):
+            raise ValueError("invalid not_applicable freshness policy")
 
 
 __all__ = ["TypedARBConditionEvidenceService"]

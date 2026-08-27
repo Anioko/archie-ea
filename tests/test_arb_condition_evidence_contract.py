@@ -12,6 +12,7 @@ Solution, Architecture Model, or ADR reviews.
 from __future__ import annotations
 
 import importlib
+import inspect
 from types import SimpleNamespace
 
 import pytest
@@ -154,6 +155,13 @@ def test_hash_source_and_freshness_are_append_only_guarded():
         "freshness_expires_at",
         "freshness_rule_version",
     }
+    guard_sql = module._membership_sql("public")
+    assert "receipt.operation='arb.condition.evidence.capture'" in guard_sql
+    assert "receipt.status='succeeded'" in guard_sql
+    assert "result.request_digest=receipt.request_digest" in guard_sql
+    assert "materialisation.request_digest=receipt.request_digest" in guard_sql
+    assert "'condition_evidence_id',NEW.id" in guard_sql
+    assert "NEW.condition_revision" in guard_sql
 
 
 @pytest.mark.parametrize("subject_type", SUBJECT_TYPES)
@@ -210,7 +218,6 @@ def test_acceptance_uses_exact_condition_scoped_command(monkeypatch, subject_typ
 
     monkeypatch.setattr(module.CommandService, "execute", execute)
     payload = {
-        "subject_type": subject_type,
         "source_identity": "cmdb:record:42",
         "source_type": "cmdb",
         "source_version": "7",
@@ -242,3 +249,73 @@ def test_locked_acceptance_contract_requires_exact_pending_request_and_fresh_rec
     assert callable(service._assert_exact_typed_membership)
     assert callable(service._compute_content_hash)
     assert callable(service._reject_candidate_scope_fields)
+
+
+def test_capture_rejects_unknown_input_and_verifies_canonical_hash():
+    service = _service_module().TypedARBConditionEvidenceService
+    evidence = {
+        "source_identity": "cmdb:record:42",
+        "source_type": "cmdb",
+        "source_version": "7",
+        "source_checksum": "a" * 64,
+        "value_json": {"verified": True},
+        "observed_at": "2026-08-27T10:00:00Z",
+        "freshness_rule_version": service.FRESH_RULE,
+        "freshness_expires_at": "2026-08-28T10:00:00Z",
+    }
+    canonical = service._canonical_evidence(evidence)
+    good_hash = service._compute_content_hash(canonical)
+    assert service._canonical_evidence({**evidence, "content_hash": good_hash}) == canonical
+    with pytest.raises(ValueError, match="does not match"):
+        service._canonical_evidence({**evidence, "content_hash": "0" * 64})
+    with pytest.raises(ValueError, match="candidate-scoped"):
+        service._canonical_evidence({**evidence, "candidate_id": None})
+
+
+def test_freshness_is_decided_against_server_time():
+    from datetime import datetime, timezone
+
+    service = _service_module().TypedARBConditionEvidenceService
+    now = datetime(2026, 8, 27, 12, tzinfo=timezone.utc)
+    base = {
+        "source_type": "cmdb",
+        "observed_at": "2026-08-27T10:00:00Z",
+        "freshness_status": "fresh",
+        "freshness_rule_version": service.FRESH_RULE,
+        "freshness_expires_at": "2026-08-28T10:00:00Z",
+    }
+    service._validate_freshness_at_capture(base, now)
+    with pytest.raises(ValueError, match="future"):
+        service._validate_freshness_at_capture(
+            {**base, "observed_at": "2026-08-27T13:00:00Z"}, now
+        )
+    with pytest.raises(ValueError, match="expire after server time"):
+        service._validate_freshness_at_capture(
+            {**base, "freshness_expires_at": "2026-08-27T11:00:00Z"}, now
+        )
+    service._validate_freshness_at_capture(
+        {
+            **base,
+            "source_type": "manual_attestation",
+            "freshness_status": "not_applicable",
+            "freshness_rule_version": service.NOT_APPLICABLE_RULE,
+            "freshness_expires_at": None,
+        },
+        now,
+    )
+
+
+def test_locked_capture_declares_subject_before_row_lock_order():
+    service = _service_module().TypedARBConditionEvidenceService
+    source = inspect.getsource(service._accept_locked)
+    advisory = source.index("_lock_subject_submission")
+    graph_locks = source.index("_lock_condition_graph")
+    actor_lock = source.index("authorise_acceptance")
+    assert advisory < graph_locks < actor_lock
+
+    graph_source = inspect.getsource(service._lock_condition_graph)
+    assert graph_source.index("select(ARBReviewCycle)") < graph_source.index(
+        "select(ARBReviewItem)"
+    ) < graph_source.index("select(ARBDecisionEvent)") < graph_source.index(
+        "select(ARBCondition)"
+    )

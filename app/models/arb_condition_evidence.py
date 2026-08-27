@@ -1,5 +1,10 @@
 """Immutable evidence captured specifically for canonical ARB conditions."""
 
+from __future__ import annotations
+
+import hashlib
+import json
+
 from sqlalchemy import event
 
 from app import db
@@ -82,6 +87,32 @@ class ARBConditionEvidenceRecord(TenantMixin, db.Model):
         db.UniqueConstraint("organization_id", "condition_id", "content_hash", name="uq_arb_condition_evidence_content"),
     )
 
+    @staticmethod
+    def _iso(value):
+        if value is None:
+            return None
+        return value.isoformat().replace("+00:00", "Z")
+
+    def canonical_document(self):
+        return {
+            "freshness_expires_at": self._iso(self.freshness_expires_at),
+            "freshness_rule_version": self.freshness_rule_version,
+            "freshness_status": self.freshness_status,
+            "observed_at": self._iso(self.observed_at),
+            "source_checksum": self.source_checksum,
+            "source_identity": self.source_identity,
+            "source_type": self.source_type,
+            "source_version": self.source_version,
+            "value_json": self.value_json,
+        }
+
+    def recompute_content_hash(self):
+        encoded = json.dumps(
+            self.canonical_document(), sort_keys=True, separators=(",", ":"),
+            ensure_ascii=False,
+        ).encode("utf-8")
+        return hashlib.sha256(encoded).hexdigest()
+
 
 def _membership_sql(schema):
     return f"""
@@ -107,6 +138,24 @@ LANGUAGE plpgsql SET search_path=pg_catalog,{schema} AS $$ BEGIN
  THEN RAISE EXCEPTION 'ARB condition evidence membership is invalid' USING ERRCODE='23514'; END IF;
  IF NOT EXISTS (SELECT 1 FROM users actor WHERE actor.id=NEW.created_by_id AND actor.organization_id=NEW.organization_id)
  THEN RAISE EXCEPTION 'ARB condition evidence actor is outside tenant' USING ERRCODE='23514'; END IF;
+ IF NOT EXISTS (SELECT 1 FROM command_idempotency_records receipt
+ JOIN operation_results result ON result.id=receipt.operation_result_id AND result.receipt_id=receipt.id
+ JOIN command_materialisations materialisation ON materialisation.receipt_id=receipt.id
+ WHERE receipt.id=NEW.command_receipt_id AND receipt.organization_id=NEW.organization_id
+ AND receipt.actor_id=NEW.created_by_id AND receipt.operation='arb.condition.evidence.capture'
+ AND receipt.natural_key='arb-condition-evidence:' || NEW.organization_id::text || ':' || NEW.condition_id::text || ':' || NEW.condition_revision::text
+ AND receipt.status='succeeded' AND receipt.completed_at IS NOT NULL
+ AND receipt.lease_generation=NEW.command_generation
+ AND result.organization_id=NEW.organization_id AND result.actor_id=NEW.created_by_id
+ AND result.operation=receipt.operation AND result.natural_key=receipt.natural_key
+ AND result.request_digest=receipt.request_digest AND result.receipt_generation=NEW.command_generation
+ AND materialisation.organization_id=NEW.organization_id AND materialisation.actor_id=NEW.created_by_id
+ AND materialisation.operation=receipt.operation AND materialisation.natural_key=receipt.natural_key
+ AND materialisation.request_digest=receipt.request_digest
+ AND materialisation.receipt_generation=NEW.command_generation
+ AND result.object_ids::jsonb @> jsonb_build_object('condition_id',NEW.condition_id,'condition_evidence_id',NEW.id,'condition_revision',NEW.condition_revision)
+ AND materialisation.object_ids::jsonb @> jsonb_build_object('condition_id',NEW.condition_id,'condition_evidence_id',NEW.id,'condition_revision',NEW.condition_revision))
+ THEN RAISE EXCEPTION 'ARB condition evidence command provenance is invalid' USING ERRCODE='23514'; END IF;
  RETURN NEW; END $$;
 """
 
