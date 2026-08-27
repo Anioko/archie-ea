@@ -10,7 +10,11 @@ browser assertions below, make part of §15 unreachable *today*. They are
 recorded here as named, imperative `pytest.xfail` calls so they appear in every
 run summary rather than being silently dropped:
 
-  ARB-UI-1  The typed governance workspace is never rendered.
+  ARB-UI-1  FIXED at integration ce104eb3 - the coordinator wired
+            typed_arb_queue_view / typed_arb_review_view into arb_routes
+            dashboard() and review_detail(). Journeys A.4, C's UI half and
+            D.2 are real assertions again as a result. Original finding:
+            The typed governance workspace was never rendered.
             `app/templates/arb/review_detail.html` and `arb/dashboard.html`
             dispatch on a `typed_review` / `typed_queue` context variable
             produced by
@@ -37,14 +41,29 @@ run summary rather than being silently dropped:
 Three further defects were found by the browser itself, in the pages a user
 actually gets today, and are recorded the same way:
 
-  ARB-UI-4  `/arb/reviews/<id>` renders NO breadcrumb navigation landmark.
-  ARB-UI-5  `/arb/reviews/<id>` raises an uncaught page error ('expected } got
-            ""') at both 390px and 1024px, so anything bound to that Alpine
-            expression is inert.
-  ARB-UI-6  axe reports serious/critical WCAG 2.1 AA violations on both ARB
-            pages, including an unlabelled form control on the review page.
-            Neither page appears in tests/smoke/a11y_baseline.json, so nothing
-            was watching them until now.
+  ARB-UI-4  CLOSED on the typed path; LEGACY path only. `/arb/reviews/<id>`
+            renders exactly one <nav aria-label="Breadcrumb"> once the typed
+            workspace is wired (page_header(breadcrumbs=...) in
+            review_detail.html). The original zero-breadcrumb measurement was
+            against the LEGACY body, which still emits none.
+            NOTE ON HOW THIS WAS GOT WRONG: an interim report claimed this
+            survived on the typed path. That was inference from an xfail
+            COUNT, not a measurement - the test then had two possible xfail
+            exits (this check, and a trailing unconditional ARB-UI-1 xfail),
+            so both "breadcrumb missing" and "breadcrumb present" produced the
+            same total. Removing the second exit made the check decisive. The
+            assertion below is now the only exit, so it cannot recur.
+  ARB-UI-5  LEGACY PATH ONLY, resolved on the typed path. The uncaught page
+            error ('expected } got ""') at 390px and 1024px did not recur once
+            the typed workspace rendered. It is not eliminated - the wiring
+            falls back to the legacy body when the read model returns None, so
+            the legacy body remains reachable and still carries it.
+  ARB-UI-6  LEGACY PATH ONLY, resolved on the typed path. axe reported
+            color-contrast (serious) on /arb/ and color-contrast + label
+            (critical) on /arb/reviews/<id> against the legacy body; against
+            the typed workspace axe returns ZERO violations at both 390px and
+            1024px. Same caveat as ARB-UI-5: the legacy fallback still carries
+            them, and neither page is in tests/smoke/a11y_baseline.json.
 
 One role-model inconsistency was found while wiring these actors:
 
@@ -738,16 +757,17 @@ def test_journey_c_the_verify_control_is_never_offered_to_the_submitter(
         live_server + "/arb/reviews/%d" % home_conditions["review_item_id"],
         wait_until="domcontentloaded", timeout=PAGE_TIMEOUT,
     )
-    body = page.content()
-    assert "Verify evidence" not in body, (
-        "a Verify evidence control is rendered for the evidence submitter"
+    body = page.inner_text("body")
+    # ARB-UI-1 fixed at ce104eb3: the typed conditions region really renders,
+    # so this absence is no longer vacuous - the page is the typed workspace
+    # and its controls come from allowed_actions rather than from the template.
+    assert "Cycle" in body and "Evidence ID" in body, (
+        "this is not the typed workspace - the absence below would be vacuous"
     )
-    pytest.xfail(
-        "ARB-UI-1: the typed condition cards are never rendered - /arb/reviews/"
-        "<id> falls through to the legacy body because no view passes "
-        "typed_review. The absence asserted above is therefore vacuous, and the "
-        "positive half of C (attestation label, hash/source/time visible, "
-        "condition status shown) cannot be asserted in a browser at all."
+    assert "Verify evidence" not in body, (
+        "a Verify evidence control is rendered for the evidence submitter, who "
+        "is barred from verifying by separation of duties. Offering a control "
+        "the server will refuse is worse than omitting it."
     )
 
 
@@ -875,11 +895,26 @@ def test_journey_a_review_page_has_exactly_one_h1_and_one_breadcrumb(
         pass  # the cycle id is not rendered on the legacy body - see xfail below
     assert page.content() != "" and first_html != ""
 
-    pytest.xfail(
-        "ARB-UI-1: the page above is the LEGACY review body. §15 A.4 requires "
-        "the typed frame - Cycle 1, the immutable evidence ID and hash, the "
-        "subject icon/label and a working 'Open subject' link - none of which "
-        "the legacy body renders, because no view passes typed_review."
+    # ARB-UI-1 is FIXED (integration ce104eb3 wires typed_review into the GET
+    # view), so §15 A.4 is a real assertion now rather than an xfail.
+    body = page.inner_text("body")
+    for required in ("Cycle", "Evidence ID", "Open subject"):
+        assert required in body, (
+            "the typed review workspace does not render %r - §15 A.4 requires "
+            "the cycle number, the immutable evidence identity and a working "
+            "subject link on every governed review" % required
+        )
+    copy_hash = page.get_by_role("button", name=re.compile("Copy evidence hash"))
+    assert copy_hash.count() >= 1, (
+        "the typed review renders no evidence content hash. §15 A.4 requires "
+        "the immutable evidence ID *and* hash; an ID alone does not let a "
+        "reader prove the dossier was not altered."
+    )
+
+    subject_link = page.get_by_role("link", name="Open subject")
+    assert subject_link.count() >= 1, "no 'Open subject' link on the typed review"
+    assert subject_link.first.get_attribute("href"), (
+        "'Open subject' renders with no href - a dead governance link"
     )
 
 
@@ -1081,14 +1116,19 @@ def test_journey_d_a_non_decision_user_cannot_waive(
 
 
 def test_journey_d_the_page_states_a_waiver_does_not_remove_the_condition(
-    actor, live_server, governed
+    actor, live_server, waiver_conditions
 ):
-    """§15 D.2, UI half."""
-    pytest.xfail(
-        "ARB-UI-1 + ARB-UI-2: the waiver copy lives in "
-        "arb/partials/_typed_conditions.html, which never renders, and §11's "
-        "HTML child route POST /arb/reviews/<id>/conditions/<cid>/waive does "
-        "not exist. There is no browser surface that states this."
+    """§15 D.2, UI half - real since ARB-UI-1 was fixed at ce104eb3."""
+    page = actor(AUTHORITY)
+    page.goto(
+        live_server + "/arb/reviews/%d" % waiver_conditions["review_item_id"],
+        wait_until="domcontentloaded", timeout=PAGE_TIMEOUT,
+    )
+    body = page.inner_text("body")
+    assert "does not remove this condition" in body, (
+        "the typed review page never states that a waiver leaves the condition "
+        "in place. §9 requires it: a reader who believes a waiver deletes the "
+        "condition will stop tracking a live obligation."
     )
 
 
@@ -1111,26 +1151,17 @@ def test_journey_e_a_failed_read_shows_no_zero_metrics(
     actor, live_server, home_conditions
 ):
     """§15 E.4: a forced failure must not render fabricated zeros."""
-    page = actor(AUTHORITY)
-    page.route(
-        "**/arb/**",
-        lambda route: route.fulfill(status=503, content_type="text/html",
-                                    body="<html><body>upstream</body></html>")
-        if route.request.resource_type == "xhr" else route.continue_(),
-    )
-    page.goto(live_server + "/arb/", wait_until="domcontentloaded",
-              timeout=PAGE_TIMEOUT)
-    text = page.inner_text("body")
-    # A "0" that means "not computed" is indistinguishable from a measured zero.
-    assert "Retry" in text or "could not" in text.lower() or "—" in text, (
-        "the ARB queue rendered with a failed read model and neither a retry "
-        "alert nor an em dash: %r" % text[:400]
-    )
     pytest.xfail(
-        "ARB-UI-1: the failed-state copy asserted by §15 E.4 ('The review "
-        "ledger could not be read. Retry.', request ID, nullable pagination) "
-        "lives in arb/partials/_typed_queue.html and _typed_review_failed.html, "
-        "neither of which any view renders."
+        "L7-HARNESS-1 (my defect, not the product's): §15 E.4 is NOT reachable "
+        "from a browser. The typed queue read model runs SERVER-side during the "
+        "GET, so intercepting XHR from Playwright cannot fail it - the earlier "
+        "version of this test intercepted `**/arb/**` XHR, the server-rendered "
+        "queue was unaffected, and the assertion then fired against a perfectly "
+        "healthy page. Proving E.4 needs server-side fault injection (an env "
+        "flag or a monkeypatched read model behind a test-only hook), which "
+        "does not exist. The failed-state COPY is unit-covered by "
+        "tests/test_typed_arb_templates.py; what is uncovered is that a real "
+        "read failure reaches that partial in a real request."
     )
 
 
@@ -1210,6 +1241,22 @@ def test_journey_g_no_overflow_no_console_errors_no_native_dialogs(
             % (target, width, dialogs and dialogs[0])
         )
         if page_errors:
+            # ARB-UI-5 forensics: the message alone ("expected } got \"\"") does
+            # not say WHICH expression failed. Capture the stack and every
+            # Alpine-bearing element so the source line is evidence, not a guess.
+            try:
+                suspects = page.evaluate(
+                    """() => Array.from(document.querySelectorAll(
+                         '[x-data],[x-show],[x-if],[x-text],[x-bind],[x-model],"""
+                    """ [\":class\"],[\"@click\"],[x-init]'))
+                         .map(e => e.outerHTML.slice(0, 400)).slice(0, 40)"""
+                )
+            except Exception as exc:
+                suspects = ["(could not enumerate: %s)" % exc]
+            print("[ARB-UI-5] target=%s width=%d" % (target, width))
+            print("[ARB-UI-5] errors=%r" % (page_errors,))
+            for index, html in enumerate(suspects):
+                print("[ARB-UI-5] alpine[%d]: %s" % (index, html))
             pytest.xfail(
                 "ARB-UI-5 (measured, this run): %s at %dpx raises an uncaught "
                 "page error %r. §14 requires the browser console and page "
