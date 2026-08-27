@@ -225,12 +225,7 @@
     document.getElementById('btn-save').addEventListener('click', function () {
         let btn = this;
         setLoading(btn, true, 'save');
-        fetch('/admin/integrations/power-platform/save', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(formData()),
-        })
-        .then(function (r) { return r.json(); })
+        Platform.fetch.post('/admin/integrations/power-platform/save', formData())
         .then(function (d) {
             if (d.success) {
                 showAlert('Credentials saved successfully.', 'success');
@@ -238,7 +233,7 @@
                 showAlert('Save failed — ' + (d.error || 'unknown error'), 'error');
             }
         })
-        .catch(function (err) { showAlert('Save request failed: ' + err, 'error'); })
+        .catch(function (err) { showAlert('Save request failed: ' + err.message, 'error'); })
         .finally(function () { setLoading(btn, false, 'save'); });
     });
 
@@ -246,12 +241,7 @@
     document.getElementById('btn-test').addEventListener('click', function () {
         let btn = this;
         setLoading(btn, true, 'plug');
-        fetch('/admin/integrations/power-platform/test', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(formData()),
-        })
-        .then(function (r) { return r.json(); })
+        Platform.fetch.post('/admin/integrations/power-platform/test', formData())
         .then(function (d) {
             if (d.status === 'ok') {
                 showAlert('Connection successful. Environment: ' + (d.environment || 'default'), 'success');
@@ -259,7 +249,7 @@
                 showAlert('Connection failed: ' + (d.message || 'Unknown error'), 'error');
             }
         })
-        .catch(function (err) { showAlert('Test request failed: ' + err, 'error'); })
+        .catch(function (err) { showAlert('Test request failed: ' + err.message, 'error'); })
         .finally(function () { setLoading(btn, false, 'plug'); });
     });
 
@@ -269,15 +259,7 @@
     document.getElementById('btn-discover').addEventListener('click', function () {
         let btn = this;
         setLoading(btn, true, 'search');
-        fetch('/admin/integrations/power-platform/discover', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: '{}',
-        })
-        .then(function (r) {
-            if (!r.ok) return r.json().then(function (d) { throw new Error(d.error || r.statusText); });
-            return r.json();
-        })
+        Platform.fetch.post('/admin/integrations/power-platform/discover', {})
         .then(function (d) {
             _discovered = d.apps || [];
 
@@ -313,7 +295,7 @@
             document.getElementById('results-container').removeAttribute('hidden');
             _bindCheckboxes();
         })
-        .catch(function (err) { showAlert('Discovery failed: ' + err, 'error'); })
+        .catch(function (err) { showAlert('Discovery failed: ' + err.message, 'error'); })
         .finally(function () { setLoading(btn, false, 'search'); });
     });
 
@@ -348,12 +330,7 @@
         if (ids.length === 0) return;
 
         setLoading(btn, true, 'download');
-        fetch('/admin/integrations/power-platform/import', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ app_ids: ids }),
-        })
-        .then(function (r) { return r.json(); })
+        Platform.fetch.post('/admin/integrations/power-platform/import', { app_ids: ids })
         .then(function (d) {
             if (d.error) {
                 showAlert('Import failed: ' + d.error, 'error');
@@ -365,7 +342,7 @@
                 d.failed + ' failed.';
             showAlert(msg, d.failed > 0 ? 'warning' : 'success');
         })
-        .catch(function (err) { showAlert('Import request failed: ' + err, 'error'); })
+        .catch(function (err) { showAlert('Import request failed: ' + err.message, 'error'); })
         .finally(function () { setLoading(btn, false, 'download'); });
     });
 

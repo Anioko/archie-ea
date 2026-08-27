@@ -1251,7 +1251,7 @@
 
                 try {
                     // SSE streaming response requires raw fetch to read stream.
-                    const resp = await fetch(
+                    const resp = await fetch(  // raw-fetch-ok: SSE stream; needs body.getReader() on the raw Response
                         `/solutions/${this.solutionId}/codegen/generate-stream`,
                         {
                             method: 'POST',
@@ -1429,7 +1429,7 @@
 
                 try {
                     // SSE streaming response requires raw fetch to read stream.
-                    const resp = await fetch(
+                    const resp = await fetch(  // raw-fetch-ok: SSE stream; needs body.getReader() on the raw Response
                         `/solutions/${this.solutionId}/codegen/verify`,
                         {
                             method: 'POST',
@@ -1523,7 +1523,7 @@
                 const patchFailures = [];
 
                 // SSE streaming response requires raw fetch to read stream.
-                const resp = await fetch(url, {
+                const resp = await fetch(url, {  // raw-fetch-ok: SSE stream; needs body.getReader() on the raw Response
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
                     body: JSON.stringify(body),
@@ -2471,7 +2471,7 @@
 
                 try {
                     // FormData upload requires raw fetch.
-                    const resp = await fetch(
+                    const resp = await fetch(  // raw-fetch-ok: FormData upload; the wrapper would re-serialise the body
                         `/architecture-journey/${this.solutionId}/upload-documents`,
                         { method: 'POST', headers: { 'X-CSRFToken': this._csrfToken() }, body: formData }
                     ); // raw-fetch-ok: FormData upload requires raw fetch.

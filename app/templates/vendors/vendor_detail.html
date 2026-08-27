@@ -125,14 +125,13 @@
     </div>
     <script>
     /* FRAG-036: On-demand vendor score — triggered by Score Vendor button */
-    function triggerVendorScore(vendorId) {
+    async function triggerVendorScore(vendorId) {
         const btn = document.getElementById('score-vendor-btn');
         btn.disabled = true;
         btn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 mr-1.5 animate-spin" aria-hidden="true"></i>Scoring\u2026';
 
-        fetch('/api/vendors/' + vendorId + '/score', { method: 'GET' })
-          .then(r => r.json())
-          .then(data => {
+        try {
+            const data = await Platform.fetch.get('/api/vendors/' + vendorId + '/score', null, { silent: true });
             btn.disabled = false;
             if (!data.success || !data.scores || !data.scores.length) {
                 btn.innerHTML = '<i data-lucide="bar-chart-2" class="w-4 h-4 mr-1.5" aria-hidden="true"></i>No Options';
@@ -167,11 +166,11 @@
             '</div>';
             card.classList.remove('hidden');
             if (window.lucide) lucide.createIcons();
-          })
-          .catch(() => {
+        } catch (error) {
             btn.disabled = false;
             btn.innerHTML = '<i data-lucide="bar-chart-2" class="w-4 h-4 mr-1.5" aria-hidden="true"></i>Score Vendor';
-          });
+            // Error is already handled by Platform.fetch with silent:true, no need for additional reporting
+        }
     }
     </script>
 
@@ -269,8 +268,8 @@
                     <div class="flex items-center justify-between">
                         <span class="text-muted-foreground">Annual Contract Value</span>
                         <span class="font-medium">
-                            {% if vendor.contract_value_annual %}
-                            {{ vendor.contract_value_annual|format_currency if vendor.contract_value_annual is not none else '—' }}
+                            {% if vendor.contract_value_annual is not none %}
+                            {{ "%0.2f"|format(vendor.contract_value_annual) }} USD
                             {% else %}
                             -
                             {% endif %}
@@ -761,7 +760,7 @@
 </div>
 
 <script>
-function submitAddProduct(vendorId) {
+async function submitAddProduct(vendorId) {
     const name = document.getElementById('new-product-name').value.trim();
     const errEl = document.getElementById('add-product-error');
     errEl.classList.add('hidden');
@@ -774,22 +773,14 @@ function submitAddProduct(vendorId) {
     btn.disabled = true;
     btn.textContent = 'Adding\u2026';
 
-    fetch('/api/vendor/' + vendorId + '/products', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''
-        },
-        body: JSON.stringify({
+    try {
+        const data = await Platform.fetch.post('/api/vendor/' + vendorId + '/products', {
             name: name,
             product_type: document.getElementById('new-product-type').value,
             deployment_model: document.getElementById('new-product-deployment').value,
             target_market: document.getElementById('new-product-market').value.trim(),
             status: 'active',
-        })
-    })
-    .then(r => r.json())
-    .then(data => {
+        }, { silent: true });
         btn.disabled = false;
         btn.textContent = 'Add Product';
         if (!data.success) {
@@ -799,22 +790,30 @@ function submitAddProduct(vendorId) {
         }
         document.getElementById('add-product-modal').classList.add('hidden');
         window.location.reload();
-    })
-    .catch(() => {
+    } catch (error) {
         btn.disabled = false;
         btn.textContent = 'Add Product';
         errEl.textContent = 'Network error. Please try again.';
         errEl.classList.remove('hidden');
-    });
+        // Error is already handled by Platform.fetch with silent:true
+    }
 }
 function concentrationRiskPanel(vendorId) {
     return {
         open: false, loaded: false, risks: [], soleCount: 0, safeCount: 0,
-        init() {
-            fetch('/vendors/' + vendorId + '/concentration-risk')
-                .then(r => r.json())
-                .then(d => { if (d.success) { this.risks = d.risks; this.soleCount = d.sole_vendor_count; this.safeCount = d.safe_count; } this.loaded = true; })
-                .catch(() => { this.loaded = true; });
+        async init() {
+            try {
+                const d = await Platform.fetch.get('/vendors/' + vendorId + '/concentration-risk', null, { silent: true });
+                if (d.success) { 
+                    this.risks = d.risks; 
+                    this.soleCount = d.sole_vendor_count; 
+                    this.safeCount = d.safe_count; 
+                } 
+                this.loaded = true;
+            } catch (error) {
+                this.loaded = true;
+                // Error is already handled by Platform.fetch with silent:true
+            }
         }
     };
 }

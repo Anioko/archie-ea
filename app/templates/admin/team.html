@@ -77,10 +77,18 @@
                         <form method="POST" action="{{ url_for('team.team_change_role') }}" class="flex items-center gap-2">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                             <input type="hidden" name="user_id" value="{{ member.id }}">
+                            {# Determine current role with fallbacks #}
+                            {% set _role_from_map = '' %}
+                            {% if role_map is defined and member.id in role_map %}
+                                {% set _role_from_map = role_map[member.id] %}
+                            {% endif %}
+                            {% set _role_from_member = member.role|default('') %}
+                            {% set _raw_role = _role_from_map if _role_from_map else _role_from_member %}
+                            {% set current_role = _raw_role if _raw_role in valid_roles else (valid_roles[0] if valid_roles else '') %}
                             <select name="role" onchange="this.form.submit()"
                                 class="rounded-md border-border shadow-sm focus:border-primary focus:ring-primary sm:text-sm" aria-label="Role">
                                 {% for r in valid_roles %}
-                                    <option value="{{ r }}" {% if role_map[member.id] == r %}selected{% endif %}>
+                                    <option value="{{ r }}" {% if current_role == r %}selected{% endif %}>
                                         {{ r }}
                                     </option>
                                 {% endfor %}
@@ -112,7 +120,7 @@
 {% endblock %}
 <script>
 (function() {
-    let _csrfMeta = document.querySelector('meta[name=csrf-token]');
+    // CSRF token is automatically injected by Platform.fetch for mutating methods
     document.addEventListener('click', async function(e) {
         let btn = e.target.closest('[data-action="remove-member"]');
         if (!btn) return;
@@ -120,13 +128,14 @@
         if (!(await Platform.modal.confirm('Remove ' + name + ' from the org?'))) return;
         let url = btn.dataset.removeUrl;
         if (!url) return;
-        fetch(url, {
-            method: 'DELETE',
-            headers: { 'X-CSRFToken': _csrfMeta ? _csrfMeta.content : '' }
-        }).then(function(resp) {
-            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        try {
+            // Platform.fetch.delete automatically injects CSRF token and throws on non-ok responses
+            await Platform.fetch.delete(url, { silent: true });
             location.reload();
-        }).catch(function(e) { Platform.toast.error('Failed to remove member: ' + e.message); });
+        } catch (error) {
+            // Platform.fetch already logged the error; show a custom user message
+            Platform.toast.error('Failed to remove member: ' + (error.message || 'Unknown error'));
+        }
     });
 })();
 </script>

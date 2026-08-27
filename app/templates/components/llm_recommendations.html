@@ -35,18 +35,10 @@ function llmRecommendationsComponent(dashboard) {
             this.error = null;
 
             try {
-                const response = await fetch('/strategic/api/recommendations/' + dashboard, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        context: {{ context_data | tojson }},
-                        max_recommendations: 5
-                    })
+                const data = await Platform.fetch.post('/strategic/api/recommendations/' + dashboard, {
+                    context: {{ context_data | tojson }},
+                    max_recommendations: 5
                 });
-
-                const data = await response.json();
 
                 if (data.success) {
                     this.recommendations = data.recommendations;
@@ -74,15 +66,7 @@ function llmRecommendationsComponent(dashboard) {
             }
 
             try {
-                const response = await fetch(`/strategic/api/recommendations/${recId}/rate`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(this.ratingData)
-                });
-
-                const data = await response.json();
+                const data = await Platform.fetch.post(`/strategic/api/recommendations/${recId}/rate`, this.ratingData);
 
                 if (data.success) {
                     const rec = this.recommendations.find(r => r.id === recId);

@@ -452,7 +452,7 @@ function applyTemplate() {
     document.body.appendChild(modal);
 }
 
-function confirmApplyTemplate() {
+async function confirmApplyTemplate() {
     const configName = document.getElementById('configName').value;
     const orgName = document.getElementById('orgName').value;
     
@@ -462,32 +462,22 @@ function confirmApplyTemplate() {
     }
     
     // API call to apply template
-    fetch('/framework-management/api/apply-template', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
+    try {
+        const data = await Platform.fetch.post('/framework-management/api/apply-template', {
             template_name: templateName,
             configuration_name: configName,
             organization_name: orgName
-        })
-    })
-    .then(response => {
-        if (!response.ok) throw new Error('Could not apply the template (HTTP ' + response.status + ')');
-        return response.json();
-    })
-    .then(data => {
+        }, { silent: true });
+        
         if (!data.success) throw new Error(data.error || 'Could not apply the template');
         const applyModal = document.getElementById('apply-framework-template');
         if (applyModal) applyModal.remove();
         Platform.toast.info('Template applied successfully!');
         loadRecentDeployments();
-    })
-    .catch(err => {
+    } catch (err) {
         // The modal deliberately stays open so the entered names are not lost.
         Platform.toast.error(err.message);
-    });
+    }
 }
 
 function customizeTemplate() {

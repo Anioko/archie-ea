@@ -519,9 +519,7 @@ function newImportForm() {
         programmesError: null,
         async loadProgrammes() {
             try {
-                const r = await fetch('/solutions/programmes/api/list');
-                if (!r.ok) throw new Error('Could not load transformation programmes (HTTP ' + r.status + ')');
-                const d = await r.json();
+                const d = await Platform.fetch('/solutions/programmes/api/list');
                 this.programmes = d.programmes || [];
                 this.programmesError = null;
             } catch (e) {
@@ -725,11 +723,9 @@ function newImportForm() {
         async loadAvailableApplications() {
             this.loadingApplications = true;
             try {
-                // fetch does not reject on 4xx/5xx, and an unchecked `data.success`
+                // Platform.fetch throws on non-ok responses, and an unchecked `data.success`
                 // left the picker empty -- a failure that read as "no applications".
-                const response = await fetch('/capability-map/api/applications?limit=100');
-                if (!response.ok) throw new Error('HTTP ' + response.status);
-                const data = await response.json();
+                const data = await Platform.fetch('/capability-map/api/applications?limit=100');
                 if (!data.success) throw new Error(data.message || data.error || 'request failed');
                 this.availableApplications = data.applications || [];
             } catch (error) {
@@ -799,12 +795,7 @@ function newImportForm() {
                     formData.append('source_type', 'existing');
                 }
 
-                const response = await fetch('/api/batch-import/jobs', {
-                    method: 'POST',
-                    body: formData
-                });
-
-                const data = await response.json();
+                const data = await Platform.fetch.post('/api/batch-import/jobs', formData);
 
                 if (data.success) {
                     const jobId = data.job_id || (data.data && data.data.id) || (data.job && data.job.id);

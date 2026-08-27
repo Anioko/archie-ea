@@ -163,16 +163,12 @@ document.getElementById('subscribe-btn').addEventListener('click', async functio
     btn.textContent = 'Subscribing…';
     btn.disabled = true;
 
-    const csrfMeta = document.querySelector('meta[name=csrf-token]');
-    const csrfToken = csrfMeta ? csrfMeta.content : '';
-
+    // CSRF token is automatically injected by Platform.fetch for mutating methods
     try {
-        const resp = await fetch('/admin/integrations/teams-meetings/subscribe', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
-            body: JSON.stringify({ notification_url: urlInput.value }),
-        });
-        const data = await resp.json();
+        const data = await Platform.fetch.post('/admin/integrations/teams-meetings/subscribe', 
+            { notification_url: urlInput.value },
+            { silent: true }
+        );
         alertEl.hidden = false;
         if (data.status === 'ok') {
             alertEl.className = 'mb-6 rounded-md border border-success/30 bg-success/10 text-success-emphasis p-4 text-sm';

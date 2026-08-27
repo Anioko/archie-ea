@@ -153,9 +153,9 @@
 
             async loadData() {
                 try {
-                    const response = await fetch('/capability-map/api/capabilities');
-                    if (!response.ok) throw new Error('Could not load capability network data (HTTP ' + response.status + ')');
-                    const data = await response.json();
+                    // Use Platform.fetch.get to automatically handle errors and CSRF.
+                    // silent: true because we paint our own inline error state.
+                    const data = await Platform.fetch.get('/capability-map/api/capabilities', null, { silent: true });
                     // The API returns {capabilities, statistics}; the renderer needs
                     // {nodes, edges}. Without this transform the graph never drew.
                     const caps = data.capabilities || [];

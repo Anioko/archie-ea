@@ -228,7 +228,6 @@ function archimateImport() {
             this.result = null;
 
             const ext = this.file.name.split('.').pop().toLowerCase();
-            const csrf = document.querySelector('meta[name=csrf-token]')?.content || '';
             const formData = new FormData();
             formData.append('file', this.file);
 
@@ -244,12 +243,12 @@ function archimateImport() {
             }
 
             try {
-                const res = await fetch(url, {
+                // Platform.fetch automatically injects CSRF token for POST
+                const data = await Platform.fetch(url, {
                     method: 'POST',
-                    headers: {'X-CSRFToken': csrf},
-                    body: formData
+                    body: formData,
+                    silent: true  // suppress global toast because we show inline error
                 });
-                const data = await res.json();
                 if (data.error && !data.success) {
                     this.errorMsg = data.error;
                 } else if (data.success === false) {
@@ -262,6 +261,7 @@ function archimateImport() {
                     }
                 }
             } catch (e) {
+                // Platform.fetch throws on network errors or non-ok responses
                 this.errorMsg = 'Network error: ' + e.message;
             } finally {
                 this.uploading = false;
@@ -271,24 +271,24 @@ function archimateImport() {
         async createDiagram() {
             if (!this.result?.element_ids?.length) return;
             this.creatingDiagram = true;
-            const csrf = document.querySelector('meta[name=csrf-token]')?.content || '';
             const fileName = this.file?.name || 'Imported Elements';
             try {
-                const res = await fetch('/archimate/api/create-diagram-from-elements', {
+                // Platform.fetch automatically injects CSRF token and serializes plain object to JSON
+                const data = await Platform.fetch('/archimate/api/create-diagram-from-elements', {
                     method: 'POST',
-                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrf},
-                    body: JSON.stringify({
+                    body: {
                         element_ids: this.result.element_ids,
                         name: fileName.replace(/\.[^.]+$/, '') + ' — Architecture View'
-                    })
+                    },
+                    silent: true  // suppress global toast because we show inline error
                 });
-                const data = await res.json();
                 if (data.success && data.composer_url) {
                     window.location.href = data.composer_url;
                 } else {
                     this.errorMsg = data.error || 'Failed to create diagram';
                 }
             } catch (e) {
+                // Platform.fetch throws on network errors or non-ok responses
                 this.errorMsg = 'Network error: ' + e.message;
             } finally {
                 this.creatingDiagram = false;

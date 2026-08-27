@@ -105,11 +105,15 @@ function rationalizationDashboard() {
                         // The call site already paints its own inline error state, so we pass silent:true.
                         // Do NOT swallow the error; surface it to the user via the component's error flag.
                         self.execSummary.error = true;
+                        // Rethrow to ensure the failure is visible.
+                        throw err;
                     });
             } catch (err) {
                 // Platform.fetch.get will throw synchronously only on programmer errors (e.g., invalid URL).
                 // Treat as a failure and set error state.
                 self.execSummary.error = true;
+                // Rethrow to ensure the failure is visible.
+                throw err;
             }
         },
 
@@ -172,7 +176,11 @@ function rationalizationDashboard() {
             // The global patch does not set Content-Type, so we must keep that header.
             // The body must be a JSON string; we keep JSON.stringify.
             // Note: The global patch will add X-CSRFToken header automatically, so we don't need csrfToken variable.
-            fetch('/applications/rationalization/api/export', {
+            // We must use raw fetch because Platform.fetch expects a parsed response, not a blob.
+            // However, we can still use Platform.fetch for the request and handle the raw response.
+            // But Platform.fetch will try to parse the response as JSON or text, which will fail for a blob.
+            // Therefore we keep raw fetch.
+            fetch('/applications/rationalization/api/export', {  // raw-fetch-ok: blob download; needs the raw Response
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ format: self.exportFormat, scope: {} })

@@ -119,13 +119,19 @@ function trackingApp() {
                 // raw-fetch-ok: FormData with file upload requires manual Content-Type header (multipart/form-data)
                 // Platform.fetch would automatically set Content-Type to application/json for plain objects,
                 // which would break the file upload. We keep raw fetch but remove manual CSRF token handling.
-                fetch('/applications/rationalization/api/dependencies/import', {
-                    method: 'POST',
-                    body: formData
-                })
-                .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
-                .then(function(data) { self.importResult = data; self.importLoading = false; })
-                .catch(function(err) { self.importResult = { success: false, error: err.message }; self.importLoading = false; });
+                // However, Platform.fetch can handle FormData correctly (it does not auto‑serialise plain objects).
+                // We can use Platform.fetch.post with the FormData body; CSRF token will be injected automatically.
+                Platform.fetch.post('/applications/rationalization/api/dependencies/import', formData, { silent: true })
+                    .then(function(data) { self.importResult = data; self.importLoading = false; })
+                    .catch(function(err) {
+                        // RATX-006: Import failed; the UI will show the error in importResult.
+                        // The global toast is suppressed via silent:true because this component
+                        // paints its own inline error state.
+                        self.importResult = { success: false, error: err.message };
+                        self.importLoading = false;
+                        // Do NOT swallow the error: rethrow to propagate to the global error handler.
+                        throw err;
+                    });
             } else {
                 // JSON import — reconstruct full array from preview source
                 const reader = new FileReader();

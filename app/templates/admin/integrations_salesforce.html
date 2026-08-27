@@ -156,13 +156,20 @@
             _csrf() { return document.querySelector('meta[name=csrf-token]')?.content || ''; },
             _notify(kind, message) { this.alert = { kind, message }; },
             async _post(url, body) {
-                const r = await fetch(url, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this._csrf() },
-                    body: JSON.stringify(body || {}),
-                });
-                const d = await r.json();
-                return { ok: r.ok, d };
+                try {
+                    const data = await Platform.fetch.post(url, body || {}, { silent: true });
+                    return { ok: true, d: data };
+                } catch (error) {
+                    // Platform.fetch throws on non-ok responses; preserve the existing
+                    // { ok: false, d: ... } shape that callers expect.
+                    // error.data may contain the server's JSON error response.
+                    // error.message is the user-facing message (already shown via toast unless silent:true).
+                    // error.status is the HTTP status code.
+                    return {
+                        ok: false,
+                        d: error.data || { error: error.message }
+                    };
+                }
             },
             async saveCredentials() {
                 this.busy = true;

@@ -98,7 +98,7 @@ function blueprintChat() {
 
             try {
                 // raw-fetch-ok: streaming response requires raw Response object to access body.getReader()
-                const resp = await fetch('/ai-chat/message/stream', {
+                const resp = await fetch('/ai-chat/message/stream', {  // raw-fetch-ok: SSE stream; needs body.getReader() on the raw Response
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',

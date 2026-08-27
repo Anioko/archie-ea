@@ -300,28 +300,24 @@ function frameworkConfigModal() {
         formData: { configuration_name: '', configuration_code: '', description: '' },
         submitting: false,
         errorMsg: '',
-        submitCreateConfig() {
+        async submitCreateConfig() {
             if (!this.formData.configuration_name.trim()) { this.errorMsg = 'Configuration name is required.'; return; }
             if (!this.formData.configuration_code.trim()) { this.errorMsg = 'Configuration code is required.'; return; }
             this.submitting = true;
             this.errorMsg = '';
-            fetch('/api/framework-config/configurations', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''
-                },
-                body: JSON.stringify(this.formData)
-            })
-            .then(r => r.json())
-            .then(data => {
+            try {
+                const data = await Platform.fetch.post('/api/framework-config/configurations', this.formData, { silent: true });
                 this.submitting = false;
                 if (!data.success) { this.errorMsg = data.error || 'An error occurred.'; return; }
                 Platform.modal.close('create-framework-config');
                 showToast({ title: 'Configuration created successfully', variant: 'default' });
                 setTimeout(() => window.location.reload(), 800);
-            })
-            .catch(() => { this.submitting = false; this.errorMsg = 'Network error. Please try again.'; });
+            } catch (error) {
+                this.submitting = false;
+                // Platform.fetch throws on non-ok responses, but we already have inline error handling.
+                // The error object may have a message; we can use it.
+                this.errorMsg = error.message || 'Network error. Please try again.';
+            }
         }
     };
 }

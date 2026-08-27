@@ -130,7 +130,7 @@
                         </li>
                         <li class="flex items-start gap-2">
                             <i data-lucide="check" class="h-4 w-4 text-primary mt-0.5 flex-shrink-0"></i>
-                            <span>Lifecycle status & criticality</span>
+                            <span>Lifecycle status &amp; criticality</span>
                         </li>
                         <li class="flex items-start gap-2">
                             <i data-lucide="check" class="h-4 w-4 text-primary mt-0.5 flex-shrink-0"></i>
@@ -265,11 +265,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Load sync status
     function loadSyncStatus() {
-        fetch('{{ url_for("admin.servicenow_sync_status") }}')
-            .then(res => {
-                if (!res.ok) throw new Error('HTTP ' + res.status);
-                return res.json();
-            })
+        Platform.fetch.get('{{ url_for("admin.servicenow_sync_status") }}', null, { silent: true })
             .then(data => {
                 // An em dash where the count is unknown -- never a 0, which would be
                 // indistinguishable from a measured "nothing synced".
@@ -293,8 +289,7 @@ document.addEventListener('DOMContentLoaded', function() {
             testBtn.innerHTML = '<i data-lucide="loader-2" class="h-4 w-4 animate-spin"></i> Testing...';
             lucide.createIcons();
 
-            fetch('{{ url_for("admin.servicenow_test_connection") }}', { method: 'POST' })
-                .then(res => res.json())
+            Platform.fetch.post('{{ url_for("admin.servicenow_test_connection") }}', null, { silent: true })
                 .then(data => {
                     Platform.toast.info(data.message);
                     testBtn.disabled = false;
@@ -321,8 +316,7 @@ document.addEventListener('DOMContentLoaded', function() {
             syncBtn.innerHTML = '<i data-lucide="loader-2" class="h-4 w-4 animate-spin"></i> Syncing...';
             lucide.createIcons();
 
-            fetch('{{ url_for("admin.servicenow_trigger_sync") }}', { method: 'POST' })
-                .then(res => res.json())
+            Platform.fetch.post('{{ url_for("admin.servicenow_trigger_sync") }}', null, { silent: true })
                 .then(data => {
                     Platform.toast.info(data.message);
                     syncBtn.disabled = false;

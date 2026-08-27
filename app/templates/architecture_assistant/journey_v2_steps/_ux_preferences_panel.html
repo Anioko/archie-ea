@@ -233,11 +233,10 @@ function uxPreferences(solutionId) {
             this.loading = true;
             this.saveError = null;
             try {
-                const resp = await fetch('/architecture-journey/' + solutionId + '/ux-enrichment', {
-                    headers: { 'Accept': 'application/json' }
+                const data = await Platform.fetch.get('/architecture-journey/' + solutionId + '/ux-enrichment', null, {
+                    headers: { 'Accept': 'application/json' },
+                    silent: true
                 });
-                if (!resp.ok) throw new Error('HTTP ' + resp.status);
-                const data = await resp.json();
                 this.enrichment = data;
                 this.enrichment.loaded = true;
                 // Tab order: array of {entity: "..."} objects
@@ -273,28 +272,20 @@ function uxPreferences(solutionId) {
             this.saveError = null;
             this.saved = false;
             try {
-                const resp = await fetch('/architecture-journey/' + solutionId + '/save-ux-preferences', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''
-                    },
-                    body: JSON.stringify({
-                        navigation:    { tab_order: this.tabOrder },
-                        design_system: { primary_color: this.primaryColor },
-                        security:      { require_auth: this.authRequirement }
-                    })
-                });
-                if (!resp.ok) {
-                    let errData = {};
-                    try { errData = await resp.json(); } catch(_) { /* swallow-ok: the error body need not be JSON; the throw below still surfaces the HTTP status through saveError, so a parse failure must not mask the save failure */ }
-                    throw new Error(errData.error || errData.message || 'Save failed (HTTP ' + resp.status + ')');
-                }
+                await Platform.fetch.post('/architecture-journey/' + solutionId + '/save-ux-preferences', {
+                    navigation:    { tab_order: this.tabOrder },
+                    design_system: { primary_color: this.primaryColor },
+                    security:      { require_auth: this.authRequirement }
+                }, { silent: true });
                 this.saved = true;
                 // Auto-hide the saved badge after 3 s
                 setTimeout(() => { this.saved = false; }, 3000);
             } catch (err) {
-                this.saveError = err.message || 'Could not save preferences. Please try again.';
+                // Platform.fetch throws a PlatformError with err.message and err.data
+                // The error body is already parsed and attached as err.data.
+                const errData = err.data || {};
+                const message = errData.error || errData.message || err.message || 'Could not save preferences. Please try again.';
+                this.saveError = message;
             } finally {
                 this.saving = false;
             }

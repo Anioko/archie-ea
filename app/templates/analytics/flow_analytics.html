@@ -32,7 +32,7 @@
                     @change="loadAll()">
                 {% for board in boards %}
                 <option value="{{ board.id }}"
-                        {% if board.id == selected_board_id %}selected{% endif %}>
+                        {% if selected_board_id is not none and board.id|string == selected_board_id|string %}selected{% endif %}>
                     {{ board.name }}
                 </option>
                 {% endfor %}
@@ -203,14 +203,23 @@ function flowAnalytics(initialBoardId) {
 
         // `fetch` resolves on 4xx/5xx, so every leg needs its own .ok check —
         // without one, an error body parses fine and Promise.all "succeeds".
+        // Platform.fetch throws on non‑ok, so we catch and re‑throw with the same
+        // user‑visible message the previous inline .ok check produced.
         _leg(url, what) {
-            return fetch(url).then(r => {
-                if (!r.ok) throw new Error('Could not load ' + what + ' (HTTP ' + r.status + ')');
-                return r.json();
-            }).then(d => {
-                if (d && d.error) throw new Error('Could not load ' + what + ': ' + d.error);
-                return d;
-            });
+            return Platform.fetch(url, { silent: true })
+                .then(d => {
+                    if (d && d.error) throw new Error('Could not load ' + what + ': ' + d.error);
+                    return d;
+                })
+                .catch(error => {
+                    // Platform.fetch throws on non‑ok responses; preserve the
+                    // exact error wording the UI already expects.
+                    if (error.status) {
+                        throw new Error('Could not load ' + what + ' (HTTP ' + error.status + ')');
+                    }
+                    // Network errors etc. keep their original message.
+                    throw error;
+                });
         },
 
         async loadAll() {

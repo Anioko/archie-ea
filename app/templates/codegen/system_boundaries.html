@@ -333,13 +333,8 @@ function systemBoundaries() {
             // Initial boundaries already server-rendered
         },
 
-        async _fetch(url, opts = {}) {
-            const defaults = { headers: { 'Content-Type': 'application/json' } };
-            const resp = await fetch(url, { ...defaults, ...opts });
-            const data = await resp.json();
-            if (!resp.ok) throw new Error(data.error || resp.statusText);
-            return data;
-        },
+        // Platform.fetch automatically handles JSON serialization, CSRF tokens, and throws on non‑ok responses.
+        // We pass { silent: true } because this component paints its own inline error state.
 
         _setSuccess(msg) {
             this.successMsg = msg;
@@ -355,10 +350,11 @@ function systemBoundaries() {
             if (!this.newName.trim()) return;
             this.creating = true;
             try {
-                const data = await this._fetch('/api/codegen/system-boundaries', {
-                    method: 'POST',
-                    body: JSON.stringify({ name: this.newName.trim(), description: this.newDesc.trim() }),
-                });
+                const data = await Platform.fetch.post(
+                    '/api/codegen/system-boundaries',
+                    { name: this.newName.trim(), description: this.newDesc.trim() },
+                    { silent: true }
+                );
                 this.boundaries.unshift(data.boundary);
                 this.createOpen = false;
                 this.newName = '';
@@ -374,7 +370,7 @@ function systemBoundaries() {
         async deleteBoundary(id) {
             if (!(await Platform.modal.confirm('Delete this system boundary and all its generated artifacts?'))) return;
             try {
-                await this._fetch(`/api/codegen/system-boundaries/${id}`, { method: 'DELETE' });
+                await Platform.fetch.delete(`/api/codegen/system-boundaries/${id}`, { silent: true });
                 this.boundaries = this.boundaries.filter(b => b.id !== id);
                 this._setSuccess('Boundary deleted.');
             } catch (e) {
@@ -385,10 +381,11 @@ function systemBoundaries() {
         async addSolution(boundaryId) {
             if (!this.addSolutionId) return;
             try {
-                const data = await this._fetch(`/api/codegen/system-boundaries/${boundaryId}/solutions`, {
-                    method: 'POST',
-                    body: JSON.stringify({ solution_id: parseInt(this.addSolutionId), role: this.addSolutionRole }),
-                });
+                const data = await Platform.fetch.post(
+                    `/api/codegen/system-boundaries/${boundaryId}/solutions`,
+                    { solution_id: parseInt(this.addSolutionId), role: this.addSolutionRole },
+                    { silent: true }
+                );
                 const idx = this.boundaries.findIndex(b => b.id === boundaryId);
                 if (idx >= 0) this.boundaries[idx] = data.boundary;
                 this.addSolutionOpen = null;
@@ -401,7 +398,10 @@ function systemBoundaries() {
 
         async removeSolution(boundaryId, solutionId) {
             try {
-                await this._fetch(`/api/codegen/system-boundaries/${boundaryId}/solutions/${solutionId}`, { method: 'DELETE' });
+                await Platform.fetch.delete(
+                    `/api/codegen/system-boundaries/${boundaryId}/solutions/${solutionId}`,
+                    { silent: true }
+                );
                 const idx = this.boundaries.findIndex(b => b.id === boundaryId);
                 if (idx >= 0) {
                     this.boundaries[idx].solutions = (this.boundaries[idx].solutions || []).filter(s => s.solution_id !== solutionId);
@@ -415,7 +415,7 @@ function systemBoundaries() {
 
         async loadBoundary(id) {
             try {
-                const data = await this._fetch(`/api/codegen/system-boundaries/${id}`);
+                const data = await Platform.fetch.get(`/api/codegen/system-boundaries/${id}`, null, { silent: true });
                 const idx = this.boundaries.findIndex(b => b.id === id);
                 if (idx >= 0) this.boundaries[idx] = data;
             } catch (e) {
@@ -425,7 +425,11 @@ function systemBoundaries() {
 
         async generateArtifacts(id) {
             try {
-                const data = await this._fetch(`/api/codegen/system-boundaries/${id}/generate`, { method: 'POST' });
+                const data = await Platform.fetch.post(
+                    `/api/codegen/system-boundaries/${id}/generate`,
+                    null,
+                    { silent: true }
+                );
                 if (data.success) {
                     const idx = this.boundaries.findIndex(b => b.id === id);
                     if (idx >= 0) {
@@ -445,10 +449,10 @@ function systemBoundaries() {
 
         async viewArtifacts(id) {
             try {
-                const data = await this._fetch(`/api/codegen/system-boundaries/${id}`);
+                const data = await Platform.fetch.get(`/api/codegen/system-boundaries/${id}`, null, { silent: true });
                 this.artifactsBoundary = data;
                 // Also fetch artifacts from generate endpoint result stored in boundary
-                const genData = await this._fetch(`/api/codegen/system-boundaries/${id}/contracts`);
+                const genData = await Platform.fetch.get(`/api/codegen/system-boundaries/${id}/contracts`, null, { silent: true });
                 if (!this.artifactsBoundary.generated_artifacts) this.artifactsBoundary.generated_artifacts = {};
                 this.artifactsBoundary.generated_artifacts.contracts = genData.contracts || [];
                 this.artifactsTab = 'compose';

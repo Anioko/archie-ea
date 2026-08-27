@@ -177,54 +177,62 @@ function epicHierarchy() {
     async createEpic() {
       this.epicError = '';
       if (!this.newEpicTitle.trim()) { this.epicError = 'Title is required'; return; }
-      const res = await fetch('/api/epics', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: this.newEpicTitle.trim() })
-      });
-      if (!res.ok) { this.epicError = 'Failed to create epic'; return; }
-      const epic = await res.json();
-      epic._open = true;
-      epic.stories = [];
-      epic.story_count = 0;
-      epic.total_points = 0;
-      epic.completed_points = 0;
-      this.epics.push(epic);
-      this.newEpicTitle = '';
-      this.showEpicForm = false;
+      try {
+        const epic = await Platform.fetch.post('/api/epics', { title: this.newEpicTitle.trim() });
+        epic._open = true;
+        epic.stories = [];
+        epic.story_count = 0;
+        epic.total_points = 0;
+        epic.completed_points = 0;
+        this.epics.push(epic);
+        this.newEpicTitle = '';
+        this.showEpicForm = false;
+      } catch (err) {
+        this.epicError = 'Failed to create epic';
+        // The error toast is already shown by Platform.fetch (unless silent:true).
+        // We keep the inline error state for the form.
+        throw err;
+      }
     },
 
     async createStory(epic) {
       this.storyForm.error = '';
       if (!this.storyForm.title.trim()) { this.storyForm.error = 'Title is required'; return; }
-      const res = await fetch(`/api/epics/${epic.id}/stories`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: this.storyForm.title.trim(), story_points: this.storyForm.points || 0 })
-      });
-      if (!res.ok) { this.storyForm.error = 'Failed to create story'; return; }
-      const story = await res.json();
-      story._open = false;
-      story.subtasks = [];
-      epic.stories.push(story);
-      epic.story_count = epic.stories.length;
-      epic.total_points += story.story_points || 0;
-      this.storyForm = { epicId: null, title: '', points: 0, error: '' };
+      try {
+        const story = await Platform.fetch.post(`/api/epics/${epic.id}/stories`, {
+          title: this.storyForm.title.trim(),
+          story_points: this.storyForm.points || 0
+        });
+        story._open = false;
+        story.subtasks = [];
+        epic.stories.push(story);
+        epic.story_count = epic.stories.length;
+        epic.total_points += story.story_points || 0;
+        this.storyForm = { epicId: null, title: '', points: 0, error: '' };
+      } catch (err) {
+        this.storyForm.error = 'Failed to create story';
+        // The error toast is already shown by Platform.fetch (unless silent:true).
+        // We keep the inline error state for the form.
+        throw err;
+      }
     },
 
     async createSubtask(story) {
       this.subtaskForm.error = '';
       if (!this.subtaskForm.title.trim()) { this.subtaskForm.error = 'Title is required'; return; }
-      const res = await fetch(`/api/epics/${story.epic_id}/stories/${story.id}/subtasks`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: this.subtaskForm.title.trim() })
-      });
-      if (!res.ok) { this.subtaskForm.error = 'Failed to create sub-task'; return; }
-      const st = await res.json();
-      story.subtasks = story.subtasks || [];
-      story.subtasks.push(st);
-      this.subtaskForm = { storyId: null, title: '', error: '' };
+      try {
+        const st = await Platform.fetch.post(`/api/epics/${story.epic_id}/stories/${story.id}/subtasks`, {
+          title: this.subtaskForm.title.trim()
+        });
+        story.subtasks = story.subtasks || [];
+        story.subtasks.push(st);
+        this.subtaskForm = { storyId: null, title: '', error: '' };
+      } catch (err) {
+        this.subtaskForm.error = 'Failed to create sub-task';
+        // The error toast is already shown by Platform.fetch (unless silent:true).
+        // We keep the inline error state for the form.
+        throw err;
+      }
     }
   };
 }

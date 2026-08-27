@@ -138,6 +138,11 @@
     llmProvider: null,
     async checkHealth() {
         try {
+            // raw-fetch-ok: this endpoint reports UNHEALTHY with a non-2xx, so the
+            // non-2xx is the answer, not a failure. Platform.fetch raises on it,
+            // and the rejection escapes Alpine's evaluator as an unhandled
+            // rejection that halts every listener registered after boot -- the
+            // banner below is exactly what is supposed to render instead.
             const r = await fetch('/ai-chat/api/health/llm');
             const d = await r.json();
             this.llmStatus = d.status || 'degraded';

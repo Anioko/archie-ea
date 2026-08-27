@@ -29,28 +29,27 @@
             removeFile(idx) { this.pendingFiles.splice(idx, 1); },
             async submit() {
                 this.submitting = true;
-                const csrf = document.querySelector('meta[name=csrf-token]')?.content || '';
                 const payload = {title: this.title, description: this.description, trigger_type: this.trigger_type};
                 if (this.capability_id) payload.capability_id = parseInt(this.capability_id);
                 if (this.solution_id) payload.solution_id = parseInt(this.solution_id);
-                const r = await fetch('/arb/api/change-requests', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrf},
-                    body: JSON.stringify(payload)
-                });
-                if (!r.ok) { this.submitting = false; Platform.toast.error('Submission failed'); return; }
-                const cr = await r.json();
-                const crId = cr.id;
-                // Upload any attached files against the new change request
-                for (const file of this.pendingFiles) {
-                    const fd = new FormData();
-                    fd.append('file', file);
-                    fd.append('document_type', this.docType);
-                    await fetch(`/arb/api/change-requests/${crId}/documents`, {
-                        method: 'POST', headers: {'X-CSRFToken': csrf}, body: fd
-                    });
+                try {
+                    const cr = await Platform.fetch.post('/arb/api/change-requests', payload, { silent: true });
+                    const crId = cr.id;
+                    // Upload any attached files against the new change request
+                    for (const file of this.pendingFiles) {
+                        const fd = new FormData();
+                        fd.append('file', file);
+                        fd.append('document_type', this.docType);
+                        await Platform.fetch.post(`/arb/api/change-requests/${crId}/documents`, fd);
+                    }
+                    window.location.href = '/arb/change-requests';
+                } catch (error) {
+                    this.submitting = false;
+                    Platform.toast.error('Submission failed');
+                    // The error is already logged by Platform.fetch; we do not need to rethrow
+                    // because we are showing a user-visible toast above.
+                    // The loop will not continue if any file upload fails, which is acceptable.
                 }
-                window.location.href = '/arb/change-requests';
             }
         }" @submit.prevent="submit()" class="space-y-5">
 

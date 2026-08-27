@@ -63,9 +63,9 @@
                     View Details
                 </a>
                 <button type="button" @click="approveWorkflow({{ instance.id }})"
-                        class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-success text-primary-foreground hover:bg-success text-sm" aria-label="Approve">
+                        class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-success text-primary-foreground hover:bg-success text-sm" aria-label="Approve & Continue">
                     <i data-lucide="check" class="h-4 w-4" aria-hidden="true"></i>
-                    Approve & Continue
+                    Approve &amp; Continue
                 </button>
                 <button type="button" @click="rejectWorkflow({{ instance.id }})"
                         class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-destructive text-primary-foreground hover:bg-destructive text-sm" aria-label="Reject">
@@ -90,15 +90,7 @@ async function approveWorkflow(instanceId) {
     if (!(await Platform.modal.confirm('Approve this workflow step and continue execution?'))) return;
 
     try {
-        const response = await fetch(`/api/ea-workflows/instances/${instanceId}/resume`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': '{{ csrf_token() }}'
-            },
-            body: JSON.stringify({})
-        });
-        const data = await response.json();
+        const data = await Platform.fetch.post(`/api/ea-workflows/instances/${instanceId}/resume`, {}, { silent: true });
         if (data.success) {
             location.reload();
         } else {
@@ -116,15 +108,7 @@ async function rejectWorkflow(instanceId) {
     if (!reason) return;
 
     try {
-        const response = await fetch(`/api/ea-workflows/instances/${instanceId}/cancel`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': '{{ csrf_token() }}'
-            },
-            body: JSON.stringify({ reason })
-        });
-        const data = await response.json();
+        const data = await Platform.fetch.post(`/api/ea-workflows/instances/${instanceId}/cancel`, { reason }, { silent: true });
         if (data.success) {
             location.reload();
         } else {

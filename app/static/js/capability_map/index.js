@@ -692,7 +692,7 @@
     async function exportData(format) {
         try {
             // raw-fetch-ok: blob download requires Response object, not parsed body
-            const response = await fetch(`/capability-map/api/export-mappings?format=${format}`, {
+            const response = await fetch(`/capability-map/api/export-mappings?format=${format}`, {  // raw-fetch-ok: blob download; needs the raw Response
                 credentials: 'include'
             });
             if (!response.ok) {
@@ -5506,14 +5506,10 @@
         try {
             const applications = Array.from(selectedApplications.values());
 
-            const data = await Platform.fetch('/capability-map/api/mappings', {
-                method: 'POST',
-                body: {
-                    capability_id: currentCapabilityId,
-                    applications: applications
-                },
-                silent: true
-            });
+            const data = await Platform.fetch.post('/capability-map/api/mappings', {
+                capability_id: currentCapabilityId,
+                applications: applications
+            }, { silent: true });
     
             if (data.error) {
                 showNotification('Error saving mappings: ' + data.error, 'error');
@@ -5544,10 +5540,7 @@
                 { text: 'Cancel', class: 'px-4 py-2 text-sm font-medium text-foreground bg-background border border-border rounded-md hover:bg-muted', action: 'cancel', handler: function() {} },
                 { text: 'Remove', class: 'px-4 py-2 text-sm font-medium text-destructive-foreground bg-destructive border border-transparent rounded-md hover:bg-destructive/90', action: 'remove', handler: async function() {
                     try {
-                        const data = await Platform.fetch(`/capability-map/api/mappings/${mappingId}`, {
-                            method: 'DELETE',
-                            silent: true
-                        });
+                        const data = await Platform.fetch.delete(`/capability-map/api/mappings/${mappingId}`, { silent: true });
 
                         if (data.error) {
                             showNotification('Error removing mapping: ' + data.error, 'error');
@@ -5630,10 +5623,7 @@
                 return;
             }
     
-            const data = await Platform.fetch(endpoint, {
-                method: 'DELETE',
-                silent: true
-            });
+            const data = await Platform.fetch.delete(endpoint, { silent: true });
     
             if (data.success) {
                 const itemTypeName = itemType === 'gap' ? 'Gap' : 'Work package';

@@ -232,9 +232,7 @@ function productRoadmap() {
 
     async init() {
       try {
-        const res = await fetch('/api/product-roadmap');
-        if (!res.ok) { this.error = 'Failed to load roadmap'; return; }
-        const data = await res.json();
+        const data = await Platform.fetch('/api/product-roadmap', { silent: true });
         this.horizons = data.horizons || this.horizons;
         this.unscheduled = data.unscheduled || [];
         this.totalEpics = data.total_epics || 0;
@@ -269,26 +267,22 @@ function productRoadmap() {
 
       // Persist
       try {
-        const res = await fetch(`/api/product-roadmap/epics/${epic.id}/horizon`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ horizon: targetHorizon || '' }),
-        });
-        if (!res.ok) {
-          this.error = 'Failed to save horizon assignment';
-          // Revert optimistic update
-          this._removeEpicFromAll(epic.id);
-          epic.horizon = prevHorizon || null;
-          if (prevHorizon && this.horizons[prevHorizon]) {
-            this.horizons[prevHorizon].epics.push(epic);
-          } else {
-            this.unscheduled.push(epic);
-          }
-        } else {
-          this._recalcOnTrack();
-        }
+        await Platform.fetch.patch(`/api/product-roadmap/epics/${epic.id}/horizon`, { horizon: targetHorizon || '' }, { silent: true });
+        this._recalcOnTrack();
       } catch (e) {
-        this.error = 'Network error: ' + e.message;
+        if (e.type === 'NetworkError') {
+          this.error = 'Network error: ' + e.message;
+        } else {
+          this.error = 'Failed to save horizon assignment';
+        }
+        // Revert optimistic update
+        this._removeEpicFromAll(epic.id);
+        epic.horizon = prevHorizon || null;
+        if (prevHorizon && this.horizons[prevHorizon]) {
+          this.horizons[prevHorizon].epics.push(epic);
+        } else {
+          this.unscheduled.push(epic);
+        }
       }
     },
 

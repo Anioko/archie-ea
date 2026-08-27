@@ -518,9 +518,8 @@
                 try {
                     this.loading = true;
                     this.error = null;
-                    const response = await fetch(this.endpoint);
-                    if (!response.ok) throw new Error('Failed to load Gantt data');
-                    const data = await response.json();
+                    // Platform.fetch automatically throws on non-ok responses, returns parsed JSON
+                    const data = await Platform.fetch(this.endpoint);
                     
                     this.allTasks = data.gantt.tasks || [];
                     this.phases = [...new Set(this.allTasks.map(t => t.group))];
@@ -542,6 +541,8 @@
                     this.renderChart();
                     this.loading = false;
                 } catch (e) {
+                    // Platform.fetch already shows a user-visible toast for network/HTTP errors.
+                    // We also need to set inline error state for the component's error display.
                     this.error = e.message;
                     this.loading = false;
                 }
@@ -727,8 +728,8 @@
                     // Export gantt as CSV (basic implementation)
                     if (format === 'csv') {
                         const rows = [['ID', 'Title', 'Start', 'End', 'Status', 'Assignee']];
-                        (this.tasks || []).forEach(t => {
-                            rows.push([t.id, t.title, t.start_date || '', t.end_date || '', t.status || '', t.assignee || '']);
+                        (this.allTasks || []).forEach(t => {
+                            rows.push([t.id, t.name, t.start_date || '', t.end_date || '', t.status || '', (t.meta && t.meta.assigned_to) || '']);
                         });
                         const csv = rows.map(r => r.map(c => JSON.stringify(c)).join(',')).join('\n');
                         const a = document.createElement('a');

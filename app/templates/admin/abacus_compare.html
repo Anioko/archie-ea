@@ -165,7 +165,10 @@
     <!-- Merge Decision Panel -->
     <div class="bg-background rounded-lg shadow-lg p-6" x-data="{
         strategy: 'keep_target',
-        fieldRules: {}
+        fieldRules: {
+            description: 'keep_target',
+            business_domain: 'keep_target'
+        }
     }">
         <h2 class="text-xl font-bold text-foreground mb-4">Merge Decision</h2>
 
@@ -200,7 +203,7 @@
             <div class="space-y-3">
                 <div class="flex items-center justify-between">
                     <span class="text-sm text-muted-foreground">Description</span>
-                    <select class="px-3 py-1 border border-border rounded text-sm" aria-label="Smart Merge - Field-level conflict resolution (advanced)">
+                    <select x-model="fieldRules.description" class="px-3 py-1 border border-border rounded text-sm" aria-label="Description merge rule">
                         <option value="keep_target">Keep Manual</option>
                         <option value="keep_source">Keep Abacus</option>
                         <option value="concat">Concatenate Both</option>
@@ -208,7 +211,7 @@
                 </div>
                 <div class="flex items-center justify-between">
                     <span class="text-sm text-muted-foreground">Business Domain</span>
-                    <select class="px-3 py-1 border border-border rounded text-sm">
+                    <select x-model="fieldRules.business_domain" class="px-3 py-1 border border-border rounded text-sm" aria-label="Business domain merge rule">
                         <option value="keep_target">Keep Manual</option>
                         <option value="keep_source">Keep Abacus</option>
                     </select>
@@ -252,24 +255,23 @@
         <div class="flex gap-3">
             <button type="button"
                 @click="if ((await Platform.modal.confirm('Are you sure? This cannot be undone.'))) {
-                    fetch('{{ url_for("abacus_consolidation.merge_capabilities") }}', {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''},
-                        body: JSON.stringify({
+                    try {
+                        const body = {
                             source_id: {{ abacus_cap.id }},
                             target_id: {{ manual_cap.id }},
-                            strategy: strategy,
-                            field_rules: fieldRules
-                        })
-                    })
-                    .then(res => { if (!res.ok) throw new Error('Merge failed (HTTP ' + res.status + ')'); return res.json(); })
-                    .then(data => {
+                            strategy: strategy
+                        };
+                        if (strategy === 'merge_fields') {
+                            body.field_rules = fieldRules;
+                        }
+                        const data = await Platform.fetch.post('{{ url_for("abacus_consolidation.merge_capabilities") }}', body, { silent: true });
                         if (!data.success) throw new Error(data.error || 'Merge failed');
-                        window.location.href = '{{ url_for('abacus_consolidation.index') }}';
-                    })
-                    .catch(err => { Platform.toast.error(err.message); });
+                        window.location.href = '{{ url_for("abacus_consolidation.index") }}';
+                    } catch (err) {
+                        Platform.toast.error(err.message);
+                    }
                 }"
-                class="px-6 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary font-medium"
+                class="px-6 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 font-medium"
              aria-label="Confirm">
                 Execute Merge
             </button>
@@ -282,7 +284,7 @@
             </a>
 
             <button type="button"
-                @click="(function(){ const tmpl = '{{ url_for("abacus_consolidation.reject_merge", abacus_id=0, manual_id=0) }}'; fetch(tmpl.replace('/0/0','/{{ abacus_cap.id }}/{{ manual_cap.id }}'), { method:'POST', headers:{'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''} }).then(function(r){ if (!r.ok) { throw new Error('Reject merge failed: ' + r.status); } window.location.href='{{ url_for("abacus_consolidation.index") }}'; }).catch(function(){ Platform.toast.error('Failed to mark as not duplicate.'); }); })()"
+                @click="(async function(){ const tmpl = '{{ url_for("abacus_consolidation.reject_merge", abacus_id=0, manual_id=0) }}'; const url = tmpl.replace('/0/0','/{{ abacus_cap.id }}/{{ manual_cap.id }}'); try { await Platform.fetch.post(url, null, { silent: true }); window.location.href='{{ url_for("abacus_consolidation.index") }}'; } catch (err) { Platform.toast.error('Failed to mark as not duplicate.'); } })()"
                 class="ml-auto px-6 py-2 bg-destructive/10 text-destructive-emphasis rounded-md hover:bg-destructive/20 font-medium"
              aria-label="Action">
                 Mark as Not Duplicate

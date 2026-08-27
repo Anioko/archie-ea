@@ -85,13 +85,11 @@
              try {
                  const fd = new FormData();
                  fd.append('file', this.uploadFile);
-                 const resp = await fetch('/solutions/' + solutionId + '/codegen/data/upload', {
+                 const data = await Platform.fetch('/solutions/' + solutionId + '/codegen/data/upload', {
                      method: 'POST',
                      body: fd,
-                     headers: { 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || '' }
+                     silent: true  // we show inline error via uploadError
                  });
-                 const data = await resp.json();
-                 if (!resp.ok) throw new Error(data.error || 'Upload failed');
                  this.uploadedSheets = data.sheets || [];
                  if (this.uploadedSheets.length > 0) {
                      this.selectedSheet = this.uploadedSheets[0];
@@ -100,6 +98,7 @@
                  }
              } catch (e) {
                  this.uploadError = e.message;
+                 // Platform.fetch already threw; we keep the error for inline display
              } finally {
                  this.uploadLoading = false;
              }
@@ -117,24 +116,16 @@
                  });
                  const colNames = (sheet.columns || []).map(c => c.name || c);
 
-                 const resp = await fetch('/solutions/' + solutionId + '/codegen/data/auto-map', {
-                     method: 'POST',
-                     headers: {
-                         'Content-Type': 'application/json',
-                         'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''
-                     },
-                     body: JSON.stringify({
-                         columns: colNames,
-                         column_types: colTypes
-                     })
-                 });
-                 const data = await resp.json();
-                 if (!resp.ok) throw new Error(data.error || 'Auto-map failed');
+                 const data = await Platform.fetch.post('/solutions/' + solutionId + '/codegen/data/auto-map', {
+                     columns: colNames,
+                     column_types: colTypes
+                 }, { silent: true }); // we show inline error via mappingError
                  this.sheetMappings[sheet.name] = data.mappings || [];
                  // Collect all target fields for dropdown overrides
                  this.allModelFields = this.extractAllFields(data.mappings || []);
              } catch (e) {
                  this.mappingError = e.message;
+                 // Platform.fetch already threw; we keep the error for inline display
              } finally {
                  this.mappingLoading = false;
              }
@@ -176,19 +167,10 @@
          async addFieldForColumn(sheet, mapping) {
              if (!solutionId) return;
              try {
-                 const resp = await fetch('/solutions/' + solutionId + '/codegen/data/add-field', {
-                     method: 'POST',
-                     headers: {
-                         'Content-Type': 'application/json',
-                         'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''
-                     },
-                     body: JSON.stringify({
-                         column_name: mapping.source_column,
-                         column_type: mapping.inferred_type || 'string'
-                     })
-                 });
-                 const data = await resp.json();
-                 if (!resp.ok) throw new Error(data.error || 'Add field failed');
+                 const data = await Platform.fetch.post('/solutions/' + solutionId + '/codegen/data/add-field', {
+                     column_name: mapping.source_column,
+                     column_type: mapping.inferred_type || 'string'
+                 }, { silent: true }); // we show inline error via mappingError
                  // Update the mapping with the new field
                  mapping.target_entity = data.entity || data.target_entity;
                  mapping.target_field = data.field || data.target_field;
@@ -196,6 +178,7 @@
                  mapping.method = 'added';
              } catch (e) {
                  this.mappingError = e.message;
+                 // Platform.fetch already threw; we keep the error for inline display
              }
          },
 
@@ -230,26 +213,18 @@
              this.importProgress = 0;
              try {
                  const mappings = this.getCurrentMappings().filter(m => m.target_field);
-                 const resp = await fetch('/solutions/' + solutionId + '/codegen/data/import', {
-                     method: 'POST',
-                     headers: {
-                         'Content-Type': 'application/json',
-                         'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''
-                     },
-                     body: JSON.stringify({
-                         sheet_name: this.selectedSheet.name,
-                         file_name: this.uploadFileName,
-                         mappings: mappings
-                     })
-                 });
-                 const data = await resp.json();
-                 if (!resp.ok) throw new Error(data.error || 'Import failed');
+                 const data = await Platform.fetch.post('/solutions/' + solutionId + '/codegen/data/import', {
+                     sheet_name: this.selectedSheet.name,
+                     file_name: this.uploadFileName,
+                     mappings: mappings
+                 }, { silent: true }); // we show inline error via importError
                  this.importResult = data;
                  this.importProgress = 100;
                  this.dataPhase = 'done';
              } catch (e) {
                  this.importError = e.message;
                  this.importProgress = 0;
+                 // Platform.fetch already threw; we keep the error for inline display
              } finally {
                  this.importLoading = false;
              }

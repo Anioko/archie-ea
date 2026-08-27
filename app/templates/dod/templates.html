@@ -149,12 +149,8 @@ function dodTemplates() {
       }]);
 
       let self = this;
-      fetch('/api/dod/templates/' + tmpl.id + '/criteria', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ criteria: updated }),
-      })
-        .then(function(r) { return r.json(); })
+      // Use Platform.fetch.patch for automatic CSRF, JSON serialization, and error handling
+      Platform.fetch.patch('/api/dod/templates/' + tmpl.id + '/criteria', { criteria: updated }, { silent: true })
         .then(function(data) {
           tmpl.criteria = data.criteria;
           self.addingTo = null;
@@ -163,7 +159,9 @@ function dodTemplates() {
           self.statusMsg = 'Criterion added.';
           setTimeout(function() { self.statusMsg = ''; }, 2500);
         })
-        .catch(function() {
+        .catch(function(err) {
+          // Platform.fetch already threw a structured PlatformError; we surface it via inline statusMsg
+          // The global toast is suppressed with { silent: true } to avoid duplicate user messages.
           self.statusMsg = 'Failed to save criterion.';
         });
     },

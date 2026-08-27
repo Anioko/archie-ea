@@ -726,12 +726,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     async function loadSettings() {
         try {
-            const resp = await fetch('/api/system-settings');
-            // The endpoint now answers a failure with 500 rather than an empty
-            // "ok" payload, so this must throw: silently substituting {} would
-            // present the defaults below as if they were the saved settings.
-            if (!resp.ok) throw new Error('system-settings request failed: ' + resp.status);
-            const data = await resp.json();
+            const data = await Platform.fetch('/api/system-settings');
             const saved = data.settings || {};
 
             // Default values merged with any saved values
@@ -776,6 +771,12 @@ document.addEventListener('DOMContentLoaded', function() {
             });
 
         } catch (error) {
+            // Platform.fetch already shows a toast for non‑silent errors.
+            // The endpoint now answers a failure with 500 rather than an empty
+            // "ok" payload, so this must throw: silently substituting {} would
+            // present the defaults below as if they were the saved settings.
+            // We keep the catch to prevent the error from propagating further,
+            // but we do NOT invent data; the form will stay with defaults.
             if (window.Platform && Platform.toast) {
                 Platform.toast.error('Could not load saved settings; showing defaults instead.');
             }
@@ -792,12 +793,7 @@ document.addEventListener('DOMContentLoaded', function() {
             document.getElementById('btn-save-all').disabled = true;
             document.getElementById('btn-save-all').textContent = 'Saving...';
 
-            const resp = await fetch('/api/system-settings/save', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ settings: settings })
-            });
-            if (!resp.ok) throw new Error('Server error ' + resp.status);
+            await Platform.fetch.post('/api/system-settings/save', { settings: settings });
 
             hasUnsavedChanges = false;
             const banner = document.getElementById('settings-saved-banner');

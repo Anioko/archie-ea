@@ -177,8 +177,7 @@ document.getElementById('btn-test').addEventListener('click', function () {
     const msg = document.getElementById('sync-msg');
     btn.disabled = true;
     btn.textContent = 'Testing…';
-    fetch('{{ url_for("m365_connector.servicenow_status") }}', {method: 'GET'})
-        .then(r => r.json())
+    Platform.fetch.get('{{ url_for("m365_connector.servicenow_status") }}', null, { silent: true })
         .then(data => {
             msg.textContent = data.status === 'not_configured'
                 ? 'Not configured — save credentials first.'
@@ -194,11 +193,7 @@ document.getElementById('btn-sync').addEventListener('click', function () {
     const msg = document.getElementById('sync-msg');
     btn.disabled = true;
     btn.textContent = 'Starting…';
-    fetch('{{ url_for("m365_connector.servicenow_sync") }}', {
-        method: 'POST',
-        headers: {'X-CSRFToken': '{{ csrf_token() }}', 'Content-Type': 'application/json'}
-    })
-        .then(r => r.json())
+    Platform.fetch.post('{{ url_for("m365_connector.servicenow_sync") }}', undefined, { silent: true })
         .then(data => {
             msg.textContent = data.message || 'Sync started.';
             msg.classList.remove('hidden');

@@ -231,12 +231,13 @@ document.getElementById('downloadBtn').addEventListener('click', async function(
   try {
     let schema = JSON.parse(document.getElementById('schemaInput').value);
 
-    let response = await fetch('/dashboard/applications/download-template', {
+    let response = await fetch('/dashboard/applications/download-template', {  // raw-fetch-ok: blob download; needs the raw Response
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(schema)
+      body: JSON.stringify(schema),
+      credentials: 'include'
     }); // raw-fetch-ok: need raw Response to access blob
 
     if (!response.ok) throw new Error('Download failed');

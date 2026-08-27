@@ -823,23 +823,17 @@ function entityMatchingChat() {
       this.isTyping = true;
       
       try {
-        // Call entity matching API
-        const response = await fetch('/ai-chat/entity-matching', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': document.querySelector('meta[name=csrf-token]').content,
-          },
-          body: JSON.stringify({
-            document_text: message,
-            user_persona: this.currentPersona,
-            domain: this.currentDomain,
-            chat_history: this.messages.slice(-5).map(m => ({ role: m.role, content: m.content }))
-          })
+        // Call entity matching API using Platform.fetch
+        // Platform.fetch.post automatically handles CSRF token and JSON serialization
+        const result = await Platform.fetch.post('/ai-chat/entity-matching', {
+          document_text: message,
+          user_persona: this.currentPersona,
+          domain: this.currentDomain,
+          chat_history: this.messages.slice(-5).map(m => ({ role: m.role, content: m.content }))
         });
         
-        const result = await response.json();
-        
+        // Platform.fetch throws on non-ok responses, so if we reach here the request succeeded
+        // However, the API may still return a success:false result, which we need to handle
         if (result.success) {
           // Process results and update entities
           this.processMatchingResults(result);
@@ -847,11 +841,18 @@ function entityMatchingChat() {
           // Add assistant response
           this.addAssistantMessage(result);
         } else {
+          // The request succeeded (HTTP 200) but the API returned an error
+          // We should show this to the user without a global toast (silent:true not needed here)
           this.addMessage('assistant', `I encountered an error: ${result.error}`);
         }
         
       } catch (error) {
-        this.addMessage('assistant', 'Sorry, I encountered an error while processing your request. Please try again.');
+        // Platform.fetch throws on network errors or non-ok HTTP responses
+        // We need to show this error to the user
+        // The global toast will be shown by Platform.fetch, but we also want to show it in the chat
+        // We'll add a message to the chat, but we don't need to show another toast
+        // The error message from Platform.fetch is in error.message
+        this.addMessage('assistant', `Sorry, I encountered an error while processing your request: ${error.message}`);
       } finally {
         this.isTyping = false;
         this.isProcessing = false;

@@ -761,13 +761,10 @@
                                                 async saveRules() {
                                                     this.brSaving = true; this.brError = '';
                                                     try {
-                                                        const resp = await fetch('/architecture-journey/{{ solution_id }}/proposal/' + el.proposal_id + '/business-rules', {
-                                                            method: 'PATCH',
-                                                            headers: {'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('[name=csrf_token]')?.value || ''},
-                                                            body: JSON.stringify({rules: this.brRules})
-                                                        });
-                                                        if (!resp.ok) this.brError = 'Save failed';
-                                                    } catch(e) { this.brError = 'Network error'; }
+                                                        await Platform.fetch.patch('/architecture-journey/{{ solution_id }}/proposal/' + el.proposal_id + '/business-rules', {rules: this.brRules}, {silent: true});
+                                                    } catch(e) {
+                                                        this.brError = e.type === 'NetworkError' ? 'Network error' : 'Save failed';
+                                                    }
                                                     this.brSaving = false;
                                                 }
                                              }">

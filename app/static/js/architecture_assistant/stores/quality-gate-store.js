@@ -130,7 +130,7 @@ document.addEventListener('alpine:init', () => {
             if (!this.assessment || !this.solutionId) return;
 
             try {
-                // fetch() resolves on 4xx/5xx, so without this the audit write could
+                // The native API resolves on 4xx/5xx, so without the wrapper the audit
                 // fail with a 500 and look exactly like a successful one.
                 await Platform.fetch.post(`/api/wizard/${this.solutionId}/quality/skip`, {
                     step: this.currentStep,

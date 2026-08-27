@@ -272,18 +272,13 @@ function vendorPricingImport() {
             self.confirming = true;
             self.confirmResult = null;
 
-            const csrfInput = document.querySelector('input[name="csrf_token"]');
-            const csrfToken = csrfInput ? csrfInput.value : '';
-
-            fetch('{{ url_for("admin.vendor_pricing_confirm") }}', {
+            // Use Platform.fetch which automatically injects CSRF token and serializes JSON
+            // Pass silent: true because we handle errors inline via confirmResult
+            Platform.fetch('{{ url_for("admin.vendor_pricing_confirm") }}', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': csrfToken,
-                },
-                body: JSON.stringify({ items: activeItems }),
+                body: { items: activeItems },
+                silent: true,
             })
-            .then(function(r) { return r.json(); })
             .then(function(data) {
                 self.confirmResult = data;
                 self.confirming = false;
@@ -295,6 +290,8 @@ function vendorPricingImport() {
                 });
             })
             .catch(function(err) {
+                // Platform.fetch throws a structured PlatformError on non-ok responses
+                // We preserve the existing inline error handling
                 self.confirmResult = { success: false, error: err.message };
                 self.confirming = false;
             });

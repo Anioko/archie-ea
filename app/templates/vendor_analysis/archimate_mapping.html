@@ -103,7 +103,7 @@
     </div>
 
     <!-- Critical Issues Alert -->
-    {% if (orphaned_elements or 0) > 0 or (without_archimate or 0) > 0 %}
+    {% if orphaned_elements|default(0) > 0 or without_archimate|default(0) > 0 %}
     <div class="bg-destructive/5 border border-destructive/20 rounded-lg p-4 mb-6">
         <div class="flex items-start gap-3">
             <div class="flex-shrink-0">
@@ -113,13 +113,13 @@
                 <h3 class="text-lg font-semibold text-destructive-emphasis">Critical Mapping Issues Detected</h3>
                 <div class="mt-2 text-destructive-emphasis">
                     <ul class="list-disc list-inside space-y-1">
-                        {% if (orphaned_elements or 0) > 0 %}
+                        {% if orphaned_elements|default(0) > 0 %}
                         <li><strong>{{ orphaned_elements }}</strong> ArchiMate elements reference non-existent vendor products</li>
                         {% endif %}
-                        {% if (without_archimate or 0) > 0 %}
+                        {% if without_archimate|default(0) > 0 %}
                         <li><strong>{{ without_archimate }}</strong> vendor products have no ArchiMate element mapping</li>
                         {% endif %}
-                        {% if vendor_coverage is not none %}<li>Overall mapping coverage is only {{ vendor_coverage }}% for vendor products</li>{% endif %}
+                        {% if vendor_coverage is not none and vendor_coverage < 100 %}<li>Overall mapping coverage is only {{ vendor_coverage }}% for vendor products</li>{% endif %}
                     </ul>
                 </div>
             </div>
@@ -260,12 +260,7 @@
 
 <script>
 function exportAnalysis() {
-    fetch('/api/vendor-archimate-analysis/export')
-        .then(response => {
-            // Unchecked, an error body was downloaded as the "analysis" file.
-            if (!response.ok) throw new Error('HTTP ' + response.status);
-            return response.json();
-        })
+    Platform.fetch('/api/vendor-archimate-analysis/export')
         .then(data => {
             const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
             const url = window.URL.createObjectURL(blob);
@@ -281,6 +276,8 @@ function exportAnalysis() {
             if (window.Platform && Platform.toast) {
                 Platform.toast.error('Export failed — unable to export the mapping. Please try again.');
             }
+            // Rethrow to surface the failure to the user (the global toast already shown by Platform.fetch).
+            throw error;
         });
 }
 

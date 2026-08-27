@@ -21,14 +21,9 @@
                         <select class="text-xs border rounded px-2 py-1 bg-background"
                                 :value="getLifecyclePhase(el)"
                                 @change="
-                                    fetch('/api/archimate/elements/' + el.id + '/lifecycle', {
-                                        method: 'PATCH',
-                                        headers: {'Content-Type': 'application/json'},
-                                        body: JSON.stringify({lifecycle: $event.target.value})
-                                    }).then(r => {
-                                        if (!r.ok) { throw new Error('lifecycle update failed: ' + r.status); }
-                                        return loadElements();
-                                    }).catch(() => { Platform.toast.error('Could not update lifecycle phase.'); loadElements(); })
+                                    Platform.fetch.patch('/api/archimate/elements/' + el.id + '/lifecycle', {lifecycle: $event.target.value})
+                                        .then(() => loadElements())
+                                        .catch(() => { Platform.toast.error('Could not update lifecycle phase.'); loadElements(); })
                                 " aria-label="Set lifecycle phase">
                             <option value="current">Current</option>
                             <option value="transitional">Transitional</option>

@@ -27,9 +27,8 @@ document.addEventListener('alpine:init', () => {
         async loadCategories() {
             this.loadingCategories = true;
             try {
-                const r = await fetch('/capability-map/api/vendor-capability-matrix?only_categories=1');
-                if (!r.ok) throw new Error(`HTTP ${r.status}`);
-                this.allCategories = await r.json();
+                // Platform.fetch returns parsed JSON directly; throws on non-ok
+                this.allCategories = await Platform.fetch('/capability-map/api/vendor-capability-matrix?only_categories=1', { silent: true });
             } catch (e) {
                 this.error = 'Failed to load categories. ' + e.message;
             } finally {
@@ -44,9 +43,8 @@ document.addEventListener('alpine:init', () => {
             this.error = '';
             try {
                 const url = '/capability-map/api/vendor-capability-matrix?category=' + encodeURIComponent(this.filters.category);
-                const r = await fetch(url);
-                if (!r.ok) throw new Error(`HTTP ${r.status}`);
-                this.matrixData = await r.json();
+                // Platform.fetch returns parsed JSON directly; throws on non-ok
+                this.matrixData = await Platform.fetch(url, { silent: true });
                 this.dataLoaded = true;
                 this.applyFilters();
             } catch (e) {
@@ -384,7 +382,7 @@ document.addEventListener('alpine:init', () => {
 
 {% block modals %}
 <!-- Capability detail modal -->
-<div x-data
+<div x-data="{}"
      x-cloak x-show="$store.matrixModal.open"
      x-transition:enter="transition ease-out duration-200"
      x-transition:enter-start="opacity-0"
@@ -491,22 +489,22 @@ document.addEventListener('alpine:init', () => {
             </div>
 
             <!-- Evidence -->
-            <div x-cloak x-show="$store.matrixModal.data?.evidence">
+            <div x-show="$store.matrixModal.data && $store.matrixModal.data.evidence">
                 <h3 class="text-sm font-semibold text-foreground mb-2.5">Evidence & Verification</h3>
                 <div class="bg-muted/40 border border-border rounded-lg p-3.5 space-y-1.5">
                     <p class="text-xs text-muted-foreground">
                         <span class="font-medium text-foreground">Source: </span>
-                        <span x-text="$store.matrixModal.data?.evidence?.source || 'N/A'"></span>
+                        <span x-text="$store.matrixModal.data.evidence && $store.matrixModal.data.evidence.source ? $store.matrixModal.data.evidence.source : 'N/A'"></span>
                     </p>
                     <p class="text-xs text-muted-foreground">
                         <span class="font-medium text-foreground">Verified: </span>
-                        <span x-text="$store.matrixModal.data?.evidence?.verified_at
+                        <span x-text="$store.matrixModal.data.evidence && $store.matrixModal.data.evidence.verified_at
                             ? new Date($store.matrixModal.data.evidence.verified_at).toLocaleDateString()
                             : 'Not verified'"></span>
                     </p>
-                    <p class="text-xs text-muted-foreground" x-cloak x-show="$store.matrixModal.data?.evidence?.verified_by">
+                    <p class="text-xs text-muted-foreground" x-cloak x-show="$store.matrixModal.data.evidence && $store.matrixModal.data.evidence.verified_by">
                         <span class="font-medium text-foreground">By: </span>
-                        <span x-text="$store.matrixModal.data?.evidence?.verified_by"></span>
+                        <span x-text="$store.matrixModal.data.evidence && $store.matrixModal.data.evidence.verified_by ? $store.matrixModal.data.evidence.verified_by : ''"></span>
                     </p>
                 </div>
             </div>

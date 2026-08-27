@@ -9,19 +9,19 @@
    - entity_name: display name
 #}
 
-<div class="traceability-panel bg-accent/30 border-l-3 border-primary p-4 rounded-r-lg my-4">
+<div class="traceability-panel bg-accent/30 border-l-3 border-primary p-4 rounded-r-lg my-4" x-data="{ open: true }">
     <div class="flex items-center justify-between mb-3">
         <h3 class="text-sm font-semibold text-foreground flex items-center gap-2">
             <i data-lucide="network" class="h-4 w-4 text-primary"></i>
-            Traceability & Relationships
+            Traceability &amp; Relationships
         </h3>
         <button type="button" class="text-xs text-muted-foreground hover:text-foreground" 
-                @click="$refs.traceabilityDetails.classList.toggle('hidden')">
+                @click="open = !open">
             Toggle
         </button>
     </div>
     
-    <div x-ref="traceabilityDetails">
+    <div x-show="open">
         <!-- For Solutions -->
         {% if entity_type == 'solution' %}
         <div class="grid grid-cols-3 gap-3 text-xs">
@@ -48,9 +48,7 @@
         // Fetch traceability data
         (async () => {
             try {
-                const res = await fetch('/api/solutions/{{ entity_id }}/traceability');
-                if (!res.ok) throw new Error('HTTP ' + res.status);
-                const data = await res.json();
+                const data = await Platform.fetch('/api/solutions/{{ entity_id }}/traceability', { silent: true });
                 
                 document.getElementById('trace-capabilities-{{ entity_id }}').innerHTML = 
                     data.capabilities?.length ? data.capabilities.map(c => 

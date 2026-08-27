@@ -307,7 +307,7 @@
 
     // --- Hook into fetch to reset timer on every request ---
     // Platform.fetch calls global.fetch internally, so wrapping global.fetch
-    // catches both Platform.fetch and any direct fetch() usage.
+    // catches both Platform.fetch and any direct fetch() usage.  // raw-fetch-ok: this IS the fetch hook -- it wraps global.fetch so every request resets the idle timer
     function hookFetch() {
         if (typeof global.fetch !== 'function') return;
         const nativeFetch = global.fetch;

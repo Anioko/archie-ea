@@ -119,8 +119,7 @@ function seedManager() {
 
         async refreshStatus() {
             try {
-                const resp = await fetch('{{ url_for("admin.seed_status") }}');
-                const data = await resp.json();
+                const data = await Platform.fetch('{{ url_for("admin.seed_status") }}', { silent: true });
                 if (data.success) {
                     this.categories = data.categories;
                 }
@@ -138,11 +137,11 @@ function seedManager() {
             this.seedingKey = key;
             this.message = null;
             try {
-                const resp = await fetch(`{{ url_for("admin.seed", key="__KEY__") }}`.replace('__KEY__', key), {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
-                });
-                const data = await resp.json();
+                const data = await Platform.fetch.post(
+                    `{{ url_for("admin.seed", key="__KEY__") }}`.replace('__KEY__', key),
+                    undefined,
+                    { silent: true }
+                );
                 this.message = data.message || (data.success ? 'Seeding complete' : 'Seeding failed');
                 this.messageType = data.success ? 'success' : 'error';
                 await this.refreshStatus();
@@ -157,11 +156,11 @@ function seedManager() {
             this.seeding = true;
             this.message = null;
             try {
-                const resp = await fetch('{{ url_for("admin.seed_all") }}', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
-                });
-                const data = await resp.json();
+                const data = await Platform.fetch.post(
+                    '{{ url_for("admin.seed_all") }}',
+                    undefined,
+                    { silent: true }
+                );
                 this.message = data.message || (data.success ? 'All seeders completed' : 'Some seeders had errors');
                 this.messageType = data.success ? 'success' : 'error';
                 await this.refreshStatus();

@@ -1266,7 +1266,6 @@
 
                 self.briefUploading = true;
                 self.briefIngestionNotice = '';
-                let csrf = (document.querySelector('meta[name=csrf-token]') || {}).content || '';
                 const briefs = [];
                 let anyIngestionStarted = false;
                 const errors = [];
@@ -1310,19 +1309,19 @@
                     const fd = new FormData();
                     fd.append('file', file);
                     // raw-fetch-ok: FormData upload with file requires multipart/form-data, which Platform.fetch cannot handle automatically.
-                    fetch(API_BASE + '/' + self.solutionId + '/extract-brief', {
+                    Platform.fetch(API_BASE + '/' + self.solutionId + '/extract-brief', {
                         method: 'POST',
-                        headers: { 'X-CSRFToken': csrf },
-                        body: fd
-                    }).then(function(r) { return r.json(); }).then(function(body) {
+                        body: fd,
+                        silent: true // We handle errors inline via errors array
+                    }).then(function(body) {
                         if (body.success && body.data && body.data.brief) {
                             briefs.push({ name: file.name, text: body.data.brief });
                             if (body.data.ingestion_started) anyIngestionStarted = true;
                         } else {
                             errors.push(file.name + ': ' + ((body.error || body.message) || 'extraction failed'));
                         }
-                    }).catch(function() {
-                        errors.push(file.name + ': network error');
+                    }).catch(function(e) {
+                        errors.push(file.name + ': ' + (e.message || 'network error'));
                     }).finally(function() {
                         processNext();
                     });
@@ -3697,18 +3696,12 @@
                 let formData = new FormData();
                 formData.append('file', this.uploadFile);
 
-                let csrf = document.querySelector('meta[name=csrf-token]');
-                let headers = {};
-                if (csrf) headers['X-CSRFToken'] = csrf.content;
-
                 // raw-fetch-ok: FormData upload with file requires multipart/form-data, which Platform.fetch cannot handle automatically.
-                fetch('/solutions/' + this.solutionId + '/codegen/data/upload', {
+                Platform.fetch('/solutions/' + this.solutionId + '/codegen/data/upload', {
                     method: 'POST',
                     body: formData,
-                    credentials: 'same-origin',
-                    headers: headers
-                }).then(function (r) { return r.json(); })
-                .then(function (data) {
+                    silent: true // We handle errors inline via uploadError
+                }).then(function (data) {
                     self.uploadLoading = false;
                     if (!data.success) {
                         self.uploadError = data.error || 'Upload failed';

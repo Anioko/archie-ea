@@ -167,8 +167,7 @@ async function loadComparison() {
   currentAppId = appId;
 
   try {
-    const res = await fetch(`/dashboard/api/rationalization/validate/${appId}`);
-    const data = await res.json();
+    const data = await Platform.fetch(`/dashboard/api/rationalization/validate/${appId}`, { silent: true });
 
     if (data.success) {
       comparisonData = data.data.comparisons;
@@ -284,18 +283,13 @@ async function confirmResolution() {
   }
 
   try {
-    const res = await fetch(`/dashboard/api/rationalization/validate/${currentAppId}/resolve`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        field: item.field,
-        value: finalValue,
-        source: resolution === 'custom' ? 'manual' : resolution,
-        notes: document.getElementById('resolution-notes').value
-      })
-    });
+    const result = await Platform.fetch.post(`/dashboard/api/rationalization/validate/${currentAppId}/resolve`, {
+      field: item.field,
+      value: finalValue,
+      source: resolution === 'custom' ? 'manual' : resolution,
+      notes: document.getElementById('resolution-notes').value
+    }, { silent: true });
 
-    const result = await res.json();
     if (result.success) {
       // Update local data
       comparisonData[currentConflict].status = 'resolved';
@@ -321,18 +315,13 @@ async function resolveAllConflicts() {
   let failedCount = 0;
   for (const conflict of conflicts) {
     try {
-      const res = await fetch(`/dashboard/api/rationalization/validate/${currentAppId}/resolve`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          field: conflict.field,
-          value: conflict.abacus_value,
-          source: 'abacus',
-          notes: 'Bulk resolution - Abacus as system of record'
-        })
-      });
-      const result = await res.json();
-      if (!res.ok || !result.success) throw new Error((result && result.error) || ('HTTP ' + res.status));
+      const result = await Platform.fetch.post(`/dashboard/api/rationalization/validate/${currentAppId}/resolve`, {
+        field: conflict.field,
+        value: conflict.abacus_value,
+        source: 'abacus',
+        notes: 'Bulk resolution - Abacus as system of record'
+      }, { silent: true });
+      if (!result.success) throw new Error(result.error || 'Request failed');
 
       conflict.status = 'resolved';
       conflict.resolved_value = conflict.abacus_value;

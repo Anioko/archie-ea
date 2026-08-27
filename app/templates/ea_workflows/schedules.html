@@ -81,14 +81,10 @@
 <script>
 async function toggleSchedule(scheduleId) {
     try {
-        const response = await fetch(`/api/ea-workflows/schedules/${scheduleId}/toggle`, {
+        const data = await Platform.fetch(`/api/ea-workflows/schedules/${scheduleId}/toggle`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': '{{ csrf_token() }}'
-            }
+            silent: true  // suppress global toast because we handle errors inline
         });
-        const data = await response.json();
         if (data.success) {
             location.reload();
         } else {
