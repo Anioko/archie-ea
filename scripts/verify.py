@@ -1459,6 +1459,7 @@ def main(argv: list[str] | None = None) -> int:
     baseline = load_baseline()
     gates = build_gates(baseline)
 
+    all_gate_names = [g.name for g in gates]
     if args.gate:
         wanted = set(args.gate)
         unknown = wanted - {g.name for g in gates}
@@ -1467,6 +1468,15 @@ def main(argv: list[str] | None = None) -> int:
         gates = [g for g in gates if g.name in wanted]
     if args.tag:
         gates = [g for g in gates if set(args.tag) & set(g.tags)]
+    # Everything the filter removed. A filtered run has to say so: `--tag static`
+    # reads as a full run and is not one - it excludes broken-surfaces,
+    # and dynamic-link-prefixes, both of which boot the app
+    # and so is deliberately untagged `static`, plus nav-verified, which carries
+    # no tags at all and is therefore unreachable from EVERY --tag invocation.
+    # A red broken-surfaces sat unnoticed on deployed main for exactly this
+    # reason: the pre-deploy command everyone ran could not see it, and its
+    # "31 passed, 0 failed" line looked like proof the tree was clean.
+    not_run = [n for n in all_gate_names if n not in {g.name for g in gates}]
 
     db_ok, db_reason = database_available()
     results: list[Result] = []
@@ -1512,7 +1522,10 @@ def main(argv: list[str] | None = None) -> int:
             "database_available": db_ok,
             "database_detail": db_reason,
             "summary": {"pass": len(results) - len(failed) - len(skipped),
-                        "fail": len(failed), "skip": len(skipped)},
+                        "fail": len(failed), "skip": len(skipped),
+                        "not_run": len(not_run)},
+            "partial_run": bool(not_run),
+            "not_run": not_run,
             "gates": [r.__dict__ for r in results],
         }, indent=2))
         return 1 if failed else 0
@@ -1542,7 +1555,18 @@ def main(argv: list[str] | None = None) -> int:
             print(f"    {r.name}: {r.detail}")
         print("    CI runs with --require-db so these cannot be silently skipped there.")
 
-    print(f"\n{len(results) - len(failed) - len(skipped)} passed, {len(failed)} failed, {len(skipped)} skipped")
+    if not_run:
+        print(f"\n{len(not_run)} gate(s) EXCLUDED BY THE FILTER and therefore NOT verified:")
+        for name in not_run:
+            print(f"    {name}")
+        print("    This is a PARTIAL run. It is not evidence the tree is clean.")
+        print("    Before a deploy run the full set:  python scripts/verify.py")
+
+    summary = (f"\n{len(results) - len(failed) - len(skipped)} passed, "
+               f"{len(failed)} failed, {len(skipped)} skipped")
+    if not_run:
+        summary += f", {len(not_run)} not run (PARTIAL RUN)"
+    print(summary)
     return 1 if failed else 0
 
 
