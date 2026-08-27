@@ -14,6 +14,11 @@ from app import db
 from app.models.adr import ArchitectureDecisionRecord
 from app.models.architecture_review_board import ARBReviewCycle, ARBReviewItem
 from app.models.arb_submission_event import ARBSubmissionEvent
+from app.models.arb_decision_event import (
+    ARBCondition,
+    ARBDecisionEvent,
+    ensure_arb_decision_guards,
+)
 from app.models.transformation_db_guards import ensure_transformation_db_guards
 from app.models.transformation_decision import ARBSubjectEvidenceSnapshot
 from app.models.transformation_execution import CommandIdempotencyRecord, OperationResult
@@ -35,7 +40,15 @@ from app.models.user import User
 from app.modules.transformation_room.arb_submission_service import (
     TypedARBSubmissionService,
 )
-from app.modules.transformation_room.domain import ActorContext, NotAuthorised, NotFound
+from app.modules.transformation_room.arb_decision_service import (
+    TypedARBDecisionService,
+)
+from app.modules.transformation_room.domain import (
+    ActorContext,
+    CommandConflict,
+    NotAuthorised,
+    NotFound,
+)
 
 
 @dataclass(frozen=True)
@@ -59,6 +72,7 @@ def _command_guards(app, _schema):
     with app.app_context(), db.engine.begin() as connection:
         ensure_transformation_db_guards(connection)
         ensure_evidence_immutability_triggers(connection)
+        ensure_arb_decision_guards(connection)
 
 
 @pytest.fixture
@@ -128,6 +142,8 @@ def adr_scope(app, _schema):
             with db.engine.begin() as connection:
                 connection.exec_driver_sql("SET LOCAL session_replication_role = replica")
                 for table_name in (
+                    "arb_canonical_conditions",
+                    "arb_decision_events",
                     "arb_submission_events",
                     "transformation_outbox_events",
                     "operation_results",
@@ -407,6 +423,197 @@ def test_same_key_replay_survives_terminal_cycle_transition(app, adr_scope):
         "results": 1,
         "events": 1,
     }
+
+
+@pytest.mark.parametrize(
+    ("outcome", "conditions"),
+    (
+        ("approved", []),
+        (
+            "approved_with_conditions",
+            [{"code": "SEC-1", "text": "Complete the threat model"}],
+        ),
+        ("returned_for_evidence", []),
+    ),
+)
+def test_real_typed_terminal_decision_projects_event_and_conditions(
+    app, adr_scope, outcome, conditions
+):
+    canonical_conditions = TypedARBDecisionService._canonical_conditions(conditions)
+    with app.app_context():
+        submission = _submit(adr_scope, f"submit-for-{outcome}")
+        decider = User(
+            organization_id=adr_scope.organization_id,
+            email=f"decider-{outcome}-{uuid.uuid4().hex[:8]}@example.test",
+            enterprise_role="chief_architect",
+            confirmed=True,
+        )
+        db.session.add(decider)
+        db.session.commit()
+        actor = ActorContext(
+            decider.id,
+            adr_scope.organization_id,
+            frozenset({"viewer"}),
+            f"decide-{outcome}",
+        )
+        result = TypedARBDecisionService.decide(
+            actor=actor,
+            command_key=f"decision-{outcome}",
+            cycle_id=submission.object_ids["review_cycle_id"],
+            outcome=outcome,
+            rationale=f"Board recorded {outcome}",
+            conditions=conditions,
+        )
+        replay = TypedARBDecisionService.decide(
+            actor=actor,
+            command_key=f"decision-{outcome}",
+            cycle_id=submission.object_ids["review_cycle_id"],
+            outcome=outcome,
+            rationale=f"Board recorded {outcome}",
+            conditions=conditions,
+        )
+        with pytest.raises(CommandConflict):
+            TypedARBDecisionService.decide(
+                actor=actor,
+                command_key=f"conflicting-decision-{outcome}",
+                cycle_id=submission.object_ids["review_cycle_id"],
+                outcome="rejected" if outcome != "rejected" else "approved",
+                rationale="A conflicting terminal outcome",
+                conditions=[],
+            )
+
+    assert replay.idempotent is True
+    assert replay.object_ids == result.object_ids
+    with Session(db.engine) as session:
+        cycle = session.get(ARBReviewCycle, result.object_ids["review_cycle_id"])
+        review = session.get(ARBReviewItem, result.object_ids["review_item_id"])
+        decision = session.get(ARBDecisionEvent, result.object_ids["decision_event_id"])
+        assert cycle.status == cycle.terminal_outcome == outcome
+        assert review.status == review.decision == outcome
+        assert review.decision_rationale == decision.rationale
+        assert decision.from_state == "submitted"
+        assert decision.conditions_json == canonical_conditions
+        condition_rows = session.scalars(
+            select(ARBCondition).where(
+                ARBCondition.decision_event_id == decision.id
+            )
+        ).all()
+        assert len(condition_rows) == len(conditions)
+        assert [
+            {
+                "condition_number": row.condition_number,
+                "description": row.description,
+                "category": row.category,
+                "due_date": row.due_date.isoformat() if row.due_date else None,
+                "blocks_execution": row.blocks_execution,
+            }
+            for row in condition_rows
+        ] == canonical_conditions
+
+
+def test_decision_rejects_submitter_and_forged_roles(app, adr_scope):
+    with app.app_context():
+        submission = _submit(adr_scope, "submit-authz")
+        with pytest.raises(NotAuthorised, match="separation_of_duties"):
+            TypedARBDecisionService.decide(
+                actor=adr_scope.actor,
+                command_key="self-decision",
+                cycle_id=submission.object_ids["review_cycle_id"],
+                outcome="approved",
+                rationale="Self approval is forbidden",
+            )
+        viewer = User(
+            organization_id=adr_scope.organization_id,
+            email=f"decision-viewer-{uuid.uuid4().hex[:8]}@example.test",
+            enterprise_role="viewer",
+            confirmed=True,
+        )
+        db.session.add(viewer)
+        db.session.commit()
+        forged = ActorContext(
+            viewer.id, adr_scope.organization_id,
+            frozenset({"chief_architect"}), "forged-decision-role",
+        )
+        with pytest.raises(NotAuthorised, match="not_authorised"):
+            TypedARBDecisionService.decide(
+                actor=forged,
+                command_key="forged-decision",
+                cycle_id=submission.object_ids["review_cycle_id"],
+                outcome="approved",
+                rationale="Caller roles cannot grant authority",
+            )
+
+
+def test_decision_replay_rechecks_revoked_server_role(app, adr_scope):
+    with app.app_context():
+        submission = _submit(adr_scope, "submit-revocation")
+        decider = User(
+            organization_id=adr_scope.organization_id,
+            email=f"decision-revoke-{uuid.uuid4().hex[:8]}@example.test",
+            enterprise_role="chief_architect",
+            confirmed=True,
+        )
+        db.session.add(decider)
+        db.session.commit()
+        actor = ActorContext(
+            decider.id, adr_scope.organization_id,
+            frozenset({"chief_architect"}), "decision-revocation",
+        )
+        result = TypedARBDecisionService.decide(
+            actor=actor, command_key="revoke-after-win",
+            cycle_id=submission.object_ids["review_cycle_id"], outcome="approved",
+            rationale="Approved before authority changed",
+        )
+        decider.enterprise_role = "viewer"
+        db.session.commit()
+        db.session.remove()
+        with pytest.raises(NotAuthorised, match="not_authorised"):
+            TypedARBDecisionService.decide(
+                actor=actor, command_key="revoke-after-win",
+                cycle_id=submission.object_ids["review_cycle_id"], outcome="approved",
+                rationale="Approved before authority changed",
+            )
+    assert result.created is True
+
+
+def test_decision_event_failure_rolls_back_terminal_projection(app, adr_scope):
+    with app.app_context():
+        submission = _submit(adr_scope, "submit-rollback-decision")
+        decider = User(
+            organization_id=adr_scope.organization_id,
+            email=f"decision-rollback-{uuid.uuid4().hex[:8]}@example.test",
+            enterprise_role="chief_architect",
+            confirmed=True,
+        )
+        db.session.add(decider)
+        db.session.commit()
+        actor = ActorContext(
+            decider.id, adr_scope.organization_id,
+            frozenset(), "decision-rollback",
+        )
+
+        def fail_event_insert(*_args, **_kwargs):
+            raise RuntimeError("forced decision event failure")
+
+        event.listen(ARBDecisionEvent, "before_insert", fail_event_insert)
+        try:
+            with pytest.raises(RuntimeError, match="forced decision event failure"):
+                TypedARBDecisionService.decide(
+                    actor=actor, command_key="decision-rollback",
+                    cycle_id=submission.object_ids["review_cycle_id"],
+                    outcome="rejected", rationale="Rollback this decision",
+                )
+        finally:
+            event.remove(ARBDecisionEvent, "before_insert", fail_event_insert)
+    with Session(db.engine) as session:
+        cycle = session.get(ARBReviewCycle, submission.object_ids["review_cycle_id"])
+        review = session.get(ARBReviewItem, submission.object_ids["review_item_id"])
+        assert cycle.status == review.status == "submitted"
+        assert session.scalar(
+            select(db.func.count()).select_from(ARBDecisionEvent).where(
+                ARBDecisionEvent.review_cycle_id == cycle.id
+            )
+        ) == 0
 
 
 def test_real_solution_submission_pins_legacy_evidence_into_typed_graph(

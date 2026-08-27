@@ -113,6 +113,19 @@ def test_every_terminal_outcome_uses_one_exact_cycle_scoped_command(monkeypatch,
         if outcome == "approved_with_conditions"
         else []
     )
+    canonical_conditions = (
+        [
+            {
+                "condition_number": "SEC-1",
+                "description": "Complete threat model",
+                "category": None,
+                "due_date": None,
+                "blocks_execution": True,
+            }
+        ]
+        if conditions
+        else []
+    )
 
     module.TypedARBDecisionService.decide(
         actor=_actor(roles=frozenset({"viewer"})),
@@ -129,11 +142,11 @@ def test_every_terminal_outcome_uses_one_exact_cycle_scoped_command(monkeypatch,
         "cycle_id": 501,
         "outcome": outcome,
         "rationale": "Recorded by the board",
-        "conditions": conditions,
+        "conditions": canonical_conditions,
     }
     assert calls == [
         ("authority", 73, 41, 501),
-        ("locked", 501, outcome, "Recorded by the board", conditions),
+        ("locked", 501, outcome, "Recorded by the board", canonical_conditions),
     ]
 
 
@@ -251,6 +264,16 @@ def test_locked_engine_rejects_historical_and_terminal_cycles(
         "_load_cycle_and_review_for_update",
         classmethod(lambda cls, session, actor, cycle_id: (cycle, SimpleNamespace(id=502))),
     )
+    monkeypatch.setattr(
+        module.TypedARBDecisionService,
+        "_lock_subject_decision",
+        classmethod(lambda cls, session, actor, cycle_id: None),
+    )
+    monkeypatch.setattr(
+        module.TypedARBDecisionService,
+        "_assert_cycle_review_projection_equal",
+        staticmethod(lambda cycle, review: None),
+    )
 
     with pytest.raises(CommandConflict, match=expected_reason):
         module.TypedARBDecisionService._decide_locked(
@@ -275,3 +298,103 @@ def test_projection_and_event_contract_are_explicit_on_service_type():
     assert service.DECISION_EVENT_TYPE == "decided"
     assert callable(service._load_cycle_and_review_for_update)
     assert callable(service._assert_cycle_review_projection_equal)
+
+
+def test_handler_rechecks_authority_after_locks(monkeypatch):
+    module = _decision_module()
+    cycle = SimpleNamespace(
+        id=501, status="submitted", closed_at=None,
+    )
+    review = SimpleNamespace(id=502, status="submitted", decision=None)
+    monkeypatch.setattr(
+        module.TypedARBDecisionService,
+        "_lock_subject_decision",
+        classmethod(lambda cls, session, actor, cycle_id: None),
+    )
+    monkeypatch.setattr(
+        module.TypedARBDecisionService,
+        "_load_cycle_and_review_for_update",
+        classmethod(lambda cls, session, actor, cycle_id: (cycle, review)),
+    )
+    monkeypatch.setattr(
+        module.TypedARBDecisionService,
+        "_assert_cycle_review_projection_equal",
+        staticmethod(lambda cycle, review: None),
+    )
+    monkeypatch.setattr(
+        module.TypedARBDecisionService,
+        "authorise_decision",
+        classmethod(
+            lambda cls, session, actor, cycle_id, **kwargs: (_ for _ in ()).throw(
+                NotAuthorised("arb_decision_not_authorised")
+            )
+        ),
+    )
+
+    with pytest.raises(NotAuthorised, match="arb_decision_not_authorised"):
+        module.TypedARBDecisionService._decide_locked(
+            session=SimpleNamespace(), actor=_actor(), cycle_id=501,
+            outcome="approved", rationale="Approved", conditions=[],
+            claim=SimpleNamespace(receipt_id=701, generation=1),
+        )
+
+
+def test_conditions_are_canonical_and_reject_duplicates_or_bad_dates():
+    module = _decision_module()
+    canonical = module.TypedARBDecisionService._canonical_conditions(
+        [{"code": "SEC-1", "text": "Threat model", "due_date": "2026-09-30"}]
+    )
+    assert canonical == [
+        {
+            "condition_number": "SEC-1",
+            "description": "Threat model",
+            "category": None,
+            "due_date": "2026-09-30",
+            "blocks_execution": True,
+        }
+    ]
+    with pytest.raises(ValueError, match="unique and nonblank"):
+        module.TypedARBDecisionService._canonical_conditions(
+            [{"code": "SEC-1", "text": "A"}, {"code": "SEC-1", "text": "B"}]
+        )
+    with pytest.raises(ValueError, match="ISO"):
+        module.TypedARBDecisionService._canonical_conditions(
+            [{"code": "SEC-1", "text": "A", "due_date": "tomorrow"}]
+        )
+
+
+def test_handler_authority_mode_locks_server_user_row(monkeypatch):
+    module = _decision_module()
+    statements = []
+    user = SimpleNamespace(
+        id=73, is_org_admin=False, is_platform_admin=False,
+        enterprise_role="chief_architect",
+    )
+
+    class Result:
+        def scalar_one_or_none(self):
+            return user
+
+    session = SimpleNamespace(
+        execute=lambda statement: statements.append(statement) or Result()
+    )
+    monkeypatch.setattr(
+        module.TypedARBDecisionService,
+        "_load_cycle_and_review",
+        classmethod(
+            lambda cls, session, actor, cycle_id, for_update: (
+                SimpleNamespace(id=501), SimpleNamespace(submitter_id=99)
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        module.TypedARBDecisionService,
+        "_assert_cycle_review_projection_equal",
+        staticmethod(lambda cycle, review: None),
+    )
+
+    module.TypedARBDecisionService.authorise_decision(
+        session, _actor(), 501, for_update=True
+    )
+
+    assert statements[0]._for_update_arg is not None
