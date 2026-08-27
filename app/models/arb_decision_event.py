@@ -72,38 +72,64 @@ class ARBCondition(TenantMixin, db.Model):
     due_date = db.Column(db.Date)
     blocks_execution = db.Column(db.Boolean, nullable=False, default=True, server_default=db.true())
     status = db.Column(db.String(30), nullable=False, default="pending", server_default="pending")
+    revision = db.Column(db.Integer, nullable=True, default=1, server_default="1")
+    responsible_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="RESTRICT"), nullable=True)
+    submitted_evidence_id = db.Column(db.Integer, db.ForeignKey("arb_condition_evidence_records.id", ondelete="RESTRICT", use_alter=True, name="fk_arb_condition_submitted_evidence"), nullable=True)
+    evidence_submitted_by_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="RESTRICT"), nullable=True)
+    evidence_submitted_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    verified_by_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="RESTRICT"), nullable=True)
+    verified_at = db.Column(db.DateTime(timezone=True), nullable=True)
     fulfilled_at = db.Column(db.DateTime(timezone=True))
     fulfilled_by_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="RESTRICT"))
-    fulfilment_evidence_id = db.Column(db.Integer, db.ForeignKey("evidence_records.id", ondelete="RESTRICT"))
+    fulfilment_evidence_id = db.Column(db.Integer, db.ForeignKey("arb_condition_evidence_records.id", ondelete="RESTRICT", use_alter=True, name="fk_arb_condition_fulfilment_evidence"))
     waived_at = db.Column(db.DateTime(timezone=True))
     waived_by_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="RESTRICT"))
     waiver_reason = db.Column(db.Text)
     waiver_expires_at = db.Column(db.DateTime(timezone=True))
     compensating_control = db.Column(db.Text)
+    waiver_prior_status = db.Column(db.String(30), nullable=True)
+    waiver_scope_json = db.Column(db.JSON, nullable=True)
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, server_default=db.func.now())
 
     __table_args__ = (
         db.UniqueConstraint("organization_id", "review_cycle_id", "condition_number", name="uq_arb_condition_number"),
         db.CheckConstraint("length(btrim(condition_number)) > 0 AND length(btrim(description)) > 0", name="ck_arb_condition_terms"),
         db.CheckConstraint("blocks_execution IS TRUE", name="ck_arb_condition_blocks_execution"),
-        db.CheckConstraint("status IN ('pending','fulfilled','waived')", name="ck_arb_condition_status"),
+        db.CheckConstraint("status IN ('pending','evidence_submitted','fulfilled','waived') AND revision > 0", name="ck_arb_condition_status"),
         db.CheckConstraint(
             "(status = 'pending' AND fulfilled_at IS NULL AND fulfilled_by_id IS NULL "
-            "AND fulfilment_evidence_id IS NULL AND waived_at IS NULL "
+            "AND fulfilment_evidence_id IS NULL AND evidence_submitted_at IS NULL "
+            "AND evidence_submitted_by_id IS NULL AND submitted_evidence_id IS NULL "
+            "AND verified_at IS NULL AND verified_by_id IS NULL AND waived_at IS NULL "
             "AND waived_by_id IS NULL AND waiver_reason IS NULL "
-            "AND waiver_expires_at IS NULL AND compensating_control IS NULL) OR "
+            "AND waiver_expires_at IS NULL AND compensating_control IS NULL "
+            "AND waiver_prior_status IS NULL AND waiver_scope_json IS NULL) OR "
+            "(status = 'evidence_submitted' AND submitted_evidence_id IS NOT NULL "
+            "AND evidence_submitted_by_id IS NOT NULL "
+            "AND evidence_submitted_at IS NOT NULL AND fulfilled_at IS NULL "
+            "AND fulfilled_by_id IS NULL AND fulfilment_evidence_id IS NULL "
+            "AND verified_at IS NULL AND verified_by_id IS NULL AND waived_at IS NULL "
+            "AND waived_by_id IS NULL AND waiver_reason IS NULL AND waiver_expires_at IS NULL "
+            "AND compensating_control IS NULL AND waiver_prior_status IS NULL "
+            "AND waiver_scope_json IS NULL) OR "
             "(status = 'fulfilled' AND fulfilled_at IS NOT NULL "
             "AND fulfilled_by_id IS NOT NULL AND fulfilment_evidence_id IS NOT NULL "
+            "AND verified_at IS NOT NULL AND verified_by_id IS NOT NULL "
             "AND waived_at IS NULL AND waived_by_id IS NULL AND waiver_reason IS NULL "
-            "AND waiver_expires_at IS NULL AND compensating_control IS NULL) OR "
+            "AND waiver_expires_at IS NULL AND compensating_control IS NULL "
+            "AND waiver_prior_status IS NULL AND waiver_scope_json IS NULL) OR "
             "(status = 'waived' AND fulfilled_at IS NULL AND fulfilled_by_id IS NULL "
             "AND fulfilment_evidence_id IS NULL AND waived_at IS NOT NULL "
             "AND waived_by_id IS NOT NULL AND length(btrim(waiver_reason)) > 0 "
             "AND waiver_expires_at > waived_at "
-            "AND length(btrim(compensating_control)) > 0)",
+            "AND length(btrim(compensating_control)) > 0 "
+            "AND waiver_prior_status IN ('pending','evidence_submitted') "
+            "AND waiver_scope_json IS NOT NULL)",
             name="ck_arb_condition_lifecycle",
         ),
     )
+
+    __mapper_args__ = {"version_id_col": revision}
 
 
 def _decision_membership_sql(schema):

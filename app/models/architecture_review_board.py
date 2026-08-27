@@ -510,7 +510,8 @@ _ARB_REVIEW_CYCLE_SHAPE = (
     "AND closed_at IS NULL AND terminal_outcome IS NULL) "
     f"OR (status IN ({_ARB_TERMINAL_CYCLE_SQL}) "
     "AND closed_at IS NOT NULL AND terminal_outcome IS NOT NULL "
-    "AND terminal_outcome = status))))"
+    "AND (terminal_outcome = status OR (terminal_outcome = 'approved_with_conditions' "
+    "AND status = 'approved' AND condition_projection_revision > 0))))))"
 )
 
 
@@ -577,6 +578,7 @@ class ARBReviewCycle(TenantMixin, db.Model):
     )
     closed_at = db.Column(db.DateTime(timezone=True), nullable=True)
     terminal_outcome = db.Column(db.String(80), nullable=True)
+    condition_projection_revision = db.Column(db.Integer, nullable=True)
 
     __table_args__ = (
         db.CheckConstraint(_ARB_REVIEW_CYCLE_SHAPE, name="ck_arb_review_cycle_shape"),
@@ -657,7 +659,9 @@ _ARB_TYPED_REVIEW_SHAPE = (
     "AND subject_evidence_snapshot_id IS NOT NULL)) "
     f"AND ((status IN ({_ARB_OPEN_CYCLE_SQL}) AND decision IS NULL) "
     f"OR (status IN ({_ARB_TERMINAL_CYCLE_SQL}) "
-    "AND decision IS NOT NULL AND decision = status)))"
+    "AND decision IS NOT NULL AND (decision = status OR "
+    "(decision = 'approved_with_conditions' AND status = 'approved' "
+    "AND condition_projection_revision > 0)))))"
 )
 
 
@@ -730,6 +734,7 @@ class ARBReviewItem(TenantMixin, db.Model, OptimisticLockMixin):
 
     # Status and workflow
     status = db.Column(db.String(30), default="draft")  # From ARBReviewStatus enum
+    condition_projection_revision = db.Column(db.Integer, nullable=True)
     arb_session_id = db.Column(db.Integer, db.ForeignKey("architecture_review_boards.id", ondelete="CASCADE"))
 
     # Submission details
@@ -1147,9 +1152,20 @@ def _arb_history_function_sql(quoted_schema):
                     USING ERRCODE = '55000';
             END IF;
             IF OLD.closed_at IS NOT NULL AND ROW(
-                OLD.status, OLD.closed_at, OLD.terminal_outcome
+                OLD.status, OLD.closed_at, OLD.terminal_outcome,
+                OLD.condition_projection_revision
             ) IS DISTINCT FROM ROW(
-                NEW.status, NEW.closed_at, NEW.terminal_outcome
+                NEW.status, NEW.closed_at, NEW.terminal_outcome,
+                NEW.condition_projection_revision
+            ) AND NOT (
+                OLD.terminal_outcome = 'approved_with_conditions'
+                AND NEW.terminal_outcome = OLD.terminal_outcome
+                AND NEW.closed_at = OLD.closed_at
+                AND OLD.status IN ('approved_with_conditions', 'approved')
+                AND NEW.status IN ('approved_with_conditions', 'approved')
+                AND NEW.status <> OLD.status
+                AND NEW.condition_projection_revision =
+                    COALESCE(OLD.condition_projection_revision, 0) + 1
             ) THEN
                 RAISE EXCEPTION 'closed ARB review cycle history is immutable'
                     USING ERRCODE = '55000';
@@ -1179,6 +1195,25 @@ def _arb_history_function_sql(quoted_schema):
                AND OLD.status = 'historical_unverified'
                AND to_jsonb(NEW) IS DISTINCT FROM to_jsonb(OLD) THEN
                 RAISE EXCEPTION 'historical unverified ARB review is immutable'
+                    USING ERRCODE = '55000';
+            END IF;
+            IF TG_OP = 'UPDATE' AND OLD.review_cycle_id IS NOT NULL
+               AND OLD.decision IS NOT NULL
+               AND ROW(OLD.status, OLD.decision,
+                       OLD.condition_projection_revision)
+                   IS DISTINCT FROM
+                   ROW(NEW.status, NEW.decision,
+                       NEW.condition_projection_revision)
+               AND NOT (
+                   OLD.decision = 'approved_with_conditions'
+                   AND NEW.decision = OLD.decision
+                   AND OLD.status IN ('approved_with_conditions', 'approved')
+                   AND NEW.status IN ('approved_with_conditions', 'approved')
+                   AND NEW.status <> OLD.status
+                   AND NEW.condition_projection_revision =
+                       COALESCE(OLD.condition_projection_revision, 0) + 1
+               ) THEN
+                RAISE EXCEPTION 'typed ARB condition projection is invalid'
                     USING ERRCODE = '55000';
             END IF;
         END IF;
