@@ -48,6 +48,7 @@ from app.modules.transformation_room.arb_submission_service import (
     TypedARBSubmissionService,
 )
 from app.modules.transformation_room.domain import ActorContext
+from app.services.arb_workflow_service import ARBCondition as LegacyARBCondition
 
 
 os.environ.setdefault("TRANSFORMATION_COMMAND_CAPABILITY_SECRET", "74" * 32)
@@ -808,8 +809,8 @@ def test_solution_lifecycle_uses_an_explicit_tenant_predicate(
 def _write_role(session):
     role = Role(
         name=f"Typed route writer {uuid.uuid4().hex[:10]}",
-        index="admin",
-        permissions=Permission.ADMINISTER,
+        index="main",
+        permissions=Permission.GENERAL,
         default=False,
     )
     session.add(role)
@@ -818,7 +819,13 @@ def _write_role(session):
 
 
 def _user(
-    session, org, *, role="enterprise_architect", admin=False, write_role=None
+    session,
+    org,
+    *,
+    role="enterprise_architect",
+    role_archetype="architect",
+    admin=False,
+    write_role=None,
 ):
     write_role = write_role or _write_role(session)
     user = User(
@@ -827,11 +834,12 @@ def _user(
         last_name="Reviewer",
         organization_id=org.id,
         enterprise_role=role,
+        role_archetype=role_archetype,
         is_org_admin=admin,
         is_platform_admin=admin,
         confirmed=True,
-        role_id=write_role.id,
     )
+    user.role = write_role
     session.add(user)
     session.flush()
     return user
@@ -1094,6 +1102,17 @@ def route_scope(app, _schema, request):
                 raw.close()
             with db.engine.begin() as connection:
                 connection.exec_driver_sql("SET LOCAL session_replication_role = replica")
+                connection.execute(
+                    db.text(
+                        "DELETE FROM arb_conditions WHERE review_item_id IN ("
+                        "SELECT id FROM arb_review_items "
+                        "WHERE organization_id IN (:own, :foreign))"
+                    ),
+                    {
+                        "own": scope.organization_id,
+                        "foreign": scope.foreign_organization_id,
+                    },
+                )
                 for table_name in (
                     "arb_decision_events",
                     "arb_submission_events",
@@ -1178,13 +1197,17 @@ def route_scope(app, _schema, request):
         scope.role_id = write_role.id
         submitter = _user(db.session, org, write_role=write_role)
         decider = _user(
-            db.session, org, role="chief_architect", admin=True, write_role=write_role
+            db.session,
+            org,
+            role="enterprise_architect",
+            role_archetype="enterprise_architect",
+            write_role=write_role,
         )
         foreign_decider = _user(
             db.session,
             foreign_org,
-            role="chief_architect",
-            admin=True,
+            role="enterprise_architect",
+            role_archetype="enterprise_architect",
             write_role=write_role,
         )
         scope.submitter_id = submitter.id
@@ -1446,6 +1469,10 @@ def test_begin_review_projects_cycle_and_item_without_solution_status_write(
 def test_registered_conditional_approval_is_typed_and_does_not_require_due_date(
     app, route_scope
 ):
+    authority = db.session.get(User, route_scope.decider_id)
+    assert authority.enterprise_role == "enterprise_architect"
+    assert authority.can(Permission.GENERAL)
+    assert not authority.can(Permission.ADMINISTER)
     client = _login_client(app, route_scope.decider_id)
 
     response = client.post(
@@ -1502,7 +1529,12 @@ def test_registered_typed_fulfill_requires_capture_submit_then_separate_verify(
     submitter_client = _login_client(app, route_scope.submitter_id)
     submitted = submitter_client.post(
         f"/api/arb-workflow/conditions/{condition_id}/fulfill",
-        json={"action": "submit_evidence", "evidence": _condition_evidence()},
+        json={
+            "governance_model": "typed",
+            "review_item_id": route_scope.review_id,
+            "action": "submit_evidence",
+            "evidence": _condition_evidence(),
+        },
         headers={"Idempotency-Key": f"route-evidence-{uuid.uuid4().hex}"},
     )
 
@@ -1513,7 +1545,12 @@ def test_registered_typed_fulfill_requires_capture_submit_then_separate_verify(
 
     verified = _login_client(app, route_scope.decider_id).post(
         f"/api/arb-workflow/conditions/{condition_id}/fulfill",
-        json={"action": "verify", "condition_evidence_id": evidence_id},
+        json={
+            "governance_model": "typed",
+            "review_item_id": route_scope.review_id,
+            "action": "verify",
+            "condition_evidence_id": evidence_id,
+        },
         headers={"Idempotency-Key": f"route-verify-{uuid.uuid4().hex}"},
     )
 
@@ -1535,6 +1572,8 @@ def test_registered_typed_waiver_uses_canonical_lifecycle_command(app, route_sco
     response = client.post(
         f"/api/arb-workflow/conditions/{condition_id}/waive",
         json={
+            "governance_model": "typed",
+            "review_item_id": route_scope.review_id,
             "reason": "Temporary release exception",
             "expires_at": (datetime.now(timezone.utc) + timedelta(days=30)).isoformat(),
             "scope": {"release": "R1"},
@@ -1548,6 +1587,78 @@ def test_registered_typed_waiver_uses_canonical_lifecycle_command(app, route_sco
     db.session.remove()
     assert db.session.get(ARBCondition, condition_id).status == "waived"
     assert db.session.get(ARBReviewCycle, route_scope.cycle_id).status == "approved"
+
+
+def _legacy_condition_with_typed_id(route_scope, condition_id):
+    review = ARBReviewItem(
+        organization_id=route_scope.organization_id,
+        review_number=f"REV-LEGACY-COND-{uuid.uuid4().hex[:8]}",
+        title="Legacy condition collision",
+        review_type="strategic",
+        status="approved_with_conditions",
+        decision="approved_with_conditions",
+        submitter_id=route_scope.submitter_id,
+        submitted_at=datetime.utcnow(),
+    )
+    db.session.add(review)
+    db.session.flush()
+    condition = LegacyARBCondition(
+        id=condition_id,
+        review_item_id=review.id,
+        condition_number=1,
+        description="Legacy condition sharing a canonical numeric ID",
+        due_date=(datetime.utcnow() + timedelta(days=30)).date(),
+        status="pending",
+    )
+    db.session.add(condition)
+    db.session.commit()
+    return review.id
+
+
+def test_legacy_fulfill_same_id_collision_never_selects_typed_condition(
+    app, route_scope
+):
+    client = _login_client(app, route_scope.decider_id)
+    conditional = client.post(
+        f"/api/arb-workflow/{route_scope.review_id}/conditional-approval",
+        json=_conditional_payload(),
+    ).get_json()["data"]
+    condition_id = conditional["condition_ids"][0]
+    legacy_review_id = _legacy_condition_with_typed_id(route_scope, condition_id)
+
+    response = _login_client(app, route_scope.decider_id).post(
+        f"/api/arb-workflow/conditions/{condition_id}/fulfill",
+        json={"evidence": "Legacy evidence remains on the legacy review."},
+    )
+
+    assert response.status_code == 200, response.get_json()
+    db.session.remove()
+    assert db.session.get(LegacyARBCondition, condition_id).status == "fulfilled"
+    assert db.session.get(LegacyARBCondition, condition_id).review_item_id == legacy_review_id
+    assert db.session.get(ARBCondition, condition_id).status == "pending"
+
+
+def test_legacy_waive_same_id_collision_never_selects_typed_condition(
+    app, route_scope
+):
+    client = _login_client(app, route_scope.decider_id)
+    conditional = client.post(
+        f"/api/arb-workflow/{route_scope.review_id}/conditional-approval",
+        json=_conditional_payload(),
+    ).get_json()["data"]
+    condition_id = conditional["condition_ids"][0]
+    legacy_review_id = _legacy_condition_with_typed_id(route_scope, condition_id)
+
+    response = _login_client(app, route_scope.decider_id).post(
+        f"/api/arb-workflow/conditions/{condition_id}/waive",
+        json={"reason": "Legacy waiver remains on the legacy review."},
+    )
+
+    assert response.status_code == 200, response.get_json()
+    db.session.remove()
+    assert db.session.get(LegacyARBCondition, condition_id).status == "waived"
+    assert db.session.get(LegacyARBCondition, condition_id).review_item_id == legacy_review_id
+    assert db.session.get(ARBCondition, condition_id).status == "pending"
 
 
 def test_solution_condition_toggle_rejects_typed_json_mutation(app, route_scope):
@@ -1684,6 +1795,11 @@ def test_solution_governance_decision_uses_typed_cycle_and_server_actor(
     app, route_scope
 ):
     from app.modules.solutions_strategic.v2.routes import governance_api_routes
+
+    authority = db.session.get(User, route_scope.decider_id)
+    assert authority.enterprise_role == "enterprise_architect"
+    assert authority.can(Permission.GENERAL)
+    assert not authority.can(Permission.ADMINISTER)
 
     response = _call_route(
         app,

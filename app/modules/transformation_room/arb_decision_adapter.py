@@ -291,12 +291,16 @@ class TypedARBDecisionAdapter:
     def fulfill_condition_from_request(
         cls, *, condition_id: int, payload: Mapping[str, Any] | None
     ) -> LegacyARBDecisionResult:
+        supplied = payload if isinstance(payload, Mapping) else {}
+        if supplied.get("governance_model") != "typed":
+            return LegacyARBDecisionResult(False, typed=False)
         try:
             actor = cls._actor_from_request()
-            condition = cls._resolve_condition(actor, condition_id)
-            if condition is None:
-                return LegacyARBDecisionResult(False, typed=False)
-            supplied = payload if isinstance(payload, Mapping) else {}
+            cls._resolve_condition(
+                actor,
+                condition_id,
+                review_item_id=cls._positive_int(supplied.get("review_item_id")),
+            )
             action = str(supplied.get("action") or "").strip().lower()
             if action == "submit_evidence":
                 evidence = supplied.get("evidence")
@@ -368,12 +372,16 @@ class TypedARBDecisionAdapter:
     def waive_condition_from_request(
         cls, *, condition_id: int, payload: Mapping[str, Any] | None
     ) -> LegacyARBDecisionResult:
+        supplied = payload if isinstance(payload, Mapping) else {}
+        if supplied.get("governance_model") != "typed":
+            return LegacyARBDecisionResult(False, typed=False)
         try:
             actor = cls._actor_from_request()
-            condition = cls._resolve_condition(actor, condition_id)
-            if condition is None:
-                return LegacyARBDecisionResult(False, typed=False)
-            supplied = payload if isinstance(payload, Mapping) else {}
+            cls._resolve_condition(
+                actor,
+                condition_id,
+                review_item_id=cls._positive_int(supplied.get("review_item_id")),
+            )
             result = TypedARBConditionLifecycleService.waive(
                 actor=actor,
                 command_key=cls._operation_command_key(
@@ -493,6 +501,21 @@ class TypedARBDecisionAdapter:
         ).scalar_one_or_none() is not None
 
     @classmethod
+    def legacy_condition_matches_request(cls, *, condition_id: int) -> bool:
+        actor = cls._actor_from_request()
+        from app.services.arb_workflow_service import ARBCondition as LegacyCondition
+
+        return db.session.execute(
+            db.select(LegacyCondition.id)
+            .join(ARBReviewItem, ARBReviewItem.id == LegacyCondition.review_item_id)
+            .where(
+                LegacyCondition.id == condition_id,
+                ARBReviewItem.organization_id == actor.organization_id,
+                ARBReviewItem.review_cycle_id.is_(None),
+            )
+        ).scalar_one_or_none() is not None
+
+    @classmethod
     def review_is_typed(cls, review_item_id: int) -> bool:
         actor = cls._actor_from_request()
         return cls._resolve_review(actor, review_item_id) is not None
@@ -555,15 +578,24 @@ class TypedARBDecisionAdapter:
 
     @staticmethod
     def _resolve_condition(
-        actor: ActorContext, condition_id: int
-    ) -> ARBCondition | None:
+        actor: ActorContext, condition_id: int, *, review_item_id: int
+    ) -> ARBCondition:
         condition_id = TypedARBDecisionAdapter._positive_int(condition_id)
-        return db.session.execute(
+        resolved = TypedARBDecisionAdapter._resolve_review(actor, review_item_id)
+        if resolved is None:
+            raise NotFound("arb_condition_not_found")
+        cycle, review = resolved
+        condition = db.session.execute(
             db.select(ARBCondition).where(
                 ARBCondition.id == condition_id,
                 ARBCondition.organization_id == actor.organization_id,
+                ARBCondition.review_cycle_id == cycle.id,
+                ARBCondition.review_item_id == review.id,
             )
         ).scalar_one_or_none()
+        if condition is None:
+            raise NotFound("arb_condition_not_found")
+        return condition
 
     @staticmethod
     def _positive_int(value: Any) -> int:

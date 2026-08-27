@@ -40,6 +40,16 @@ from app.services.arb_workflow_service import ARBWorkflowService
 arb_workflow_bp = Blueprint("arb_workflow", __name__, url_prefix="/api/arb-workflow")
 
 
+def _enforce_legacy_roles(*roles):
+    """Apply a historical role gate only after a request is proven legacy."""
+
+    @require_roles(*roles)
+    def allowed():
+        return None
+
+    return allowed()
+
+
 @arb_workflow_bp.route("/<int:review_item_id>/compliance-check", methods=["POST"])
 @login_required
 @require_roles("admin", "enterprise_architect", "architect")
@@ -75,7 +85,6 @@ def run_compliance_check(review_item_id: int):
 
 @arb_workflow_bp.route("/<int:review_item_id>/conditional-approval", methods=["POST"])
 @login_required
-@require_roles("admin", "enterprise_architect", "architect")
 @audit_log("arb_conditional_approval")
 def create_conditional_approval(review_item_id: int):
     """
@@ -123,6 +132,8 @@ def create_conditional_approval(review_item_id: int):
             },
         })
 
+    _enforce_legacy_roles("admin", "enterprise_architect", "architect")
+
     if not data or "conditions" not in data:
         return jsonify({"success": False, "error": "conditions array is required"}), 400
 
@@ -162,7 +173,6 @@ def create_conditional_approval(review_item_id: int):
 
 @arb_workflow_bp.route("/conditions/<int:condition_id>/fulfill", methods=["POST"])
 @login_required
-@require_roles("admin", "enterprise_architect", "architect")
 @audit_log("arb_condition_fulfill")
 def fulfill_condition(condition_id: int):
     """
@@ -190,8 +200,17 @@ def fulfill_condition(condition_id: int):
             }), typed_result.http_status
         return jsonify({"success": True, "data": typed_result.data})
 
+    _enforce_legacy_roles("admin", "enterprise_architect", "architect")
+
     if not data or "evidence" not in data:
         return jsonify({"success": False, "error": "evidence is required"}), 400
+    if not TypedARBDecisionAdapter.legacy_condition_matches_request(
+        condition_id=condition_id
+    ):
+        return jsonify({
+            "success": False,
+            "error": f"Condition {condition_id} not found",
+        }), 404
 
     try:
         service = ARBWorkflowService()
@@ -240,10 +259,17 @@ def waive_condition(condition_id: int):
 
     # Keep the legacy endpoint's historical role gate after typed resolution.
     # Typed authority is checked by the canonical service against locked rows.
-    require_roles("admin", "enterprise_architect")(lambda: None)()
+    _enforce_legacy_roles("admin", "enterprise_architect")
 
     if not data or "reason" not in data:
         return jsonify({"success": False, "error": "reason is required"}), 400
+    if not TypedARBDecisionAdapter.legacy_condition_matches_request(
+        condition_id=condition_id
+    ):
+        return jsonify({
+            "success": False,
+            "error": f"Condition {condition_id} not found",
+        }), 404
 
     try:
         service = ARBWorkflowService()
