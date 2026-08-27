@@ -42,7 +42,6 @@ document.addEventListener('alpine:init', () => {
                 this.nodeCount = this.countNodes(this.treeData);
                 this.renderTree();
             } catch (e) {
-                // console.error('Failed to load tree:', e); // Console output forbidden
                 this.treeData = null;
                 this.nodeCount = 0;
                 Platform.toast.error('Could not load the tree — the canvas is blank because the request failed.');
@@ -291,7 +290,6 @@ document.addEventListener('alpine:init', () => {
                 this.selected = saved;
                 await this.loadTree();
             } catch (e) {
-                // console.error('Save error:', e); // Console output forbidden
                 Platform.toast.error('Save failed. Check console.');
             }
         },
@@ -309,7 +307,6 @@ document.addEventListener('alpine:init', () => {
                 this.showDeleteConfirm = false;
                 await this.loadTree();
             } catch (e) {
-                // console.error('Delete error:', e); // Console output forbidden
                 Platform.toast.error('Delete failed. Check console.');
             }
         },

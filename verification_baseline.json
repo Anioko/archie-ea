@@ -1,6 +1,6 @@
 {
   "_comment": "Ratchet baselines for scripts/verify.py. Lowering a number is routine (run --update-baseline after a cleanup). Raising one is a deliberate regression and must be justified in review.",
-  "_note": "updated 2026-08-27 (merge: raw_fetch_sites 640->492, design_tokens_extended 12->0, ui_contract 27->0, shell_conformance 158->47, console_reporting gate added)",
+  "_note": "updated 2026-08-27 (console_reporting -> 0, raw_fetch_sites -> 310, shell_conformance -> 3, design_tokens_extended/ui_contract -> 0)",
   "ratchets": {
     "undefined_names": 0,
     "redefinitions": 0,

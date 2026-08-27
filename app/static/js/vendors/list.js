@@ -93,7 +93,6 @@ window.showVendorProducts = async function(vendorId, vendorName) {
         // Platform.fetch already shows a toast for network/HTTP errors unless { silent: true }.
         // This call site paints its own inline error state, so we must suppress the duplicate toast.
         // However, the existing code already paints an inline error; we keep that behaviour.
-        // We cannot use console.error (rule 4). The error is already surfaced via the inline UI.
         safeHTML(panel,
             '<div class="text-center text-muted-foreground">' +
             '<i data-lucide="alert-triangle" class="w-12 h-12 mx-auto mb-4 opacity-50"></i>' +
