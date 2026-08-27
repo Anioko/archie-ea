@@ -16,10 +16,36 @@ again by an explicit, asserted teardown, exactly as
 
 from __future__ import annotations
 
+from datetime import datetime
+import inspect
 import os
+from types import SimpleNamespace
 import uuid
 
 import pytest
+from flask import g
+from flask_login import login_user
+
+from app import db
+from app.models.adr import ArchitectureDecisionRecord
+from app.models.architecture_review_board import ARBReviewCycle, ARBReviewItem
+from app.models.arb_decision_event import ARBCondition, ARBDecisionEvent
+from app.models.organization import Organization
+from app.models.arb_submission_evidence import WorkbenchArtifactEvidence
+from app.models.solution_architect_models import (
+    DriverType,
+    SolutionAnalysisSession,
+    SolutionDriver,
+    SolutionGoal,
+    SolutionProblemDefinition,
+)
+from app.models.solution_lifecycle_models import SolutionRisk
+from app.models.solution_models import Solution
+from app.models.user import Permission, Role, User
+from app.modules.transformation_room.arb_submission_service import (
+    TypedARBSubmissionService,
+)
+from app.modules.transformation_room.domain import ActorContext
 
 
 os.environ.setdefault("TRANSFORMATION_COMMAND_CAPABILITY_SECRET", "74" * 32)
@@ -775,3 +801,780 @@ def test_solution_lifecycle_uses_an_explicit_tenant_predicate(
             db.text("DELETE FROM solutions WHERE id = :id"), {"id": solution_id}
         )
         db_session.commit()
+
+
+def _write_role(session):
+    role = Role(
+        name=f"Typed route writer {uuid.uuid4().hex[:10]}",
+        index="admin",
+        permissions=Permission.ADMINISTER,
+        default=False,
+    )
+    session.add(role)
+    session.flush()
+    return role
+
+
+def _user(
+    session, org, *, role="enterprise_architect", admin=False, write_role=None
+):
+    write_role = write_role or _write_role(session)
+    user = User(
+        email=f"typed-route-{uuid.uuid4().hex[:10]}@example.test",
+        first_name="Typed",
+        last_name="Reviewer",
+        organization_id=org.id,
+        enterprise_role=role,
+        is_org_admin=admin,
+        is_platform_admin=admin,
+        confirmed=True,
+        role_id=write_role.id,
+    )
+    session.add(user)
+    session.flush()
+    return user
+
+
+def _adr(session, org, submitter):
+    record = ArchitectureDecisionRecord(
+        organization_id=org.id,
+        adr_number=int(uuid.uuid4().hex[:7], 16),
+        title=f"Typed route ADR {uuid.uuid4().hex[:8]}",
+        status="proposed",
+        context="A governed integration choice is required.",
+        decision="Use the enterprise event platform.",
+        rationale="It supplies durable delivery and schema governance.",
+        consequences="Teams must version event schemas.",
+        created_by=submitter.email,
+    )
+    session.add(record)
+    session.flush()
+    return record
+
+
+def _typed_adr_review(session, org, submitter):
+    record = _adr(session, org, submitter)
+    session.commit()
+    actor = ActorContext(
+        submitter.id,
+        org.id,
+        frozenset({submitter.enterprise_role}),
+        f"typed-route-submit-{uuid.uuid4().hex}",
+    )
+    result = TypedARBSubmissionService.submit(
+        actor=actor,
+        command_key=f"typed-route-submit-{uuid.uuid4().hex}",
+        subject_type="adr",
+        subject_id=record.id,
+        assertions={"human_reviewed": True},
+    )
+    session.expire_all()
+    return record, session.get(ARBReviewItem, result.object_ids["review_item_id"])
+
+
+def _solution_review(session, org, submitter):
+    workspace = SolutionAnalysisSession(
+        organization_id=org.id,
+        name=f"Typed route workspace {uuid.uuid4().hex[:8]}",
+        created_by_id=submitter.id,
+    )
+    session.add(workspace)
+    session.flush()
+    problem = SolutionProblemDefinition(
+        organization_id=org.id,
+        session_id=workspace.id,
+        problem_description="Replace brittle synchronous integration.",
+    )
+    session.add(problem)
+    session.flush()
+    session.add_all(
+        (
+            SolutionDriver(
+                organization_id=org.id,
+                problem_id=problem.id,
+                name="Resilience",
+                driver_type=DriverType.TECHNOLOGY,
+            ),
+            SolutionGoal(
+                organization_id=org.id,
+                problem_id=problem.id,
+                name="Reliable delivery",
+            ),
+        )
+    )
+    solution = Solution(
+        organization_id=org.id,
+        name=f"Typed route solution {uuid.uuid4().hex[:8]}",
+        description="Governed solution route subject.",
+        created_by_id=submitter.id,
+        analysis_session_id=workspace.id,
+        governance_status="draft",
+    )
+    session.add(solution)
+    session.flush()
+    workspace.custom_metadata = {
+        "workspace_type": "greenfield",
+        "solution_id": solution.id,
+    }
+    for name in ("brief", "scope", "recommendation"):
+        WorkbenchArtifactEvidence.capture(
+            organization_id=org.id,
+            workspace_id=workspace.id,
+            solution_id=solution.id,
+            name=name,
+            state="persisted",
+            payload={"name": name, "source": "typed-route-fixture"},
+            actor_id=submitter.id,
+        )
+    session.add(
+        SolutionRisk(
+            organization_id=org.id,
+            solution_id=solution.id,
+            risk_name="Schema drift",
+            risk_description="Consumers may lag schema changes.",
+            impact="medium",
+            probability="medium",
+            mitigation="Use versioned schemas.",
+            created_by_id=submitter.id,
+        )
+    )
+    session.flush()
+    return solution, workspace
+
+
+def _count_decisions(session, cycle_id):
+    return session.scalar(
+        db.select(db.func.count())
+        .select_from(ARBDecisionEvent)
+        .where(ARBDecisionEvent.review_cycle_id == cycle_id)
+    )
+
+
+def _call_arb_route(
+    app,
+    *,
+    function_name,
+    item_id,
+    user_id,
+    organization_id,
+    method="POST",
+    data=None,
+    json=None,
+    headers=None,
+):
+    from app.modules.architecture.routes import arb_routes
+
+    with app.test_request_context(
+        "/", method=method, data=data, json=json, headers=headers
+    ):
+        g.current_org_id = organization_id
+        login_user(db.session.get(User, user_id))
+        value = inspect.unwrap(getattr(arb_routes, function_name))(item_id)
+        return app.make_response(value)
+
+
+def _call_route(
+    app,
+    *,
+    module,
+    function_name,
+    args,
+    user_id,
+    organization_id,
+    method="POST",
+    data=None,
+    json=None,
+    headers=None,
+):
+    with app.test_request_context(
+        "/", method=method, data=data, json=json, headers=headers
+    ):
+        g.current_org_id = organization_id
+        login_user(db.session.get(User, user_id))
+        value = inspect.unwrap(getattr(module, function_name))(*args)
+        return app.make_response(value)
+
+
+@pytest.fixture
+def route_scope(app, _schema):
+    """Committed tenant graph visible to the command service's own sessions."""
+    with app.app_context():
+        own_suffix = uuid.uuid4().hex[:10]
+        foreign_suffix = uuid.uuid4().hex[:10]
+        org = Organization(
+            name=f"Typed route {own_suffix}", slug=f"typed-route-{own_suffix}"
+        )
+        foreign_org = Organization(
+            name=f"Typed route foreign {foreign_suffix}",
+            slug=f"typed-route-foreign-{foreign_suffix}",
+        )
+        db.session.add_all((org, foreign_org))
+        db.session.flush()
+        write_role = _write_role(db.session)
+        submitter = _user(db.session, org, write_role=write_role)
+        decider = _user(
+            db.session, org, role="chief_architect", admin=True, write_role=write_role
+        )
+        foreign_decider = _user(
+            db.session,
+            foreign_org,
+            role="chief_architect",
+            admin=True,
+            write_role=write_role,
+        )
+        solution, workspace = _solution_review(db.session, org, submitter)
+        db.session.commit()
+        _record, review = _typed_adr_review(db.session, org, submitter)
+        with app.test_request_context("/"):
+            g.current_org_id = org.id
+            solution_result = TypedARBSubmissionService.submit_legacy_solution(
+                actor=ActorContext(
+                    submitter.id,
+                    org.id,
+                    frozenset({submitter.enterprise_role}),
+                    f"typed-route-solution-{uuid.uuid4().hex}",
+                ),
+                command_key=f"typed-route-solution-{uuid.uuid4().hex}",
+                solution_id=solution.id,
+                workspace_id=workspace.id,
+                assertions={
+                    "human_reviewed": True,
+                    "direct_route_evidence": {
+                        name: {"passed": True, "evidence": f"{name} checked"}
+                        for name in (
+                            "design_reviewed",
+                            "security_impact_reviewed",
+                            "data_impact_reviewed",
+                        )
+                    },
+                },
+            )
+        scope = SimpleNamespace(
+            organization_id=org.id,
+            foreign_organization_id=foreign_org.id,
+            submitter_id=submitter.id,
+            decider_id=decider.id,
+            foreign_decider_id=foreign_decider.id,
+            review_id=review.id,
+            cycle_id=review.review_cycle_id,
+            solution_id=solution.id,
+            solution_review_id=solution_result.object_ids["review_item_id"],
+            solution_cycle_id=solution_result.object_ids["review_cycle_id"],
+            role_id=write_role.id,
+        )
+        db.session.remove()
+        try:
+            yield scope
+        finally:
+            db.session.remove()
+            # These two tables are protected by an application-level SQLAlchemy
+            # hook in addition to PostgreSQL triggers.  Use the DBAPI connection
+            # for test-owner cleanup, matching the canonical integration fixture.
+            raw = db.engine.raw_connection()
+            try:
+                with raw.cursor() as cursor:
+                    cursor.execute("SET LOCAL session_replication_role = replica")
+                    for table_name in (
+                        "workbench_artifact_evidence",
+                        "arb_submission_evidence_snapshots",
+                    ):
+                        cursor.execute(
+                            f'DELETE FROM "{table_name}" '
+                            "WHERE organization_id IN (%s, %s)",
+                            (scope.organization_id, scope.foreign_organization_id),
+                        )
+                raw.commit()
+            finally:
+                raw.close()
+            with db.engine.begin() as connection:
+                connection.exec_driver_sql("SET LOCAL session_replication_role = replica")
+                for table_name in (
+                    "arb_canonical_conditions",
+                    "arb_decision_events",
+                    "arb_submission_events",
+                    "transformation_outbox_events",
+                    "operation_results",
+                    "command_materialisations",
+                    "command_idempotency_records",
+                    "arb_review_items",
+                    "arb_review_cycles",
+                    "arb_subject_evidence_snapshots",
+                    "solution_risks",
+                    "solution_goals",
+                    "solution_drivers",
+                    "solutions",
+                    "solution_problem_definitions",
+                    "solution_analysis_sessions",
+                    "architecture_decision_records",
+                ):
+                    connection.execute(
+                        db.text(
+                            f'DELETE FROM "{table_name}" '
+                            "WHERE organization_id IN (:own, :foreign)"
+                        ),
+                        {"own": scope.organization_id, "foreign": scope.foreign_organization_id},
+                    )
+                connection.execute(
+                    db.text(
+                        "DELETE FROM soc2_audit_log "
+                        "WHERE user_id IN (:submitter, :decider, :foreign_decider)"
+                    ),
+                    {
+                        "submitter": scope.submitter_id,
+                        "decider": scope.decider_id,
+                        "foreign_decider": scope.foreign_decider_id,
+                    },
+                )
+                connection.execute(
+                    db.text(
+                        "DELETE FROM users WHERE organization_id IN (:own, :foreign)"
+                    ),
+                    {"own": scope.organization_id, "foreign": scope.foreign_organization_id},
+                )
+                connection.execute(
+                    db.text("DELETE FROM organizations WHERE id IN (:own, :foreign)"),
+                    {"own": scope.organization_id, "foreign": scope.foreign_organization_id},
+                )
+                connection.execute(
+                    db.text("DELETE FROM roles WHERE id = :role_id"),
+                    {"role_id": scope.role_id},
+                )
+
+
+@pytest.mark.parametrize(
+    ("submitted", "expected"),
+    [
+        ("approved", "approved"),
+        ("approved_with_conditions", "approved_with_conditions"),
+        ("rejected", "rejected"),
+        ("returned_for_evidence", "returned_for_evidence"),
+        ("returned_for_options", "returned_for_options"),
+    ],
+)
+def test_html_decision_route_maps_all_five_typed_outcomes(
+    app, route_scope, submitted, expected
+):
+    form = {"decision": submitted, "rationale": f"Board chose {expected}."}
+    if submitted == "approved_with_conditions":
+        form["conditions"] = "Complete threat model"
+
+    response = _call_arb_route(
+        app,
+        function_name="record_decision",
+        item_id=route_scope.review_id,
+        user_id=route_scope.decider_id,
+        organization_id=route_scope.organization_id,
+        data=form,
+    )
+
+    assert response.status_code == 302
+    db.session.remove()
+    cycle = db.session.get(ARBReviewCycle, route_scope.cycle_id)
+    projected = db.session.get(ARBReviewItem, route_scope.review_id)
+    assert cycle.status == cycle.terminal_outcome == expected
+    assert projected.status == projected.decision == expected
+    assert _count_decisions(db.session, cycle.id) == 1
+
+
+def test_html_conditions_are_canonical_and_never_invent_a_due_date(
+    app, route_scope
+):
+    response = _call_arb_route(
+        app,
+        function_name="record_decision",
+        item_id=route_scope.review_id,
+        user_id=route_scope.decider_id,
+        organization_id=route_scope.organization_id,
+        data={
+            "decision": "approved_with_conditions",
+            "rationale": "Approval depends on evidence.",
+            "conditions": " Complete threat model \n\nPublish rollback evidence ",
+        },
+    )
+
+    assert response.status_code == 302
+    db.session.remove()
+    conditions = db.session.scalars(
+        db.select(ARBCondition)
+        .where(ARBCondition.review_item_id == route_scope.review_id)
+        .order_by(ARBCondition.condition_number)
+    ).all()
+    assert [(row.condition_number, row.description, row.due_date) for row in conditions] == [
+        ("COND-1", "Complete threat model", None),
+        ("COND-2", "Publish rollback evidence", None),
+    ]
+
+
+def test_html_decision_ignores_client_actor_tenant_status_and_subject_fields(
+    app, route_scope
+):
+    response = _call_arb_route(
+        app,
+        function_name="record_decision",
+        item_id=route_scope.review_id,
+        user_id=route_scope.decider_id,
+        organization_id=route_scope.organization_id,
+        data={
+            "decision": "approved",
+            "rationale": "Server identity remains authoritative.",
+            "decided_by_id": route_scope.submitter_id,
+            "actor_id": route_scope.submitter_id,
+            "organization_id": route_scope.organization_id + 9000,
+            "status": "rejected",
+            "solution_id": 999999,
+        },
+    )
+
+    assert response.status_code == 302
+    db.session.remove()
+    event = db.session.scalar(
+        db.select(ARBDecisionEvent).where(
+            ARBDecisionEvent.review_cycle_id == route_scope.cycle_id
+        )
+    )
+    assert event.actor_id == route_scope.decider_id
+    assert event.organization_id == route_scope.organization_id
+    assert event.outcome == "approved"
+    assert event.subject_type == "adr"
+
+
+def test_cross_tenant_review_id_is_a_non_disclosing_404(
+    app, route_scope
+):
+    response = _call_arb_route(
+        app,
+        function_name="api_arb_approve",
+        item_id=route_scope.review_id,
+        user_id=route_scope.foreign_decider_id,
+        organization_id=route_scope.foreign_organization_id,
+        json={"notes": "Must not reveal the foreign review."},
+        headers={"Idempotency-Key": f"foreign-{uuid.uuid4().hex}"},
+    )
+
+    assert response.status_code == 404
+    assert response.get_json()["success"] is False
+    assert _count_decisions(db.session, route_scope.cycle_id) == 0
+
+
+def test_submitter_cannot_decide_own_typed_review(
+    app, route_scope
+):
+    response = _call_arb_route(
+        app,
+        function_name="api_arb_approve",
+        item_id=route_scope.review_id,
+        user_id=route_scope.submitter_id,
+        organization_id=route_scope.organization_id,
+        json={"notes": "Self approval must fail."},
+    )
+
+    assert response.status_code == 403
+    assert response.get_json()["success"] is False
+    assert _count_decisions(db.session, route_scope.cycle_id) == 0
+
+
+def test_api_terminal_replay_is_idempotent_and_conflicting_decision_is_409(
+    app, route_scope
+):
+    headers = {"Idempotency-Key": f"typed-decision-{uuid.uuid4().hex}"}
+
+    first = _call_arb_route(
+        app,
+        function_name="api_arb_reject",
+        item_id=route_scope.review_id,
+        user_id=route_scope.decider_id,
+        organization_id=route_scope.organization_id,
+        json={"reason": "Evidence is incomplete."},
+        headers=headers,
+    )
+    replay = _call_arb_route(
+        app,
+        function_name="api_arb_reject",
+        item_id=route_scope.review_id,
+        user_id=route_scope.decider_id,
+        organization_id=route_scope.organization_id,
+        json={"reason": "Evidence is incomplete."},
+        headers=headers,
+    )
+    conflict = _call_arb_route(
+        app,
+        function_name="api_arb_approve",
+        item_id=route_scope.review_id,
+        user_id=route_scope.decider_id,
+        organization_id=route_scope.organization_id,
+        json={"notes": "Try to overwrite the decision."},
+        headers={"Idempotency-Key": f"other-{uuid.uuid4().hex}"},
+    )
+
+    assert first.status_code == replay.status_code == 200
+    assert first.get_json()["idempotent"] is False
+    assert replay.get_json()["idempotent"] is True
+    assert conflict.status_code == 409
+    assert _count_decisions(db.session, route_scope.cycle_id) == 1
+
+
+def test_request_changes_creates_conditional_typed_decision(
+    app, route_scope
+):
+    response = _call_arb_route(
+        app,
+        function_name="api_arb_request_changes",
+        item_id=route_scope.review_id,
+        user_id=route_scope.decider_id,
+        organization_id=route_scope.organization_id,
+        json={
+            "conditions": ["Document data retention", "Add recovery evidence"],
+            "notes": "Proceed only after both controls are evidenced.",
+            "decided_by_id": route_scope.submitter_id,
+        },
+    )
+
+    assert response.status_code == 200, response.get_json()
+    body = response.get_json()
+    assert body["status"] == body["outcome"] == "approved_with_conditions"
+    assert len(body["condition_ids"]) == 2
+    assert all(condition["due_date"] is None for condition in body["conditions"])
+
+
+def test_begin_review_projects_cycle_and_item_without_solution_status_write(
+    app, route_scope
+):
+    response = _call_arb_route(
+        app,
+        function_name="api_arb_begin_review",
+        item_id=route_scope.review_id,
+        user_id=route_scope.decider_id,
+        organization_id=route_scope.organization_id,
+        json={"status": "approved"},
+    )
+
+    assert response.status_code == 200
+    db.session.remove()
+    cycle = db.session.get(ARBReviewCycle, route_scope.cycle_id)
+    projected = db.session.get(ARBReviewItem, route_scope.review_id)
+    assert cycle.status == projected.status == "under_review"
+    assert projected.reviewer_id == route_scope.decider_id
+    assert projected.review_started_at is not None
+
+
+@pytest.mark.parametrize(
+    ("method", "path"),
+    [
+        ("post", "/arb/reviews/{review_id}/reopen"),
+        ("get", "/arb/api/arb/{review_id}/implementation-status"),
+        ("patch", "/arb/api/arb/{review_id}/implementation-status"),
+    ],
+)
+def test_typed_reopen_and_raw_implementation_mutation_are_rejected(
+    app, route_scope, method, path
+):
+    response = _call_arb_route(
+        app,
+        function_name=(
+            "reopen_decision"
+            if method == "post"
+            else (
+                "api_arb_get_implementation_status"
+                if method == "get"
+                else "api_arb_update_implementation_status"
+            )
+        ),
+        item_id=route_scope.review_id,
+        user_id=route_scope.decider_id,
+        organization_id=route_scope.organization_id,
+        method=method.upper(),
+        data={"reopen_reason": "rewrite"} if method == "post" else None,
+        json={"implementation_status": "completed"} if method == "patch" else None,
+    )
+
+    assert response.status_code == 409
+    assert _count_decisions(db.session, route_scope.cycle_id) == 0
+
+
+def test_solution_decision_route_rejects_subject_review_mismatch(
+    client, login_as, route_scope
+):
+    login_as(client, route_scope.decider_id)
+
+    response = client.post(
+        f"/api/solutions/{route_scope.solution_id}/arb/{route_scope.review_id}/record-decision",
+        json={
+            "decision": "approved",
+            "decision_reason": "Forged subject/review association.",
+            "decided_by_id": route_scope.decider_id,
+        },
+    )
+
+    assert response.status_code == 404
+    assert _count_decisions(db.session, route_scope.cycle_id) == 0
+
+
+def test_solution_governance_decision_uses_typed_cycle_and_server_actor(
+    app, route_scope
+):
+    from app.modules.solutions_strategic.v2.routes import governance_api_routes
+
+    response = _call_route(
+        app,
+        module=governance_api_routes,
+        function_name="record_arb_decision",
+        args=(route_scope.solution_id, route_scope.solution_review_id),
+        user_id=route_scope.decider_id,
+        organization_id=route_scope.organization_id,
+        json={
+            "decision": "approved",
+            "decision_reason": "The pinned solution evidence is sufficient.",
+            "decided_by_id": route_scope.submitter_id,
+            "status": "rejected",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.get_json()["review_cycle_id"] == route_scope.solution_cycle_id
+    db.session.remove()
+    event = db.session.scalar(
+        db.select(ARBDecisionEvent).where(
+            ARBDecisionEvent.review_cycle_id == route_scope.solution_cycle_id
+        )
+    )
+    solution = db.session.get(Solution, route_scope.solution_id)
+    assert event.actor_id == route_scope.decider_id
+    assert event.outcome == "approved"
+    assert solution.governance_status == "draft"
+
+
+def test_solution_workflow_begin_and_reject_project_typed_review_only(
+    app, route_scope
+):
+    from app.modules.architecture.routes import arb_workflow_routes
+
+    begun = _call_route(
+        app,
+        module=arb_workflow_routes,
+        function_name="begin_arb_review",
+        args=(route_scope.solution_id,),
+        user_id=route_scope.decider_id,
+        organization_id=route_scope.organization_id,
+        json={"status": "approved", "notes": "Begin the board review."},
+    )
+    rejected = _call_route(
+        app,
+        module=arb_workflow_routes,
+        function_name="reject_solution",
+        args=(route_scope.solution_id,),
+        user_id=route_scope.decider_id,
+        organization_id=route_scope.organization_id,
+        json={"reason": "Controls are incomplete.", "decided_by_id": route_scope.submitter_id},
+    )
+
+    assert begun.status_code == rejected.status_code == 200
+    assert begun.get_json()["governance_status"] == "under_review"
+    assert rejected.get_json()["governance_status"] == "rejected"
+    db.session.remove()
+    cycle = db.session.get(ARBReviewCycle, route_scope.solution_cycle_id)
+    review = db.session.get(ARBReviewItem, route_scope.solution_review_id)
+    solution = db.session.get(Solution, route_scope.solution_id)
+    assert cycle.status == review.status == "rejected"
+    assert review.reviewer_id == route_scope.decider_id
+    assert solution.governance_status == "draft"
+
+
+def test_solution_workflow_approve_uses_typed_decision_without_solution_write(
+    app, route_scope
+):
+    from app.modules.architecture.routes import arb_workflow_routes
+
+    response = _call_route(
+        app,
+        module=arb_workflow_routes,
+        function_name="approve_solution",
+        args=(route_scope.solution_id,),
+        user_id=route_scope.decider_id,
+        organization_id=route_scope.organization_id,
+        json={"notes": "The pinned evidence meets the governance bar."},
+    )
+
+    assert response.status_code == 200
+    assert response.get_json()["governance_status"] == "approved"
+    db.session.remove()
+    assert db.session.get(ARBReviewCycle, route_scope.solution_cycle_id).status == "approved"
+    assert db.session.get(Solution, route_scope.solution_id).governance_status == "draft"
+
+
+def test_solution_workflow_withdraw_rejects_typed_cycle_without_mutation(
+    app, route_scope
+):
+    from app.modules.architecture.routes import arb_workflow_routes
+
+    response = _call_route(
+        app,
+        module=arb_workflow_routes,
+        function_name="withdraw_solution",
+        args=(route_scope.solution_id,),
+        user_id=route_scope.submitter_id,
+        organization_id=route_scope.organization_id,
+        json={"reason": "Attempt to bypass append-only governance."},
+    )
+
+    assert response.status_code == 409
+    assert response.get_json()["reason_codes"] == ["typed_withdraw_not_supported"]
+    db.session.remove()
+    assert db.session.get(ARBReviewCycle, route_scope.solution_cycle_id).status == "submitted"
+    assert db.session.get(Solution, route_scope.solution_id).governance_status == "draft"
+
+
+def test_typed_decision_route_remains_csrf_protected(
+    app, client, login_as, route_scope
+):
+    login_as(client, route_scope.decider_id)
+    original = app.config["WTF_CSRF_ENABLED"]
+    app.config["WTF_CSRF_ENABLED"] = True
+    try:
+        response = client.post(
+            f"/arb/api/arb/{route_scope.review_id}/approve",
+            json={"notes": "No CSRF token."},
+        )
+    finally:
+        app.config["WTF_CSRF_ENABLED"] = original
+
+    assert response.status_code == 400
+    assert _count_decisions(db.session, route_scope.cycle_id) == 0
+
+
+def test_legacy_html_decision_keeps_existing_service_path(
+    app, db_session, make_org, monkeypatch
+):
+    from flask import g
+    from flask_login import login_user
+    from app.modules.architecture.routes import arb_routes
+
+    org = make_org("typed-route-legacy")
+    submitter = _user(db_session, org)
+    decider = _user(db_session, org, role="chief_architect", admin=True)
+    legacy = ARBReviewItem(
+        organization_id=org.id,
+        review_number=f"REV-LEGACY-{uuid.uuid4().hex[:10]}",
+        title="Legacy generic review",
+        description="Not a typed subject.",
+        review_type="strategic",
+        status="under_review",
+        submitter_id=submitter.id,
+        submitted_at=datetime.utcnow(),
+    )
+    db_session.add(legacy)
+    db_session.flush()
+    calls = []
+    monkeypatch.setattr(
+        arb_routes.arb_service,
+        "record_decision",
+        lambda **kwargs: calls.append(kwargs) or legacy,
+    )
+    with app.test_request_context(
+        "/", method="POST", data={"decision": "approved", "rationale": "Legacy"}
+    ):
+        g.current_org_id = org.id
+        login_user(decider)
+        response = arb_routes.record_decision.__wrapped__.__wrapped__(legacy.id)
+
+    assert response.status_code == 302
+    assert calls and calls[0]["review_item_id"] == legacy.id

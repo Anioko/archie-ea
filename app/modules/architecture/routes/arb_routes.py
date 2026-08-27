@@ -9,7 +9,13 @@ Flask routes for ARB web interface and API endpoints.
 Integrates with existing platform workflows and provides TOGAF-aligned governance.
 """
 
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+import hashlib as _hashlib
+import json as _json
+import re as _re
+from typing import Any
+import uuid as _uuid
 
 from flask import (
     Blueprint,
@@ -44,6 +50,16 @@ from app.services.arb_governance_service import (
     ARBGovernanceService,
     MissingApproverError,
     SelfApprovalError,
+)
+from app.modules.transformation_room.domain import (
+    ActorContext,
+    AuthenticationRequired,
+    BlockedByEvidence,
+    CommandConflict,
+    KnownPreCommitTransient,
+    NotAuthorised,
+    NotFound,
+    TransformationError,
 )
 
 arb_bp = Blueprint("arb", __name__, url_prefix="/arb")
@@ -90,24 +106,6 @@ def _default_deny_unauthorized_arb_writes():
 # are resolved with explicit (id, organization_id) predicates rather than
 # Query.get(), which is tenant-scoped only on an identity-map miss (AGENTS.md).
 # =========================================================================
-
-import hashlib as _hashlib
-import json as _json
-import re as _re
-import uuid as _uuid
-from dataclasses import dataclass, field
-from typing import Any
-
-from app.modules.transformation_room.domain import (
-    ActorContext,
-    AuthenticationRequired,
-    BlockedByEvidence,
-    CommandConflict,
-    KnownPreCommitTransient,
-    NotAuthorised,
-    NotFound,
-    TransformationError,
-)
 
 _COMMAND_KEY_PATTERN = _re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{7,199}\Z")
 
@@ -553,6 +551,29 @@ def _typed_operation_blocked(reason_code, message):
 # =========================================================================
 # ARB SESSION MANAGEMENT ROUTES
 # =========================================================================
+
+
+def _typed_decision_json(result, *, extra=None):
+    if not result.success:
+        return jsonify({
+            "success": False,
+            "reason_codes": result.reason_codes,
+        }), result.http_status
+    payload = {
+        "success": True,
+        "item_id": result.review_item_id,
+        "review_item_id": result.review_item_id,
+        "review_cycle_id": result.review_cycle_id,
+        "decision_event_id": result.decision_event_id,
+        "condition_ids": result.condition_ids,
+        "status": result.status,
+        "outcome": result.outcome,
+        "conditions": result.conditions,
+        "idempotent": result.idempotent,
+    }
+    if extra:
+        payload.update(extra)
+    return jsonify(payload), 200
 
 
 @arb_bp.route("/dashboard")
@@ -1539,54 +1560,26 @@ def record_decision(id):
     try:
         data = request.form.to_dict()
 
-        # Parse conditions if provided. Note the deliberate absence of an
-        # invented due date / "pending" state -- the typed adapter turns these
-        # lines into canonical conditions with no fabricated fields.
-        condition_lines = [
-            line.strip()
-            for line in (data.get("conditions") or "").strip().split("\n")
-            if line.strip()
-        ]
+        from app.modules.transformation_room.arb_decision_adapter import (
+            TypedARBDecisionAdapter,
+        )
 
-        # --- Typed cycle: the only writer is TypedARBDecisionService. -------
-        review_row = TypedARBDecisionAdapter.load_review(id)
-        if review_row is None:
-            flash("Review item not found.", "error")
-            return redirect(url_for("arb.reviews")), 404
-        typed_cycle = TypedARBDecisionAdapter.typed_cycle_for_review(review_row)
-        if typed_cycle is not None:
-            try:
-                outcome = TypedARBDecisionAdapter.normalize_outcome(
-                    data.get("decision")
-                )
-            except ValueError:
-                flash("That decision outcome is not supported.", "error")
-                return redirect(url_for("arb.review_detail", id=id)), 400
-            result = TypedARBDecisionAdapter.decide(
-                cycle=typed_cycle,
-                outcome=outcome,
-                rationale=data.get("rationale"),
-                conditions=condition_lines,
-            )
-            if not result.success:
-                flash(_TYPED_DECISION_MESSAGES.get(
-                    result.http_status,
-                    "The decision was not recorded.",
-                ), "error")
-                return (
-                    redirect(url_for("arb.review_detail", id=id)),
-                    result.http_status,
-                )
-            flash(
-                f"Decision recorded for review item {review_row.review_number}",
-                "success",
-            )
-            return redirect(url_for("arb.review_detail", id=id))
+        typed_result = TypedARBDecisionAdapter.decide_review_from_request(
+            review_item_id=id,
+            payload=data,
+        )
+        if typed_result.typed:
+            if typed_result.success:
+                flash("ARB decision recorded against the pinned review evidence.", "success")
+                return redirect(url_for("arb.review_detail", id=id))
+            flash("The typed ARB decision could not be recorded.", "error")
+            return redirect(url_for("arb.review_detail", id=id)), typed_result.http_status
 
-        # --- Legacy generic review item (explicitly untyped) ---------------
+        # Preserve the legacy ingress without fabricating a due date.
         conditions = [
             {"condition": line, "status": "pending", "due_date": None}
-            for line in condition_lines
+            for line in (data.get("conditions") or "").splitlines()
+            if line.strip()
         ]
 
         try:
@@ -1678,6 +1671,21 @@ def reopen_decision(id):
     who reopened the decision and why.
     """
     try:
+        from app.modules.transformation_room.arb_decision_adapter import (
+            TypedARBDecisionAdapter,
+        )
+        from app.modules.transformation_room.domain import NotFound
+
+        try:
+            if TypedARBDecisionAdapter.review_is_typed(id):
+                flash(
+                    "Typed ARB decisions are append-only and cannot be reopened.",
+                    "error",
+                )
+                return redirect(url_for("arb.review_detail", id=id)), 409
+        except NotFound:
+            pass
+
         from app.models.architecture_review_board import ARBAuditAction, ARBAuditLog
 
         # Explicit (id, organization_id) predicate: Session.get() is scoped
@@ -2661,17 +2669,17 @@ def _typed_decision_api_response(result, item, *, legacy_fields=None):
 @login_required
 def api_arb_begin_review(item_id: int):
     """ENH-020: Transition ARBReviewItem to under_review status."""
-    item, typed_cycle, error = _typed_api_item(item_id)
-    if error is not None:
-        return error
-    if typed_cycle is not None:
-        # A typed cycle's state is a projection of its command history; the
-        # browser cannot assign it a status.
-        return _typed_operation_blocked(
-            "typed_cycle_status_not_client_mutable",
-            "This review is governed by a typed ARB cycle. Its state is derived "
-            "from recorded commands and cannot be set directly.",
-        )
+    from app.modules.transformation_room.arb_decision_adapter import (
+        TypedARBDecisionAdapter,
+    )
+
+    typed_result = TypedARBDecisionAdapter.begin_review_from_request(
+        review_item_id=item_id
+    )
+    if typed_result.typed:
+        return _typed_decision_json(typed_result)
+
+    item = ARBReviewItem.query.get_or_404(item_id)
     current_status = item.status or "draft"
     if current_status not in ("submitted", "draft", "pending"):
         return jsonify({
@@ -2700,24 +2708,20 @@ def api_arb_begin_review(item_id: int):
 @login_required
 def api_arb_approve(item_id: int):
     """ENH-020: Approve an ARBReviewItem that is under_review."""
-    item, typed_cycle, error = _typed_api_item(item_id)
-    if error is not None:
-        return error
+    from app.modules.transformation_room.arb_decision_adapter import (
+        TypedARBDecisionAdapter,
+    )
+
     data = request.get_json(silent=True) or {}
-    if typed_cycle is not None:
-        conditions = data.get("conditions") or []
-        outcome = "approved_with_conditions" if conditions else "approved"
-        result = TypedARBDecisionAdapter.decide(
-            cycle=typed_cycle,
-            outcome=outcome,
-            rationale=data.get("notes") or data.get("rationale"),
-            conditions=conditions,
-        )
-        # No direct Solution.governance_status write: for a typed cycle the
-        # solution projection is derived from the recorded decision event.
-        return _typed_decision_api_response(
-            result, item, legacy_fields={"conditions": result.conditions}
-        )
+    typed_result = TypedARBDecisionAdapter.decide_review_from_request(
+        review_item_id=item_id,
+        payload=data,
+        outcome="approved",
+    )
+    if typed_result.typed:
+        return _typed_decision_json(typed_result)
+
+    item = ARBReviewItem.query.get_or_404(item_id)
     current_status = item.status or "draft"
     if current_status != "under_review":
         return jsonify({
@@ -2761,23 +2765,23 @@ def api_arb_approve(item_id: int):
 @login_required
 def api_arb_reject(item_id: int):
     """ENH-020: Reject an ARBReviewItem that is under_review."""
-    item, typed_cycle, error = _typed_api_item(item_id)
-    if error is not None:
-        return error
-    if typed_cycle is not None:
-        payload = request.get_json(silent=True) or {}
-        result = TypedARBDecisionAdapter.decide(
-            cycle=typed_cycle,
-            outcome="rejected",
-            rationale=(payload.get("reason") or "").strip() or None,
-            conditions=None,
+    from app.modules.transformation_room.arb_decision_adapter import (
+        TypedARBDecisionAdapter,
+    )
+
+    data = request.get_json(silent=True) or {}
+    typed_result = TypedARBDecisionAdapter.decide_review_from_request(
+        review_item_id=item_id,
+        payload=data,
+        outcome="rejected",
+    )
+    if typed_result.typed:
+        return _typed_decision_json(
+            typed_result,
+            extra={"rejection_reason": data.get("reason")},
         )
-        # No direct Solution.governance_status write for a typed cycle.
-        return _typed_decision_api_response(
-            result,
-            item,
-            legacy_fields={"rejection_reason": (payload.get("reason") or "").strip()},
-        )
+
+    item = ARBReviewItem.query.get_or_404(item_id)
     current_status = item.status or "draft"
     if current_status != "under_review":
         return jsonify({
@@ -2827,20 +2831,20 @@ def api_arb_request_changes(item_id: int):
     Request Body:
         { "conditions": ["Fix security issue", ...], "notes": "Optional notes" }
     """
-    item, typed_cycle, error = _typed_api_item(item_id)
-    if error is not None:
-        return error
-    if typed_cycle is not None:
-        payload = request.get_json(silent=True) or {}
-        result = TypedARBDecisionAdapter.decide(
-            cycle=typed_cycle,
-            outcome="approved_with_conditions",
-            rationale=payload.get("notes") or payload.get("rationale"),
-            conditions=payload.get("conditions") or [],
-        )
-        return _typed_decision_api_response(
-            result, item, legacy_fields={"conditions": result.conditions}
-        )
+    from app.modules.transformation_room.arb_decision_adapter import (
+        TypedARBDecisionAdapter,
+    )
+
+    data = request.get_json(silent=True) or {}
+    typed_result = TypedARBDecisionAdapter.decide_review_from_request(
+        review_item_id=item_id,
+        payload=data,
+        outcome="approved_with_conditions",
+    )
+    if typed_result.typed:
+        return _typed_decision_json(typed_result)
+
+    item = ARBReviewItem.query.get_or_404(item_id)
     current_status = item.status or "draft"
     if current_status != "under_review":
         return jsonify({
@@ -2884,9 +2888,21 @@ def api_arb_request_changes(item_id: int):
 @login_required
 def api_arb_get_implementation_status(item_id: int):
     """ENH-020: Get implementation status for an approved ARB review item."""
-    item, _typed_cycle, error = _typed_api_item(item_id)
-    if error is not None:
-        return error
+    from app.modules.transformation_room.arb_decision_adapter import (
+        TypedARBDecisionAdapter,
+    )
+    from app.modules.transformation_room.domain import NotFound
+
+    try:
+        if TypedARBDecisionAdapter.review_is_typed(item_id):
+            return jsonify({
+                "success": False,
+                "reason_codes": ["typed_implementation_status_not_supported"],
+            }), 409
+    except NotFound:
+        return jsonify({"success": False, "reason_codes": ["review_not_found"]}), 404
+
+    item = ARBReviewItem.query.get_or_404(item_id)
     return jsonify({
         "success": True,
         "item_id": item.id,
@@ -2917,17 +2933,21 @@ def api_arb_update_implementation_status(item_id: int):
             "conditions_response": {"0": "Evidence for condition 0", ...}
         }
     """
-    item, typed_cycle, error = _typed_api_item(item_id)
-    if error is not None:
-        return error
-    if typed_cycle is not None:
-        # Condition progress on a typed cycle is recorded through the typed
-        # condition evidence/lifecycle commands, not by writing free JSON.
-        return _typed_operation_blocked(
-            "typed_cycle_implementation_status_not_writable",
-            "This review is governed by a typed ARB cycle. Record condition "
-            "progress through the typed condition evidence commands.",
-        )
+    from app.modules.transformation_room.arb_decision_adapter import (
+        TypedARBDecisionAdapter,
+    )
+    from app.modules.transformation_room.domain import NotFound
+
+    try:
+        if TypedARBDecisionAdapter.review_is_typed(item_id):
+            return jsonify({
+                "success": False,
+                "reason_codes": ["typed_implementation_status_not_supported"],
+            }), 409
+    except NotFound:
+        return jsonify({"success": False, "reason_codes": ["review_not_found"]}), 404
+
+    item = ARBReviewItem.query.get_or_404(item_id)
     if item.status not in ("approved", "approved_with_conditions"):
         return jsonify({
             "success": False,

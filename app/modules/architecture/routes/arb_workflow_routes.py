@@ -804,6 +804,28 @@ def begin_arb_review(solution_id: int):
     Request Body (optional):
         { "notes": "Review notes" }
     """
+    from app.modules.transformation_room.arb_decision_adapter import (
+        TypedARBDecisionAdapter,
+    )
+
+    if TypedARBDecisionAdapter.solution_has_typed_cycle(solution_id):
+        typed_result = TypedARBDecisionAdapter.begin_current_solution_from_request(
+            solution_id=solution_id
+        )
+        if not typed_result.success:
+            return jsonify({
+                "success": False,
+                "reason_codes": typed_result.reason_codes,
+            }), typed_result.http_status
+        return jsonify({
+            "success": True,
+            "message": "ARB review started",
+            "governance_status": typed_result.status,
+            "review_cycle_id": typed_result.review_cycle_id,
+            "review_item_id": typed_result.review_item_id,
+            "idempotent": typed_result.idempotent,
+        })
+
     solution = _get_solution_or_404(solution_id)
     if _typed_cycle_for_solution(solution_id, open_only=True) is not None:
         return _typed_lifecycle_blocked(
@@ -846,6 +868,32 @@ def approve_solution(solution_id: int):
     Request Body (optional):
         { "notes": "Approval notes" }
     """
+    from app.modules.transformation_room.arb_decision_adapter import (
+        TypedARBDecisionAdapter,
+    )
+
+    data = request.get_json(silent=True) or {}
+    if TypedARBDecisionAdapter.solution_has_typed_cycle(solution_id):
+        typed_result = TypedARBDecisionAdapter.decide_current_solution_from_request(
+            solution_id=solution_id,
+            payload=data,
+            outcome="approved",
+        )
+        if not typed_result.success:
+            return jsonify({
+                "success": False,
+                "reason_codes": typed_result.reason_codes,
+            }), typed_result.http_status
+        return jsonify({
+            "success": True,
+            "message": "Solution approved",
+            "governance_status": typed_result.status,
+            "review_cycle_id": typed_result.review_cycle_id,
+            "review_item_id": typed_result.review_item_id,
+            "decision_event_id": typed_result.decision_event_id,
+            "idempotent": typed_result.idempotent,
+        })
+
     solution = _get_solution_or_404(solution_id)
     typed_cycle = _typed_cycle_for_solution(solution_id, open_only=True)
     if typed_cycle is not None:
@@ -923,6 +971,33 @@ def reject_solution(solution_id: int):
     Request Body:
         { "reason": "Rejection reason" (required), "notes": "Additional notes" }
     """
+    from app.modules.transformation_room.arb_decision_adapter import (
+        TypedARBDecisionAdapter,
+    )
+
+    data = request.get_json(silent=True) or {}
+    if TypedARBDecisionAdapter.solution_has_typed_cycle(solution_id):
+        typed_result = TypedARBDecisionAdapter.decide_current_solution_from_request(
+            solution_id=solution_id,
+            payload=data,
+            outcome="rejected",
+        )
+        if not typed_result.success:
+            return jsonify({
+                "success": False,
+                "reason_codes": typed_result.reason_codes,
+            }), typed_result.http_status
+        return jsonify({
+            "success": True,
+            "message": "Solution rejected",
+            "governance_status": typed_result.status,
+            "arb_rejection_reason": data.get("reason"),
+            "review_cycle_id": typed_result.review_cycle_id,
+            "review_item_id": typed_result.review_item_id,
+            "decision_event_id": typed_result.decision_event_id,
+            "idempotent": typed_result.idempotent,
+        })
+
     solution = _get_solution_or_404(solution_id)
     typed_cycle = _typed_cycle_for_solution(solution_id, open_only=True)
     if typed_cycle is not None:
@@ -986,6 +1061,16 @@ def withdraw_solution(solution_id: int):
     Request Body (optional):
         { "reason": "Withdrawal reason" }
     """
+    from app.modules.transformation_room.arb_decision_adapter import (
+        TypedARBDecisionAdapter,
+    )
+
+    if TypedARBDecisionAdapter.solution_has_typed_cycle(solution_id):
+        return jsonify({
+            "success": False,
+            "reason_codes": ["typed_withdraw_not_supported"],
+        }), 409
+
     solution = _get_solution_or_404(solution_id)
     if _typed_cycle_for_solution(solution_id, open_only=True) is not None:
         # Withdraw has no typed command with defined audit semantics, and a

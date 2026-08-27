@@ -509,6 +509,33 @@ def get_arb_status(solution_id):
 def record_arb_decision(solution_id, review_id):
     """Record ARB decision."""
     data = request.get_json(silent=True) or {}
+    from app.modules.transformation_room.arb_decision_adapter import (
+        TypedARBDecisionAdapter,
+    )
+
+    typed_result = TypedARBDecisionAdapter.decide_solution_from_request(
+        solution_id=solution_id,
+        review_item_id=review_id,
+        payload=data,
+    )
+    if typed_result.typed:
+        if not typed_result.success:
+            return jsonify({
+                "success": False,
+                "reason_codes": typed_result.reason_codes,
+            }), typed_result.http_status
+        return jsonify({
+            "success": True,
+            "review_id": typed_result.review_item_id,
+            "review_item_id": typed_result.review_item_id,
+            "review_cycle_id": typed_result.review_cycle_id,
+            "decision_event_id": typed_result.decision_event_id,
+            "condition_ids": typed_result.condition_ids,
+            "status": typed_result.status,
+            "outcome": typed_result.outcome,
+            "conditions": typed_result.conditions,
+            "idempotent": typed_result.idempotent,
+        }), 200
 
     try:
         # The actor is the authenticated session, never `decided_by_id`.
