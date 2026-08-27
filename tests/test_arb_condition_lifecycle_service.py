@@ -295,3 +295,23 @@ def test_upgrade_preserves_pre_c3_evidence_as_explicit_legacy_provenance():
     assert "SET fulfilment_evidence_id = NULL" in sql
     assert "'classification','pre_c3_waiver'" in sql
     assert "SET fulfilment_evidence_id = submitted_evidence_id" not in sql
+    assert "NOT EXISTS" in sql
+    assert "evidence.condition_id=condition.id" in sql
+    assert "ck_arb_condition_legacy_provenance" in sql
+
+
+def test_condition_mutation_guard_requires_exact_event_and_receipt():
+    from app.models.arb_decision_event import (
+        _condition_membership_sql,
+        ensure_arb_decision_guards,
+    )
+
+    membership = _condition_membership_sql('"public"')
+    assert "legacy ARB condition provenance is reconcile-only" in membership
+    source = inspect.getsource(ensure_arb_decision_guards)
+    assert "lifecycle mutation lacks exact event provenance" in source
+    assert "JOIN {q}.command_idempotency_records receipt" in source
+    assert "condition_event.from_state=OLD.status" in source
+    assert "condition_event.to_state=NEW.status" in source
+    assert "NEW.revision=OLD.revision + 1" in source
+    assert "legacy ARB condition provenance is immutable" in source

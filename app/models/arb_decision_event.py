@@ -98,6 +98,17 @@ class ARBCondition(TenantMixin, db.Model):
         db.CheckConstraint("blocks_execution IS TRUE", name="ck_arb_condition_blocks_execution"),
         db.CheckConstraint("status IN ('pending','evidence_submitted','fulfilled','waived') AND revision > 0", name="ck_arb_condition_status"),
         db.CheckConstraint(
+            "legacy_lifecycle_provenance IS NULL OR "
+            "(status='fulfilled' AND jsonb_typeof(legacy_lifecycle_provenance::jsonb)='object' "
+            "AND legacy_lifecycle_provenance::jsonb ?& ARRAY['classification','legacy_fulfilment_evidence_id'] "
+            "AND legacy_lifecycle_provenance::jsonb - ARRAY['classification','legacy_fulfilment_evidence_id'] = '{}'::jsonb "
+            "AND legacy_lifecycle_provenance::jsonb->>'classification'='pre_c3_fulfilment' "
+            "AND jsonb_typeof(legacy_lifecycle_provenance::jsonb->'legacy_fulfilment_evidence_id') IN ('number','null')) OR "
+            "(status='waived' AND legacy_lifecycle_provenance::jsonb="
+            "'{\"classification\":\"pre_c3_waiver\"}'::jsonb)",
+            name="ck_arb_condition_legacy_provenance",
+        ),
+        db.CheckConstraint(
             "(status = 'pending' AND fulfilled_at IS NULL AND fulfilled_by_id IS NULL "
             "AND fulfilment_evidence_id IS NULL AND evidence_submitted_at IS NULL "
             "AND evidence_submitted_by_id IS NULL AND submitted_evidence_id IS NULL "
@@ -214,6 +225,8 @@ def _condition_membership_sql(schema):
     return f"""
 CREATE OR REPLACE FUNCTION {schema}.archie_validate_arb_condition() RETURNS trigger
 LANGUAGE plpgsql SET search_path=pg_catalog,{schema} AS $$ BEGIN
+ IF TG_OP='INSERT' AND NEW.legacy_lifecycle_provenance IS NOT NULL
+ THEN RAISE EXCEPTION 'legacy ARB condition provenance is reconcile-only' USING ERRCODE='23514'; END IF;
  IF NOT EXISTS (SELECT 1 FROM arb_decision_events decision WHERE decision.id=NEW.decision_event_id
  AND decision.outcome = 'approved_with_conditions' AND decision.review_cycle_id = NEW.review_cycle_id
  AND decision.review_item_id = NEW.review_item_id AND decision.organization_id = NEW.organization_id)
@@ -228,18 +241,31 @@ def _condition_reconcile_sql(schema):
         for item in ARBCondition.__table__.constraints
         if item.name == "ck_arb_condition_lifecycle"
     )
+    legacy_provenance = next(
+        str(item.sqltext)
+        for item in ARBCondition.__table__.constraints
+        if item.name == "ck_arb_condition_legacy_provenance"
+    )
     return f"""
 ALTER TABLE {schema}.arb_canonical_conditions
 ADD COLUMN IF NOT EXISTS legacy_lifecycle_provenance JSON;
 UPDATE {schema}.arb_canonical_conditions SET revision = 1 WHERE revision IS NULL;
-UPDATE {schema}.arb_canonical_conditions
+UPDATE {schema}.arb_canonical_conditions condition
 SET verified_at = fulfilled_at, verified_by_id = fulfilled_by_id,
     legacy_lifecycle_provenance = jsonb_build_object(
       'classification','pre_c3_fulfilment',
       'legacy_fulfilment_evidence_id',fulfilment_evidence_id)
-WHERE status='fulfilled' AND legacy_lifecycle_provenance IS NULL
+WHERE condition.status='fulfilled' AND condition.legacy_lifecycle_provenance IS NULL
   AND (verified_at IS NULL OR verified_by_id IS NULL
-       OR fulfilment_evidence_id IS NOT NULL);
+       OR fulfilment_evidence_id IS NOT NULL)
+  AND NOT EXISTS (
+    SELECT 1 FROM {schema}.arb_condition_evidence_records evidence
+    WHERE evidence.id=condition.fulfilment_evidence_id
+      AND evidence.organization_id=condition.organization_id
+      AND evidence.condition_id=condition.id
+      AND evidence.decision_event_id=condition.decision_event_id
+      AND evidence.review_cycle_id=condition.review_cycle_id
+      AND evidence.review_item_id=condition.review_item_id);
 UPDATE {schema}.arb_canonical_conditions
 SET fulfilment_evidence_id = NULL
 WHERE status='fulfilled' AND legacy_lifecycle_provenance->>'classification'='pre_c3_fulfilment';
@@ -253,6 +279,9 @@ ALTER TABLE {schema}.arb_canonical_conditions ALTER COLUMN revision SET NOT NULL
 ALTER TABLE {schema}.arb_canonical_conditions DROP CONSTRAINT IF EXISTS ck_arb_condition_lifecycle;
 ALTER TABLE {schema}.arb_canonical_conditions ADD CONSTRAINT ck_arb_condition_lifecycle CHECK ({lifecycle}) NOT VALID;
 ALTER TABLE {schema}.arb_canonical_conditions VALIDATE CONSTRAINT ck_arb_condition_lifecycle;
+ALTER TABLE {schema}.arb_canonical_conditions DROP CONSTRAINT IF EXISTS ck_arb_condition_legacy_provenance;
+ALTER TABLE {schema}.arb_canonical_conditions ADD CONSTRAINT ck_arb_condition_legacy_provenance CHECK ({legacy_provenance}) NOT VALID;
+ALTER TABLE {schema}.arb_canonical_conditions VALIDATE CONSTRAINT ck_arb_condition_legacy_provenance;
 ALTER TABLE {schema}.arb_canonical_conditions DROP CONSTRAINT IF EXISTS fk_arb_condition_submitted_evidence;
 ALTER TABLE {schema}.arb_canonical_conditions ADD CONSTRAINT fk_arb_condition_submitted_evidence FOREIGN KEY (submitted_evidence_id) REFERENCES {schema}.arb_condition_evidence_records(id) ON DELETE RESTRICT NOT VALID;
 ALTER TABLE {schema}.arb_canonical_conditions VALIDATE CONSTRAINT fk_arb_condition_submitted_evidence;
@@ -277,7 +306,46 @@ def ensure_arb_decision_guards(connection):
     connection.exec_driver_sql(f"""CREATE OR REPLACE FUNCTION {q}.archie_guard_arb_decision_immutable() RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog AS $$ BEGIN
  IF TG_OP='DELETE' THEN RAISE EXCEPTION 'ARB decision history is append-only' USING ERRCODE='55000'; END IF;
  IF TG_TABLE_NAME='arb_decision_events' THEN RAISE EXCEPTION 'ARB decision events are append-only' USING ERRCODE='55000'; END IF;
- IF ROW(OLD.organization_id,OLD.decision_event_id,OLD.review_cycle_id,OLD.review_item_id,OLD.condition_number,OLD.description,OLD.category,OLD.due_date,OLD.blocks_execution,OLD.created_at) IS DISTINCT FROM ROW(NEW.organization_id,NEW.decision_event_id,NEW.review_cycle_id,NEW.review_item_id,NEW.condition_number,NEW.description,NEW.category,NEW.due_date,NEW.blocks_execution,NEW.created_at) THEN RAISE EXCEPTION 'ARB condition identity and terms are immutable' USING ERRCODE='55000'; END IF; RETURN NEW; END $$;
+ IF ROW(OLD.organization_id,OLD.decision_event_id,OLD.review_cycle_id,OLD.review_item_id,OLD.condition_number,OLD.description,OLD.category,OLD.due_date,OLD.blocks_execution,OLD.created_at) IS DISTINCT FROM ROW(NEW.organization_id,NEW.decision_event_id,NEW.review_cycle_id,NEW.review_item_id,NEW.condition_number,NEW.description,NEW.category,NEW.due_date,NEW.blocks_execution,NEW.created_at) THEN RAISE EXCEPTION 'ARB condition identity and terms are immutable' USING ERRCODE='55000'; END IF;
+ IF OLD.legacy_lifecycle_provenance::jsonb IS DISTINCT FROM NEW.legacy_lifecycle_provenance::jsonb
+ THEN RAISE EXCEPTION 'legacy ARB condition provenance is immutable' USING ERRCODE='55000'; END IF;
+ IF ROW(OLD.status,OLD.revision,OLD.responsible_id,OLD.submitted_evidence_id,
+        OLD.evidence_submitted_by_id,OLD.evidence_submitted_at,OLD.verified_by_id,
+        OLD.verified_at,OLD.fulfilled_at,OLD.fulfilled_by_id,
+        OLD.fulfilment_evidence_id,OLD.waived_at,OLD.waived_by_id,
+        OLD.waiver_reason,OLD.waiver_expires_at,OLD.compensating_control,
+        OLD.waiver_prior_status,OLD.waiver_scope_json)
+    IS DISTINCT FROM
+    ROW(NEW.status,NEW.revision,NEW.responsible_id,NEW.submitted_evidence_id,
+        NEW.evidence_submitted_by_id,NEW.evidence_submitted_at,NEW.verified_by_id,
+        NEW.verified_at,NEW.fulfilled_at,NEW.fulfilled_by_id,
+        NEW.fulfilment_evidence_id,NEW.waived_at,NEW.waived_by_id,
+        NEW.waiver_reason,NEW.waiver_expires_at,NEW.compensating_control,
+        NEW.waiver_prior_status,NEW.waiver_scope_json)
+ AND NOT EXISTS (
+   SELECT 1 FROM {q}.arb_condition_events condition_event
+   JOIN {q}.command_idempotency_records receipt
+     ON receipt.id=condition_event.command_receipt_id
+    AND receipt.organization_id=condition_event.organization_id
+    AND receipt.actor_id=condition_event.actor_id
+    AND receipt.lease_generation=condition_event.command_generation
+    AND receipt.operation=CASE condition_event.event_type
+      WHEN 'submit_evidence' THEN 'arb.condition.evidence.submit'
+      WHEN 'verify' THEN 'arb.condition.evidence.verify'
+      WHEN 'waive' THEN 'arb.condition.waive'
+      WHEN 'waiver_expired' THEN 'arb.condition.waiver.expire' END
+    AND receipt.natural_key='arb-condition:' || condition_event.organization_id::text || ':' || condition_event.condition_id::text || ':' || condition_event.event_type || ':' || condition_event.condition_revision::text
+   WHERE condition_event.condition_id=NEW.id
+     AND condition_event.organization_id=NEW.organization_id
+     AND condition_event.decision_event_id=NEW.decision_event_id
+     AND condition_event.review_cycle_id=NEW.review_cycle_id
+     AND condition_event.review_item_id=NEW.review_item_id
+     AND condition_event.from_state=OLD.status
+     AND condition_event.to_state=NEW.status
+     AND condition_event.condition_revision=NEW.revision
+     AND NEW.revision=OLD.revision + 1)
+ THEN RAISE EXCEPTION 'ARB condition lifecycle mutation lacks exact event provenance' USING ERRCODE='55000'; END IF;
+ RETURN NEW; END $$;
  DROP TRIGGER IF EXISTS trg_arb_decision_event_open_state ON {q}.arb_decision_events; CREATE TRIGGER trg_arb_decision_event_open_state BEFORE INSERT ON {q}.arb_decision_events FOR EACH ROW EXECUTE FUNCTION {q}.archie_validate_arb_decision_open_state();
  DROP TRIGGER IF EXISTS trg_arb_decision_event_membership ON {q}.arb_decision_events; CREATE CONSTRAINT TRIGGER trg_arb_decision_event_membership AFTER INSERT OR UPDATE ON {q}.arb_decision_events DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION {q}.archie_validate_arb_decision_event();
  DROP TRIGGER IF EXISTS trg_arb_decision_event_immutable ON {q}.arb_decision_events; CREATE TRIGGER trg_arb_decision_event_immutable BEFORE UPDATE OR DELETE ON {q}.arb_decision_events FOR EACH ROW EXECUTE FUNCTION {q}.archie_guard_arb_decision_immutable();

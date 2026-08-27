@@ -3,7 +3,52 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+import os
 import uuid
+
+import pytest
+
+
+os.environ["TRANSFORMATION_COMMAND_CAPABILITY_SECRET"] = "74" * 32
+
+
+@pytest.fixture
+def db_session(app, _schema):
+    """Committed setup visible to CommandService's independent sessions."""
+    from app import db
+
+    with app.app_context():
+        db.session.remove()
+        try:
+            yield db.session
+        finally:
+            organization_ids = tuple(db.session.info.get("c3_cleanup_org_ids", ()))
+            db.session.remove()
+            if organization_ids:
+                raw = db.engine.raw_connection()
+                try:
+                    with raw.cursor() as cursor:
+                        cursor.execute("SET session_replication_role = replica")
+                        for table in (
+                            "arb_condition_events", "arb_canonical_conditions",
+                            "arb_condition_evidence_records", "arb_decision_events",
+                            "arb_submission_events", "operation_results",
+                            "command_materialisations", "command_idempotency_records",
+                            "arb_review_items", "arb_review_cycles",
+                            "arb_subject_evidence_snapshots",
+                            "architecture_decision_records", "users",
+                        ):
+                            cursor.execute(
+                                f'DELETE FROM "{table}" WHERE organization_id = ANY(%s)',
+                                (list(organization_ids),),
+                            )
+                        cursor.execute(
+                            "DELETE FROM organizations WHERE id = ANY(%s)",
+                            (list(organization_ids),),
+                        )
+                    raw.commit()
+                finally:
+                    raw.close()
 
 
 def test_submit_verify_and_projection_commit_under_real_guards(
@@ -36,15 +81,16 @@ def test_submit_verify_and_projection_commit_under_real_guards(
     from app.modules.transformation_room.arb_submission_service import (
         TypedARBSubmissionService,
     )
+    from app.modules.transformation_room.command_service import CommandService
     from app.modules.transformation_room.domain import ActorContext
 
     monkeypatch.setenv(
         "TRANSFORMATION_COMMAND_CAPABILITY_SECRET",
-        "ab" * 32,
+        "74" * 32,
     )
     connection = db_session.connection()
     ensure_transformation_db_guards(
-        connection, capability_secrets=("ab" * 32,)
+        connection, capability_secrets=("74" * 32,)
     )
     ensure_arb_cycle_constraints(connection)
     ensure_arb_decision_guards(connection)
@@ -52,6 +98,7 @@ def test_submit_verify_and_projection_commit_under_real_guards(
     ensure_arb_condition_event_guards(connection)
 
     org = make_org("c3-lifecycle")
+    db_session.info.setdefault("c3_cleanup_org_ids", set()).add(org.id)
     suffix = uuid.uuid4().hex[:10]
     submitter = User(
         organization_id=org.id, email=f"c3-submit-{suffix}@example.test",
@@ -86,9 +133,13 @@ def test_submit_verify_and_projection_commit_under_real_guards(
         actor=verifier_actor, command_key=f"decision-{suffix}",
         cycle_id=submission.object_ids["review_cycle_id"],
         outcome="approved_with_conditions", rationale="Approved with proof.",
-        conditions=[{"code": "C-1", "text": "Provide deployment proof."}],
+        conditions=[
+            {"code": "C-1", "text": "Provide deployment proof."},
+            {"code": "C-2", "text": "Time-bound operational control."},
+        ],
     )
     condition_id = decision.object_ids["condition_ids"][0]
+    waiver_condition_id = decision.object_ids["condition_ids"][1]
     now = datetime.now(timezone.utc)
     evidence = TypedARBConditionEvidenceService.capture(
         actor=submitter_actor, command_key=f"capture-{suffix}",
@@ -130,8 +181,45 @@ def test_submit_verify_and_projection_commit_under_real_guards(
     review = db_session.get(ARBReviewItem, review.id)
     assert verified.object_ids == replay.object_ids
     assert condition.status == "fulfilled"
-    assert cycle.status == review.status == "approved"
+    assert cycle.status == review.status == "approved_with_conditions"
     assert cycle.terminal_outcome == review.decision == "approved_with_conditions"
     assert db_session.query(ARBDecisionEvent).filter_by(
         organization_id=org.id
     ).count() == 1
+
+    waiver_now = datetime(2026, 8, 27, 12, tzinfo=timezone.utc)
+    monkeypatch.setattr(
+        CommandService, "_database_now", staticmethod(lambda session: waiver_now),
+    )
+    TypedARBConditionLifecycleService.waive(
+        actor=verifier_actor, command_key=f"waive-{suffix}",
+        condition_id=waiver_condition_id,
+        reason="Temporary operational acceptance",
+        expires_at=waiver_now + timedelta(days=1),
+        scope={"release": "R1"},
+        compensating_control="Daily operational review",
+    )
+    db_session.expire_all()
+    cycle = db_session.get(ARBReviewCycle, cycle.id)
+    assert cycle.status == "approved"
+    assert cycle.terminal_outcome == "approved_with_conditions"
+
+    app.config.update(
+        ARB_CONDITION_EXPIRY_PRINCIPAL_ID=verifier.id,
+        ARB_CONDITION_EXPIRY_ORGANIZATION_ID=org.id,
+        ARB_CONDITION_EXPIRY_CAPABILITY="c3-expiry-capability",
+    )
+    monkeypatch.setattr(
+        CommandService, "_database_now",
+        staticmethod(lambda session: waiver_now + timedelta(days=2)),
+    )
+    expired = TypedARBConditionLifecycleService.expire_waivers(
+        capability="c3-expiry-capability", command_key=f"expiry-{suffix}",
+        condition_id=waiver_condition_id,
+    )
+    db_session.expire_all()
+    cycle = db_session.get(ARBReviewCycle, cycle.id)
+    review = db_session.get(ARBReviewItem, review.id)
+    assert expired.response["status"] == "pending"
+    assert cycle.status == review.status == "approved_with_conditions"
+    assert cycle.terminal_outcome == review.decision == "approved_with_conditions"
