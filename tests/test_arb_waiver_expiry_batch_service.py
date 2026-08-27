@@ -10,6 +10,8 @@ from types import SimpleNamespace
 import pytest
 from flask import Flask
 
+from app.modules.transformation_room.domain import NotAuthorised
+
 
 def _module():
     try:
@@ -174,6 +176,37 @@ def test_scheduler_configuration_parses_environment_strings(expiry_app):
 
     assert module.ARBWaiverExpiryBatchService.configured_organization_ids() == (41, 42)
     assert module.ARBWaiverExpiryBatchService.configured_batch_size() == 25
+
+
+def test_scheduler_rejects_boolean_tenant_and_principal_ids(expiry_app):
+    module = _module()
+    lifecycle = module.TypedARBConditionLifecycleService
+    expiry_app.config["ARB_CONDITION_EXPIRY_PRINCIPALS"] = {"41": True}
+
+    with pytest.raises(ValueError, match="positive integers"):
+        module.ARBWaiverExpiryBatchService.run(
+            organization_ids=[True], batch_size=1
+        )
+    with pytest.raises(NotAuthorised, match="tenant_required"):
+        lifecycle._scheduler_actor("batch-secret", organization_id=True)
+    with pytest.raises(NotAuthorised, match="principal_invalid"):
+        lifecycle._scheduler_actor("batch-secret", organization_id=41)
+
+
+def test_scheduler_principal_must_be_confirmed_under_lock(expiry_app):
+    module = _module()
+    lifecycle = module.TypedARBConditionLifecycleService
+    expiry_app.config["ARB_CONDITION_EXPIRY_PRINCIPALS"] = {"41": 73}
+    actor = lifecycle._scheduler_actor("batch-secret", organization_id=41)
+
+    with pytest.raises(NotAuthorised, match="principal_invalid"):
+        lifecycle._authorise_system_principal(
+            SimpleNamespace(),
+            actor,
+            locked_user=SimpleNamespace(
+                id=73, organization_id=41, confirmed=False
+            ),
+        )
 
 
 def test_cli_requires_explicit_tenants_and_emits_machine_readable_result(app, monkeypatch):

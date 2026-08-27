@@ -4,14 +4,15 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass
+import hashlib
 from typing import Any, Iterable, Iterator, Mapping, Sequence
 
 from flask import current_app
-from sqlalchemy import func, select
+from sqlalchemy import func, select, tuple_
 from sqlalchemy.orm import Session
 
 from app import db
-from app.models.arb_decision_event import ARBCondition
+from app.models.arb_decision_event import ARBCondition, ARBWaiverExpiryCheckpoint
 from app.modules.transformation_room.arb_condition_lifecycle_service import (
     TypedARBConditionLifecycleService,
 )
@@ -146,11 +147,13 @@ class ARBWaiverExpiryBatchService:
     def _select_due(
         organization_ids: tuple[int, ...], batch_size: int
     ) -> tuple[WaiverExpiryCandidate, ...]:
-        statement = (
+        scope_key = ARBWaiverExpiryBatchService._scope_key(organization_ids)
+        base_statement = (
             select(
                 ARBCondition.organization_id,
                 ARBCondition.id,
                 ARBCondition.revision,
+                ARBCondition.waiver_expires_at,
             )
             .where(
                 ARBCondition.organization_id.in_(organization_ids),
@@ -167,7 +170,50 @@ class ARBWaiverExpiryBatchService:
             .with_for_update(skip_locked=True)
         )
         with Session(db.engine) as session, session.begin():
+            checkpoint = session.execute(
+                select(ARBWaiverExpiryCheckpoint).where(
+                    ARBWaiverExpiryCheckpoint.scope_key == scope_key
+                ).with_for_update()
+            ).scalar_one_or_none()
+            canonical_ids = list(organization_ids)
+            if checkpoint is None:
+                checkpoint = ARBWaiverExpiryCheckpoint(
+                    scope_key=scope_key,
+                    organization_ids_json=canonical_ids,
+                )
+                session.add(checkpoint)
+                session.flush()
+            elif checkpoint.organization_ids_json != canonical_ids:
+                raise RuntimeError("ARB waiver expiry checkpoint scope collision")
+
+            statement = base_statement
+            if checkpoint.cursor_waiver_expires_at is not None:
+                statement = statement.where(
+                    tuple_(
+                        ARBCondition.waiver_expires_at,
+                        ARBCondition.organization_id,
+                        ARBCondition.id,
+                    )
+                    > tuple_(
+                        checkpoint.cursor_waiver_expires_at,
+                        checkpoint.cursor_organization_id,
+                        checkpoint.cursor_condition_id,
+                    )
+                )
             rows = session.execute(statement).all()
+            if not rows and checkpoint.cursor_waiver_expires_at is not None:
+                rows = session.execute(base_statement).all()
+
+            if rows:
+                last = rows[-1]
+                checkpoint.cursor_waiver_expires_at = last.waiver_expires_at
+                checkpoint.cursor_organization_id = last.organization_id
+                checkpoint.cursor_condition_id = last.id
+            else:
+                checkpoint.cursor_waiver_expires_at = None
+                checkpoint.cursor_organization_id = None
+                checkpoint.cursor_condition_id = None
+            checkpoint.updated_at = func.clock_timestamp()
         return tuple(
             WaiverExpiryCandidate(
                 organization_id=row.organization_id,
@@ -176,6 +222,11 @@ class ARBWaiverExpiryBatchService:
             )
             for row in rows
         )
+
+    @staticmethod
+    def _scope_key(organization_ids: Sequence[int]) -> str:
+        canonical = ",".join(str(value) for value in organization_ids)
+        return hashlib.sha256(canonical.encode("ascii")).hexdigest()
 
     @classmethod
     def _process_candidates(

@@ -148,6 +148,32 @@ class ARBCondition(TenantMixin, db.Model):
     __mapper_args__ = {"version_id_col": revision}
 
 
+class ARBWaiverExpiryCheckpoint(db.Model):
+    """Durable fair-scan cursor for one explicit set of scheduler tenants."""
+
+    __tablename__ = "arb_waiver_expiry_checkpoints"
+
+    scope_key = db.Column(db.String(64), primary_key=True)
+    organization_ids_json = db.Column(db.JSON, nullable=False)
+    cursor_waiver_expires_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    cursor_organization_id = db.Column(db.Integer, nullable=True)
+    cursor_condition_id = db.Column(db.Integer, nullable=True)
+    updated_at = db.Column(
+        db.DateTime(timezone=True), nullable=False, server_default=db.func.now()
+    )
+
+    __table_args__ = (
+        db.CheckConstraint(
+            "(cursor_waiver_expires_at IS NULL AND cursor_organization_id IS NULL "
+            "AND cursor_condition_id IS NULL) OR "
+            "(cursor_waiver_expires_at IS NOT NULL "
+            "AND cursor_organization_id IS NOT NULL "
+            "AND cursor_condition_id IS NOT NULL)",
+            name="ck_arb_waiver_expiry_checkpoint_cursor",
+        ),
+    )
+
+
 def _decision_membership_sql(schema):
     return f"""
 CREATE OR REPLACE FUNCTION {schema}.archie_validate_arb_decision_event() RETURNS trigger
@@ -388,4 +414,9 @@ event.listen(ARBCondition, "before_update", _guard_condition_terms)
 event.listen(ARBCondition, "before_delete", _reject_decision_mutation)
 
 
-__all__ = ["ARBCondition", "ARBDecisionEvent", "ensure_arb_decision_guards"]
+__all__ = [
+    "ARBCondition",
+    "ARBDecisionEvent",
+    "ARBWaiverExpiryCheckpoint",
+    "ensure_arb_decision_guards",
+]

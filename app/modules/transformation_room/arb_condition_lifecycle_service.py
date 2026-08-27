@@ -536,7 +536,11 @@ class TypedARBConditionLifecycleService:
         organization_id = organization_id or current_app.config.get(
             "ARB_CONDITION_EXPIRY_ORGANIZATION_ID"
         )
-        if not isinstance(organization_id, int) or organization_id <= 0:
+        if (
+            not isinstance(organization_id, int)
+            or isinstance(organization_id, bool)
+            or organization_id <= 0
+        ):
             raise NotAuthorised("arb_condition_expiry_tenant_required")
         principal_id = TypedARBConditionLifecycleService._configured_scheduler_principal(
             organization_id
@@ -561,7 +565,11 @@ class TypedARBConditionLifecycleService:
         )
         if principal_id is None and legacy_organization_id == organization_id:
             principal_id = current_app.config.get("ARB_CONDITION_EXPIRY_PRINCIPAL_ID")
-        if not isinstance(principal_id, int) or principal_id <= 0:
+        if (
+            not isinstance(principal_id, int)
+            or isinstance(principal_id, bool)
+            or principal_id <= 0
+        ):
             return None
         return principal_id
 
@@ -574,7 +582,12 @@ class TypedARBConditionLifecycleService:
         configured = TypedARBConditionLifecycleService._configured_scheduler_principal(
             actor.organization_id
         )
-        if user is None or actor.user_id != configured:
+        if (
+            user is None
+            or user.organization_id != actor.organization_id
+            or user.confirmed is not True
+            or actor.user_id != configured
+        ):
             raise NotAuthorised("arb_condition_expiry_principal_invalid")
 
 

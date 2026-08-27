@@ -39,6 +39,9 @@ def db_session(app, _schema):
             yield db.session
         finally:
             organization_ids = tuple(db.session.info.get("c3_cleanup_org_ids", ()))
+            checkpoint_keys = tuple(
+                db.session.info.get("c3_cleanup_checkpoint_keys", ())
+            )
             db.session.remove()
             if organization_ids:
                 raw = db.engine.raw_connection()
@@ -48,6 +51,12 @@ def db_session(app, _schema):
                         original_role = cursor.fetchone()[0]
                         cursor.execute("SET session_replication_role = replica")
                         try:
+                            if checkpoint_keys:
+                                cursor.execute(
+                                    "DELETE FROM arb_waiver_expiry_checkpoints "
+                                    "WHERE scope_key = ANY(%s)",
+                                    (list(checkpoint_keys),),
+                                )
                             for table in _C3_CLEANUP_TABLES:
                                 cursor.execute(
                                     f'DELETE FROM "{table}" WHERE organization_id = ANY(%s)',
@@ -87,6 +96,17 @@ def db_session(app, _schema):
                         organization_count = cursor.fetchone()[0]
                         if organization_count:
                             residual["organizations"] = organization_count
+                        if checkpoint_keys:
+                            cursor.execute(
+                                "SELECT count(*) FROM arb_waiver_expiry_checkpoints "
+                                "WHERE scope_key = ANY(%s)",
+                                (list(checkpoint_keys),),
+                            )
+                            checkpoint_count = cursor.fetchone()[0]
+                            if checkpoint_count:
+                                residual["arb_waiver_expiry_checkpoints"] = (
+                                    checkpoint_count
+                                )
                         if restored_role != original_role or residual:
                             raise AssertionError(
                                 "C3 cleanup did not restore database state: "
@@ -562,6 +582,9 @@ def test_automatic_expiry_is_bounded_tenant_explicit_concurrent_and_retry_safe(
         "ARB_CONDITION_EXPIRY_PRINCIPALS",
         {str(org_id): users[org_id][1] for org_id in organization_ids},
     )
+    db_session.info.setdefault("c3_cleanup_checkpoint_keys", set()).add(
+        ARBWaiverExpiryBatchService._scope_key(organization_ids)
+    )
 
     first = ARBWaiverExpiryBatchService.run(
         organization_ids=reversed(organization_ids), batch_size=2
@@ -743,6 +766,90 @@ def test_automatic_expiry_is_bounded_tenant_explicit_concurrent_and_retry_safe(
             ARBCondition.organization_id == organization_ids[0],
         )
     ).scalar_one() == "pending"
+
+    monkeypatch.setattr(
+        ARBWaiverExpiryBatchService,
+        "_process_candidates",
+        classmethod(original_process.__func__),
+    )
+    poison = create_waived(organization_ids[0], due=True)
+    second_poison = create_waived(organization_ids[0], due=True)
+    healthy_after_poison = create_waived(organization_ids[0], due=True)
+    real_expire = TypedARBConditionLifecycleService.expire_waivers
+
+    def fail_one_condition(**kwargs):
+        if kwargs["condition_id"] in {poison[0], second_poison[0]}:
+            raise RuntimeError("persistent condition failure")
+        return real_expire(**kwargs)
+
+    monkeypatch.setattr(
+        TypedARBConditionLifecycleService,
+        "expire_waivers",
+        fail_one_condition,
+    )
+    poison_run = ARBWaiverExpiryBatchService.run(
+        organization_ids=organization_ids, batch_size=2
+    )
+    continuation_run = ARBWaiverExpiryBatchService.run(
+        organization_ids=organization_ids, batch_size=2
+    )
+    assert (poison_run.failed_count, poison_run.expired_count) == (2, 0)
+    assert (continuation_run.failed_count, continuation_run.expired_count) == (0, 1)
+    db.session.rollback()
+    assert db.session.execute(
+        db.select(ARBCondition.status).where(
+            ARBCondition.id == poison[0],
+            ARBCondition.organization_id == organization_ids[0],
+        )
+    ).scalar_one() == "waived"
+    assert db.session.execute(
+        db.select(ARBCondition.status).where(
+            ARBCondition.id == second_poison[0],
+            ARBCondition.organization_id == organization_ids[0],
+        )
+    ).scalar_one() == "waived"
+    assert db.session.execute(
+        db.select(ARBCondition.status).where(
+            ARBCondition.id == healthy_after_poison[0],
+            ARBCondition.organization_id == organization_ids[0],
+        )
+    ).scalar_one() == "pending"
+
+    monkeypatch.setattr(
+        TypedARBConditionLifecycleService,
+        "expire_waivers",
+        real_expire,
+    )
+    unconfirmed_due = create_waived(organization_ids[1], due=True)
+    db.session.execute(
+        db.update(User).where(
+            User.id == users[organization_ids[1]][1],
+            User.organization_id == organization_ids[1],
+        ).values(confirmed=False)
+    )
+    db.session.commit()
+    unconfirmed_run = ARBWaiverExpiryBatchService.run(
+        organization_ids=organization_ids, batch_size=1
+    )
+    assert unconfirmed_run.failed_count == 1
+    assert unconfirmed_run.errors[0]["condition_id"] == unconfirmed_due[0]
+    assert unconfirmed_run.errors[0]["reason"] == (
+        "arb_condition_expiry_principal_invalid"
+    )
+    db.session.rollback()
+    assert db.session.execute(
+        db.select(ARBCondition.status).where(
+            ARBCondition.id == unconfirmed_due[0],
+            ARBCondition.organization_id == organization_ids[1],
+        )
+    ).scalar_one() == "waived"
+    db.session.execute(
+        db.update(User).where(
+            User.id == users[organization_ids[1]][1],
+            User.organization_id == organization_ids[1],
+        ).values(confirmed=True)
+    )
+    db.session.commit()
 
 
 def test_legacy_condition_reconcile_is_real_and_idempotent(app, _schema):
