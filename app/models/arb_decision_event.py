@@ -120,8 +120,8 @@ LANGUAGE plpgsql SET search_path=pg_catalog,{schema} AS $$ BEGIN
  AND review.decision_rationale=NEW.rationale
  AND review.conditions::jsonb IS NOT DISTINCT FROM NEW.conditions_json::jsonb
  AND review.decision_date IS NOT NULL AND review.review_completed_at IS NOT NULL
- AND review.decision_date=cycle.closed_at
- AND review.review_completed_at=cycle.closed_at
+ AND review.decision_date=(cycle.closed_at AT TIME ZONE 'UTC')
+ AND review.review_completed_at=(cycle.closed_at AT TIME ZONE 'UTC')
  AND cycle.subject_type=NEW.subject_type
  AND cycle.subject_id=NEW.subject_id AND review.subject_type=NEW.subject_type
  AND review.subject_id=NEW.subject_id AND cycle.decision_brief_id IS NOT DISTINCT FROM NEW.decision_brief_id

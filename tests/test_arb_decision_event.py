@@ -63,8 +63,8 @@ def test_decision_guard_sql_binds_terminal_projection_and_command_envelopes():
     ) in sql
     assert "review.decision_date IS NOT NULL" in sql
     assert "review.review_completed_at IS NOT NULL" in sql
-    assert "review.decision_date=cycle.closed_at" in sql
-    assert "review.review_completed_at=cycle.closed_at" in sql
+    assert "review.decision_date=(cycle.closed_at AT TIME ZONE 'UTC')" in sql
+    assert "review.review_completed_at=(cycle.closed_at AT TIME ZONE 'UTC')" in sql
     assert "'arb-decision:' || NEW.organization_id::text || ':'" in sql
     assert "receipt.operation='arb.decision.record'" in sql
     assert "receipt.status = 'succeeded'" in sql
@@ -84,10 +84,29 @@ def test_direct_sql_projection_guard_rejects_null_or_mismatched_review_completio
         "review.conditions::jsonb IS NOT DISTINCT FROM NEW.conditions_json::jsonb",
         "review.decision_date IS NOT NULL",
         "review.review_completed_at IS NOT NULL",
-        "review.decision_date=cycle.closed_at",
-        "review.review_completed_at=cycle.closed_at",
+        "review.decision_date=(cycle.closed_at AT TIME ZONE 'UTC')",
+        "review.review_completed_at=(cycle.closed_at AT TIME ZONE 'UTC')",
     }
     assert all(predicate in sql for predicate in required_predicates)
+
+
+def test_terminal_timestamp_comparison_is_utc_under_bst_session(app, _schema):
+    """A London session must not reinterpret the review's stored naive UTC."""
+    from app import db
+
+    with app.app_context(), db.engine.begin() as connection:
+        connection.exec_driver_sql("SET LOCAL TIME ZONE 'Europe/London'")
+        exact, london_wall_clock = connection.exec_driver_sql(
+            """
+            SELECT
+              TIMESTAMP '2026-08-27 12:00:00' =
+                (TIMESTAMPTZ '2026-08-27 12:00:00+00' AT TIME ZONE 'UTC'),
+              TIMESTAMP '2026-08-27 13:00:00' =
+                (TIMESTAMPTZ '2026-08-27 12:00:00+00' AT TIME ZONE 'UTC')
+            """
+        ).one()
+        assert exact is True
+        assert london_wall_clock is False
 
 
 def test_open_state_guard_proves_real_pretransition_projection():
