@@ -23,6 +23,24 @@ actually decided -- is never modified; only the projection column moves, and it
 moves onto the value already stored beside it, so no information is invented and
 none is lost.
 
+CLOSED CYCLES ARE IMMUTABLE, AND THIS SCRIPT SUSPENDS THAT
+----------------------------------------------------------
+``trg_arb_cycle_history`` on ``arb_review_cycles`` rejects any UPDATE to a closed
+cycle -- which is every row this script targets. That guard is correct and must
+stay: it is what makes the governance record trustworthy. So the UPDATE is
+performed with that ONE trigger disabled, on that ONE table, inside the same
+transaction that re-enables it, and only after the prior state has been written
+to disk.
+
+This is deliberately narrow. It does not use ``session_replication_role =
+replica``, which would silently suspend every trigger on every table including
+the tenant and separation-of-duties guards. If the re-enable fails the whole
+transaction rolls back, so the table cannot be left unguarded.
+
+Disabling a trigger requires table ownership. If the operator running the
+rollback is not the owner, the script fails loudly rather than reporting a
+success it did not achieve.
+
 USAGE
 -----
     python scripts/rollback_typed_arb_cycle_projection.py            # report only
@@ -45,6 +63,20 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # The exact predicate the pre-release constraint enforces on a terminal cycle.
 # Rows failing it are the ones that make the older guard uninstallable.
+# Statuses the pre-release code accepts on a terminal cycle. Projecting status
+# onto anything outside this set would swap one violated constraint for another.
+_TERMINAL_STATUSES = frozenset(
+    {
+        "approved",
+        "approved_with_conditions",
+        "rejected",
+        "deferred",
+        "withdrawn",
+        "returned_for_evidence",
+        "returned_for_options",
+    }
+)
+
 _MISMATCH = (
     "closed_at IS NOT NULL "
     "AND terminal_outcome IS NOT NULL "
@@ -113,12 +145,42 @@ def main() -> int:
             )
         print(f"\nPrior state written to {backup}")
 
-        updated = db.session.execute(
-            db.text(
-                "UPDATE arb_review_cycles SET status = terminal_outcome "
-                f"WHERE {_MISMATCH}"
+        # Refuse to project onto a value the older code would itself reject.
+        # Without this the script could trade one uninstallable constraint for
+        # another and still report success.
+        illegal = [
+            row["terminal_outcome"]
+            for row in rows
+            if row["terminal_outcome"] not in _TERMINAL_STATUSES
+        ]
+        if illegal:
+            print(
+                "\nABORTED: these terminal_outcome values are not legal cycle "
+                "statuses, so projecting onto status would not help: "
+                f"{sorted(set(illegal))}"
             )
-        ).rowcount
+            return 1
+
+        try:
+            db.session.execute(
+                db.text(
+                    "ALTER TABLE arb_review_cycles DISABLE TRIGGER trg_arb_cycle_history"
+                )
+            )
+            updated = db.session.execute(
+                db.text(
+                    "UPDATE arb_review_cycles SET status = terminal_outcome "
+                    f"WHERE {_MISMATCH}"
+                )
+            ).rowcount
+        finally:
+            # Same transaction as the UPDATE: if this fails, the rollback takes
+            # the UPDATE with it and the table is never left unguarded.
+            db.session.execute(
+                db.text(
+                    "ALTER TABLE arb_review_cycles ENABLE TRIGGER trg_arb_cycle_history"
+                )
+            )
         db.session.commit()
 
         remaining = db.session.execute(
