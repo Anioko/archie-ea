@@ -56,13 +56,20 @@
                     <span class="text-2xs text-muted-foreground/80 inline-flex items-center gap-1 min-w-0"><i data-lucide="database" class="h-3 w-3 shrink-0"></i> {{ f.evidence }}</span>
                     <div class="flex items-center gap-2 shrink-0">
                         {% if f.writeback == 'classify_baseline' %}
-                        <span x-data="{ busy:false, done:false, msg:'',
-                            async fix(){ this.busy=true;
-                                try { const csrf=document.querySelector('meta[name=csrf-token]')?.content||'';
-                                    const r=await fetch('/solutions/data-stewardship/classify-baseline',{method:'POST',headers:{'X-CSRFToken':csrf}});
-                                    const d=await r.json();
-                                    if(r.ok&&d.success){ this.done=true; this.msg=d.classified+' classified ('+d.confidential+' confidential, '+d.internal+' internal)'; }
-                                } finally { this.busy=false; } } }">
+                        <span x-data="{ busy:false, done:false, msg:'', errorMsg:'',
+                            async fix(){ this.busy=true; this.errorMsg='';
+                                try {
+                                    const d = await Platform.fetch.post('/solutions/data-stewardship/classify-baseline', null, { silent: true });
+                                    if (d.success) {
+                                        this.done=true;
+                                        this.msg=d.classified+' classified ('+d.confidential+' confidential, '+d.internal+' internal)';
+                                    }
+                                } catch (err) {
+                                    this.errorMsg = err.message || 'Classification failed';
+                                } finally {
+                                    this.busy=false;
+                                }
+                            } }">
                             <button type="button" x-show="!done" @click="fix()" :disabled="busy"
                                     class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-2xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
                                 <i data-lucide="wand-2" class="h-3 w-3"></i>
@@ -70,6 +77,9 @@
                             </button>
                             <span x-show="done" x-cloak class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-2xs font-medium bg-success/10 text-success-emphasis border border-success/30">
                                 <i data-lucide="check" class="h-3 w-3"></i> <span x-text="msg"></span>
+                            </span>
+                            <span x-show="errorMsg" x-cloak class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-2xs font-medium bg-destructive/10 text-destructive-emphasis border border-destructive/30 mt-1">
+                                <i data-lucide="alert-circle" class="h-3 w-3"></i> <span x-text="errorMsg"></span>
                             </span>
                         </span>
                         {% endif %}

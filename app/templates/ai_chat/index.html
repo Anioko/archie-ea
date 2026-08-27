@@ -143,7 +143,7 @@
             // and the rejection escapes Alpine's evaluator as an unhandled
             // rejection that halts every listener registered after boot -- the
             // banner below is exactly what is supposed to render instead.
-            const r = await fetch('/ai-chat/api/health/llm');
+            const r = await fetch('/ai-chat/api/health/llm');  // raw-fetch-ok: a non-2xx here IS the answer (provider unhealthy); Platform.fetch raises on it and the rejection halts chat boot
             const d = await r.json();
             this.llmStatus = d.status || 'degraded';
             this.llmProvider = d.provider || null;

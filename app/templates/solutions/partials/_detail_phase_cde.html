@@ -175,9 +175,7 @@
                          this.damLoading = true;
                          this.damError = null;
                          try {
-                             const elRes = await fetch('/api/solutions/' + this.solutionId + '/archimate-elements', {credentials:'same-origin'});
-                             if (!elRes.ok) throw new Error('HTTP ' + elRes.status);
-                             const elData = await elRes.json();
+                             const elData = await Platform.fetch('/api/solutions/' + this.solutionId + '/archimate-elements', { silent: true });
                              const allEls = [];
                              for (const [layer, items] of Object.entries(elData.elements_by_layer || {})) {
                                  for (const el of items) allEls.push(el);
@@ -185,9 +183,7 @@
                              this.appComponents = allEls.filter(e => (e.type || '').includes('ApplicationComponent') || (e.type || '').includes('ApplicationService'));
                              this.dataObjects = allEls.filter(e => (e.type || '').includes('DataObject') || (e.type || '').includes('DataEntity') || (e.type || '').includes('DatabaseInstance'));
 
-                             const relRes = await fetch('/api/solutions/' + this.solutionId + '/relationships?type=access', {credentials:'same-origin'});
-                             if (!relRes.ok) throw new Error('HTTP ' + relRes.status);
-                             const relData = await relRes.json();
+                             const relData = await Platform.fetch('/api/solutions/' + this.solutionId + '/relationships?type=access', { silent: true });
                              for (const r of (relData.relationships || [])) {
                                  const key = this.accessKey(r.source?.id || r.source_element_id, r.target?.id || r.target_element_id);
                                  this.accessMap[key] = { id: r.id, access_type: r.access_type || 'read' };
@@ -210,24 +206,15 @@
 
                          try {
                              if (current && current.id) {
-                                 await fetch('/api/solutions/' + this.solutionId + '/relationships/' + current.id, {
-                                     method: 'DELETE', credentials: 'same-origin'
-                                 });
+                                 await Platform.fetch.delete('/api/solutions/' + this.solutionId + '/relationships/' + current.id, { silent: true });
                                  delete this.accessMap[key];
                              }
                              if (nextType) {
-                                 const res = await fetch('/api/solutions/' + this.solutionId + '/relationships', {
-                                     method: 'POST',
-                                     headers: {'Content-Type': 'application/json'},
-                                     credentials: 'same-origin',
-                                     body: JSON.stringify({
-                                         source_element_id: appId,
-                                         target_element_id: dataId,
-                                         relationship_type: 'access'
-                                     })
-                                 });
-                                 if (!res.ok) throw new Error('HTTP ' + res.status);
-                                 const data = await res.json();
+                                 const data = await Platform.fetch.post('/api/solutions/' + this.solutionId + '/relationships', {
+                                     source_element_id: appId,
+                                     target_element_id: dataId,
+                                     relationship_type: 'access'
+                                 }, { silent: true });
                                  this.accessMap[key] = { id: data.id, access_type: nextType };
                              }
                          } catch(e) {
@@ -378,7 +365,7 @@
 
                 {# Phase E Guidance (SDX-010) #}
                 <details class="mb-4 border border-border rounded-lg">
-                    <summary class="px-4 py-2 text-sm font-medium text-muted-foreground cursor-pointer hover:text-foreground select-none">Phase E Guidance — Opportunities & Solutions</summary>
+                    <summary class="px-4 py-2 text-sm font-medium text-muted-foreground cursor-pointer hover:text-foreground select-none">Phase E Guidance — Opportunities &amp; Solutions</summary>
                     <div class="px-4 py-3 text-sm text-muted-foreground space-y-2 border-t border-border">
                         <p><strong class="text-foreground">TOGAF Deliverables:</strong> Options Analysis (Buy vs Build vs Reuse), Implementation and Migration Strategy, Solution Architecture Document (SAD), transition architectures, implementation factor catalogue.</p>
                         <p><strong class="text-foreground">ArchiMate Artifacts:</strong> CourseOfAction elements, Plateaus, WorkPackages, ImplementationEvents. Gap analysis between baseline and target architectures.</p>

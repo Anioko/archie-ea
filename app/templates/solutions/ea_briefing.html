@@ -103,7 +103,7 @@
     {% endif %}
 
     {# ── History ───────────────────────────────────────────────────── #}
-    {% if history and history|length > 1 %}
+    {% if history and history|length > 0 %}
     <div class="border border-border rounded-xl bg-card overflow-hidden">
         <div class="px-5 py-3 border-b border-border"><h2 class="text-sm font-semibold text-foreground">Past Briefings</h2></div>
         <table class="min-w-full divide-y divide-border text-sm">
@@ -140,11 +140,7 @@
             async generate() {
                 this.busy = true;
                 try {
-                    const r = await fetch('/solutions/briefings/api/generate', {
-                        method: 'POST',
-                        headers: { 'X-CSRFToken': this._csrf() },
-                    });
-                    if (!r.ok) throw new Error('Briefing generation failed: ' + r.status);
+                    await Platform.fetch.post('/solutions/briefings/api/generate', null, { silent: true });
                     window.location.href = '/solutions/briefings';
                 } catch (e) {
                     if (window.Platform && Platform.toast) Platform.toast.error(e.message || 'Failed to generate briefing');

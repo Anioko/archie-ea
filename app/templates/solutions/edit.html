@@ -92,26 +92,14 @@
                         <label for="edit-target-outcomes" class="block text-sm font-medium text-foreground/80 mb-1">Target Outcomes (comma-separated)</label>
                         <textarea name="target_outcomes" id="edit-target-outcomes" rows="2"
                                   class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
-                                  placeholder="e.g., Reduce cost by 30%, Improve efficiency, Better customer experience">
-                            {%- if solution.target_outcomes is string -%}
-                                {{ solution.target_outcomes }}
-                            {%- elif solution.target_outcomes -%}
-                                {{ solution.target_outcomes|join(', ') }}
-                            {%- endif -%}
-                        </textarea>
+                                  placeholder="e.g., Reduce cost by 30%, Improve efficiency, Better customer experience">{%- if solution.target_outcomes is string -%}{{ solution.target_outcomes }}{%- elif solution.target_outcomes -%}{{ solution.target_outcomes|join(', ') }}{%- endif -%}</textarea>
                     </div>
 
                     <div>
                         <label for="edit-success-metrics" class="block text-sm font-medium text-foreground/80 mb-1">Success Metrics (comma-separated)</label>
                         <textarea name="success_metrics" id="edit-success-metrics" rows="2"
                                   class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
-                                  placeholder="e.g., ROI 2.5x, Deployment time 6 months, Adoption 80%">
-                            {%- if solution.success_metrics is string -%}
-                                {{ solution.success_metrics }}
-                            {%- elif solution.success_metrics -%}
-                                {{ solution.success_metrics|join(', ') }}
-                            {%- endif -%}
-                        </textarea>
+                                  placeholder="e.g., ROI 2.5x, Deployment time 6 months, Adoption 80%">{%- if solution.success_metrics is string -%}{{ solution.success_metrics }}{%- elif solution.success_metrics -%}{{ solution.success_metrics|join(', ') }}{%- endif -%}</textarea>
                     </div>
                 </div>
             </div>
@@ -130,28 +118,20 @@
                         <label for="edit-in-scope" class="block text-sm font-medium text-foreground/80 mb-1">In Scope (comma-separated)</label>
                         <textarea name="in_scope_applications" id="edit-in-scope" rows="2"
                                   class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
-                                  placeholder="Comma-separated items in scope">
-                            {%- if solution.in_scope_applications -%}
-                                {{ solution.in_scope_applications|join(', ') if solution.in_scope_applications is not string else solution.in_scope_applications }}
-                            {%- endif -%}
-                        </textarea>
+                                  placeholder="Comma-separated items in scope">{%- if solution.in_scope_applications -%}{{ solution.in_scope_applications|join(', ') if solution.in_scope_applications is not string else solution.in_scope_applications }}{%- endif -%}</textarea>
                     </div>
                     <div>
                         <label for="edit-out-of-scope" class="block text-sm font-medium text-foreground/80 mb-1">Out of Scope (comma-separated)</label>
                         <textarea name="out_of_scope_applications" id="edit-out-of-scope" rows="2"
                                   class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
-                                  placeholder="Comma-separated items out of scope">
-                            {%- if solution.out_of_scope_applications -%}
-                                {{ solution.out_of_scope_applications|join(', ') if solution.out_of_scope_applications is not string else solution.out_of_scope_applications }}
-                            {%- endif -%}
-                        </textarea>
+                                  placeholder="Comma-separated items out of scope">{%- if solution.out_of_scope_applications -%}{{ solution.out_of_scope_applications|join(', ') if solution.out_of_scope_applications is not string else solution.out_of_scope_applications }}{%- endif -%}</textarea>
                     </div>
                 </div>
             </div>
 
             <!-- Governance -->
             <div class="bg-card rounded-lg shadow border border-border p-6">
-                <h2 class="text-xl font-bold text-foreground mb-4">Governance & Ownership</h2>
+                <h2 class="text-xl font-bold text-foreground mb-4">Governance &amp; Ownership</h2>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {% for field_name, field_label in [
                         ('solution_owner', 'Solution Owner'),
@@ -169,8 +149,7 @@
                             if (this.query.length < 2) { this.results = []; this.showDropdown = false; return; }
                             this.searching = true;
                             try {
-                                const resp = await fetch('/api/users', { headers: { 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || '' } });
-                                const data = await resp.json();
+                                const data = await Platform.fetch.get('/api/users', null, { silent: true });
                                 if (data.success) {
                                     const q = this.query.toLowerCase();
                                     this.results = data.users.filter(u => u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q)).slice(0, 5);
