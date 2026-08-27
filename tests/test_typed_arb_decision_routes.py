@@ -1067,6 +1067,8 @@ def route_scope(app, _schema, request):
         foreign_organization_id=None,
         submitter_id=None,
         decider_id=None,
+        cto_id=None,
+        invalid_authority_id=None,
         foreign_decider_id=None,
         review_id=None,
         cycle_id=None,
@@ -1142,18 +1144,17 @@ def route_scope(app, _schema, request):
                             "foreign": scope.foreign_organization_id,
                         },
                     )
-                actor_ids = {
-                    "submitter": scope.submitter_id,
-                    "decider": scope.decider_id,
-                    "foreign_decider": scope.foreign_decider_id,
-                }
                 for table_name in ("soc2_audit_log", "solution_notifications"):
                     connection.execute(
                         db.text(
                             f'DELETE FROM "{table_name}" '
-                            "WHERE user_id IN (:submitter, :decider, :foreign_decider)"
+                            "WHERE user_id IN (SELECT id FROM users "
+                            "WHERE organization_id IN (:own, :foreign))"
                         ),
-                        actor_ids,
+                        {
+                            "own": scope.organization_id,
+                            "foreign": scope.foreign_organization_id,
+                        },
                     )
                 connection.execute(
                     db.text(
@@ -1210,8 +1211,24 @@ def route_scope(app, _schema, request):
             role_archetype="enterprise_architect",
             write_role=write_role,
         )
+        cto = _user(
+            db.session,
+            org,
+            role="cto",
+            role_archetype="manager",
+            write_role=write_role,
+        )
+        invalid_authority = _user(
+            db.session,
+            org,
+            role="application_manager",
+            role_archetype="engineer",
+            write_role=write_role,
+        )
         scope.submitter_id = submitter.id
         scope.decider_id = decider.id
+        scope.cto_id = cto.id
+        scope.invalid_authority_id = invalid_authority.id
         scope.foreign_decider_id = foreign_decider.id
         solution, workspace = _solution_review(db.session, org, submitter)
         db.session.commit()
@@ -1587,6 +1604,31 @@ def test_registered_typed_waiver_uses_canonical_lifecycle_command(app, route_sco
     db.session.remove()
     assert db.session.get(ARBCondition, condition_id).status == "waived"
     assert db.session.get(ARBReviewCycle, route_scope.cycle_id).status == "approved"
+
+
+def test_forged_typed_condition_review_context_is_rejected_before_capture(
+    app, route_scope
+):
+    client = _login_client(app, route_scope.decider_id)
+    conditional = client.post(
+        f"/api/arb-workflow/{route_scope.review_id}/conditional-approval",
+        json=_conditional_payload(),
+    ).get_json()["data"]
+    condition_id = conditional["condition_ids"][0]
+
+    response = _login_client(app, route_scope.submitter_id).post(
+        f"/api/arb-workflow/conditions/{condition_id}/fulfill",
+        json={
+            "governance_model": "typed",
+            "review_item_id": route_scope.solution_review_id,
+            "action": "submit_evidence",
+            "evidence": _condition_evidence(),
+        },
+    )
+
+    assert response.status_code == 404
+    db.session.remove()
+    assert db.session.get(ARBCondition, condition_id).status == "pending"
 
 
 def _legacy_condition_with_typed_id(route_scope, condition_id):
@@ -1968,7 +2010,7 @@ def test_solution_workflow_begin_and_reject_project_typed_review_only(
     assert solution.governance_status == "draft"
 
 
-def test_solution_workflow_approve_uses_typed_decision_without_solution_write(
+def test_solution_workflow_cto_authority_reaches_typed_service_without_solution_write(
     app, route_scope
 ):
     from app.modules.architecture.routes import arb_workflow_routes
@@ -1978,7 +2020,7 @@ def test_solution_workflow_approve_uses_typed_decision_without_solution_write(
         module=arb_workflow_routes,
         function_name="approve_solution",
         args=(route_scope.solution_id,),
-        user_id=route_scope.decider_id,
+        user_id=route_scope.cto_id,
         organization_id=route_scope.organization_id,
         json={"notes": "The pinned evidence meets the governance bar."},
     )
@@ -1986,8 +2028,39 @@ def test_solution_workflow_approve_uses_typed_decision_without_solution_write(
     assert response.status_code == 200
     assert response.get_json()["governance_status"] == "approved"
     db.session.remove()
+    event = db.session.scalar(
+        db.select(ARBDecisionEvent).where(
+            ARBDecisionEvent.review_cycle_id == route_scope.solution_cycle_id
+        )
+    )
+    assert event.actor_id == route_scope.cto_id
     assert db.session.get(ARBReviewCycle, route_scope.solution_cycle_id).status == "approved"
     assert db.session.get(Solution, route_scope.solution_id).governance_status == "draft"
+
+
+def test_solution_workflow_invalid_enterprise_role_is_denied_by_typed_service(
+    app, route_scope
+):
+    from app.modules.architecture.routes import arb_workflow_routes
+
+    authority = db.session.get(User, route_scope.invalid_authority_id)
+    assert authority.can(Permission.GENERAL)
+    assert authority.enterprise_role == "application_manager"
+    response = _call_route(
+        app,
+        module=arb_workflow_routes,
+        function_name="approve_solution",
+        args=(route_scope.solution_id,),
+        user_id=route_scope.invalid_authority_id,
+        organization_id=route_scope.organization_id,
+        json={"notes": "A write-capable but unauthorized decision attempt."},
+    )
+
+    assert response.status_code == 403
+    assert response.get_json()["reason_codes"] == ["actor_not_authorized"]
+    db.session.remove()
+    assert _count_decisions(db.session, route_scope.solution_cycle_id) == 0
+    assert db.session.get(ARBReviewCycle, route_scope.solution_cycle_id).status == "submitted"
 
 
 def test_solution_workflow_withdraw_rejects_typed_cycle_without_mutation(

@@ -32,6 +32,7 @@ from flask_login import current_user, login_required
 
 from app.decorators import audit_log, require_roles
 from app.extensions import db
+from app.models.user import Permission
 from app.modules.transformation_room.arb_decision_adapter import (
     TypedARBDecisionAdapter,
 )
@@ -48,6 +49,17 @@ def _enforce_legacy_roles(*roles):
         return None
 
     return allowed()
+
+
+def _arb_write_floor_denial():
+    """Retain the authenticated ARB write floor before canonical authority."""
+    if current_user.can(Permission.GENERAL):
+        return None
+    return jsonify({
+        "success": False,
+        "error": "Your role does not have write access to ARB governance.",
+        "code": "PERMISSION_DENIED",
+    }), 403
 
 
 @arb_workflow_bp.route("/<int:review_item_id>/compliance-check", methods=["POST"])
@@ -911,7 +923,6 @@ def get_solution_lifecycle(solution_id: int):
 
 @arb_workflow_bp.route("/solutions/<int:solution_id>/begin-review", methods=["POST"])
 @login_required
-@require_roles(*_REVIEW_ROLES)
 @audit_log("arb_begin_review")
 def begin_arb_review(solution_id: int):
     """
@@ -925,6 +936,9 @@ def begin_arb_review(solution_id: int):
     )
 
     if TypedARBDecisionAdapter.solution_has_typed_cycle(solution_id):
+        denial = _arb_write_floor_denial()
+        if denial is not None:
+            return denial
         typed_result = TypedARBDecisionAdapter.begin_current_solution_from_request(
             solution_id=solution_id
         )
@@ -942,6 +956,7 @@ def begin_arb_review(solution_id: int):
             "idempotent": typed_result.idempotent,
         })
 
+    _enforce_legacy_roles(*_REVIEW_ROLES)
     solution = _get_solution_or_404(solution_id)
     if _typed_cycle_for_solution(solution_id, open_only=True) is not None:
         return _typed_lifecycle_blocked(
@@ -975,7 +990,6 @@ def begin_arb_review(solution_id: int):
 
 @arb_workflow_bp.route("/solutions/<int:solution_id>/approve", methods=["POST"])
 @login_required
-@require_roles(*_REVIEW_ROLES)
 @audit_log("arb_approve_solution")
 def approve_solution(solution_id: int):
     """
@@ -990,6 +1004,9 @@ def approve_solution(solution_id: int):
 
     data = request.get_json(silent=True) or {}
     if TypedARBDecisionAdapter.solution_has_typed_cycle(solution_id):
+        denial = _arb_write_floor_denial()
+        if denial is not None:
+            return denial
         typed_result = TypedARBDecisionAdapter.decide_current_solution_from_request(
             solution_id=solution_id,
             payload=data,
@@ -1010,6 +1027,7 @@ def approve_solution(solution_id: int):
             "idempotent": typed_result.idempotent,
         })
 
+    _enforce_legacy_roles(*_REVIEW_ROLES)
     solution = _get_solution_or_404(solution_id)
     typed_cycle = _typed_cycle_for_solution(solution_id, open_only=True)
     if typed_cycle is not None:
@@ -1078,7 +1096,6 @@ def approve_solution(solution_id: int):
 
 @arb_workflow_bp.route("/solutions/<int:solution_id>/reject", methods=["POST"])
 @login_required
-@require_roles(*_REVIEW_ROLES)
 @audit_log("arb_reject_solution")
 def reject_solution(solution_id: int):
     """
@@ -1093,6 +1110,9 @@ def reject_solution(solution_id: int):
 
     data = request.get_json(silent=True) or {}
     if TypedARBDecisionAdapter.solution_has_typed_cycle(solution_id):
+        denial = _arb_write_floor_denial()
+        if denial is not None:
+            return denial
         typed_result = TypedARBDecisionAdapter.decide_current_solution_from_request(
             solution_id=solution_id,
             payload=data,
@@ -1114,6 +1134,7 @@ def reject_solution(solution_id: int):
             "idempotent": typed_result.idempotent,
         })
 
+    _enforce_legacy_roles(*_REVIEW_ROLES)
     solution = _get_solution_or_404(solution_id)
     typed_cycle = _typed_cycle_for_solution(solution_id, open_only=True)
     if typed_cycle is not None:
