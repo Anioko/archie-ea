@@ -44,17 +44,30 @@ class ARBEscalationService:
         detail: str,
         category: str,
         severity: str,
-        user_id: int,
+        user_id: Optional[int] = None,
         solution_id: Optional[int] = None,
         source: str = "ai_finding",
     ) -> Dict[str, Any]:
-        """Create an ARB review item from an AI finding. Returns
-        {success, review_number, id} or {success: False, error}."""
+        """Create an *untyped* ARB review item from an AI finding.
+
+        Returns {success, review_number, id} or {success: False, error}.
+
+        The submitter is taken from the authenticated session, never from the
+        ``user_id`` argument: a caller must not be able to attribute an
+        escalation to another user.  A finding that names a Solution is not
+        escalated here at all — it would create a linked review that bypassed
+        the typed readiness and evidence gates — so it is redirected to the
+        canonical evidence-gated submission endpoint.
+        """
+        from flask_login import current_user
+
         from app.models.architecture_review_board import ARBReviewItem
 
         title = (title or "").strip()
         if not title:
             return {"success": False, "error": "A finding title is required."}
+        # An unsupported subject shape is rejected before anything else: a typed
+        # subject must never acquire an untyped, evidence-free review row.
         if solution_id is not None:
             return {
                 "success": False,
@@ -63,6 +76,13 @@ class ARBEscalationService:
                     "submission endpoint."
                 ),
             }
+
+        session_user_id = (
+            current_user.id if getattr(current_user, "is_authenticated", False) else None
+        )
+        if not isinstance(session_user_id, int):
+            return {"success": False, "error": "Sign in to escalate a finding."}
+        user_id = session_user_id
 
         try:
             review_number = ARBReviewItem.generate_review_number()

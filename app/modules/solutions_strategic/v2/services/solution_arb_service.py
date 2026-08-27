@@ -11,7 +11,28 @@ from app.models.solution_governance import SolutionARBReview, SolutionVersion
 
 class SolutionARBService:
     """Manage ARB submission and decision tracking for solutions."""
-    
+
+    @staticmethod
+    def _session_actor() -> tuple:
+        """Return ``(user_id, organization_id)`` from the authenticated session.
+
+        Governance actors are never taken from a request body.  Raises
+        ``PermissionError`` when there is no tenant-bound authenticated user.
+        """
+        from flask import g
+        from flask_login import current_user
+
+        if not getattr(current_user, "is_authenticated", False):
+            raise PermissionError("actor_not_authorized")
+        user_id = getattr(current_user, "id", None)
+        org_id = getattr(g, "current_org_id", None)
+        if not isinstance(org_id, int) or org_id <= 0:
+            org_id = getattr(current_user, "organization_id", None)
+        if not isinstance(user_id, int) or not isinstance(org_id, int) or org_id <= 0:
+            raise PermissionError("actor_not_authorized")
+        return user_id, org_id
+
+
     def submit_for_arb_review(
         self,
         solution_id: int,
@@ -50,9 +71,15 @@ class SolutionARBService:
         Returns:
             SolutionARBReview: Updated review
         """
-        review = db.session.query(SolutionARBReview).get(review_id)
+        _, organization_id = self._session_actor()
+        review = db.session.execute(
+            db.select(SolutionARBReview).where(
+                SolutionARBReview.id == review_id,
+                SolutionARBReview.organization_id == organization_id,
+            )
+        ).scalar_one_or_none()
         if not review:
-            raise ValueError(f"Review {review_id} not found")
+            raise LookupError("arb_review_not_found")
         
         review.arb_attendees = attendees
         
@@ -64,32 +91,52 @@ class SolutionARBService:
         self,
         review_id: int,
         decision: str,  # approved, rejected, conditional
-        decided_by_id: int,
         decision_reason: str,
+        solution_id: Optional[int] = None,
         conditions: Optional[List[Dict]] = None,
         compliance_notes: Optional[Dict] = None
     ) -> SolutionARBReview:
         """
         Record ARB decision.
-        
+
+        The deciding actor is resolved from the authenticated session only — a
+        caller-supplied ``decided_by_id`` is not accepted, because it let a
+        browser attribute a governance decision to another user.
+
         Args:
             review_id: ARB review
             decision: approved/rejected/conditional
-            decided_by_id: Lead ARB member making decision
             decision_reason: Why this decision
+            solution_id: Solution the review must belong to (membership proof)
             conditions: Conditions for approval (if conditional)
             compliance_notes: Compliance assessment per area
-        
+
         Returns:
             SolutionARBReview: Updated review
+
+        Raises:
+            PermissionError: no authenticated tenant-bound actor
+            LookupError: review missing, foreign, or not on this solution
+            ValueError: invalid decision value
         """
-        review = db.session.query(SolutionARBReview).get(review_id)
+        decided_by_id, organization_id = self._session_actor()
+
+        predicates = [
+            SolutionARBReview.id == review_id,
+            SolutionARBReview.organization_id == organization_id,
+        ]
+        if solution_id is not None:
+            predicates.append(SolutionARBReview.solution_id == solution_id)
+        review = db.session.execute(
+            db.select(SolutionARBReview).where(*predicates)
+        ).scalar_one_or_none()
         if not review:
-            raise ValueError(f"Review {review_id} not found")
-        
+            # Same outcome for missing and foreign: never confirm existence.
+            raise LookupError("arb_review_not_found")
+
         if decision not in ['approved', 'rejected', 'conditional']:
-            raise ValueError(f"Invalid decision: {decision}")
-        
+            raise ValueError("invalid_decision")
+
         review.arb_decision = decision
         review.decided_by_id = decided_by_id
         review.decided_at = datetime.utcnow()
@@ -105,7 +152,12 @@ class SolutionARBService:
         
         # If approved, update related version
         if review.version_id and decision == 'approved':
-            version = db.session.query(SolutionVersion).get(review.version_id)
+            version = db.session.execute(
+                db.select(SolutionVersion).where(
+                    SolutionVersion.id == review.version_id,
+                    SolutionVersion.organization_id == organization_id,
+                )
+            ).scalar_one_or_none()
             if version:
                 version.approval_status = 'approved'
                 version.approved_at = datetime.utcnow()
@@ -131,9 +183,15 @@ class SolutionARBService:
         Returns:
             SolutionARBReview: Updated review
         """
-        review = db.session.query(SolutionARBReview).get(review_id)
+        _, organization_id = self._session_actor()
+        review = db.session.execute(
+            db.select(SolutionARBReview).where(
+                SolutionARBReview.id == review_id,
+                SolutionARBReview.organization_id == organization_id,
+            )
+        ).scalar_one_or_none()
         if not review:
-            raise ValueError(f"Review {review_id} not found")
+            raise LookupError("arb_review_not_found")
         
         review.compliance_areas_reviewed = compliance_areas
         review.compliance_notes = compliance_notes
@@ -159,9 +217,15 @@ class SolutionARBService:
         Returns:
             SolutionARBReview: Updated review
         """
-        review = db.session.query(SolutionARBReview).get(review_id)
+        _, organization_id = self._session_actor()
+        review = db.session.execute(
+            db.select(SolutionARBReview).where(
+                SolutionARBReview.id == review_id,
+                SolutionARBReview.organization_id == organization_id,
+            )
+        ).scalar_one_or_none()
         if not review:
-            raise ValueError(f"Review {review_id} not found")
+            raise LookupError("arb_review_not_found")
         
         review.next_review_date = next_review_date
         review.next_steps = next_steps
@@ -254,9 +318,15 @@ class SolutionARBService:
         Returns:
             Dict showing which conditions are satisfied
         """
-        review = db.session.query(SolutionARBReview).get(review_id)
+        _, organization_id = self._session_actor()
+        review = db.session.execute(
+            db.select(SolutionARBReview).where(
+                SolutionARBReview.id == review_id,
+                SolutionARBReview.organization_id == organization_id,
+            )
+        ).scalar_one_or_none()
         if not review:
-            raise ValueError(f"Review {review_id} not found")
+            raise LookupError("arb_review_not_found")
         
         if review.arb_decision != 'conditional':
             return {'error': 'Review is not conditional approval'}

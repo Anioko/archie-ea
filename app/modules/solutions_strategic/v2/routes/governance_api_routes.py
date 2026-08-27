@@ -3,8 +3,9 @@ Phase 5A & 5B API Routes: Governance, execution tracking, issues, learning.
 """
 
 import logging
+import uuid
 from datetime import datetime
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, g, request, jsonify
 from flask_login import current_user, login_required
 from functools import wraps
 
@@ -29,13 +30,35 @@ arb_service = SolutionARBService()
 learning_service = SolutionLearningService()
 
 
+def _current_org_id():
+    """Tenant of the authenticated session, never a caller-supplied value."""
+    org_id = getattr(g, 'current_org_id', None)
+    if not isinstance(org_id, int) or org_id <= 0:
+        org_id = getattr(current_user, 'organization_id', None)
+    return org_id if isinstance(org_id, int) and org_id > 0 else None
+
+
 def solution_required(f):
-    """Decorator to check solution exists."""
+    """Resolve the solution with an explicit (id, organization_id) predicate.
+
+    ``Session.get``/``Query.get`` are tenant-filtered only on an identity-map
+    miss, so a warm session could hand back another tenant's row.  The explicit
+    predicate always emits SQL and always carries the tenant.
+    """
     @wraps(f)
     def decorated_function(solution_id, *args, **kwargs):
-        solution = db.session.query(Solution).get(solution_id)
+        org_id = _current_org_id()
+        solution = None
+        if org_id is not None:
+            solution = db.session.execute(
+                db.select(Solution).where(
+                    Solution.id == solution_id,
+                    Solution.organization_id == org_id,
+                )
+            ).scalar_one_or_none()
         if not solution:
-            return jsonify({'error': f'Solution {solution_id} not found'}), 404
+            # Same response for missing and foreign: never confirm existence.
+            return jsonify({'error': 'Solution not found'}), 404
         return f(solution_id, *args, **kwargs)
     return decorated_function
 
@@ -423,14 +446,43 @@ def submit_for_arb(solution_id):
         solution_id=solution_id,
         payload=data,
     )
+    request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
     if not result.success:
         return jsonify({"success": False, "reason_codes": result.reason_codes,
-                        "missing_evidence": result.missing_evidence}), result.http_status
+                        "missing_evidence": result.missing_evidence,
+                        "request_id": request_id}), result.http_status
     return jsonify({"success": True, "review_item_id": result.review_item_id,
                     "review_number": result.review_number, "snapshot_id": result.snapshot_id,
                     "idempotent": result.idempotent,
                     "review_cycle_id": result.review_cycle_id,
-                    "canonical_url": result.canonical_url}), 201 if not result.idempotent else 200
+                    "canonical_url": result.canonical_url,
+                    "redirect_url": f"/arb/reviews/{result.review_item_id}",
+                    "request_id": request_id}), 201 if not result.idempotent else 200
+
+
+@governance_api_bp.route(
+    '/arb/subjects/<subject_type>/<int:subject_id>/submit', methods=['POST']
+)
+@login_required
+def submit_typed_subject_for_arb(subject_type, subject_id):
+    """Submit a persisted typed ARB subject (ADR / Architecture Model).
+
+    This is the first live ingress for the typed submission command for these
+    two subjects.  Only a real, tenant-scoped subject row can be submitted; the
+    request body contributes nothing but the ``human_reviewed`` assertion.
+    """
+    from app.modules.transformation_room.arb_typed_subject_ingress import (
+        TypedARBSubjectIngress,
+    )
+
+    result = TypedARBSubjectIngress.submit_from_request(
+        subject_type=subject_type,
+        subject_id=subject_id,
+        payload=request.get_json(silent=True) or {},
+    )
+    if not result.success:
+        return jsonify(result.failure_payload()), result.http_status
+    return jsonify(result.success_payload()), result.http_status
 
 
 @governance_api_bp.route('/solutions/<int:solution_id>/arb/status', methods=['GET'])
@@ -450,20 +502,26 @@ def get_arb_status(solution_id):
 @solution_required
 def record_arb_decision(solution_id, review_id):
     """Record ARB decision."""
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
 
     try:
+        # The actor is the authenticated session, never `decided_by_id`.
         review = arb_service.record_arb_decision(
             review_id=review_id,
+            solution_id=solution_id,
             decision=data.get('decision'),
-            decided_by_id=data.get('decided_by_id'),
             decision_reason=data.get('decision_reason'),
             conditions=data.get('conditions'),
             compliance_notes=data.get('compliance_notes')
         )
         # PLT-014: Notify solution owner of ARB decision
         decision = data.get('decision', 'recorded')
-        solution = db.session.query(Solution).get(solution_id)
+        solution = db.session.execute(
+            db.select(Solution).where(
+                Solution.id == solution_id,
+                Solution.organization_id == _current_org_id(),
+            )
+        ).scalar_one_or_none()
         if solution and getattr(solution, 'created_by_id', None):
             _notify_if_pref(
                 user_id=solution.created_by_id,
@@ -474,8 +532,25 @@ def record_arb_decision(solution_id, review_id):
             )
             db.session.commit()
         return jsonify(review.to_dict()), 200
-    except Exception as e:
-        return jsonify({'error': str(e)}), 400
+    except PermissionError:
+        return jsonify({
+            'success': False,
+            'reason_codes': ['actor_not_authorized'],
+            'request_id': request.headers.get('X-Request-ID') or str(uuid.uuid4()),
+        }), 403
+    except LookupError:
+        return jsonify({
+            'success': False,
+            'reason_codes': ['arb_review_not_found'],
+            'request_id': request.headers.get('X-Request-ID') or str(uuid.uuid4()),
+        }), 404
+    except ValueError:
+        db.session.rollback()
+        return jsonify({
+            'success': False,
+            'reason_codes': ['invalid_decision'],
+            'request_id': request.headers.get('X-Request-ID') or str(uuid.uuid4()),
+        }), 422
 
 
 @governance_api_bp.route('/solutions/<int:solution_id>/arb/<int:review_id>/compliance', methods=['POST'])
