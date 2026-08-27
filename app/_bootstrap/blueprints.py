@@ -1799,6 +1799,22 @@ def _register_tail_blueprints(app, csrf, **flags):
     # Architecture Monitoring — removed (empty shell page, 17 unused API routes)
     # architecture_monitoring_bp unregistered
 
+    # Typed ARB condition evidence/verify/waive API. Canonical-only surface with
+    # no legacy counterpart, so it is not gated on the legacy architecture flag.
+    try:
+        from app.modules.architecture.routes.arb_condition_routes import (
+            arb_conditions_api_bp,
+        )
+
+        app.register_blueprint(arb_conditions_api_bp)
+        app.logger.info(
+            "[BLUEPRINT] Typed ARB condition API registered at /arb/api/conditions"
+        )
+    except Exception as e:
+        app.logger.warning(
+            f"[BLUEPRINT] Failed to register typed ARB condition routes: {e}"
+        )
+
     # ARB routes
     if not _ff_architecture:
         try:
