@@ -21,7 +21,7 @@ class ARBConditionEvent(TenantMixin, db.Model):
     to_state = db.Column(db.String(30), nullable=False)
     condition_revision = db.Column(db.Integer, nullable=False)
     submitted_evidence_id = db.Column(db.Integer, db.ForeignKey("arb_condition_evidence_records.id", ondelete="RESTRICT", use_alter=True, name="fk_arb_condition_event_evidence"))
-    waiver_scope_json = db.Column(db.JSON)
+    waiver_scope_json = db.Column(db.JSON(none_as_null=True))
     projection_status = db.Column(db.String(40), nullable=False)
     projection_revision = db.Column(db.Integer, nullable=False)
     actor_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)

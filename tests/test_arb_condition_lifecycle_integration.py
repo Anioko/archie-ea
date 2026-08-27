@@ -201,7 +201,8 @@ def test_submit_verify_and_projection_commit_under_real_guards(
         organization_id=org.id
     ).count() == 1
 
-    waiver_now = datetime(2026, 8, 27, 12, tzinfo=timezone.utc)
+    database_now = CommandService._database_now
+    waiver_now = database_now(db_session) - timedelta(days=2)
     monkeypatch.setattr(
         CommandService, "_database_now", staticmethod(lambda session: waiver_now),
     )
@@ -223,10 +224,7 @@ def test_submit_verify_and_projection_commit_under_real_guards(
     monkeypatch.setitem(
         app.config, "ARB_CONDITION_EXPIRY_CAPABILITY", "c3-expiry-capability"
     )
-    monkeypatch.setattr(
-        CommandService, "_database_now",
-        staticmethod(lambda session: waiver_now + timedelta(days=2)),
-    )
+    monkeypatch.setattr(CommandService, "_database_now", staticmethod(database_now))
     expired = TypedARBConditionLifecycleService.expire_waivers(
         capability="c3-expiry-capability", command_key=f"expiry-{suffix}",
         condition_id=waiver_condition_id,

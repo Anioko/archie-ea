@@ -35,6 +35,20 @@ def test_condition_event_is_tenant_scoped_typed_and_command_fenced():
     } <= set(ARBConditionEvent.__table__.columns.keys())
 
 
+def test_nullable_waiver_payloads_bind_python_none_as_sql_null():
+    """Non-waiver states must satisfy the database ``IS NULL`` invariants."""
+    from sqlalchemy.dialects import postgresql
+
+    from app.models.arb_condition_event import ARBConditionEvent
+    from app.models.arb_decision_event import ARBCondition
+
+    dialect = postgresql.dialect()
+    for model in (ARBConditionEvent, ARBCondition):
+        column_type = model.__table__.c.waiver_scope_json.type
+        processor = column_type.dialect_impl(dialect).bind_processor(dialect)
+        assert processor(None) is None
+
+
 def test_condition_event_guards_prove_source_final_state_and_exact_operation():
     from app.models.arb_condition_event import (
         _condition_event_final_sql,
@@ -109,8 +123,14 @@ def test_condition_reconcile_sql_converges_revision_check_and_evidence_fks():
     assert "UPDATE \"public\".arb_canonical_conditions SET revision = 1" in sql
     assert "ALTER COLUMN revision SET DEFAULT 1" in sql
     assert "ALTER COLUMN revision SET NOT NULL" in sql
+    assert "DROP CONSTRAINT IF EXISTS ck_arb_condition_status" in sql
+    assert "ADD CONSTRAINT ck_arb_condition_status CHECK" in sql
     assert "ck_arb_condition_lifecycle" in sql and "VALIDATE CONSTRAINT" in sql
     assert "fk_arb_condition_submitted_evidence" in sql
+    assert (
+        "DROP CONSTRAINT IF EXISTS "
+        "arb_canonical_conditions_fulfilment_evidence_id_fkey"
+    ) in sql
     assert "fk_arb_condition_fulfilment_evidence" in sql
 
 

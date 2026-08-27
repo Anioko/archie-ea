@@ -88,7 +88,7 @@ class ARBCondition(TenantMixin, db.Model):
     waiver_expires_at = db.Column(db.DateTime(timezone=True))
     compensating_control = db.Column(db.Text)
     waiver_prior_status = db.Column(db.String(30), nullable=True)
-    waiver_scope_json = db.Column(db.JSON, nullable=True)
+    waiver_scope_json = db.Column(db.JSON(none_as_null=True), nullable=True)
     legacy_lifecycle_provenance = db.Column(db.JSON, nullable=True)
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, server_default=db.func.now())
 
@@ -236,6 +236,11 @@ LANGUAGE plpgsql SET search_path=pg_catalog,{schema} AS $$ BEGIN
 
 
 def _condition_reconcile_sql(schema):
+    status = next(
+        str(item.sqltext)
+        for item in ARBCondition.__table__.constraints
+        if item.name == "ck_arb_condition_status"
+    )
     lifecycle = next(
         str(item.sqltext)
         for item in ARBCondition.__table__.constraints
@@ -276,6 +281,9 @@ WHERE status='waived' AND legacy_lifecycle_provenance IS NULL
   AND waiver_prior_status IS NULL AND waiver_scope_json IS NULL;
 ALTER TABLE {schema}.arb_canonical_conditions ALTER COLUMN revision SET DEFAULT 1;
 ALTER TABLE {schema}.arb_canonical_conditions ALTER COLUMN revision SET NOT NULL;
+ALTER TABLE {schema}.arb_canonical_conditions DROP CONSTRAINT IF EXISTS ck_arb_condition_status;
+ALTER TABLE {schema}.arb_canonical_conditions ADD CONSTRAINT ck_arb_condition_status CHECK ({status}) NOT VALID;
+ALTER TABLE {schema}.arb_canonical_conditions VALIDATE CONSTRAINT ck_arb_condition_status;
 ALTER TABLE {schema}.arb_canonical_conditions DROP CONSTRAINT IF EXISTS ck_arb_condition_lifecycle;
 ALTER TABLE {schema}.arb_canonical_conditions ADD CONSTRAINT ck_arb_condition_lifecycle CHECK ({lifecycle}) NOT VALID;
 ALTER TABLE {schema}.arb_canonical_conditions VALIDATE CONSTRAINT ck_arb_condition_lifecycle;
@@ -285,6 +293,7 @@ ALTER TABLE {schema}.arb_canonical_conditions VALIDATE CONSTRAINT ck_arb_conditi
 ALTER TABLE {schema}.arb_canonical_conditions DROP CONSTRAINT IF EXISTS fk_arb_condition_submitted_evidence;
 ALTER TABLE {schema}.arb_canonical_conditions ADD CONSTRAINT fk_arb_condition_submitted_evidence FOREIGN KEY (submitted_evidence_id) REFERENCES {schema}.arb_condition_evidence_records(id) ON DELETE RESTRICT NOT VALID;
 ALTER TABLE {schema}.arb_canonical_conditions VALIDATE CONSTRAINT fk_arb_condition_submitted_evidence;
+ALTER TABLE {schema}.arb_canonical_conditions DROP CONSTRAINT IF EXISTS arb_canonical_conditions_fulfilment_evidence_id_fkey;
 ALTER TABLE {schema}.arb_canonical_conditions DROP CONSTRAINT IF EXISTS fk_arb_condition_fulfilment_evidence;
 ALTER TABLE {schema}.arb_canonical_conditions ADD CONSTRAINT fk_arb_condition_fulfilment_evidence FOREIGN KEY (fulfilment_evidence_id) REFERENCES {schema}.arb_condition_evidence_records(id) ON DELETE RESTRICT NOT VALID;
 ALTER TABLE {schema}.arb_canonical_conditions VALIDATE CONSTRAINT fk_arb_condition_fulfilment_evidence;
@@ -314,14 +323,14 @@ def ensure_arb_decision_guards(connection):
         OLD.verified_at,OLD.fulfilled_at,OLD.fulfilled_by_id,
         OLD.fulfilment_evidence_id,OLD.waived_at,OLD.waived_by_id,
         OLD.waiver_reason,OLD.waiver_expires_at,OLD.compensating_control,
-        OLD.waiver_prior_status,OLD.waiver_scope_json)
+        OLD.waiver_prior_status,OLD.waiver_scope_json::jsonb)
     IS DISTINCT FROM
     ROW(NEW.status,NEW.revision,NEW.responsible_id,NEW.submitted_evidence_id,
         NEW.evidence_submitted_by_id,NEW.evidence_submitted_at,NEW.verified_by_id,
         NEW.verified_at,NEW.fulfilled_at,NEW.fulfilled_by_id,
         NEW.fulfilment_evidence_id,NEW.waived_at,NEW.waived_by_id,
         NEW.waiver_reason,NEW.waiver_expires_at,NEW.compensating_control,
-        NEW.waiver_prior_status,NEW.waiver_scope_json)
+        NEW.waiver_prior_status,NEW.waiver_scope_json::jsonb)
  AND NOT EXISTS (
    SELECT 1 FROM {q}.arb_condition_events condition_event
    JOIN {q}.command_idempotency_records receipt
