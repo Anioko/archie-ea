@@ -5,11 +5,12 @@ from __future__ import annotations
 from contextlib import contextmanager
 from copy import deepcopy
 from datetime import timezone
+import hashlib
 import uuid
 from typing import Any, Mapping
 
 from flask import has_app_context
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from app import db
 from app.models.architecture_review_board import ARBReviewCycle, ARBReviewItem
@@ -179,6 +180,7 @@ class TypedARBSubmissionService:
     @classmethod
     def _submit_locked(cls, *, session, actor, subject, adapter, assertions, claim):
         del claim  # fencing is enforced by the session before the first write
+        cls._lock_subject_submission(session, actor, subject)
         with _adapter_session(session):
             # Adapter.snapshot performs the subject-specific FOR UPDATE and then
             # re-evaluates. The initial evaluation supplies its comparison input.
@@ -197,6 +199,28 @@ class TypedARBSubmissionService:
                 adapter=adapter,
                 pinned_evidence=pinned,
             )
+
+    @staticmethod
+    def _subject_lock_key(organization_id, subject_type, subject_id):
+        identity = f"{organization_id}:{subject_type}:{subject_id}".encode("utf-8")
+        return int.from_bytes(
+            hashlib.sha256(identity).digest()[:8], byteorder="big", signed=True
+        )
+
+    @classmethod
+    def _lock_subject_submission(cls, session, actor, subject):
+        """Serialize first and successor cycle allocation for one typed subject."""
+        session.execute(
+            text(
+                "SELECT pg_advisory_xact_lock(:lock_key) "
+                "/* tenancy-ok: deterministic key includes organization_id */"
+            ),
+            {
+                "lock_key": cls._subject_lock_key(
+                    actor.organization_id, subject.subject_type, subject.subject_id
+                )
+            },
+        )
 
     @classmethod
     def _insert_submission_graph(

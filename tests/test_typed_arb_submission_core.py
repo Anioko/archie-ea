@@ -125,6 +125,15 @@ def test_submit_routes_all_subject_types_through_one_command_and_atomic_handler(
     monkeypatch.setattr(module.CommandService, "execute", execute)
     monkeypatch.setattr(
         module.TypedARBSubmissionService,
+        "_lock_subject_submission",
+        classmethod(
+            lambda cls, session, actor, subject: calls.append(
+                ("advisory_lock", actor.organization_id, subject.subject_type, subject.subject_id)
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        module.TypedARBSubmissionService,
         "_insert_submission_graph",
         classmethod(
             lambda cls, **kwargs: (
@@ -171,6 +180,7 @@ def test_submit_routes_all_subject_types_through_one_command_and_atomic_handler(
     }
     assert calls == [
         ("load", 41, 9001),
+        ("advisory_lock", 41, subject_type, 9001),
         ("evaluate", 9001, {"human_reviewed": True}),
         ("snapshot", 9001, True),
         ("graph", subject_type, evidence_type),
@@ -230,6 +240,11 @@ def test_subordinate_write_failure_escapes_handler_so_command_service_can_roll_b
     monkeypatch.setattr(module, "get_arb_subject_adapter", lambda value: adapter)
     monkeypatch.setattr(
         module.TypedARBSubmissionService,
+        "_lock_subject_submission",
+        classmethod(lambda cls, session, actor, subject: None),
+    )
+    monkeypatch.setattr(
+        module.TypedARBSubmissionService,
         "_insert_submission_graph",
         classmethod(lambda cls, **kwargs: (_ for _ in ()).throw(rollback_error)),
     )
@@ -264,6 +279,52 @@ def test_open_cycle_natural_key_is_subject_scoped_not_command_scoped(monkeypatch
         )
 
     assert natural_keys == ["arb-submission:41:adr:9001"] * 2
+
+
+def test_first_cycle_lock_key_is_deterministic_and_subject_scoped():
+    """Concurrent first submissions must serialize even before a history row exists."""
+    module = _submission_module()
+    service = module.TypedARBSubmissionService
+
+    same_a = service._subject_lock_key(41, "architecture_model", 9001)
+    same_b = service._subject_lock_key(41, "architecture_model", 9001)
+
+    assert same_a == same_b
+    assert -(2**63) <= same_a < 2**63
+    assert same_a != service._subject_lock_key(42, "architecture_model", 9001)
+    assert same_a != service._subject_lock_key(41, "adr", 9001)
+    assert same_a != service._subject_lock_key(41, "architecture_model", 9002)
+
+
+def test_first_cycle_advisory_lock_serializes_independent_transactions(app):
+    """A second PostgreSQL transaction cannot enter the empty-history gap."""
+    from app import db
+
+    module = _submission_module()
+    lock_key = module.TypedARBSubmissionService._subject_lock_key(
+        41, "architecture_model", 9001
+    )
+    with app.app_context():
+        first = db.engine.raw_connection()
+        second = db.engine.raw_connection()
+        try:
+            with first.cursor() as first_cursor, second.cursor() as second_cursor:
+                first_cursor.execute("SELECT pg_advisory_xact_lock(%s)", (lock_key,))
+                second_cursor.execute(
+                    "SELECT pg_try_advisory_xact_lock(%s)", (lock_key,)
+                )
+                assert second_cursor.fetchone()[0] is False
+                second.rollback()
+
+                first.rollback()
+                second_cursor.execute(
+                    "SELECT pg_try_advisory_xact_lock(%s)", (lock_key,)
+                )
+                assert second_cursor.fetchone()[0] is True
+                second.rollback()
+        finally:
+            first.close()
+            second.close()
 
 
 def test_legacy_solution_entrypoint_delegates_and_preserves_response_shape(monkeypatch):
