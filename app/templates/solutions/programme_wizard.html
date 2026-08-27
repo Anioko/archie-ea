@@ -216,7 +216,9 @@ function transformationProgrammeIntake() {
       try {
         sessionStorage.removeItem(this.draftKey);
         sessionStorage.removeItem('transformation-programme-intake-key');
-      } catch (failure) { /* nothing to clear */ }
+      } catch (failure) { /* swallow-ok: sessionStorage throws in private mode or when
+        blocked; there is then nothing stored to clear, so the draft is already gone
+        and the submission it followed has already succeeded. */ }
     },
 
     init() {
@@ -224,7 +226,9 @@ function transformationProgrammeIntake() {
       try {
         this.idempotencyKey = sessionStorage.getItem(storageKey) || this.idempotencyKey;
         sessionStorage.setItem(storageKey, this.idempotencyKey);
-      } catch (failure) { /* storage blocked; the server key still applies */ }
+      } catch (failure) { /* swallow-ok: sessionStorage throws in private mode or when
+        blocked; the server-issued idempotency key in this.idempotencyKey still applies,
+        so the only thing lost is draft recall across a reload. */ }
       this.restoreDraft();
       this.$watch('form', () => this.persistDraft(), {deep: true});
     },
