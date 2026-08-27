@@ -61,6 +61,18 @@ def test_actor_commands_use_exact_operation_natural_key_and_next_revision(
     )
     monkeypatch.setattr(
         service,
+        "_existing_receipt",
+        staticmethod(lambda session, actor, operation, command_key: None),
+    )
+    monkeypatch.setattr(
+        service,
+        "_canonical_transition_revision",
+        classmethod(
+            lambda cls, session, actor, condition, event_type, evidence_id: revision
+        ),
+    )
+    monkeypatch.setattr(
+        service,
         "authorise_transition",
         classmethod(lambda cls, *args, **kwargs: None),
     )

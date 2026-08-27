@@ -16,6 +16,7 @@ from app.models.arb_condition_event import ARBConditionEvent
 from app.models.arb_condition_evidence import ARBConditionEvidenceRecord
 from app.models.arb_decision_event import ARBCondition, ARBDecisionEvent
 from app.models.user import User
+from app.models.transformation_execution import CommandIdempotencyRecord
 from app.modules.transformation_room.arb_condition_evidence_service import (
     TypedARBConditionEvidenceService,
 )
@@ -110,11 +111,23 @@ class TypedARBConditionLifecycleService:
         if not isinstance(command_key, str) or not command_key.strip():
             raise ValueError("command_key is required")
         identity = cls._preload_identity(db.session, actor, condition_id)
-        expected_revision = identity.revision
-        revision = expected_revision + 1
-        natural_key = cls.natural_key(
-            actor.organization_id, condition_id, event_type, revision
-        )
+        existing = cls._existing_receipt(db.session, actor, operation, command_key.strip())
+        if existing is not None:
+            natural_key = existing.natural_key
+            prefix = cls.natural_key(
+                actor.organization_id, condition_id, event_type, ""
+            )
+            if not natural_key.startswith(prefix):
+                raise CommandConflict("arb_condition_command_identity_mismatch")
+            revision = int(natural_key.rsplit(":", 1)[1])
+        else:
+            revision = cls._canonical_transition_revision(
+                db.session, actor, identity, event_type, condition_evidence_id
+            )
+            natural_key = cls.natural_key(
+                actor.organization_id, condition_id, event_type, revision
+            )
+        expected_revision = revision - 1
         payload = {
             "condition_id": condition_id, "event_type": event_type,
             "expected_revision": expected_revision,
@@ -125,13 +138,15 @@ class TypedARBConditionLifecycleService:
         def authorize(session, runtime_actor, runtime_operation, supplied_key):
             if runtime_operation != operation or supplied_key != natural_key:
                 raise NotAuthorised("arb_condition_command_mismatch")
-            if system:
-                cls._authorise_system_principal(session, runtime_actor)
-            else:
-                cls.authorise_transition(
-                    session, runtime_actor, condition_id, event_type,
-                    for_update=False,
-                )
+            authorizers = {
+                "submit_evidence": cls.authorise_submit,
+                "verify": cls.authorise_verify,
+                "waive": cls.authorise_waive,
+                "waiver_expired": cls.authorise_expiry,
+            }
+            authorizers[event_type](
+                session, runtime_actor, condition_id, for_update=False
+            )
 
         return CommandService.execute(
             actor=actor, operation=operation, idempotency_key=command_key.strip(),
@@ -144,6 +159,39 @@ class TypedARBConditionLifecycleService:
                 claim=claim, system=system,
             ),
         )
+
+    @staticmethod
+    def _existing_receipt(session, actor, operation, command_key):
+        return session.execute(select(CommandIdempotencyRecord).where(
+            CommandIdempotencyRecord.organization_id == actor.organization_id,
+            CommandIdempotencyRecord.actor_id == actor.user_id,
+            CommandIdempotencyRecord.operation == operation,
+            CommandIdempotencyRecord.idempotency_key == command_key,
+        )).scalar_one_or_none()
+
+    @classmethod
+    def _canonical_transition_revision(
+        cls, session, actor, condition, event_type, evidence_id
+    ):
+        replay_projection = (
+            (event_type == "submit_evidence" and condition.status == "evidence_submitted"
+             and condition.submitted_evidence_id == evidence_id)
+            or (event_type == "verify" and condition.status == "fulfilled"
+                and condition.fulfilment_evidence_id == evidence_id)
+            or (event_type == "waive" and condition.status == "waived")
+            or event_type == "waiver_expired"
+        )
+        if replay_projection:
+            event = session.execute(
+                select(ARBConditionEvent).where(
+                    ARBConditionEvent.organization_id == actor.organization_id,
+                    ARBConditionEvent.condition_id == condition.id,
+                    ARBConditionEvent.event_type == event_type,
+                ).order_by(ARBConditionEvent.condition_revision.desc()).limit(1)
+            ).scalar_one_or_none()
+            if event is not None and event.to_state == condition.status:
+                return event.condition_revision
+        return condition.revision + 1
 
     @classmethod
     def _preload_identity(cls, session, actor, condition_id):
@@ -193,6 +241,7 @@ class TypedARBConditionLifecycleService:
         now = CommandService._database_now(session)
         if event_type == "waive":
             waiver = cls.canonicalize_waiver(**waiver, now=now)
+            waiver["prior_status"] = condition.status
         elif event_type == "waiver_expired":
             if condition.waiver_expires_at is None or condition.waiver_expires_at > now:
                 raise CommandConflict("arb_condition_waiver_not_expired")
@@ -301,6 +350,29 @@ class TypedARBConditionLifecycleService:
             or review.submitter_id == user.id
         ):
             raise NotAuthorised("arb_condition_verification_separation_required")
+
+    @classmethod
+    def authorise_submit(cls, session, actor, condition_id, *, for_update=False):
+        return cls.authorise_transition(
+            session, actor, condition_id, "submit_evidence", for_update=for_update
+        )
+
+    @classmethod
+    def authorise_verify(cls, session, actor, condition_id, *, for_update=False):
+        return cls.authorise_transition(
+            session, actor, condition_id, "verify", for_update=for_update
+        )
+
+    @classmethod
+    def authorise_waive(cls, session, actor, condition_id, *, for_update=False):
+        return cls.authorise_transition(
+            session, actor, condition_id, "waive", for_update=for_update
+        )
+
+    @classmethod
+    def authorise_expiry(cls, session, actor, condition_id, *, for_update=False):
+        del condition_id, for_update
+        return cls._authorise_system_principal(session, actor)
 
     @classmethod
     def _load_graph(cls, session, actor, condition_id):
