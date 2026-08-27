@@ -107,7 +107,11 @@ def test_actor_commands_use_exact_operation_natural_key_and_next_revision(
         )
     getattr(service, method)(**arguments)
 
-    assert captured["operation"] == "arb.condition.transition"
+    assert captured["operation"] == {
+        "submit_evidence": "arb.condition.evidence.submit",
+        "verify": "arb.condition.evidence.verify",
+        "waive": "arb.condition.waive",
+    }[event_type]
     assert captured["natural_key"] == f"arb-condition:41:601:{event_type}:{revision}"
     assert captured["payload"]["expected_revision"] == revision - 1
 
@@ -115,7 +119,7 @@ def test_actor_commands_use_exact_operation_natural_key_and_next_revision(
 def test_system_expiry_uses_exact_revisioned_identity(monkeypatch):
     module = _module()
     service = module.TypedARBConditionLifecycleService
-    assert service.OPERATION == "arb.condition.transition"
+    assert service.EXPIRE_OPERATION == "arb.condition.waiver.expire"
     assert service.natural_key(41, 601, "waiver_expired", 5) == (
         "arb-condition:41:601:waiver_expired:5"
     )
@@ -254,4 +258,3 @@ def test_failure_before_command_completion_rolls_back_event_and_projections():
     service = _module().TypedARBConditionLifecycleService
     assert service.ATOMIC_EVENT_CONDITION_CYCLE_REVIEW_RESULT is True
     assert callable(service._transition_locked)
-
