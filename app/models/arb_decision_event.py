@@ -89,6 +89,7 @@ class ARBCondition(TenantMixin, db.Model):
     compensating_control = db.Column(db.Text)
     waiver_prior_status = db.Column(db.String(30), nullable=True)
     waiver_scope_json = db.Column(db.JSON, nullable=True)
+    legacy_lifecycle_provenance = db.Column(db.JSON, nullable=True)
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, server_default=db.func.now())
 
     __table_args__ = (
@@ -113,7 +114,9 @@ class ARBCondition(TenantMixin, db.Model):
             "AND compensating_control IS NULL AND waiver_prior_status IS NULL "
             "AND waiver_scope_json IS NULL) OR "
             "(status = 'fulfilled' AND fulfilled_at IS NOT NULL "
-            "AND fulfilled_by_id IS NOT NULL AND fulfilment_evidence_id IS NOT NULL "
+            "AND fulfilled_by_id IS NOT NULL "
+            "AND ((fulfilment_evidence_id IS NOT NULL AND legacy_lifecycle_provenance IS NULL) "
+            "OR (fulfilment_evidence_id IS NULL AND legacy_lifecycle_provenance IS NOT NULL)) "
             "AND verified_at IS NOT NULL AND verified_by_id IS NOT NULL "
             "AND waived_at IS NULL AND waived_by_id IS NULL AND waiver_reason IS NULL "
             "AND waiver_expires_at IS NULL AND compensating_control IS NULL "
@@ -123,8 +126,10 @@ class ARBCondition(TenantMixin, db.Model):
             "AND waived_by_id IS NOT NULL AND length(btrim(waiver_reason)) > 0 "
             "AND waiver_expires_at > waived_at "
             "AND length(btrim(compensating_control)) > 0 "
-            "AND waiver_prior_status IN ('pending','evidence_submitted') "
-            "AND waiver_scope_json IS NOT NULL)",
+            "AND ((waiver_prior_status IN ('pending','evidence_submitted') "
+            "AND waiver_scope_json IS NOT NULL AND legacy_lifecycle_provenance IS NULL) "
+            "OR (waiver_prior_status IS NULL AND waiver_scope_json IS NULL "
+            "AND legacy_lifecycle_provenance IS NOT NULL)))",
             name="ck_arb_condition_lifecycle",
         ),
     )
@@ -224,7 +229,25 @@ def _condition_reconcile_sql(schema):
         if item.name == "ck_arb_condition_lifecycle"
     )
     return f"""
+ALTER TABLE {schema}.arb_canonical_conditions
+ADD COLUMN IF NOT EXISTS legacy_lifecycle_provenance JSON;
 UPDATE {schema}.arb_canonical_conditions SET revision = 1 WHERE revision IS NULL;
+UPDATE {schema}.arb_canonical_conditions
+SET verified_at = fulfilled_at, verified_by_id = fulfilled_by_id,
+    legacy_lifecycle_provenance = jsonb_build_object(
+      'classification','pre_c3_fulfilment',
+      'legacy_fulfilment_evidence_id',fulfilment_evidence_id)
+WHERE status='fulfilled' AND legacy_lifecycle_provenance IS NULL
+  AND (verified_at IS NULL OR verified_by_id IS NULL
+       OR fulfilment_evidence_id IS NOT NULL);
+UPDATE {schema}.arb_canonical_conditions
+SET fulfilment_evidence_id = NULL
+WHERE status='fulfilled' AND legacy_lifecycle_provenance->>'classification'='pre_c3_fulfilment';
+UPDATE {schema}.arb_canonical_conditions
+SET legacy_lifecycle_provenance = jsonb_build_object(
+      'classification','pre_c3_waiver')
+WHERE status='waived' AND legacy_lifecycle_provenance IS NULL
+  AND waiver_prior_status IS NULL AND waiver_scope_json IS NULL;
 ALTER TABLE {schema}.arb_canonical_conditions ALTER COLUMN revision SET DEFAULT 1;
 ALTER TABLE {schema}.arb_canonical_conditions ALTER COLUMN revision SET NOT NULL;
 ALTER TABLE {schema}.arb_canonical_conditions DROP CONSTRAINT IF EXISTS ck_arb_condition_lifecycle;

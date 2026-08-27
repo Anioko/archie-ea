@@ -279,6 +279,7 @@ class TypedARBConditionLifecycleService:
             condition, event_type, actor.user_id, condition_evidence_id,
             waiver, prior_status, now,
         )
+        session.flush()
         cls._project_review(
             cycle, review, projected_status, projection_revision
         )
@@ -462,8 +463,6 @@ class TypedARBConditionLifecycleService:
     def _project_review(cycle, review, projected_status, projection_revision):
         cycle.status = projected_status
         review.status = projected_status
-        cycle.terminal_outcome = projected_status
-        review.decision = projected_status
         cycle.condition_projection_revision = projection_revision
         review.condition_projection_revision = projection_revision
 
@@ -520,10 +519,6 @@ class TypedARBConditionLifecycleService:
     @staticmethod
     def _load_pinned_decision_brief_authority(*args, **kwargs):
         return TypedARBDecisionService._has_decision_brief_authority(*args, **kwargs)
-
-    @staticmethod
-    def _prove_materialised_transition(*_args, **_kwargs):
-        return True
 
     @classmethod
     def _reauthorise_replay(cls, session, actor, condition_id, event_type):

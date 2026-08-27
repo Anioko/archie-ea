@@ -248,12 +248,25 @@ def test_cycle_and_review_projection_are_equal_and_revision_monotonic():
     assert "review.status = projected_status" in source
     assert "cycle.condition_projection_revision = projection_revision" in source
     assert "review.condition_projection_revision = projection_revision" in source
+    assert "terminal_outcome" not in source
+    assert "review.decision" not in source
+
+
+def test_history_guard_allows_proven_same_status_projection_without_rewriting_decision():
+    from app.models.architecture_review_board import _arb_history_function_sql
+
+    sql = _arb_history_function_sql('"public"')
+    assert "NEW.status <> OLD.status" not in sql
+    assert "JOIN command_idempotency_records receipt" in sql
+    assert "receipt.natural_key = 'arb-condition:'" in sql
+    assert "aggregate_condition.status NOT IN ('fulfilled', 'waived')" in sql
+    assert "NEW.terminal_outcome = OLD.terminal_outcome" in sql
+    assert "NEW.decision = OLD.decision" in sql
 
 
 def test_same_key_replays_and_different_key_reconciles_canonical_event():
     service = _module().TypedARBConditionLifecycleService
     assert service.NATURAL_KEY_RECONCILIATION is True
-    assert callable(service._prove_materialised_transition)
     assert callable(service._reauthorise_replay)
 
 
@@ -270,3 +283,15 @@ def test_failure_before_command_completion_rolls_back_event_and_projections():
     service = _module().TypedARBConditionLifecycleService
     assert service.ATOMIC_EVENT_CONDITION_CYCLE_REVIEW_RESULT is True
     assert callable(service._transition_locked)
+
+
+def test_upgrade_preserves_pre_c3_evidence_as_explicit_legacy_provenance():
+    from app.models.arb_decision_event import ARBCondition, _condition_reconcile_sql
+
+    assert "legacy_lifecycle_provenance" in ARBCondition.__table__.columns
+    sql = _condition_reconcile_sql('"public"')
+    assert "'classification','pre_c3_fulfilment'" in sql
+    assert "'legacy_fulfilment_evidence_id',fulfilment_evidence_id" in sql
+    assert "SET fulfilment_evidence_id = NULL" in sql
+    assert "'classification','pre_c3_waiver'" in sql
+    assert "SET fulfilment_evidence_id = submitted_evidence_id" not in sql

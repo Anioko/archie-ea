@@ -1163,11 +1163,32 @@ def _arb_history_function_sql(quoted_schema):
                 AND NEW.closed_at = OLD.closed_at
                 AND OLD.status IN ('approved_with_conditions', 'approved')
                 AND NEW.status IN ('approved_with_conditions', 'approved')
-                AND NEW.status <> OLD.status
                 AND NEW.condition_projection_revision =
                     COALESCE(OLD.condition_projection_revision, 0) + 1
+                AND NEW.status = CASE WHEN NOT EXISTS (
+                    SELECT 1 FROM arb_canonical_conditions aggregate_condition
+                    WHERE aggregate_condition.review_cycle_id = NEW.id
+                      AND aggregate_condition.organization_id = NEW.organization_id
+                      AND aggregate_condition.status NOT IN ('fulfilled', 'waived')
+                ) THEN 'approved' ELSE 'approved_with_conditions' END
                 AND EXISTS (
                     SELECT 1 FROM arb_condition_events condition_event
+                    JOIN command_idempotency_records receipt
+                      ON receipt.id = condition_event.command_receipt_id
+                     AND receipt.organization_id = condition_event.organization_id
+                     AND receipt.actor_id = condition_event.actor_id
+                     AND receipt.lease_generation = condition_event.command_generation
+                     AND receipt.operation = CASE condition_event.event_type
+                         WHEN 'submit_evidence' THEN 'arb.condition.evidence.submit'
+                         WHEN 'verify' THEN 'arb.condition.evidence.verify'
+                         WHEN 'waive' THEN 'arb.condition.waive'
+                         WHEN 'waiver_expired' THEN 'arb.condition.waiver.expire'
+                       END
+                     AND receipt.natural_key = 'arb-condition:' ||
+                         condition_event.organization_id::text || ':' ||
+                         condition_event.condition_id::text || ':' ||
+                         condition_event.event_type || ':' ||
+                         condition_event.condition_revision::text
                     WHERE condition_event.review_cycle_id = NEW.id
                       AND condition_event.organization_id = NEW.organization_id
                       AND condition_event.projection_status = NEW.status
@@ -1217,11 +1238,32 @@ def _arb_history_function_sql(quoted_schema):
                    AND NEW.decision = OLD.decision
                    AND OLD.status IN ('approved_with_conditions', 'approved')
                    AND NEW.status IN ('approved_with_conditions', 'approved')
-                   AND NEW.status <> OLD.status
                    AND NEW.condition_projection_revision =
                        COALESCE(OLD.condition_projection_revision, 0) + 1
+                   AND NEW.status = CASE WHEN NOT EXISTS (
+                       SELECT 1 FROM arb_canonical_conditions aggregate_condition
+                       WHERE aggregate_condition.review_item_id = NEW.id
+                         AND aggregate_condition.organization_id = NEW.organization_id
+                         AND aggregate_condition.status NOT IN ('fulfilled', 'waived')
+                   ) THEN 'approved' ELSE 'approved_with_conditions' END
                    AND EXISTS (
                        SELECT 1 FROM arb_condition_events condition_event
+                       JOIN command_idempotency_records receipt
+                         ON receipt.id = condition_event.command_receipt_id
+                        AND receipt.organization_id = condition_event.organization_id
+                        AND receipt.actor_id = condition_event.actor_id
+                        AND receipt.lease_generation = condition_event.command_generation
+                        AND receipt.operation = CASE condition_event.event_type
+                            WHEN 'submit_evidence' THEN 'arb.condition.evidence.submit'
+                            WHEN 'verify' THEN 'arb.condition.evidence.verify'
+                            WHEN 'waive' THEN 'arb.condition.waive'
+                            WHEN 'waiver_expired' THEN 'arb.condition.waiver.expire'
+                          END
+                        AND receipt.natural_key = 'arb-condition:' ||
+                            condition_event.organization_id::text || ':' ||
+                            condition_event.condition_id::text || ':' ||
+                            condition_event.event_type || ':' ||
+                            condition_event.condition_revision::text
                        WHERE condition_event.review_item_id = NEW.id
                          AND condition_event.organization_id = NEW.organization_id
                          AND condition_event.projection_status = NEW.status
