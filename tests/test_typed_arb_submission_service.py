@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import importlib
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import uuid
 
 import pytest
@@ -204,6 +204,28 @@ def test_subject_snapshot_hash_covers_typed_membership_and_evidence():
     snapshot.architecture_model_id = 74
     assert snapshot.recompute_content_hash() != original_hash
 
+
+def test_subject_snapshot_hash_normalizes_equal_instants_to_utc():
+    _cycle, snapshot_type = _typed_models()
+    utc_instant = datetime(2026, 8, 27, 13, 30, tzinfo=timezone.utc)
+    offset_instant = utc_instant.astimezone(timezone(timedelta(hours=5, minutes=30)))
+
+    def snapshot(captured_at):
+        return snapshot_type(
+            organization_id=41,
+            subject_type="adr",
+            subject_id=73,
+            adr_id=73,
+            schema_version=1,
+            policy_version="adr-arb-r2",
+            captured_at=captured_at,
+            payload={"decision": "Use the canonical platform"},
+            citations=[],
+        )
+
+    assert snapshot(utc_instant).recompute_content_hash() == snapshot(
+        offset_instant
+    ).recompute_content_hash()
 
 def _install_typed_schema(app):
     from app import db
@@ -1309,11 +1331,11 @@ def test_cycle_and_review_numbers_must_match(app, _schema):
     (
         "ALTER TABLE arb_review_cycles DROP CONSTRAINT ck_arb_review_cycle_shape; "
         "ALTER TABLE arb_review_cycles ADD CONSTRAINT ck_arb_review_cycle_shape CHECK (true)",
-        # uq_arb_review_cycle_review_number is declared as a UniqueConstraint in
-        # __table_args__, so PostgreSQL backs it with an index it refuses to DROP
-        # INDEX directly. Drop the constraint to leave a non-unique squatter on the
-        # guard's name -- which is what exercises the repair path's DROP INDEX branch.
-        "ALTER TABLE arb_review_cycles DROP CONSTRAINT uq_arb_review_cycle_review_number; "
+        # A fresh create_all schema exposes this guard as a UNIQUE constraint, while
+        # the reconciliation repair exposes it as a standalone unique index. Remove
+        # either catalog form before installing the malformed name-squatting index.
+        "ALTER TABLE arb_review_cycles DROP CONSTRAINT IF EXISTS uq_arb_review_cycle_review_number; "
+        "DROP INDEX IF EXISTS uq_arb_review_cycle_review_number; "
         "CREATE INDEX uq_arb_review_cycle_review_number ON arb_review_cycles (status)",
         "DROP TRIGGER trg_arb_cycle_membership ON arb_review_cycles; "
         "CREATE TRIGGER trg_arb_cycle_membership BEFORE INSERT ON arb_review_cycles "

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from datetime import timezone
 
 from sqlalchemy import event
 from sqlalchemy.orm import validates
@@ -91,6 +92,9 @@ class ARBSubjectEvidenceSnapshot(TenantMixin, db.Model):
 
     def canonical_content(self):
         """Return the exact typed dossier protected by ``content_hash``."""
+        captured_at = self.captured_at
+        if captured_at is not None and captured_at.tzinfo is not None:
+            captured_at = captured_at.astimezone(timezone.utc)
         return {
             "schema_version": self.schema_version,
             "organization_id": self.organization_id,
@@ -100,7 +104,7 @@ class ARBSubjectEvidenceSnapshot(TenantMixin, db.Model):
             "adr_id": self.adr_id,
             "policy_version": self.policy_version,
             "captured_by_id": self.captured_by_id,
-            "captured_at": self.captured_at.isoformat() if self.captured_at else None,
+            "captured_at": captured_at.isoformat() if captured_at else None,
             "payload": self.payload,
             "citations": self.citations,
         }

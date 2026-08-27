@@ -13,7 +13,7 @@ from app.models.adr import ArchitectureDecisionRecord
 from app.models.architecture_review_board import ARBGovernanceStandard, ARBReviewItem
 from app.models.arb_submission_evidence import ARBSubmissionEvidenceSnapshot
 from app.models.audit_log import AuditLog
-from app.models.models import ArchitectureModel
+from app.models.models import ArchiMateElement, ArchitectureModel
 from app.models.solution_models import Solution
 from app.models.solution_governance import SolutionNotification
 from app.models.transformation_decision import (
@@ -34,6 +34,7 @@ from app.modules.transformation_room.domain import (
     NotFound,
 )
 from app.modules.transformation_room.arb_adapters import (
+    ARB_SUBJECT_ADAPTERS,
     ADRARBAdapter,
     ArchitectureModelARBAdapter,
     DecisionBriefARBAdapter,
@@ -74,6 +75,19 @@ def _user(session, org):
     session.add(row)
     session.flush()
     return row
+
+
+def _add_model_element(session, model, org, *, name="Payment API"):
+    element = ArchiMateElement(
+        organization_id=org.id,
+        architecture_id=model.id,
+        name=name,
+        type="ApplicationComponent",
+        layer="application",
+    )
+    session.add(element)
+    session.flush()
+    return element
 
 
 def _gate(*, allowed=True, blockers=()):
@@ -140,6 +154,16 @@ def test_registry_exposes_exact_supported_adapters_and_fails_closed():
         get_arb_subject_adapter("")
 
     assert unsupported.value.reason == malformed.value.reason == "arb_subject_not_found"
+
+
+def test_public_adapter_registry_is_immutable():
+    with pytest.raises(TypeError):
+        ARB_SUBJECT_ADAPTERS["forged"] = SolutionARBAdapter()
+    with pytest.raises(AttributeError):
+        ARB_SUBJECT_ADAPTERS["adr"].policy_version = "forged-policy"
+    with pytest.raises(AttributeError, match="configuration is immutable"):
+        type(ARB_SUBJECT_ADAPTERS["adr"]).policy_version = "forged-policy"
+    assert not hasattr(ARB_SUBJECT_ADAPTERS["adr"], "__dict__")
 
 
 def test_decision_brief_readiness_uses_server_gate_and_explicit_human_review_only():
@@ -245,6 +269,7 @@ def test_model_adapter_load_evaluate_snapshot_and_url_are_tenant_bound(
     )
     db_session.add(model)
     db_session.flush()
+    element = _add_model_element(db_session, model, org)
     adapter = ArchitectureModelARBAdapter()
 
     subject = adapter.load(_actor(actor_user, org), model.id)
@@ -265,29 +290,16 @@ def test_model_adapter_load_evaluate_snapshot_and_url_are_tenant_bound(
     assert snapshot.subject_id == snapshot.architecture_model_id == model.id
     assert snapshot.policy_version == "architecture-model-arb-r2"
     assert snapshot.captured_by_id == actor_user.id
-    assert snapshot.payload["subject"] == {
-        "id": model.id,
-        "organization_id": org.id,
-        "name": "Payments target architecture",
-        "version": "2.1",
-        "user_id": actor_user.id,
-        "model_data": json.dumps(model_document),
-        "is_default": False,
-        "solution_id": None,
-        "technology_stack_id": None,
-        "compliance_framework_id": None,
-    }
-    assert snapshot.payload["readiness"]["evidence_ids"] == [9001]
-    assert snapshot.citations == [
-        {"resource_type": "architecture_model", "resource_id": model.id},
-        {
-            "resource_type": "arb_supporting_document",
-            "resource_id": 9001,
-            "content_hash": "a" * 64,
-            "captured_at": "2026-08-24T09:30:00+00:00",
-            "expires_at": model_document["arb_readiness"]["evidence"][0]["expires_at"],
-        },
-    ]
+    assert snapshot.payload["subject"]["id"] == model.id
+    assert snapshot.payload["subject"]["name"] == "Payments target architecture"
+    assert snapshot.payload["subject"]["elements"][0]["id"] == element.id
+    assert snapshot.payload["subject"]["validation"]["is_valid"] is True
+    assert "evidence_ids" not in snapshot.payload["readiness"]
+    assert snapshot.citations[0]["resource_type"] == "architecture_model"
+    assert snapshot.citations[0]["content_hash"] == readiness.checks["subject_hash"]
+    assert snapshot.citations[1]["resource_type"] == "arb_policy_catalogue"
+    assert snapshot.citations[2]["resource_type"] == "archimate_validation"
+    assert all(citation.get("resource_id") != 9001 for citation in snapshot.citations)
 
     with pytest.raises(NotFound, match="arb_subject_not_found"):
         adapter.load(_actor(foreign_user, foreign_org), model.id)
@@ -300,6 +312,14 @@ def test_adr_adapter_load_evaluate_snapshot_and_url_are_tenant_bound(
 ):
     org, foreign_org = make_org("adr-adapter"), make_org("adr-adapter-foreign")
     actor_user, foreign_user = _user(db_session, org), _user(db_session, foreign_org)
+    linked_model = ArchitectureModel(
+        organization_id=org.id,
+        name="Linked integration model",
+        version="1.0",
+        user_id=actor_user.id,
+    )
+    db_session.add(linked_model)
+    db_session.flush()
     adr = ArchitectureDecisionRecord(
         organization_id=org.id,
         adr_number=42,
@@ -309,6 +329,7 @@ def test_adr_adapter_load_evaluate_snapshot_and_url_are_tenant_bound(
         decision="Use durable domain events through the enterprise broker.",
         rationale="This isolates producers and consumers while preserving delivery.",
         consequences="Teams must own event schemas and compatibility.",
+        architecture_model_id=linked_model.id,
         alternatives_considered="[\"point-to-point APIs\"]",
         risks="[\"schema drift\"]",
         created_by=actor_user.email,
@@ -340,9 +361,13 @@ def test_adr_adapter_load_evaluate_snapshot_and_url_are_tenant_bound(
     assert snapshot.payload["subject"]["rationale"] == adr.rationale
     assert snapshot.payload["subject"]["consequences"] == adr.consequences
     assert snapshot.payload["subject"]["created_at"] == adr.created_at.isoformat()
-    assert snapshot.payload["readiness"]["evidence_ids"] == [9002]
-    assert snapshot.citations[0] == {"resource_type": "adr", "resource_id": adr.id}
-    assert snapshot.citations[1]["resource_id"] == 9002
+    assert "evidence_ids" not in snapshot.payload["readiness"]
+    assert snapshot.citations[0]["resource_type"] == "adr"
+    assert snapshot.citations[0]["content_hash"] == readiness.checks["subject_hash"]
+    assert snapshot.citations[1]["resource_type"] == "arb_policy_catalogue"
+    assert snapshot.citations[2]["resource_type"] == "architecture_model"
+    assert snapshot.citations[2]["resource_id"] == linked_model.id
+    assert all(citation.get("resource_id") != 9002 for citation in snapshot.citations)
 
     with pytest.raises(NotFound, match="arb_subject_not_found"):
         adapter.load(_actor(foreign_user, foreign_org), adr.id)
@@ -428,7 +453,7 @@ def test_model_and_adr_policies_block_incomplete_evidence(
         adapter.snapshot(actor, subject, readiness)
 
 
-def test_model_policy_rejects_invalid_json_and_absent_supporting_evidence(
+def test_model_policy_ignores_forged_readiness_and_requires_persisted_graph(
     db_session, make_org
 ):
     org = make_org("invalid-model-policy")
@@ -448,11 +473,12 @@ def test_model_policy_rejects_invalid_json_and_absent_supporting_evidence(
     readiness = adapter.evaluate(actor, adapter.load(actor, model.id), {"human_reviewed": True})
 
     assert readiness.ready is False
-    assert "architecture_model_json_invalid" in readiness.reason_codes
-    assert "supporting_evidence_required" in readiness.reason_codes
+    assert "architecture_model_elements_required" in readiness.reason_codes
+    assert "architecture_model_json_invalid" not in readiness.reason_codes
+    assert "supporting_evidence_required" not in readiness.reason_codes
 
 
-def test_adr_policy_rejects_terminal_state_and_wrong_policy_version(db_session, make_org):
+def test_adr_policy_rejects_terminal_state_and_ignores_client_policy(db_session, make_org):
     org = make_org("invalid-adr-policy")
     actor_user = _user(db_session, org)
     dossier = _governance_dossier("adr-arb-r1", "architecture_change", evidence_id=9101)
@@ -476,10 +502,10 @@ def test_adr_policy_rejects_terminal_state_and_wrong_policy_version(db_session, 
 
     assert readiness.ready is False
     assert "adr_state_not_submittable" in readiness.reason_codes
-    assert "arb_policy_version_mismatch" in readiness.reason_codes
+    assert "arb_policy_version_mismatch" not in readiness.reason_codes
 
 
-def test_subject_policy_requires_every_applicable_mandatory_standard(db_session, make_org):
+def test_subject_policy_snapshots_applicable_standard_as_pending_review(db_session, make_org):
     org = make_org("mandatory-standard-policy")
     actor_user = _user(db_session, org)
     standard = ARBGovernanceStandard(
@@ -505,20 +531,19 @@ def test_subject_policy_requires_every_applicable_mandatory_standard(db_session,
     )
     db_session.add(model)
     db_session.flush()
+    _add_model_element(db_session, model, org)
     adapter = ArchitectureModelARBAdapter()
     actor = _actor(actor_user, org)
 
     readiness = adapter.evaluate(actor, adapter.load(actor, model.id), {"human_reviewed": True})
 
-    assert readiness.ready is False
-    assert "mandatory_standard_unsatisfied" in readiness.reason_codes
-    # ARBGovernanceStandard is global reference data, not tenant-scoped, so every
-    # active mandatory standard applicable to the review type is reported here --
-    # including any already seeded in the database. Assert membership rather than
-    # position, which would only hold against an empty standards table.
+    assert readiness.ready is True
+    assert "mandatory_standard_unsatisfied" not in readiness.reason_codes
     assert standard.id in {
-        entry["standard_id"] for entry in readiness.missing_evidence
+        entry["standard_id"]
+        for entry in readiness.governance_result["mandatory_standards"]
     }
+    assert readiness.governance_result["standards_status"] == "pending_review"
 
 
 @pytest.mark.parametrize("subject_kind", ("architecture_model", "adr"))
@@ -560,6 +585,8 @@ def test_subject_snapshot_rejects_forged_and_changed_readiness(
         )
     db_session.add(row)
     db_session.flush()
+    if subject_kind == "architecture_model":
+        _add_model_element(db_session, row, org, name="Mutable component")
     subject = adapter.load(actor, row.id)
     readiness = adapter.evaluate(actor, subject, {"human_reviewed": True})
     forged = ARBReadinessResult(
@@ -570,15 +597,16 @@ def test_subject_snapshot_rejects_forged_and_changed_readiness(
     with pytest.raises(CommandConflict, match="arb_readiness_stale"):
         adapter.snapshot(actor, subject, forged)
 
-    dossier["evidence"][0]["expires_at"] = (
-        datetime.now(timezone.utc) - timedelta(seconds=1)
-    ).isoformat()
     if subject_kind == "architecture_model":
-        document = json.loads(row.model_data)
-        document["arb_readiness"] = dossier
-        row.model_data = json.dumps(document)
+        element = db_session.execute(
+            db.select(ArchiMateElement).where(
+                ArchiMateElement.architecture_id == row.id,
+                ArchiMateElement.organization_id == org.id,
+            )
+        ).scalar_one()
+        element.name = "Changed graph element after readiness evaluation"
     else:
-        row.governance_blob = {"arb_readiness": dossier}
+        row.decision = "Changed ADR decision after readiness evaluation"
     db_session.flush()
 
     with pytest.raises(CommandConflict, match="arb_readiness_stale"):
