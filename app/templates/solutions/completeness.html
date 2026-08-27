@@ -156,9 +156,7 @@ function completenessChecker(initialReport) {
     async recheck() {
       this.loading = true;
       try {
-        const resp = await fetch(`/api/solutions/{{ solution_id }}/completeness`);
-        if (!resp.ok) throw new Error('Re-check failed: ' + resp.status);
-        const data = await resp.json();
+        const data = await Platform.fetch(`/api/solutions/{{ solution_id }}/completeness`, { silent: true });
         this._applyReport(data);
       } catch (e) {
         if (window.Platform && Platform.toast) Platform.toast.error(e.message || 'Completeness re-check failed');

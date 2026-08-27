@@ -217,20 +217,18 @@ function archiMateImport() {
       formData.append('file', this.selectedFile);
 
       try {
-        const resp = await fetch('/solutions/import/archimate/preview', {
+        // Platform.fetch automatically injects CSRF token for POST
+        const data = await Platform.fetch('/solutions/import/archimate/preview', {
           method: 'POST',
           body: formData,
-          headers: { 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || '' },
+          // The component already paints its own error state, suppress duplicate toast
+          silent: true,
         });
-        const data = await resp.json();
-        if (!resp.ok) {
-          this.error = data.error || 'Preview failed';
-          return;
-        }
         this.modelName = data.model_name || null;
         this.preview = data;
       } catch (err) {
-        this.error = 'Network error: ' + err.message;
+        // Platform.fetch throws a structured PlatformError; surface the message to the user
+        this.error = err.message || 'Preview failed';
       } finally {
         this.loading = false;
       }
@@ -247,19 +245,19 @@ function archiMateImport() {
       formData.append('strategy', this.strategy);
 
       try {
-        const resp = await fetch('/solutions/import/archimate/execute', {
+        // Platform.fetch automatically injects CSRF token for POST
+        const data = await Platform.fetch('/solutions/import/archimate/execute', {
           method: 'POST',
           body: formData,
-          headers: { 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || '' },
+          // The component paints its own error state, suppress duplicate toast
+          silent: true,
         });
-        const data = await resp.json();
-        if (!resp.ok && resp.status !== 207) {
-          this.error = data.error || 'Import failed';
-          return;
-        }
+        // Platform.fetch throws on non-ok responses, but the endpoint may return 207 (multi‑status)
+        // which Platform.fetch treats as ok (2xx). No need to check resp.ok separately.
         this.importResult = data;
       } catch (err) {
-        this.error = 'Network error: ' + err.message;
+        // Platform.fetch throws a structured PlatformError; surface the message to the user
+        this.error = err.message || 'Import failed';
       } finally {
         this.importing = false;
       }

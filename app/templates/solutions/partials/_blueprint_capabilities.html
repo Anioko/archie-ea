@@ -49,9 +49,12 @@
   const gap   = document.getElementById('cap-coverage-gap');
   const error = document.getElementById('cap-coverage-error');
 
-  fetch('/solutions/{{ solution.id }}/capability-coverage')
-    .then(function(r) { return r.json(); })
+  // Use Platform.fetch which throws on non-ok responses, returns parsed data directly,
+  // and automatically injects CSRF token for mutating methods (not needed for GET).
+  // The existing inline error state will be painted, so we pass silent:true to avoid duplicate toast.
+  Platform.fetch.get('/solutions/{{ solution.id }}/capability-coverage', null, { silent: true })
     .then(function(data) {
+      // Platform.fetch already parsed the JSON; data is the parsed object.
       if (!data.success || !data.capabilities || data.capabilities.length === 0) {
         panel.classList.remove('hidden');
         empty.classList.remove('hidden');
@@ -98,8 +101,12 @@
       panel.classList.remove('hidden');
     })
     .catch(function(err) {
+      // Platform.fetch throws on any non-ok response or network error.
+      // The existing inline error state will be painted, so we pass silent:true above.
+      // Do NOT swallow the error: surface it by showing the error element.
       panel.classList.remove('hidden');
       error.classList.remove('hidden');
+      // Do NOT add a fallback value; the error element already indicates failure.
     });
 })();
 </script>

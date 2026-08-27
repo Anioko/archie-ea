@@ -167,32 +167,40 @@
                     if (this.bulk.fit_type) body.fit_type = this.bulk.fit_type;
                     if (this.bulk.status) body.status = this.bulk.status;
                     if (this.bulk.erp_module) body.erp_module = this.bulk.erp_module;
-                    const r = await fetch('/solutions/programmes/' + this.programmeId + '/api/fit-gap/bulk', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this._csrf() },
-                        body: JSON.stringify(body),
-                    });
-                    const d = await r.json();
-                    if (!r.ok || !d.success) {
+                    // Platform.fetch.post automatically serialises plain objects to JSON and injects CSRF token.
+                    const d = await Platform.fetch.post('/solutions/programmes/' + this.programmeId + '/api/fit-gap/bulk', body);
+                    // Platform.fetch throws on non-ok responses, so reaching here means success.
+                    if (!d.success) {
+                        // The server returned a success HTTP status but indicated a logical failure.
                         this.messageKind = 'error';
                         this.message = d.error || 'Bulk update failed';
                         return;
                     }
                     window.location.reload();
+                } catch (err) {
+                    // Platform.fetch already shows a user-visible toast for HTTP errors.
+                    // However, we still need to paint an inline error state for this component.
+                    this.messageKind = 'error';
+                    this.message = err.message || 'Bulk update failed';
                 } finally { this.busy = false; }
             },
             async saveTarget() {
-                const r = await fetch('/solutions/programmes/' + this.programmeId, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this._csrf() },
-                    body: JSON.stringify({ clean_core_target: this.target }),
-                });
-                const d = await r.json();
-                if (!r.ok || !d.success) {
-                    this.messageKind = 'error';
-                    this.message = d.error || 'Target update failed';
-                } else {
+                try {
+                    // Platform.fetch.patch automatically serialises plain objects to JSON and injects CSRF token.
+                    const d = await Platform.fetch.patch('/solutions/programmes/' + this.programmeId, { clean_core_target: this.target });
+                    // Platform.fetch throws on non-ok responses, so reaching here means success.
+                    if (!d.success) {
+                        // The server returned a success HTTP status but indicated a logical failure.
+                        this.messageKind = 'error';
+                        this.message = d.error || 'Target update failed';
+                        return;
+                    }
                     window.location.reload();
+                } catch (err) {
+                    // Platform.fetch already shows a user-visible toast for HTTP errors.
+                    // However, we still need to paint an inline error state for this component.
+                    this.messageKind = 'error';
+                    this.message = err.message || 'Target update failed';
                 }
             },
         };

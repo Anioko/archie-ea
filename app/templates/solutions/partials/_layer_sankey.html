@@ -181,9 +181,8 @@ function layerMiniSankey(solutionId, layer) {
       this.loading = true;
       this.error = null;
       try {
-        const r = await fetch(`/architecture-journey/${this.solutionId}/layer-flow/${this.layer}`);
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        const data = await r.json();
+        // Platform.fetch returns parsed JSON directly, throws on non‑ok, injects CSRF
+        const data = await Platform.fetch(`/architecture-journey/${this.solutionId}/layer-flow/${this.layer}`, { silent: true });
         this.nodes = data.nodes || [];
         this.links = data.links || [];
         this.columnLabels = data.column_labels || [];
@@ -191,7 +190,10 @@ function layerMiniSankey(solutionId, layer) {
         await this.$nextTick();
         this.render();
       } catch (e) {
+        // Platform.fetch already toasts unless silent:true; we keep silent:true because we paint inline error state
         this.error = `Failed to load: ${e.message}`;
+        // Do NOT swallow the error: the inline error state is painted above, and the global toast is suppressed.
+        // No fallback value is substituted; the component will show the error message.
       } finally {
         this.loading = false;
       }

@@ -20,14 +20,19 @@
 (function() {
     async function deleteSolutionBp(solutionId, solutionName) {
         if (!(await Platform.modal.confirm('Delete "' + solutionName + '"? This cannot be undone.'))) return;
-        let csrf = document.querySelector('meta[name=csrf-token]');
-        fetch('/solutions/' + solutionId + '/delete', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf ? csrf.content : '' }
-        }).then(function(r) { return r.json(); }).then(function(d) {
-            if (d.success) { window.location.href = '/solutions/'; }
-            else { Platform.toast.error(d.error || 'Delete failed'); }
-        }).catch(function(e) { Platform.toast.error('Delete failed: ' + e.message); });
+        try {
+            const d = await Platform.fetch('/solutions/' + solutionId + '/delete', {
+                method: 'POST',
+                silent: true
+            });
+            if (d && d.success) {
+                window.location.href = '/solutions/';
+            } else {
+                Platform.toast.error(d ? d.error : 'Delete failed');
+            }
+        } catch (e) {
+            Platform.toast.error('Delete failed: ' + e.message);
+        }
     }
     document.addEventListener('click', function(e) {
         let btn = e.target.closest('[data-action="delete-solution"]');
@@ -72,7 +77,7 @@
                 @click="
                     const el = document.getElementById('{{ section_id }}');
                     if (el) {
-                        const y = el.getBoundingClientRect().top + window.pageYOffset - 120;
+                        const y = el.getBoundingClientRect().top + window.scrollY - 120;
                         window.scrollTo({ top: y, behavior: 'smooth' });
                     }
                 "
@@ -110,7 +115,7 @@
         {% for _qs_id, _qs_lbl in _qa_ns.zero %}
         <button type="button"
                 @click="
-                    (function(){var el=document.getElementById('{{ _qs_id }}');if(el){var y=el.getBoundingClientRect().top+window.pageYOffset-120;window.scrollTo({top:y,behavior:'smooth'});}})();
+                    (function(){var el=document.getElementById('{{ _qs_id }}');if(el){var y=el.getBoundingClientRect().top+window.scrollY-120;window.scrollTo({top:y,behavior:'smooth'});}})();
                     {% if _qs_id == 'vision_motivation' %}openAdd('driver');
                     {% elif _qs_id == 'transition_roadmap' %}openAdd('plateau');
                     {% elif _qs_id == 'nfr_satisfaction' %}openAdd('requirement');

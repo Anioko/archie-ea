@@ -174,7 +174,7 @@ function archieDownloadOef(solutionId) {
     let lbl = document.getElementById('btn-export-oef-label-' + solutionId);
     if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; }
     if (lbl) lbl.textContent = 'Exporting…';
-    fetch('/solutions/' + solutionId + '/export-oef')
+    fetch('/solutions/' + solutionId + '/export-oef') // raw-fetch-ok: need blob response for file download
         .then(function(r) {
             if (!r.ok) {
                 return r.json().then(function(d) {

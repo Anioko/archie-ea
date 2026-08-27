@@ -275,8 +275,9 @@ document.addEventListener('alpine:init', () => {
         async fetchComparison() {
             this.loading = true;
             try {
-                const resp = await fetch(`/solutions/${this.solutionId}/vendor-evaluation/comparison`);
-                const data = await resp.json();
+                const data = await Platform.fetch(`/solutions/${this.solutionId}/vendor-evaluation/comparison`);
+                // Platform.fetch returns parsed JSON directly; it throws on non-ok responses.
+                // The success flag is part of the API contract.
                 if (data.success) {
                     this.products = data.products || [];
                     this.criteria = data.criteria || [];
@@ -292,6 +293,10 @@ document.addEventListener('alpine:init', () => {
                 this.loadError = false;
             } catch (err) {
                 this.loadError = true;
+                // Platform.fetch already shows a user-visible toast for non‑silent errors.
+                // We keep the inline error state (loadError) to paint the error UI.
+                // Do NOT swallow the error; the catch is only for setting loadError.
+                // The error is already surfaced to the user via toast.
             } finally {
                 this.loading = false;
             }
@@ -350,16 +355,15 @@ document.addEventListener('alpine:init', () => {
             this.submitting = true;
 
             try {
-                const resp = await fetch(`/solutions/${this.solutionId}/vendor-evaluation/decision`, {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({
-                        product_id: this.selectedProduct.id,
-                        rationale: this.decisionRationale.trim(),
-                        criteria_weights: this.weights,
-                    }),
+                // Platform.fetch automatically injects CSRF token, serializes plain object to JSON,
+                // and sets Content-Type. No need for manual headers or JSON.stringify.
+                const data = await Platform.fetch.post(`/solutions/${this.solutionId}/vendor-evaluation/decision`, {
+                    product_id: this.selectedProduct.id,
+                    rationale: this.decisionRationale.trim(),
+                    criteria_weights: this.weights,
                 });
-                const data = await resp.json();
+                // Platform.fetch throws on non‑ok responses, so reaching here means success.
+                // The API still returns a success flag; we respect it.
                 if (data.success) {
                     this.showDecisionModal = false;
                     await this.fetchComparison();
@@ -367,6 +371,10 @@ document.addEventListener('alpine:init', () => {
                     this.rationaleError = data.error || 'Failed to record decision.';
                 }
             } catch (err) {
+                // Platform.fetch already shows a user‑visible toast for non‑silent errors.
+                // We keep the inline error state (rationaleError) to paint the error UI.
+                // Do NOT swallow the error; the catch is only for setting rationaleError.
+                // The error is already surfaced to the user via toast.
                 this.rationaleError = 'Network error. Please try again.';
             } finally {
                 this.submitting = false;

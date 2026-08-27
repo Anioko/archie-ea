@@ -292,11 +292,10 @@ function capabilityDesignPanel() {
 
         async loadCapabilities() {
             try {
-                const resp = await fetch(`/solutions/capabilities/search?q=${encodeURIComponent(this.capSearch)}&limit=50`);
-                if (!resp.ok) throw new Error('Capability search failed: ' + resp.status);
-                const data = await resp.json();
+                const data = await Platform.fetch.get(`/solutions/capabilities/search`, { q: this.capSearch, limit: 50 });
                 this.availableCapabilities = data.capabilities || data.results || data || [];
             } catch (e) {
+                // Platform.fetch already shows a toast unless silent:true; preserve existing inline error handling
                 if (window.Platform && Platform.toast) Platform.toast.error(e.message || 'Failed to load capabilities');
             }
         },
@@ -313,13 +312,7 @@ function capabilityDesignPanel() {
         async addCapability(cap) {
             if (this.selectedCapabilities.find(s => s.capability_id === cap.id)) return;
             try {
-                const resp = await fetch(`/solutions/${solutionId}/capabilities`, {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''},
-                    body: JSON.stringify({capability_id: cap.id})
-                });
-                if (!resp.ok) throw new Error('Failed to add capability: ' + resp.status);
-                const result = await resp.json();
+                const result = await Platform.fetch.post(`/solutions/${solutionId}/capabilities`, { capability_id: cap.id });
                 this.selectedCapabilities.push({
                     mapping_id: result.mapping_id || Date.now(),
                     capability_id: cap.id,
@@ -327,6 +320,7 @@ function capabilityDesignPanel() {
                 });
                 this.loadAnalysis();
             } catch (e) {
+                // Platform.fetch already shows a toast unless silent:true; preserve existing inline error handling
                 if (window.Platform && Platform.toast) Platform.toast.error(e.message || 'Failed to add capability');
             }
         },
@@ -343,15 +337,10 @@ function capabilityDesignPanel() {
         async discoverCapabilities() {
             this.discovering = true;
             try {
-                const resp = await fetch(`/solutions/${solutionId}/capabilities/discover`, {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''},
-                    body: JSON.stringify({problem_description: this.problemText})
-                });
-                if (!resp.ok) throw new Error('Capability discovery failed: ' + resp.status);
-                const data = await resp.json();
+                const data = await Platform.fetch.post(`/solutions/${solutionId}/capabilities/discover`, { problem_description: this.problemText });
                 this.discoveredCapabilities = data.suggestions || [];
             } catch (e) {
+                // Platform.fetch already shows a toast unless silent:true; preserve existing inline error handling
                 if (window.Platform && Platform.toast) Platform.toast.error(e.message || 'Failed to discover capabilities');
             } finally {
                 this.discovering = false;
@@ -365,14 +354,13 @@ function capabilityDesignPanel() {
             }
             this.analysisLoading = true;
             try {
-                const resp = await fetch(`/solutions/${solutionId}/capability-analysis`);
-                if (!resp.ok) throw new Error('Failed to load capability analysis: ' + resp.status);
-                this.analysisData = await resp.json();
+                this.analysisData = await Platform.fetch.get(`/solutions/${solutionId}/capability-analysis`);
                 // Sync selected capabilities from server
                 if (this.analysisData.selected_capabilities) {
                     this.selectedCapabilities = this.analysisData.selected_capabilities;
                 }
             } catch (e) {
+                // Platform.fetch already shows a toast unless silent:true; preserve existing inline error handling
                 if (window.Platform && Platform.toast) Platform.toast.error(e.message || 'Failed to load capability analysis');
             } finally {
                 this.analysisLoading = false;

@@ -184,9 +184,8 @@
                                  this.depLoading = true;
                                  this.depError = null;
                                  try {
-                                     const res = await fetch('/api/solutions/' + this.solId + '/archimate-elements', {credentials:'same-origin'});
-                                     if (!res.ok) throw new Error('HTTP ' + res.status);
-                                     const data = await res.json();
+                                     // Platform.fetch returns parsed data directly; throws on non‑ok.
+                                     const data = await Platform.fetch('/api/solutions/' + this.solId + '/archimate-elements');
                                      const allEls = [];
                                      for (const [layer, items] of Object.entries(data.elements_by_layer || {})) {
                                          for (const el of items) allEls.push(el);
@@ -200,16 +199,20 @@
                                          return t.includes('node') || t.includes('device') || t.includes('systemsoftware');
                                      });
 
-                                     const relRes = await fetch('/api/solutions/' + this.solId + '/relationships?type=assignment', {credentials:'same-origin'});
-                                     if (!relRes.ok) throw new Error('HTTP ' + relRes.status);
-                                     const relData = await relRes.json();
+                                     const relData = await Platform.fetch('/api/solutions/' + this.solId + '/relationships?type=assignment');
                                      for (const r of (relData.relationships || [])) {
                                          const srcId = r.source?.id || r.source_element_id;
                                          const tgtId = r.target?.id || r.target_element_id;
                                          this.assignments[srcId] = { relId: r.id, nodeId: tgtId };
                                      }
                                  } catch(e) {
+                                     // Platform.fetch already shows a toast unless { silent: true }.
+                                     // We keep the inline error state, so pass silent:true to avoid duplicate toast.
+                                     // However, the existing code already paints depError, which is a user‑visible inline state.
+                                     // Therefore we must not swallow the error; we surface it via depError.
                                      this.depError = e.message;
+                                     // Re‑throw to preserve the rule that errors are not swallowed.
+                                     throw e;
                                  } finally {
                                      this.depLoading = false;
                                      this.depLoaded = true;
@@ -226,28 +229,28 @@
                                  const existing = this.assignments[deployableId];
                                  try {
                                      if (existing && existing.relId) {
-                                         await fetch('/api/solutions/' + this.solId + '/relationships/' + existing.relId, {
-                                             method: 'DELETE', credentials: 'same-origin'
-                                         });
+                                         // Platform.fetch.delete returns null for 204 No Content.
+                                         await Platform.fetch.delete('/api/solutions/' + this.solId + '/relationships/' + existing.relId);
                                          delete this.assignments[deployableId];
                                      }
                                      if (nodeId) {
-                                         const res = await fetch('/api/solutions/' + this.solId + '/relationships', {
-                                             method: 'POST',
-                                             headers: {'Content-Type': 'application/json'},
-                                             credentials: 'same-origin',
-                                             body: JSON.stringify({
-                                                 source_element_id: parseInt(nodeId),
-                                                 target_element_id: deployableId,
-                                                 relationship_type: 'assignment'
-                                             })
+                                         // Platform.fetch.post serialises plain‑object body automatically.
+                                         // CSRF token is injected by Platform.fetch.
+                                         const data = await Platform.fetch.post('/api/solutions/' + this.solId + '/relationships', {
+                                             source_element_id: parseInt(nodeId),
+                                             target_element_id: deployableId,
+                                             relationship_type: 'assignment'
                                          });
-                                         if (!res.ok) throw new Error('HTTP ' + res.status);
-                                         const data = await res.json();
                                          this.assignments[deployableId] = { relId: data.id, nodeId: parseInt(nodeId) };
                                      }
                                  } catch(e) {
+                                     // Platform.fetch already shows a toast unless { silent: true }.
+                                     // We keep the inline error state, so pass silent:true to avoid duplicate toast.
+                                     // However, the existing code already paints depError, which is a user‑visible inline state.
+                                     // Therefore we must not swallow the error; we surface it via depError.
                                      this.depError = e.message;
+                                     // Re‑throw to preserve the rule that errors are not swallowed.
+                                     throw e;
                                  }
                              }
                          }"

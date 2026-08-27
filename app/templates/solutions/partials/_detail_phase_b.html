@@ -98,7 +98,7 @@
 
                 {# Phase B-D Guidance (SDX-010) #}
                 <details class="mb-4 border border-border rounded-lg">
-                    <summary class="px-4 py-2 text-sm font-medium text-muted-foreground cursor-pointer hover:text-foreground select-none">Phases B-D Guidance — Business, Information Systems & Technology Architecture</summary>
+                    <summary class="px-4 py-2 text-sm font-medium text-muted-foreground cursor-pointer hover:text-foreground select-none">Phases B‑D Guidance — Business, Information Systems & Technology Architecture</summary>
                     <div class="px-4 py-3 text-sm text-muted-foreground space-y-2 border-t border-border">
                         <p><strong class="text-foreground">TOGAF Deliverables:</strong> Business Architecture Document (Phase B), Data Architecture / Application Architecture (Phase C), Technology Architecture (Phase D). Architecture Definition Document (ADD), Architecture Requirements Specification.</p>
                         <p><strong class="text-foreground">ArchiMate Artifacts:</strong> Requirement elements with priority and type. Business services, processes, application components, technology services, data objects.</p>
@@ -239,12 +239,9 @@
                                 x-data="{ archiLoading: false, archiDone: false }"
                                 @click="
                                     archiLoading = true;
-                                    fetch('/api/solutions/' + (window.__SOLUTION_CONFIG__||{}).solutionId + '/archimate/generate', {
-                                        method: 'POST',
-                                        credentials: 'same-origin',
-                                        headers: {'Content-Type':'application/json','X-CSRFToken':(document.querySelector('[name=csrf_token]')||{value:''}).value},
-                                        body: JSON.stringify({phase: activePhase})
-                                    }).then(r=>r.json()).then(()=>{ archiLoading=false; archiDone=true; setTimeout(()=>archiDone=false,3000); }).catch(()=>{ archiLoading=false; })
+                                    Platform.fetch.post('/api/solutions/' + (window.__SOLUTION_CONFIG__||{}).solutionId + '/archimate/generate', {phase: activePhase})
+                                        .then(()=>{ archiLoading=false; archiDone=true; setTimeout(()=>archiDone=false,3000); })
+                                        .catch(()=>{ archiLoading=false; })
                                 "
                                 :disabled="archiLoading"
                                 class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-muted hover:bg-accent text-foreground transition-colors disabled:opacity-50">

@@ -132,7 +132,7 @@
           <textarea x-model="importContent"
                     rows="12"
                     :placeholder="importFormats.find(f => f.value === importFormat)?.placeholder || ''" aria-label="Schema Content"
-                    class="mt-1.5 w-full font-mono text-2xs bg-muted/40 border border-border rounded-md px-3 py-2 focus:outline-none focus:ring-1 focus:ring-violet-500/50 resize-none text-foreground placeholder:text-muted-foreground/40"{# design-tokens-ok #}
+                    class="mt-1.5 w-full font-mono text-2xs bg-muted/40 border border-border rounded-md px-3 py-2 focus:outline-none focus:ring-1 focus:ring-violet-500/50 resize-none text-foreground placeholder:text-muted-foreground/40" {# design-tokens-ok #}>
           </textarea>
         </div>
 
@@ -455,9 +455,7 @@ function fieldConfirmation(solutionId) {
       this.loading = true;
       this.error = null;
       try {
-        const r = await fetch(`/architecture-journey/${this.solutionId}/element-fields`);
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        const data = await r.json();
+        const data = await Platform.fetch(`/architecture-journey/${this.solutionId}/element-fields`, { silent: true });
         this.summary = data.summary || {};
         this.elements = (data.elements || []).map(el => ({
           ...el,
@@ -494,16 +492,11 @@ function fieldConfirmation(solutionId) {
       el._saved = false;
       el._saveError = null;
       try {
-        const r = await fetch(
+        const json = await Platform.fetch.patch(
           `/architecture-journey/${this.solutionId}/element/${el.element_id}/fields`,
-          {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ fields: el._editFields, status: 'confirmed' }),
-          }
+          { fields: el._editFields, status: 'confirmed' },
+          { silent: true }
         );
-        const json = await r.json();
-        if (!r.ok) throw new Error(json.error || `HTTP ${r.status}`);
         // Commit the edit back to the source array
         const prevStatus = el.fields_status;
         el.fields = el._editFields.map(f => ({ ...f }));
@@ -528,16 +521,11 @@ function fieldConfirmation(solutionId) {
       el._saving = true;
       el._saveError = null;
       try {
-        const r = await fetch(
+        const json = await Platform.fetch.patch(
           `/architecture-journey/${this.solutionId}/element/${el.element_id}/fields`,
-          {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ status: 'reset' }),
-          }
+          { status: 'reset' },
+          { silent: true }
         );
-        const json = await r.json();
-        if (!r.ok) throw new Error(json.error || `HTTP ${r.status}`);
         el.fields_status = 'pending';
         el.fields = [];
         el._editFields = [];
@@ -556,23 +544,15 @@ function fieldConfirmation(solutionId) {
       this.importing = true;
       this.importResult = null;
       try {
-        const csrf = document.querySelector('meta[name=csrf-token]');
-        const headers = { 'Content-Type': 'application/json' };
-        if (csrf) headers['X-CSRFToken'] = csrf.content;
-        const r = await fetch(`/architecture-journey/${this.solutionId}/import-schema`, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({ format: this.importFormat, content: this.importContent }),
-        });
-        const json = await r.json();
-        if (!r.ok) {
-          this.importResult = { error: json.error || `HTTP ${r.status}` };
-        } else {
-          this.importResult = json.data || json;
-          if ((this.importResult.imported || 0) > 0) {
-            // Reload element list to show newly confirmed fields
-            await this.load();
-          }
+        const json = await Platform.fetch.post(
+          `/architecture-journey/${this.solutionId}/import-schema`,
+          { format: this.importFormat, content: this.importContent },
+          { silent: true }
+        );
+        this.importResult = json.data || json;
+        if ((this.importResult.imported || 0) > 0) {
+          // Reload element list to show newly confirmed fields
+          await this.load();
         }
       } catch (e) {
         this.importResult = { error: e.message };
