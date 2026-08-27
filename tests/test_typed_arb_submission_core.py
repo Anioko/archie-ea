@@ -79,7 +79,7 @@ class _AdapterProbe:
         self.calls.append(("evaluate", subject.subject_id, dict(assertions)))
         return SimpleNamespace(ready=True, reason_codes=[], missing_evidence=[])
 
-    def snapshot(self, actor, subject, readiness):
+    def snapshot(self, actor, subject, readiness, *, review_item_id=None):
         self.calls.append(("snapshot", subject.subject_id, readiness.ready))
         return PinnedEvidence(self.evidence_type, self.evidence_id, "a" * 64)
 
@@ -123,6 +123,11 @@ def test_submit_routes_all_subject_types_through_one_command_and_atomic_handler(
         return _command_result(object_ids=dict(mutation.object_ids))
 
     monkeypatch.setattr(module.CommandService, "execute", execute)
+    monkeypatch.setattr(
+        module.TypedARBSubmissionService,
+        "_reserve_review_item_id",
+        staticmethod(lambda session: 777),
+    )
     monkeypatch.setattr(
         module.TypedARBSubmissionService,
         "_lock_subject_submission",

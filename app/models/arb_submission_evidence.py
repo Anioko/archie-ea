@@ -25,7 +25,15 @@ class ARBSubmissionEvidenceSnapshot(TenantMixin, db.Model):
         db.Integer, db.ForeignKey("organizations.id"), nullable=True, index=True
     )
     review_item_id = db.Column(
-        db.Integer, db.ForeignKey("arb_review_items.id"), nullable=True, index=True
+        db.Integer,
+        db.ForeignKey(
+            "arb_review_items.id",
+            name="fk_arb_submission_snapshot_review_item",
+            deferrable=True,
+            initially="DEFERRED",
+        ),
+        nullable=True,
+        index=True,
     )
     solution_id = db.Column(db.Integer, db.ForeignKey("solutions.id"), nullable=True, index=True)
     workspace_id = db.Column(
@@ -138,6 +146,7 @@ def ensure_evidence_immutability_triggers(connection):
     connection.exec_driver_sql(
         "SELECT pg_advisory_xact_lock(hashtext('archie_evidence_immutability_triggers'))"
     )
+    _ensure_snapshot_review_fk(connection)
     connection.exec_driver_sql(
         """
         CREATE OR REPLACE FUNCTION reject_archie_evidence_mutation()
@@ -148,6 +157,48 @@ def ensure_evidence_immutability_triggers(connection):
         END;
         $$
         """
+    )
+
+
+def _ensure_snapshot_review_fk(connection):
+    """Repair the cyclic Solution snapshot FK on upgraded PostgreSQL schemas."""
+    row = connection.exec_driver_sql(
+        """
+        SELECT c.conname, c.condeferrable, c.condeferred,
+               target.relname AS target_table
+        FROM pg_constraint AS c
+        JOIN pg_class AS source ON source.oid = c.conrelid
+        JOIN pg_namespace AS n ON n.oid = source.relnamespace
+        JOIN pg_class AS target ON target.oid = c.confrelid
+        WHERE n.nspname = current_schema()
+          AND source.relname = 'arb_submission_evidence_snapshots'
+          AND c.contype = 'f'
+          AND c.conkey = ARRAY[
+              (SELECT attnum FROM pg_attribute
+               WHERE attrelid = source.oid AND attname = 'review_item_id')
+          ]::smallint[]
+        """
+    ).mappings().one_or_none()
+    if (
+        row is not None
+        and row["conname"] == "fk_arb_submission_snapshot_review_item"
+        and row["target_table"] == "arb_review_items"
+        and row["condeferrable"]
+        and row["condeferred"]
+    ):
+        return
+    if row is not None:
+        preparer = connection.dialect.identifier_preparer
+        constraint_name = preparer.quote(row["conname"])
+        connection.exec_driver_sql(
+            "ALTER TABLE arb_submission_evidence_snapshots "
+            f"DROP CONSTRAINT {constraint_name}"
+        )
+    connection.exec_driver_sql(
+        "ALTER TABLE arb_submission_evidence_snapshots "
+        "ADD CONSTRAINT fk_arb_submission_snapshot_review_item "
+        "FOREIGN KEY (review_item_id) REFERENCES arb_review_items(id) "
+        "DEFERRABLE INITIALLY DEFERRED"
     )
     connection.exec_driver_sql(
         """

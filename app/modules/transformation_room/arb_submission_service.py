@@ -191,14 +191,34 @@ class TypedARBSubmissionService:
                     reason_codes=list(readiness.reason_codes),
                     missing_evidence=list(readiness.missing_evidence),
                 )
-            pinned = adapter.snapshot(actor, subject, readiness)
+            review_item_id = (
+                cls._reserve_review_item_id(session)
+                if subject.subject_type == "solution"
+                else None
+            )
+            pinned = adapter.snapshot(
+                actor,
+                subject,
+                readiness,
+                review_item_id=review_item_id,
+            )
             return cls._insert_submission_graph(
                 session=session,
                 actor=actor,
                 subject=subject,
                 adapter=adapter,
                 pinned_evidence=pinned,
+                review_item_id=review_item_id,
             )
+
+    @staticmethod
+    def _reserve_review_item_id(session):
+        return session.scalar(
+            text(
+                "SELECT nextval(pg_get_serial_sequence("
+                "'arb_review_items', 'id'))"
+            )
+        )
 
     @staticmethod
     def _subject_lock_key(organization_id, subject_type, subject_id):
@@ -224,7 +244,7 @@ class TypedARBSubmissionService:
 
     @classmethod
     def _insert_submission_graph(
-        cls, *, session, actor, subject, adapter, pinned_evidence
+        cls, *, session, actor, subject, adapter, pinned_evidence, review_item_id=None
     ) -> DomainMutationResult:
         subject_column = _SUBJECT_COLUMNS[subject.subject_type]
         evidence_column, expected_evidence_type = _EVIDENCE_COLUMNS[
@@ -270,6 +290,7 @@ class TypedARBSubmissionService:
         session.flush()
         review = ARBReviewItem(
             **typed_values,
+            id=review_item_id,
             review_cycle_id=cycle.id,
             review_number=review_number,
             title=f"{subject.title} ARB review",

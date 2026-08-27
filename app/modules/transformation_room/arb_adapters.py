@@ -56,6 +56,8 @@ class ARBSubjectAdapter(Protocol):
         actor: ActorContext,
         subject: GovernedSubject,
         readiness: ARBReadinessResult,
+        *,
+        review_item_id: int | None = None,
     ) -> PinnedEvidence: ...
 
     def canonical_url(self, subject: GovernedSubject) -> str: ...
@@ -239,7 +241,8 @@ class DecisionBriefARBAdapter(_ImmutableAdapter):
         )
         return decision_brief_arb_readiness(readiness, assertions)
 
-    def snapshot(self, actor, subject, readiness):
+    def snapshot(self, actor, subject, readiness, *, review_item_id=None):
+        del review_item_id
         self._require_current_subject(actor, subject)
         checks = readiness.checks if isinstance(readiness.checks, Mapping) else {}
         if (
@@ -328,7 +331,7 @@ class SolutionARBAdapter(_ImmutableAdapter):
         )
         return result
 
-    def snapshot(self, actor, subject, readiness):
+    def snapshot(self, actor, subject, readiness, *, review_item_id=None):
         self._require_current_subject(actor, subject, lock=True)
         if not readiness.ready:
             raise BlockedByEvidence("arb_subject_not_ready")
@@ -349,6 +352,7 @@ class SolutionARBAdapter(_ImmutableAdapter):
             raise CommandConflict("arb_readiness_stale")
         snapshot = ARBSubmissionService.build_evidence_snapshot(
             organization_id=actor.organization_id,
+            review_item_id=review_item_id,
             solution_id=subject.subject_id,
             actor_id=actor.user_id,
             workspace_id=context["workspace_id"],
@@ -497,7 +501,8 @@ class _SubjectSnapshotAdapter(_ImmutableAdapter):
             },
         )
 
-    def snapshot(self, actor, subject, readiness):
+    def snapshot(self, actor, subject, readiness, *, review_item_id=None):
+        del review_item_id
         row = self._require_current_subject(actor, subject, lock=True)
         checks = readiness.checks if isinstance(readiness.checks, Mapping) else {}
         if not readiness.ready:
