@@ -53,7 +53,7 @@ class ARBDecisionEvent(TenantMixin, db.Model):
 
     __table_args__ = (
         db.CheckConstraint(_TYPED_SHAPE, name="ck_arb_decision_event_typed_shape"),
-        db.CheckConstraint("outcome IN ('approved','approved_with_conditions','rejected','deferred','returned_for_evidence','returned_for_options','withdrawn') AND to_state = outcome", name="ck_arb_decision_event_outcome"),
+        db.CheckConstraint("outcome IN ('approved','approved_with_conditions','rejected','returned_for_evidence','returned_for_options') AND to_state = outcome AND from_state IN ('submitted','under_review','pending_information','pending_info','pending')", name="ck_arb_decision_event_outcome"),
         db.CheckConstraint("length(btrim(rationale)) > 0 AND command_generation > 0", name="ck_arb_decision_event_required"),
         db.CheckConstraint("json_typeof(conditions_json) = 'array' AND ((outcome = 'approved_with_conditions' AND json_array_length(conditions_json) > 0) OR (outcome <> 'approved_with_conditions' AND json_array_length(conditions_json) = 0))", name="ck_arb_decision_event_conditions"),
     )
@@ -87,6 +87,22 @@ class ARBCondition(TenantMixin, db.Model):
         db.CheckConstraint("length(btrim(condition_number)) > 0 AND length(btrim(description)) > 0", name="ck_arb_condition_terms"),
         db.CheckConstraint("blocks_execution IS TRUE", name="ck_arb_condition_blocks_execution"),
         db.CheckConstraint("status IN ('pending','fulfilled','waived')", name="ck_arb_condition_status"),
+        db.CheckConstraint(
+            "(status = 'pending' AND fulfilled_at IS NULL AND fulfilled_by_id IS NULL "
+            "AND fulfilment_evidence_id IS NULL AND waived_at IS NULL "
+            "AND waived_by_id IS NULL AND waiver_reason IS NULL "
+            "AND waiver_expires_at IS NULL AND compensating_control IS NULL) OR "
+            "(status = 'fulfilled' AND fulfilled_at IS NOT NULL "
+            "AND fulfilled_by_id IS NOT NULL AND fulfilment_evidence_id IS NOT NULL "
+            "AND waived_at IS NULL AND waived_by_id IS NULL AND waiver_reason IS NULL "
+            "AND waiver_expires_at IS NULL AND compensating_control IS NULL) OR "
+            "(status = 'waived' AND fulfilled_at IS NULL AND fulfilled_by_id IS NULL "
+            "AND fulfilment_evidence_id IS NULL AND waived_at IS NOT NULL "
+            "AND waived_by_id IS NOT NULL AND length(btrim(waiver_reason)) > 0 "
+            "AND waiver_expires_at > waived_at "
+            "AND length(btrim(compensating_control)) > 0)",
+            name="ck_arb_condition_lifecycle",
+        ),
     )
 
 
@@ -116,7 +132,7 @@ LANGUAGE plpgsql SET search_path=pg_catalog,{schema} AS $$ BEGIN
  JOIN operation_results result ON result.id=receipt.operation_result_id AND result.receipt_id=receipt.id
  JOIN command_materialisations materialisation ON materialisation.receipt_id=receipt.id
  WHERE receipt.id=NEW.command_receipt_id AND receipt.organization_id=NEW.organization_id
- AND receipt.actor_id=NEW.actor_id AND receipt.operation='arb.decision'
+ AND receipt.actor_id=NEW.actor_id AND receipt.operation='arb.decision.record'
  AND receipt.natural_key='arb-decision:' || NEW.organization_id::text || ':' || NEW.review_cycle_id::text
  AND receipt.status = 'succeeded' AND receipt.completed_at IS NOT NULL
  AND receipt.lease_generation=NEW.command_generation AND result.organization_id=NEW.organization_id
@@ -127,8 +143,33 @@ LANGUAGE plpgsql SET search_path=pg_catalog,{schema} AS $$ BEGIN
  AND materialisation.operation=receipt.operation AND materialisation.natural_key=receipt.natural_key
  AND materialisation.request_digest=receipt.request_digest AND materialisation.receipt_generation=NEW.command_generation
  AND result.object_ids::jsonb @> jsonb_build_object('review_cycle_id',NEW.review_cycle_id,'review_item_id',NEW.review_item_id,'decision_event_id',NEW.id)
- AND materialisation.object_ids::jsonb @> jsonb_build_object('review_cycle_id',NEW.review_cycle_id,'review_item_id',NEW.review_item_id,'decision_event_id',NEW.id))
+ AND materialisation.object_ids::jsonb @> jsonb_build_object('review_cycle_id',NEW.review_cycle_id,'review_item_id',NEW.review_item_id,'decision_event_id',NEW.id)
+ AND result.object_ids::jsonb->'condition_ids' IS NOT DISTINCT FROM COALESCE((SELECT jsonb_agg(condition.id ORDER BY condition.condition_number) FROM arb_canonical_conditions condition WHERE condition.decision_event_id=NEW.id),'[]'::jsonb)
+ AND materialisation.object_ids::jsonb->'condition_ids' IS NOT DISTINCT FROM COALESCE((SELECT jsonb_agg(condition.id ORDER BY condition.condition_number) FROM arb_canonical_conditions condition WHERE condition.decision_event_id=NEW.id),'[]'::jsonb))
  THEN RAISE EXCEPTION 'ARB decision command result/materialisation provenance is invalid' USING ERRCODE='23514'; END IF;
+ IF NOT EXISTS (SELECT 1 FROM users actor WHERE actor.id=NEW.actor_id AND actor.organization_id=NEW.organization_id)
+ THEN RAISE EXCEPTION 'ARB decision actor is outside its tenant' USING ERRCODE='23514'; END IF;
+ IF (NEW.outcome='approved_with_conditions' AND (SELECT count(*) FROM arb_canonical_conditions condition WHERE condition.decision_event_id=NEW.id AND condition.organization_id=NEW.organization_id)=0)
+ OR (NEW.outcome<>'approved_with_conditions' AND EXISTS (SELECT 1 FROM arb_canonical_conditions condition WHERE condition.decision_event_id=NEW.id))
+ THEN RAISE EXCEPTION 'ARB decision condition cardinality is invalid' USING ERRCODE='23514'; END IF;
+ IF NEW.conditions_json::jsonb IS DISTINCT FROM COALESCE((SELECT jsonb_agg(jsonb_build_object('condition_number',condition.condition_number,'description',condition.description,'category',condition.category,'due_date',condition.due_date,'blocks_execution',condition.blocks_execution) ORDER BY condition.condition_number) FROM arb_canonical_conditions condition WHERE condition.decision_event_id=NEW.id),'[]'::jsonb)
+ THEN RAISE EXCEPTION 'ARB decision canonical conditions disagree' USING ERRCODE='23514'; END IF;
+ RETURN NEW; END $$;
+"""
+
+
+def _decision_open_state_sql(schema):
+    return f"""
+CREATE OR REPLACE FUNCTION {schema}.archie_validate_arb_decision_open_state() RETURNS trigger
+LANGUAGE plpgsql SET search_path=pg_catalog,{schema} AS $$ BEGIN
+ IF NOT EXISTS (SELECT 1 FROM arb_review_cycles cycle JOIN arb_review_items review
+ ON review.id=NEW.review_item_id AND review.review_cycle_id=cycle.id
+ WHERE cycle.id=NEW.review_cycle_id AND cycle.organization_id=NEW.organization_id
+ AND review.organization_id=NEW.organization_id AND cycle.closed_at IS NULL
+ AND cycle.terminal_outcome IS NULL AND review.decision IS NULL
+ AND cycle.status=NEW.from_state AND review.status=NEW.from_state
+ AND NEW.from_state IN ('submitted','under_review','pending_information','pending_info','pending'))
+ THEN RAISE EXCEPTION 'ARB decision from_state is not the current open projection' USING ERRCODE='23514'; END IF;
  RETURN NEW; END $$;
 """
 
@@ -151,11 +192,13 @@ def ensure_arb_decision_guards(connection):
     schema = connection.exec_driver_sql("SELECT current_schema()").scalar()
     q = connection.dialect.identifier_preparer.quote(schema)
     connection.exec_driver_sql(_decision_membership_sql(q))
+    connection.exec_driver_sql(_decision_open_state_sql(q))
     connection.exec_driver_sql(_condition_membership_sql(q))
     connection.exec_driver_sql(f"""CREATE OR REPLACE FUNCTION {q}.archie_guard_arb_decision_immutable() RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog AS $$ BEGIN
  IF TG_OP='DELETE' THEN RAISE EXCEPTION 'ARB decision history is append-only' USING ERRCODE='55000'; END IF;
  IF TG_TABLE_NAME='arb_decision_events' THEN RAISE EXCEPTION 'ARB decision events are append-only' USING ERRCODE='55000'; END IF;
  IF ROW(OLD.organization_id,OLD.decision_event_id,OLD.review_cycle_id,OLD.review_item_id,OLD.condition_number,OLD.description,OLD.category,OLD.due_date,OLD.blocks_execution,OLD.created_at) IS DISTINCT FROM ROW(NEW.organization_id,NEW.decision_event_id,NEW.review_cycle_id,NEW.review_item_id,NEW.condition_number,NEW.description,NEW.category,NEW.due_date,NEW.blocks_execution,NEW.created_at) THEN RAISE EXCEPTION 'ARB condition identity and terms are immutable' USING ERRCODE='55000'; END IF; RETURN NEW; END $$;
+ DROP TRIGGER IF EXISTS trg_arb_decision_event_open_state ON {q}.arb_decision_events; CREATE TRIGGER trg_arb_decision_event_open_state BEFORE INSERT ON {q}.arb_decision_events FOR EACH ROW EXECUTE FUNCTION {q}.archie_validate_arb_decision_open_state();
  DROP TRIGGER IF EXISTS trg_arb_decision_event_membership ON {q}.arb_decision_events; CREATE CONSTRAINT TRIGGER trg_arb_decision_event_membership AFTER INSERT OR UPDATE ON {q}.arb_decision_events DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION {q}.archie_validate_arb_decision_event();
  DROP TRIGGER IF EXISTS trg_arb_decision_event_immutable ON {q}.arb_decision_events; CREATE TRIGGER trg_arb_decision_event_immutable BEFORE UPDATE OR DELETE ON {q}.arb_decision_events FOR EACH ROW EXECUTE FUNCTION {q}.archie_guard_arb_decision_immutable();
  DROP TRIGGER IF EXISTS trg_arb_condition_membership ON {q}.arb_canonical_conditions; CREATE CONSTRAINT TRIGGER trg_arb_condition_membership AFTER INSERT OR UPDATE ON {q}.arb_canonical_conditions DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION {q}.archie_validate_arb_condition();

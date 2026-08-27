@@ -38,6 +38,7 @@ def test_decision_event_and_condition_schema_contract():
     assert all(value in checks for value in (
         "decision_brief", "solution", "architecture_model", "adr",
         "blocks_execution", "pending", "length(btrim(description)) > 0",
+        "fulfilled_at IS NOT NULL", "waiver_expires_at > waived_at",
     ))
 
 
@@ -57,10 +58,24 @@ def test_decision_guard_sql_binds_terminal_projection_and_command_envelopes():
     assert "cycle.terminal_outcome = NEW.outcome" in sql
     assert "review.decision = NEW.outcome" in sql
     assert "'arb-decision:' || NEW.organization_id::text || ':'" in sql
+    assert "receipt.operation='arb.decision.record'" in sql
     assert "receipt.status = 'succeeded'" in sql
     assert "operation_results" in sql
     assert "command_materialisations" in sql
     assert "result.object_ids::jsonb" in sql
+    assert "condition_ids" in sql
+    assert "canonical conditions disagree" in sql
+
+
+def test_open_state_guard_proves_real_pretransition_projection():
+    from app.models.arb_decision_event import _decision_open_state_sql
+
+    sql = _decision_open_state_sql('"public"')
+    assert "BEFORE" not in sql  # timing belongs to trigger installation
+    assert "cycle.status=NEW.from_state" in sql
+    assert "review.status=NEW.from_state" in sql
+    assert "cycle.closed_at IS NULL" in sql
+    assert "review.decision IS NULL" in sql
 
 
 def test_condition_guard_sql_binds_canonical_decision_membership():
@@ -89,6 +104,7 @@ def test_reconcile_installs_decision_tables_and_enabled_guards(app, _schema):
         )).scalars().all()
         assert set(rows) >= {
             "trg_arb_decision_event_membership", "trg_arb_decision_event_immutable",
+            "trg_arb_decision_event_open_state",
             "trg_arb_condition_membership", "trg_arb_condition_immutable",
         }
 
