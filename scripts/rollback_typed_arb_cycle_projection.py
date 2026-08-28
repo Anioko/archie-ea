@@ -49,6 +49,12 @@ USAGE
 ``--apply`` writes a JSON record of every row's prior state to
 ``arb_cycle_projection_rollback_<timestamp>.json`` before touching anything, so
 the projection can be restored if the rollback is itself reverted.
+
+That backup records the CYCLE rows only, and it is still sufficient to restore
+both tables: each review item's prior ``status`` and ``decision`` always equalled
+its cycle's prior ``status``, which is exactly the invariant
+``archie_validate_arb_cycle_membership`` enforces. Stated here so that whoever
+restores this during an incident does not have to re-derive it.
 """
 
 from __future__ import annotations
