@@ -591,15 +591,22 @@ def get_retirement_blockers(app_id):
             )
             if raw:
                 ra = raw.get("risk_assessment") or {}
+                # None, not "LOW"/0 -- this is a retirement risk shown to someone
+                # deciding whether to retire an application. An unassessed risk
+                # rendered as LOW is indistinguishable from an assessed one, and
+                # the `or` chain collapsed None and "" as well as a missing key.
                 canonical_impact = {
-                    "risk_level": ra.get("risk_level") or raw.get("risk_level", "LOW"),
-                    "total_score": ra.get("total_score", 0),
+                    "risk_level": ra.get("risk_level") or raw.get("risk_level"),
+                    "total_score": ra.get("total_score"),
                     "breakdown": ra.get("breakdown") or {},
                     "summary": raw.get("executive_summary") or raw.get("summary"),
                 }
-        except Exception:  # fabricated-values-ok: best-effort canonical impact enrichment, non-fatal
-            logger.exception("Failed to operation")
-            pass
+        except Exception:
+            # Best-effort enrichment, but its absence stays visible: the key
+            # returns null rather than a confident-looking default.
+            logger.exception(
+                "canonical impact enrichment failed for app_id=%s", app_id
+            )
         return jsonify({"success": True, "data": blockers, "canonical_impact": canonical_impact})
     except Exception as e:
         logger.error(

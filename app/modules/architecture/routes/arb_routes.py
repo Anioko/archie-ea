@@ -1349,15 +1349,22 @@ def review_detail(id):
             )
             if raw:
                 ra = raw.get("risk_assessment") or {}
+                # None, not "LOW", and not 0. This renders on a page where a
+                # reviewer signs off risk, and an unassessed risk presented as
+                # LOW is indistinguishable from an assessed one. The previous
+                # `or` chain collapsed None and "" to "LOW" as well as a missing
+                # key. Templates render None as an em dash.
                 canonical_impact = {
-                    "risk_level": ra.get("risk_level") or raw.get("risk_level", "LOW"),
-                    "total_score": ra.get("total_score", 0),
+                    "risk_level": ra.get("risk_level") or raw.get("risk_level"),
+                    "total_score": ra.get("total_score"),
                     "breakdown": ra.get("breakdown") or {},
                     "app_count": len(app_ids),
                 }
-        except Exception:  # fabricated-values-ok: best-effort score enrichment, non-fatal
-            logger.exception("Failed to operation")
-            pass
+        except Exception:
+            # The enrichment is best-effort, but its ABSENCE must be visible:
+            # canonical_impact stays as it was rather than being filled with
+            # confident-looking defaults.
+            logger.exception("ARB impact enrichment failed for app_id=%s", app_ids[0])
 
     # ARB-101: compute SLA banner info for review detail
     _SLA_THRESHOLDS = {"critical": 7, "high": 14, "medium": 21, "low": 30}
