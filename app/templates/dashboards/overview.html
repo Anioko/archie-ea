@@ -448,12 +448,13 @@
             {# CTO sees the health score hero too #}
             
             {# FRAG-035: Executive Summary (lazy-loaded) #}
-            <div x-data="{ execData: null, execLoading: true }" x-init="
+            <div x-data="{ execData: null, execLoading: true, execError: '' }" x-init="
                 Platform.fetch.get('/dashboard/api/executive-summary')
                     .then(data => { execData = data.data; })
-                    .catch(() => {})
+                    .catch(() => { execError = 'Executive summary is currently unavailable.'; })
                     .finally(() => { execLoading = false; })
             ">
+            <p x-show="execError" x-cloak class="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive" x-text="execError"></p>
             <template x-if="execData">
                 <div class="rounded-xl border border-border bg-card p-5 mb-6">
                     <h3 class="text-sm font-semibold text-foreground mb-3">Executive Summary</h3>  <!-- frontend-quality-ok -->
@@ -578,10 +579,10 @@
                 {{ metrics_card(title='Health Score', value=(health_score|string ~ '/100') if health_score is not none else '—', icon='heart-pulse', description='Architecture health', href='/dashboard/health', class='border-l-4 border-l-red-500') }}
             </div>
             {# ── Governance Stats (lazy-loaded from ARB API) ── #}
-            <div x-data="{ govData: null, govLoading: true }" x-init="
+            <div x-data="{ govData: null, govLoading: true, govError: '' }" x-init="
                 Platform.fetch.get('/arb/api/dashboard')
                     .then(data => { govData = data.data; })
-                    .catch(() => {})
+                    .catch(() => { govError = 'Governance data is currently unavailable.'; })
                     .finally(() => { govLoading = false; })
             ">
             {% call card.card(class='border-l-4 border-l-amber-500') %}
@@ -590,6 +591,7 @@
                 {% endcall %}
                 {% call card.card_content() %}
                     <div x-show="govLoading" class="py-4 text-sm text-muted-foreground">Loading governance data...</div>
+                    <p x-show="govError" x-cloak class="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive" x-text="govError"></p>
                     <template x-if="govData">
                         <div>
                             <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
