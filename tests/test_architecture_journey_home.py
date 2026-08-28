@@ -259,6 +259,93 @@ def test_cross_org_admin_cannot_open_another_tenants_journey(
     )
 
 
+# ── the rendered screen ──────────────────────────────────────────────────────
+
+
+def _render_home(app, db_session, owner, login_as, journey):
+    db_session.commit()
+    client = app.test_client()
+    login_as(client, owner)
+    response = client.get(f"/architecture-journey/work/{journey.id}")
+    assert response.status_code == 200, response.get_data(as_text=True)[:600]
+    return response.get_data(as_text=True)
+
+
+def test_home_has_exactly_one_heading_and_one_breadcrumb(
+    app, db_session, journey_owner, login_as
+):
+    """One feature, one page chrome.
+
+    This surface previously carried three page-level entry points with two
+    incompatible breadcrumb ancestries, and a dead landing branch with a second
+    competing <h1>. A duplicated breadcrumb is not cosmetic: it tells the reader
+    two different stories about where they are in the product.
+    """
+    journey = _make_journey(db_session, journey_owner)
+    html = _render_home(app, db_session, journey_owner, login_as, journey)
+
+    assert html.count("<h1") == 1
+    assert html.count('aria-label="Breadcrumb"') == 1
+
+
+def test_home_shows_participants_decisions_risks_and_governance(
+    app, db_session, journey_owner, login_as
+):
+    """The brief's list, and the reason the link tables exist.
+
+    Before this wave the workspace showed purpose, stage, scope, deliverables and a
+    free-text evidence list. Participants, decisions, risks and governance had
+    nowhere to come from.
+    """
+    journey = _make_journey(db_session, journey_owner)
+    html = _render_home(app, db_session, journey_owner, login_as, journey)
+
+    for testid in (
+        "journey-participants",
+        "journey-decisions",
+        "journey-risks",
+        "journey-governance",
+        "journey-next-action",
+    ):
+        assert f'data-testid="{testid}"' in html, f"{testid} missing from the journey home"
+
+
+def test_home_renders_a_dash_not_a_zero_when_counts_are_unknown(
+    app, monkeypatch, db_session, journey_owner, login_as
+):
+    """The honesty rule, end to end through the template.
+
+    A journey whose link store cannot be read must not render "0 risks". A reader
+    seeing 0 concludes the journey is clean; a reader seeing an em dash knows to go
+    and look. The difference is the whole reason this screen exists.
+    """
+    from app.modules.solutions_strategic.v2.services import journey_home as module
+
+    journey = _make_journey(db_session, journey_owner)
+
+    def _explode(*args, **kwargs):
+        raise RuntimeError("link store unavailable")
+
+    monkeypatch.setattr(module, "_load_links", _explode)
+
+    html = _render_home(app, db_session, journey_owner, login_as, journey)
+
+    assert 'data-testid="journey-degraded"' in html, (
+        "a degraded journey home must say so; silently showing partial data is the "
+        "failure this test exists to prevent"
+    )
+    assert "—" in html
+
+
+def test_home_states_when_no_solution_was_assumed(app, db_session, journey_owner, login_as):
+    """A journey that ends in architecture only is a first-class outcome."""
+    journey = _make_journey(db_session, journey_owner, outcome_type="architecture_only")
+    html = _render_home(app, db_session, journey_owner, login_as, journey)
+
+    assert 'data-testid="journey-outcome"' in html
+    assert "solution" in html.lower()
+
+
 def test_home_view_carries_purpose_stage_and_progress(db_session, journey_owner):
     from app.modules.solutions_strategic.v2.services.journey_home import (
         journey_home_view,

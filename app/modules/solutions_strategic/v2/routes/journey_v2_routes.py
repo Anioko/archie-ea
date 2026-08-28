@@ -6,7 +6,7 @@ Blueprint: architecture_journey_bp, url_prefix=/architecture-journey
 import logging
 from functools import wraps
 
-from flask import Blueprint, current_app, jsonify, render_template, request, url_for
+from flask import Blueprint, abort, current_app, jsonify, render_template, request, url_for
 from flask_login import current_user, login_required
 
 from app import db
@@ -333,9 +333,24 @@ def start_architecture_journey():
 @_require_journey_owner
 def architecture_journey_workspace(journey_id):
     journey = ArchitectureJourney.query.filter_by(id=journey_id).first_or_404()
+
+    from app.modules.solutions_strategic.v2.services.journey_home import (
+        journey_home_view,
+    )
+
+    home = journey_home_view(journey_id=journey.id, actor_user=current_user)
+    if home is None:
+        # The guard above already resolved this journey for this tenant, so the
+        # read model refusing it means the two disagree -- which is a fault, not a
+        # permission answer. Do not fall through to a page rendered from partial
+        # context: that is how a screen ends up quietly showing someone a journey
+        # with none of its records and no indication anything is missing.
+        abort(404)
+
     return render_template(
         "architecture_assistant/architecture_journey_workspace.html",
         journey=journey,
+        home=home,
         intent_options=JOURNEY_INTENT_OPTIONS,
         layer_options=JOURNEY_LAYER_OPTIONS,
         deliverable_options=JOURNEY_DELIVERABLE_OPTIONS,
