@@ -17,7 +17,14 @@ import pathlib
 import pytest
 
 from .conftest import PAGE_TIMEOUT
-from .test_archetype_journeys import _login, _visit
+# Import `page` too, deliberately. pytest-playwright 0.7.2 supplies its own
+# `page`/`context`/`browser` fixtures; without shadowing `page` here, the plugin's
+# fixture wins, calls sync_playwright() once, and then requests `browser` -- which
+# resolves to THIS repo's conftest fixture, which calls sync_playwright() a second
+# time on the same thread while the first loop is parked. The result is
+# "Sync API inside the asyncio loop", and it is Playwright's own loop, so
+# -p no:asyncio does nothing about it.
+from .test_archetype_journeys import _login, _visit, page  # noqa: F401
 
 
 pytestmark = [pytest.mark.smoke, pytest.mark.journey]
