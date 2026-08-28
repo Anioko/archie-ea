@@ -365,6 +365,177 @@ def architecture_journey_workspace(journey_id):
     )
 
 
+# ── journey edges: linking records, and adding people ────────────────────────
+#
+# The journey home counts participants, decisions, risks and governance. Without
+# these write paths those counts are permanently zero and the screen is decorative
+# -- a worse failure than showing nothing, because a reader sees "0 risks" and
+# concludes the journey is clean when nothing could ever have been recorded.
+#
+# Bodies are strictly allow-listed. organization_id and the author come from the
+# session and are never accepted from the request: a caller who can name the tenant
+# can write into someone else's.
+
+
+def _link_payload_error(data):
+    """Validate a link body. Returns an error message, or None when acceptable."""
+    from app.models.architecture_journey_link import (
+        JOURNEY_LINK_ENTITY_TYPES,
+        JOURNEY_LINK_RELATIONS,
+    )
+
+    allowed = {"entity_type", "entity_id", "relation", "note"}
+    unknown = set(data) - allowed
+    if unknown:
+        # Named explicitly rather than ignored: silently dropping a field the
+        # caller believed was saved is how a client ends up trusting a value the
+        # server never stored.
+        return f"Unsupported link fields: {', '.join(sorted(unknown))}"
+
+    entity_type = data.get("entity_type")
+    if entity_type not in JOURNEY_LINK_ENTITY_TYPES:
+        return "Unknown record type for a journey link"
+
+    entity_id = data.get("entity_id")
+    if isinstance(entity_id, bool) or not isinstance(entity_id, int) or entity_id <= 0:
+        # A 0 or a negative id points at no row, and would render as a broken
+        # reference that looks like a real one.
+        return "A journey link needs the id of an existing record"
+
+    relation = data.get("relation", "references")
+    if relation not in JOURNEY_LINK_RELATIONS:
+        return "Unknown relation for a journey link"
+
+    note = data.get("note")
+    if note is not None and (not isinstance(note, str) or len(note) > 2000):
+        return "A link note must be text of at most 2000 characters"
+
+    return None
+
+
+@journey_v2_bp.route("/work/<int:journey_id>/links", methods=["POST"])
+@login_required
+@_require_journey_owner
+def create_journey_link(journey_id):
+    """Link this journey to a record that already exists elsewhere."""
+    from app.models.architecture_journey_link import ArchitectureJourneyLink
+
+    journey = ArchitectureJourney.query.filter_by(id=journey_id).first_or_404()
+    data = request.get_json(silent=True) or {}
+
+    error = _link_payload_error(data)
+    if error:
+        return api_error(error, 400)
+
+    relation = data.get("relation", "references")
+    existing = ArchitectureJourneyLink.query.filter_by(
+        journey_id=journey.id,
+        entity_type=data["entity_type"],
+        entity_id=data["entity_id"],
+        relation=relation,
+    ).first()
+    if existing is not None:
+        # The same record linked twice with the same relation is a duplicate, not
+        # a second fact.
+        return api_error("That record is already linked to this journey", 409)
+
+    link = ArchitectureJourneyLink(
+        journey_id=journey.id,
+        organization_id=journey.organization_id,
+        entity_type=data["entity_type"],
+        entity_id=data["entity_id"],
+        relation=relation,
+        note=(data.get("note") or None),
+        created_by_id=current_user.id,
+    )
+    db.session.add(link)
+    db.session.commit()
+    return api_success(
+        data={
+            "id": link.id,
+            "entity_type": link.entity_type,
+            "entity_id": link.entity_id,
+            "relation": link.relation,
+        },
+        status_code=201,
+    )
+
+
+@journey_v2_bp.route("/work/<int:journey_id>/links/<int:link_id>", methods=["DELETE"])
+@login_required
+@_require_journey_owner
+def delete_journey_link(journey_id, link_id):
+    """Unlink a record. The record itself is untouched -- this owns the edge only."""
+    from app.models.architecture_journey_link import ArchitectureJourneyLink
+
+    journey = ArchitectureJourney.query.filter_by(id=journey_id).first_or_404()
+    link = ArchitectureJourneyLink.query.filter_by(
+        id=link_id, journey_id=journey.id
+    ).first()
+    if link is None:
+        return api_error("No such link on this journey", 404)
+
+    db.session.delete(link)
+    db.session.commit()
+    return api_success(data={"id": link_id})
+
+
+@journey_v2_bp.route("/work/<int:journey_id>/members", methods=["POST"])
+@login_required
+@_require_journey_owner
+def add_journey_member(journey_id):
+    """Put a person on this journey, by user id."""
+    from app.models.architecture_journey_link import (
+        JOURNEY_MEMBER_ROLES,
+        ArchitectureJourneyMember,
+    )
+    from app.models.user import User
+
+    journey = ArchitectureJourney.query.filter_by(id=journey_id).first_or_404()
+    data = request.get_json(silent=True) or {}
+
+    unknown = set(data) - {"user_id", "role"}
+    if unknown:
+        return api_error(f"Unsupported member fields: {', '.join(sorted(unknown))}", 400)
+
+    user_id = data.get("user_id")
+    if isinstance(user_id, bool) or not isinstance(user_id, int) or user_id <= 0:
+        return api_error("A journey member needs a user id", 400)
+
+    role = data.get("role", "contributor")
+    if role not in JOURNEY_MEMBER_ROLES:
+        return api_error("Unknown role for a journey member", 400)
+
+    # Resolved with an explicit organisation predicate. Adding a user from another
+    # tenant would put a name on a journey that person cannot open, and would leak
+    # the existence of that user to this one.
+    member_user = User.query.filter_by(
+        id=user_id, organization_id=journey.organization_id
+    ).first()
+    if member_user is None:
+        return api_error("No such user in this organisation", 400)
+
+    existing = ArchitectureJourneyMember.query.filter_by(
+        journey_id=journey.id, user_id=member_user.id
+    ).first()
+    if existing is not None:
+        return api_error("That person is already on this journey", 409)
+
+    member = ArchitectureJourneyMember(
+        journey_id=journey.id,
+        organization_id=journey.organization_id,
+        user_id=member_user.id,
+        role=role,
+        added_by_id=current_user.id,
+    )
+    db.session.add(member)
+    db.session.commit()
+    return api_success(
+        data={"id": member.id, "user_id": member.user_id, "role": member.role},
+        status_code=201,
+    )
+
+
 @journey_v2_bp.route("/work/<int:journey_id>/state", methods=["PATCH"])
 @login_required
 @_require_journey_owner
