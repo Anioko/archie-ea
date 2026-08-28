@@ -1,0 +1,1024 @@
+"""Canonical execution materialisation for approved Transformation Room decisions."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import date, datetime, timezone
+from typing import Any, Callable, Mapping, Sequence
+import unicodedata
+
+from sqlalchemy import or_, select
+
+from app import db
+from app.models.architecture_review_board import ARBReviewCycle, ARBReviewItem
+from app.models.arb_decision_event import ARBCondition
+from app.models.benefit import Benefit
+from app.models.implementation_migration import WorkPackage
+from app.models.solution_models import Solution
+from app.models.strategic import RoadmapItem, StrategicInitiative
+from app.models.transformation_decision import (
+    DecisionBrief,
+    DecisionBriefVersion,
+    TransformationOptionVersion,
+)
+from app.models.transformation_execution import DeliveryExportAttempt
+from app.models.transformation_programme import (
+    MeasureDefinition,
+    ProgrammeOutcomeCommitment,
+    ProgrammeWorkstream,
+)
+from app.models.user import User
+from app.modules.solutions_strategic.v2.services.strategic_service import StrategicService
+from app.modules.transformation_room.command_service import (
+    CommandService,
+    OperationAuthorizer,
+    canonical_request_digest,
+)
+from app.modules.transformation_room.domain import (
+    ActorContext,
+    ApprovedAction,
+    CommandConflict,
+    CommandResult,
+    DomainMutationResult,
+    NotAuthorised,
+    NotFound,
+)
+from app.modules.transformation_room.programme_service import (
+    CREATE_ROLES,
+    TransformationProgrammeService,
+)
+
+
+EXECUTION_ROLES = CREATE_ROLES | frozenset(
+    {
+        "programme_owner",
+        "workstream_lead",
+        "delivery_lead",
+        "application_architect",
+        "solution_architect",
+    }
+)
+
+
+@dataclass(frozen=True)
+class _ExecutionGraph:
+    version: DecisionBriefVersion
+    brief: DecisionBrief
+    programme: StrategicInitiative
+    workstream: ProgrammeWorkstream
+    cycle: ARBReviewCycle
+    review: ARBReviewItem
+    conditions: tuple[ARBCondition, ...]
+    options: Mapping[int, TransformationOptionVersion]
+    outcomes: tuple[ProgrammeOutcomeCommitment, ...]
+    measures: tuple[MeasureDefinition, ...]
+
+
+def _positive_id(value: Any, field: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(f"{field} must be a positive integer")
+    return value
+
+
+def _required_text(value: Any, field: str, limit: int) -> str:
+    normalized = (
+        unicodedata.normalize("NFC", value).strip() if isinstance(value, str) else ""
+    )
+    if (
+        not normalized
+        or len(normalized) > limit
+        or any(ord(character) < 32 or ord(character) == 127 for character in normalized)
+    ):
+        raise ValueError(f"invalid {field}")
+    return normalized
+
+
+def _utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+class TransformationExecutionService:
+    """Materialise approved work without introducing another planning aggregate."""
+
+    OPERATION = "execution.materialise"
+    SOLUTION_OPERATION = "execution.create_solution"
+    EXPORT_OPERATION = "execution.delivery_export"
+
+    @classmethod
+    def materialise(
+        cls,
+        *,
+        actor: ActorContext,
+        decision_brief_version_id: int,
+        actions: Sequence[ApprovedAction],
+        command_key: str,
+    ) -> CommandResult:
+        command_key = _required_text(command_key, "command_key", 255)
+        request = cls.validate_materialisation_request(
+            actor, decision_brief_version_id, actions
+        )
+        natural_key = (
+            f"materialise:{decision_brief_version_id}:"
+            f"{canonical_request_digest(request)}"
+        )
+        return CommandService.execute(
+            actor=actor,
+            operation=cls.OPERATION,
+            idempotency_key=command_key,
+            payload=request,
+            natural_key=natural_key,
+            authorizer=cls.authorise_materialisation(
+                decision_brief_version_id, request
+            ),
+            natural_key_resolver=CommandService.fail_closed_pre_envelope_recovery,
+            handler=lambda session, claim: cls._materialise_locked(
+                session, actor, request, claim
+            ),
+        )
+
+    @classmethod
+    def create_technology_solution(
+        cls,
+        *,
+        actor: ActorContext,
+        decision_brief_version_id: int,
+        option_version_id: int,
+        command_key: str,
+    ) -> CommandResult:
+        decision_brief_version_id = _positive_id(
+            decision_brief_version_id, "decision_brief_version_id"
+        )
+        option_version_id = _positive_id(option_version_id, "option_version_id")
+        command_key = _required_text(command_key, "command_key", 255)
+        request = {
+            "decision_brief_version_id": decision_brief_version_id,
+            "option_version_id": option_version_id,
+            "explicit_action": "create_technology_solution",
+        }
+        return CommandService.execute(
+            actor=actor,
+            operation=cls.SOLUTION_OPERATION,
+            idempotency_key=command_key,
+            payload=request,
+            natural_key=(
+                f"solution:{decision_brief_version_id}:{option_version_id}"
+            ),
+            authorizer=cls.authorise_solution_creation(
+                decision_brief_version_id, option_version_id
+            ),
+            natural_key_resolver=CommandService.fail_closed_pre_envelope_recovery,
+            handler=lambda session, claim: cls._create_solution_if_required(
+                session, actor, request, claim
+            ),
+        )
+
+    @classmethod
+    def validate_materialisation_request(
+        cls,
+        actor: ActorContext,
+        decision_brief_version_id: int,
+        actions: Sequence[ApprovedAction],
+    ) -> Mapping[str, Any]:
+        if not isinstance(actor, ActorContext):
+            raise TypeError("actor must be ActorContext")
+        decision_brief_version_id = _positive_id(
+            decision_brief_version_id, "decision_brief_version_id"
+        )
+        graph = cls._load_execution_graph(
+            db.session, actor, decision_brief_version_id, lock=False
+        )
+        cls._require_execution_authority(db.session, actor, graph, lock=False)
+        cls._assert_governance_ready(
+            graph.cycle,
+            graph.review,
+            graph.conditions,
+            CommandService._database_now(db.session),
+        )
+        canonical_actions = cls._canonical_actions(db.session, actor, graph, actions)
+        return {
+            "decision_brief_version_id": decision_brief_version_id,
+            "actions": canonical_actions,
+            "outcome_ids": [row.id for row in graph.outcomes],
+            "measure_ids": [row.id for row in graph.measures],
+        }
+
+    @classmethod
+    def authorise_materialisation(
+        cls, decision_brief_version_id: int, request: Mapping[str, Any]
+    ) -> OperationAuthorizer:
+        expected_key = (
+            f"materialise:{decision_brief_version_id}:"
+            f"{canonical_request_digest(request)}"
+        )
+
+        def authorize(session, actor, operation, natural_key):
+            if operation != cls.OPERATION or natural_key != expected_key:
+                raise NotAuthorised("execution_materialisation_command_mismatch")
+            graph = cls._load_execution_graph(
+                session, actor, decision_brief_version_id, lock=False
+            )
+            cls._require_execution_authority(session, actor, graph, lock=False)
+
+        return authorize
+
+    @classmethod
+    def authorise_solution_creation(
+        cls, decision_brief_version_id: int, option_version_id: int
+    ) -> OperationAuthorizer:
+        expected_key = f"solution:{decision_brief_version_id}:{option_version_id}"
+
+        def authorize(session, actor, operation, natural_key):
+            if operation != cls.SOLUTION_OPERATION or natural_key != expected_key:
+                raise NotAuthorised("technology_solution_command_mismatch")
+            graph = cls._load_execution_graph(
+                session, actor, decision_brief_version_id, lock=False
+            )
+            if option_version_id not in graph.options:
+                raise NotFound("option_version_not_found")
+            cls._require_execution_authority(session, actor, graph, lock=False)
+
+        return authorize
+
+    @classmethod
+    def _materialise_locked(cls, session, actor, request, _claim):
+        graph = cls._load_execution_graph(
+            session,
+            actor,
+            request["decision_brief_version_id"],
+            lock=True,
+        )
+        cls._require_execution_authority(session, actor, graph, lock=True)
+        now = CommandService._database_now(session)
+        cls._assert_governance_ready(
+            graph.cycle, graph.review, graph.conditions, now
+        )
+        actions = cls._canonical_actions(
+            session,
+            actor,
+            graph,
+            tuple(
+                ApprovedAction(
+                    action_key=row["action_key"],
+                    option_version_id=row["option_version_id"],
+                    title=row["title"],
+                    owner_id=row["owner_id"],
+                    start_date=(
+                        date.fromisoformat(row["start_date"])
+                        if row["start_date"]
+                        else None
+                    ),
+                    target_date=(
+                        date.fromisoformat(row["target_date"])
+                        if row["target_date"]
+                        else None
+                    ),
+                    scheduling_applicable=row["scheduling_applicable"],
+                )
+                for row in request["actions"]
+            ),
+        )
+        existing = session.scalar(
+            select(WorkPackage.id).where(
+                WorkPackage.organization_id == actor.organization_id,
+                WorkPackage.decision_brief_version_id == graph.version.id,
+                WorkPackage.materialisation_key.is_not(None),
+            )
+        )
+        if existing is not None:
+            raise CommandConflict("decision_execution_already_materialised")
+
+        work_packages = []
+        roadmap_items = []
+        condition_snapshot = [
+            {
+                "condition_id": row.id,
+                "status": row.status,
+                "submitted_evidence_id": row.submitted_evidence_id,
+                "fulfilment_evidence_id": row.fulfilment_evidence_id,
+                "waiver_expires_at": (
+                    _utc(row.waiver_expires_at).isoformat()
+                    if row.waiver_expires_at
+                    else None
+                ),
+            }
+            for row in graph.conditions
+        ]
+        for ordinal, action in enumerate(actions, start=1):
+            option = graph.options[action["option_version_id"]]
+            content = option.content_json or {}
+            materialisation_key = cls._materialisation_key(
+                actor.organization_id,
+                graph.version.id,
+                "work_package",
+                action["action_key"],
+                action["option_version_id"],
+            )
+            work_package = StrategicService.create_transformation_work_package(
+                session,
+                organization_id=actor.organization_id,
+                programme_id=graph.programme.id,
+                workstream_id=graph.workstream.id,
+                decision_brief_version_id=graph.version.id,
+                materialisation_key=materialisation_key,
+                name=action["title"],
+                description=content.get("description"),
+                owner_id=action["owner_id"],
+                start_date=(
+                    date.fromisoformat(action["start_date"])
+                    if action["start_date"]
+                    else None
+                ),
+                target_date=(
+                    date.fromisoformat(action["target_date"])
+                    if action["target_date"]
+                    else None
+                ),
+                dependencies=content.get("dependencies") or (),
+                provenance={
+                    "source": "transformation_room",
+                    "decision_brief_version_id": graph.version.id,
+                    "option_version_id": option.id,
+                    "action_key": action["action_key"],
+                    "cited_evidence_ids": list(
+                        graph.version.cited_evidence_ids or ()
+                    ),
+                    "conditions": condition_snapshot,
+                },
+            )
+            work_package.sequence_order = ordinal
+            work_packages.append(work_package)
+            if action["scheduling_applicable"]:
+                roadmap_items.append(
+                    cls._create_roadmap_item(
+                        session, actor, graph, action, work_package
+                    )
+                )
+
+        benefits = cls._create_benefits(
+            session, actor, graph, work_packages[0]
+        )
+        graph.workstream.lifecycle_stage = "execute"
+        session.flush()
+        object_ids = {
+            "decision_brief_version_id": graph.version.id,
+            "work_package_ids": [row.id for row in work_packages],
+            "roadmap_item_ids": [row.id for row in roadmap_items],
+            "benefit_ids": [row.id for row in benefits],
+            "solution_ids": [],
+        }
+        response = {**object_ids, "lifecycle_stage": "execute"}
+        return DomainMutationResult(
+            object_ids,
+            response,
+            (
+                {
+                    "event_type": "transformation.execution_materialised",
+                    "payload": response,
+                },
+            ),
+        )
+
+    @classmethod
+    def _create_solution_if_required(cls, session, actor, request, _claim):
+        if request.get("explicit_action") != "create_technology_solution":
+            raise CommandConflict("technology_solution_explicit_action_required")
+        graph = cls._load_execution_graph(
+            session,
+            actor,
+            request["decision_brief_version_id"],
+            lock=True,
+        )
+        cls._require_execution_authority(session, actor, graph, lock=True)
+        cls._assert_governance_ready(
+            graph.cycle,
+            graph.review,
+            graph.conditions,
+            CommandService._database_now(session),
+        )
+        option = graph.options.get(request["option_version_id"])
+        if option is None:
+            raise NotFound("option_version_not_found")
+        if option.id != graph.version.recommendation_option_version_id:
+            raise CommandConflict("option_version_not_approved")
+        if option.technology_required is not True:
+            raise CommandConflict("technology_solution_not_required")
+        existing = tuple(
+            session.scalars(
+                select(Solution)
+                .where(
+                    Solution.organization_id == actor.organization_id,
+                    Solution.workstream_id == graph.workstream.id,
+                )
+                .with_for_update(of=Solution)
+            ).all()
+        )
+        if any(
+            (row.journey_state or {}).get("decision_brief_version_id")
+            == graph.version.id
+            and (row.journey_state or {}).get("option_version_id") == option.id
+            for row in existing
+        ):
+            raise CommandConflict("technology_solution_already_created")
+        frozen = graph.version.frozen_payload or {}
+        content = option.content_json or {}
+        journey_state = {
+            "source": "transformation_room",
+            "decision_brief_version_id": graph.version.id,
+            "option_version_id": option.id,
+            "constraints": list(frozen.get("conflicts") or ()),
+            "cited_evidence_ids": list(graph.version.cited_evidence_ids or ()),
+            "scope_expression": frozen.get("scope_expression"),
+        }
+        solution = Solution(
+            organization_id=actor.organization_id,
+            name=_required_text(content.get("title"), "option title", 255),
+            description=content.get("description"),
+            scope_description=frozen.get("objective"),
+            journey_state=journey_state,
+            status="planned",
+            governance_status="draft",
+            created_by_id=actor.user_id,
+            initiative_id=graph.programme.id,
+            workstream_id=graph.workstream.id,
+        )
+        session.add(solution)
+        session.flush()
+        object_ids = {
+            "solution_id": solution.id,
+            "decision_brief_version_id": graph.version.id,
+            "option_version_id": option.id,
+        }
+        return DomainMutationResult(
+            object_ids,
+            {**object_ids, "created_technology_solution": True},
+            (
+                {
+                    "event_type": "transformation.technology_solution_created",
+                    "payload": object_ids,
+                },
+            ),
+        )
+
+    @classmethod
+    def export_work_package(
+        cls,
+        *,
+        actor: ActorContext,
+        work_package_id: int,
+        provider_key: str,
+        request: Mapping[str, Any],
+        exporter: Callable[[WorkPackage, Mapping[str, Any]], Mapping[str, Any]],
+        command_key: str,
+        predecessor_attempt_id: int | None = None,
+    ) -> CommandResult:
+        work_package_id = _positive_id(work_package_id, "work_package_id")
+        provider_key = _required_text(provider_key, "provider_key", 120).lower()
+        command_key = _required_text(command_key, "command_key", 255)
+        if predecessor_attempt_id is not None:
+            predecessor_attempt_id = _positive_id(
+                predecessor_attempt_id, "predecessor_attempt_id"
+            )
+        if not isinstance(request, Mapping):
+            raise TypeError("request must be a mapping")
+        if not callable(exporter):
+            raise TypeError("exporter must be callable")
+        payload = {
+            "work_package_id": work_package_id,
+            "provider_key": provider_key,
+            "predecessor_attempt_id": predecessor_attempt_id,
+            "request": dict(request),
+        }
+        attempt_key = canonical_request_digest(
+            {"organization_id": actor.organization_id, **payload}
+        )
+        natural_key = (
+            f"delivery-export:{work_package_id}:{provider_key}:"
+            f"{predecessor_attempt_id or 'root'}:{attempt_key}"
+        )
+        return CommandService.execute(
+            actor=actor,
+            operation=cls.EXPORT_OPERATION,
+            idempotency_key=command_key,
+            payload=payload,
+            natural_key=natural_key,
+            authorizer=cls.authorise_delivery_export(
+                work_package_id,
+                provider_key,
+                predecessor_attempt_id,
+                attempt_key,
+            ),
+            natural_key_resolver=CommandService.fail_closed_pre_envelope_recovery,
+            handler=lambda session, claim: cls._export_locked(
+                session,
+                actor,
+                payload,
+                attempt_key,
+                exporter,
+                claim,
+            ),
+        )
+
+    @classmethod
+    def authorise_delivery_export(
+        cls,
+        work_package_id: int,
+        provider_key: str,
+        predecessor_attempt_id: int | None,
+        attempt_key: str,
+    ) -> OperationAuthorizer:
+        expected_key = (
+            f"delivery-export:{work_package_id}:{provider_key}:"
+            f"{predecessor_attempt_id or 'root'}:{attempt_key}"
+        )
+
+        def authorize(session, actor, operation, natural_key):
+            if operation != cls.EXPORT_OPERATION or natural_key != expected_key:
+                raise NotAuthorised("delivery_export_command_mismatch")
+            work_package = cls._load_work_package(
+                session, actor, work_package_id, lock=False
+            )
+            cls._require_work_package_authority(
+                session, actor, work_package, lock=False
+            )
+
+        return authorize
+
+    @classmethod
+    def _export_locked(
+        cls, session, actor, payload, attempt_key, exporter, _claim
+    ):
+        work_package = cls._load_work_package(
+            session, actor, payload["work_package_id"], lock=True
+        )
+        cls._require_work_package_authority(session, actor, work_package, lock=True)
+        predecessor = None
+        if payload["predecessor_attempt_id"] is not None:
+            predecessor = session.scalar(
+                select(DeliveryExportAttempt)
+                .where(
+                    DeliveryExportAttempt.id == payload["predecessor_attempt_id"],
+                    DeliveryExportAttempt.organization_id == actor.organization_id,
+                    DeliveryExportAttempt.work_package_id == work_package.id,
+                    DeliveryExportAttempt.provider_key == payload["provider_key"],
+                )
+                .with_for_update()
+            )
+            if predecessor is None:
+                raise NotFound("delivery_export_attempt_not_found")
+            if predecessor.status != "failed":
+                raise CommandConflict("delivery_export_retry_requires_failed_attempt")
+        else:
+            prior_root = session.scalar(
+                select(DeliveryExportAttempt.id).where(
+                    DeliveryExportAttempt.organization_id == actor.organization_id,
+                    DeliveryExportAttempt.work_package_id == work_package.id,
+                    DeliveryExportAttempt.provider_key == payload["provider_key"],
+                    DeliveryExportAttempt.predecessor_attempt_id.is_(None),
+                )
+            )
+            if prior_root is not None:
+                raise CommandConflict("delivery_export_root_already_attempted")
+        attempt = DeliveryExportAttempt(
+            organization_id=actor.organization_id,
+            work_package_id=work_package.id,
+            predecessor_attempt_id=predecessor.id if predecessor else None,
+            provider_key=payload["provider_key"],
+            attempt_key=attempt_key,
+            request_json=dict(payload["request"]),
+            status="in_progress",
+            attempted_by_id=actor.user_id,
+        )
+        session.add(attempt)
+        session.flush()
+        try:
+            provider_response = exporter(work_package, dict(payload["request"]))
+            if not isinstance(provider_response, Mapping):
+                raise ValueError("provider response must be a mapping")
+            external_key = _required_text(
+                provider_response.get("external_key"), "external_key", 512
+            )
+            attempt.response_digest = canonical_request_digest(
+                dict(provider_response)
+            )
+            attempt.external_key = external_key
+            attempt.status = "succeeded"
+            attempt.completed_at = CommandService._database_now(session)
+            exported = True
+        except Exception as error:  # provider boundary: persist honest failure
+            attempt.status = "failed"
+            attempt.error_class = type(error).__name__
+            error_message = " ".join(
+                unicodedata.normalize("NFC", str(error)).split()
+            )
+            attempt.error_message = (error_message or type(error).__name__)[:4000]
+            attempt.completed_at = CommandService._database_now(session)
+            exported = False
+        session.flush()
+        object_ids = {
+            "work_package_id": work_package.id,
+            "delivery_export_attempt_id": attempt.id,
+        }
+        response = {
+            **object_ids,
+            "exported": exported,
+            "status": attempt.status,
+            "external_key": attempt.external_key,
+        }
+        return DomainMutationResult(
+            object_ids,
+            response,
+            (
+                {
+                    "event_type": "transformation.delivery_export_succeeded",
+                    "payload": response,
+                },
+            )
+            if exported
+            else (),
+        )
+
+    @classmethod
+    def _load_execution_graph(
+        cls, session, actor, decision_brief_version_id, *, lock
+    ) -> _ExecutionGraph:
+        def one(model, reason, *criteria):
+            statement = select(model).where(*criteria)
+            if lock:
+                statement = statement.execution_options(
+                    populate_existing=True
+                ).with_for_update()
+            row = session.scalar(statement)
+            if row is None:
+                raise NotFound(reason)
+            return row
+
+        version = one(
+            DecisionBriefVersion,
+            "decision_brief_version_not_found",
+            DecisionBriefVersion.id == decision_brief_version_id,
+            DecisionBriefVersion.organization_id == actor.organization_id,
+        )
+        brief = one(
+            DecisionBrief,
+            "decision_brief_not_found",
+            DecisionBrief.id == version.brief_id,
+            DecisionBrief.organization_id == actor.organization_id,
+            DecisionBrief.workstream_id == version.workstream_id,
+        )
+        if lock:
+            workstream_scope = session.scalar(
+                select(ProgrammeWorkstream).where(
+                    ProgrammeWorkstream.id == version.workstream_id,
+                    ProgrammeWorkstream.organization_id == actor.organization_id,
+                )
+            )
+            if workstream_scope is None:
+                raise NotFound("workstream_not_found")
+        else:
+            workstream_scope = one(
+                ProgrammeWorkstream,
+                "workstream_not_found",
+                ProgrammeWorkstream.id == version.workstream_id,
+                ProgrammeWorkstream.organization_id == actor.organization_id,
+            )
+        programme = one(
+            StrategicInitiative,
+            "programme_not_found",
+            StrategicInitiative.id == workstream_scope.programme_id,
+            StrategicInitiative.organization_id == actor.organization_id,
+            StrategicInitiative.record_kind == "transformation_programme",
+        )
+        workstream = (
+            one(
+                ProgrammeWorkstream,
+                "workstream_not_found",
+                ProgrammeWorkstream.id == version.workstream_id,
+                ProgrammeWorkstream.organization_id == actor.organization_id,
+                ProgrammeWorkstream.programme_id == programme.id,
+            )
+            if lock
+            else workstream_scope
+        )
+        cycle_statement = (
+            select(ARBReviewCycle)
+            .where(
+                ARBReviewCycle.organization_id == actor.organization_id,
+                ARBReviewCycle.subject_type == "decision_brief",
+                ARBReviewCycle.subject_id == brief.id,
+                ARBReviewCycle.decision_brief_id == brief.id,
+                ARBReviewCycle.decision_brief_version_id == version.id,
+            )
+            .order_by(ARBReviewCycle.cycle_number.desc(), ARBReviewCycle.id.desc())
+            .limit(1)
+        )
+        if lock:
+            cycle_statement = cycle_statement.execution_options(
+                populate_existing=True
+            ).with_for_update()
+        cycle = session.scalar(cycle_statement)
+        if cycle is None:
+            raise NotFound("approved_arb_cycle_not_found")
+        review = one(
+            ARBReviewItem,
+            "approved_arb_review_not_found",
+            ARBReviewItem.organization_id == actor.organization_id,
+            ARBReviewItem.review_cycle_id == cycle.id,
+            ARBReviewItem.decision_brief_version_id == version.id,
+        )
+
+        def many(model, *criteria, order_by):
+            statement = select(model).where(*criteria).order_by(order_by)
+            if lock:
+                statement = statement.execution_options(
+                    populate_existing=True
+                ).with_for_update()
+            return tuple(session.scalars(statement).all())
+
+        conditions = many(
+            ARBCondition,
+            ARBCondition.organization_id == actor.organization_id,
+            ARBCondition.review_cycle_id == cycle.id,
+            order_by=ARBCondition.id,
+        )
+        option_ids = tuple(version.option_version_ids or ())
+        options = many(
+            TransformationOptionVersion,
+            TransformationOptionVersion.organization_id == actor.organization_id,
+            TransformationOptionVersion.workstream_id == workstream.id,
+            TransformationOptionVersion.id.in_(option_ids or (-1,)),
+            order_by=TransformationOptionVersion.id,
+        )
+        if {row.id for row in options} != set(option_ids):
+            raise NotFound("option_version_not_found")
+        outcome_ids = tuple(version.outcome_ids or ())
+        outcomes = many(
+            ProgrammeOutcomeCommitment,
+            ProgrammeOutcomeCommitment.organization_id == actor.organization_id,
+            ProgrammeOutcomeCommitment.programme_id == programme.id,
+            or_(
+                ProgrammeOutcomeCommitment.workstream_id == workstream.id,
+                ProgrammeOutcomeCommitment.workstream_id.is_(None),
+            ),
+            ProgrammeOutcomeCommitment.id.in_(outcome_ids or (-1,)),
+            order_by=ProgrammeOutcomeCommitment.id,
+        )
+        if {row.id for row in outcomes} != set(outcome_ids):
+            raise NotFound("outcome_commitment_not_found")
+        measure_ids = tuple(version.measure_ids or ())
+        measures = many(
+            MeasureDefinition,
+            MeasureDefinition.organization_id == actor.organization_id,
+            MeasureDefinition.outcome_commitment_id.in_(outcome_ids or (-1,)),
+            MeasureDefinition.id.in_(measure_ids or (-1,)),
+            order_by=MeasureDefinition.id,
+        )
+        if {row.id for row in measures} != set(measure_ids):
+            raise NotFound("measure_definition_not_found")
+        return _ExecutionGraph(
+            version,
+            brief,
+            programme,
+            workstream,
+            cycle,
+            review,
+            conditions,
+            {row.id: row for row in options},
+            outcomes,
+            measures,
+        )
+
+    @classmethod
+    def _canonical_actions(cls, session, actor, graph, actions):
+        if isinstance(actions, (str, bytes)) or not isinstance(actions, Sequence):
+            raise TypeError("actions must be a sequence")
+        if not actions:
+            raise ValueError("at least one approved action is required")
+        canonical = []
+        seen = set()
+        for action in actions:
+            if not isinstance(action, ApprovedAction):
+                raise TypeError("actions must contain ApprovedAction values")
+            action_key = _required_text(action.action_key, "action_key", 120)
+            if action_key in seen:
+                raise ValueError("action keys must be unique")
+            seen.add(action_key)
+            option_version_id = _positive_id(
+                action.option_version_id, "option_version_id"
+            )
+            if (
+                option_version_id not in graph.options
+                or option_version_id
+                != graph.version.recommendation_option_version_id
+            ):
+                raise CommandConflict("option_version_not_approved")
+            owner_id = _positive_id(action.owner_id, "owner_id")
+            owner = session.scalar(
+                select(User.id).where(
+                    User.id == owner_id,
+                    User.organization_id == actor.organization_id,
+                )
+            )
+            if owner is None:
+                raise NotFound("action_owner_not_found")
+            if action.start_date is not None and (
+                not isinstance(action.start_date, date)
+                or isinstance(action.start_date, datetime)
+            ):
+                raise ValueError("start_date must be a date")
+            if action.target_date is not None and (
+                not isinstance(action.target_date, date)
+                or isinstance(action.target_date, datetime)
+            ):
+                raise ValueError("target_date must be a date")
+            if (
+                action.start_date
+                and action.target_date
+                and action.target_date < action.start_date
+            ):
+                raise ValueError("target_date must not precede start_date")
+            if not isinstance(action.scheduling_applicable, bool):
+                raise ValueError("scheduling_applicable must be boolean")
+            if action.scheduling_applicable and not (
+                action.start_date or action.target_date
+            ):
+                raise ValueError("scheduled actions require a date")
+            canonical.append(
+                {
+                    "action_key": action_key,
+                    "option_version_id": option_version_id,
+                    "title": _required_text(action.title, "action title", 100),
+                    "owner_id": owner_id,
+                    "start_date": (
+                        action.start_date.isoformat() if action.start_date else None
+                    ),
+                    "target_date": (
+                        action.target_date.isoformat() if action.target_date else None
+                    ),
+                    "scheduling_applicable": action.scheduling_applicable,
+                }
+            )
+        canonical.sort(key=lambda row: row["action_key"])
+        return canonical
+
+    @staticmethod
+    def _assert_governance_ready(cycle, review, conditions, now):
+        if cycle.status != "approved" or review.status != "approved":
+            raise CommandConflict("execution_not_approved")
+        if cycle.terminal_outcome not in {"approved", "approved_with_conditions"}:
+            raise CommandConflict("execution_not_approved")
+        if review.decision not in {"approved", "approved_with_conditions"}:
+            raise CommandConflict("execution_not_approved")
+        now = _utc(now)
+        for condition in conditions:
+            if condition.status == "fulfilled":
+                continue
+            if condition.status == "waived" and condition.waiver_expires_at:
+                if _utc(condition.waiver_expires_at) > now:
+                    continue
+            raise CommandConflict("execution_conditions_unresolved")
+
+    @classmethod
+    def _require_execution_authority(cls, session, actor, graph, *, lock):
+        TransformationProgrammeService._require_programme_authority(
+            session,
+            actor,
+            graph.programme.id,
+            graph.workstream.id,
+            EXECUTION_ROLES,
+            "execution_not_authorised",
+            lock=lock,
+        )
+
+    @staticmethod
+    def _materialisation_key(
+        organization_id, decision_brief_version_id, artifact, natural_id, option_id
+    ):
+        return canonical_request_digest(
+            {
+                "organization_id": organization_id,
+                "decision_brief_version_id": decision_brief_version_id,
+                "artifact": artifact,
+                "natural_id": natural_id,
+                "option_version_id": option_id,
+            }
+        )
+
+    @classmethod
+    def _create_roadmap_item(cls, session, actor, graph, action, work_package):
+        schedule_date = action["target_date"] or action["start_date"]
+        scheduled = date.fromisoformat(schedule_date)
+        row = RoadmapItem(
+            organization_id=actor.organization_id,
+            initiative_id=graph.programme.id,
+            programme_workstream_id=graph.workstream.id,
+            work_package_id=work_package.id,
+            decision_brief_version_id=graph.version.id,
+            materialisation_key=cls._materialisation_key(
+                actor.organization_id,
+                graph.version.id,
+                "roadmap_item",
+                action["action_key"],
+                action["option_version_id"],
+            ),
+            title=action["title"],
+            description=work_package.description,
+            category=None,
+            lane=None,
+            quarter=f"Q{((scheduled.month - 1) // 3) + 1}",
+            year=scheduled.year,
+            status="planned",
+            effort_estimate=None,
+        )
+        session.add(row)
+        session.flush()
+        return row
+
+    @classmethod
+    def _create_benefits(cls, session, actor, graph, work_package):
+        outcomes = {row.id: row for row in graph.outcomes}
+        benefits = []
+        for measure in graph.measures:
+            outcome = outcomes[measure.outcome_commitment_id]
+            baseline = (
+                measure.baseline_amount
+                if measure.currency and measure.baseline_amount is not None
+                else measure.baseline_value
+            )
+            target = (
+                measure.target_amount
+                if measure.currency and measure.target_amount is not None
+                else measure.target_value
+            )
+            source_parts = [
+                value
+                for value in (measure.source_adapter, measure.source_key)
+                if value
+            ]
+            row = Benefit(
+                organization_id=actor.organization_id,
+                name=outcome.statement,
+                description=outcome.statement,
+                benefit_type=None,
+                status="planned",
+                measure=measure.metric_name,
+                unit=measure.unit,
+                baseline_value=baseline,
+                baseline_date=measure.baseline_date,
+                target_value=target,
+                target_date=measure.target_date or outcome.target_date,
+                owner_id=outcome.owner_id,
+                measurement_method=":".join(source_parts) if source_parts else None,
+                measurement_frequency=measure.cadence,
+                strategic_initiative_id=graph.programme.id,
+                programme_workstream_id=graph.workstream.id,
+                outcome_commitment_id=outcome.id,
+                decision_brief_version_id=graph.version.id,
+                materialisation_key=cls._materialisation_key(
+                    actor.organization_id,
+                    graph.version.id,
+                    "benefit",
+                    f"{outcome.id}:{measure.id}",
+                    graph.version.recommendation_option_version_id,
+                ),
+                work_package_id=work_package.id,
+            )
+            session.add(row)
+            benefits.append(row)
+        session.flush()
+        return benefits
+
+    @classmethod
+    def _load_work_package(cls, session, actor, work_package_id, *, lock):
+        statement = select(WorkPackage).where(
+            WorkPackage.id == work_package_id,
+            WorkPackage.organization_id == actor.organization_id,
+            WorkPackage.strategic_initiative_id.is_not(None),
+            WorkPackage.programme_workstream_id.is_not(None),
+        )
+        if lock:
+            statement = statement.execution_options(
+                populate_existing=True
+            ).with_for_update()
+        row = session.scalar(statement)
+        if row is None:
+            raise NotFound("work_package_not_found")
+        return row
+
+    @classmethod
+    def _require_work_package_authority(
+        cls, session, actor, work_package, *, lock
+    ):
+        TransformationProgrammeService._require_programme_authority(
+            session,
+            actor,
+            work_package.strategic_initiative_id,
+            work_package.programme_workstream_id,
+            EXECUTION_ROLES,
+            "delivery_export_not_authorised",
+            lock=lock,
+        )
+
+
+__all__ = ["EXECUTION_ROLES", "TransformationExecutionService"]

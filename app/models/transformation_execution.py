@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from sqlalchemy import event, inspect
+
 from app import db
 from app.models.mixins import TenantMixin
 
@@ -211,10 +213,224 @@ class OperationOutboxEvent(TenantMixin, db.Model):
     )
 
 
+class DeliveryExportAttempt(TenantMixin, db.Model):
+    """Append-only result of one attempt to export canonical delivery work."""
+
+    __tablename__ = "delivery_export_attempts"
+
+    id = db.Column(db.Integer, primary_key=True)
+    work_package_id = db.Column(
+        db.Integer,
+        db.ForeignKey("work_packages.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    predecessor_attempt_id = db.Column(
+        db.Integer,
+        db.ForeignKey("delivery_export_attempts.id", ondelete="RESTRICT"),
+        nullable=True,
+        unique=True,
+    )
+    provider_key = db.Column(db.String(120), nullable=False)
+    attempt_key = db.Column(db.String(64), nullable=False)
+    request_json = db.Column(db.JSON, nullable=False)
+    response_digest = db.Column(db.String(64), nullable=True)
+    external_key = db.Column(db.String(512), nullable=True)
+    status = db.Column(db.String(24), nullable=False)
+    error_class = db.Column(db.String(255), nullable=True)
+    error_message = db.Column(db.Text, nullable=True)
+    attempted_by_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    created_at = db.Column(
+        db.DateTime(timezone=True), nullable=False, server_default=db.func.now()
+    )
+    completed_at = db.Column(db.DateTime(timezone=True), nullable=True)
+
+    work_package = db.relationship("WorkPackage", foreign_keys=[work_package_id])
+    predecessor_attempt = db.relationship(
+        "DeliveryExportAttempt", remote_side=[id], foreign_keys=[predecessor_attempt_id]
+    )
+    attempted_by = db.relationship("User", foreign_keys=[attempted_by_id])
+
+    __table_args__ = (
+        db.UniqueConstraint(
+            "organization_id",
+            "attempt_key",
+            name="uq_delivery_export_attempt_key",
+        ),
+        db.CheckConstraint(
+            "length(btrim(provider_key)) > 0 AND length(attempt_key) = 64",
+            name="ck_delivery_export_attempt_identity",
+        ),
+        db.CheckConstraint(
+            "status IN ('in_progress','succeeded','failed')",
+            name="ck_delivery_export_attempt_status",
+        ),
+        db.CheckConstraint(
+            "(status = 'in_progress' AND completed_at IS NULL "
+            "AND response_digest IS NULL AND external_key IS NULL "
+            "AND error_class IS NULL AND error_message IS NULL) OR "
+            "(status = 'succeeded' AND completed_at IS NOT NULL "
+            "AND length(response_digest) = 64 "
+            "AND length(btrim(external_key)) > 0 "
+            "AND error_class IS NULL AND error_message IS NULL) OR "
+            "(status = 'failed' AND completed_at IS NOT NULL "
+            "AND length(btrim(error_message)) > 0 "
+            "AND (response_digest IS NULL OR length(response_digest) = 64))",
+            name="ck_delivery_export_attempt_completion",
+        ),
+    )
+
+
+class OutcomeMeasurement(TenantMixin, db.Model):
+    """Immutable observation against the canonical Benefit projection."""
+
+    __tablename__ = "outcome_measurements"
+
+    id = db.Column(db.Integer, primary_key=True)
+    benefit_id = db.Column(
+        db.Integer,
+        db.ForeignKey("benefits.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    value = db.Column(db.Numeric(24, 6), nullable=True)
+    unavailable_reason = db.Column(db.Text, nullable=True)
+    observed_at = db.Column(db.DateTime(timezone=True), nullable=False)
+    source_identity = db.Column(db.String(512), nullable=False)
+    source_version = db.Column(db.String(255), nullable=False)
+    recorded_by_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    created_at = db.Column(
+        db.DateTime(timezone=True), nullable=False, server_default=db.func.now()
+    )
+
+    benefit = db.relationship("Benefit", foreign_keys=[benefit_id])
+    recorded_by = db.relationship("User", foreign_keys=[recorded_by_id])
+
+    __table_args__ = (
+        db.UniqueConstraint(
+            "organization_id",
+            "benefit_id",
+            "source_identity",
+            "observed_at",
+            "source_version",
+            name="uq_outcome_measurement_observation",
+        ),
+        db.CheckConstraint(
+            "length(btrim(source_identity)) > 0 "
+            "AND length(btrim(source_version)) > 0",
+            name="ck_outcome_measurement_source",
+        ),
+        db.CheckConstraint(
+            "(value IS NOT NULL AND unavailable_reason IS NULL) OR "
+            "(value IS NULL AND length(btrim(unavailable_reason)) > 0)",
+            name="ck_outcome_measurement_fact",
+        ),
+    )
+
+
+def _reject_outcome_measurement_mutation(_mapper, _connection, _target):
+    raise ValueError("outcome measurements are append-only")
+
+
+def _guard_completed_export_attempt(_mapper, _connection, target):
+    history = inspect(target).attrs.status.history
+    previous = history.deleted[0] if history.deleted else target.status
+    if previous in {"succeeded", "failed"}:
+        raise ValueError("completed delivery export attempts are immutable")
+
+
+def _guard_completed_export_delete(_mapper, _connection, target):
+    if target.status in {"succeeded", "failed"}:
+        raise ValueError("completed delivery export attempts are immutable")
+
+
+event.listen(OutcomeMeasurement, "before_update", _reject_outcome_measurement_mutation)
+event.listen(OutcomeMeasurement, "before_delete", _reject_outcome_measurement_mutation)
+event.listen(DeliveryExportAttempt, "before_update", _guard_completed_export_attempt)
+event.listen(DeliveryExportAttempt, "before_delete", _guard_completed_export_delete)
+
+
+def ensure_execution_history_immutability(connection):
+    """Install database guards for Task 9 append-only/completed history."""
+    connection.execute(
+        db.text(
+            """
+            CREATE OR REPLACE FUNCTION archie_reject_outcome_measurement_mutation()
+            RETURNS trigger LANGUAGE plpgsql AS $$
+            BEGIN
+                RAISE EXCEPTION 'outcome measurements are append-only';
+            END;
+            $$;
+            CREATE OR REPLACE FUNCTION archie_guard_delivery_export_attempt_mutation()
+            RETURNS trigger LANGUAGE plpgsql AS $$
+            BEGIN
+                IF OLD.status IN ('succeeded', 'failed') THEN
+                    RAISE EXCEPTION 'completed delivery export attempts are immutable';
+                END IF;
+                IF TG_OP = 'DELETE' THEN
+                    RETURN OLD;
+                END IF;
+                RETURN NEW;
+            END;
+            $$;
+            DO $$
+            BEGIN
+                IF to_regclass('outcome_measurements') IS NOT NULL
+                   AND NOT EXISTS (
+                       SELECT 1 FROM pg_trigger
+                       WHERE tgname = 'trg_reject_outcome_measurement_mutation'
+                         AND tgrelid = to_regclass('outcome_measurements')
+                   ) THEN
+                    CREATE TRIGGER trg_reject_outcome_measurement_mutation
+                    BEFORE UPDATE OR DELETE ON outcome_measurements
+                    FOR EACH ROW EXECUTE FUNCTION
+                    archie_reject_outcome_measurement_mutation();
+                END IF;
+                IF to_regclass('delivery_export_attempts') IS NOT NULL
+                   AND NOT EXISTS (
+                       SELECT 1 FROM pg_trigger
+                       WHERE tgname = 'trg_guard_delivery_export_attempt_mutation'
+                         AND tgrelid = to_regclass('delivery_export_attempts')
+                   ) THEN
+                    CREATE TRIGGER trg_guard_delivery_export_attempt_mutation
+                    BEFORE UPDATE OR DELETE ON delivery_export_attempts
+                    FOR EACH ROW EXECUTE FUNCTION
+                    archie_guard_delivery_export_attempt_mutation();
+                END IF;
+            END;
+            $$;
+            """
+        )
+    )
+
+
+@event.listens_for(OutcomeMeasurement.__table__, "after_create")
+def _install_outcome_measurement_immutability(_target, connection, **_kwargs):
+    ensure_execution_history_immutability(connection)
+
+
+@event.listens_for(DeliveryExportAttempt.__table__, "after_create")
+def _install_delivery_export_immutability(_target, connection, **_kwargs):
+    ensure_execution_history_immutability(connection)
+
+
 __all__ = [
     "COMMAND_STATUSES",
     "CommandMaterialisation",
     "CommandIdempotencyRecord",
+    "DeliveryExportAttempt",
     "OperationOutboxEvent",
     "OperationResult",
+    "OutcomeMeasurement",
+    "ensure_execution_history_immutability",
 ]

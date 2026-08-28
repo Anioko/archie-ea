@@ -33,6 +33,82 @@ class StrategicService:
     - Roadmap Items
     """
 
+    @staticmethod
+    def _sync_archimate_element(
+        session,
+        *,
+        organization_id: int,
+        name: str,
+        description: str | None,
+        provenance: Dict[str, Any],
+    ):
+        """Create the canonical ArchiMate WorkPackage mirror in this transaction."""
+        from app.models.archimate_core import ArchiMateElement
+
+        element = ArchiMateElement(
+            organization_id=organization_id,
+            name=name,
+            type="WorkPackage",
+            layer="Implementation",
+            description=description,
+            scope="enterprise",
+            custom_properties=dict(provenance),
+        )
+        session.add(element)
+        session.flush()
+        return element
+
+    @classmethod
+    def create_transformation_work_package(
+        cls,
+        session,
+        *,
+        organization_id: int,
+        programme_id: int,
+        workstream_id: int,
+        decision_brief_version_id: int | None,
+        materialisation_key: str,
+        name: str,
+        description: str | None,
+        owner_id: int,
+        start_date,
+        target_date,
+        dependencies,
+        context: str = "transformation_room",
+        provenance: Dict[str, Any] | None = None,
+    ):
+        """Create one ArchiMate-backed canonical WorkPackage without committing."""
+        from app.models.implementation_migration import WorkPackage
+
+        element = cls._sync_archimate_element(
+            session,
+            organization_id=organization_id,
+            name=name,
+            description=description,
+            provenance=provenance or {},
+        )
+        work_package = WorkPackage(
+            organization_id=organization_id,
+            name=name,
+            description=description,
+            archimate_element_id=element.id,
+            strategic_initiative_id=programme_id,
+            programme_workstream_id=workstream_id,
+            decision_brief_version_id=decision_brief_version_id,
+            materialisation_key=materialisation_key,
+            owner_id=owner_id,
+            status="planned",
+            start_date=start_date,
+            target_date=target_date,
+            dependencies=list(dependencies or ()),
+            context=context,
+            context_id=decision_brief_version_id,
+            element_type="WorkPackage",
+        )
+        session.add(work_package)
+        session.flush()
+        return work_package
+
     # =========================================================================
     # Initiative CRUD Operations
     # =========================================================================
