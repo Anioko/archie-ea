@@ -149,6 +149,30 @@ def _get_configured_chat_models():
 
             models.append(model_info)
 
+    # Runtime provider resolution deliberately supports environment-backed
+    # bootstrap configuration.  A tenant with no APISettings rows must see the
+    # same provider that the message service will actually use; otherwise the
+    # model picker reports "unavailable" while chat health is green.
+    if not models:
+        from app.modules.ai_chat.services.llm_service_impl import LLMService
+
+        try:
+            provider_name, model_id = LLMService._get_configured_provider()
+        except ValueError:
+            provider_name, model_id = None, None
+
+        if provider_name and model_id:
+            models.append({
+                "provider": provider_name,
+                "model": model_id,
+                "display_name": f"{provider_name.title()} - {model_id}",
+                "recommended_for": [],
+                "fallback_order": 0,
+                "is_fallback": False,
+                "test_status": None,
+                "last_tested_at": None,
+            })
+
     return models
 
 

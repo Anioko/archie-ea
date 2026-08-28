@@ -158,3 +158,23 @@ def test_client_only_classifies_an_explicit_chat_provider_configuration_fault():
 
     assert "ArchieChat.transport.isProviderConfigurationFault(data)" in app
     assert "data.error === 'service_unavailable' || response.status === 503" not in app
+
+
+def test_model_catalogue_includes_the_environment_provider_for_a_tenant_without_rows(
+    client, login_as, chat_user, monkeypatch
+):
+    """The picker and the runtime must resolve the same usable provider."""
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "test-deepseek-key")
+    login_as(client, chat_user)
+
+    response = client.get("/ai-chat/models")
+
+    assert response.status_code == 200
+    body = response.get_json()
+    assert body["success"] is True
+    assert body["current_provider"] == "deepseek"
+    assert body["current_model"] == "deepseek-chat"
+    assert any(
+        model["provider"] == "deepseek" and model["model"] == "deepseek-chat"
+        for model in body["models"]
+    )

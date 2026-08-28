@@ -19,7 +19,7 @@ from werkzeug.serving import make_server
 ROOT = Path(__file__).resolve().parents[2]
 EVAL = (ROOT / "app/static/js/csp/csp-evaluator.js").read_text(encoding="utf-8")
 
-PAGES = ["/archimate/composer", "/dashboard/", "/capability-map/", "/solutions/", "/applications/", "/architecture/dashboard", "/stakeholders/map", "/enterprise/capability-map/", "/admin/dashboard", "/vendors/"]
+PAGES = ["/archimate/composer", "/dashboard/", "/capability-map/", "/solutions/", "/applications/", "/architecture/dashboard", "/architecture-journey/", "/stakeholders/map", "/enterprise/capability-map/", "/admin/dashboard", "/vendors/"]
 
 
 def _boot_app():
@@ -70,7 +70,9 @@ def _seed_login_user(app):
             db.session.flush()
         email = f"csp-smoke-{uuid.uuid4().hex[:8]}@example.com"
         u = User(email=email, first_name="Csp", last_name="Smoke", confirmed=True,
-                 organization_id=org.id, password_hash=generate_password_hash("x"))
+                 organization_id=org.id, password_hash=generate_password_hash("x"),
+                 is_platform_admin=True,
+                 enterprise_role="platform_admin")
         db.session.add(u)
         db.session.commit()
         return u.id
