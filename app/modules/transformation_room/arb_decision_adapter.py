@@ -28,6 +28,8 @@ from app.modules.transformation_room.arb_decision_service import (
 )
 from app.modules.transformation_room.domain import (
     ActorContext,
+    AuthenticationRequired,
+    BlockedByEvidence,
     CommandConflict,
     KnownPreCommitTransient,
     NotAuthorised,
@@ -45,6 +47,19 @@ _SAFE_AUTHORIZATION_REASONS = frozenset(
         "arb_decision_separation_of_duties",
     }
 )
+_SAFE_CONFLICT_REASONS = frozenset(
+    {
+        "arb_cycle_already_terminal",
+        "arb_cycle_review_projection_mismatch",
+        "historical_unverified_cycle_not_decidable",
+        "arb_decision_command_mismatch",
+    }
+)
+_SAFE_NOT_FOUND_REASONS = {
+    "arb_review_cycle_not_found": "arb_review_cycle_not_found",
+    "arb_review_not_found": "review_not_found",
+    "arb_condition_not_found": "arb_condition_not_found",
+}
 _OUTCOMES = {
     "approved": "approved",
     "approved_with_conditions": "approved_with_conditions",
@@ -74,6 +89,8 @@ class LegacyARBDecisionResult:
     data: dict[str, Any] = field(default_factory=dict)
     idempotent: bool = False
     typed: bool = True
+    missing_evidence: list[dict[str, Any]] = field(default_factory=list)
+    canonical_url: str | None = None
 
 
 class TypedARBDecisionAdapter:
@@ -132,10 +149,16 @@ class TypedARBDecisionAdapter:
                 outcome=response.get("outcome"),
                 conditions=list(response.get("conditions") or ()),
                 idempotent=result.idempotent,
+                canonical_url=cls._canonical_url(cycle),
             )
-        except ValueError:
+        except ValueError as error:
+            reason = (
+                "invalid_idempotency_key"
+                if "idempotency" in str(error).lower()
+                else "invalid_decision_request"
+            )
             return LegacyARBDecisionResult(
-                False, ["invalid_decision_request"], http_status=400
+                False, [reason], http_status=400
             )
         except TransformationError as error:
             return cls._failure(error)
@@ -225,7 +248,7 @@ class TypedARBDecisionAdapter:
             )
             return LegacyARBDecisionResult(
                 False,
-                ["typed_begin_review_not_supported"],
+                ["typed_cycle_status_not_client_mutable"],
                 http_status=409,
                 review_cycle_id=cycle.id,
                 review_item_id=review.id,
@@ -791,10 +814,27 @@ class TypedARBDecisionAdapter:
         return f"arb-decision-{hashlib.sha256(identity).hexdigest()}"
 
     @staticmethod
+    def _canonical_url(cycle: ARBReviewCycle) -> str | None:
+        if cycle.subject_type == "solution" and cycle.subject_id:
+            return f"/solutions/{cycle.subject_id}?tab=governance"
+        if cycle.subject_type == "adr" and cycle.subject_id:
+            return f"/architecture/adrs/records/{cycle.subject_id}"
+        if cycle.subject_type == "architecture_model":
+            return "/architecture/models"
+        return None
+
+    @staticmethod
     def _failure(error: TransformationError) -> LegacyARBDecisionResult:
-        if isinstance(error, NotFound):
+        if isinstance(error, AuthenticationRequired):
             return LegacyARBDecisionResult(
-                False, ["review_not_found"], http_status=404
+                False, ["not_authenticated"], http_status=401
+            )
+        if isinstance(error, NotFound):
+            reason = _SAFE_NOT_FOUND_REASONS.get(
+                error.reason, "review_not_found"
+            )
+            return LegacyARBDecisionResult(
+                False, [reason], http_status=404
             )
         if isinstance(error, NotAuthorised):
             reason = (
@@ -805,13 +845,31 @@ class TypedARBDecisionAdapter:
             return LegacyARBDecisionResult(
                 False, [reason], http_status=403
             )
-        if isinstance(error, CommandConflict):
+        if isinstance(error, BlockedByEvidence):
+            reason_codes = error.details.get("reason_codes")
+            missing = error.details.get("missing_evidence")
             return LegacyARBDecisionResult(
-                False, ["decision_conflict"], http_status=409
+                False,
+                list(reason_codes)
+                if isinstance(reason_codes, list)
+                else ["arb_subject_not_ready"],
+                http_status=422,
+                missing_evidence=(
+                    list(missing) if isinstance(missing, list) else []
+                ),
+            )
+        if isinstance(error, CommandConflict):
+            reason = (
+                error.reason
+                if error.reason in _SAFE_CONFLICT_REASONS
+                else "decision_conflict"
+            )
+            return LegacyARBDecisionResult(
+                False, [reason], http_status=409
             )
         if isinstance(error, KnownPreCommitTransient):
             return LegacyARBDecisionResult(
-                False, ["decision_not_confirmed"], http_status=503
+                False, ["decision_unconfirmed"], http_status=503
             )
         return LegacyARBDecisionResult(False, ["decision_failed"], http_status=500)
 

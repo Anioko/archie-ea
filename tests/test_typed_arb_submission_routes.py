@@ -51,10 +51,14 @@ def committed_session(app, _schema):
 
     with app.app_context():
         db.session.remove()
+        cleanup_org_ids = set()
+        db.session.info["cleanup_org_ids"] = cleanup_org_ids
         try:
             yield db.session
         finally:
-            organization_ids = tuple(db.session.info.get("cleanup_org_ids", ()))
+            # CommandService removes its scoped session. Keep cleanup authority
+            # outside Session.info so committed test rows cannot be orphaned.
+            organization_ids = tuple(cleanup_org_ids)
             db.session.remove()
             if organization_ids:
                 raw = db.engine.raw_connection()
@@ -539,7 +543,9 @@ def test_composer_delegates_a_persisted_model_to_the_typed_command(
         solution_composer_routes.submit_to_arb,
         json={"architecture_model_id": 31, "human_reviewed": True},
     )
-    assert status == 201, body
+    # Composer preserves its established success contract while delegating the
+    # write to the canonical typed command.
+    assert status == 200, body
     assert body["success"] is True
     assert calls[0]["subject_type"] == "architecture_model"
     assert calls[0]["subject_id"] == 31

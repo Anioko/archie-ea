@@ -60,6 +60,11 @@ def _isolate_command_boundary_from_database_authority(monkeypatch, request):
         classmethod(lambda cls, session, actor, command_key: None),
         raising=False,
     )
+    monkeypatch.setattr(
+        module.CommandService,
+        "resolve_materialisation",
+        classmethod(lambda cls, session, **kwargs: None),
+    )
 
 
 def _submission_module():
@@ -81,6 +86,47 @@ def _actor(org_id=41, user_id=73):
         roles=frozenset({"enterprise_architect"}),
         request_id="typed-arb-contract",
     )
+
+
+def test_locked_handler_reuses_visible_natural_key_winner(monkeypatch):
+    module = _submission_module()
+    winner = DomainMutationResult(
+        object_ids={"review_item_id": 91},
+        response={"status": "submitted"},
+        outbox_events=(),
+    )
+    monkeypatch.setattr(
+        module.CommandService,
+        "resolve_materialisation",
+        classmethod(lambda cls, session, **kwargs: winner),
+    )
+    monkeypatch.setattr(
+        module.TypedARBSubmissionService,
+        "_lock_subject_submission",
+        classmethod(lambda cls, session, actor, subject: None),
+    )
+    monkeypatch.setattr(
+        module.TypedARBSubmissionService,
+        "_authorise_submission_context",
+        classmethod(lambda cls, session, actor, subject_type, subject_id, assertions: None),
+    )
+    adapter = SimpleNamespace(
+        evaluate=lambda *_args, **_kwargs: pytest.fail(
+            "a visible natural-key winner must return before re-evaluation"
+        )
+    )
+
+    result = module.TypedARBSubmissionService._submit_locked(
+        session=object(),
+        actor=_actor(),
+        subject=GovernedSubject("adr", 17, 41, "ADR-17", None),
+        adapter=adapter,
+        assertions={},
+        claim=SimpleNamespace(),
+        claimed_anchor="root",
+    )
+
+    assert result is winner
 
 
 @dataclass

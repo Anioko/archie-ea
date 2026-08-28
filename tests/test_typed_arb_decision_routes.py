@@ -79,11 +79,15 @@ def db_session(app, _schema):
 
     with app.app_context():
         db.session.remove()
+        cleanup_org_ids = set()
+        cleanup_role_ids = set()
+        db.session.info["l1_cleanup_org_ids"] = cleanup_org_ids
+        db.session.info["l1_cleanup_role_ids"] = cleanup_role_ids
         try:
             yield db.session
         finally:
-            organization_ids = tuple(db.session.info.get("l1_cleanup_org_ids", ()))
-            role_ids = tuple(db.session.info.get("l1_cleanup_role_ids", ()))
+            organization_ids = tuple(cleanup_org_ids)
+            role_ids = tuple(cleanup_role_ids)
             db.session.remove()
             if not organization_ids:
                 return
@@ -661,6 +665,10 @@ def test_typed_cycle_status_cannot_be_client_assigned(
     [
         (lambda d: d.NotFound("arb_review_cycle_not_found"), 404,
          "arb_review_cycle_not_found"),
+        (lambda d: d.NotFound("arb_review_not_found"), 404,
+         "review_not_found"),
+        (lambda d: d.NotFound("arb_condition_not_found"), 404,
+         "arb_condition_not_found"),
         (lambda d: d.NotAuthorised("arb_decision_separation_of_duties"), 403,
          "arb_decision_separation_of_duties"),
         (lambda d: d.NotAuthorised("some_internal_detail"), 403,
@@ -673,8 +681,8 @@ def test_typed_cycle_status_cannot_be_client_assigned(
          "decision_unconfirmed"),
         (lambda d: d.AuthenticationRequired("not_authenticated"), 401,
          "not_authenticated"),
-        (lambda d: RuntimeError("secret tenant name leaked here"), 500,
-         "decision_failed"),
+        (lambda d: RuntimeError("secret tenant name leaked here"), 503,
+         "decision_not_confirmed"),
     ],
 )
 def test_service_exceptions_map_to_documented_statuses(
@@ -1498,7 +1506,9 @@ def test_begin_review_projects_cycle_and_item_without_solution_status_write(
     )
 
     assert response.status_code == 409
-    assert response.get_json()["reason_codes"] == ["typed_begin_review_not_supported"]
+    assert response.get_json()["reason_codes"] == [
+        "typed_cycle_status_not_client_mutable"
+    ]
     db.session.remove()
     cycle = db.session.get(ARBReviewCycle, route_scope.cycle_id)
     projected = db.session.get(ARBReviewItem, route_scope.review_id)
@@ -1799,7 +1809,7 @@ def test_registered_conditional_approval_serializes_concurrent_commands(
     assert any(status == 200 for status, _body in results), results
     for status, body in results:
         if status == 409:
-            assert body["reason_codes"] == ["decision_conflict"]
+            assert body["reason_codes"] == ["arb_cycle_already_terminal"]
 
     db.session.remove()
     assert _count_decisions(db.session, route_scope.cycle_id) == 1
@@ -2022,7 +2032,9 @@ def test_solution_workflow_begin_and_reject_project_typed_review_only(
     )
 
     assert begun.status_code == 409
-    assert begun.get_json()["reason_codes"] == ["typed_begin_review_not_supported"]
+    assert begun.get_json()["reason_codes"] == [
+        "typed_cycle_status_not_client_mutable"
+    ]
     assert rejected.status_code == 200
     assert rejected.get_json()["governance_status"] == "rejected"
     db.session.remove()
@@ -2081,7 +2093,7 @@ def test_solution_workflow_invalid_enterprise_role_is_denied_by_typed_service(
     )
 
     assert response.status_code == 403
-    assert response.get_json()["reason_codes"] == ["actor_not_authorized"]
+    assert response.get_json()["reason_codes"] == ["arb_decision_not_authorised"]
     db.session.remove()
     assert _count_decisions(db.session, route_scope.solution_cycle_id) == 0
     assert db.session.get(ARBReviewCycle, route_scope.solution_cycle_id).status == "submitted"

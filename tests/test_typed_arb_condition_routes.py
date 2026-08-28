@@ -53,10 +53,12 @@ def db_session(app, _schema):
 
     with app.app_context():
         db.session.remove()
+        cleanup_org_ids = set()
+        db.session.info["cleanup_org_ids"] = cleanup_org_ids
         try:
             yield db.session
         finally:
-            organization_ids = tuple(db.session.info.get("cleanup_org_ids", ()))
+            organization_ids = tuple(cleanup_org_ids)
             db.session.remove()
             if organization_ids:
                 raw = db.engine.raw_connection()

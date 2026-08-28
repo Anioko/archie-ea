@@ -558,12 +558,13 @@ def _typed_decision_json(result, *, extra=None):
         return jsonify({
             "success": False,
             "reason_codes": result.reason_codes,
-            "missing_evidence": [],
+            "missing_evidence": result.missing_evidence,
             "request_id": request.headers.get("X-Request-ID") or str(_uuid.uuid4()),
         }), result.http_status
     payload = {
         "success": True,
         "item_id": result.review_item_id,
+        "redirect_url": url_for("arb.review_detail", id=result.review_item_id),
         "review_item_id": result.review_item_id,
         "review_cycle_id": result.review_cycle_id,
         "decision_event_id": result.decision_event_id,
@@ -572,6 +573,7 @@ def _typed_decision_json(result, *, extra=None):
         "outcome": result.outcome,
         "conditions": result.conditions,
         "idempotent": result.idempotent,
+        "canonical_url": result.canonical_url,
     }
     if extra:
         payload.update(extra)
@@ -3047,7 +3049,7 @@ def api_arb_update_implementation_status(item_id: int):
         if TypedARBDecisionAdapter.review_is_typed(item_id):
             return jsonify({
                 "success": False,
-                "reason_codes": ["typed_implementation_status_not_supported"],
+                "reason_codes": ["typed_cycle_implementation_status_not_writable"],
             }), 409
     except NotFound:
         return jsonify({"success": False, "reason_codes": ["review_not_found"]}), 404

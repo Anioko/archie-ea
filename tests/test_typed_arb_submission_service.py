@@ -1342,7 +1342,7 @@ def test_cycle_and_review_numbers_must_match(app, _schema):
         "FOR EACH ROW EXECUTE FUNCTION archie_guard_arb_cycle_history()",
         "ALTER TABLE arb_review_items DROP CONSTRAINT fk_arb_review_item_decision_brief_version; "
         "ALTER TABLE arb_review_items ADD CONSTRAINT fk_arb_review_item_decision_brief_version "
-        "FOREIGN KEY (decision_brief_version_id) REFERENCES decision_briefs(id)",
+        "FOREIGN KEY (decision_brief_version_id) REFERENCES decision_briefs(id) NOT VALID",
         "ALTER TABLE arb_review_cycles DISABLE TRIGGER trg_arb_cycle_membership",
         "DROP TRIGGER trg_arb_review_cycle_membership ON arb_review_items",
         "CREATE OR REPLACE FUNCTION archie_validate_arb_cycle_membership() "

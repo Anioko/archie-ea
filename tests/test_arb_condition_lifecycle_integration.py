@@ -35,13 +35,15 @@ def db_session(app, _schema):
 
     with app.app_context():
         db.session.remove()
+        cleanup_org_ids = set()
+        cleanup_checkpoint_keys = set()
+        db.session.info["c3_cleanup_org_ids"] = cleanup_org_ids
+        db.session.info["c3_cleanup_checkpoint_keys"] = cleanup_checkpoint_keys
         try:
             yield db.session
         finally:
-            organization_ids = tuple(db.session.info.get("c3_cleanup_org_ids", ()))
-            checkpoint_keys = tuple(
-                db.session.info.get("c3_cleanup_checkpoint_keys", ())
-            )
+            organization_ids = tuple(cleanup_org_ids)
+            checkpoint_keys = tuple(cleanup_checkpoint_keys)
             db.session.remove()
             if organization_ids:
                 raw = db.engine.raw_connection()
