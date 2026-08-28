@@ -294,13 +294,30 @@ def gate_nav_verified(baseline: int) -> Result:
     someone will find it by clicking.
 
     Counts from route_verification.json, written by running the suite with
-    ``-p scripts.route_verification_audit``. Stale or missing data reports the
-    full nav set as unverified, which fails loudly rather than passing on
-    absent evidence.
+    ``-p scripts.route_verification_audit``.
+
+    Missing data fails, but says so rather than inventing a score. That file is
+    untracked and exists in exactly one working copy, so on the same commit the
+    repository root reported ``[18 > 0]`` while a fresh worktree reported
+    ``[57 > 0]`` -- 57 being the entire navigation set, printed as though 57
+    routes had been found wanting. No clean clone could ever pass. A gate is held
+    to the rule it enforces: a number that means "not measured" is
+    indistinguishable from one that was.
     """
     proc = _run([sys.executable, "scripts/route_verification_audit.py", "--count"])
+    last = proc.stdout.strip().splitlines()[-1].strip() if proc.stdout.strip() else ""
+    if last == "unmeasured":
+        return Result(
+            "nav-verified",
+            FAIL,
+            "no audit data in this checkout, so nothing was measured -- this is "
+            "not a count of unverified routes.\n"
+            "route_verification.json is untracked and exists only where the suite "
+            "has been run.\n"
+            "Produce it with:  pytest -p scripts.route_verification_audit",
+        )
     try:
-        count = int(proc.stdout.strip().splitlines()[-1])
+        count = int(last)
     except (ValueError, IndexError):
         return Result("nav-verified", FAIL, f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
     if count > baseline:
@@ -1460,7 +1477,13 @@ def build_gates(baseline: dict) -> list[Gate]:
         Gate("nav-verified",
              "No new sidebar route goes untested",
              "ratchet", lambda: gate_nav_verified(baseline["nav_verified"]),
-             remediation="add a test that loads the route, or remove it from the sidebar",
+             remediation="if routes are listed above: add a test that loads each, or "
+                         "remove it from the sidebar. If it says NO AUDIT DATA, nothing "
+                         "was measured -- run 'pytest -p scripts.route_verification_audit' "
+                         "first; the two failures need opposite responses",
+             # Deliberately untagged, and that is a trap worth knowing about: an
+             # untagged gate is unreachable from EVERY --tag invocation, so only a
+             # bare `python scripts/verify.py` ever runs it.
              tags=[]),
     ]
 
