@@ -194,7 +194,9 @@ def test_guard_installation_is_idempotent_and_functions_fix_search_path(guard_fi
                 SELECT tg.tgname, cls.relname
                 FROM pg_trigger tg
                 JOIN pg_class cls ON cls.oid = tg.tgrelid
+                JOIN pg_namespace ns ON ns.oid = cls.relnamespace
                 WHERE NOT tg.tgisinternal
+                  AND ns.nspname = current_schema()
                   AND tg.tgname IN (
                     'trg_candidate_overlap_disposition_immutable',
                     'trg_command_materialisation_immutable',
@@ -220,9 +222,11 @@ def test_guard_installation_is_idempotent_and_functions_fix_search_path(guard_fi
         functions = connection.execute(
             text(
                 """
-                SELECT proname, prosecdef, proconfig
-                FROM pg_proc
-                WHERE proname IN (
+                SELECT proc.proname, proc.prosecdef, proc.proconfig
+                FROM pg_proc proc
+                JOIN pg_namespace ns ON ns.oid = proc.pronamespace
+                WHERE ns.nspname = current_schema()
+                  AND proc.proname IN (
                     'archie_reject_transformation_mutation',
                     'archie_guard_transformation_receipt',
                     'archie_guard_evidence_head',
@@ -234,7 +238,7 @@ def test_guard_installation_is_idempotent_and_functions_fix_search_path(guard_fi
                     'archie_freeze_decision_brief_version',
                     'archie_advance_evidence_head'
                 )
-                ORDER BY proname
+                ORDER BY proc.proname
                 """
             )
         ).all()

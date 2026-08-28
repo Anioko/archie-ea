@@ -111,8 +111,14 @@ def test_concurrent_root_or_correction_creates_one_record_head_move_and_event(
         event.remove(engine, "after_cursor_execute", pause_first)
 
     assert first.is_alive() is False and second.is_alive() is False
-    assert len(results) == 1
-    assert len(errors) == 1 and isinstance(errors[0], CommandConflict)
+    # Different idempotency keys racing for one natural key both receive the
+    # immutable winning materialisation. The domain mutation still happens
+    # once; reconciliation makes the losing transport call successful rather
+    # than exposing a timing-dependent conflict to its caller.
+    assert len(results) == 2
+    assert errors == []
+    assert results[0].operation_result_id == results[1].operation_result_id
+    assert results[0].object_ids == results[1].object_ids
     with Session(engine) as session:
         head = session.scalar(
             select(EvidenceClaimHead).where(
