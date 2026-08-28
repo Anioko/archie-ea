@@ -199,7 +199,32 @@ def test_submit_and_verify_send_no_body(code):
 
     verify = code.split("async function handleVerify(", 1)[1]
     verify = verify.split("async function handleWaive(", 1)[0]
-    assert "post(form.getAttribute('action'), null, key)" in verify
+    # Was post(form.getAttribute('action'), ...). Each condition form now
+    # declares two transports: `action` is the HTML child route a native submit
+    # uses when this script is absent, and `data-json-action` is the JSON route
+    # this script posts to. commandUrl() picks the JSON one. Posting a null
+    # body to `action` would send JSON at the HTML handler.
+    assert "post(commandUrl(form), null, key)" in verify
+
+
+def test_json_transport_never_posts_to_the_html_child_route(code):
+    """The two transports must not be crossed.
+
+    A native submit sends form-encoded fields to `action`; this script sends
+    JSON to `data-json-action`. If commandUrl() ever preferred `action`, every
+    scripted command would arrive at the HTML handler as JSON -- which is the
+    mirror image of the defect the HTML routes were added to fix, where a
+    native submit reached the JSON handler and got a raw 400 back.
+    """
+    picker = code.split("function commandUrl(", 1)[1].split("}", 1)[0]
+
+    assert "data-json-action" in picker
+    json_at = picker.index("data-json-action")
+    action_at = picker.index("'action'")
+    assert json_at < action_at, (
+        "data-json-action must be preferred; 'action' is only the fallback for "
+        "a form that declares a single URL"
+    )
 
 
 # ── strictly allow-listed request bodies ────────────────────────────────────
