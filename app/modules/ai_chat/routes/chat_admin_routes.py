@@ -199,16 +199,24 @@ def _safe_import_analytics_models():
     """Import feedback / audit models; return None for missing ones."""
     AIChatFeedback = None
     AIChatAuditLog = None
+    # Each returns None on failure and the dashboard degrades to the half it
+    # can compute. That is the right behaviour, but the log has to say WHICH
+    # half went missing: "Failed to operation" told an administrator staring at
+    # a half-empty analytics page precisely nothing.
     try:
         from app.models.ai_chat_feedback import AIChatFeedback
     except Exception:
-        logger.exception("Failed to operation")
-        pass
+        logger.exception(
+            "AIChatFeedback model unavailable; AI chat analytics will report "
+            "no feedback data"
+        )
     try:
         from app.models.ai_chat_audit_log import AIChatAuditLog
     except Exception:
-        logger.exception("Failed to operation")
-        pass
+        logger.exception(
+            "AIChatAuditLog model unavailable; AI chat analytics will report "
+            "no audit data"
+        )
     return AIChatFeedback, AIChatAuditLog
 
 
