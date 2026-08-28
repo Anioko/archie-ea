@@ -39,6 +39,12 @@ from app.modules.transformation_room.domain import (
 logger = logging.getLogger(__name__)
 
 _COMMAND_KEY = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{7,199}\Z")
+_SAFE_AUTHORIZATION_REASONS = frozenset(
+    {
+        "arb_decision_not_authorised",
+        "arb_decision_separation_of_duties",
+    }
+)
 _OUTCOMES = {
     "approved": "approved",
     "approved_with_conditions": "approved_with_conditions",
@@ -791,8 +797,13 @@ class TypedARBDecisionAdapter:
                 False, ["review_not_found"], http_status=404
             )
         if isinstance(error, NotAuthorised):
+            reason = (
+                error.reason
+                if error.reason in _SAFE_AUTHORIZATION_REASONS
+                else "actor_not_authorized"
+            )
             return LegacyARBDecisionResult(
-                False, ["actor_not_authorized"], http_status=403
+                False, [reason], http_status=403
             )
         if isinstance(error, CommandConflict):
             return LegacyARBDecisionResult(

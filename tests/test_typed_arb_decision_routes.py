@@ -616,6 +616,11 @@ def test_typed_reopen_is_rejected_but_legacy_reopen_still_works(
         data={"reopen_reason": "Legacy rows may still be reopened."},
     )
     assert legacy_response.status_code in (302, 303)
+    db_session.expunge_all()
+    reopened = db_session.get(ARBReviewItem, legacy_id)
+    assert reopened.status == "under_review"
+    assert reopened.decision is None
+    assert reopened.decided_by_id is None
 
 
 def test_typed_implementation_status_patch_is_rejected(
@@ -804,6 +809,25 @@ def test_solution_lifecycle_uses_an_explicit_tenant_predicate(
             db.text("DELETE FROM solutions WHERE id = :id"), {"id": solution_id}
         )
         db_session.commit()
+
+
+def test_typed_lifecycle_transition_names_are_unique():
+    from app.modules.transformation_room.arb_decision_adapter import (
+        TypedARBDecisionAdapter as CommandDecisionAdapter,
+    )
+
+    transitions = CommandDecisionAdapter._typed_lifecycle_transitions(
+        "under_review", ()
+    )
+
+    assert transitions == [
+        "approved",
+        "approved_with_conditions",
+        "rejected",
+        "returned_for_evidence",
+        "returned_for_options",
+    ]
+    assert len(transitions) == len(set(transitions))
 
 
 def _write_role(session):

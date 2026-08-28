@@ -558,6 +558,8 @@ def _typed_decision_json(result, *, extra=None):
         return jsonify({
             "success": False,
             "reason_codes": result.reason_codes,
+            "missing_evidence": [],
+            "request_id": request.headers.get("X-Request-ID") or str(_uuid.uuid4()),
         }), result.http_status
     payload = {
         "success": True,
@@ -1756,12 +1758,12 @@ def reopen_decision(id):
     """
     try:
         from app.modules.transformation_room.arb_decision_adapter import (
-            TypedARBDecisionAdapter,
+            TypedARBDecisionAdapter as CommandDecisionAdapter,
         )
         from app.modules.transformation_room.domain import NotFound
 
         try:
-            if TypedARBDecisionAdapter.review_is_typed(id):
+            if CommandDecisionAdapter.review_is_typed(id):
                 flash(
                     "Typed ARB decisions are append-only and cannot be reopened.",
                     "error",
@@ -1772,16 +1774,20 @@ def reopen_decision(id):
 
         from app.models.architecture_review_board import ARBAuditAction, ARBAuditLog
 
+        # The module-local adapter owns the legacy tenant-scoped read helpers;
+        # the command adapter above deliberately exposes only typed commands.
+        LegacyReviewAdapter = TypedARBDecisionAdapter
+
         # Explicit (id, organization_id) predicate: Session.get() is scoped
         # only on an identity-map miss, so it is not a tenancy boundary.
-        review = TypedARBDecisionAdapter.load_review(id)
+        review = LegacyReviewAdapter.load_review(id)
         if not review:
             flash("Review item not found.", "error")
             return redirect(url_for("arb.reviews")), 404
 
         # Typed decision events are append-only: no typed service exposes a
         # reopen command, so a typed cycle can never be reverted here.
-        if TypedARBDecisionAdapter.typed_cycle_for_review(review) is not None:
+        if LegacyReviewAdapter.typed_cycle_for_review(review) is not None:
             flash(
                 "This review is governed by a typed ARB cycle. Typed decisions "
                 "are append-only and cannot be reopened; submit a new review "
