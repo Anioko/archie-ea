@@ -321,7 +321,12 @@ def test_cross_tenant_condition_returns_404_revealing_nothing(
         body = response.get_json()
         assert body["reason_codes"] == ["arb_condition_not_found"]
         # Nothing about the owning tenant may appear in the failure.
-        serialised = str(body)
+        # request_id is opaque random correlation data. A short numeric database
+        # id can occur inside its hex text by chance (for example cycle id 44 in
+        # ``...2447...``), which is not a tenant leak. Inspect the response's
+        # meaningful fields while still requiring the correlation id to exist.
+        assert body.get("request_id")
+        serialised = str({key: value for key, value in body.items() if key != "request_id"})
         assert str(owner.org_id) not in serialised
         assert str(owner.review_cycle_id) not in serialised
         assert "missing_evidence" not in body
