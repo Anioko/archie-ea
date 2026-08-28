@@ -10,7 +10,7 @@
 #   scripts/deploy.sh [<git-ref>] [--recreate] [--yes]
 #
 #   <git-ref>    What to deploy. Default: HEAD. A branch/tag/sha in this repo.
-#   --recreate   Force `docker compose up -d` (recreate) instead of `restart`.
+#   --recreate   Force a new server container instead of `restart`.
 #                Auto-selected anyway when docker-compose.yml differs from what's
 #                live (a compose change needs a recreate to take effect).
 #   --yes        Skip the confirmation prompt (for CI / non-interactive use).
@@ -115,7 +115,7 @@ if [ "$RECREATE" -ne 1 ]; then
     RECREATE=1
   fi
 fi
-ACTION=$([ "$RECREATE" -eq 1 ] && echo "up -d server" || echo "restart server")
+ACTION=$([ "$RECREATE" -eq 1 ] && echo "up -d --force-recreate server" || echo "restart server")
 
 # ── 4-5. checkout + (restart|up -d) ───────────────────────────────────────────
 log "on droplet: checkout $DEPLOY_BRANCH + docker compose $ACTION…"
@@ -136,13 +136,13 @@ done
 if [ "$served" -eq 1 ]; then
   pub="$(ssh $SSH_OPTS "$DROPLET" "curl -s -o /dev/null -w '%{http_code}' --max-time 20 '$PUBLIC_HEALTH'" 2>/dev/null || echo '???')"
   log "✅ SERVING. local=200 public=$pub  deployed $SHA ($DEPLOY_BRANCH)."
-  log "rollback if needed: ssh $DROPLET \"cd $APP_DIR && git checkout $PREV_BRANCH && docker compose up -d server\""
+  log "rollback if needed: ssh $DROPLET \"cd $APP_DIR && git checkout $PREV_BRANCH && docker compose up -d --force-recreate server\""
   exit 0
 fi
 
 # ── 7. rollback ───────────────────────────────────────────────────────────────
 err "did NOT serve within ${POLL_SECONDS}s — rolling back to $PREV_BRANCH ($PREV_SHA)…"
-ssh $SSH_OPTS "$DROPLET" "cd '$APP_DIR' && git checkout '$PREV_BRANCH' && docker compose up -d server" \
+ssh $SSH_OPTS "$DROPLET" "cd '$APP_DIR' && git checkout '$PREV_BRANCH' && docker compose up -d --force-recreate server" \
   || die "ROLLBACK FAILED — manual intervention needed on $DROPLET:$APP_DIR"
 # confirm rollback serves
 for _ in 1 2 3 4 5 6 7 8 9 10 11 12; do
