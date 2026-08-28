@@ -726,6 +726,46 @@ def gate_null_filters() -> Result:
     return Result("null-filters", PASS if count == 0 else FAIL, detail, count, 0)
 
 
+def gate_fabricated_data_server(baseline: int) -> Result:
+    """Server-side fabrication, and escape hatches that never worked. RATCHET.
+
+    The sibling gate has been green at zero for a long time, and that was true of
+    what it could see. Every one of its rules was written JavaScript-first: it
+    matches a `catch` assigning an array-of-objects, "// mock data", displayed
+    randomness, and fictional company names in markup. The identical defect
+    written in Python -- an `except` returning ``{"pending": 0, "approval_rate":
+    0}`` -- was invisible to all four, and that is precisely the shape the ARB
+    legacy dashboard uses to render "Pending 0" after a database failure. A
+    reader seeing 0 concludes the queue is clear.
+
+    The second rule is about the escape hatch itself. ``ALLOW`` matches
+    ``fabricated-ok:``; the string ``fabricated-values-ok`` does not contain it,
+    so it suppressed nothing -- while reading, to every subsequent author,
+    exactly like a filed and accepted exception. 152 of them accumulated. A
+    silent non-exception is worse than no exception, because it stops the next
+    reader looking.
+
+    Ratcheted, not gated at zero, and deliberately so. The population is real
+    debt that predates the rules finding it, and 209 findings cannot be triaged
+    honestly in one pass -- each dead marker is a claim that an exception was
+    warranted, and converting them wholesale to the working spelling would
+    legitimise 152 fabrications nobody ever reviewed. The ratchet stops the
+    number growing while that review happens.
+    """
+    proc = _run([
+        sys.executable, "scripts/check_fabricated_data.py", "--count",
+        "--select", "python-zero-fill",
+        "--select", "unknown-ok-marker",
+    ])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("fabricated-data-server", FAIL,
+                      "could not read a count from the checker:\n" + proc.stdout[-400:])
+    return Result("fabricated-data-server", PASS if count <= baseline else FAIL,
+                  "", count, baseline)
+
+
 def gate_fabricated_data() -> Result:
     """No invented data can reach the UI. Gated at ZERO.
 
@@ -738,7 +778,19 @@ def gate_fabricated_data() -> Result:
 
     Escape hatch is 'fabricated-ok: <reason>' on or above the flagged line.
     """
-    proc = _run([sys.executable, "scripts/check_fabricated_data.py", "--count"])
+    # Explicitly the four rules this gate has been green on. Two more rules were
+    # added later and surface a population that was always present but invisible
+    # to a JS-shaped checker; those ratchet separately in
+    # gate_fabricated_data_server. Folding them in here would have meant relaxing
+    # a zero guarantee to accommodate newly-found debt -- the wrong direction for
+    # a gate to move, and the reason this call names its rules.
+    proc = _run([
+        sys.executable, "scripts/check_fabricated_data.py", "--count",
+        "--select", "catch-returns-fake",
+        "--select", "self-admitted-fake",
+        "--select", "random-data",
+        "--select", "fictional-entity",
+    ])
     try:
         count = int(proc.stdout.strip().splitlines()[-1])
     except (ValueError, IndexError):
@@ -1340,6 +1392,15 @@ def build_gates(baseline: dict) -> list[Gate]:
              gate_fabricated_data,
              remediation="render an explicit empty/error state instead of inventing data; "
                          "if genuinely fine, append 'fabricated-ok: <reason>'",
+             tags=["static", "ui"]),
+        Gate("fabricated-data-server",
+             "server-side fabrication and dead escape-hatch markers",
+             "ratchet",
+             lambda: gate_fabricated_data_server(baseline["fabricated_data_server"]),
+             remediation="return None (rendered as an em dash) rather than 0 or a "
+                         "severity word from an except; and use the exact spelling "
+                         "'fabricated-ok: <reason>' -- any other 'fabricated-*-ok' "
+                         "variant suppresses nothing",
              tags=["static", "ui"]),
         # NOT tagged "static": it compares requirements.txt against what is
         # actually importable, so it needs the app's dependencies installed. The
