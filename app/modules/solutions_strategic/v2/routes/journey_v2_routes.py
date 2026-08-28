@@ -244,12 +244,19 @@ def index():
     )
     try:
         in_progress = (
+            # The three ~ilike exclusions that used to sit here filtered out
+            # solutions named 'J1-AutoTest-%', 'J7-E2E-Test%' and '%-AutoTest-%'.
+            # Those are this repository's own test fixture names, and they were
+            # being excluded from what a real user sees in production.
+            #
+            # It is the wrong place to solve that problem twice over: a customer
+            # who legitimately names a solution "Migration-AutoTest-Rig" would have
+            # it silently vanish from their own hub, and a test suite that leaves
+            # rows behind should be fixed in the suite rather than hidden from the
+            # product. Test data does not belong in a production predicate.
             Solution.query.filter(
                 Solution.created_by_id == current_user.id,
                 Solution.governance_status.in_(["draft", "proposed", "in_progress"]),
-                ~Solution.name.ilike("J1-AutoTest-%"),
-                ~Solution.name.ilike("J7-E2E-Test%"),
-                ~Solution.name.ilike("%-AutoTest-%"),
             )
             .order_by(Solution.updated_at.desc())
             .limit(5)

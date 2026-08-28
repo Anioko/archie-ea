@@ -33,211 +33,36 @@
 
 {% from 'components/inline_hint.html' import inline_hint %}
 {% block page_hint %}
+{# The copy used to promise "7 guided steps" while the stepper below rendered
+   eight, and the count differs again depending on has_acm_domains -- so no number
+   is stated rather than a number that is wrong in at least one branch.
+
+   action_href was the literal string '/architecture-journey/'. A hardcoded path
+   survives a url_prefix change silently and wrongly; url_for fails loudly instead. #}
 {{ inline_hint(
     hint_id='architecture_journey',
-    text='The Architecture Journey wizard turns your business problem into an ARB-ready blueprint in 7 guided steps.',
+    text='The Architecture Journey wizard turns your business problem into an ARB-ready blueprint, one guided step at a time.',
     action_text='Start a new journey',
-    action_href='/architecture-journey/'
+    action_href=url_for('architecture_journey.index')
 ) }}
 {% endblock %}
 
 {% block content %}
-{% if not solution_id %}
-{# ══════════════════════════════════════════════════════════════════
-   LANDING PAGE — Start or Resume
-   ══════════════════════════════════════════════════════════════════ #}
-<div class="max-w-4xl mx-auto py-12 px-4" x-data="{ starting: false }">
+{#
+  The landing branch that used to sit here (lines 45-239) was unreachable dead
+  code and has been removed.
 
-    {# ── Hero ── #}
-    <div class="text-center mb-10">
-        <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/10 text-primary text-xs font-semibold mb-4">
-            <i data-lucide="sparkles" class="w-3.5 h-3.5" aria-hidden="true"></i>
-            AI-Guided TOGAF ADM Workflow
-        </div>
-        <h1 class="text-4xl font-bold tracking-tight text-foreground mb-3">Architecture Journey</h1>
-        <p class="text-lg text-muted-foreground max-w-2xl mx-auto leading-relaxed">
-            Execute professional-grade enterprise architecture designs with high-fidelity outputs.
-            This guided workflow ensures every artifact complies with TOGAF 9.2 and ArchiMate 3.2 standards.
-        </p>
-        <div class="flex items-center justify-center gap-1 mt-3 text-sm text-muted-foreground">
-            <i data-lucide="clock" class="w-4 h-4" aria-hidden="true"></i>
-            <span>Total commitment: <strong class="text-primary">15-20 mins</strong> — pause &amp; resume at any step</span>
-        </div>
-    </div>
+  journey_page() is the only view that renders this template and it always passes
+  a truthy solution_id from the URL's <int:solution_id>, after a get_or_404 that
+  would already have rejected 0. So `{% if not solution_id %}` could never be
+  true.
 
-    {# ── Step Preview Cards ── #}
-    <div class="grid grid-cols-2 md:grid-cols-3 gap-3 mb-3">
-        {% set journey_steps = [
-            ('1', 'Clarify Problem', 'message-circle', 'Define scope, constraints, and business goals through AI-guided dialogue.', '~2 min'),
-            ('2', 'Map Landscape', 'layers', 'Identify dependencies, applications, and current-state architecture.', '~3 min'),
-            ('3', 'Design Architecture', 'boxes', 'Draft conceptual and logical ArchiMate models across all layers.', '~5 min'),
-            ('4', 'Evaluate Options', 'scale', 'Compare alternatives with cost, risk, and trade-off analysis.', '~3 min'),
-            ('5', 'Plan Migration', 'calendar', 'Define phased roadmaps, work packages, and resource dependencies.', '~4 min'),
-            ('6', 'ARB Submission', 'check-circle', 'Package governance artifacts for Architecture Review Board approval.', '~2 min'),
-        ] %}
-        {% for num, title, icon, desc, time in journey_steps %}
-        <div class="group rounded-xl border border-border bg-card p-5 hover:border-primary/30 hover:shadow-md transition-all">
-            <div class="flex items-center gap-3 mb-3">
-                <div class="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-primary text-sm font-bold flex-shrink-0 group-hover:bg-primary group-hover:text-primary-foreground transition-colors">{{ num }}</div>
-                <div>
-                    <p class="text-sm font-semibold text-foreground">{{ title }}</p>
-                    <p class="text-xs text-muted-foreground flex items-center gap-1"><i data-lucide="clock" class="w-3 h-3" aria-hidden="true"></i> {{ time }}</p>
-                </div>
-            </div>
-            <p class="text-xs text-muted-foreground leading-relaxed">{{ desc }}</p>
-        </div>
-        {% endfor %}
-    </div>
-    {# Step 7 — full-width card to emphasise it as the deliverable #}
-    <div class="group rounded-xl border border-primary/20 bg-primary/5 p-5 hover:border-primary/40 hover:shadow-md transition-all mb-10">
-        <div class="flex items-center gap-4">
-            <div class="flex h-9 w-9 items-center justify-center rounded-full bg-primary/20 text-primary text-sm font-bold flex-shrink-0 group-hover:bg-primary group-hover:text-primary-foreground transition-colors">7</div>
-            <div class="flex-1 min-w-0">
-                <div class="flex items-center gap-2 flex-wrap">
-                    <p class="text-sm font-semibold text-foreground">Generate Code</p>
-                    <p class="text-xs text-muted-foreground flex items-center gap-1"><i data-lucide="clock" class="w-3 h-3" aria-hidden="true"></i> ~2 min</p>
-                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-primary/10 text-primary border border-primary/20">Final Output</span>
-                </div>
-                <p class="text-xs text-muted-foreground leading-relaxed mt-1">Generate production-ready code (Python, Go, Java, Full-Stack) from your approved architecture — deterministic, spec-driven, downloadable as ZIP.</p>
-            </div>
-            <i data-lucide="code-2" class="w-5 h-5 text-primary/50 flex-shrink-0" aria-hidden="true"></i>
-        </div>
-    </div>
-
-    {# ── Deliverables + Start ── #}
-    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center mb-10">
-        <div class="lg:col-span-7 bg-muted/30 p-6 rounded-xl">
-            <h3 class="text-xs font-bold uppercase tracking-[0.2em] text-muted-foreground mb-4">Generated Deliverables</h3>  <!-- frontend-quality-ok -->
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {% for icon, title, sub in [
-                    ('file-text', 'Solution Architecture Document', 'TOGAF ADM Phases A-H compliant'),
-                    ('git-branch', 'ArchiMate Elements', 'Standard 3.2 modeling output'),
-                    ('shield-check', 'Governance Artifacts', 'Risk register & compliance checklists'),
-                    ('gantt-chart', 'Migration Roadmap', 'Phased execution plan'),
-                ] %}
-                <div class="flex items-center gap-3">
-                    <div class="w-10 h-10 bg-card rounded-lg flex items-center justify-center text-primary shadow-sm border border-border flex-shrink-0">
-                        <i data-lucide="{{ icon }}" class="w-4 h-4" aria-hidden="true"></i>
-                    </div>
-                    <div>
-                        <p class="text-sm font-semibold text-foreground">{{ title }}</p>
-                        <p class="text-xs text-muted-foreground">{{ sub }}</p>
-                    </div>
-                </div>
-                {% endfor %}
-            </div>
-        </div>
-        <div class="lg:col-span-5 flex flex-col items-center lg:items-end gap-3">
-            <button type="button" @click.prevent.stop="
-                starting = true;
-                Platform.fetch.post('/architecture-journey/start', null, { silent: false })
-                    .then(d => {
-                        var url = (d.data && d.data.redirect) ? d.data.redirect : '';
-                        if (url) window.location.href = url;
-                    })
-                    .catch(() => { /* swallow-ok: silent is false above, so Platform.fetch
-                        has already shown the user a toast; this catch only stops the
-                        rejection escaping as an unhandled promise rejection, which the
-                        console gate would then report as a page error. */ })
-                    .finally(() => { starting = false; });
-            " :disabled="starting"
-                class="w-full max-w-xs py-3 rounded-lg bg-primary text-primary-foreground font-semibold text-sm flex items-center justify-center gap-2 hover:bg-primary/90 transition-colors shadow-lg shadow-primary/20 disabled:opacity-50">
-                <span x-text="starting ? 'Creating workspace...' : 'Start New Journey'"></span>
-                <i data-lucide="arrow-right" class="w-4 h-4" aria-hidden="true"></i>
-            </button>
-            <p class="text-xs text-muted-foreground">Auto-saves to your workspace. Resume anytime.</p>
-        </div>
-    </div>
-
-    {# ── Resume In-Progress ── #}
-    {% if solutions %}
-    <div class="border-t border-border pt-8 mb-10">
-        <div class="flex items-center justify-between mb-4">
-            <h3 class="text-lg font-bold text-foreground">Resume In-Progress</h3>
-            <a href="{{ url_for('solution_design.list_solutions') }}" class="text-xs text-primary font-medium hover:underline">View All Drafts</a>
-        </div>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {% set GOV_LABELS = {'draft': 'Draft', 'proposed': 'Submitted', 'in_progress': 'In Progress', 'arb_review': 'In Review', 'approved': 'Approved'} %}
-            {% set GOV_COLORS = {'draft': 'amber', 'proposed': 'blue', 'in_progress': 'blue', 'arb_review': 'amber', 'approved': 'emerald'} %}
-            {% for sol in solutions %}
-            {% set status = sol.governance_status or 'draft' %}
-            {% set color = GOV_COLORS.get(status, 'blue') %}
-            <a href="{{ url_for('architecture_journey.journey_page', solution_id=sol.id) }}"
-               class="group flex items-center justify-between p-4 bg-card border border-border rounded-xl hover:border-primary/30 hover:shadow-md transition-all">
-                <div class="flex items-center gap-3 min-w-0">
-                    <div class="w-10 h-10 bg-muted rounded-lg flex items-center justify-center text-muted-foreground group-hover:text-primary transition-colors flex-shrink-0">
-                        <i data-lucide="layers" class="w-5 h-5" aria-hidden="true"></i>
-                    </div>
-                    <div class="min-w-0">
-                        <h4 class="font-semibold text-foreground truncate">{{ sol.name }}</h4>
-                        <p class="text-xs text-muted-foreground mt-0.5">{{ sol.updated_at.strftime('%d %b %Y, %H:%M') if sol.updated_at else 'recently' }}</p>
-                        {# Governance status badge. This was written as
-                           bg-{{ '{{ color }}' }}-500/10 -- a class name assembled at render
-                           time, which Tailwind's JIT can never emit, so these badges
-                           shipped with NO styling at all. Unrolled onto the semantic
-                           tokens, which are real utilities: warning for work not yet
-                           committed, info for in-flight, success for approved. #}
-                        {% set _tone = {
-                            'draft': 'warning',
-                            'proposed': 'info',
-                            'in_progress': 'info',
-                            'arb_review': 'warning',
-                            'approved': 'success',
-                        }.get(status, 'muted') %}
-                        {% if _tone == 'warning' %}
-                            {% set _badge = 'bg-warning/10 text-warning-emphasis border-warning/20' %}
-                            {% set _dot = 'bg-warning' %}
-                        {% elif _tone == 'info' %}
-                            {% set _badge = 'bg-info/10 text-info-emphasis border-info/20' %}
-                            {% set _dot = 'bg-info' %}
-                        {% elif _tone == 'success' %}
-                            {% set _badge = 'bg-success/10 text-success-emphasis border-success/20' %}
-                            {% set _dot = 'bg-success' %}
-                        {% else %}
-                            {% set _badge = 'bg-muted text-muted-foreground border-border' %}
-                            {% set _dot = 'bg-muted-foreground' %}
-                        {% endif %}
-                        <span class="inline-flex items-center gap-1 px-2 py-0.5 mt-1 rounded text-xs font-medium border {{ _badge }}">
-                            <span class="w-1.5 h-1.5 {{ _dot }} rounded-full"></span>
-                            {{ GOV_LABELS.get(status, status|replace('_',' ')|title) }}
-                        </span>
-                    </div>
-                </div>
-                <i data-lucide="play-circle" class="w-5 h-5 text-muted-foreground/30 group-hover:text-primary transition-colors flex-shrink-0" aria-hidden="true"></i>
-            </a>
-            {% endfor %}
-        </div>
-    </div>
-    {% endif %}
-
-    {# ── Tips ── #}
-    <div class="bg-card p-8 rounded-xl border border-border">
-        <div class="flex items-center gap-2 mb-6">
-            <i data-lucide="lightbulb" class="w-5 h-5 text-primary" aria-hidden="true"></i>
-            <h3 class="text-lg font-bold text-foreground">Tips for Best Results</h3>
-        </div>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <div>
-                <h4 class="text-xs font-bold uppercase tracking-[0.2em] text-primary mb-4">Recommended Practices</h4>
-                <ul class="space-y-3">
-                    <li class="flex gap-2 text-sm text-muted-foreground"><i data-lucide="check-circle-2" class="w-4 h-4 text-success flex-shrink-0 mt-0.5" aria-hidden="true"></i> Provide specific technical constraints early to ensure AI alignment with your infrastructure.</li>
-                    <li class="flex gap-2 text-sm text-muted-foreground"><i data-lucide="check-circle-2" class="w-4 h-4 text-success flex-shrink-0 mt-0.5" aria-hidden="true"></i> Mention affected applications and business units so the AI can map dependencies automatically.</li>
-                    <li class="flex gap-2 text-sm text-muted-foreground"><i data-lucide="check-circle-2" class="w-4 h-4 text-success flex-shrink-0 mt-0.5" aria-hidden="true"></i> Answer every clarifying question thoroughly — each response sharpens the architecture.</li>
-                </ul>
-            </div>
-            <div>
-                <h4 class="text-xs font-bold uppercase tracking-[0.2em] text-destructive-emphasis mb-4">Common Pitfalls</h4>
-                <ul class="space-y-3">
-                    <li class="flex gap-2 text-sm text-muted-foreground"><i data-lucide="x-circle" class="w-4 h-4 text-destructive flex-shrink-0 mt-0.5" aria-hidden="true"></i> Don't use generic titles like "New Project." Use intent-based names for better AI context.</li>
-                    <li class="flex gap-2 text-sm text-muted-foreground"><i data-lucide="x-circle" class="w-4 h-4 text-destructive flex-shrink-0 mt-0.5" aria-hidden="true"></i> Avoid skipping "Map Landscape" — accurate current-state maps are critical for trade-offs.</li>
-                    <li class="flex gap-2 text-sm text-muted-foreground"><i data-lucide="x-circle" class="w-4 h-4 text-destructive flex-shrink-0 mt-0.5" aria-hidden="true"></i> Do not bypass ARB Submission for production deployments — governance maintains audit compliance.</li>
-                </ul>
-            </div>
-        </div>
-    </div>
-</div>
-
-{% else %}
+  What it contained mattered: a centred hero with its own <h1>Architecture
+  Journey</h1> and a six-step preview -- a second, differently-worded landing page
+  for a feature that already has one at architecture_journey_hub.html. Two answers
+  to "what is an Architecture Journey", one of them invisible and therefore never
+  corrected when the other changed.
+#}
 {# ══════════════════════════════════════════════════════════════════
    WIZARD — Wide layout with copilot panel restored
    ══════════════════════════════════════════════════════════════════ #}
@@ -248,9 +73,9 @@
 
 <div x-data="journeyV2Flow({{ solution_id or 0 }})" x-init="init()" class="space-y-4">
 
-    {# The wizard branch shipped with no page header and no <h1> at all — it
-       opened straight on the stepper. The landing branch above keeps its centred
-       hero (that <h1> is the hero); this branch gets the platform header. #}
+    {# This branch shipped with no page header and no heading at all — it opened
+       straight on the stepper. page_shell now provides the page's single heading
+       and its single breadcrumb. #}
     {{ page_shell(
         title=solution.name if solution is defined and solution else 'Architecture Journey',
         subtitle='AI-guided TOGAF ADM workflow',
@@ -415,7 +240,6 @@
         </div>
     </div>
 </div>
-{% endif %}
 {% endblock %}
 
 {% block modals %}
