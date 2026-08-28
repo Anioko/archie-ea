@@ -449,17 +449,10 @@
             
             {# FRAG-035: Executive Summary (lazy-loaded) #}
             <div x-data="{ execData: null, execLoading: true }" x-init="
-                (async () => {
-                    try {
-                        const data = await (window.Platform?.fetch || window.apiFetch || fetch).get('/dashboard/api/executive-summary');
-                        execData = data.data;
-                    } catch (e) {
-                        // Platform.fetch throws on non-ok; we keep execData null and hide the template
-                        // No toast needed because we are handling inline state (silent:true is default for .get)
-                    } finally {
-                        execLoading = false;
-                    }
-                })()
+                Platform.fetch.get('/dashboard/api/executive-summary')
+                    .then(data => { execData = data.data; })
+                    .catch(() => {})
+                    .finally(() => { execLoading = false; })
             ">
             <template x-if="execData">
                 <div class="rounded-xl border border-border bg-card p-5 mb-6">
@@ -586,17 +579,10 @@
             </div>
             {# ── Governance Stats (lazy-loaded from ARB API) ── #}
             <div x-data="{ govData: null, govLoading: true }" x-init="
-                (async () => {
-                    try {
-                        const data = await (window.Platform?.fetch || window.apiFetch || fetch).get('/arb/api/dashboard');
-                        govData = data.data;
-                    } catch (e) {
-                        // Platform.fetch throws on non-ok; we keep govData null and hide the template
-                        // No toast needed because we are handling inline state (silent:true is default for .get)
-                    } finally {
-                        govLoading = false;
-                    }
-                })()
+                Platform.fetch.get('/arb/api/dashboard')
+                    .then(data => { govData = data.data; })
+                    .catch(() => {})
+                    .finally(() => { govLoading = false; })
             ">
             {% call card.card(class='border-l-4 border-l-amber-500') %}
                 {% call card.card_header(class='pb-3') %}
