@@ -414,6 +414,19 @@
     }
 
     // ── Idempotency ─────────────────────────────────────────────────────────
+    /**
+     * The canonical JSON endpoint for a form.
+     *
+     * Blueprint section 11 gives each condition command two transports: `action`
+     * is the HTML child route under /arb/reviews/<review>/conditions/<id>/, which
+     * a native submit uses when this script is absent or fails, and
+     * `data-json-action` is the JSON route this script posts to. Falling back to
+     * `action` keeps a form that declares only one URL working unchanged.
+     */
+    function commandUrl(form) {
+        return form.getAttribute('data-json-action') || form.getAttribute('action');
+    }
+
     // One client key per user action; the server derives :capture / :submit /
     // :verify / :waive from it. The template's `data-command-key` is preferred
     // because it is stable across reloads, so a retry after a refresh still
@@ -669,7 +682,7 @@
         var modalId = form.closest('.modal-root') ? form.closest('.modal-root').id : null;
         setBusy(root, true, form);
         try {
-            var captured = await post(form.getAttribute('action'), built.body, key);
+            var captured = await post(commandUrl(form), built.body, key);
             if (!captured || !captured.condition_evidence_id) {
                 showError(root, MESSAGES.noCanonicalId, {
                     form: form, requestId: captured ? captured.request_id : null
@@ -734,7 +747,7 @@
         setBusy(root, true, form);
         try {
             // NO body: verify accepts none.
-            var result = await post(form.getAttribute('action'), null, key);
+            var result = await post(commandUrl(form), null, key);
             if (!result || !result.condition_event_id) {
                 showError(root, MESSAGES.noCanonicalId, {
                     form: form, requestId: result ? result.request_id : null
@@ -765,7 +778,7 @@
         var modalId = form.closest('.modal-root') ? form.closest('.modal-root').id : null;
         setBusy(root, true, form);
         try {
-            var result = await post(form.getAttribute('action'), built.body, key);
+            var result = await post(commandUrl(form), built.body, key);
             if (!result || !result.condition_event_id) {
                 showError(root, MESSAGES.noCanonicalId, {
                     form: form, requestId: result ? result.request_id : null

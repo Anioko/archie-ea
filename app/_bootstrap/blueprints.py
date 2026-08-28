@@ -1815,6 +1815,23 @@ def _register_tail_blueprints(app, csrf, **flags):
             f"[BLUEPRINT] Failed to register typed ARB condition routes: {e}"
         )
 
+    # Typed ARB condition HTML child routes (blueprint §11). The non-JS form
+    # transport for the same commands; separate blueprint so it does not depend
+    # on arb_bp being imported first.
+    try:
+        from app.modules.architecture.routes.arb_condition_html_routes import (
+            arb_conditions_html_bp,
+        )
+
+        app.register_blueprint(arb_conditions_html_bp)
+        app.logger.info(
+            "[BLUEPRINT] Typed ARB condition HTML child routes registered at /arb/reviews"
+        )
+    except Exception as e:
+        app.logger.warning(
+            f"[BLUEPRINT] Failed to register typed ARB condition HTML routes: {e}"
+        )
+
     # ARB routes
     if not _ff_architecture:
         try:
