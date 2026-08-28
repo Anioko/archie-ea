@@ -958,8 +958,8 @@ def submit_to_arb():
     Request body:
         {"architecture_model_id": 42, "human_reviewed": true}
     """
-    from app.modules.transformation_room.arb_typed_subject_ingress import (
-        TypedARBSubjectIngress,
+    from app.modules.transformation_room.arb_submission_adapter import (
+        TypedARBSubmissionAdapter,
     )
 
     data = request.get_json(silent=True) or {}
@@ -970,6 +970,12 @@ def submit_to_arb():
                 {
                     "success": False,
                     "reason_codes": ["architecture_model_required"],
+                    "missing_evidence": [
+                        {
+                            "code": "architecture_model_required",
+                            "field": "architecture_model_id",
+                        }
+                    ],
                     "error": (
                         "Save this canvas as an architecture model first, then "
                         "submit that model for review. A canvas on its own has "
@@ -981,40 +987,46 @@ def submit_to_arb():
             422,
         )
 
-    result = TypedARBSubjectIngress.submit_from_request(
+    result = TypedARBSubmissionAdapter.submit_subject_from_request(
         subject_type="architecture_model",
         subject_id=model_id,
         payload=data,
     )
     if not result.success:
-        payload = result.failure_payload()
-        payload["error"] = "The architecture model could not be submitted for review."
-        return jsonify(payload), result.http_status
-
-    return (
-        jsonify(
+        reason_codes = result.reason_codes
+        status = result.http_status
+        if reason_codes == ["architecture_model_not_found"]:
+            reason_codes = ["architecture_model_not_persisted"]
+            status = 422
+        return jsonify(
             {
-                "success": True,
-                "data": {
-                    "review_number": result.review_number,
-                    "review_item_id": result.review_item_id,
-                    "review_cycle_id": result.review_cycle_id,
-                    "snapshot_id": result.evidence_id,
-                    "canonical_url": result.canonical_url,
-                    "idempotent": result.idempotent,
-                    "status": "submitted",
-                    "message": (
-                        f"Design submitted to ARB as {result.review_number}. "
-                        "You will be notified when review begins."
-                    ),
-                    "arb_dashboard_url": "/arb/reviews",
-                    "redirect_url": f"/arb/reviews/{result.review_item_id}",
-                },
-                "request_id": result.request_id,
+                "success": False,
+                "reason_codes": reason_codes,
+                "missing_evidence": result.missing_evidence,
+                "error": "The architecture model could not be submitted for review.",
+                "action_url": "/architecture/models",
             }
+        ), status
+
+    data = {
+        "review_number": result.review_number,
+        "review_id": result.review_item_id,
+        "review_item_id": result.review_item_id,
+        "snapshot_id": result.snapshot_id,
+        "review_cycle_id": result.review_cycle_id,
+        "canonical_url": result.canonical_url,
+        "idempotent": result.idempotent,
+        "status": "submitted",
+        "message": (
+            f"Design submitted to ARB as {result.review_number}. "
+            "You will be notified when review begins."
         ),
-        result.http_status,
-    )
+        "arb_dashboard_url": "/arb/reviews",
+        "redirect_url": f"/arb/reviews/{result.review_item_id}",
+    }
+    # Preserve the established Composer response status while returning the
+    # canonical typed identifiers and replay marker.
+    return jsonify({"success": True, "data": data}), 200
 
 
 @solution_composer_bp.route("/strategic-alignment", methods=["GET"])

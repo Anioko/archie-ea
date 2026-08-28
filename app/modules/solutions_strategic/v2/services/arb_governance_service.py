@@ -236,6 +236,11 @@ class ARBGovernanceService:
             raise ValueError(
                 "Solution reviews require the canonical evidence-gated submission service"
             )
+        if adr_id is not None or architecture_model_id is not None:
+            raise ValueError(
+                "ADR and model reviews require the canonical evidence-gated typed ARB "
+                "submission service"
+            )
         review_number = ARBReviewItem.generate_review_number()
 
         # Auto-determine ArchiMate layer from TOGAF phase if not provided
@@ -290,6 +295,11 @@ class ARBGovernanceService:
         if item.solution_id is not None:
             raise ValueError(
                 "Solution reviews require the canonical evidence-gated submission service"
+            )
+        if item.adr_id is not None or item.architecture_model_id is not None:
+            raise ValueError(
+                "ADR and model reviews require the canonical evidence-gated typed ARB "
+                "submission service"
             )
 
         if item.status != "draft":
@@ -608,31 +618,9 @@ class ARBGovernanceService:
         Returns:
             Created ARBReviewItem
         """
-        from app.models.adr import ArchitectureDecisionRecord
-
-        adr = db.session.get(ArchitectureDecisionRecord, adr_id)
-        if not adr:
-            raise ValueError(f"ADR {adr_id} not found")
-
-        # Determine if ADR needs ARB review
-        if not self._adr_needs_arb_review(adr):
-            return None
-
-        # Get linked capabilities
-        capability_ids = []
-
-        if adr.linked_capabilities:
-            capability_ids = [cap.id for cap in adr.linked_capabilities]
-
-        return self.submit_for_review(
-            title=f"ADR Review: {adr.title}",
-            description=f"Architecture Decision Record review: {adr.context}",
-            review_type="architecture_change",
-            submitter_id=submitter_id,
-            togaf_phase=self._map_adr_to_togaf_phase(adr),
-            adr_id=adr_id,
-            capability_ids=capability_ids,
-            priority=self._determine_priority_from_adr(adr),
+        raise ValueError(
+            "Automatic ADR review is disabled; use the canonical typed ARB "
+            "submission service"
         )
 
     def get_pending_reviews_by_capability(self, capability_id: int) -> List[ARBReviewItem]:

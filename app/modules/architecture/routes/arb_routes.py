@@ -1213,10 +1213,37 @@ def review_new_redirect():
 class _ReviewValidationError(ValueError):
     """Raised by _create_arb_review_item for a 400-shaped validation failure."""
 
-    def __init__(self, field: str, message: str):
+    def __init__(self, field: str, message: str, *, code: str | None = None):
         super().__init__(message)
         self.field = field
         self.message = message
+        self.code = code
+
+
+class _TypedSubmissionError(RuntimeError):
+    def __init__(self, result):
+        super().__init__("Typed ARB submission was rejected")
+        self.result = result
+
+
+def _typed_submission_payload(result):
+    return {
+        "review_id": result.review_item_id,
+        "review_item_id": result.review_item_id,
+        "review_number": result.review_number,
+        "snapshot_id": result.snapshot_id,
+        "review_cycle_id": result.review_cycle_id,
+        "canonical_url": result.canonical_url,
+        "idempotent": result.idempotent,
+    }
+
+
+def _typed_submission_error_payload(result):
+    return {
+        "success": False,
+        "reason_codes": result.reason_codes,
+        "missing_evidence": result.missing_evidence,
+    }
 
 
 # V-03: the single place review-creation payloads are parsed and validated.
@@ -1233,11 +1260,50 @@ def _create_arb_review_item(data: dict) -> ARBReviewItem:
     # Solution reviews have a stronger evidence contract than generic ADR/model
     # reviews.  This modal cannot collect or preserve that dossier, so it must
     # never manufacture a solution-linked review item.
-    if data.get("solution_id"):
+    selected_subjects = [
+        (subject_type, field_name, data.get(field_name))
+        for subject_type, field_name in (
+            ("solution", "solution_id"),
+            ("adr", "adr_id"),
+            ("architecture_model", "architecture_model_id"),
+        )
+        if data.get(field_name) not in (None, "")
+    ]
+    if len(selected_subjects) > 1:
+        raise _ReviewValidationError(
+            "subject",
+            "Select exactly one governed subject for an ARB submission.",
+            code="exactly_one_subject_required",
+        )
+    if selected_subjects and selected_subjects[0][0] == "solution":
         raise _ReviewValidationError(
             "solution_id",
             "Submit solutions through the canonical evidence-gated submission endpoint.",
         )
+    if selected_subjects:
+        from app.modules.transformation_room.arb_submission_adapter import (
+            TypedARBSubmissionAdapter,
+        )
+
+        subject_type, _field_name, raw_subject_id = selected_subjects[0]
+        try:
+            subject_id = int(raw_subject_id)
+        except (TypeError, ValueError) as error:
+            raise _ReviewValidationError(
+                "subject", "Governed subject ID must be a positive integer."
+            ) from error
+        if subject_id <= 0:
+            raise _ReviewValidationError(
+                "subject", "Governed subject ID must be a positive integer."
+            )
+        result = TypedARBSubmissionAdapter.submit_subject_from_request(
+            subject_type=subject_type,
+            subject_id=subject_id,
+            payload=data,
+        )
+        if not result.success:
+            raise _TypedSubmissionError(result)
+        return result
     review_type = data.get("review_type")
     capability_required_types = ["solution_design", "capability_implementation", "technology_selection"]
 
@@ -1310,18 +1376,36 @@ def create_review():
             review_item = _create_arb_review_item(data)
 
             if is_json:
+                if hasattr(review_item, "review_item_id"):
+                    typed = _typed_submission_payload(review_item)
+                    return jsonify(
+                        {"success": True, "id": review_item.review_item_id, **typed}
+                    ), 201
                 return jsonify({"success": True, "id": review_item.id, "review_number": review_item.review_number}), 201
 
+            review_id = getattr(review_item, "review_item_id", None) or review_item.id
+            review_number = getattr(review_item, "review_number", None)
             flash(
-                f"Review item {review_item.review_number} created successfully",
+                f"Review item {review_number} created successfully",
                 "success",
             )
-            return redirect(url_for("arb.review_detail", id=review_item.id))
+            return redirect(url_for("arb.review_detail", id=review_id))
 
         except _ReviewValidationError as e:
             if is_json:
-                return jsonify({"success": False, "errors": {e.field: e.message}}), 400
+                payload = {"success": False, "errors": {e.field: e.message}}
+                if e.code:
+                    payload["reason_codes"] = [e.code]
+                return jsonify(payload), 400
             flash(e.message, "error")
+            return redirect(url_for("arb.dashboard"))
+
+        except _TypedSubmissionError as error:
+            if is_json:
+                return jsonify(
+                    _typed_submission_error_payload(error.result)
+                ), error.result.http_status
+            flash("The governed subject is not ready for ARB submission.", "error")
             return redirect(url_for("arb.dashboard"))
 
         except Exception as e:
@@ -1517,9 +1601,9 @@ def submit_review(id):
     """Submit a draft review item for ARB consideration."""
     try:
         review = ARBReviewItem.query.get_or_404(id)
-        if review.solution_id:
+        if review.solution_id or review.adr_id or review.architecture_model_id:
             flash(
-                "Solution reviews must be submitted from the solution evidence dossier.",
+                "Typed reviews must be submitted from their governed evidence dossier.",
                 "error",
             )
             return redirect(url_for("arb.review_detail", id=id))
@@ -2070,23 +2154,18 @@ def api_submit_solution_review(solution_id):
 @audit_log("arb_adr_review_submit")
 def api_submit_adr_review(adr_id):
     """API endpoint to auto-submit ADR for ARB review."""
-    try:
-        review = arb_service.auto_submit_adr_for_review(adr_id, current_user.id)
-        if review:
-            return jsonify(
-                {
-                    "success": True,
-                    "review_id": review.id,
-                    "review_number": review.review_number,
-                }
-            )
-        else:
-            return jsonify(
-                {"success": False, "error": "ADR does not require ARB review"}
-            )
-    except Exception as e:
-        current_app.logger.error(f"Error submitting ADR review: {e}")
-        return jsonify({"success": False, "error": "An internal error occurred"}), 500
+    from app.modules.transformation_room.arb_submission_adapter import (
+        TypedARBSubmissionAdapter,
+    )
+
+    result = TypedARBSubmissionAdapter.submit_subject_from_request(
+        subject_type="adr",
+        subject_id=adr_id,
+        payload=request.get_json(silent=True) or {},
+    )
+    if not result.success:
+        return jsonify(_typed_submission_error_payload(result)), result.http_status
+    return jsonify({"success": True, **_typed_submission_payload(result)})
 
 
 # =========================================================================
@@ -2150,6 +2229,18 @@ def api_create_review():
 
         review_item = _create_arb_review_item(data)
 
+        if hasattr(review_item, "review_item_id"):
+            typed = _typed_submission_payload(review_item)
+            return jsonify(
+                {
+                    "success": True,
+                    **typed,
+                    "redirect_url": url_for(
+                        "arb.review_detail", id=review_item.review_item_id
+                    ),
+                }
+            )
+
         return jsonify(
             {
                 "success": True,
@@ -2160,7 +2251,15 @@ def api_create_review():
         )
 
     except _ReviewValidationError as e:
-        return jsonify({"success": False, "errors": {e.field: e.message}}), 400
+        payload = {"success": False, "errors": {e.field: e.message}}
+        if e.code:
+            payload["reason_codes"] = [e.code]
+        return jsonify(payload), 400
+
+    except _TypedSubmissionError as error:
+        return jsonify(
+            _typed_submission_error_payload(error.result)
+        ), error.result.http_status
 
     except Exception as e:
         current_app.logger.error(f"Error creating review via API: {e}")

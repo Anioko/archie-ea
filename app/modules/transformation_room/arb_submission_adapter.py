@@ -114,6 +114,48 @@ class TypedARBSubmissionAdapter:
             return cls._failure(error)
 
     @classmethod
+    def submit_subject_from_request(
+        cls,
+        *,
+        subject_type: str,
+        subject_id: int,
+        payload: Mapping[str, Any] | None,
+    ) -> LegacyARBSubmissionResult:
+        """Submit an ADR or model using authenticated server identity only."""
+        if subject_type not in {"adr", "architecture_model"}:
+            return LegacyARBSubmissionResult(
+                False, ["unsupported_subject_type"], http_status=400
+            )
+        try:
+            actor = cls._actor_from_request()
+            supplied = payload if isinstance(payload, Mapping) else {}
+            raw_human_reviewed = supplied.get("human_reviewed")
+            human_reviewed = raw_human_reviewed is True or (
+                isinstance(raw_human_reviewed, str)
+                and raw_human_reviewed.strip().lower() in {"1", "on", "true", "yes"}
+            )
+            command_key = cls._subject_command_key(
+                request.headers.get("Idempotency-Key"),
+                actor=actor,
+                subject_type=subject_type,
+                subject_id=subject_id,
+                human_reviewed=human_reviewed,
+            )
+            return cls._submit_subject(
+                actor=actor,
+                command_key=command_key,
+                subject_type=subject_type,
+                subject_id=subject_id,
+                assertions={"human_reviewed": human_reviewed},
+            )
+        except ValueError:
+            return LegacyARBSubmissionResult(
+                False, ["invalid_idempotency_key"], http_status=400
+            )
+        except TransformationError as error:
+            return cls._failure(error, subject_type=subject_type)
+
+    @classmethod
     def submit_solution_for_actor(
         cls,
         *,
@@ -186,6 +228,47 @@ class TypedARBSubmissionAdapter:
                 False,
                 ["submission_failed"],
                 http_status=503,
+            )
+
+        response = dict(result.response)
+        object_ids = dict(result.object_ids)
+        return LegacyARBSubmissionResult(
+            True,
+            review_item_id=response.get("review_item_id")
+            or object_ids.get("review_item_id"),
+            review_number=response.get("review_number"),
+            snapshot_id=response.get("evidence_id") or object_ids.get("evidence_id"),
+            idempotent=result.idempotent,
+            review_cycle_id=response.get("review_cycle_id")
+            or object_ids.get("review_cycle_id"),
+            canonical_url=response.get("canonical_url"),
+            http_status=200 if result.idempotent else 201,
+        )
+
+    @classmethod
+    def _submit_subject(
+        cls,
+        *,
+        actor: ActorContext,
+        command_key: str,
+        subject_type: str,
+        subject_id: int,
+        assertions: Mapping[str, Any],
+    ) -> LegacyARBSubmissionResult:
+        try:
+            result = TypedARBSubmissionService.submit(
+                actor=actor,
+                command_key=command_key,
+                subject_type=subject_type,
+                subject_id=subject_id,
+                assertions=assertions,
+            )
+        except TransformationError as error:
+            return cls._failure(error, subject_type=subject_type)
+        except Exception:
+            logger.exception("Typed ARB subject submission adapter failed")
+            return LegacyARBSubmissionResult(
+                False, ["submission_failed"], http_status=503
             )
 
         response = dict(result.response)
@@ -353,14 +436,43 @@ class TypedARBSubmissionAdapter:
         ).encode("utf-8")
         return f"arb-solution-{hashlib.sha256(identity).hexdigest()}"
 
+    @classmethod
+    def _subject_command_key(
+        cls,
+        supplied: str | None,
+        *,
+        actor: ActorContext,
+        subject_type: str,
+        subject_id: int,
+        human_reviewed: bool,
+    ) -> str:
+        if supplied is not None:
+            if not isinstance(supplied, str) or not _COMMAND_KEY.fullmatch(supplied):
+                raise ValueError("invalid idempotency key")
+            return supplied
+        anchor = cls._typed_submission_anchor(actor, subject_type, subject_id)
+        identity = (
+            f"{actor.organization_id}:{actor.user_id}:{subject_type}:{subject_id}:"
+            f"{human_reviewed}:{anchor}"
+        ).encode("utf-8")
+        return f"arb-{subject_type}-{hashlib.sha256(identity).hexdigest()}"
+
     @staticmethod
     def _submission_anchor(actor: ActorContext, solution_id: int) -> str:
+        return TypedARBSubmissionAdapter._typed_submission_anchor(
+            actor, "solution", solution_id
+        )
+
+    @staticmethod
+    def _typed_submission_anchor(
+        actor: ActorContext, subject_type: str, subject_id: int
+    ) -> str:
         latest = db.session.execute(
             db.select(ARBReviewCycle)
             .where(
                 ARBReviewCycle.organization_id == actor.organization_id,
-                ARBReviewCycle.subject_type == "solution",
-                ARBReviewCycle.subject_id == solution_id,
+                ARBReviewCycle.subject_type == subject_type,
+                ARBReviewCycle.subject_id == subject_id,
             )
             .order_by(ARBReviewCycle.cycle_number.desc(), ARBReviewCycle.id.desc())
             .limit(1)
@@ -372,10 +484,12 @@ class TypedARBSubmissionAdapter:
         return str(latest.id)
 
     @staticmethod
-    def _failure(error: TransformationError) -> LegacyARBSubmissionResult:
+    def _failure(
+        error: TransformationError, *, subject_type: str = "solution"
+    ) -> LegacyARBSubmissionResult:
         if isinstance(error, NotFound):
             return LegacyARBSubmissionResult(
-                False, ["solution_not_found"], http_status=404
+                False, [f"{subject_type}_not_found"], http_status=404
             )
         if isinstance(error, NotAuthorised):
             return LegacyARBSubmissionResult(
