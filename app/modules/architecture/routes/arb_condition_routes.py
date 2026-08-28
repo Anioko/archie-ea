@@ -55,6 +55,7 @@ CSRF is the global ``CSRFProtect``.  No route here is exempt.
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+import functools
 import hashlib
 import json
 import uuid
@@ -577,10 +578,41 @@ def _handle(view):
                         request_id=request_id)
 
 
+def requires_session(view_func):
+    """Refuse an unauthenticated caller at the route, before anything else.
+
+    These views already fail closed: every one calls ``_actor()`` first, which
+    raises ``AuthenticationRequired`` and maps to a 401. But that guarantee
+    lived one call deep, inside a nested closure, where neither a reader nor
+    ``tests/test_route_authorisation.py`` could see it -- the URL map showed
+    four write routes with no authentication story at all.
+
+    Flask-Login's ``@login_required`` is the wrong tool here: it answers an
+    unauthenticated caller with a redirect to the login page, which would
+    replace this API's 401 JSON envelope with a 302 and break the contract
+    section 13 pins. So this does the same job and keeps the envelope.
+
+    Not a substitute for ``_actor()`` -- that still runs, and still builds the
+    actor from the session alone. This makes the guarantee visible where the
+    route is declared.
+    """
+
+    @functools.wraps(view_func)
+    def wrapper(*args, **kwargs):
+        if not getattr(current_user, "is_authenticated", False):
+            return _failure(
+                401, ["not_authenticated"], request_id=uuid.uuid4().hex
+            )
+        return view_func(*args, **kwargs)
+
+    return wrapper
+
+
 # ── routes ───────────────────────────────────────────────────────────────────
 
 
 @arb_conditions_api_bp.route("/<int:condition_id>/evidence", methods=["POST"])
+@requires_session
 def capture_condition_evidence(condition_id):
     """Capture immutable evidence. Does not submit it — that is a second command."""
 
@@ -607,6 +639,7 @@ def capture_condition_evidence(condition_id):
 @arb_conditions_api_bp.route(
     "/<int:condition_id>/evidence/<int:evidence_id>/submit", methods=["POST"]
 )
+@requires_session
 def submit_condition_evidence(condition_id, evidence_id):
     """Submit already-captured evidence. Retryable without recapturing."""
 
@@ -634,6 +667,7 @@ def submit_condition_evidence(condition_id, evidence_id):
 @arb_conditions_api_bp.route(
     "/<int:condition_id>/evidence/<int:evidence_id>/verify", methods=["POST"]
 )
+@requires_session
 def verify_condition_evidence(condition_id, evidence_id):
     """Verify submitted evidence. Separation of duties is enforced by the command."""
 
@@ -659,6 +693,7 @@ def verify_condition_evidence(condition_id, evidence_id):
 
 
 @arb_conditions_api_bp.route("/<int:condition_id>/waive", methods=["POST"])
+@requires_session
 def waive_condition(condition_id):
     """Grant a time-bound waiver. Decision authority only; there is no undo."""
 
