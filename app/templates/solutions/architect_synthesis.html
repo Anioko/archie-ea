@@ -423,10 +423,10 @@
    Nothing is persisted and nothing here feeds back into a measured figure.
 
    Platform.fetch is the sanctioned HTTP path: it injects CSRF and THROWS on a
-   non-ok response. That last part is the point — a bare fetch() does not reject
-   on 4xx/5xx, so an `if (response.ok)` with no else would leave `briefing` at
-   its null initialiser and the panel would silently show nothing rather than
-   saying the briefing failed. */
+   non-ok response. That last part is the point — the native browser API does
+   NOT reject on 4xx/5xx, so an `if (response.ok)` with no else would leave
+   `briefing` at its null initialiser and the panel would silently show nothing
+   rather than saying the briefing failed. */
 function chiefArchitectBriefing() {
     return {
         loading: false,
