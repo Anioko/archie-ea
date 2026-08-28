@@ -229,6 +229,48 @@
           <p x-show="!evidence.length" x-cloak class="mt-4 text-center text-xs text-muted-foreground">No evidence attached yet.</p>
         </section>
 
+        {# ── link a record ────────────────────────────────────────────────── #}
+        <section data-testid="journey-link-form" class="rounded-xl border border-border bg-card p-5"
+                 aria-labelledby="journey-link-title">
+          <h2 id="journey-link-title" class="text-sm font-semibold text-foreground">Link a record</h2>
+          <p class="mt-1 text-xs leading-5 text-muted-foreground">
+            Point this journey at a decision, risk, document or model that already exists.
+            The record itself is not changed &mdash; unlinking later removes only the connection.
+          </p>
+
+          <form class="mt-4 space-y-3" @submit.prevent="addLink">
+            <div>
+              <label for="link-entity-type" class="text-xs font-medium text-foreground">Record type</label>
+              <select id="link-entity-type" x-model="linkEntityType"
+                class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                {% for value in link_entity_types %}
+                <option value="{{ value }}">{{ value|replace('_', ' ')|title }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div>
+              <label for="link-relation" class="text-xs font-medium text-foreground">Relation</label>
+              <select id="link-relation" x-model="linkRelation"
+                class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                {% for value in link_relations %}
+                <option value="{{ value }}">{{ value|title }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div>
+              <label for="link-entity-id" class="text-xs font-medium text-foreground">Record id</label>
+              <input id="link-entity-id" type="number" min="1" step="1" x-model="linkEntityId" required
+                class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                placeholder="e.g. 42">
+            </div>
+            <button type="submit" :disabled="savingLink || !linkEntityId"
+              class="inline-flex h-9 w-full items-center justify-center gap-2 rounded-md border border-input bg-background px-4 py-2 text-sm font-medium text-foreground hover:bg-accent disabled:pointer-events-none disabled:opacity-50">
+              <i data-lucide="link" class="h-4 w-4" aria-hidden="true"></i>
+              Link record
+            </button>
+          </form>
+        </section>
+
         {# ── outcome ──────────────────────────────────────────────────────── #}
         <section data-testid="journey-outcome" class="rounded-xl border border-border bg-muted/30 p-5">
           <p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Outcome</p>

@@ -55,6 +55,46 @@ document.addEventListener('alpine:init', () => {
       }
     },
 
+    // ── linking records ──────────────────────────────────────────────────
+    // A link points at a record that already exists elsewhere. The form never
+    // sends an organisation or an author: the server takes both from the session,
+    // because a caller who can name the tenant can write into someone else's.
+    linkEntityType: 'decision',
+    linkEntityId: '',
+    linkRelation: 'references',
+    savingLink: false,
+    linkNotice: '',
+
+    async addLink() {
+      if (this.savingLink) return;
+      const entityId = parseInt(this.linkEntityId, 10);
+      if (!Number.isInteger(entityId) || entityId <= 0) {
+        // Said here rather than after a round trip: a 0 or a negative points at no
+        // row, and would render as a broken reference that looks like a real one.
+        this.error = 'Enter the numeric id of an existing record.';
+        return;
+      }
+      this.savingLink = true;
+      this.error = '';
+      this.linkNotice = '';
+      try {
+        await Platform.fetch.post(
+          `/architecture-journey/work/${this.journeyId}/links`,
+          { entity_type: this.linkEntityType, entity_id: entityId, relation: this.linkRelation },
+          { silent: true },
+        );
+        // The counts are rendered server-side, so the page is reloaded rather than
+        // incremented in place. Adjusting a number locally would show a count the
+        // server has not confirmed -- the exact class of claim this screen exists
+        // to avoid making.
+        window.location.reload();
+      } catch (error) {
+        this.error = error.message || 'That record could not be linked.';
+      } finally {
+        this.savingLink = false;
+      }
+    },
+
     async addEvidence() {
       if (this.savingEvidence || !this.evidenceName || !this.evidenceReference) return;
       this.savingEvidence = true;

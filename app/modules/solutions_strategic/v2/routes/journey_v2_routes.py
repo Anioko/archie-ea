@@ -354,10 +354,17 @@ def architecture_journey_workspace(journey_id):
         # with none of its records and no indication anything is missing.
         abort(404)
 
+    from app.models.architecture_journey_link import (
+        JOURNEY_LINK_ENTITY_TYPES,
+        JOURNEY_LINK_RELATIONS,
+    )
+
     return render_template(
         "architecture_assistant/architecture_journey_workspace.html",
         journey=journey,
         home=home,
+        link_entity_types=JOURNEY_LINK_ENTITY_TYPES,
+        link_relations=JOURNEY_LINK_RELATIONS,
         intent_options=JOURNEY_INTENT_OPTIONS,
         layer_options=JOURNEY_LAYER_OPTIONS,
         deliverable_options=JOURNEY_DELIVERABLE_OPTIONS,

@@ -337,6 +337,27 @@ def test_home_renders_a_dash_not_a_zero_when_counts_are_unknown(
     assert "—" in html
 
 
+def test_home_offers_a_way_to_create_the_edges_it_counts(
+    app, db_session, journey_owner, login_as
+):
+    """A screen that counts things the user cannot create is decorative.
+
+    The panels report participants, decisions, risks and governance. If nothing on
+    the page can produce one of those edges, every count is permanently zero and a
+    reader concludes the journey is clean when nothing could ever have been recorded
+    against it.
+    """
+    journey = _make_journey(db_session, journey_owner)
+    html = _render_home(app, db_session, journey_owner, login_as, journey)
+
+    assert 'data-testid="journey-link-form"' in html
+    # The vocabularies are rendered from the model's closed sets, not hardcoded in
+    # the template, so a new record type cannot appear in one and be rejected by
+    # the other.
+    assert 'id="link-entity-type"' in html
+    assert "archimate_element".replace("_", " ").title() in html
+
+
 def test_home_states_when_no_solution_was_assumed(app, db_session, journey_owner, login_as):
     """A journey that ends in architecture only is a first-class outcome."""
     journey = _make_journey(db_session, journey_owner, outcome_type="architecture_only")
