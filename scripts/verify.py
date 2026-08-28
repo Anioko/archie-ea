@@ -78,11 +78,11 @@ BASELINE_PATH = REPO_ROOT / "verification_baseline.json"
 
 PASS, FAIL, SKIP = "PASS", "FAIL", "SKIP"
 
-# The PostgreSQL-backed suite currently takes about 26 minutes on the supported
-# Windows development environment.  Keep a bounded subprocess, but do not let
-# the generic 15-minute command timeout turn a fully progressing suite into a
-# false release failure.
-TEST_SUITE_TIMEOUT_SECONDS = 1800
+# The PostgreSQL-backed suite takes just over 30 minutes on the supported
+# Windows development environment as of August 2026. Keep a bounded subprocess,
+# but leave enough headroom for normal machine-load variance so a progressing
+# suite is not reported as a false release failure.
+TEST_SUITE_TIMEOUT_SECONDS = 3600
 
 
 @dataclass
