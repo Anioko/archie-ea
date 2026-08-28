@@ -381,6 +381,17 @@
                 appendError(_streamErr.message, () => _retryTurn(message, timestamp));
                 return;
             }
+            if (_streamErr && _streamErr.isConfigFault) {
+                /* No LLM provider is configured. The non-streaming endpoint is
+                   behind the same gate and would 503 identically, so falling
+                   through only spends a second round trip to reach the same
+                   answer. Show the remedy now. */
+                const _l = document.getElementById(loadingId);
+                if (_l) _l.remove();
+                Platform.toast.error(_streamErr.message);
+                appendError(_streamErr.message, null, { adminLink: true });
+                return;
+            }
             /* fall through to non-streaming */
         }
 
@@ -442,9 +453,31 @@
                     errorTitle = 'Request Error (HTTP ' + response.status + ')';
                 }
 
+                /* `data.error` is often a machine CODE, not prose — the
+                   no-provider gate returns {"error":"service_unavailable",
+                   "message":"AI feature 'chat' is not available. LLM provider
+                   must be configured."}. Rendering only `error` showed the
+                   user "Request Error (HTTP 503): service_unavailable" and
+                   threw away the one sentence that said what to do. Prefer the
+                   human `message` whenever the code carries no spaces. */
+                if (data.message && typeof data.message === 'string' &&
+                    (!errorMessage || errorMessage.indexOf(' ') === -1)) {
+                    errorMessage = data.message;
+                }
+
+                /* A missing provider is a configuration fault, not a transient
+                   one: Retry can only reproduce it. Route the user to the
+                   remedy instead. */
+                const _isConfigFault =
+                    data.error === 'service_unavailable' || response.status === 503;
+
                 const fullError = errorMessage ? `${errorTitle}: ${errorMessage}` : errorTitle;
                 Platform.toast.error(fullError);
-                appendError(fullError, () => _retryTurn(message, timestamp));
+                if (_isConfigFault) {
+                    appendError(errorMessage || fullError, null, { adminLink: true });
+                } else {
+                    appendError(fullError, () => _retryTurn(message, timestamp));
+                }
             } else {
                 // Add AI response to history
                 state.chatHistory.push({

@@ -116,6 +116,14 @@ function aiChatDocumentUploader() {
                 let data = await Platform.fetch('/ai-chat/documents?limit=10', { silent: true });
                 if (data.success) {
                     this.documentHistory = data.documents;
+                } else {
+                    /* Platform.fetch throws on a non-2xx, but a 200 carrying
+                       success:false reached here and fell through the `if`
+                       silently, leaving the panel at its initialiser — the
+                       exact "empty panel is indistinguishable from no
+                       documents uploaded yet" the catch below exists to
+                       prevent. Both failure shapes must report. */
+                    throw new Error(data.error || 'document history unavailable');
                 }
             } catch (error) {
                 // History load failed — surface it: an empty panel is

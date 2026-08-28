@@ -159,7 +159,21 @@ x-cloak>
          class="flex items-center gap-2 bg-warning/10 border-b border-warning/30 px-4 py-2 text-sm text-warning-emphasis"
          role="alert">
         <i data-lucide="alert-triangle" class="h-4 w-4 shrink-0 text-amber-600" aria-hidden="true"></i><!-- token-migration-ok -->
-        <span x-text="llmProvider ? ('AI provider degraded: ' + llmProvider) : 'AI provider unavailable — responses may be delayed or unavailable'"></span>
+        {# The banner named the fault and stopped there. It is the earliest and
+           most visible surface for "the AI cannot answer", so it is also the
+           right place to say what closes it — otherwise every archetype reads
+           a dead end and the one person who can act is not told what to do. #}
+        <span x-text="llmProvider ? ('AI provider degraded: ' + llmProvider) : 'AI provider unavailable — no LLM provider is configured, so the assistant cannot answer.'"></span>
+        {% if current_user.is_admin() %}
+        {# Literal path, not url_for: `admin` exists in BOTH the legacy and the
+           app/modules layout and is selected at boot by USE_ADMIN_GUARDRAILS,
+           and blueprints register non-fatally — a url_for to an endpoint that
+           did not register raises BuildError and 500s this whole page. The
+           same path is hardcoded in ai_chat/render.js for that reason. #}
+        <a href="/admin/api-settings" class="underline hover:no-underline shrink-0">Open Admin → API Settings</a>
+        {% else %}
+        <span class="shrink-0 opacity-80">Ask an administrator to configure a provider.</span>
+        {% endif %}
     </div>
 </div>
 <div x-data="{

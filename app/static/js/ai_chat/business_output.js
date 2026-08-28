@@ -701,7 +701,7 @@ class BusinessOutputDisplay {
     displayError(message) {
         safeHTML(this.outputContainer, DOMPurify.sanitize(
             '<div class="bg-destructive/5 border border-destructive/20 rounded-lg p-4">' +
-                '<h3 class="text-red-800 font-semibold mb-2">Error</h3>' +
+                '<h3 class="text-destructive-emphasis font-semibold mb-2">Error</h3>' +
                 '<p class="text-destructive">' + DOMPurify.sanitize(message) + '</p>' +
             '</div>'
         ));

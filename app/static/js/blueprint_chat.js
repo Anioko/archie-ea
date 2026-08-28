@@ -181,13 +181,28 @@ function blueprintChat() {
                         } else if (event.type === 'done') {
                             this.messages[streamIdx].streaming = false;
                             // Use buffered response if no tokens were streamed (non-streaming LLM path)
-                            if (event.response && !this.messages[streamIdx].text) {
+                            /* Order matters, and it used to be wrong. The
+                               AgentRunner fallback sends BOTH `response` (the
+                               "add an API key under Admin -> API Settings"
+                               text) and `error`. Assigning `response` first
+                               made the `event.error` branch unreachable — its
+                               own `!text` guard was already false — so an
+                               administrative "AI is not configured" notice was
+                               painted as an ordinary assistant answer,
+                               indistinguishable from real architecture advice.
+                               Archie is a system of record: that is the exact
+                               confusion we must not create. Check `error`
+                               first, so a failed turn always reads as failed. */
+                            if (event.error) {
+                                this.messages[streamIdx].role = 'error';
+                                if (!this.messages[streamIdx].text) {
+                                    this.messages[streamIdx].text =
+                                        event.response || event.error;
+                                }
+                                this.$nextTick(() => this.scrollToBottom());
+                            } else if (event.response && !this.messages[streamIdx].text) {
                                 this.messages[streamIdx].text = event.response;
                                 this.$nextTick(() => this.scrollToBottom());
-                            }
-                            if (event.error && !this.messages[streamIdx].text) {
-                                this.messages[streamIdx].role = 'error';
-                                this.messages[streamIdx].text = event.error;
                             }
                         }
                     }
@@ -386,7 +401,7 @@ function copilotInsights(solutionId) {
         },
 
         severityClasses(severity) {
-            if (severity === 'critical') return 'border-red-300 bg-red-50 text-red-700';
+            if (severity === 'critical') return 'border-destructive/30 bg-destructive/10 text-destructive-emphasis';
             if (severity === 'warning') return 'border-amber-300 bg-amber-50 text-amber-700';
             return 'border-violet-300 bg-violet-50 text-violet-700';
         },
