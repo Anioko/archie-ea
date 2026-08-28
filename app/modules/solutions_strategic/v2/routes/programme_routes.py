@@ -13,11 +13,16 @@ APIs:
     POST   /solutions/programmes/<id>/solutions           — assign member solution
     DELETE /solutions/programmes/<id>/solutions/<sid>     — unassign member
     GET    /solutions/programmes/api/unassigned-solutions — picker source
+
+Chief Architect Workbench:
+    GET  /solutions/architect-synthesis              — enterprise-wide workbench
+    GET  /solutions/architect-synthesis/api          — the same posture as JSON
+    POST /solutions/architect-synthesis/ai-briefing  — advisory AI briefing
 """
 
 import logging
 
-from flask import g, jsonify, redirect, render_template, request
+from flask import current_app, g, jsonify, redirect, render_template, request
 from flask_login import current_user, login_required
 
 from app import db
@@ -27,6 +32,11 @@ from app.models.strategic import StrategicInitiative
 from .solution_design_routes import solution_design_bp
 
 logger = logging.getLogger(__name__)
+
+#: Rows shown in the Chief Architect Workbench attention queue before it is
+#: truncated. The full count is always reported beside it so a truncated queue
+#: never reads as a complete one.
+ATTENTION_DISPLAY_LIMIT = 10
 
 # =============================================================================
 # PAGES
@@ -74,14 +84,25 @@ def solution_review_packet_api(solution_id):
     return jsonify(packet), (200 if packet.get("success") else 404)
 
 
-@solution_design_bp.route("/architect-synthesis", methods=["GET"])
-@login_required
-def architect_synthesis():
-    """Portfolio-wide Chief Architect synthesis."""
+def _chief_architect_workbench():
+    """Assemble the full Chief Architect Workbench posture.
+
+    The HTML page and its JSON twin must never disagree, so both call this. They
+    previously held two literal copies of this body, which is how they would
+    have drifted the first time either was changed.
+
+    Three sources, each keeping its own denominator and its own failure mode:
+    solution conformance + ARB (``ChiefArchitectService``), the transformation
+    programme portfolio (authorisation-gated), and the enterprise domain lenses
+    (``EnterprisePostureService``). No composite score is derived across them —
+    they measure unlike things.
+    """
     from app.modules.solutions_strategic.v2.services.chief_architect_service import (
         ChiefArchitectService,
     )
-
+    from app.modules.solutions_strategic.v2.services.enterprise_posture_service import (
+        EnterprisePostureService,
+    )
     from app.modules.transformation_room.domain import TransformationError
     from app.modules.transformation_room.read_models import (
         ChiefArchitectTransformationReadModel,
@@ -98,33 +119,77 @@ def architect_synthesis():
         )
     except TransformationError as error:
         synthesis["transformation"] = _unavailable_transformation_posture(error.reason)
-    return render_template("solutions/architect_synthesis.html", synthesis=synthesis)
+
+    enterprise = EnterprisePostureService.enterprise_posture()
+    synthesis["enterprise"] = enterprise
+
+    # The enterprise lenses feed the ONE prioritised queue rather than a second
+    # list beside it: a Chief Architect wants "what needs me next", not one
+    # backlog per domain. Merged into the untruncated queue and re-sorted through
+    # the service's own comparator, so an enterprise finding and a solution
+    # finding interleave by severity instead of by which list they came from.
+    solution_items = synthesis.get("attention_all") or []
+    full = ChiefArchitectService._prioritise_attention(
+        list(solution_items) + enterprise["attention"]
+    )
+    displayed = min(len(full), ATTENTION_DISPLAY_LIMIT)
+    synthesis["attention"] = full[:displayed]
+    synthesis["attention_all"] = full
+    synthesis["attention_total"] = len(full)
+    synthesis["attention_displayed"] = displayed
+    synthesis["attention_truncated"] = len(full) > displayed
+    return synthesis
+
+
+@solution_design_bp.route("/architect-synthesis", methods=["GET"])
+@login_required
+def architect_synthesis():
+    """Enterprise-wide Chief Architect Workbench."""
+    return render_template(
+        "solutions/architect_synthesis.html", synthesis=_chief_architect_workbench()
+    )
 
 
 @solution_design_bp.route("/architect-synthesis/api", methods=["GET"])
 @login_required
 def architect_synthesis_api():
-    from app.modules.solutions_strategic.v2.services.chief_architect_service import (
-        ChiefArchitectService,
-    )
+    return jsonify(_chief_architect_workbench())
 
-    from app.modules.transformation_room.domain import TransformationError
-    from app.modules.transformation_room.read_models import (
-        ChiefArchitectTransformationReadModel,
-    )
-    from app.modules.transformation_room.routes import actor_from_request
 
-    synthesis = ChiefArchitectService.portfolio_synthesis()
+@solution_design_bp.route("/architect-synthesis/ai-briefing", methods=["POST"])
+@login_required
+def architect_synthesis_ai_briefing():
+    """Advisory Chief Architect briefing over the workbench's own measured posture.
+
+    The model is handed only what the page already measured. A failure returns
+    502 with the reason so the panel can say the briefing is unavailable — it
+    never degrades into a generated-sounding fallback, which the reader could
+    not distinguish from a real one.
+    """
+    from app.modules.solutions_strategic.v2.services.chief_architect_briefing_service import (
+        ChiefArchitectBriefingError,
+        generate_chief_architect_briefing,
+    )
+    from app.services.feature_flag_service import FeatureFlagService
+
+    feature_guard = FeatureFlagService.require_ai_for_route(
+        FeatureFlagService.FEATURE_SUGGESTIONS,
+        endpoint_name="solution_design.architect_synthesis_ai_briefing",
+    )
+    if feature_guard:
+        return feature_guard
+
+    synthesis = _chief_architect_workbench()
     try:
-        transformation = ChiefArchitectTransformationReadModel.portfolio(
-            actor=actor_from_request()
-        )
-        synthesis["transformation"] = (
-            ChiefArchitectTransformationReadModel.to_template(transformation)
-        )
-    except TransformationError as error:
-        synthesis["transformation"] = _unavailable_transformation_posture(error.reason)
-    return jsonify(synthesis)
+        briefing = generate_chief_architect_briefing(synthesis)
+    except ChiefArchitectBriefingError as error:
+        current_app.logger.warning("Chief Architect briefing unparseable: %s", error)
+        return jsonify({"error": f"AI briefing failed: {error}"}), 502
+    except Exception as error:  # noqa: BLE001
+        current_app.logger.exception("Chief Architect briefing generation failed")
+        return jsonify({"error": f"AI briefing failed: {error}"}), 502
+
+    return jsonify({"briefing": briefing})
 
 
 def _unavailable_transformation_posture(reason):

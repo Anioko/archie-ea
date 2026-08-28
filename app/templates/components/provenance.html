@@ -1,0 +1,178 @@
+{# Provenance components — the difference between a measured fact, a gap in the
+   record, and an AI interpretation, made visible.
+
+   Archie is a system of record. Its hardest UI problem is not showing numbers,
+   it is making sure a reader can never mistake one *kind* of statement for
+   another: a count that came from a column, a count of records that do not
+   carry that column, and a sentence a language model wrote. Before this file
+   the codebase had a first-class primitive for only one of the three — the
+   `|dash` filter for "not computed" — while AI provenance was a copy-pasted
+   `bg-primary/10 text-primary` pill repeated across ~8 templates and "measured"
+   was the unmarked default. Unmarked-by-default is exactly the failure mode:
+   the reader assumes measurement because nothing said otherwise.
+
+   Three kinds, three visual treatments, one vocabulary:
+
+     measured  neutral   a COUNT over the named column. `source` is the column.
+     missing   warning   records that exist but do not carry the field.
+     ai        primary   generated text. Always advisory, never a fact.
+
+   Token note: the tints use `-emphasis` text tokens, per DESIGN.md's rule that
+   `text-warning-foreground` is pure black in both themes and composites to
+   1.19:1 on `bg-warning/10` in dark mode.
+#}
+
+{% macro provenance_badge(kind) %}
+{# A single-word claim about where a value came from. Kept to one word so it can
+   sit inline beside a number without wrapping the row. #}
+{% if kind == 'missing' %}
+<span class="inline-flex items-center gap-1 rounded-md border border-warning/30 bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning-emphasis">
+    <i data-lucide="circle-slash" class="h-3 w-3" aria-hidden="true"></i>Not recorded
+</span>
+{% elif kind == 'ai' %}
+<span class="inline-flex items-center gap-1 rounded-md border border-primary/30 bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+    <i data-lucide="sparkles" class="h-3 w-3" aria-hidden="true"></i>AI-generated
+</span>
+{% elif kind == 'unavailable' %}
+<span class="inline-flex items-center gap-1 rounded-md border border-destructive/30 bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive-emphasis">
+    <i data-lucide="unplug" class="h-3 w-3" aria-hidden="true"></i>Could not measure
+</span>
+{% else %}
+<span class="inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+    <i data-lucide="ruler" class="h-3 w-3" aria-hidden="true"></i>Measured
+</span>
+{% endif %}
+{% endmacro %}
+
+
+{% macro provenance_legend() %}
+{# Shown once per page, above the lenses. A badge vocabulary only works if the
+   page states it rather than assuming the reader infers it. #}
+<div class="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-border bg-muted/30 p-4">
+    <span class="text-xs font-medium uppercase tracking-wide text-muted-foreground">How to read this page</span>
+    <span class="flex items-center gap-2 text-xs text-muted-foreground">
+        {{ provenance_badge('measured') }} a count over the named column
+    </span>
+    <span class="flex items-center gap-2 text-xs text-muted-foreground">
+        {{ provenance_badge('missing') }} records that do not carry the field
+    </span>
+    <span class="flex items-center gap-2 text-xs text-muted-foreground">
+        {{ provenance_badge('unavailable') }} the query failed — no number is shown
+    </span>
+    <span class="flex items-center gap-2 text-xs text-muted-foreground">
+        {{ provenance_badge('ai') }} written by a model, advisory only
+    </span>
+</div>
+{% endmacro %}
+
+
+{% macro measure_row(entry) %}
+{# One measured or missing fact.
+
+   `entry` is a dict from EnterprisePostureService: label, value, of, source,
+   hint, href, kind. `value` may be None, which `|dash` renders as an em dash —
+   never a 0, because a 0 that means "not computed" is indistinguishable from a
+   measured zero.
+
+   The denominator is printed beside the value rather than folded into a
+   percentage: "3 of 12" and "250 of 1000" are different statements about
+   confidence, and a percentage erases that. #}
+<div class="flex items-start justify-between gap-4 py-2.5">
+    <div class="min-w-0">
+        <div class="flex flex-wrap items-center gap-2">
+            {% if entry.href %}
+            <a href="{{ entry.href }}" class="text-sm font-medium text-foreground underline-offset-4 hover:underline">{{ entry.label }}</a>
+            {% else %}
+            <span class="text-sm font-medium text-foreground">{{ entry.label }}</span>
+            {% endif %}
+            {{ provenance_badge(entry.kind) }}
+        </div>
+        {# The source column is the whole traceability claim: a reader can
+           reproduce the number without leaving the page. #}
+        <p class="mt-1 font-mono text-xs text-muted-foreground break-words">{{ entry.source }}</p>
+        {% if entry.hint %}
+        <p class="mt-1 text-xs text-muted-foreground">{{ entry.hint }}</p>
+        {% endif %}
+    </div>
+    <div class="shrink-0 text-right">
+        <span class="text-lg font-semibold tabular-nums text-foreground">{{ entry.value|dash }}</span>
+        {% if entry.of is not none %}
+        <span class="block text-xs text-muted-foreground tabular-nums">of {{ entry.of }}</span>
+        {% endif %}
+    </div>
+</div>
+{% endmacro %}
+
+
+{% macro lens_card(lens) %}
+{# One enterprise domain. Four states, all real and all distinguishable:
+   unavailable (query failed), empty (nothing modelled — a measured answer),
+   measured, and partial (measured but with missing-information rows, which is
+   the normal case on a real tenant rather than an edge case). #}
+<section class="rounded-xl border border-border bg-card text-card-foreground" aria-labelledby="lens-{{ lens.key }}-heading">
+    <div class="flex items-start justify-between gap-4 border-b border-border p-5">
+        <div class="flex items-start gap-3 min-w-0">
+            <span class="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+                <i data-lucide="{{ lens.icon }}" class="h-4 w-4" aria-hidden="true"></i>
+            </span>
+            <div class="min-w-0">
+                <h3 id="lens-{{ lens.key }}-heading" class="text-base font-semibold text-foreground">{{ lens.label }}</h3>
+                {% if lens.state == 'unavailable' %}
+                <p class="mt-1 text-xs text-destructive-emphasis">{{ lens.reason }}</p>
+                {% else %}
+                <p class="mt-1 text-xs text-muted-foreground tabular-nums">{{ lens.total|dash }} {{ lens.total_label }}</p>
+                {% endif %}
+            </div>
+        </div>
+        {% if lens.state == 'unavailable' %}
+        {{ provenance_badge('unavailable') }}
+        {% elif lens.href %}
+        <a href="{{ lens.href }}"
+           class="inline-flex h-8 shrink-0 items-center justify-center rounded-md border border-input bg-background px-3 text-xs font-medium transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+            Open
+            <i data-lucide="arrow-right" class="ml-1.5 h-3 w-3" aria-hidden="true"></i>
+        </a>
+        {% endif %}
+    </div>
+
+    {% if lens.state == 'unavailable' %}
+    <div class="p-5">
+        <p class="text-sm text-muted-foreground">
+            No figures are shown for this domain. A zero here would be indistinguishable
+            from a measured zero, so nothing is reported rather than something wrong.
+        </p>
+    </div>
+    {% elif lens.state == 'empty' %}
+    <div class="p-5">
+        <p class="text-sm text-muted-foreground">
+            Nothing is modelled in this domain yet. That is a measured answer, not a failure —
+            there are no records to count.
+        </p>
+        {% if lens.href %}
+        <a href="{{ lens.href }}" class="mt-3 inline-flex text-sm font-medium text-primary underline-offset-4 hover:underline">
+            Start modelling {{ lens.label|lower }}
+        </a>
+        {% endif %}
+    </div>
+    {% else %}
+    <div class="divide-y divide-border px-5">
+        {% for entry in lens.measures %}
+        {{ measure_row(entry) }}
+        {% endfor %}
+    </div>
+    {% set gaps = lens.missing|selectattr('value')|list %}
+    {% if gaps %}
+    <div class="border-t border-border bg-warning/5 px-5 py-2">
+        <p class="py-2 text-xs font-medium uppercase tracking-wide text-warning-emphasis">
+            Missing information — excluded from the counts above
+        </p>
+        <div class="divide-y divide-border">
+            {% for entry in gaps %}
+            {{ measure_row(entry) }}
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+    {% endif %}
+</section>
+{% endmacro %}

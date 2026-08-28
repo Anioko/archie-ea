@@ -187,7 +187,10 @@ def test_command_centre_route_has_one_executive_shell_and_all_lines_of_sight(
     text = _visible_text(response)
     assert html.count("<h1") == 1
     assert html.count('aria-label="Breadcrumb"') == 1
-    assert "Chief Architect command centre" in text
+    # Renamed in the Chief Architect Workbench wave: the screen is no longer a
+    # solution "command centre" but the enterprise-wide workbench, and the
+    # heading is the contract the sidebar and modules directory point at.
+    assert "Chief Architect Workbench" in text
     assert "Enterprise-wide line of sight" in text
     assert "As of" in text
     assert "Strategic and programme posture" in text
