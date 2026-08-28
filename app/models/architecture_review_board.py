@@ -2002,6 +2002,58 @@ def _arb_unreconciled_shape(connection, schema_name, model_tables):
     return missing
 
 
+def _validate_without_aborting_boot(connection, qualified_table, constraint_name, kind):
+    """VALIDATE a NOT VALID constraint; never let legacy rows abort the boot.
+
+    This runs from an ``after_create`` metadata event, i.e. inside
+    ``db.create_all()`` — which is what ``flask init-db`` calls (manage.py) and
+    what the container runs on EVERY start before gunicorn. Postgres'
+    ``VALIDATE CONSTRAINT`` scans the whole table and raises if any *existing*
+    row fails, so validating unconditionally here means one legacy
+    ``arb_review_cycles`` row stops the application from booting at all. That
+    is exactly what happened: the constraint is dropped and re-added whenever
+    its definition drifts from the model (see the caller), so any release that
+    changes the typed-ARB shape re-validates it against all historical rows.
+
+    Leaving the constraint ``NOT VALID`` on failure is not a loosening of the
+    guarantee that matters. Postgres enforces a ``NOT VALID`` constraint on
+    every INSERT and UPDATE; ``NOT VALID`` only means "the rows that were
+    already here have not been proven to conform". So new and modified ARB
+    cycles are still fully checked, and the pre-existing offenders are
+    reported rather than silently accepted — the failure becomes an actionable
+    administrative state instead of a crash loop.
+
+    The statement runs in a SAVEPOINT because a failed statement otherwise
+    poisons the surrounding transaction and every later DDL in create_all()
+    fails with InFailedSqlTransaction.
+    """
+    from sqlalchemy.exc import IntegrityError
+
+    try:
+        with connection.begin_nested():
+            connection.exec_driver_sql(
+                f"ALTER TABLE {qualified_table} VALIDATE CONSTRAINT {constraint_name}"
+            )
+        return True
+    except IntegrityError:
+        logger.error(
+            "typed ARB %s %s on %s could not be validated: existing rows do not "
+            "match the current shape. The constraint is INSTALLED AND ENFORCED "
+            "for all new and updated rows, but the pre-existing rows have not "
+            "been proven to conform, so it remains NOT VALID. Boot continues. "
+            "To find the offenders run: SELECT * FROM %s WHERE NOT (<the "
+            "constraint's CHECK expression, from pg_get_constraintdef); then, "
+            "once corrected, run: ALTER TABLE %s VALIDATE CONSTRAINT %s;",
+            kind,
+            constraint_name,
+            qualified_table,
+            qualified_table,
+            qualified_table,
+            constraint_name,
+        )
+        return False
+
+
 def ensure_arb_cycle_constraints(connection):
     """Reconcile commit-time membership and immutable typed ARB history."""
     if connection.dialect.name != "postgresql":
@@ -2061,8 +2113,8 @@ def ensure_arb_cycle_constraints(connection):
             f"ALTER TABLE {qualified_table} ADD CONSTRAINT {quote(constraint_name)} "
             f"CHECK ({constraint.sqltext}) NOT VALID"
         )
-        connection.exec_driver_sql(
-            f"ALTER TABLE {qualified_table} VALIDATE CONSTRAINT {quote(constraint_name)}"
+        _validate_without_aborting_boot(
+            connection, qualified_table, quote(constraint_name), "check constraint"
         )
 
     fk_state = _arb_fk_state(connection, schema_name)
@@ -2094,8 +2146,8 @@ def ensure_arb_cycle_constraints(connection):
             "MATCH SIMPLE ON UPDATE NO ACTION ON DELETE RESTRICT "
             "NOT DEFERRABLE NOT VALID"
         )
-        connection.exec_driver_sql(
-            f"ALTER TABLE {qualified_source} VALIDATE CONSTRAINT {quote(name)}"
+        _validate_without_aborting_boot(
+            connection, qualified_source, quote(name), "foreign key"
         )
 
     index_state = _arb_index_state(connection, schema_name)
