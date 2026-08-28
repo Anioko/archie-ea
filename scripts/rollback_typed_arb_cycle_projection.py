@@ -49,6 +49,12 @@ USAGE
 ``--apply`` writes a JSON record of every row's prior state to
 ``arb_cycle_projection_rollback_<timestamp>.json`` before touching anything, so
 the projection can be restored if the rollback is itself reverted.
+
+That backup records the CYCLE rows only, and it is still sufficient to restore
+both tables: each review item's prior ``status`` and ``decision`` always equalled
+its cycle's prior ``status``, which is exactly the invariant
+``archie_validate_arb_cycle_membership`` enforces. Stated here so that whoever
+restores this during an incident does not have to re-derive it.
 """
 
 from __future__ import annotations
@@ -97,6 +103,13 @@ def main() -> int:
 
     app = create_app()
     with app.app_context():
+        # Say which database, always. This runs during a rollback, when the
+        # operator is under pressure and may have several databases open; a
+        # tool that reports "already installable" without naming what it looked
+        # at invites acting on the wrong one.
+        target = db.engine.url.render_as_string(hide_password=True)
+        print(f"target database: {target}\n")
+
         rows = (
             db.session.execute(
                 db.text(
@@ -167,12 +180,36 @@ def main() -> int:
                     "ALTER TABLE arb_review_cycles DISABLE TRIGGER trg_arb_cycle_history"
                 )
             )
+            # The cycle's status is PROJECTED onto its review item, and
+            # archie_validate_arb_cycle_membership enforces that the two agree
+            # (`AND review.status = NEW.status`). Moving the cycle alone leaves
+            # the projection disagreeing and the membership guard rejects the
+            # write -- so the projection moves in the same transaction, first.
+            projected = db.session.execute(
+                db.text(
+                    "UPDATE arb_review_items r "
+                    "SET status = c.terminal_outcome, decision = c.terminal_outcome "
+                    "FROM arb_review_cycles c "
+                    "WHERE r.review_cycle_id = c.id "
+                    "AND r.organization_id = c.organization_id "
+                    "AND c.closed_at IS NOT NULL "
+                    "AND c.terminal_outcome IS NOT NULL "
+                    "AND c.status IS DISTINCT FROM c.terminal_outcome"
+                )
+            ).rowcount
             updated = db.session.execute(
                 db.text(
                     "UPDATE arb_review_cycles SET status = terminal_outcome "
                     f"WHERE {_MISMATCH}"
                 )
             ).rowcount
+            # trg_arb_cycle_membership is a DEFERRABLE constraint trigger, so
+            # the UPDATEs above leave pending trigger events -- and PostgreSQL
+            # refuses ALTER TABLE ... ENABLE TRIGGER on a table that has them.
+            # Draining them here is also strictly safer than suspending that
+            # trigger would have been: the membership guard still runs, and
+            # still gets to reject this transaction, just immediately.
+            db.session.execute(db.text("SET CONSTRAINTS ALL IMMEDIATE"))
         finally:
             # Same transaction as the UPDATE: if this fails, the rollback takes
             # the UPDATE with it and the table is never left unguarded.
@@ -186,7 +223,10 @@ def main() -> int:
         remaining = db.session.execute(
             db.text(f"SELECT count(*) FROM arb_review_cycles WHERE {_MISMATCH}")
         ).scalar()
-        print(f"{updated} row(s) updated; {remaining} still mismatched.")
+        print(
+            f"{projected} review item projection(s) and {updated} cycle(s) "
+            f"updated; {remaining} still mismatched."
+        )
         # A non-zero remainder means the UPDATE did not cover the predicate it
         # was written against, which would leave the older guard uninstallable
         # while reporting success. Fail loudly rather than let boot discover it.
