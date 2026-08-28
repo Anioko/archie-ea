@@ -41,6 +41,19 @@
         return { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() };
     }
 
+    /* HTTP 503 means only that a service is temporarily unavailable. The
+       chat feature gate supplies the narrower, structured signal required to
+       diagnose an administrative provider-configuration fault. Keeping this
+       classification independent of the status prevents a proxy outage or a
+       transient provider failure from being presented as missing setup. */
+    function isProviderConfigurationFault(detail) {
+        return Boolean(
+            detail &&
+            detail.error === 'service_unavailable' &&
+            detail.feature === 'chat'
+        );
+    }
+
     // ---------------------------------------------------------------- chat
 
     /* Non-streaming turn. The fallback the streaming path drops to — losing
@@ -160,8 +173,7 @@
                 (_detail && _detail.message) || ('stream ' + resp.status)
             );
             _err.status = resp.status;
-            _err.isConfigFault =
-                resp.status === 503 || (_detail && _detail.error === 'service_unavailable');
+            _err.isConfigFault = isProviderConfigurationFault(_detail);
             throw _err;
         }
 
@@ -312,6 +324,7 @@
         apiFetch: apiFetch,
         csrfToken: csrfToken,
         jsonHeaders: jsonHeaders,
+        isProviderConfigurationFault: isProviderConfigurationFault,
         sendMessage: sendMessage,
         streamMessage: streamMessage,
         abort: abort,

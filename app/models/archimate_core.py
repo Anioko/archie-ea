@@ -30,7 +30,7 @@ from .mixins import TenantMixin
 
 if _FAST_INIT:
 
-    class ArchitectureModel(db.Model):
+    class ArchitectureModel(TenantMixin, db.Model):
         __tablename__ = "architecture_models"
         __table_args__ = {"extend_existing": True}
 
@@ -50,7 +50,7 @@ if _FAST_INIT:
         def __repr__(self):
             return f"<ArchitectureModel {self.name} v{self.version}>"
 
-    class ArchiMateElement(db.Model):
+    class ArchiMateElement(TenantMixin, db.Model):
         __tablename__ = "archimate_elements"
         __table_args__ = {"extend_existing": True}
 

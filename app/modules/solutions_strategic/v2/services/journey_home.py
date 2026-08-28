@@ -29,12 +29,73 @@ from app.models.architecture_journey import (
     ArchitectureJourney,
 )
 from app.models.architecture_journey_link import (
+    JOURNEY_LINK_ENTITY_TYPES,
     ArchitectureJourneyLink,
     ArchitectureJourneyMember,
 )
+from app.models.adr import ArchitectureDecisionRecord
+from app.models.ai_chat_document import AIChatDocumentUpload
+from app.models.application_portfolio import ApplicationComponent
+from app.models.archimate_core import ArchiMateElement, ArchitectureModel
+from app.models.architecture_review_board import ARBReviewItem
+from app.models.business_capabilities import BusinessCapability
+from app.models.implementation_migration import WorkPackage
+from app.models.risk import Risk
+from app.models.solution_models import Solution
+from app.models.strategic import StrategicInitiative
+from app.models.transformation_decision import DecisionBrief
+from app.models.unified_capability import ValueStream
 
 
 logger = logging.getLogger(__name__)
+
+
+def _resolver(model, *, label_attr, status_attr=None):
+    """Build a tenant-explicit target resolver for one closed link type."""
+    def resolve(entity_id, organization_id):
+        row = db.session.execute(
+            db.select(model).where(
+                model.id == entity_id,
+                model.organization_id == organization_id,
+            )
+        ).scalar_one_or_none()
+        if row is None:
+            return None
+        status = getattr(row, status_attr, None) if status_attr else None
+        if hasattr(status, "value"):
+            status = status.value
+        return {
+            "entity_id": row.id,
+            "label": getattr(row, label_attr, None),
+            "status": status,
+        }
+    return resolve
+
+
+# Closed by construction and asserted against JOURNEY_LINK_ENTITY_TYPES in tests.
+JOURNEY_LINK_RESOLVERS = {
+    "decision": _resolver(ArchitectureDecisionRecord, label_attr="title", status_attr="status"),
+    "decision_brief": _resolver(DecisionBrief, label_attr="title", status_attr="status"),
+    "risk": _resolver(Risk, label_attr="title", status_attr="status"),
+    "document": _resolver(AIChatDocumentUpload, label_attr="original_filename", status_attr="status"),
+    "archimate_element": _resolver(ArchiMateElement, label_attr="name", status_attr="status"),
+    "architecture_model": _resolver(ArchitectureModel, label_attr="name"),
+    "work_package": _resolver(WorkPackage, label_attr="name", status_attr="status"),
+    "capability": _resolver(BusinessCapability, label_attr="name"),
+    "value_stream": _resolver(ValueStream, label_attr="name"),
+    "application": _resolver(ApplicationComponent, label_attr="name", status_attr="lifecycle_status"),
+    "arb_review": _resolver(ARBReviewItem, label_attr="title", status_attr="status"),
+    "programme": _resolver(StrategicInitiative, label_attr="name", status_attr="status"),
+    "solution": _resolver(Solution, label_attr="name", status_attr="status"),
+}
+
+assert set(JOURNEY_LINK_RESOLVERS) == set(JOURNEY_LINK_ENTITY_TYPES)
+
+
+def resolve_journey_link_target(entity_type, entity_id, organization_id):
+    """Resolve an allowed target without revealing foreign/missing distinctions."""
+    resolver = JOURNEY_LINK_RESOLVERS.get(entity_type)
+    return resolver(entity_id, organization_id) if resolver else None
 
 
 INTENT_LABELS = {
@@ -189,9 +250,24 @@ def journey_home_view(*, journey_id, actor_user):
     if journey is None:
         return None
 
+    is_admin = bool(actor_user.is_admin()) or bool(
+        getattr(actor_user, "is_platform_admin", False)
+    )
+    if journey.owner_id != actor_user.id and not is_admin:
+        membership = db.session.execute(
+            db.select(ArchitectureJourneyMember.id).where(
+                ArchitectureJourneyMember.journey_id == journey.id,
+                ArchitectureJourneyMember.user_id == actor_user.id,
+                ArchitectureJourneyMember.organization_id == organization_id,
+            )
+        ).scalar_one_or_none()
+        if membership is None:
+            return None
+
     intent = journey.intent or ""
     view = {
         "journey": journey,
+        "can_manage_members": journey.owner_id == actor_user.id or is_admin,
         "purpose": {
             "intent": intent,
             "label": INTENT_LABELS.get(intent, intent.replace("_", " ").title() or None),
@@ -227,7 +303,22 @@ def journey_home_view(*, journey_id, actor_user):
 
     by_type = {}
     for link in links:
-        by_type.setdefault(link.entity_type, []).append(link)
+        resolved = resolve_journey_link_target(
+            link.entity_type, link.entity_id, organization_id
+        )
+        if resolved is None:
+            logger.warning(
+                "journey %s: ignoring unresolved %s:%s link %s",
+                journey.id, link.entity_type, link.entity_id, link.id,
+            )
+            continue
+        resolved.update({
+            "id": link.id,
+            "entity_type": link.entity_type,
+            "relation": link.relation,
+            "note": link.note,
+        })
+        by_type.setdefault(link.entity_type, []).append(resolved)
     view["links"] = by_type
 
     view["counts"] = {
@@ -238,17 +329,40 @@ def journey_home_view(*, journey_id, actor_user):
     # The owner is a participant whether or not anyone added a membership row --
     # the journey cannot exist without one, so counting only explicit rows would
     # under-report by one on every journey.
-    participants = [
-        {
+    from app.models.user import User
+    user_ids = {journey.owner_id, *(member.user_id for member in members)}
+    users = db.session.execute(
+        db.select(User).where(
+            User.id.in_(user_ids), User.organization_id == organization_id
+        )
+    ).scalars().all()
+    users_by_id = {user.id: user for user in users}
+    participants = []
+    for member in members:
+        user = users_by_id.get(member.user_id)
+        if user is None:
+            continue
+        participants.append({
             "user_id": member.user_id,
             "role": member.role,
             "is_owner": member.user_id == journey.owner_id,
-        }
-        for member in members
-    ]
+            "name": " ".join(filter(None, (user.first_name, user.last_name))) or user.email,
+            "email": user.email,
+        })
     if not any(participant["is_owner"] for participant in participants):
         participants.insert(
-            0, {"user_id": journey.owner_id, "role": "owner", "is_owner": True}
+            0, {
+                "user_id": journey.owner_id,
+                "role": "owner",
+                "is_owner": True,
+                "name": (
+                    " ".join(filter(None, (
+                        users_by_id[journey.owner_id].first_name,
+                        users_by_id[journey.owner_id].last_name,
+                    ))) or users_by_id[journey.owner_id].email
+                ),
+                "email": users_by_id[journey.owner_id].email,
+            }
         )
     view["participants"] = participants
     view["counts"]["participants"] = len(participants)
@@ -256,4 +370,10 @@ def journey_home_view(*, journey_id, actor_user):
     return view
 
 
-__all__ = ["INTENT_LABELS", "STAGE_LABELS", "journey_home_view"]
+__all__ = [
+    "INTENT_LABELS",
+    "JOURNEY_LINK_RESOLVERS",
+    "STAGE_LABELS",
+    "journey_home_view",
+    "resolve_journey_link_target",
+]

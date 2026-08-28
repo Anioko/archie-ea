@@ -71,11 +71,23 @@ def _client(app, login_as, user):
 
 def test_link_is_created_from_the_session_not_the_request(app, db_session, owner, journey, login_as):
     from app.models.architecture_journey_link import ArchitectureJourneyLink
+    from app.models.risk import Risk
+
+    risk = Risk(
+        organization_id=owner.organization_id,
+        title="Uncontrolled regulatory exposure",
+        description="A real same-tenant record",
+        likelihood=3,
+        impact=4,
+        owner=owner.email,
+    )
+    db_session.add(risk)
+    db_session.flush()
 
     client = _client(app, login_as, owner)
     response = client.post(
         f"/architecture-journey/work/{journey.id}/links",
-        json={"entity_type": "risk", "entity_id": 77, "relation": "impacts"},
+        json={"entity_type": "risk", "entity_id": risk.id, "relation": "impacts"},
     )
     assert response.status_code == 201, response.get_data(as_text=True)[:400]
 
@@ -85,7 +97,7 @@ def test_link_is_created_from_the_session_not_the_request(app, db_session, owner
         .statement
     ).scalar_one()
     assert link.entity_type == "risk"
-    assert link.entity_id == 77
+    assert link.entity_id == risk.id
     assert link.relation == "impacts"
     # Never from the body.
     assert link.organization_id == owner.organization_id
@@ -131,8 +143,21 @@ def test_link_rejects_a_non_positive_entity_id(app, owner, journey, login_as):
 
 
 def test_the_same_link_twice_is_a_conflict_not_a_second_fact(app, owner, journey, login_as):
+    from app.models.risk import Risk
+
+    risk = Risk(
+        organization_id=owner.organization_id,
+        title="Duplicate edge target",
+        description="A real target",
+        likelihood=2,
+        impact=3,
+        owner=owner.email,
+    )
+    from app import db
+    db.session.add(risk)
+    db.session.commit()
     client = _client(app, login_as, owner)
-    body = {"entity_type": "decision", "entity_id": 12, "relation": "produces"}
+    body = {"entity_type": "risk", "entity_id": risk.id, "relation": "produces"}
 
     assert client.post(f"/architecture-journey/work/{journey.id}/links", json=body).status_code == 201
     second = client.post(f"/architecture-journey/work/{journey.id}/links", json=body)
@@ -140,12 +165,24 @@ def test_the_same_link_twice_is_a_conflict_not_a_second_fact(app, owner, journey
 
 
 def test_link_can_be_removed_and_the_count_follows(app, db_session, owner, journey, login_as):
+    from app.models.risk import Risk
     from app.modules.solutions_strategic.v2.services.journey_home import journey_home_view
+
+    risk = Risk(
+        organization_id=owner.organization_id,
+        title="Counted risk",
+        description="A real target",
+        likelihood=2,
+        impact=4,
+        owner=owner.email,
+    )
+    db_session.add(risk)
+    db_session.commit()
 
     client = _client(app, login_as, owner)
     created = client.post(
         f"/architecture-journey/work/{journey.id}/links",
-        json={"entity_type": "risk", "entity_id": 5},
+        json={"entity_type": "risk", "entity_id": risk.id},
     )
     link_id = created.get_json()["data"]["id"]
 
@@ -154,6 +191,64 @@ def test_link_can_be_removed_and_the_count_follows(app, db_session, owner, journ
     removed = client.delete(f"/architecture-journey/work/{journey.id}/links/{link_id}")
     assert removed.status_code == 200
     assert journey_home_view(journey_id=journey.id, actor_user=owner)["counts"]["risks"] == 0
+
+
+def test_link_rejects_missing_and_foreign_targets_indistinguishably(
+    app, db_session, owner, journey, login_as, make_org
+):
+    from app.models.risk import Risk
+
+    other_org = make_org("journey-link-target-other")
+    foreign = Risk(
+        organization_id=other_org.id,
+        title="Foreign risk",
+        description="Must not be discoverable",
+        likelihood=5,
+        impact=5,
+        owner=owner.email,
+    )
+    db_session.add(foreign)
+    db_session.commit()
+
+    client = _client(app, login_as, owner)
+    missing = client.post(
+        f"/architecture-journey/work/{journey.id}/links",
+        json={"entity_type": "risk", "entity_id": 2147483647},
+    )
+    foreign_response = client.post(
+        f"/architecture-journey/work/{journey.id}/links",
+        json={"entity_type": "risk", "entity_id": foreign.id},
+    )
+    assert missing.status_code == foreign_response.status_code == 404
+    assert missing.get_json()["error"] == foreign_response.get_json()["error"]
+
+
+def test_every_allowed_link_type_has_a_closed_resolver():
+    from app.models.architecture_journey_link import JOURNEY_LINK_ENTITY_TYPES
+    from app.modules.solutions_strategic.v2.services.journey_home import JOURNEY_LINK_RESOLVERS
+
+    assert set(JOURNEY_LINK_RESOLVERS) == set(JOURNEY_LINK_ENTITY_TYPES)
+
+
+def test_unresolved_legacy_link_is_not_counted_as_a_real_record(
+    app, db_session, owner, journey
+):
+    from app.models.architecture_journey_link import ArchitectureJourneyLink
+    from app.modules.solutions_strategic.v2.services.journey_home import journey_home_view
+
+    db_session.add(ArchitectureJourneyLink(
+        journey_id=journey.id,
+        organization_id=owner.organization_id,
+        entity_type="risk",
+        entity_id=2147483647,
+        relation="references",
+        created_by_id=owner.id,
+    ))
+    db_session.commit()
+
+    view = journey_home_view(journey_id=journey.id, actor_user=owner)
+    assert view["counts"]["risks"] == 0
+    assert view["links"].get("risk", []) == []
 
 
 def test_member_is_added_by_user_id_and_counted(app, db_session, owner, journey, login_as, make_org):
@@ -204,6 +299,98 @@ def test_member_from_another_tenant_is_refused(app, db_session, owner, journey, 
         json={"user_id": outsider.id, "role": "contributor"},
     )
     assert response.status_code == 400, "a user from another organisation was added"
+
+
+def test_same_tenant_member_can_open_and_update_but_cannot_manage_members(
+    app, db_session, owner, journey, login_as
+):
+    from app.models.architecture_journey_link import ArchitectureJourneyMember
+    from app.models.user import User
+
+    colleague = User(
+        email=f"member-{uuid.uuid4().hex[:10]}@example.test",
+        confirmed=True,
+        organization_id=owner.organization_id,
+        enterprise_role="business_architect",
+    )
+    colleague.password = "test-password-not-secret"
+    db_session.add(colleague)
+    db_session.flush()
+    db_session.add(ArchitectureJourneyMember(
+        journey_id=journey.id,
+        organization_id=owner.organization_id,
+        user_id=colleague.id,
+        role="business_architect",
+        added_by_id=owner.id,
+    ))
+    db_session.commit()
+
+    client = _client(app, login_as, colleague)
+    listing = client.get("/architecture-journey/")
+    assert listing.status_code == 200
+    assert journey.title.encode() in listing.data
+    workspace = client.get(f"/architecture-journey/work/{journey.id}")
+    assert workspace.status_code == 200
+    assert b'data-testid="journey-member-management"' not in workspace.data
+    updated = client.patch(
+        f"/architecture-journey/work/{journey.id}/state",
+        json={"current_stage": "discover"},
+    )
+    assert updated.status_code == 200
+    forbidden = client.post(
+        f"/architecture-journey/work/{journey.id}/members",
+        json={"user_id": owner.id, "role": "contributor"},
+    )
+    assert forbidden.status_code == 403
+
+
+def test_read_only_member_can_open_but_cannot_mutate_or_unlink(
+    app, db_session, owner, journey, login_as
+):
+    from app.models.architecture_journey_link import (
+        ArchitectureJourneyLink,
+        ArchitectureJourneyMember,
+    )
+    from app.models.user import User
+
+    stakeholder = User(
+        email=f"stakeholder-{uuid.uuid4().hex[:10]}@example.test",
+        confirmed=True,
+        organization_id=owner.organization_id,
+        enterprise_role="business_architect",
+    )
+    stakeholder.password = "test-password-not-secret"
+    db_session.add(stakeholder)
+    db_session.flush()
+    db_session.add(ArchitectureJourneyMember(
+        journey_id=journey.id,
+        organization_id=owner.organization_id,
+        user_id=stakeholder.id,
+        role="stakeholder",
+        added_by_id=owner.id,
+    ))
+    link = ArchitectureJourneyLink(
+        journey_id=journey.id,
+        organization_id=owner.organization_id,
+        entity_type="risk",
+        entity_id=2147483647,
+        relation="references",
+        created_by_id=owner.id,
+    )
+    db_session.add(link)
+    db_session.commit()
+
+    client = _client(app, login_as, stakeholder)
+    assert client.get(f"/architecture-journey/work/{journey.id}").status_code == 200
+    update = client.patch(
+        f"/architecture-journey/work/{journey.id}/state",
+        json={"current_stage": "discover"},
+    )
+    assert update.status_code == 403
+    unlink = client.delete(
+        f"/architecture-journey/work/{journey.id}/links/{link.id}"
+    )
+    assert unlink.status_code == 403
 
 
 def test_writes_to_another_tenants_journey_are_404(app, db_session, journey, login_as, make_org):

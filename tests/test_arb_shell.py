@@ -211,6 +211,44 @@ def test_populated_reviews_render_chart_canvas_not_empty_state(
     assert 'data-testid="arb-empty-status-chart"' not in html
 
 
+def test_typed_queue_failure_is_visible_and_returns_503(
+    app, db_session, make_org, monkeypatch
+):
+    """A typed read fault must never silently resurrect the legacy dashboard."""
+    import app.modules.architecture.routes.arb_routes as arb_routes
+
+    user_id, _org = _make_user(db_session, make_org, "typed-failure")
+    _patch_dashboard_services(monkeypatch, _empty_dashboard_data(), _empty_cycle_time())
+    monkeypatch.setattr(
+        arb_routes,
+        "_typed_queue_context",
+        lambda: {
+            "state": "failed",
+            "reason": "arb_queue_unavailable",
+            "filters": {},
+            "filter_options": {},
+            "items": [],
+            "page": None,
+            "page_size": None,
+            "total_items": None,
+            "total_pages": None,
+        },
+    )
+
+    client = app.test_client()
+    _login(client, user_id)
+    response = client.get("/arb/")
+    html = response.get_data(as_text=True)
+
+    assert response.status_code == 503
+    assert "The review ledger could not be read" in html
+    assert "New Review" not in html
+    assert 'aria-label="Governance performance"' not in html
+    assert 'id="arbStatusChart"' not in html
+    assert "Total reviews" not in html
+    assert html.count("<h1") == 1
+
+
 def test_reviews_list_has_exactly_one_h1(app, db_session, make_org):
     user_id, _org = _make_user(db_session, make_org, "reviews-h1")
 

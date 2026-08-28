@@ -588,8 +588,8 @@ def _typed_decision_json(result, *, extra=None):
 # no view passed `typed_queue`/`typed_review`, so arb/dashboard.html and
 # arb/review_detail.html always fell through to their legacy branch and the
 # whole typed workspace was unreachable in a browser. These two helpers are that
-# join. A read failure returns None so the dispatcher keeps rendering the legacy
-# body rather than showing a broken page.
+# join. A typed read failure is an explicit failed state; silently rendering the
+# legacy body would make a broken release look healthy and expose stale actions.
 
 
 def _typed_actor():
@@ -637,7 +637,17 @@ def _typed_queue_context():
         )
     except Exception:
         current_app.logger.exception("typed ARB queue view failed")
-        return None
+        return {
+            "state": "failed",
+            "reason": "arb_queue_unavailable",
+            "filters": {},
+            "filter_options": {},
+            "items": [],
+            "page": None,
+            "page_size": None,
+            "total_items": None,
+            "total_pages": None,
+        }
 
 
 def _typed_review_context(review_item_id):
@@ -934,11 +944,13 @@ def dashboard():
                 _txt = f"{abs(_days_left)}d overdue" if _days_left < 0 else f"{_days_left}d remaining"
             sla_data_by_review[_rev.id] = {"cls": _cls, "txt": _txt}
 
+    typed_queue = _typed_queue_context()
+    response_status = 503 if typed_queue and typed_queue.get("state") == "failed" else 200
     return render_template(
         "arb/dashboard.html",
-        # The dispatcher renders the typed queue when this is present and
-        # falls back to the legacy body when it is None.
-        typed_queue=_typed_queue_context(),
+        # The dispatcher renders the typed queue whenever an actor exists. A
+        # failed read remains typed and visible; it never resurrects legacy UI.
+        typed_queue=typed_queue,
         sessions=recent_sessions,
         status=request.args.get("status", "all"),
         pending_reviews=pending_reviews,
@@ -954,7 +966,7 @@ def dashboard():
         decisions=decisions,
         application_names_by_review=application_names_by_review,
         sla_data_by_review=sla_data_by_review,
-    )
+    ), response_status
 
 
 def _chair_candidates():

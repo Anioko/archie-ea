@@ -8,6 +8,7 @@ from functools import wraps
 
 from flask import Blueprint, abort, current_app, jsonify, render_template, request, url_for
 from flask_login import current_user, login_required
+from sqlalchemy import or_, select
 
 from app import db
 from app.core.api.response import api_error, api_success
@@ -153,13 +154,73 @@ def _require_journey_owner(view):
     """Authorise access to a tenant-scoped journey owned by the current user."""
     @wraps(view)
     def decorated(journey_id, *args, **kwargs):
-        journey = ArchitectureJourney.query.filter_by(id=journey_id).first_or_404()
+        journey = ArchitectureJourney.query.filter_by(
+            id=journey_id, organization_id=current_user.organization_id
+        ).first_or_404()
         if (
             journey.owner_id != current_user.id
             and not current_user.is_admin()
             and not getattr(current_user, "is_platform_admin", False)
         ):
             return api_error("Access denied: you do not own this journey", 403)
+        return view(journey_id, *args, **kwargs)
+    return decorated
+
+
+def _require_journey_access(view):
+    """Allow the tenant-scoped owner, an admin, or an explicit journey member."""
+    @wraps(view)
+    def decorated(journey_id, *args, **kwargs):
+        from app.models.architecture_journey_link import ArchitectureJourneyMember
+
+        journey = ArchitectureJourney.query.filter_by(
+            id=journey_id, organization_id=current_user.organization_id
+        ).first_or_404()
+        is_admin = current_user.is_admin() or bool(
+            getattr(current_user, "is_platform_admin", False)
+        )
+        if journey.owner_id != current_user.id and not is_admin:
+            membership = ArchitectureJourneyMember.query.filter_by(
+                journey_id=journey.id,
+                user_id=current_user.id,
+                organization_id=journey.organization_id,
+            ).first()
+            if membership is None:
+                abort(404)
+        return view(journey_id, *args, **kwargs)
+    return decorated
+
+
+_JOURNEY_EDITOR_ROLES = frozenset({
+    "chief_architect", "enterprise_architect", "business_architect",
+    "solution_architect", "application_architect", "data_architect",
+    "technology_architect", "security_architect", "programme_architect",
+    "contributor",
+})
+
+
+def _require_journey_editor(view):
+    """Allow mutations only to the owner/admin or an explicit editing role."""
+    @wraps(view)
+    def decorated(journey_id, *args, **kwargs):
+        from app.models.architecture_journey_link import ArchitectureJourneyMember
+
+        journey = ArchitectureJourney.query.filter_by(
+            id=journey_id, organization_id=current_user.organization_id
+        ).first_or_404()
+        is_admin = current_user.is_admin() or bool(
+            getattr(current_user, "is_platform_admin", False)
+        )
+        if journey.owner_id != current_user.id and not is_admin:
+            membership = ArchitectureJourneyMember.query.filter_by(
+                journey_id=journey.id,
+                user_id=current_user.id,
+                organization_id=journey.organization_id,
+            ).first()
+            if membership is None:
+                abort(404)
+            if membership.role not in _JOURNEY_EDITOR_ROLES:
+                return api_error("This journey role has read-only access", 403)
         return view(journey_id, *args, **kwargs)
     return decorated
 
@@ -264,8 +325,19 @@ def index():
         page = 1
     page_size = 9
 
-    journey_query = ArchitectureJourney.query.filter_by(
-        owner_id=current_user.id, status=filter_status
+    from app.models.architecture_journey_link import ArchitectureJourneyMember
+
+    member_journeys = select(ArchitectureJourneyMember.journey_id).where(
+        ArchitectureJourneyMember.user_id == current_user.id,
+        ArchitectureJourneyMember.organization_id == current_user.organization_id,
+    )
+    journey_query = ArchitectureJourney.query.filter(
+        ArchitectureJourney.organization_id == current_user.organization_id,
+        ArchitectureJourney.status == filter_status,
+        or_(
+            ArchitectureJourney.owner_id == current_user.id,
+            ArchitectureJourney.id.in_(member_journeys),
+        ),
     )
     if filter_intent:
         journey_query = journey_query.filter_by(intent=filter_intent)
@@ -385,7 +457,7 @@ def start_architecture_journey():
 
 @journey_v2_bp.route("/work/<int:journey_id>")
 @login_required
-@_require_journey_owner
+@_require_journey_access
 def architecture_journey_workspace(journey_id):
     journey = ArchitectureJourney.query.filter_by(id=journey_id).first_or_404()
 
@@ -470,7 +542,7 @@ def _link_payload_error(data):
 
 @journey_v2_bp.route("/work/<int:journey_id>/links", methods=["POST"])
 @login_required
-@_require_journey_owner
+@_require_journey_editor
 def create_journey_link(journey_id):
     """Link this journey to a record that already exists elsewhere."""
     from app.models.architecture_journey_link import ArchitectureJourneyLink
@@ -481,6 +553,16 @@ def create_journey_link(journey_id):
     error = _link_payload_error(data)
     if error:
         return api_error(error, 400)
+
+    from app.modules.solutions_strategic.v2.services.journey_home import (
+        resolve_journey_link_target,
+    )
+    target = resolve_journey_link_target(
+        data["entity_type"], data["entity_id"], journey.organization_id
+    )
+    if target is None:
+        # Missing and foreign records are deliberately indistinguishable.
+        return api_error("No such record in this organisation", 404)
 
     relation = data.get("relation", "references")
     existing = ArchitectureJourneyLink.query.filter_by(
@@ -511,6 +593,8 @@ def create_journey_link(journey_id):
             "entity_type": link.entity_type,
             "entity_id": link.entity_id,
             "relation": link.relation,
+            "label": target["label"],
+            "status": target["status"],
         },
         status_code=201,
     )
@@ -593,7 +677,7 @@ def add_journey_member(journey_id):
 
 @journey_v2_bp.route("/work/<int:journey_id>/state", methods=["PATCH"])
 @login_required
-@_require_journey_owner
+@_require_journey_editor
 def update_architecture_journey(journey_id):
     """Persist framing, evidence, deliverables and resume position."""
     journey = ArchitectureJourney.query.filter_by(id=journey_id).first_or_404()

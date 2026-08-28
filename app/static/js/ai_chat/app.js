@@ -469,7 +469,7 @@
                    one: Retry can only reproduce it. Route the user to the
                    remedy instead. */
                 const _isConfigFault =
-                    data.error === 'service_unavailable' || response.status === 503;
+                    ArchieChat.transport.isProviderConfigurationFault(data);
 
                 const fullError = errorMessage ? `${errorTitle}: ${errorMessage}` : errorTitle;
                 Platform.toast.error(fullError);

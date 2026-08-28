@@ -39,8 +39,12 @@ tests run in the genuine no-provider condition without patching anything.
 from __future__ import annotations
 
 import uuid
+from pathlib import Path
 
 import pytest
+
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 @pytest.fixture
@@ -139,3 +143,18 @@ def test_no_provider_streaming_turn_is_also_an_administrative_state(
     body = resp.get_json()
     assert body["error"] == "service_unavailable"
     assert "provider must be configured" in body["message"].lower()
+
+
+def test_client_only_classifies_an_explicit_chat_provider_configuration_fault():
+    """A generic 503 is transient; status alone must never prescribe admin setup."""
+    transport = (ROOT / "app/static/js/ai_chat/transport.js").read_text(encoding="utf-8")
+    app = (ROOT / "app/static/js/ai_chat/app.js").read_text(encoding="utf-8")
+
+    assert "function isProviderConfigurationFault(detail)" in transport
+    assert "detail.error === 'service_unavailable'" in transport
+    assert "detail.feature === 'chat'" in transport
+    assert "_err.isConfigFault = isProviderConfigurationFault(_detail);" in transport
+    assert "resp.status === 503 ||" not in transport
+
+    assert "ArchieChat.transport.isProviderConfigurationFault(data)" in app
+    assert "data.error === 'service_unavailable' || response.status === 503" not in app

@@ -34,7 +34,7 @@
 
 {% block content %}
 <div class="flex-1 overflow-auto"
-     x-data='architectureJourneyWorkspace({{ journey.id }}, {{ journey.evidence_manifest|tojson }}, {{ journey.current_stage|tojson }})'
+     x-data='architectureJourneyWorkspace({{ journey.id }}, {{ journey.evidence_manifest|tojson }}, {{ journey.current_stage|tojson }}, {{ home.participants|tojson }}, {{ home.can_manage_members|tojson }})'
      x-cloak>
 
   {{ page_shell(
@@ -138,6 +138,147 @@
     <div class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
       <main class="space-y-6">
 
+        {# ── participants ────────────────────────────────────────────────── #}
+        <section class="rounded-xl border border-border bg-card p-5 sm:p-6" aria-labelledby="participants-title">
+          <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h2 id="participants-title" class="text-lg font-semibold text-foreground">Journey team</h2>
+              <p class="mt-1 text-sm text-muted-foreground">The people accountable for shaping and assuring this work.</p>
+            </div>
+            <span class="inline-flex w-fit items-center rounded-md border border-border bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground"
+                  x-text="participantCountLabel"></span>
+          </div>
+
+          <ul data-testid="journey-participant-list" class="mt-4 divide-y divide-border rounded-lg border border-border" aria-live="polite">
+            <template x-for="person in participants" :key="person.user_id">
+              <li class="flex items-center gap-3 p-3 sm:p-4">
+                <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-muted text-sm font-semibold text-foreground"
+                     aria-hidden="true" x-text="participantInitials(person)"></div>
+                <div class="min-w-0 flex-1">
+                  <p class="truncate text-sm font-medium text-foreground" x-text="participantName(person)"></p>
+                  <p class="truncate text-xs text-muted-foreground" x-text="participantEmail(person)"></p>
+                </div>
+                <span class="shrink-0 rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-muted-foreground"
+                      x-text="roleLabel(person.role)"></span>
+              </li>
+            </template>
+          </ul>
+          <p x-show="participantsLoading" x-cloak class="mt-3 text-sm text-muted-foreground" role="status">Resolving participant details&hellip;</p>
+          <p x-show="!participantsLoading && !participants.length" x-cloak class="mt-3 text-sm text-muted-foreground">No participants are available.</p>
+
+          {% if home.can_manage_members %}
+          <form data-testid="journey-member-management" class="mt-5 border-t border-border pt-5" @submit.prevent="addMember">
+            <h3 class="text-sm font-semibold text-foreground">Add a participant</h3>
+            <div class="mt-3 grid gap-3 sm:grid-cols-2 sm:items-end lg:grid-cols-3">
+              <div class="relative" @click.outside="closeMemberPicker">
+                <label for="journey-member-search" class="text-xs font-medium text-foreground">Person</label>
+                <input id="journey-member-search" type="search" x-model="memberQuery"
+                  @input.debounce.300ms="searchMembers" @focus="searchMembers"
+                  @keydown.down.prevent="moveMemberResult(1)" @keydown.up.prevent="moveMemberResult(-1)"
+                  @keydown.enter.prevent="selectActiveMember" @keydown.escape="closeMemberPicker"
+                  role="combobox" aria-autocomplete="list" aria-controls="journey-member-results"
+                  :aria-expanded="memberPickerOpen.toString()" :aria-activedescendant="activeMemberResultId"
+                  autocomplete="off" placeholder="Search by name or email"
+                  class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                <input type="hidden" name="journey_member_user_id" :value="selectedMember ? selectedMember.id : ''">
+
+                <div id="journey-member-results" x-show="memberPickerOpen" x-cloak role="listbox"
+                     class="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-md border border-border bg-popover p-1 shadow-lg">
+                  <template x-for="(person, index) in memberResults" :key="person.id">
+                    <button type="button" role="option" :id="`journey-member-option-${person.id}`"
+                      :aria-selected="(index === activeMemberIndex).toString()"
+                      @mouseenter="activeMemberIndex = index" @click="selectMember(person)"
+                      class="flex w-full items-start justify-between gap-3 rounded-md px-3 py-2 text-left text-sm text-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                      <span class="min-w-0">
+                        <span class="block truncate font-medium" x-text="person.name"></span>
+                        <span class="block truncate text-xs text-muted-foreground" x-text="person.email"></span>
+                      </span>
+                      <i x-show="selectedMember && selectedMember.id === person.id" x-cloak data-lucide="check" class="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true"></i>
+                    </button>
+                  </template>
+                  <p x-show="!memberSearching && !memberResults.length" x-cloak class="px-3 py-2 text-sm text-muted-foreground">No available people match.</p>
+                  <p x-show="memberSearching" x-cloak class="px-3 py-2 text-sm text-muted-foreground" role="status">Searching people&hellip;</p>
+                </div>
+              </div>
+
+              <div>
+                <label for="journey-member-role" class="text-xs font-medium text-foreground">Journey role</label>
+                <select id="journey-member-role" x-model="memberRole"
+                  class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                  <option value="chief_architect">Chief architect</option>
+                  <option value="enterprise_architect">Enterprise architect</option>
+                  <option value="business_architect">Business architect</option>
+                  <option value="solution_architect">Solution architect</option>
+                  <option value="application_architect">Application architect</option>
+                  <option value="data_architect">Data architect</option>
+                  <option value="technology_architect">Technology architect</option>
+                  <option value="security_architect">Security architect</option>
+                  <option value="programme_architect">Programme architect</option>
+                  <option value="sponsor">Sponsor</option>
+                  <option value="stakeholder">Stakeholder</option>
+                  <option value="reviewer">Reviewer</option>
+                  <option value="contributor">Contributor</option>
+                </select>
+              </div>
+
+              <button type="submit" :disabled="savingMember || !selectedMember"
+                class="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50">
+                <i data-lucide="user-plus" class="h-4 w-4" aria-hidden="true"></i>
+                <span x-text="savingMember ? 'Adding…' : 'Add'"></span>
+              </button>
+            </div>
+          </form>
+          {% endif %}
+        </section>
+
+        {# ── linked records ──────────────────────────────────────────────── #}
+        <section data-testid="journey-linked-records" class="rounded-xl border border-border bg-card p-5 sm:p-6" aria-labelledby="linked-records-title">
+          <h2 id="linked-records-title" class="text-lg font-semibold text-foreground">Linked records</h2>
+          <p class="mt-1 text-sm text-muted-foreground">Governed records this journey uses, produces or affects.</p>
+
+          <div class="mt-4 divide-y divide-border rounded-lg border border-border">
+            {% for entity_type, links in home.links.items() %}
+              {% for link in links %}
+                {% set target_label = link.target_label|default(link.label|default(link.title|default(link.name|default(None)))) %}
+                {% set target_url = link.target_url|default(link.url|default(link.href|default(None))) %}
+                <div class="flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
+                  <div class="min-w-0 flex-1">
+                    <div class="flex flex-wrap items-center gap-2">
+                      <span class="rounded-md border border-border bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">{{ entity_type|replace('_', ' ')|title }}</span>
+                      <span class="text-xs text-muted-foreground">{{ link.relation|replace('_', ' ')|title }}</span>
+                    </div>
+                    {% if target_label %}
+                      {% if target_url %}
+                      <a href="{{ target_url }}" class="mt-2 block truncate text-sm font-medium text-primary hover:underline">{{ target_label }}</a>
+                      {% else %}
+                      <p class="mt-2 truncate text-sm font-medium text-foreground">{{ target_label }}</p>
+                      {% endif %}
+                    {% else %}
+                    <p class="mt-2 text-sm font-medium text-muted-foreground">Record details unavailable</p>
+                    <p class="mt-1 text-xs text-muted-foreground">The link is preserved, but its source record could not be resolved.</p>
+                    {% endif %}
+                    {% if link.status %}
+                    <p class="mt-1 text-xs text-muted-foreground">Status: {{ link.status|replace('_', ' ')|title }}</p>
+                    {% endif %}
+                    {% if link.note %}<p class="mt-1 text-xs text-muted-foreground">{{ link.note }}</p>{% endif %}
+                  </div>
+                  <button type="button" @click="unlinkLink({{ link.id }})" :disabled="unlinkingLinkId === {{ link.id }}"
+                    class="inline-flex h-8 shrink-0 items-center justify-center gap-2 rounded-md border border-input bg-background px-3 text-xs font-medium text-foreground hover:bg-accent hover:text-destructive disabled:pointer-events-none disabled:opacity-50"
+                    aria-label="Unlink {{ target_label or (entity_type|replace('_', ' ')) }}">
+                    <i data-lucide="unlink" class="h-4 w-4" aria-hidden="true"></i>
+                    <span x-text="unlinkingLinkId === {{ link.id }} ? 'Unlinking…' : 'Unlink'"></span>
+                  </button>
+                </div>
+              {% endfor %}
+            {% else %}
+            <div class="p-6 text-center">
+              <p class="text-sm font-medium text-foreground">No records linked yet</p>
+              <p class="mt-1 text-sm text-muted-foreground">Search the catalog below to add a verified application or ArchiMate element.</p>
+            </div>
+            {% endfor %}
+          </div>
+        </section>
+
         {# ── scope ────────────────────────────────────────────────────────── #}
         <section class="rounded-xl border border-border bg-card p-5 sm:p-6" aria-labelledby="scope-title">
           <h2 id="scope-title" class="text-lg font-semibold text-foreground">Architecture scope</h2>
@@ -229,23 +370,21 @@
           <p x-show="!evidence.length" x-cloak class="mt-4 text-center text-xs text-muted-foreground">No evidence attached yet.</p>
         </section>
 
-        {# ── link a record ────────────────────────────────────────────────── #}
+        {# ── link a verified catalog record ──────────────────────────────── #}
         <section data-testid="journey-link-form" class="rounded-xl border border-border bg-card p-5"
                  aria-labelledby="journey-link-title">
-          <h2 id="journey-link-title" class="text-sm font-semibold text-foreground">Link a record</h2>
+          <h2 id="journey-link-title" class="text-sm font-semibold text-foreground">Add a linked record</h2>
           <p class="mt-1 text-xs leading-5 text-muted-foreground">
-            Point this journey at a decision, risk, document or model that already exists.
-            The record itself is not changed &mdash; unlinking later removes only the connection.
+            Search an authoritative catalog. Decisions, risks and governance reviews are linked from their source workspaces so this journey never creates an unverified reference.
           </p>
 
           <form class="mt-4 space-y-3" @submit.prevent="addLink">
             <div>
               <label for="link-entity-type" class="text-xs font-medium text-foreground">Record type</label>
-              <select id="link-entity-type" x-model="linkEntityType"
+              <select id="link-entity-type" x-model="linkEntityType" @change="resetRecordPicker"
                 class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
-                {% for value in link_entity_types %}
-                <option value="{{ value }}">{{ value|replace('_', ' ')|title }}</option>
-                {% endfor %}
+                <option value="application">Application</option>
+                <option value="archimate_element">ArchiMate element</option>
               </select>
             </div>
             <div>
@@ -257,18 +396,41 @@
                 {% endfor %}
               </select>
             </div>
-            <div>
-              <label for="link-entity-id" class="text-xs font-medium text-foreground">Record id</label>
-              <input id="link-entity-id" type="number" min="1" step="1" x-model="linkEntityId" required
+            <div class="relative" @click.outside="closeRecordPicker">
+              <label for="link-record-search" class="text-xs font-medium text-foreground">Record</label>
+              <input id="link-record-search" type="search" x-model="recordQuery"
+                @input.debounce.300ms="searchRecords" @focus="searchRecords"
+                @keydown.down.prevent="moveRecordResult(1)" @keydown.up.prevent="moveRecordResult(-1)"
+                @keydown.enter.prevent="selectActiveRecord" @keydown.escape="closeRecordPicker"
+                role="combobox" aria-autocomplete="list" aria-controls="journey-record-results"
+                :aria-expanded="recordPickerOpen.toString()" :aria-activedescendant="activeRecordResultId"
+                autocomplete="off" placeholder="Search the catalog"
                 class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                placeholder="e.g. 42">
+              >
+              <div id="journey-record-results" x-show="recordPickerOpen" x-cloak role="listbox"
+                   class="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-md border border-border bg-popover p-1 shadow-lg">
+                <template x-for="(record, index) in recordResults" :key="record.id">
+                  <button type="button" role="option" :id="`journey-record-option-${record.id}`"
+                    :aria-selected="(index === activeRecordIndex).toString()"
+                    @mouseenter="activeRecordIndex = index" @click="selectRecord(record)"
+                    class="block w-full rounded-md px-3 py-2 text-left text-sm text-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                    <span class="block truncate font-medium" x-text="record.name"></span>
+                    <span class="block truncate text-xs text-muted-foreground" x-text="record.context || record.type || ''"></span>
+                  </button>
+                </template>
+                <p x-show="!recordSearching && !recordResults.length" x-cloak class="px-3 py-2 text-sm text-muted-foreground">No matching catalog records.</p>
+                <p x-show="recordSearching" x-cloak class="px-3 py-2 text-sm text-muted-foreground" role="status">Searching records&hellip;</p>
+              </div>
             </div>
-            <button type="submit" :disabled="savingLink || !linkEntityId"
+            <button type="submit" :disabled="savingLink || !selectedRecord"
               class="inline-flex h-9 w-full items-center justify-center gap-2 rounded-md border border-input bg-background px-4 py-2 text-sm font-medium text-foreground hover:bg-accent disabled:pointer-events-none disabled:opacity-50">
               <i data-lucide="link" class="h-4 w-4" aria-hidden="true"></i>
-              Link record
+              <span x-text="savingLink ? 'Linking…' : 'Link selected record'"></span>
             </button>
           </form>
+          <p class="mt-3 text-xs leading-5 text-muted-foreground">
+            To link a decision, risk, document, review, programme or solution, open that record in its source workspace and associate it with this journey there.
+          </p>
         </section>
 
         {# ── outcome ──────────────────────────────────────────────────────── #}

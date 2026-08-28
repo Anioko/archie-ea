@@ -351,11 +351,11 @@ def test_home_offers_a_way_to_create_the_edges_it_counts(
     html = _render_home(app, db_session, journey_owner, login_as, journey)
 
     assert 'data-testid="journey-link-form"' in html
-    # The vocabularies are rendered from the model's closed sets, not hardcoded in
-    # the template, so a new record type cannot appear in one and be rejected by
-    # the other.
+    # Only record types backed by canonical live-search endpoints are offered here;
+    # the other governed records are linked from their authoritative workspaces.
     assert 'id="link-entity-type"' in html
-    assert "archimate_element".replace("_", " ").title() in html
+    assert "ArchiMate element" in html
+    assert "Decisions, risks and governance reviews are linked from their source workspaces" in html
 
 
 def test_home_states_when_no_solution_was_assumed(app, db_session, journey_owner, login_as):
