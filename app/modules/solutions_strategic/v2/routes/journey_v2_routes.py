@@ -6,7 +6,7 @@ Blueprint: architecture_journey_bp, url_prefix=/architecture-journey
 import logging
 from functools import wraps
 
-from flask import Blueprint, current_app, jsonify, render_template, request, url_for
+from flask import Blueprint, abort, current_app, jsonify, render_template, request, url_for
 from flask_login import current_user, login_required
 
 from app import db
@@ -16,6 +16,7 @@ from app.models.architecture_journey import (
     ARCHITECTURE_LAYERS,
     JOURNEY_INTENTS,
     JOURNEY_STAGES,
+    JOURNEY_STATUSES,
     OUTCOME_TYPES,
     ArchitectureJourney,
 )
@@ -236,20 +237,65 @@ def _advance_journey_state(solution_id, target_state_value):
 @login_required
 def index():
     """Purpose-led landing page — start or resume any architecture journey."""
+    # The list used to be `.limit(8)` on active journeys with no count, no filter
+    # and no pagination. A user with nine journeys saw eight and was told nothing
+    # about the ninth: a truncated list that does not admit to being truncated is a
+    # lie of omission on a screen whose whole job is "resume your work". And the
+    # hardcoded status="active" made a completed journey unreachable by any route.
+    #
+    # State lives in the URL and the server is the source of truth, following the
+    # applications list. An unknown filter value is refused rather than ignored,
+    # because ignoring it renders the full list under a filter the user believes is
+    # applied.
+    filter_intent = request.args.get("intent_filter") or None
+    filter_stage = request.args.get("stage") or None
+    filter_status = request.args.get("status") or "active"
+
+    if filter_intent is not None and filter_intent not in JOURNEY_INTENTS:
+        return api_error("Unknown journey intent filter", 400)
+    if filter_stage is not None and filter_stage not in JOURNEY_STAGES:
+        return api_error("Unknown journey stage filter", 400)
+    if filter_status not in JOURNEY_STATUSES:
+        return api_error("Unknown journey status filter", 400)
+
+    try:
+        page = max(1, int(request.args.get("page", 1)))
+    except (TypeError, ValueError):
+        page = 1
+    page_size = 9
+
+    journey_query = ArchitectureJourney.query.filter_by(
+        owner_id=current_user.id, status=filter_status
+    )
+    if filter_intent:
+        journey_query = journey_query.filter_by(intent=filter_intent)
+    if filter_stage:
+        journey_query = journey_query.filter_by(current_stage=filter_stage)
+
+    journey_total = journey_query.count()
+    journey_pages = max(1, (journey_total + page_size - 1) // page_size)
     journeys = (
-        ArchitectureJourney.query.filter_by(owner_id=current_user.id, status="active")
-        .order_by(ArchitectureJourney.updated_at.desc())
-        .limit(8)
+        journey_query.order_by(ArchitectureJourney.updated_at.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
         .all()
     )
+    journey_filters_active = bool(filter_intent or filter_stage or filter_status != "active")
     try:
         in_progress = (
+            # The three ~ilike exclusions that used to sit here filtered out
+            # solutions named 'J1-AutoTest-%', 'J7-E2E-Test%' and '%-AutoTest-%'.
+            # Those are this repository's own test fixture names, and they were
+            # being excluded from what a real user sees in production.
+            #
+            # It is the wrong place to solve that problem twice over: a customer
+            # who legitimately names a solution "Migration-AutoTest-Rig" would have
+            # it silently vanish from their own hub, and a test suite that leaves
+            # rows behind should be fixed in the suite rather than hidden from the
+            # product. Test data does not belong in a production predicate.
             Solution.query.filter(
                 Solution.created_by_id == current_user.id,
                 Solution.governance_status.in_(["draft", "proposed", "in_progress"]),
-                ~Solution.name.ilike("J1-AutoTest-%"),
-                ~Solution.name.ilike("J7-E2E-Test%"),
-                ~Solution.name.ilike("%-AutoTest-%"),
             )
             .order_by(Solution.updated_at.desc())
             .limit(5)
@@ -262,6 +308,15 @@ def index():
     return render_template(
         "architecture_assistant/architecture_journey_hub.html",
         architecture_journeys=journeys,
+        journey_total=journey_total,
+        journey_page=page,
+        journey_pages=journey_pages,
+        journey_filters_active=journey_filters_active,
+        filter_intent=filter_intent,
+        filter_stage=filter_stage,
+        filter_status=filter_status,
+        journey_stages=JOURNEY_STAGES,
+        journey_statuses=JOURNEY_STATUSES,
         intent_options=JOURNEY_INTENT_OPTIONS,
         layer_options=JOURNEY_LAYER_OPTIONS,
         deliverable_options=JOURNEY_DELIVERABLE_OPTIONS,
@@ -333,13 +388,206 @@ def start_architecture_journey():
 @_require_journey_owner
 def architecture_journey_workspace(journey_id):
     journey = ArchitectureJourney.query.filter_by(id=journey_id).first_or_404()
+
+    from app.modules.solutions_strategic.v2.services.journey_home import (
+        journey_home_view,
+    )
+
+    home = journey_home_view(journey_id=journey.id, actor_user=current_user)
+    if home is None:
+        # The guard above already resolved this journey for this tenant, so the
+        # read model refusing it means the two disagree -- which is a fault, not a
+        # permission answer. Do not fall through to a page rendered from partial
+        # context: that is how a screen ends up quietly showing someone a journey
+        # with none of its records and no indication anything is missing.
+        abort(404)
+
+    from app.models.architecture_journey_link import (
+        JOURNEY_LINK_ENTITY_TYPES,
+        JOURNEY_LINK_RELATIONS,
+    )
+
     return render_template(
         "architecture_assistant/architecture_journey_workspace.html",
         journey=journey,
+        home=home,
+        link_entity_types=JOURNEY_LINK_ENTITY_TYPES,
+        link_relations=JOURNEY_LINK_RELATIONS,
         intent_options=JOURNEY_INTENT_OPTIONS,
         layer_options=JOURNEY_LAYER_OPTIONS,
         deliverable_options=JOURNEY_DELIVERABLE_OPTIONS,
         deliverable_tool_urls=_available_deliverable_tools(),
+    )
+
+
+# ── journey edges: linking records, and adding people ────────────────────────
+#
+# The journey home counts participants, decisions, risks and governance. Without
+# these write paths those counts are permanently zero and the screen is decorative
+# -- a worse failure than showing nothing, because a reader sees "0 risks" and
+# concludes the journey is clean when nothing could ever have been recorded.
+#
+# Bodies are strictly allow-listed. organization_id and the author come from the
+# session and are never accepted from the request: a caller who can name the tenant
+# can write into someone else's.
+
+
+def _link_payload_error(data):
+    """Validate a link body. Returns an error message, or None when acceptable."""
+    from app.models.architecture_journey_link import (
+        JOURNEY_LINK_ENTITY_TYPES,
+        JOURNEY_LINK_RELATIONS,
+    )
+
+    allowed = {"entity_type", "entity_id", "relation", "note"}
+    unknown = set(data) - allowed
+    if unknown:
+        # Named explicitly rather than ignored: silently dropping a field the
+        # caller believed was saved is how a client ends up trusting a value the
+        # server never stored.
+        return f"Unsupported link fields: {', '.join(sorted(unknown))}"
+
+    entity_type = data.get("entity_type")
+    if entity_type not in JOURNEY_LINK_ENTITY_TYPES:
+        return "Unknown record type for a journey link"
+
+    entity_id = data.get("entity_id")
+    if isinstance(entity_id, bool) or not isinstance(entity_id, int) or entity_id <= 0:
+        # A 0 or a negative id points at no row, and would render as a broken
+        # reference that looks like a real one.
+        return "A journey link needs the id of an existing record"
+
+    relation = data.get("relation", "references")
+    if relation not in JOURNEY_LINK_RELATIONS:
+        return "Unknown relation for a journey link"
+
+    note = data.get("note")
+    if note is not None and (not isinstance(note, str) or len(note) > 2000):
+        return "A link note must be text of at most 2000 characters"
+
+    return None
+
+
+@journey_v2_bp.route("/work/<int:journey_id>/links", methods=["POST"])
+@login_required
+@_require_journey_owner
+def create_journey_link(journey_id):
+    """Link this journey to a record that already exists elsewhere."""
+    from app.models.architecture_journey_link import ArchitectureJourneyLink
+
+    journey = ArchitectureJourney.query.filter_by(id=journey_id).first_or_404()
+    data = request.get_json(silent=True) or {}
+
+    error = _link_payload_error(data)
+    if error:
+        return api_error(error, 400)
+
+    relation = data.get("relation", "references")
+    existing = ArchitectureJourneyLink.query.filter_by(
+        journey_id=journey.id,
+        entity_type=data["entity_type"],
+        entity_id=data["entity_id"],
+        relation=relation,
+    ).first()
+    if existing is not None:
+        # The same record linked twice with the same relation is a duplicate, not
+        # a second fact.
+        return api_error("That record is already linked to this journey", 409)
+
+    link = ArchitectureJourneyLink(
+        journey_id=journey.id,
+        organization_id=journey.organization_id,
+        entity_type=data["entity_type"],
+        entity_id=data["entity_id"],
+        relation=relation,
+        note=(data.get("note") or None),
+        created_by_id=current_user.id,
+    )
+    db.session.add(link)
+    db.session.commit()
+    return api_success(
+        data={
+            "id": link.id,
+            "entity_type": link.entity_type,
+            "entity_id": link.entity_id,
+            "relation": link.relation,
+        },
+        status_code=201,
+    )
+
+
+@journey_v2_bp.route("/work/<int:journey_id>/links/<int:link_id>", methods=["DELETE"])
+@login_required
+@_require_journey_owner
+def delete_journey_link(journey_id, link_id):
+    """Unlink a record. The record itself is untouched -- this owns the edge only."""
+    from app.models.architecture_journey_link import ArchitectureJourneyLink
+
+    journey = ArchitectureJourney.query.filter_by(id=journey_id).first_or_404()
+    link = ArchitectureJourneyLink.query.filter_by(
+        id=link_id, journey_id=journey.id
+    ).first()
+    if link is None:
+        return api_error("No such link on this journey", 404)
+
+    db.session.delete(link)
+    db.session.commit()
+    return api_success(data={"id": link_id})
+
+
+@journey_v2_bp.route("/work/<int:journey_id>/members", methods=["POST"])
+@login_required
+@_require_journey_owner
+def add_journey_member(journey_id):
+    """Put a person on this journey, by user id."""
+    from app.models.architecture_journey_link import (
+        JOURNEY_MEMBER_ROLES,
+        ArchitectureJourneyMember,
+    )
+    from app.models.user import User
+
+    journey = ArchitectureJourney.query.filter_by(id=journey_id).first_or_404()
+    data = request.get_json(silent=True) or {}
+
+    unknown = set(data) - {"user_id", "role"}
+    if unknown:
+        return api_error(f"Unsupported member fields: {', '.join(sorted(unknown))}", 400)
+
+    user_id = data.get("user_id")
+    if isinstance(user_id, bool) or not isinstance(user_id, int) or user_id <= 0:
+        return api_error("A journey member needs a user id", 400)
+
+    role = data.get("role", "contributor")
+    if role not in JOURNEY_MEMBER_ROLES:
+        return api_error("Unknown role for a journey member", 400)
+
+    # Resolved with an explicit organisation predicate. Adding a user from another
+    # tenant would put a name on a journey that person cannot open, and would leak
+    # the existence of that user to this one.
+    member_user = User.query.filter_by(
+        id=user_id, organization_id=journey.organization_id
+    ).first()
+    if member_user is None:
+        return api_error("No such user in this organisation", 400)
+
+    existing = ArchitectureJourneyMember.query.filter_by(
+        journey_id=journey.id, user_id=member_user.id
+    ).first()
+    if existing is not None:
+        return api_error("That person is already on this journey", 409)
+
+    member = ArchitectureJourneyMember(
+        journey_id=journey.id,
+        organization_id=journey.organization_id,
+        user_id=member_user.id,
+        role=role,
+        added_by_id=current_user.id,
+    )
+    db.session.add(member)
+    db.session.commit()
+    return api_success(
+        data={"id": member.id, "user_id": member.user_id, "role": member.role},
+        status_code=201,
     )
 
 

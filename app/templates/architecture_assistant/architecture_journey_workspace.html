@@ -1,55 +1,147 @@
 {% extends "layouts/admin_base.html" %}
-{% from 'components/page_header.html' import page_header %}
+{% from 'macros/page_shell.html' import page_shell %}
+{% from 'architecture_assistant/partials/_journey_home_panels.html' import journey_count_panel %}
+
+{#
+  The Architecture Journey home.
+
+  One screen answers, for a piece of architecture work that may never become a
+  solution: what is this for, where has it got to, who is on it, what stands behind
+  it, what has been decided, what is at risk, and what happens next.
+
+  Two rules run through the whole file.
+
+  1. `page_shell` owns the single <h1> and the single breadcrumb. This surface used
+     to carry three page-level entry points with two incompatible breadcrumb
+     ancestries -- one rooting the journey under Solutions, the others under Home --
+     plus a dead landing branch with a second competing <h1>. A duplicated breadcrumb
+     is not cosmetic: it tells the reader two different stories about where they are.
+
+  2. A count that was not computed renders as an em dash, never as 0. When the link
+     store cannot be read, `home.degraded` is true, every count is None, and the
+     screen says so out loud rather than showing a confident zero that a reader would
+     take as "nothing to worry about here".
+#}
 
 {% block title %}{{ journey.title }} — Architecture Journey{% endblock %}
 
+{% macro _journey_actions() %}
+  <a href="{{ url_for('architecture_journey.index') }}"
+     class="inline-flex h-9 items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium text-foreground hover:bg-accent hover:text-accent-foreground">
+    All journeys
+  </a>
+{% endmacro %}
+
 {% block content %}
-<div class="flex-1 overflow-auto" x-data='architectureJourneyWorkspace({{ journey.id }}, {{ journey.evidence_manifest|tojson }}, {{ journey.current_stage|tojson }})' x-cloak>
-  {{ page_header(
-    title=journey.title,
-    description=journey.intent|replace('_', ' ')|title,
-    breadcrumbs=[
-      {'label': 'Home', 'href': url_for('main.index')},
-      {'label': 'Architecture Journey', 'href': url_for('architecture_journey.index')},
-      {'label': journey.title}
-    ]
+<div class="flex-1 overflow-auto"
+     x-data='architectureJourneyWorkspace({{ journey.id }}, {{ journey.evidence_manifest|tojson }}, {{ journey.current_stage|tojson }})'
+     x-cloak>
+
+  {{ page_shell(
+      title=journey.title,
+      subtitle=home.purpose.label,
+      breadcrumb=[
+        ('Home', url_for('main.index')),
+        ('Architecture Journey', url_for('architecture_journey.index')),
+        (journey.title, None)
+      ],
+      icon='route',
+      actions_caller=_journey_actions
   ) }}
 
   <div class="p-4 sm:p-6 space-y-6">
+
+    {% if home.degraded %}
+    {# Said plainly, at the top, before any number the reader might trust. #}
+    <div data-testid="journey-degraded" role="alert"
+         class="rounded-lg border border-warning/30 bg-warning/10 p-4">
+      <p class="text-sm font-medium text-warning-emphasis">Some of this journey could not be loaded</p>
+      <p class="mt-1 text-sm text-warning-emphasis">
+        Participants, decisions, risks and linked records are shown as &mdash; because they
+        could not be read, not because there are none. Reload to try again.
+      </p>
+    </div>
+    {% endif %}
+
+    {# ── purpose, stage, next action ─────────────────────────────────────── #}
     <section class="rounded-xl border border-border bg-card p-5 sm:p-6" aria-labelledby="journey-progress-title">
-      <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Current focus</p>
-          <h2 id="journey-progress-title" class="mt-1 text-lg font-semibold text-foreground" x-text="stageLabel"></h2>
-          <p class="mt-1 text-sm text-muted-foreground" x-text="stageGuidance"></p>
+      <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div class="min-w-0">
+          <p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Current stage</p>
+          <h2 id="journey-progress-title" class="mt-1 text-lg font-semibold text-foreground">
+            {{ home.stage.label }}
+          </h2>
+          <p class="mt-1 text-sm text-muted-foreground">
+            {% if home.stage.index is not none %}
+              Stage {{ home.stage.index + 1 }} of {{ home.stage.total }}
+            {% else %}
+              This journey is at an unrecognised stage &mdash; check its state.
+            {% endif %}
+          </p>
         </div>
+
         <button type="button" @click="advance" :disabled="saving || currentStage === 'deliver'"
-          class="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-primary px-6 text-base font-medium text-primary-foreground hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50">
+          class="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-md bg-primary px-6 text-base font-medium text-primary-foreground hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50">
           <span x-text="currentStage === 'deliver' ? 'Journey ready to close' : 'Complete this stage'"></span>
           <i data-lucide="arrow-right" class="h-4 w-4" aria-hidden="true"></i>
         </button>
       </div>
 
-      <ol class="mt-6 grid grid-cols-5 gap-2" aria-label="Journey progress">
-        <template x-for="(stage, index) in stages" :key="stage.key">
-          <li class="relative">
-            <div class="h-1 rounded-full" :class="index <= stageIndex ? 'bg-primary' : 'bg-muted'"></div>
-            <p class="mt-2 text-xs" :class="index === stageIndex ? 'font-semibold text-foreground' : 'text-muted-foreground'" x-text="stage.label"></p>
-          </li>
-        </template>
+      <ol class="mt-6 grid grid-cols-2 gap-2 sm:grid-cols-5" aria-label="Journey progress">
+        {% for stage in home.stage.stages %}
+        <li>
+          <div class="h-1 rounded-full {{ 'bg-primary' if home.stage.index is not none and loop.index0 <= home.stage.index else 'bg-muted' }}"></div>
+          <p class="mt-2 text-xs {{ 'font-semibold text-foreground' if home.stage.index is not none and loop.index0 == home.stage.index else 'text-muted-foreground' }}">
+            {{ stage.label }}
+          </p>
+        </li>
+        {% endfor %}
       </ol>
+
+      {# The next action carries its reason. An instruction without a reason is a
+         demand, and the architect cannot tell whether it applies to them. #}
+      <div data-testid="journey-next-action" class="mt-6 rounded-lg border border-primary/30 bg-primary/5 p-4">
+        <p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Next</p>
+        <p class="mt-1 text-sm font-semibold text-foreground">{{ home.next_action.label }}</p>
+        <p class="mt-1 text-sm text-muted-foreground">{{ home.next_action.reason }}</p>
+      </div>
     </section>
+
+    {# ── the record panels ───────────────────────────────────────────────── #}
+    <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      {{ journey_count_panel(
+          'journey-participants', 'Participants',
+          'Everyone accountable for this journey.',
+          home.counts.participants, 'users',
+          'Only the owner so far.', home.degraded) }}
+
+      {{ journey_count_panel(
+          'journey-decisions', 'Decisions',
+          'Decisions this journey produced or is governed by.',
+          home.counts.decisions, 'gavel',
+          'No decision recorded yet. "No change" is a decision worth recording.',
+          home.degraded) }}
+
+      {{ journey_count_panel(
+          'journey-risks', 'Risks',
+          'Risks raised against this journey.',
+          home.counts.risks, 'shield-alert',
+          'No risks linked yet.', home.degraded) }}
+
+      {{ journey_count_panel(
+          'journey-governance', 'Governance',
+          'Architecture review obligations.',
+          home.counts.governance, 'scale',
+          'No review raised for this journey.', home.degraded) }}
+    </div>
 
     <div class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
       <main class="space-y-6">
+
+        {# ── scope ────────────────────────────────────────────────────────── #}
         <section class="rounded-xl border border-border bg-card p-5 sm:p-6" aria-labelledby="scope-title">
-          <div class="flex items-start justify-between gap-4">
-            <div>
-              <h2 id="scope-title" class="text-lg font-semibold text-foreground">Architecture scope</h2>
-              <p class="mt-1 text-sm text-muted-foreground">The perspectives this journey must reconcile.</p>
-            </div>
-            <a href="{{ url_for('architecture_journey.index', intent=journey.intent|replace('_', '-')) }}" class="text-sm font-medium text-primary hover:underline">Start another</a>
-          </div>
+          <h2 id="scope-title" class="text-lg font-semibold text-foreground">Architecture scope</h2>
+          <p class="mt-1 text-sm text-muted-foreground">The perspectives this journey must reconcile.</p>
           <div class="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
             {% for value, label, description in layer_options %}
             <div class="rounded-lg border p-3 {{ 'border-primary bg-primary/5' if value in journey.selected_layers else 'border-border bg-muted/20 opacity-60' }}">
@@ -60,6 +152,7 @@
           </div>
         </section>
 
+        {# ── deliverables ─────────────────────────────────────────────────── #}
         <section class="rounded-xl border border-border bg-card p-5 sm:p-6" aria-labelledby="deliverables-title">
           <h2 id="deliverables-title" class="text-lg font-semibold text-foreground">Working outputs</h2>
           <p class="mt-1 text-sm text-muted-foreground">Use the right modelling tool when the journey needs it. Outputs stay governed by this purpose.</p>
@@ -70,15 +163,19 @@
                 <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
                   <i data-lucide="{{ icon }}" class="h-4 w-4" aria-hidden="true"></i>
                 </div>
-                <div>
-                  <p class="text-sm font-medium text-foreground">{{ label }}</p>
+                <div class="min-w-0">
+                  <p class="truncate text-sm font-medium text-foreground">{{ label }}</p>
                   <p class="text-xs text-muted-foreground">Planned deliverable</p>
                 </div>
               </div>
               {% if deliverable_tool_urls.get(value) %}
-              <a href="{{ deliverable_tool_urls[value] }}" class="inline-flex h-8 items-center justify-center rounded-md border border-input bg-background px-3 text-xs font-medium text-foreground hover:bg-accent">Open tool</a>
+              <a href="{{ deliverable_tool_urls[value] }}"
+                 class="inline-flex h-8 shrink-0 items-center justify-center rounded-md border border-input bg-background px-3 text-xs font-medium text-foreground hover:bg-accent">Open tool</a>
               {% else %}
-              <span class="rounded-md bg-muted px-2.5 py-1 text-xs text-muted-foreground">Build in journey</span>
+              {# The tool's blueprint did not register. Say so: silently omitting the
+                 link would leave the user believing the deliverable has no tool. #}
+              <span class="shrink-0 rounded-md bg-muted px-2.5 py-1 text-xs text-muted-foreground"
+                    title="This tool is not available in this deployment">Tool unavailable</span>
               {% endif %}
             </div>
             {% else %}
@@ -92,9 +189,14 @@
       </main>
 
       <aside class="space-y-6">
+
+        {# ── evidence ─────────────────────────────────────────────────────── #}
         <section class="rounded-xl border border-border bg-card p-5" aria-labelledby="evidence-title">
           <h2 id="evidence-title" class="text-sm font-semibold text-foreground">Evidence register</h2>
-          <p class="mt-1 text-xs leading-5 text-muted-foreground">Register the document, model, link or observation that supports this journey.</p>
+          <p class="mt-1 text-xs leading-5 text-muted-foreground">
+            Register the document, model, link or observation that supports this journey.
+            These are the architect's own notes &mdash; they are not governed evidence records.
+          </p>
 
           <form class="mt-4 space-y-3" @submit.prevent="addEvidence">
             <div>
@@ -127,19 +229,81 @@
           <p x-show="!evidence.length" x-cloak class="mt-4 text-center text-xs text-muted-foreground">No evidence attached yet.</p>
         </section>
 
-        <section class="rounded-xl border border-border bg-muted/30 p-5">
+        {# ── link a record ────────────────────────────────────────────────── #}
+        <section data-testid="journey-link-form" class="rounded-xl border border-border bg-card p-5"
+                 aria-labelledby="journey-link-title">
+          <h2 id="journey-link-title" class="text-sm font-semibold text-foreground">Link a record</h2>
+          <p class="mt-1 text-xs leading-5 text-muted-foreground">
+            Point this journey at a decision, risk, document or model that already exists.
+            The record itself is not changed &mdash; unlinking later removes only the connection.
+          </p>
+
+          <form class="mt-4 space-y-3" @submit.prevent="addLink">
+            <div>
+              <label for="link-entity-type" class="text-xs font-medium text-foreground">Record type</label>
+              <select id="link-entity-type" x-model="linkEntityType"
+                class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                {% for value in link_entity_types %}
+                <option value="{{ value }}">{{ value|replace('_', ' ')|title }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div>
+              <label for="link-relation" class="text-xs font-medium text-foreground">Relation</label>
+              <select id="link-relation" x-model="linkRelation"
+                class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                {% for value in link_relations %}
+                <option value="{{ value }}">{{ value|title }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div>
+              <label for="link-entity-id" class="text-xs font-medium text-foreground">Record id</label>
+              <input id="link-entity-id" type="number" min="1" step="1" x-model="linkEntityId" required
+                class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                placeholder="e.g. 42">
+            </div>
+            <button type="submit" :disabled="savingLink || !linkEntityId"
+              class="inline-flex h-9 w-full items-center justify-center gap-2 rounded-md border border-input bg-background px-4 py-2 text-sm font-medium text-foreground hover:bg-accent disabled:pointer-events-none disabled:opacity-50">
+              <i data-lucide="link" class="h-4 w-4" aria-hidden="true"></i>
+              Link record
+            </button>
+          </form>
+        </section>
+
+        {# ── outcome ──────────────────────────────────────────────────────── #}
+        <section data-testid="journey-outcome" class="rounded-xl border border-border bg-muted/30 p-5">
           <p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Outcome</p>
           <p class="mt-2 text-sm font-semibold text-foreground">{{ journey.outcome_type|replace('_', ' ')|title }}</p>
           {% if journey.solution_id %}
-          <a href="{{ url_for('architecture_journey.journey_page', solution_id=journey.solution_id) }}" class="mt-3 inline-flex items-center gap-2 text-sm font-medium text-primary hover:underline">Open linked solution <i data-lucide="arrow-right" class="h-4 w-4" aria-hidden="true"></i></a>
+          <a href="{{ url_for('architecture_journey.journey_page', solution_id=journey.solution_id) }}"
+             class="mt-3 inline-flex items-center gap-2 text-sm font-medium text-primary hover:underline">
+            Open linked solution <i data-lucide="arrow-right" class="h-4 w-4" aria-hidden="true"></i>
+          </a>
           {% else %}
-          <p class="mt-2 text-xs leading-5 text-muted-foreground">No solution has been assumed or created. The journey can conclude with its architecture, decision, roadmap or programme.</p>
+          <p class="mt-2 text-xs leading-5 text-muted-foreground">
+            No solution has been assumed or created. This journey can conclude with its
+            architecture, a decision, a roadmap, a programme &mdash; or with no change at all.
+          </p>
           {% endif %}
         </section>
+
+        {# ── programme ────────────────────────────────────────────────────── #}
+        {% if journey.programme_id %}
+        <section class="rounded-xl border border-border bg-card p-5">
+          <p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Programme</p>
+          <a href="{{ url_for('solution_design.programmes_list') }}"
+             class="mt-2 inline-flex items-center gap-2 text-sm font-medium text-primary hover:underline">
+            Open programme <i data-lucide="arrow-right" class="h-4 w-4" aria-hidden="true"></i>
+          </a>
+        </section>
+        {% endif %}
       </aside>
     </div>
 
-    <p x-show="error" x-cloak class="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive-emphasis" role="alert" x-text="error"></p>
+    <p x-show="error" x-cloak role="alert"
+       class="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive-emphasis"
+       x-text="error"></p>
   </div>
 </div>
 {% endblock %}
