@@ -687,6 +687,12 @@ class ChiefArchitectService:
             "delivery": delivery,
             "risk_dependency": risk_dependency,
             "attention": attention[:attention_displayed],
+            # The untruncated, already-prioritised queue. The Chief Architect
+            # Workbench merges enterprise-domain findings into this queue and
+            # re-sorts; merging into the display-truncated list instead would let
+            # a critical enterprise finding be crowded out by ten medium solution
+            # findings that merely sorted first.
+            "attention_all": attention,
             "attention_total": attention_total,
             "attention_displayed": attention_displayed,
             "attention_truncated": attention_total > attention_displayed,
