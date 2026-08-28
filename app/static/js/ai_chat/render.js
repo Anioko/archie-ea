@@ -546,14 +546,26 @@
        assistant's avatar and offered no way to try again.
        text-destructive-emphasis, not text-destructive: the base token scores
        3.30 on its own tint (DESIGN.md). */
-    function appendError(message, onRetry) {
+    /* `opts.adminLink` adds the route to the remedy for failures an ordinary
+       user cannot retry their way out of — chiefly the no-provider 503 from
+       FeatureFlagService.require_ai_for_route, where the server says "LLM
+       provider must be configured" and Retry can only fail again forever.
+       Offering Retry there is worse than offering nothing: it implies the
+       failure is transient. Callers pass a link INSTEAD of a retry for
+       configuration faults, and a retry for transient ones. */
+    function appendError(message, onRetry, opts) {
+        var o = opts || {};
         var div = document.createElement('div');
         div.className = 'mx-auto max-w-3xl rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive-emphasis';
         div.setAttribute('role', 'alert');
         div.innerHTML =
             '<div class="flex items-start gap-2">' +
               '<i data-lucide="alert-circle" class="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true"></i>' +
-              '<div class="flex-1"><p>' + escapeForHtml(message) + '</p></div>' +
+              '<div class="flex-1"><p>' + escapeForHtml(message) + '</p>' +
+                (o.adminLink
+                    ? '<a href="/admin/api-settings" class="mt-1 inline-flex items-center gap-1 underline hover:no-underline">Open Admin → API Settings</a>'
+                    : '') +
+              '</div>' +
               (onRetry ? '<button type="button" class="js-retry inline-flex items-center rounded-md border border-input bg-background px-3 py-1 text-xs font-medium hover:bg-accent">Retry</button>' : '') +
             '</div>';
         if (onRetry) {
