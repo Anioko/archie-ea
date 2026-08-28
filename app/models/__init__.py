@@ -179,6 +179,7 @@ else:
     from .archimate_viewpoint import *  # noqa - ArchiMateViewpoint, ViewpointStakeholderMapping, ViewpointView (ArchiMate 3.2 Viewpoint Catalog)
     from .architecture_session import *  # noqa - ArchitectureSession (undo/rollback capability for bulk operations)
     from .architecture_journey import *  # noqa - purpose-led architecture journey aggregate
+    from .architecture_journey_link import *  # noqa - journey edges: links and members
 
     # from app.wizards.models import ApplicationRationalizationWizard, RequirementsToCodeWizard, ComplianceAccelerationWizard  # Commented out: wizards module doesn't exist
     from .autogen import *  # noqa
