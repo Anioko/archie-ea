@@ -178,3 +178,16 @@ def test_model_catalogue_includes_the_environment_provider_for_a_tenant_without_
         model["provider"] == "deepseek" and model["model"] == "deepseek-chat"
         for model in body["models"]
     )
+
+
+def test_chat_page_does_not_claim_an_environment_provider_is_unavailable(
+    client, login_as, chat_user, monkeypatch
+):
+    """The first painted health state must use the runtime provider resolver."""
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "test-deepseek-key")
+    login_as(client, chat_user)
+
+    response = client.get("/ai-chat/")
+
+    assert response.status_code == 200
+    assert "AI provider unavailable" not in response.get_data(as_text=True)

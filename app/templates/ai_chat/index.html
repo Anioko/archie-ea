@@ -133,37 +133,15 @@
 </div>
 {% endif %}
 <!-- ENT-043: LLM provider health banner (hidden when healthy) -->
-<div x-data="{
-    llmStatus: 'healthy',
-    llmProvider: null,
-    async checkHealth() {
-        try {
-            // raw-fetch-ok: this endpoint reports UNHEALTHY with a non-2xx, so the
-            // non-2xx is the answer, not a failure. Platform.fetch raises on it,
-            // and the rejection escapes Alpine's evaluator as an unhandled
-            // rejection that halts every listener registered after boot -- the
-            // banner below is exactly what is supposed to render instead.
-            const r = await fetch('/ai-chat/api/health/llm');  // raw-fetch-ok: a non-2xx here IS the answer (provider unhealthy); Platform.fetch raises on it and the rejection halts chat boot
-            const d = await r.json();
-            this.llmStatus = d.status || 'degraded';
-            this.llmProvider = d.provider || null;
-        } catch(_) {
-            this.llmStatus = 'degraded';
-            this.llmProvider = null;
-        }
-    }
-}"
-x-init="checkHealth(); setInterval(() => checkHealth(), 60000)"
-x-cloak>
-    <div x-show="llmStatus !== 'healthy'"
-         class="flex items-center gap-2 bg-warning/10 border-b border-warning/30 px-4 py-2 text-sm text-warning-emphasis"
-         role="alert">
+{% if not llm_configured %}
+<div class="flex items-center gap-2 bg-warning/10 border-b border-warning/30 px-4 py-2 text-sm text-warning-emphasis"
+     role="alert">
         <i data-lucide="alert-triangle" class="h-4 w-4 shrink-0 text-amber-600" aria-hidden="true"></i><!-- token-migration-ok -->
         {# The banner named the fault and stopped there. It is the earliest and
            most visible surface for "the AI cannot answer", so it is also the
            right place to say what closes it — otherwise every archetype reads
            a dead end and the one person who can act is not told what to do. #}
-        <span x-text="llmProvider ? ('AI provider degraded: ' + llmProvider) : 'AI provider unavailable — no LLM provider is configured, so the assistant cannot answer.'"></span>
+        <span>AI provider unavailable — no LLM provider is configured, so the assistant cannot answer.</span>
         {% if current_user.is_admin() %}
         {# Literal path, not url_for: `admin` exists in BOTH the legacy and the
            app/modules layout and is selected at boot by USE_ADMIN_GUARDRAILS,
@@ -174,8 +152,8 @@ x-cloak>
         {% else %}
         <span class="shrink-0 opacity-80">Ask an administrator to configure a provider.</span>
         {% endif %}
-    </div>
 </div>
+{% endif %}
 <div x-data="{
         railOpen: (localStorage.getItem('archie_chat_rail') ?? (window.innerWidth >= 1280 ? 'open' : 'closed')) === 'open'
     }"

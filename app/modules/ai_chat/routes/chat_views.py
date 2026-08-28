@@ -151,6 +151,9 @@ def index():
     default_chat_persona = get_default_chat_persona(
         getattr(current_user, "enterprise_role", None)
     )
+    from app.services.feature_flag_service import FeatureFlagService
+
+    llm_provider_info = FeatureFlagService.get_configured_provider_info()
 
     chat_service = get_chat_service()
     if chat_service is None:
@@ -179,6 +182,8 @@ def index():
         persona_config=persona_config,
         chat_bootstrap_error=chat_bootstrap_error,
         default_chat_persona=default_chat_persona,
+        llm_configured=llm_provider_info["configured"],
+        llm_provider=llm_provider_info.get("provider"),
         chat_persona_preference_key=f"archie_chat_persona_v2:{current_user.id}",
     )
 
