@@ -146,7 +146,60 @@
           <h2 id="resume-journeys-title" class="text-lg font-semibold text-foreground">Resume your architecture work</h2>
           <p class="mt-1 text-sm text-muted-foreground">Continue from the latest saved stage, with scope and evidence intact.</p>
         </div>
+        {# The total, always. A list capped at a page size that never says how many
+           exist reads as complete when it is not. #}
+        <p data-testid="journey-total" class="shrink-0 text-sm text-muted-foreground">
+          <span class="font-semibold tabular-nums text-foreground">{{ journey_total }}</span>
+          journey{{ '' if journey_total == 1 else 's' }}
+        </p>
       </div>
+
+      {# Filters. State lives in the URL and the server does the filtering -- the
+         same contract the applications list uses -- so a filtered view is linkable
+         and survives a reload. #}
+      <form method="get" action="{{ url_for('architecture_journey.index') }}"
+            data-testid="journey-filter-bar"
+            class="mt-4 flex flex-wrap items-end gap-3 rounded-lg border border-border bg-muted/20 p-3">
+        <div class="min-w-[10rem] flex-1">
+          <label for="filter-intent" class="text-xs font-medium text-muted-foreground">Purpose</label>
+          <select id="filter-intent" name="intent_filter"
+            class="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+            <option value="">Any purpose</option>
+            {% for value, label, _description in intent_options %}
+            <option value="{{ value }}" {% if filter_intent == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="min-w-[9rem]">
+          <label for="filter-stage" class="text-xs font-medium text-muted-foreground">Stage</label>
+          <select id="filter-stage" name="stage"
+            class="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+            <option value="">Any stage</option>
+            {% for value in journey_stages %}
+            <option value="{{ value }}" {% if filter_stage == value %}selected{% endif %}>{{ value|title }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="min-w-[9rem]">
+          <label for="filter-status" class="text-xs font-medium text-muted-foreground">Status</label>
+          <select id="filter-status" name="status"
+            class="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+            {% for value in journey_statuses %}
+            <option value="{{ value }}" {% if filter_status == value %}selected{% endif %}>{{ value|title }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <button type="submit"
+          class="inline-flex h-9 items-center justify-center rounded-md bg-secondary px-4 py-2 text-sm font-medium text-secondary-foreground hover:bg-secondary/80">
+          Apply
+        </button>
+        {% if journey_filters_active %}
+        <a href="{{ url_for('architecture_journey.index') }}"
+           class="inline-flex h-9 items-center justify-center rounded-md px-4 py-2 text-sm font-medium text-foreground hover:bg-accent hover:text-accent-foreground">
+          Clear filters
+        </a>
+        {% endif %}
+      </form>
       {% if architecture_journeys %}
       <div class="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {% for journey in architecture_journeys %}
@@ -169,12 +222,48 @@
         </a>
         {% endfor %}
       </div>
+      {% elif journey_filters_active %}
+      {# A filtered empty result and an empty account are different facts and lead
+         to different next steps. Telling someone with nine journeys that they have
+         none, because their filter matched nothing, sends them off to create a
+         tenth. #}
+      <div data-testid="journey-empty-filtered"
+           class="mt-4 rounded-xl border border-dashed border-border bg-muted/20 p-8 text-center">
+        <i data-lucide="filter-x" class="mx-auto h-8 w-8 text-muted-foreground" aria-hidden="true"></i>
+        <p class="mt-3 text-sm font-medium text-foreground">No journeys match these filters</p>
+        <p class="mt-1 text-sm text-muted-foreground">Your other journeys are still here.</p>
+        <a href="{{ url_for('architecture_journey.index') }}"
+           class="mt-4 inline-flex h-9 items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium text-foreground hover:bg-accent">
+          Clear filters
+        </a>
+      </div>
       {% else %}
-      <div class="mt-4 rounded-xl border border-dashed border-border bg-muted/20 p-8 text-center">
+      <div data-testid="journey-empty-none"
+           class="mt-4 rounded-xl border border-dashed border-border bg-muted/20 p-8 text-center">
         <i data-lucide="compass" class="mx-auto h-8 w-8 text-muted-foreground" aria-hidden="true"></i>
         <p class="mt-3 text-sm font-medium text-foreground">No architecture journeys yet</p>
         <p class="mt-1 text-sm text-muted-foreground">Frame the change above and your work will remain here to resume.</p>
       </div>
+      {% endif %}
+
+      {% if journey_pages > 1 %}
+      <nav data-testid="journey-pagination" aria-label="Journey pagination"
+           class="mt-4 flex items-center justify-between gap-4 border-t border-border pt-4">
+        <p class="text-sm text-muted-foreground">
+          Page <span class="tabular-nums">{{ journey_page }}</span> of
+          <span class="tabular-nums">{{ journey_pages }}</span>
+        </p>
+        <div class="flex gap-2">
+          {% if journey_page > 1 %}
+          <a href="{{ url_for('architecture_journey.index', page=journey_page - 1, intent_filter=filter_intent, stage=filter_stage, status=filter_status) }}"
+             class="inline-flex h-9 items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium text-foreground hover:bg-accent">Previous</a>
+          {% endif %}
+          {% if journey_page < journey_pages %}
+          <a href="{{ url_for('architecture_journey.index', page=journey_page + 1, intent_filter=filter_intent, stage=filter_stage, status=filter_status) }}"
+             class="inline-flex h-9 items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium text-foreground hover:bg-accent">Next</a>
+          {% endif %}
+        </div>
+      </nav>
       {% endif %}
 
       {% if solutions %}

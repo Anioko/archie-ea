@@ -16,6 +16,7 @@ from app.models.architecture_journey import (
     ARCHITECTURE_LAYERS,
     JOURNEY_INTENTS,
     JOURNEY_STAGES,
+    JOURNEY_STATUSES,
     OUTCOME_TYPES,
     ArchitectureJourney,
 )
@@ -236,12 +237,50 @@ def _advance_journey_state(solution_id, target_state_value):
 @login_required
 def index():
     """Purpose-led landing page — start or resume any architecture journey."""
+    # The list used to be `.limit(8)` on active journeys with no count, no filter
+    # and no pagination. A user with nine journeys saw eight and was told nothing
+    # about the ninth: a truncated list that does not admit to being truncated is a
+    # lie of omission on a screen whose whole job is "resume your work". And the
+    # hardcoded status="active" made a completed journey unreachable by any route.
+    #
+    # State lives in the URL and the server is the source of truth, following the
+    # applications list. An unknown filter value is refused rather than ignored,
+    # because ignoring it renders the full list under a filter the user believes is
+    # applied.
+    filter_intent = request.args.get("intent_filter") or None
+    filter_stage = request.args.get("stage") or None
+    filter_status = request.args.get("status") or "active"
+
+    if filter_intent is not None and filter_intent not in JOURNEY_INTENTS:
+        return api_error("Unknown journey intent filter", 400)
+    if filter_stage is not None and filter_stage not in JOURNEY_STAGES:
+        return api_error("Unknown journey stage filter", 400)
+    if filter_status not in JOURNEY_STATUSES:
+        return api_error("Unknown journey status filter", 400)
+
+    try:
+        page = max(1, int(request.args.get("page", 1)))
+    except (TypeError, ValueError):
+        page = 1
+    page_size = 9
+
+    journey_query = ArchitectureJourney.query.filter_by(
+        owner_id=current_user.id, status=filter_status
+    )
+    if filter_intent:
+        journey_query = journey_query.filter_by(intent=filter_intent)
+    if filter_stage:
+        journey_query = journey_query.filter_by(current_stage=filter_stage)
+
+    journey_total = journey_query.count()
+    journey_pages = max(1, (journey_total + page_size - 1) // page_size)
     journeys = (
-        ArchitectureJourney.query.filter_by(owner_id=current_user.id, status="active")
-        .order_by(ArchitectureJourney.updated_at.desc())
-        .limit(8)
+        journey_query.order_by(ArchitectureJourney.updated_at.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
         .all()
     )
+    journey_filters_active = bool(filter_intent or filter_stage or filter_status != "active")
     try:
         in_progress = (
             # The three ~ilike exclusions that used to sit here filtered out
@@ -269,6 +308,15 @@ def index():
     return render_template(
         "architecture_assistant/architecture_journey_hub.html",
         architecture_journeys=journeys,
+        journey_total=journey_total,
+        journey_page=page,
+        journey_pages=journey_pages,
+        journey_filters_active=journey_filters_active,
+        filter_intent=filter_intent,
+        filter_stage=filter_stage,
+        filter_status=filter_status,
+        journey_stages=JOURNEY_STAGES,
+        journey_statuses=JOURNEY_STATUSES,
         intent_options=JOURNEY_INTENT_OPTIONS,
         layer_options=JOURNEY_LAYER_OPTIONS,
         deliverable_options=JOURNEY_DELIVERABLE_OPTIONS,
