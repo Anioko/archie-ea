@@ -494,3 +494,112 @@ def test_workbench_labels_measured_missing_and_ai_distinctly(
     assert "Not recorded" in html
     assert "AI-generated" in html
     assert "Advisory only" in html
+
+
+# ── the AI briefing ──────────────────────────────────────────────────────────
+
+
+def test_briefing_prompt_inherits_the_governed_evidence_rules():
+    """The advisory surface must carry the platform's own AI governance.
+
+    Restating the rules locally would let this surface drift away from every
+    other architect persona the first time the shared rules changed.
+    """
+    from app.modules.ai_chat.services.architect_persona_charters import (
+        governed_evidence_rules,
+    )
+    from app.modules.solutions_strategic.v2.services import (
+        chief_architect_briefing_service as briefing,
+    )
+
+    prompt = briefing._build_prompt({"enterprise_lenses": []})
+
+    assert governed_evidence_rules().strip() in prompt
+    assert "NO FABRICATION" in prompt
+    # The model must be told that a null is an absence of evidence, not a zero —
+    # this is the single instruction that stops an outage reading as a clean bill.
+    assert "COULD NOT BE MEASURED" in prompt
+    assert "does not mean" in prompt
+
+
+def test_briefing_digest_passes_only_what_the_reader_can_see():
+    """The model may not be handed internal plumbing it would describe as findings."""
+    from app.modules.solutions_strategic.v2.services.chief_architect_briefing_service import (
+        evidence_digest,
+    )
+
+    digest = evidence_digest(
+        {
+            "scope": {"in_scope": 1},
+            "avg_conformance": None,
+            "attention": [
+                {
+                    "source_label": "Application portfolio",
+                    "title": "1 past end of life",
+                    "severity": "critical",
+                    "reason": "Unsupported.",
+                    "action_url": "/applications/",
+                    "evidence_url": "/applications/",
+                    "id": "application-past-eol",
+                }
+            ],
+            "enterprise": {
+                "lenses": [
+                    {
+                        "key": "application",
+                        "label": "Application portfolio",
+                        "state": "measured",
+                        "total": 1,
+                        "total_label": "application components",
+                        "measures": [
+                            {
+                                "label": "Past end of life",
+                                "value": 1,
+                                "of": 1,
+                                "source": "ApplicationComponent.end_of_life_date < today",
+                            }
+                        ],
+                        "missing": [
+                            {"label": "No owner", "value": 1, "of": 1, "source": "x"},
+                            {"label": "Not a gap", "value": 0, "of": 1, "source": "y"},
+                        ],
+                    }
+                ]
+            },
+        }
+    )
+
+    lens = digest["enterprise_lenses"][0]
+    assert lens["measured"][0]["source_column"]
+    # Zero-valued "missing" rows are not gaps and must not be listed as such.
+    assert [m["label"] for m in lens["missing_information"]] == ["No owner"]
+    # Internal routing keys must not reach the model.
+    item = digest["attention_queue"][0]
+    assert set(item) == {"domain", "title", "severity", "why"}
+
+
+def test_briefing_never_substitutes_a_fallback(monkeypatch):
+    """A briefing that cannot be trusted must raise, not be invented.
+
+    Prose carries no em dash, so a fabricated briefing is undetectable to the
+    reader — this is the one place a fallback would be most harmful.
+    """
+    from app.modules.solutions_strategic.v2.services import (
+        chief_architect_briefing_service as briefing,
+    )
+
+    monkeypatch.setattr(
+        briefing.LLMService,
+        "generate_from_prompt",
+        staticmethod(lambda *a, **k: "not json at all"),
+    )
+    with pytest.raises(briefing.ChiefArchitectBriefingError):
+        briefing.generate_chief_architect_briefing({})
+
+    monkeypatch.setattr(
+        briefing.LLMService,
+        "generate_from_prompt",
+        staticmethod(lambda *a, **k: '{"headline": "ok"}'),
+    )
+    with pytest.raises(briefing.ChiefArchitectBriefingError):
+        briefing.generate_chief_architect_briefing({})

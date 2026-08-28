@@ -1261,3 +1261,18 @@ def get_live_context(persona: str) -> Optional[str]:
     persona = PERSONA_ALIASES.get(persona, persona)
     builder = _CONTEXT_BUILDERS.get(persona)
     return builder() if builder else None
+
+
+def governed_evidence_rules() -> str:
+    """The six HARD RULES shared by every architect charter.
+
+    Exposed so a page-scoped advisory surface can inherit the same governance
+    without taking a whole persona charter. The Chief Architect Workbench
+    briefing uses this: it must carry the no-fabrication, cite-your-source and
+    propose-don't-dispose rules, but it deliberately does NOT use
+    ``build_architect_prompt``, because that appends a separately-queried live
+    data block. The workbench's entire contract is that the model can only refer
+    to figures already visible on the page, and a second, independently queried
+    block would let it cite numbers the reader cannot see.
+    """
+    return _EVIDENCE_RULES

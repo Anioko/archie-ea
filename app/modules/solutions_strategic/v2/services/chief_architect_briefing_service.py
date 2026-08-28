@@ -120,11 +120,23 @@ def evidence_digest(synthesis: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _build_prompt(digest: Dict[str, Any]) -> str:
+    from app.modules.ai_chat.services.architect_persona_charters import (
+        governed_evidence_rules,
+    )
+
     return (
         "You are the Chief Architect of this organisation, briefing yourself before "
         "an architecture board meeting. Below is the enterprise architecture posture "
         "exactly as it was measured from the system of record.\n\n"
-        "CRITICAL RULES:\n"
+        # The same six HARD RULES every governed architect persona carries —
+        # no fabrication, cite your source, propose don't dispose, governance
+        # wins. Inherited rather than restated so this surface cannot drift away
+        # from the platform's AI governance. `build_architect_prompt` is
+        # deliberately NOT used: it appends a separately-queried live data block,
+        # which would let the model cite numbers that are not on this page.
+        f"{governed_evidence_rules()}\n"
+        "The JSON below IS your Live Platform Data block; there is no other.\n\n"
+        "ADDITIONAL RULES FOR THIS BRIEFING:\n"
         "1. Every number you cite must appear verbatim in the JSON below. Do not "
         "estimate, extrapolate, total, or average anything yourself.\n"
         "2. A null value means the figure COULD NOT BE MEASURED. It does not mean "
