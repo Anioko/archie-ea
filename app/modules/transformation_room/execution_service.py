@@ -48,6 +48,7 @@ from app.modules.transformation_room.domain import (
     CommandConflict,
     CommandResult,
     DomainMutationResult,
+    KnownPreCommitTransient,
     NotAuthorised,
     NotFound,
 )
@@ -100,6 +101,22 @@ def _required_text(value: Any, field: str, limit: int) -> str:
     ):
         raise ValueError(f"invalid {field}")
     return normalized
+
+
+def _bounded_display_text(value: Any, field: str, limit: int) -> str:
+    """Return honest display text that cannot overflow a bounded projection."""
+    normalized = (
+        unicodedata.normalize("NFC", value).strip() if isinstance(value, str) else ""
+    )
+    if (
+        not normalized
+        or limit < 2
+        or any(ord(character) < 32 or ord(character) == 127 for character in normalized)
+    ):
+        raise ValueError(f"invalid {field}")
+    if len(normalized) <= limit:
+        return normalized
+    return f"{normalized[: limit - 1]}…"
 
 
 def _utc(value: datetime) -> datetime:
@@ -526,7 +543,11 @@ class TransformationExecutionService:
         predecessor_attempt_id: int | None = None,
     ) -> CommandResult:
         work_package_id = _positive_id(work_package_id, "work_package_id")
-        provider_key = _required_text(provider_key, "provider_key", 120).lower()
+        provider_key = _required_text(
+            _required_text(provider_key, "provider_key", 120).lower(),
+            "provider_key",
+            120,
+        )
         command_key = _required_text(command_key, "command_key", 255)
         if predecessor_attempt_id is not None:
             predecessor_attempt_id = _positive_id(
@@ -686,7 +707,9 @@ class TransformationExecutionService:
                 "status": "failed",
                 "external_key": None,
                 "response_digest": None,
-                "error_class": type(error).__name__,
+                "error_class": _bounded_display_text(
+                    type(error).__name__, "provider error class", 255
+                ),
                 "error_message": (error_message or type(error).__name__)[:4000],
             }
         cls._after_provider_before_finalise(attempt.id, final_payload)
@@ -712,7 +735,7 @@ class TransformationExecutionService:
                 if successor_id is not None:
                     attempt_id = successor_id
                     continue
-            now = datetime.now(timezone.utc)
+            now = _utc(CommandService._database_now(db.session))
             lease_expires_at = (
                 _utc(attempt.dispatch_lease_expires_at)
                 if attempt.dispatch_lease_expires_at is not None
@@ -762,7 +785,6 @@ class TransformationExecutionService:
             authorizer=cls.authorise_delivery_export_recovery(
                 attempt.id, natural_key
             ),
-            natural_key_resolver=CommandService.fail_closed_pre_envelope_recovery,
             handler=lambda session, claim: cls._recover_export_locked(
                 session, actor, payload, claim
             ),
@@ -840,7 +862,9 @@ class TransformationExecutionService:
                 else None
             )
             if lease_expires_at is not None and lease_expires_at > _utc(now):
-                raise CommandConflict("delivery_export_dispatch_still_owned")
+                raise KnownPreCommitTransient(
+                    "delivery_export_dispatch_still_owned"
+                )
             predecessor.status = "indeterminate"
             predecessor.dispatch_lease_expires_at = None
             predecessor.error_class = "DispatchOutcomeUnknown"
@@ -1287,7 +1311,7 @@ class TransformationExecutionService:
             raise CommandConflict("approved_action_not_frozen")
         expected_key = f"approved-option:{approved_option_id}"
         expected_title = _required_text(
-            (approved_option.content_json or {}).get("title"), "option title", 100
+            (approved_option.content_json or {}).get("title"), "option title", 255
         )
         canonical = []
         seen = set()
@@ -1309,7 +1333,7 @@ class TransformationExecutionService:
                 raise CommandConflict("option_version_not_approved")
             if (
                 action_key != expected_key
-                or _required_text(action.title, "action title", 100)
+                or _required_text(action.title, "action title", 255)
                 != expected_title
             ):
                 raise CommandConflict("approved_action_not_frozen")
@@ -1580,7 +1604,7 @@ class TransformationExecutionService:
             ]
             row = Benefit(
                 organization_id=actor.organization_id,
-                name=outcome.statement,
+                name=_bounded_display_text(outcome.statement, "outcome statement", 255),
                 description=outcome.statement,
                 benefit_type=None,
                 status="planned",

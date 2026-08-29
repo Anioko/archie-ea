@@ -58,11 +58,13 @@ def _source_identity(value: Any) -> str:
     identity = _required_text(value, "source_identity", 512)
     parsed = urlsplit(identity)
     if parsed.scheme and parsed.netloc:
-        return canonical_source_identity(parsed.scheme, identity)
+        canonical = canonical_source_identity(parsed.scheme, identity)
+        return _required_text(canonical, "source_identity", 512)
     adapter, separator, opaque = identity.partition(":")
     if not separator or not adapter.strip() or not opaque.strip():
         raise ValueError("source_identity requires canonical adapter identity")
-    return canonical_source_identity(adapter, identity)
+    canonical = canonical_source_identity(adapter, identity)
+    return _required_text(canonical, "source_identity", 512)
 
 
 def _decimal(value: Any) -> Decimal:

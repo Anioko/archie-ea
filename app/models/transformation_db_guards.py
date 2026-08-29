@@ -164,7 +164,7 @@ DECLARE
         extract(epoch FROM clock_timestamp()) * 1000
     )::bigint;
     expires_at_milliseconds bigint;
-    issued_nonce uuid := gen_random_uuid();
+    issued_nonce uuid := __ARCHIE_GEN_RANDOM_UUID__();
 BEGIN
     IF p_organization_id <= 0 OR p_actor_id <= 0
        OR p_valid_for_milliseconds < 50
@@ -3671,11 +3671,39 @@ def _guard_schema(connection) -> tuple[str, str]:
 
 
 def _render_guard_sql(connection, create_sql: str, quoted_schema: str) -> str:
-    del connection
-    return create_sql.replace("public.", f"{quoted_schema}.").replace(
+    rendered = create_sql.replace("public.", f"{quoted_schema}.").replace(
         "SET search_path = pg_catalog, public",
         f"SET search_path = pg_catalog, {quoted_schema}",
     )
+    if "__ARCHIE_GEN_RANDOM_UUID__" not in rendered:
+        return rendered
+    uuid_schema = connection.exec_driver_sql(
+        """
+        SELECT namespace.nspname
+        FROM pg_proc proc
+        JOIN pg_namespace namespace ON namespace.oid = proc.pronamespace
+        LEFT JOIN pg_depend dependency
+          ON dependency.classid = 'pg_proc'::regclass
+         AND dependency.objid = proc.oid
+         AND dependency.refclassid = 'pg_extension'::regclass
+         AND dependency.deptype = 'e'
+        LEFT JOIN pg_extension extension ON extension.oid = dependency.refobjid
+        WHERE proc.proname = 'gen_random_uuid'
+          AND proc.pronargs = 0
+          AND proc.prorettype = 'uuid'::regtype
+          AND (namespace.nspname = 'pg_catalog' OR extension.extname = 'pgcrypto')
+        ORDER BY (namespace.nspname = 'pg_catalog') DESC,
+                 namespace.nspname
+        LIMIT 1
+        """
+    ).scalar_one_or_none()
+    if uuid_schema is None:
+        raise RuntimeError("PostgreSQL gen_random_uuid() is required")
+    preparer = connection.dialect.identifier_preparer
+    qualified_uuid = (
+        f"{preparer.quote(uuid_schema)}.{preparer.quote('gen_random_uuid')}"
+    )
+    return rendered.replace("__ARCHIE_GEN_RANDOM_UUID__", qualified_uuid)
 
 
 def _qualified_name(connection, quoted_schema: str, object_name: str) -> str:

@@ -431,6 +431,11 @@ def test_measurement_identity_uses_canonical_adapter_uri_and_digest_key():
     assert len(key) == len("measurement:") + 64
     assert identity not in key and version not in key
 
+    expanding_identity = f"{'İ' * 250}:{'A' * 261}"
+    assert len(expanding_identity) == 512
+    with pytest.raises(ValueError, match="invalid source_identity"):
+        _source_identity(expanding_identity)
+
 
 @pytest.mark.parametrize(
     ("value", "reason"),

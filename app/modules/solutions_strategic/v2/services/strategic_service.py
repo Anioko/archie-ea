@@ -45,14 +45,18 @@ class StrategicService:
         """Create the canonical ArchiMate WorkPackage mirror in this transaction."""
         from app.models.archimate_core import ArchiMateElement
 
+        element_name = name if len(name) <= 100 else f"{name[:99]}…"
+        element_provenance = dict(provenance)
+        if element_name != name:
+            element_provenance["source_name"] = name
         element = ArchiMateElement(
             organization_id=organization_id,
-            name=name,
+            name=element_name,
             type="WorkPackage",
             layer="Implementation",
             description=description,
             scope="enterprise",
-            custom_properties=dict(provenance),
+            custom_properties=element_provenance,
         )
         session.add(element)
         session.flush()

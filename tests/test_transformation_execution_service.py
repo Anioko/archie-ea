@@ -8,7 +8,7 @@ from decimal import Decimal
 import hashlib
 import threading
 from types import SimpleNamespace
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy import create_engine, func, select, text
@@ -30,7 +30,11 @@ from app.models.transformation_decision import (
     TransformationOption,
     TransformationOptionVersion,
 )
-from app.models.transformation_db_guards import ensure_transformation_db_guards
+from app.models.transformation_db_guards import (
+    _ISSUE_COMMAND_CLAIM_CHALLENGE_SQL,
+    _render_guard_sql,
+    ensure_transformation_db_guards,
+)
 from app.models.transformation_execution import (
     CommandIdempotencyRecord,
     DeliveryExportAttempt,
@@ -101,7 +105,12 @@ def _user(session, organization_id, role):
 
 @pytest.fixture
 def make_execution_scope(db_session, make_org):
-    def make(*, technology_required=False):
+    def make(
+        *,
+        technology_required=False,
+        option_title="Controlled consolidation",
+        outcome_statement="Reduce annual run cost",
+    ):
         organization = make_org("execution")
         foreign_organization = make_org("execution-foreign")
         delivery_lead = _user(db_session, organization.id, "application_architect")
@@ -145,7 +154,7 @@ def make_execution_scope(db_session, make_org):
             organization_id=organization.id,
             programme_id=programme.id,
             workstream_id=workstream.id,
-            statement="Reduce annual run cost",
+            statement=outcome_statement,
             owner_id=outcome_owner.id,
             improvement_direction="decrease",
             target_date=date.today() + timedelta(days=180),
@@ -171,7 +180,7 @@ def make_execution_scope(db_session, make_org):
         option = TransformationOption(
             organization_id=organization.id,
             workstream_id=workstream.id,
-            title="Controlled consolidation",
+            title=option_title,
             action_type="consolidate",
             description="Consolidate the cited application estate",
             assumptions=["Service owners approve the cutover window"],
@@ -816,9 +825,87 @@ def test_production_command_fixture_has_no_public_relation_fallback(
                 "WHERE relation.oid=to_regclass('arb_canonical_conditions')"
             )
         )
+        uuid_schema = session.scalar(
+            text(
+                "SELECT namespace.nspname FROM pg_proc proc "
+                "JOIN pg_namespace namespace ON namespace.oid=proc.pronamespace "
+                "WHERE proc.proname='gen_random_uuid' AND proc.pronargs=0 "
+                "AND proc.prorettype='uuid'::regtype "
+                "ORDER BY (namespace.nspname='pg_catalog') DESC, "
+                "(namespace.nspname='public') DESC, namespace.nspname LIMIT 1"
+            )
+        )
+        challenge_body = session.scalar(
+            text(
+                "SELECT proc.prosrc FROM pg_proc proc "
+                "JOIN pg_namespace namespace ON namespace.oid=proc.pronamespace "
+                "WHERE namespace.nspname=:schema "
+                "AND proc.proname='archie_issue_command_claim_challenge'"
+            ),
+            {"schema": schema},
+        )
+        issued_nonce = session.scalar(
+            text(
+                "SELECT claim_nonce FROM archie_issue_command_claim_challenge("
+                ":organization_id, :actor_id, 1000)"
+            ),
+            {
+                "organization_id": committed_execution_scope.actor.organization_id,
+                "actor_id": committed_execution_scope.actor.user_id,
+            },
+        )
 
     assert search_path == schema
     assert condition_schema == schema
+    assert uuid_schema is not None
+    quoted_uuid_schema = db.engine.dialect.identifier_preparer.quote(uuid_schema)
+    assert f"{quoted_uuid_schema}.gen_random_uuid()" in challenge_body
+    assert str(UUID(issued_nonce)) == issued_nonce
+
+
+def test_claim_challenge_qualifies_pg12_public_uuid_function_without_search_path():
+    """PostgreSQL 12 pgcrypto installs gen_random_uuid outside pg_catalog."""
+
+    class Result:
+        @staticmethod
+        def scalar_one_or_none():
+            return "public"
+
+    class Quoter:
+        @staticmethod
+        def quote(value):
+            return f'"{value}"'
+
+    class Connection:
+        dialect = SimpleNamespace(identifier_preparer=Quoter())
+
+        @staticmethod
+        def exec_driver_sql(statement):
+            assert "proc.proname = 'gen_random_uuid'" in statement
+            assert "extension.extname = 'pgcrypto'" in statement
+            return Result()
+
+    rendered = _render_guard_sql(
+        Connection(), _ISSUE_COMMAND_CLAIM_CHALLENGE_SQL, '"isolated"'
+    )
+
+    assert '"public"."gen_random_uuid"()' in rendered
+    assert 'SET search_path = pg_catalog, "isolated"' in rendered
+    assert 'SET search_path = pg_catalog, "isolated", public' not in rendered
+
+
+def test_export_revalidates_provider_key_width_after_unicode_normalisation():
+    actor = ActorContext(1, 1, frozenset(), "provider-key-width")
+
+    with pytest.raises(ValueError, match="invalid provider_key"):
+        TransformationExecutionService.export_work_package(
+            actor=actor,
+            work_package_id=1,
+            provider_key="İ" * 120,
+            request={},
+            exporter=lambda *_args: {"external_key": "unused"},
+            command_key="provider-key-width",
+        )
 
 
 def test_command_service_classifies_postgresql_deadlock_as_retryable(monkeypatch):
@@ -1274,6 +1361,179 @@ def test_export_attempt_and_outbox_commit_before_provider_and_crash_replays(
         } == {provider_keys[0]}
 
 
+def test_premature_export_recovery_remains_retryable_after_database_lease_expiry(
+    app, monkeypatch, committed_execution_scope
+):
+    scope = committed_execution_scope
+    monkeypatch.setitem(
+        app.config, "TRANSFORMATION_EXPORT_DISPATCH_LEASE_SECONDS", 0.15
+    )
+    with app.app_context():
+        materialised = TransformationExecutionService.materialise(
+            actor=scope.actor,
+            decision_brief_version_id=scope.decision_brief_version_id,
+            actions=(scope.action,),
+            command_key=f"early-recovery-materialise-{uuid4().hex}",
+        )
+    work_package_id = materialised.object_ids["work_package_ids"][0]
+    provider_keys = []
+
+    def provider(_work_package, _request, provider_idempotency_key):
+        provider_keys.append(provider_idempotency_key)
+        return {"external_key": "ARCH-EARLY"}
+
+    crashes = iter((True, False))
+
+    def crash_once(*_args, **_kwargs):
+        if next(crashes):
+            raise RuntimeError("crash before early recovery")
+
+    monkeypatch.setattr(
+        TransformationExecutionService,
+        "_after_provider_before_finalise",
+        staticmethod(crash_once),
+        raising=False,
+    )
+    with app.app_context(), pytest.raises(
+        RuntimeError, match="crash before early recovery"
+    ):
+        TransformationExecutionService.export_work_package(
+            actor=scope.actor,
+            work_package_id=work_package_id,
+            provider_key="delivery-provider",
+            request={"project": "ARCH"},
+            exporter=provider,
+            command_key="early-recovery-root",
+        )
+    with Session(db.engine) as session:
+        predecessor = session.scalar(
+            select(DeliveryExportAttempt).where(
+                DeliveryExportAttempt.organization_id == scope.actor.organization_id,
+                DeliveryExportAttempt.work_package_id == work_package_id,
+            )
+        )
+        assert predecessor is not None
+        session.expunge(predecessor)
+
+    with app.app_context(), pytest.raises(
+        KnownPreCommitTransient, match="delivery_export_dispatch_still_owned"
+    ):
+        TransformationExecutionService._recover_export_attempt(
+            actor=scope.actor, attempt=predecessor
+        )
+    with Session(db.engine) as session:
+        recovery_receipt = session.scalar(
+            select(CommandIdempotencyRecord).where(
+                CommandIdempotencyRecord.organization_id
+                == scope.actor.organization_id,
+                CommandIdempotencyRecord.operation
+                == TransformationExecutionService.EXPORT_RECOVER_OPERATION,
+                CommandIdempotencyRecord.idempotency_key
+                == f"delivery-export-recover:{predecessor.id}",
+            )
+        )
+        assert recovery_receipt.status == "retryable_failure"
+
+    with db.engine.begin() as connection:
+        connection.execute(text("SELECT pg_sleep(0.2)"))
+    with app.app_context():
+        recovered = TransformationExecutionService.export_work_package(
+            actor=replace(scope.actor, request_id=f"recovered-{uuid4().hex}"),
+            work_package_id=work_package_id,
+            provider_key="delivery-provider",
+            request={"project": "ARCH"},
+            exporter=provider,
+            command_key="early-recovery-root",
+        )
+
+    assert recovered.response["exported"] is True
+    assert len(provider_keys) == 2 and len(set(provider_keys)) == 1
+    with Session(db.engine) as session:
+        attempts = tuple(
+            session.scalars(
+                select(DeliveryExportAttempt)
+                .where(
+                    DeliveryExportAttempt.organization_id
+                    == scope.actor.organization_id,
+                    DeliveryExportAttempt.work_package_id == work_package_id,
+                )
+                .order_by(DeliveryExportAttempt.id)
+            ).all()
+        )
+        assert [attempt.status for attempt in attempts] == [
+            "indeterminate",
+            "succeeded",
+        ]
+
+
+def test_export_wait_uses_database_clock_when_application_clock_is_ahead(
+    app, monkeypatch, committed_execution_scope
+):
+    scope = committed_execution_scope
+    monkeypatch.setitem(
+        app.config, "TRANSFORMATION_EXPORT_DISPATCH_LEASE_SECONDS", 0.12
+    )
+    with app.app_context():
+        materialised = TransformationExecutionService.materialise(
+            actor=scope.actor,
+            decision_brief_version_id=scope.decision_brief_version_id,
+            actions=(scope.action,),
+            command_key=f"skew-materialise-{uuid4().hex}",
+        )
+    work_package_id = materialised.object_ids["work_package_ids"][0]
+    provider_keys = []
+
+    def provider(_work_package, _request, provider_idempotency_key):
+        provider_keys.append(provider_idempotency_key)
+        return {"external_key": "ARCH-SKEW"}
+
+    crashes = iter((True, False))
+
+    def crash_once(*_args, **_kwargs):
+        if next(crashes):
+            raise RuntimeError("crash before skewed replay")
+
+    monkeypatch.setattr(
+        TransformationExecutionService,
+        "_after_provider_before_finalise",
+        staticmethod(crash_once),
+        raising=False,
+    )
+    with app.app_context(), pytest.raises(
+        RuntimeError, match="crash before skewed replay"
+    ):
+        TransformationExecutionService.export_work_package(
+            actor=scope.actor,
+            work_package_id=work_package_id,
+            provider_key="delivery-provider",
+            request={"project": "ARCH"},
+            exporter=provider,
+            command_key="skewed-clock-root",
+        )
+
+    class FutureApplicationClock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime.now(tz) + timedelta(days=1)
+
+    monkeypatch.setattr(
+        "app.modules.transformation_room.execution_service.datetime",
+        FutureApplicationClock,
+    )
+    with app.app_context():
+        recovered = TransformationExecutionService.export_work_package(
+            actor=replace(scope.actor, request_id=f"skew-retry-{uuid4().hex}"),
+            work_package_id=work_package_id,
+            provider_key="delivery-provider",
+            request={"project": "ARCH"},
+            exporter=provider,
+            command_key="skewed-clock-root",
+        )
+
+    assert recovered.response["exported"] is True
+    assert len(provider_keys) == 2 and len(set(provider_keys)) == 1
+
+
 def test_materialise_creates_one_canonical_set_replays_and_never_implies_solution(
     db_session, monkeypatch, make_execution_scope
 ):
@@ -1343,6 +1603,59 @@ def test_materialise_creates_one_canonical_set_replays_and_never_implies_solutio
             Solution.workstream_id == scope.workstream_id,
         )
     ) == 0
+
+
+@pytest.mark.parametrize("title_length", (101, 255))
+def test_materialisation_preserves_upstream_valid_option_title_width(
+    db_session, monkeypatch, make_execution_scope, title_length
+):
+    title = "T" * title_length
+    scope = make_execution_scope(option_title=title)
+    _install_command_harness(monkeypatch, db_session)
+
+    materialised = TransformationExecutionService.materialise(
+        actor=scope.actor,
+        decision_brief_version_id=scope.decision_brief_version_id,
+        actions=(scope.action,),
+        command_key=f"wide-option-title-{title_length}",
+    )
+
+    work_package = db_session.get(
+        WorkPackage, materialised.object_ids["work_package_ids"][0]
+    )
+    roadmap_item = db_session.get(
+        RoadmapItem, materialised.object_ids["roadmap_item_ids"][0]
+    )
+    archimate_element = db_session.get(
+        ArchiMateElement, work_package.archimate_element_id
+    )
+    assert work_package.name == title
+    assert roadmap_item.title == title
+    assert archimate_element.name == f"{title[:99]}…"
+    assert archimate_element.custom_properties["source_name"] == title
+
+
+def test_materialisation_preserves_full_outcome_statement_with_bounded_display_name(
+    db_session, monkeypatch, make_execution_scope
+):
+    statement = ("Reduce avoidable annual application run cost without service impact. " * 10)[
+        :600
+    ]
+    assert len(statement) > 255
+    scope = make_execution_scope(outcome_statement=statement)
+    _install_command_harness(monkeypatch, db_session)
+
+    materialised = TransformationExecutionService.materialise(
+        actor=scope.actor,
+        decision_brief_version_id=scope.decision_brief_version_id,
+        actions=(scope.action,),
+        command_key="long-outcome-statement",
+    )
+
+    benefit = db_session.get(Benefit, materialised.object_ids["benefit_ids"][0])
+    assert benefit.name == f"{statement[:254]}…"
+    assert len(benefit.name) == 255
+    assert benefit.description == statement
 
 
 def test_exact_measurement_truth_survives_incompatible_legacy_benefit_projection(
@@ -1818,3 +2131,38 @@ def test_export_failure_preserves_pending_work_and_completed_attempt_is_immutabl
     assert retry.status == "succeeded"
     assert retry.external_key == "ARCH-42"
     assert attempt.status == "failed"
+
+
+def test_export_failure_bounds_provider_error_class_to_persisted_width(
+    db_session, monkeypatch, make_execution_scope
+):
+    scope = make_execution_scope()
+    _install_command_harness(monkeypatch, db_session)
+    materialised = TransformationExecutionService.materialise(
+        actor=scope.actor,
+        decision_brief_version_id=scope.decision_brief_version_id,
+        actions=(scope.action,),
+        command_key="materialise-for-wide-provider-error",
+    )
+    work_package_id = materialised.object_ids["work_package_ids"][0]
+    provider_error_name = "ProviderFailure" + "X" * 300
+    provider_error = type(provider_error_name, (Exception,), {})
+
+    def unavailable(_work_package, _request, _provider_idempotency_key):
+        raise provider_error()
+
+    exported = TransformationExecutionService.export_work_package(
+        actor=scope.actor,
+        work_package_id=work_package_id,
+        provider_key="delivery-provider",
+        request={"project": "ARCH"},
+        exporter=unavailable,
+        command_key="wide-provider-error",
+    )
+    attempt = db_session.get(
+        DeliveryExportAttempt, exported.object_ids["delivery_export_attempt_id"]
+    )
+
+    assert attempt.status == "failed"
+    assert attempt.error_class == f"{provider_error_name[:254]}…"
+    assert provider_error_name in attempt.error_message
