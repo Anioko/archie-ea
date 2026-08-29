@@ -527,13 +527,14 @@ class ChiefArchitectService:
             ConformanceReviewer,
         )
 
-        # Real solutions only: a board-room synthesis must never showcase E2E
-        # artifacts. The weekly AutoTest purge can lag, so exclude the known
-        # test-name signatures here as defense-in-depth.
+        # The AutoTest exclusion that stood here is removed. Its rationale was
+        # that "the weekly AutoTest purge can lag" -- which is true, and is an
+        # argument for fixing the purge, not for hiding its backlog from the one
+        # screen most likely to prompt someone to fix it. It also silently
+        # discarded any customer solution whose name happened to match.
         solution_query = (
             Solution.query
             .filter(
-                ~Solution.name.like("J%-AutoTest-%"),
                 ~Solution.name.like("ZZ %"),
                 ~Solution.name.like("Untitled Solution%"),
             )

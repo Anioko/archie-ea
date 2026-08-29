@@ -5,7 +5,8 @@ Manages architecture decisions with ARB approval workflow.
 Provides CRUD operations, approval routing, and decision tracking.
 
 Reuses:
-- ArchitectureDecision model (app/models/architecture_decisions.py)
+- ArchitectureDecision model (app/models/architecture_decision.py -- the
+  TENANT-SCOPED mapping; see the import note below)
 - ARB workflow services (app/services/arb_workflow_service.py)
 """
 
@@ -14,7 +15,25 @@ from datetime import datetime
 from typing import Dict, List, Optional
 
 from app import db
-from app.models.architecture_decisions import ArchitectureDecision
+# architecture_decision (singular), NOT architecture_decisions (plural).
+#
+# The `architecture_decisions` table is mapped twice and both mappings are live in
+# the registry: the singular module's class carries TenantMixin, the plural one is a
+# bare db.Model. TenantMixin is what installs the ORM-event tenant filter and the
+# organization_id auto-set, so the plural mapping is not filtered on SELECT and
+# returns every organisation's rows without raising.
+#
+# This service is served over HTTP by app/modules/architecture/routes/adr_routes.py.
+# With the plural import, ADRService.list_adrs() returned other tenants' governance
+# records and get_adr() fetched them by id -- proven in
+# tests/test_adr_service_tenancy.py, which failed on exactly that before this line
+# changed. ADRs state what an organisation decided and what it rejected; a list that
+# silently includes another company's decisions is worse than an empty one, because
+# it reads as authoritative.
+#
+# The scoped mapping is a strict superset: all 20 attributes this service uses are
+# among its 32.
+from app.models.architecture_decision import ArchitectureDecision
 
 logger = logging.getLogger(__name__)
 
@@ -75,8 +94,16 @@ class ADRService:
     
     @staticmethod
     def get_adr(adr_id: int) -> Optional[ArchitectureDecision]:
-        """Get ADR by ID."""
-        return ArchitectureDecision.query.get(adr_id)
+        """Get ADR by ID, tenant-scoped.
+
+        Deliberately not Query.get(): per AGENTS.md it is tenant-scoped only on an
+        identity-map MISS. On a hit it returns the cached object with no SQL, so
+        do_orm_execute never runs and no tenant predicate is applied -- which is
+        precisely the shape that hands one organisation another's record.
+        """
+        return db.session.execute(
+            db.select(ArchitectureDecision).where(ArchitectureDecision.id == adr_id)
+        ).scalar_one_or_none()
     
     @staticmethod
     def list_adrs(

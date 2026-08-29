@@ -774,7 +774,9 @@ def _register_notifications(app, csrf):
             gen_items = []
 
         try:
-            from app import db as _db
+            # `db` was imported here only for the or_()/and_() that wrapped the
+            # removed fixture-name filter. Dropped with it rather than left as an
+            # unused import (ruff F401, and lint-core is gated at zero).
             from app.models.solution_governance import SolutionNotification
             from app.models.solution_models import Solution
 
@@ -782,16 +784,18 @@ def _register_notifications(app, csrf):
                 SolutionNotification.query
                 .filter_by(user_id=current_user.id)
                 .outerjoin(Solution, SolutionNotification.solution_id == Solution.id)
-                .filter(
-                    _db.or_(
-                        SolutionNotification.solution_id.is_(None),
-                        _db.and_(
-                            ~Solution.name.ilike("J1-AutoTest-%"),
-                            ~Solution.name.ilike("J7-E2E-Test%"),
-                            ~Solution.name.ilike("%-AutoTest-%"),
-                        ),
-                    )
-                )
+                # The three ~ilike exclusions removed here filtered solutions
+                # named 'J1-AutoTest-%', 'J7-E2E-Test%' and '%-AutoTest-%'.
+                # Those are this repository's own fixture names, hidden from
+                # what a real user sees. A customer who names a solution
+                # "Migration-AutoTest-Rig" lost it from their own screen with
+                # no explanation, and the filter made leaked test rows
+                # invisible, so the leak never got fixed. Purge the rows;
+                # do not hide them.
+                # The or_() wrapper existed only to let notifications with no
+                # solution survive that filter. With the filter gone it admits
+                # every row, so it is removed rather than left as a no-op that
+                # reads like a deliberate condition.
                 .order_by(SolutionNotification.created_at.desc())
                 .limit(20)
                 .all()

@@ -292,7 +292,9 @@ class KanbanProjectionService:
         from app.models.solution_models import Solution
 
         return (
-            ~Solution.name.like("J%-AutoTest-%"),
+            # AutoTest fixture-name exclusion removed; see
+            # scripts/check_test_data_in_queries.py for why hiding test rows
+            # from the product is the wrong half of the fix.
             ~Solution.name.like("ZZ %"),
             ~and_(
                 Solution.name.like("Untitled Solution%"),

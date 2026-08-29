@@ -78,11 +78,15 @@ BASELINE_PATH = REPO_ROOT / "verification_baseline.json"
 
 PASS, FAIL, SKIP = "PASS", "FAIL", "SKIP"
 
-# The PostgreSQL-backed suite takes just over 30 minutes on the supported
-# Windows development environment as of August 2026. Keep a bounded subprocess,
-# but leave enough headroom for normal machine-load variance so a progressing
-# suite is not reported as a false release failure.
-TEST_SUITE_TIMEOUT_SECONDS = 3600
+# The PostgreSQL-backed suite takes just over 30 minutes on the supported Windows
+# development environment as of August 2026, and ~59 minutes on slower hardware.
+#
+# Two fixes for one defect met here and both are kept. Default 3600, so normal
+# load variance does not report a progressing suite as a release failure. And
+# overridable, because on a machine where the suite exceeds the ceiling the gate
+# reported "timed out -> fix the failing test" on a tree with no failing test --
+# which reads as a red release and is not one.
+TEST_SUITE_TIMEOUT_SECONDS = int(os.environ.get("ARCHIE_TEST_SUITE_TIMEOUT", "3600"))
 
 
 @dataclass
@@ -294,13 +298,30 @@ def gate_nav_verified(baseline: int) -> Result:
     someone will find it by clicking.
 
     Counts from route_verification.json, written by running the suite with
-    ``-p scripts.route_verification_audit``. Stale or missing data reports the
-    full nav set as unverified, which fails loudly rather than passing on
-    absent evidence.
+    ``-p scripts.route_verification_audit``.
+
+    Missing data fails, but says so rather than inventing a score. That file is
+    untracked and exists in exactly one working copy, so on the same commit the
+    repository root reported ``[18 > 0]`` while a fresh worktree reported
+    ``[57 > 0]`` -- 57 being the entire navigation set, printed as though 57
+    routes had been found wanting. No clean clone could ever pass. A gate is held
+    to the rule it enforces: a number that means "not measured" is
+    indistinguishable from one that was.
     """
     proc = _run([sys.executable, "scripts/route_verification_audit.py", "--count"])
+    last = proc.stdout.strip().splitlines()[-1].strip() if proc.stdout.strip() else ""
+    if last == "unmeasured":
+        return Result(
+            "nav-verified",
+            FAIL,
+            "no audit data in this checkout, so nothing was measured -- this is "
+            "not a count of unverified routes.\n"
+            "route_verification.json is untracked and exists only where the suite "
+            "has been run.\n"
+            "Produce it with:  pytest -p scripts.route_verification_audit",
+        )
     try:
-        count = int(proc.stdout.strip().splitlines()[-1])
+        count = int(last)
     except (ValueError, IndexError):
         return Result("nav-verified", FAIL, f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
     if count > baseline:
@@ -724,6 +745,38 @@ def gate_null_filters() -> Result:
         return Result("null-filters", FAIL, f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
     detail = "" if count == 0 else "run scripts/check_null_filters.py to list them"
     return Result("null-filters", PASS if count == 0 else FAIL, detail, count, 0)
+
+
+def gate_test_data_in_queries() -> Result:
+    """Test fixture names filtered out of production queries. Gated at ZERO.
+
+    Found in the Architecture Journey hub, then in seven more places once there was
+    something to look with: production queries excluding rows named 'J1-AutoTest-%',
+    'J7-E2E-Test%' and '%-AutoTest-%'.
+
+    Wrong twice over. A customer who names a solution "Migration-AutoTest-Rig"
+    watches it disappear from their own screen with no explanation and no way to get
+    it back. And the exclusion makes leaked test rows invisible, so the leak is never
+    fixed and the workaround becomes permanent -- one site even documented the
+    reasoning as "the weekly AutoTest purge can lag", which is an argument for fixing
+    the purge, not for hiding its backlog from the screen most likely to prompt
+    someone to fix it.
+
+    Zero rather than a ratchet: unlike the fabricated-data backlog, this population
+    was small enough to clear in one pass, and every instance is the same defect with
+    the same fix. Escape hatch is 'test-filter-ok: <reason>' for the genuine case --
+    a cleanup CLI, a seeder.
+    """
+    proc = _run([sys.executable, "scripts/check_test_data_in_queries.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("test-data-in-queries", FAIL,
+                      "could not read a count from the checker:\n" + proc.stdout[-400:])
+    detail = "" if count == 0 else _run(
+        [sys.executable, "scripts/check_test_data_in_queries.py"]
+    ).stdout.strip()
+    return Result("test-data-in-queries", PASS if count == 0 else FAIL, detail, count, 0)
 
 
 def gate_fabricated_data_server(baseline: int) -> Result:
@@ -1393,6 +1446,13 @@ def build_gates(baseline: dict) -> list[Gate]:
              remediation="render an explicit empty/error state instead of inventing data; "
                          "if genuinely fine, append 'fabricated-ok: <reason>'",
              tags=["static", "ui"]),
+        Gate("test-data-in-queries",
+             "no production query hides rows named like test fixtures",
+             "zero", gate_test_data_in_queries,
+             remediation="purge the test rows instead of filtering them out of the "
+                         "product; a customer whose data matches the pattern loses it "
+                         "with no explanation",
+             tags=["static"]),
         Gate("fabricated-data-server",
              "server-side fabrication and dead escape-hatch markers",
              "ratchet",
@@ -1460,7 +1520,13 @@ def build_gates(baseline: dict) -> list[Gate]:
         Gate("nav-verified",
              "No new sidebar route goes untested",
              "ratchet", lambda: gate_nav_verified(baseline["nav_verified"]),
-             remediation="add a test that loads the route, or remove it from the sidebar",
+             remediation="if routes are listed above: add a test that loads each, or "
+                         "remove it from the sidebar. If it says NO AUDIT DATA, nothing "
+                         "was measured -- run 'pytest -p scripts.route_verification_audit' "
+                         "first; the two failures need opposite responses",
+             # Deliberately untagged, and that is a trap worth knowing about: an
+             # untagged gate is unreachable from EVERY --tag invocation, so only a
+             # bare `python scripts/verify.py` ever runs it.
              tags=[]),
     ]
 
@@ -1556,7 +1622,17 @@ def main(argv: list[str] | None = None) -> int:
         try:
             result = gate.runner()
         except subprocess.TimeoutExpired:
-            result = Result(gate.name, FAIL, "timed out")
+            # Say it timed out and how to give it longer. The old message ended
+            # "-> fix the failing test", which sends the reader hunting a failure
+            # that may not exist. A slow gate and a red gate are different findings
+            # and must not read the same.
+            result = Result(
+                gate.name,
+                FAIL,
+                "timed out -- the gate ran out of time, which is not the same as a "
+                "failing test. Raise ARCHIE_TEST_SUITE_TIMEOUT (seconds) if this "
+                "hardware is simply slower than the default allows.",
+            )
         except Exception as exc:  # noqa: BLE001 — a broken gate must report, not crash the run
             result = Result(gate.name, FAIL, f"{exc.__class__.__name__}: {exc}")
         result.duration_s = round(time.time() - started, 1)

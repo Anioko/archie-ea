@@ -368,6 +368,10 @@ def index():
             Solution.query.filter(
                 Solution.created_by_id == current_user.id,
                 Solution.governance_status.in_(["draft", "proposed", "in_progress"]),
+                # Fixture-name exclusions deliberately absent: they hid this
+                # repository's own test rows from a real user's hub, and would have
+                # hidden a customer's legitimately-named solution too. Purge test
+                # rows; do not filter them out of the product.
             )
             .order_by(Solution.updated_at.desc())
             .limit(5)
