@@ -774,7 +774,9 @@ def _register_notifications(app, csrf):
             gen_items = []
 
         try:
-            from app import db as _db
+            # `db` was imported here only for the or_()/and_() that wrapped the
+            # removed fixture-name filter. Dropped with it rather than left as an
+            # unused import (ruff F401, and lint-core is gated at zero).
             from app.models.solution_governance import SolutionNotification
             from app.models.solution_models import Solution
 
