@@ -116,6 +116,51 @@ class TransformationProgrammeService:
     """Owns programme intake and aggregate-level mutations."""
 
     @classmethod
+    def list_programmes(cls, *, actor: ActorContext) -> tuple[ProgrammeView, ...]:
+        """Return the actor's tenant-scoped programme portfolio.
+
+        Enterprise portfolio roles see the organisation portfolio.  Users who
+        have no such enterprise role see only programmes for which they hold a
+        currently-effective assignment.  A caller with neither is refused,
+        including when the tenant has no programmes, so an empty collection
+        cannot become an authorisation bypass.
+        """
+        with Session(db.engine) as session:
+            user = cls._load_runtime_user(session, actor)
+            server_roles = cls._server_roles(user)
+            statement = select(StrategicInitiative.id).where(
+                StrategicInitiative.organization_id == actor.organization_id,
+                StrategicInitiative.record_kind == "transformation_programme",
+            )
+            if not server_roles.intersection(READ_ROLES):
+                today = date.today()
+                assigned_programme_ids = select(
+                    ProgrammeRoleAssignment.programme_id
+                ).where(
+                    ProgrammeRoleAssignment.organization_id
+                    == actor.organization_id,
+                    ProgrammeRoleAssignment.user_id == actor.user_id,
+                    ProgrammeRoleAssignment.role.in_(READ_ROLES),
+                    ProgrammeRoleAssignment.effective_from <= today,
+                    or_(
+                        ProgrammeRoleAssignment.effective_to.is_(None),
+                        ProgrammeRoleAssignment.effective_to >= today,
+                    ),
+                )
+                if not session.scalar(select(assigned_programme_ids.exists())):
+                    raise NotAuthorised("programme_list_not_authorised")
+                statement = statement.where(
+                    StrategicInitiative.id.in_(assigned_programme_ids)
+                )
+            programme_ids = tuple(
+                session.scalars(statement.order_by(StrategicInitiative.id)).all()
+            )
+        return tuple(
+            cls.get_programme(actor=actor, programme_id=programme_id)
+            for programme_id in programme_ids
+        )
+
+    @classmethod
     def create_programme(
         cls,
         *,
@@ -700,8 +745,12 @@ class TransformationProgrammeService:
     @classmethod
     def get_programme(cls, *, actor: ActorContext, programme_id: int) -> ProgrammeView:
         programme = cls.load_programme_for_tenant(actor, programme_id)
-        cls.authorise_read(actor, programme)
+        readable_workstream_ids = cls.authorise_read(actor, programme)
         workstreams = cls.load_workstreams_for_tenant(actor, programme.id)
+        if readable_workstream_ids is not None:
+            workstreams = tuple(
+                row for row in workstreams if row.id in readable_workstream_ids
+            )
         from app.modules.transformation_room.gate_service import TransformationGateService
 
         next_action = None
@@ -714,6 +763,20 @@ class TransformationProgrammeService:
             programme.owner_id,
             next_action,
         )
+
+    @classmethod
+    def get_workstream(
+        cls, *, actor: ActorContext, programme_id: int, workstream_id: int
+    ) -> ProgrammeWorkstream:
+        """Return one workstream only when it is in the actor's read projection."""
+        programme = cls.get_programme(actor=actor, programme_id=programme_id)
+        if workstream_id not in programme.workstream_ids:
+            raise NotFound("workstream_not_found")
+        rows = cls.load_workstreams_for_tenant(actor, programme_id)
+        workstream = next((row for row in rows if row.id == workstream_id), None)
+        if workstream is None:
+            raise NotFound("workstream_not_found")
+        return workstream
 
     @classmethod
     def load_programme_for_tenant(cls, actor, programme_id):
@@ -744,13 +807,32 @@ class TransformationProgrammeService:
             persisted = cls._programme_query(session, actor, programme.id).scalar_one_or_none()
             if persisted is None:
                 raise NotFound("programme_not_found")
-            cls._require_programme_authority(
-                session,
-                actor,
-                persisted.id,
-                None,
-                READ_ROLES,
-                "programme_read_not_authorised",
+            user = cls._load_runtime_user(session, actor)
+            if cls._server_roles(user).intersection(READ_ROLES):
+                return None
+            today = date.today()
+            assignments = session.scalars(
+                select(ProgrammeRoleAssignment).where(
+                    ProgrammeRoleAssignment.organization_id
+                    == actor.organization_id,
+                    ProgrammeRoleAssignment.programme_id == persisted.id,
+                    ProgrammeRoleAssignment.user_id == actor.user_id,
+                    ProgrammeRoleAssignment.role.in_(READ_ROLES),
+                    ProgrammeRoleAssignment.effective_from <= today,
+                    or_(
+                        ProgrammeRoleAssignment.effective_to.is_(None),
+                        ProgrammeRoleAssignment.effective_to >= today,
+                    ),
+                )
+            ).all()
+            if not assignments:
+                raise NotAuthorised("programme_read_not_authorised")
+            if any(row.workstream_id is None for row in assignments):
+                return None
+            return frozenset(
+                row.workstream_id
+                for row in assignments
+                if row.workstream_id is not None
             )
 
     @staticmethod

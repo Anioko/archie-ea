@@ -775,13 +775,3 @@ def programme_unassigned_solutions():
             for s in rows
         ]
     })
-
-
-# The Transformation Room shares the established solution-design URL space so
-# canonical programme links remain stable without introducing a competing
-# blueprint or breadcrumb hierarchy.
-from app.modules.transformation_room.routes import (  # noqa: E402
-    register_transformation_room_routes,
-)
-
-register_transformation_room_routes(solution_design_bp)

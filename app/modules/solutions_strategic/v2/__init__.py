@@ -54,6 +54,13 @@ def register(app: Flask) -> None:
     from app.modules.architecture_assistant.routes.wizard_ai_routes import wizard_ai_bp
     from .routes.solution_export_routes import solution_export_bp
 
+    # One domain entrypoint owns both the established solution-design HTML
+    # routes and the canonical versioned API.  It must run before the shared
+    # solution_design blueprint is registered with Flask.
+    from app.modules.transformation_room import register as register_transformation_room
+
+    register_transformation_room(app)
+
     # Mark all blueprints as guardrailed BEFORE registration
     blueprints = [
         roadmap_bp, strategic_bp, strategic_risks_bp, solution_design_bp,

@@ -51,6 +51,19 @@ POLICY = {
 for _allowed in POLICY.values():
     _allowed.add("platform_admin")
 
+# The versioned Transformation Room collection is portfolio data.  These are
+# the persisted enterprise roles admitted by TransformationProgrammeService;
+# programme assignments grant narrower access once a programme exists.
+TRANSFORMATION_API_PATH = "/api/v1/transformation-programmes"
+TRANSFORMATION_API_PERMITTED = {
+    "enterprise_architect",
+    "business_architect",
+    "arb_member",
+    "portfolio_manager",
+    "cto",
+    "platform_admin",
+}
+
 
 def _login(page, base, email, _attempts=2):
     """Sign in, retrying once, and say which failure actually happened.
@@ -121,6 +134,39 @@ def page(browser):
     ctx.close()
 
 
+@pytest.fixture(scope="module")
+def transformation_users(seeded):
+    """Temporarily remove the fixture's cross-cutting Administrator role.
+
+    The canonical smoke seed gives every persona the legacy Administrator
+    primary role so unrelated older pages remain reachable.  Task 4 correctly
+    recognises that persisted role as transformation authority, so those users
+    cannot measure the enterprise-role matrix.  For these final API probes use
+    the ordinary Architect primary role, then restore the shared seed exactly.
+    """
+    from app import create_app, db
+    from app.models.user import Role, User
+
+    app = create_app("testing")
+    emails = seeded["emails"]
+    original_role_ids = {}
+    with app.app_context():
+        role = Role.query.filter_by(name="Architect").first()
+        assert role is not None
+        for email in emails.values():
+            user = User.query.filter_by(email=email).one()
+            original_role_ids[email] = user.role_id
+            user.role = role
+        db.session.commit()
+    try:
+        yield emails
+    finally:
+        with app.app_context():
+            for email, role_id in original_role_ids.items():
+                User.query.filter_by(email=email).one().role_id = role_id
+            db.session.commit()
+
+
 @pytest.mark.parametrize("archetype", ARCHETYPES)
 def test_archetype_reaches_exactly_what_policy_permits(archetype, page, live_server, seeded):
     """One row of the matrix per archetype.
@@ -166,3 +212,29 @@ def test_no_archetype_reaches_another_personas_section_unauthenticated(page, liv
         if served:
             leaked.append(path)
     assert not leaked, "these are reachable without signing in at all: %s" % leaked
+
+
+@pytest.mark.parametrize("archetype", ARCHETYPES)
+def test_transformation_api_authorisation_matrix(
+    archetype, page, live_server, transformation_users
+):
+    """The live versioned endpoint enforces its server-owned portfolio roles."""
+    _login(page, live_server, transformation_users[archetype])
+    expected = ALLOWED if archetype in TRANSFORMATION_API_PERMITTED else DENIED
+    actual = _observe(page, live_server, TRANSFORMATION_API_PATH)
+    assert actual == expected, (
+        f"{archetype} reached {TRANSFORMATION_API_PATH}: expected {expected}, got {actual}"
+    )
+
+
+def test_transformation_api_rejects_anonymous_browser_session(page, live_server):
+    response = page.goto(
+        live_server + TRANSFORMATION_API_PATH,
+        wait_until="domcontentloaded",
+        timeout=PAGE_TIMEOUT,
+    )
+    assert response is not None
+    assert response.status == 401
+    body = response.json()
+    assert body["data"] is None
+    assert body["errors"][0]["code"] == "not_authenticated"

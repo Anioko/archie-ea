@@ -152,6 +152,9 @@ REQUIRED_ENDPOINTS = [
     "dashboard.health_scorecard",
     "dashboard_pages.rationalization_scorecard",
     "unified_applications.application_list",
+    "solution_design.programmes_list",
+    "solution_design.transformation_programme_overview",
+    "transformation_api.create_programme",
 ]
 
 
