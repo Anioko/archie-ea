@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from app import db
 from app.models.archimate_core import ArchiMateElement
 from app.models.architecture_review_board import ARBReviewCycle, ARBReviewItem
+from app.models.arb_decision_event import ARBCondition
 from app.models.benefit import Benefit
 from app.models.implementation_migration import WorkPackage
 from app.models.organization import Organization
@@ -43,7 +44,10 @@ from app.models.transformation_programme import (
     ProgrammeWorkstream,
 )
 from app.models.user import User
-from app.modules.transformation_room.command_service import canonical_request_digest
+from app.modules.transformation_room.command_service import (
+    CommandService,
+    canonical_request_digest,
+)
 from app.modules.transformation_room.decision_service import (
     DecisionBriefService,
     TransformationOptionService,
@@ -58,6 +62,7 @@ from app.modules.transformation_room.domain import (
     CommandConflict,
     CommandResult,
     GateBlocker,
+    KnownPreCommitTransient,
     NotFound,
 )
 from app.modules.transformation_room.gate_service import TransformationGateService
@@ -409,7 +414,7 @@ def committed_execution_scope(app):
             connection.execute(text(f'CREATE SCHEMA "{schema}"'))
         isolated_engine = create_engine(
             public_engine.url,
-            connect_args={"options": f"-csearch_path={schema},public"},
+            connect_args={"options": f"-csearch_path={schema}"},
         )
         original_engine = db.engines[None]
         db.session.remove()
@@ -417,6 +422,7 @@ def committed_execution_scope(app):
         try:
             table_names = (
                 "organizations",
+                "soc2_audit_log",
                 "roles",
                 "users",
                 "strategic_initiatives",
@@ -424,6 +430,13 @@ def committed_execution_scope(app):
                 "programme_role_assignments",
                 "programme_outcome_commitments",
                 "measure_definitions",
+                "application_components",
+                "transformation_candidates",
+                "candidate_overlap_dispositions",
+                "candidate_signals",
+                "evidence_records",
+                "evidence_claim_heads",
+                "evidence_requests",
                 "transformation_options",
                 "transformation_option_versions",
                 "decision_briefs",
@@ -435,17 +448,25 @@ def committed_execution_scope(app):
                 "strategic_roadmap_items",
                 "benefits",
                 "solutions",
+                "solution_analysis_sessions",
                 "command_idempotency_records",
                 "operation_results",
                 "command_materialisations",
                 "transformation_outbox_events",
                 "delivery_export_attempts",
                 "outcome_measurements",
+                "arb_canonical_conditions",
             )
-            for table_name in table_names:
-                db.metadata.tables[table_name].create(
-                    bind=isolated_engine, checkfirst=False
-                )
+            # LIKE copies the canonical table shapes, checks, defaults and indexes
+            # without copying rows or foreign keys to unrelated public relations.
+            with isolated_engine.begin() as connection:
+                for table_name in table_names:
+                    connection.execute(
+                        text(
+                            f'CREATE TABLE "{table_name}" '
+                            f'(LIKE public."{table_name}" INCLUDING ALL)'
+                        )
+                    )
             ensure_transformation_db_guards(db.session.connection())
             db.session.commit()
             session = db.session
@@ -682,6 +703,34 @@ def committed_execution_scope(app):
                     )
                 )
                 session.flush()
+                review = session.scalar(
+                    select(ARBReviewItem).where(
+                        ARBReviewItem.organization_id == organization.id,
+                        ARBReviewItem.review_cycle_id == cycle.id,
+                    )
+                )
+                now = datetime.now(timezone.utc)
+                session.add(
+                    ARBCondition(
+                        organization_id=organization.id,
+                        decision_event_id=cycle.id,
+                        review_cycle_id=cycle.id,
+                        review_item_id=review.id,
+                        condition_number="C-1",
+                        description="Operate under the approved compensating control",
+                        category="delivery",
+                        status="waived",
+                        waived_at=now - timedelta(days=1),
+                        waived_by_id=delivery_lead.id,
+                        waiver_reason="Approved time-bound execution waiver",
+                        waiver_expires_at=now + timedelta(hours=1),
+                        compensating_control="Daily delivery assurance review",
+                        legacy_lifecycle_provenance={
+                            "classification": "pre_c3_waiver"
+                        },
+                    )
+                )
+                session.flush()
                 scope = ExecutionScope(
                     ActorContext(
                         delivery_lead.id,
@@ -751,6 +800,116 @@ def _run_two_session_race(app, first, second):
     assert errors == []
     assert len(results) == 2
     return results
+
+
+def test_production_command_fixture_has_no_public_relation_fallback(
+    app, committed_execution_scope
+):
+    """Catches production-path tests reading colliding rows from public."""
+    with app.app_context(), Session(db.engine) as session:
+        schema = session.scalar(text("SELECT current_schema()"))
+        search_path = session.scalar(text("SELECT current_setting('search_path')"))
+        condition_schema = session.scalar(
+            text(
+                "SELECT namespace.nspname FROM pg_class relation "
+                "JOIN pg_namespace namespace ON namespace.oid=relation.relnamespace "
+                "WHERE relation.oid=to_regclass('arb_canonical_conditions')"
+            )
+        )
+
+    assert search_path == schema
+    assert condition_schema == schema
+
+
+def test_command_service_classifies_postgresql_deadlock_as_retryable(monkeypatch):
+    """A known pre-commit PostgreSQL conflict must release the durable claim."""
+    claim = CommandClaim(1, 1, "a" * 64, "b" * 64, "natural", "{}", "c" * 64)
+    actor = ActorContext(1, 1, frozenset(), "request")
+    marked = []
+
+    class DeadlockDetected(Exception):
+        pgcode = "40P01"
+
+    monkeypatch.setattr(
+        CommandService,
+        "claim_or_reconcile",
+        classmethod(lambda cls, **kwargs: claim),
+    )
+
+    def fail_claim(cls, **kwargs):
+        raise DBAPIError("SELECT 1", {}, DeadlockDetected("deadlock"), False)
+
+    monkeypatch.setattr(CommandService, "_execute_claim", classmethod(fail_claim))
+    monkeypatch.setattr(
+        CommandService,
+        "mark_retryable",
+        classmethod(lambda cls, **kwargs: marked.append(kwargs) or True),
+    )
+
+    with pytest.raises(KnownPreCommitTransient, match="database_transaction_retry"):
+        CommandService.execute(
+            actor=actor,
+            operation="outcome.measure",
+            idempotency_key="deadlock",
+            payload={"fact": 1},
+            natural_key="natural",
+            authorizer=lambda *_args: None,
+            handler=lambda *_args: None,
+        )
+
+    assert marked == [
+        {
+            "actor": actor,
+            "claim": claim,
+            "error_class": "PostgreSQLTransient:40P01",
+        }
+    ]
+
+
+def test_exact_materialisation_replay_survives_later_terminal_and_expired_state(
+    app, committed_execution_scope
+):
+    """Catches mutable lifecycle/waiver checks rejecting an immutable replay."""
+    scope = committed_execution_scope
+    with app.app_context():
+        first = TransformationExecutionService.materialise(
+            actor=scope.actor,
+            decision_brief_version_id=scope.decision_brief_version_id,
+            actions=(scope.action,),
+            command_key=f"materialise-first-{uuid4().hex}",
+        )
+        db.session.remove()
+        with Session(db.engine) as session, session.begin():
+            programme = session.get(StrategicInitiative, scope.programme_id)
+            workstream = session.get(ProgrammeWorkstream, scope.workstream_id)
+            condition = session.scalar(
+                select(ARBCondition).where(
+                    ARBCondition.organization_id == scope.actor.organization_id
+                )
+            )
+            programme.status = "archived"
+            programme.archived_at = datetime.now()
+            workstream.lifecycle_stage = "completed"
+            workstream.archived_at = datetime.now()
+            condition.waiver_expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+
+        replay = TransformationExecutionService.materialise(
+            actor=replace(scope.actor, request_id=f"replay-{uuid4().hex}"),
+            decision_brief_version_id=scope.decision_brief_version_id,
+            actions=(scope.action,),
+            command_key=f"materialise-replay-{uuid4().hex}",
+        )
+        assert replay.idempotent is True
+        assert replay.object_ids == first.object_ids
+
+        altered = replace(scope.action, target_date=scope.action.target_date + timedelta(days=1))
+        with pytest.raises(CommandConflict, match="execution_aggregate_not_approved"):
+            TransformationExecutionService.materialise(
+                actor=replace(scope.actor, request_id=f"altered-{uuid4().hex}"),
+                decision_brief_version_id=scope.decision_brief_version_id,
+                actions=(altered,),
+                command_key=f"materialise-altered-{uuid4().hex}",
+            )
 
 
 def test_production_command_service_two_session_races_replay_canonical_ids(
@@ -907,7 +1066,7 @@ def test_production_command_service_two_session_races_replay_canonical_ids(
         ),
     )
     assert exports[0].object_ids == exports[1].object_ids
-    assert provider_keys and set(provider_keys) == {provider_keys[0]}
+    assert len(provider_keys) == 1
     with Session(db.engine) as session:
         assert session.scalar(
             select(func.count()).select_from(DeliveryExportAttempt).where(
@@ -918,10 +1077,95 @@ def test_production_command_service_two_session_races_replay_canonical_ids(
         ) == 1
 
 
+def test_sibling_benefit_measurements_lock_outcome_before_benefits_without_deadlock(
+    app, monkeypatch, committed_execution_scope
+):
+    """Catches Benefit-first sibling locks deadlocking concurrent ingestion."""
+    scope = committed_execution_scope
+    with app.app_context():
+        materialised = TransformationExecutionService.materialise(
+            actor=scope.actor,
+            decision_brief_version_id=scope.decision_brief_version_id,
+            actions=(scope.action,),
+            command_key=f"sibling-materialise-{uuid4().hex}",
+        )
+        first_id = materialised.object_ids["benefit_ids"][0]
+        db.session.remove()
+        with Session(db.engine) as session, session.begin():
+            first = session.get(Benefit, first_id)
+            second = Benefit(
+                organization_id=first.organization_id,
+                name="Service continuity",
+                status="realising",
+                measure="Unplanned outage minutes",
+                unit="minutes/year",
+                baseline_value=Decimal("100.00"),
+                target_value=Decimal("50.00"),
+                owner_id=first.owner_id,
+                strategic_initiative_id=first.strategic_initiative_id,
+                programme_workstream_id=first.programme_workstream_id,
+                outcome_commitment_id=first.outcome_commitment_id,
+                work_package_id=first.work_package_id,
+                materialisation_key=uuid4().hex + uuid4().hex,
+            )
+            session.add(second)
+            session.flush()
+            second_id = second.id
+            outcome_id = first.outcome_commitment_id
+
+    original_load = OutcomeMeasurementService._load_benefit
+    benefit_lock_barrier = threading.Barrier(2, timeout=20)
+
+    def expose_old_lock_inversion(session, actor, benefit_id, *, lock):
+        row = original_load(session, actor, benefit_id, lock=lock)
+        if lock and benefit_id in {first_id, second_id}:
+            benefit_lock_barrier.wait()
+        return row
+
+    monkeypatch.setattr(
+        OutcomeMeasurementService, "_load_benefit", expose_old_lock_inversion
+    )
+    observed_at = datetime.now(timezone.utc)
+    measured = _run_two_session_race(
+        app,
+        lambda: OutcomeMeasurementService.record(
+            actor=replace(scope.outcome_actor, request_id=f"sibling-a-{uuid4().hex}"),
+            benefit_id=first_id,
+            value=Decimal("700.00"),
+            unavailable_reason=None,
+            observed_at=observed_at,
+            source_identity="finance-ledger:sibling-a",
+            source_version="v1",
+            command_key=f"sibling-a-{uuid4().hex}",
+        ),
+        lambda: OutcomeMeasurementService.record(
+            actor=replace(scope.outcome_actor, request_id=f"sibling-b-{uuid4().hex}"),
+            benefit_id=second_id,
+            value=Decimal("75.00"),
+            unavailable_reason=None,
+            observed_at=observed_at,
+            source_identity="availability:sibling-b",
+            source_version="v1",
+            command_key=f"sibling-b-{uuid4().hex}",
+        ),
+    )
+
+    assert len(measured) == 2
+    with Session(db.engine) as session:
+        assert session.get(ProgrammeOutcomeCommitment, outcome_id).lifecycle == "not_realised"
+        assert session.scalar(
+            select(func.count()).select_from(OutcomeMeasurement).where(
+                OutcomeMeasurement.organization_id == scope.actor.organization_id,
+                OutcomeMeasurement.benefit_id.in_((first_id, second_id)),
+            )
+        ) == 2
+
+
 def test_export_attempt_and_outbox_commit_before_provider_and_crash_replays(
     app, monkeypatch, committed_execution_scope
 ):
     scope = committed_execution_scope
+    app.config["TRANSFORMATION_EXPORT_DISPATCH_LEASE_SECONDS"] = 0.05
     with app.app_context():
         materialised = TransformationExecutionService.materialise(
             actor=scope.actor,
@@ -935,11 +1179,13 @@ def test_export_attempt_and_outbox_commit_before_provider_and_crash_replays(
     def provider(_work_package, _request, provider_idempotency_key):
         with Session(db.engine) as session:
             attempt = session.scalar(
-                select(DeliveryExportAttempt).where(
+                select(DeliveryExportAttempt)
+                .where(
                     DeliveryExportAttempt.organization_id
                     == scope.actor.organization_id,
                     DeliveryExportAttempt.work_package_id == work_package_id,
                 )
+                .order_by(DeliveryExportAttempt.id.desc())
             )
             assert attempt is not None and attempt.status == "in_progress"
             assert session.scalar(
@@ -949,7 +1195,7 @@ def test_export_attempt_and_outbox_commit_before_provider_and_crash_replays(
                     OperationOutboxEvent.event_type
                     == "transformation.delivery_export_requested",
                 )
-            ) == 1
+            ) == len(provider_keys) + 1
             prepare_receipt = session.scalar(
                 select(CommandIdempotencyRecord).where(
                     CommandIdempotencyRecord.organization_id
@@ -1018,7 +1264,14 @@ def test_export_attempt_and_outbox_commit_before_provider_and_crash_replays(
                 )
             ).all()
         )
-        assert len(attempts) == 1 and attempts[0].status == "succeeded"
+        assert len(attempts) == 2
+        attempts = tuple(sorted(attempts, key=lambda row: row.id))
+        assert [row.status for row in attempts] == ["indeterminate", "succeeded"]
+        assert attempts[1].predecessor_attempt_id == attempts[0].id
+        assert attempts[0].attempt_key != attempts[1].attempt_key
+        assert {
+            row.provider_idempotency_key for row in attempts
+        } == {provider_keys[0]}
 
 
 def test_materialise_creates_one_canonical_set_replays_and_never_implies_solution(
@@ -1090,6 +1343,71 @@ def test_materialise_creates_one_canonical_set_replays_and_never_implies_solutio
             Solution.workstream_id == scope.workstream_id,
         )
     ) == 0
+
+
+def test_exact_measurement_truth_survives_incompatible_legacy_benefit_projection(
+    db_session, monkeypatch, make_execution_scope
+):
+    """Catches six-decimal/range/unit narrowing in the compatibility Benefit."""
+    scope = make_execution_scope()
+    measure = db_session.scalar(
+        select(MeasureDefinition).where(
+            MeasureDefinition.organization_id == scope.actor.organization_id
+        )
+    )
+    long_unit = "u" * 64
+    maximum = Decimal("999999999999999999.999999")
+    measure.currency = None
+    measure.baseline_amount = None
+    measure.target_amount = None
+    measure.unit = long_unit
+    measure.baseline_value = maximum
+    measure.target_value = Decimal("999999999999999998.123456")
+    db_session.flush()
+    _install_command_harness(monkeypatch, db_session)
+
+    materialised = TransformationExecutionService.materialise(
+        actor=scope.actor,
+        decision_brief_version_id=scope.decision_brief_version_id,
+        actions=(scope.action,),
+        command_key="wide-measure-materialise",
+    )
+    benefit = db_session.get(Benefit, materialised.object_ids["benefit_ids"][0])
+    assert measure.unit == long_unit
+    assert measure.baseline_value == maximum
+    assert benefit.unit is None
+    assert benefit.baseline_value is None
+    assert benefit.target_value is None
+
+    observed_at = datetime.now(timezone.utc)
+    first = OutcomeMeasurementService.record(
+        actor=scope.outcome_actor,
+        benefit_id=benefit.id,
+        value=maximum,
+        unavailable_reason=None,
+        observed_at=observed_at,
+        source_identity="telemetry:wide-contract",
+        source_version="v1",
+        command_key="wide-measure-record",
+    )
+    replay = OutcomeMeasurementService.record(
+        actor=scope.outcome_actor,
+        benefit_id=benefit.id,
+        value=maximum,
+        unavailable_reason=None,
+        observed_at=observed_at,
+        source_identity="telemetry:wide-contract",
+        source_version="v1",
+        command_key="wide-measure-replay",
+    )
+    observation = db_session.get(
+        OutcomeMeasurement, first.object_ids["outcome_measurement_id"]
+    )
+
+    assert observation.value == maximum
+    assert benefit.actual_value is None
+    assert first.response["actual_value"] == "999999999999999999.999999"
+    assert replay.response == first.response
 
 
 def test_governance_gate_blocks_conditional_and_expired_waiver_but_accepts_fulfilment():

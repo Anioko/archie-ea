@@ -559,6 +559,94 @@ def test_task9_history_tables_and_dropped_triggers_reconcile_idempotently(
                             "DELETE FROM outcome_measurements "
                             "WHERE id=903 AND organization_id=1"
                         )
+                        )
+
+
+def test_task9_history_guard_definition_drift_is_detected_and_repaired(
+    app, pre_feature_transformation_schema
+):
+    """Catches permissive bodies and wrong trigger function/event/timing shapes."""
+    _schema_name, isolated_engine = pre_feature_transformation_schema
+    with app.app_context():
+        _added, failed, _missing, _blocking = _reconcile(dry_run=False)
+        assert failed == []
+        with isolated_engine.begin() as connection:
+            connection.execute(
+                text(
+                    "CREATE OR REPLACE FUNCTION "
+                    "archie_reject_outcome_measurement_mutation() "
+                    "RETURNS trigger LANGUAGE plpgsql AS $$ "
+                    "BEGIN RETURN OLD; END; $$; "
+                    "CREATE OR REPLACE FUNCTION archie_wrong_history_guard() "
+                    "RETURNS trigger LANGUAGE plpgsql AS $$ "
+                    "BEGIN RETURN NULL; END; $$; "
+                    "DROP TRIGGER trg_reject_outcome_measurement_mutation "
+                    "ON outcome_measurements; "
+                    "CREATE TRIGGER trg_reject_outcome_measurement_mutation "
+                    "BEFORE UPDATE OF value ON outcome_measurements FOR EACH ROW "
+                    "WHEN (OLD.value IS DISTINCT FROM NEW.value) EXECUTE FUNCTION "
+                    "archie_reject_outcome_measurement_mutation(); "
+                    "DROP TRIGGER trg_guard_delivery_export_attempt_mutation "
+                    "ON delivery_export_attempts; "
+                    "CREATE TRIGGER trg_guard_delivery_export_attempt_mutation "
+                    "AFTER UPDATE ON outcome_measurements FOR EACH STATEMENT "
+                    "EXECUTE FUNCTION archie_wrong_history_guard()"
+                )
+            )
+            assert {
+                "function_body:archie_reject_outcome_measurement_mutation",
+                "trigger_definition:delivery_export_attempts."
+                "trg_guard_delivery_export_attempt_mutation",
+                "trigger_definition:outcome_measurements."
+                "trg_reject_outcome_measurement_mutation",
+            } <= set(inspect_execution_history_immutability(connection))
+
+        repaired, repair_failed, _missing, _blocking = _reconcile(dry_run=False)
+        assert repair_failed == []
+        assert {
+            "execution_history_guards:function_body:"
+            "archie_reject_outcome_measurement_mutation",
+            "execution_history_guards:trigger_definition:"
+            "delivery_export_attempts.trg_guard_delivery_export_attempt_mutation",
+            "execution_history_guards:trigger_definition:"
+            "outcome_measurements.trg_reject_outcome_measurement_mutation",
+        } <= set(repaired)
+
+        with isolated_engine.begin() as connection:
+            assert inspect_execution_history_immutability(connection) == []
+            connection.execute(
+                text(
+                    "INSERT INTO work_packages (id, name, organization_id) "
+                    "VALUES (911, 'Task 9 definition guarded work', 1); "
+                    "INSERT INTO delivery_export_attempts "
+                    "(id, organization_id, work_package_id, provider_key, attempt_key, "
+                    " request_json, status, error_class, error_message, attempted_by_id, "
+                    " completed_at) VALUES "
+                    "(912, 1, 911, 'delivery', :attempt_key, '{}'::json, 'failed', "
+                    " 'ConnectionError', 'unavailable', 1, clock_timestamp()); "
+                    "INSERT INTO outcome_measurements "
+                    "(id, organization_id, benefit_id, value, observed_at, "
+                    " source_identity, source_version, recorded_by_id) VALUES "
+                    "(913, 1, 200, 1.000000, clock_timestamp(), "
+                    " 'ledger:run-cost', 'v1', 1)"
+                ),
+                {"attempt_key": "8" * 64},
+            )
+            with pytest.raises(Exception, match="completed delivery export attempts"):
+                with connection.begin_nested():
+                    connection.execute(
+                        text(
+                            "DELETE FROM delivery_export_attempts "
+                            "WHERE id=912 AND organization_id=1"
+                        )
+                    )
+            with pytest.raises(Exception, match="outcome measurements are append-only"):
+                with connection.begin_nested():
+                    connection.execute(
+                        text(
+                            "UPDATE outcome_measurements SET value=2 "
+                            "WHERE id=913 AND organization_id=1"
+                        )
                     )
 
 

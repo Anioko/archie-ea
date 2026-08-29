@@ -1197,17 +1197,31 @@ class TransformationGateService:
                 for measure in snapshot.measures
                 if _value(measure, "outcome_commitment_id") == outcome_id
                 and _text(measure, "metric_name") == _text(benefit, "measure")
-                and _text(measure, "unit") == _text(benefit, "unit")
             ]
             matching_measure = next(
                 (
                     measure
                     for measure in measures
-                    if cls._measure_target(measure) == _value(benefit, "target_value")
+                    if _text(measure, "unit")
+                    and cls._measure_target(measure) is not None
+                    and _finite(cls._measure_target(measure))
+                    and (cls._measure_baseline(measure) is not None
+                         or _text(measure, "unavailable_reason"))
                     and (
-                        _value(benefit, "baseline_value") is not None
-                        or cls._measure_baseline(measure) is not None
-                        or _text(measure, "unavailable_reason")
+                        (
+                            _text(measure, "unit") == _text(benefit, "unit")
+                            and cls._measure_target(measure)
+                            == _value(benefit, "target_value")
+                            and (
+                                _value(benefit, "baseline_value") is not None
+                                or cls._measure_baseline(measure) is None
+                            )
+                        )
+                        or (
+                            _value(benefit, "unit") is None
+                            and _value(benefit, "baseline_value") is None
+                            and _value(benefit, "target_value") is None
+                        )
                     )
                 ),
                 None,
@@ -1220,8 +1234,6 @@ class TransformationGateService:
                 and _value(benefit, "work_package_id") in work_packages
                 and _value(benefit, "owner_id")
                 and matching_measure is not None
-                and _value(benefit, "target_value") is not None
-                and _finite(_value(benefit, "target_value"))
                 and _text(benefit, "measurement_method")
             ):
                 benefit_outcomes.add(outcome_id)

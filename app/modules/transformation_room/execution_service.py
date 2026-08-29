@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
+from decimal import Decimal
 from typing import Any, Callable, Mapping, Sequence
+import time
 import unicodedata
 
+from flask import current_app
 from sqlalchemy import or_, select
+from sqlalchemy.orm import Session
 
 from app import db
 from app.models.architecture_review_board import ARBReviewCycle, ARBReviewItem
@@ -104,12 +108,23 @@ def _utc(value: datetime) -> datetime:
     return value.astimezone(timezone.utc)
 
 
+def _fits_legacy_benefit_numeric(value: Any) -> bool:
+    """Return whether Numeric(18,2) can store ``value`` without changing it."""
+    if value is None:
+        return True
+    parsed = Decimal(str(value)).normalize()
+    fractional_digits = max(-parsed.as_tuple().exponent, 0)
+    integer_digits = max(parsed.adjusted() + 1, 0) if parsed else 0
+    return fractional_digits <= 2 and integer_digits <= 16
+
+
 class TransformationExecutionService:
     """Materialise approved work without introducing another planning aggregate."""
 
     OPERATION = "execution.materialise"
     SOLUTION_OPERATION = "execution.create_solution"
     EXPORT_OPERATION = "execution.delivery_export.prepare"
+    EXPORT_RECOVER_OPERATION = "execution.delivery_export.recover"
     EXPORT_FINALISE_OPERATION = "execution.delivery_export.finalise"
 
     @classmethod
@@ -195,15 +210,7 @@ class TransformationExecutionService:
         graph = cls._load_execution_graph(
             db.session, actor, decision_brief_version_id, lock=False
         )
-        cls._assert_active_aggregate(graph)
-        cls._assert_snapshot_integrity(graph)
         cls._require_execution_authority(db.session, actor, graph, lock=False)
-        cls._assert_governance_ready(
-            graph.cycle,
-            graph.review,
-            graph.conditions,
-            CommandService._database_now(db.session),
-        )
         canonical_actions = cls._canonical_actions(db.session, actor, graph, actions)
         return {
             "decision_brief_version_id": decision_brief_version_id,
@@ -258,12 +265,6 @@ class TransformationExecutionService:
             lock=True,
         )
         cls._require_execution_authority(session, actor, graph, lock=True)
-        cls._assert_active_aggregate(graph)
-        cls._assert_snapshot_integrity(graph)
-        now = CommandService._database_now(session)
-        cls._assert_governance_ready(
-            graph.cycle, graph.review, graph.conditions, now
-        )
         reconciled = CommandService.resolve_materialisation(
             session,
             actor=actor,
@@ -272,6 +273,12 @@ class TransformationExecutionService:
         )
         if reconciled is not None:
             return reconciled
+        cls._assert_active_aggregate(graph)
+        cls._assert_snapshot_integrity(graph)
+        now = CommandService._database_now(session)
+        cls._assert_governance_ready(
+            graph.cycle, graph.review, graph.conditions, now
+        )
         if graph.workstream.lifecycle_stage != "approved":
             raise CommandConflict("execution_aggregate_not_approved")
         actions = cls._canonical_actions(
@@ -535,8 +542,20 @@ class TransformationExecutionService:
             "predecessor_attempt_id": predecessor_attempt_id,
             "request": dict(request),
         }
+        provider_idempotency_key = canonical_request_digest(
+            {
+                "organization_id": actor.organization_id,
+                "work_package_id": work_package_id,
+                "provider_key": provider_key,
+                "request": dict(request),
+            }
+        )
+        payload["provider_idempotency_key"] = provider_idempotency_key
         attempt_key = canonical_request_digest(
-            {"organization_id": actor.organization_id, **payload}
+            {
+                "provider_idempotency_key": provider_idempotency_key,
+                "predecessor_attempt_id": predecessor_attempt_id,
+            }
         )
         natural_key = (
             f"delivery-export:{work_package_id}:{provider_key}:"
@@ -564,6 +583,52 @@ class TransformationExecutionService:
             ),
         )
         attempt_id = prepared.object_ids["delivery_export_attempt_id"]
+        if prepared.created:
+            attempt = cls._load_export_attempt(actor, attempt_id)
+            final_payload = cls._dispatch_export_attempt(
+                actor=actor,
+                attempt=attempt,
+                exporter=exporter,
+            )
+        else:
+            attempt, dispatch_owned = cls._await_or_recover_export_attempt(
+                actor=actor,
+                attempt_id=attempt_id,
+            )
+            final_payload = (
+                cls._dispatch_export_attempt(
+                    actor=actor,
+                    attempt=attempt,
+                    exporter=exporter,
+                )
+                if dispatch_owned
+                else cls._persisted_export_outcome(attempt)
+            )
+        return cls._finalise_export_attempt(
+            actor=actor,
+            payload=final_payload,
+            originating_command_key=command_key,
+        )
+
+    @staticmethod
+    def _dispatch_lease_seconds():
+        configured = current_app.config.get(
+            "TRANSFORMATION_EXPORT_DISPATCH_LEASE_SECONDS", 30.0
+        )
+        try:
+            seconds = float(configured)
+        except (TypeError, ValueError) as error:
+            raise ValueError(
+                "TRANSFORMATION_EXPORT_DISPATCH_LEASE_SECONDS must be positive"
+            ) from error
+        if seconds <= 0 or seconds > 60:
+            raise ValueError(
+                "TRANSFORMATION_EXPORT_DISPATCH_LEASE_SECONDS must be between 0 and 60"
+            )
+        return seconds
+
+    @classmethod
+    def _load_export_attempt(cls, actor, attempt_id):
         attempt = db.session.scalar(
             select(DeliveryExportAttempt)
             .where(
@@ -572,59 +637,261 @@ class TransformationExecutionService:
             )
             .execution_options(populate_existing=True)
         )
+        if attempt is None:
+            raise RuntimeError("durable delivery export preparation is missing")
+        return attempt
+
+    @classmethod
+    def _dispatch_export_attempt(cls, *, actor, attempt, exporter):
+        if attempt.status != "in_progress":
+            return cls._persisted_export_outcome(attempt)
         work_package = db.session.scalar(
             select(WorkPackage).where(
-                WorkPackage.id == work_package_id,
+                WorkPackage.id == attempt.work_package_id,
                 WorkPackage.organization_id == actor.organization_id,
             )
         )
-        if attempt is None or work_package is None:
+        if work_package is None:
             raise RuntimeError("durable delivery export preparation is missing")
-        if attempt.status == "in_progress":
-            try:
-                provider_response = exporter(
-                    work_package,
-                    dict(payload["request"]),
-                    attempt.attempt_key,
-                )
-                if not isinstance(provider_response, Mapping):
-                    raise ValueError("provider response must be a mapping")
-                external_key = _required_text(
-                    provider_response.get("external_key"), "external_key", 512
-                )
-                final_payload = {
-                    "delivery_export_attempt_id": attempt.id,
-                    "attempt_key": attempt.attempt_key,
-                    "status": "succeeded",
-                    "external_key": external_key,
-                    "response_digest": canonical_request_digest(
-                        dict(provider_response)
-                    ),
-                    "error_class": None,
-                    "error_message": None,
-                }
-            except Exception as error:  # provider boundary: persist honest failure
-                error_message = " ".join(
-                    unicodedata.normalize("NFC", str(error)).split()
-                )
-                final_payload = {
-                    "delivery_export_attempt_id": attempt.id,
-                    "attempt_key": attempt.attempt_key,
-                    "status": "failed",
-                    "external_key": None,
-                    "response_digest": None,
-                    "error_class": type(error).__name__,
-                    "error_message": (
-                        error_message or type(error).__name__
-                    )[:4000],
-                }
-            cls._after_provider_before_finalise(attempt.id, final_payload)
-        else:
-            final_payload = cls._persisted_export_outcome(attempt)
-        return cls._finalise_export_attempt(
+        provider_idempotency_key = (
+            attempt.provider_idempotency_key or attempt.attempt_key
+        )
+        try:
+            provider_response = exporter(
+                work_package,
+                dict(attempt.request_json),
+                provider_idempotency_key,
+            )
+            if not isinstance(provider_response, Mapping):
+                raise ValueError("provider response must be a mapping")
+            external_key = _required_text(
+                provider_response.get("external_key"), "external_key", 512
+            )
+            final_payload = {
+                "delivery_export_attempt_id": attempt.id,
+                "attempt_key": attempt.attempt_key,
+                "status": "succeeded",
+                "external_key": external_key,
+                "response_digest": canonical_request_digest(dict(provider_response)),
+                "error_class": None,
+                "error_message": None,
+            }
+        except Exception as error:  # provider boundary: persist honest failure
+            error_message = " ".join(
+                unicodedata.normalize("NFC", str(error)).split()
+            )
+            final_payload = {
+                "delivery_export_attempt_id": attempt.id,
+                "attempt_key": attempt.attempt_key,
+                "status": "failed",
+                "external_key": None,
+                "response_digest": None,
+                "error_class": type(error).__name__,
+                "error_message": (error_message or type(error).__name__)[:4000],
+            }
+        cls._after_provider_before_finalise(attempt.id, final_payload)
+        return final_payload
+
+    @classmethod
+    def _await_or_recover_export_attempt(cls, *, actor, attempt_id):
+        """Wait for the dispatch owner or durably fence an uncertain retry."""
+        while True:
+            attempt = cls._load_export_attempt(actor, attempt_id)
+            if attempt.status in {"succeeded", "failed"}:
+                return attempt, False
+            if attempt.status == "indeterminate":
+                with Session(db.engine) as session:
+                    successor_id = session.scalar(
+                        select(DeliveryExportAttempt.id).where(
+                            DeliveryExportAttempt.organization_id
+                            == actor.organization_id,
+                            DeliveryExportAttempt.predecessor_attempt_id
+                            == attempt.id,
+                        )
+                    )
+                if successor_id is not None:
+                    attempt_id = successor_id
+                    continue
+            now = datetime.now(timezone.utc)
+            lease_expires_at = (
+                _utc(attempt.dispatch_lease_expires_at)
+                if attempt.dispatch_lease_expires_at is not None
+                else None
+            )
+            if (
+                attempt.status == "in_progress"
+                and lease_expires_at is not None
+                and lease_expires_at > now
+            ):
+                time.sleep(min(0.01, (lease_expires_at - now).total_seconds()))
+                continue
+            recovered = cls._recover_export_attempt(actor=actor, attempt=attempt)
+            successor = cls._load_export_attempt(
+                actor, recovered.object_ids["delivery_export_attempt_id"]
+            )
+            if recovered.created and recovered.response.get("dispatch_required"):
+                return successor, True
+            attempt_id = successor.id
+
+    @classmethod
+    def _recover_export_attempt(cls, *, actor, attempt):
+        provider_idempotency_key = (
+            attempt.provider_idempotency_key or attempt.attempt_key
+        )
+        successor_key = canonical_request_digest(
+            {
+                "provider_idempotency_key": provider_idempotency_key,
+                "predecessor_attempt_id": attempt.id,
+            }
+        )
+        payload = {
+            "predecessor_attempt_id": attempt.id,
+            "work_package_id": attempt.work_package_id,
+            "provider_key": attempt.provider_key,
+            "provider_idempotency_key": provider_idempotency_key,
+            "attempt_key": successor_key,
+            "request": dict(attempt.request_json),
+        }
+        natural_key = f"delivery-export-recover:{attempt.id}:{successor_key}"
+        return CommandService.execute(
             actor=actor,
-            payload=final_payload,
-            originating_command_key=command_key,
+            operation=cls.EXPORT_RECOVER_OPERATION,
+            idempotency_key=f"delivery-export-recover:{attempt.id}",
+            payload=payload,
+            natural_key=natural_key,
+            authorizer=cls.authorise_delivery_export_recovery(
+                attempt.id, natural_key
+            ),
+            natural_key_resolver=CommandService.fail_closed_pre_envelope_recovery,
+            handler=lambda session, claim: cls._recover_export_locked(
+                session, actor, payload, claim
+            ),
+        )
+
+    @classmethod
+    def authorise_delivery_export_recovery(
+        cls, predecessor_attempt_id, expected_natural_key
+    ) -> OperationAuthorizer:
+        def authorize(session, actor, operation, natural_key):
+            if (
+                operation != cls.EXPORT_RECOVER_OPERATION
+                or natural_key != expected_natural_key
+            ):
+                raise NotAuthorised("delivery_export_recovery_command_mismatch")
+            attempt = session.scalar(
+                select(DeliveryExportAttempt).where(
+                    DeliveryExportAttempt.id == predecessor_attempt_id,
+                    DeliveryExportAttempt.organization_id == actor.organization_id,
+                )
+            )
+            if attempt is None:
+                raise NotFound("delivery_export_attempt_not_found")
+            work_package = cls._load_work_package(
+                session, actor, attempt.work_package_id, lock=False
+            )
+            cls._require_work_package_authority(
+                session, actor, work_package, lock=False
+            )
+
+        return authorize
+
+    @classmethod
+    def _recover_export_locked(cls, session, actor, payload, claim):
+        work_package = cls._load_work_package(
+            session, actor, payload["work_package_id"], lock=True
+        )
+        cls._require_work_package_authority(
+            session, actor, work_package, lock=True
+        )
+        predecessor = session.scalar(
+            select(DeliveryExportAttempt)
+            .where(
+                DeliveryExportAttempt.id == payload["predecessor_attempt_id"],
+                DeliveryExportAttempt.organization_id == actor.organization_id,
+                DeliveryExportAttempt.work_package_id == work_package.id,
+                DeliveryExportAttempt.provider_key == payload["provider_key"],
+            )
+            .execution_options(populate_existing=True)
+            .with_for_update()
+        )
+        if predecessor is None:
+            raise NotFound("delivery_export_attempt_not_found")
+        reconciled = CommandService.resolve_materialisation(
+            session,
+            actor=actor,
+            operation=cls.EXPORT_RECOVER_OPERATION,
+            claim=claim,
+        )
+        if reconciled is not None:
+            return reconciled
+        prior_successor = session.scalar(
+            select(DeliveryExportAttempt).where(
+                DeliveryExportAttempt.organization_id == actor.organization_id,
+                DeliveryExportAttempt.predecessor_attempt_id == predecessor.id,
+            )
+        )
+        if prior_successor is not None:
+            return cls._recovery_mutation(prior_successor, dispatch_required=False)
+        now = CommandService._database_now(session)
+        if predecessor.status == "in_progress":
+            lease_expires_at = (
+                _utc(predecessor.dispatch_lease_expires_at)
+                if predecessor.dispatch_lease_expires_at is not None
+                else None
+            )
+            if lease_expires_at is not None and lease_expires_at > _utc(now):
+                raise CommandConflict("delivery_export_dispatch_still_owned")
+            predecessor.status = "indeterminate"
+            predecessor.dispatch_lease_expires_at = None
+            predecessor.error_class = "DispatchOutcomeUnknown"
+            predecessor.error_message = (
+                "Provider call outcome was not durably finalised before dispatch lease expiry"
+            )
+            predecessor.completed_at = now
+        elif predecessor.status != "indeterminate":
+            return cls._recovery_mutation(predecessor, dispatch_required=False)
+        successor = DeliveryExportAttempt(
+            organization_id=actor.organization_id,
+            work_package_id=work_package.id,
+            predecessor_attempt_id=predecessor.id,
+            provider_key=payload["provider_key"],
+            attempt_key=payload["attempt_key"],
+            provider_idempotency_key=payload["provider_idempotency_key"],
+            request_json=dict(payload["request"]),
+            status="in_progress",
+            dispatch_lease_expires_at=now
+            + timedelta(seconds=cls._dispatch_lease_seconds()),
+            attempted_by_id=actor.user_id,
+        )
+        session.add(successor)
+        session.flush()
+        return cls._recovery_mutation(successor, dispatch_required=True)
+
+    @staticmethod
+    def _recovery_mutation(attempt, *, dispatch_required):
+        object_ids = {
+            "work_package_id": attempt.work_package_id,
+            "delivery_export_attempt_id": attempt.id,
+        }
+        response = {
+            **object_ids,
+            "status": attempt.status,
+            "dispatch_required": dispatch_required,
+            "provider_idempotency_key": (
+                attempt.provider_idempotency_key or attempt.attempt_key
+            ),
+        }
+        return DomainMutationResult(
+            object_ids,
+            response,
+            (
+                {
+                    "event_type": "transformation.delivery_export_requested",
+                    "payload": response,
+                },
+            )
+            if dispatch_required
+            else (),
         )
 
     @classmethod
@@ -682,6 +949,12 @@ class TransformationExecutionService:
                 raise NotFound("delivery_export_attempt_not_found")
             if predecessor.status != "failed":
                 raise CommandConflict("delivery_export_retry_requires_failed_attempt")
+            if (
+                dict(predecessor.request_json) != dict(payload["request"])
+                or (predecessor.provider_idempotency_key or predecessor.attempt_key)
+                != payload["provider_idempotency_key"]
+            ):
+                raise CommandConflict("delivery_export_retry_payload_conflict")
         else:
             prior_root = session.scalar(
                 select(DeliveryExportAttempt.id).where(
@@ -699,8 +972,11 @@ class TransformationExecutionService:
             predecessor_attempt_id=predecessor.id if predecessor else None,
             provider_key=payload["provider_key"],
             attempt_key=attempt_key,
+            provider_idempotency_key=payload["provider_idempotency_key"],
             request_json=dict(payload["request"]),
             status="in_progress",
+            dispatch_lease_expires_at=CommandService._database_now(session)
+            + timedelta(seconds=cls._dispatch_lease_seconds()),
             attempted_by_id=actor.user_id,
         )
         session.add(attempt)
@@ -714,7 +990,7 @@ class TransformationExecutionService:
             "exported": False,
             "status": attempt.status,
             "external_key": None,
-            "provider_idempotency_key": attempt.attempt_key,
+            "provider_idempotency_key": attempt.provider_idempotency_key,
         }
         return DomainMutationResult(
             object_ids,
@@ -823,6 +1099,7 @@ class TransformationExecutionService:
         attempt.response_digest = payload["response_digest"]
         attempt.error_class = payload["error_class"]
         attempt.error_message = payload["error_message"]
+        attempt.dispatch_lease_expires_at = None
         attempt.completed_at = CommandService._database_now(session)
         session.flush()
         object_ids = {
@@ -1290,6 +1567,12 @@ class TransformationExecutionService:
                 if measure.currency and measure.target_amount is not None
                 else measure.target_value
             )
+            compatibility_available = bool(
+                measure.unit
+                and len(measure.unit) <= 40
+                and _fits_legacy_benefit_numeric(baseline)
+                and _fits_legacy_benefit_numeric(target)
+            )
             source_parts = [
                 value
                 for value in (measure.source_adapter, measure.source_key)
@@ -1302,10 +1585,10 @@ class TransformationExecutionService:
                 benefit_type=None,
                 status="planned",
                 measure=measure.metric_name,
-                unit=measure.unit,
-                baseline_value=baseline,
+                unit=measure.unit if compatibility_available else None,
+                baseline_value=baseline if compatibility_available else None,
                 baseline_date=measure.baseline_date,
-                target_value=target,
+                target_value=target if compatibility_available else None,
                 target_date=measure.target_date or outcome.target_date,
                 owner_id=outcome.owner_id,
                 measurement_method=":".join(source_parts) if source_parts else None,

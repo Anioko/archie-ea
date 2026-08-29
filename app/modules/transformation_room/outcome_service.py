@@ -74,7 +74,21 @@ def _decimal(value: Any) -> Decimal:
         raise ValueError("value must be numeric") from error
     if not parsed.is_finite():
         raise ValueError("value must be finite")
+    normalized = parsed.normalize()
+    fractional_digits = max(-normalized.as_tuple().exponent, 0)
+    integer_digits = max(normalized.adjusted() + 1, 0) if normalized else 0
+    if fractional_digits > 6 or integer_digits > 18:
+        raise ValueError("value must fit Numeric(24,6) exactly")
     return parsed
+
+
+def _fits_legacy_benefit_numeric(value: Decimal | None) -> bool:
+    if value is None:
+        return True
+    normalized = value.normalize()
+    fractional_digits = max(-normalized.as_tuple().exponent, 0)
+    integer_digits = max(normalized.adjusted() + 1, 0) if normalized else 0
+    return fractional_digits <= 2 and integer_digits <= 16
 
 
 def _decimal_text(value: Decimal) -> str:
@@ -226,8 +240,8 @@ class OutcomeMeasurementService:
 
     @classmethod
     def _append_measurement_and_project(cls, session, actor, request, claim):
-        benefit = cls._load_benefit(
-            session, actor, request["benefit_id"], lock=True
+        benefit, outcome, locked_benefits = cls._lock_measurement_aggregate(
+            session, actor, request["benefit_id"]
         )
         cls._require_measurement_authority(session, actor, benefit, lock=True)
         if benefit.owner_id is None:
@@ -282,9 +296,10 @@ class OutcomeMeasurementService:
         variance, missed, _realised = cls._project_latest(benefit, latest)
         session.flush()
 
-        outcome = cls._lock_outcome(session, actor, benefit)
         if outcome is not None:
-            cls._project_outcome_aggregate(session, actor, outcome)
+            cls._project_outcome_aggregate(
+                session, actor, outcome, benefits=locked_benefits
+            )
         follow_up = (
             cls._create_owner_follow_up(
                 session, actor, benefit, measurement, latest.value, variance
@@ -305,8 +320,8 @@ class OutcomeMeasurementService:
         response = {
             **object_ids,
             "actual_value": (
-                _decimal_text(Decimal(str(benefit.actual_value)))
-                if benefit.actual_value is not None
+                _decimal_text(Decimal(str(latest.value)))
+                if latest.value is not None
                 else None
             ),
             "actual_date": benefit.actual_date.isoformat()
@@ -329,10 +344,15 @@ class OutcomeMeasurementService:
 
     @classmethod
     def _project_latest(cls, benefit, measurement):
-        benefit.actual_value = measurement.value
+        compatible_value = (
+            measurement.value
+            if _fits_legacy_benefit_numeric(measurement.value)
+            else None
+        )
+        benefit.actual_value = compatible_value
         benefit.actual_date = (
             _utc(measurement.observed_at).date()
-            if measurement.value is not None
+            if compatible_value is not None
             else None
         )
         if measurement.value is None or not cls._is_comparable(benefit):
@@ -352,18 +372,7 @@ class OutcomeMeasurementService:
         return value - target, not realised, realised
 
     @classmethod
-    def _project_outcome_aggregate(cls, session, actor, outcome):
-        benefits = tuple(
-            session.scalars(
-                select(Benefit)
-                .where(
-                    Benefit.organization_id == actor.organization_id,
-                    Benefit.outcome_commitment_id == outcome.id,
-                )
-                .order_by(Benefit.id)
-                .with_for_update()
-            ).all()
-        )
+    def _project_outcome_aggregate(cls, session, actor, outcome, *, benefits):
         states = []
         for row in benefits:
             latest = session.scalar(
@@ -441,25 +450,46 @@ class OutcomeMeasurementService:
             },
         )
 
-    @staticmethod
-    def _lock_outcome(session, actor, benefit):
-        if benefit.outcome_commitment_id is None:
-            return None
-        return session.scalar(
+    @classmethod
+    def _lock_measurement_aggregate(cls, session, actor, benefit_id):
+        scope = cls._load_benefit(session, actor, benefit_id, lock=False)
+        if scope.outcome_commitment_id is None:
+            benefit = cls._load_benefit(session, actor, benefit_id, lock=True)
+            return benefit, None, (benefit,)
+        outcome = session.scalar(
             select(ProgrammeOutcomeCommitment)
             .where(
-                ProgrammeOutcomeCommitment.id == benefit.outcome_commitment_id,
+                ProgrammeOutcomeCommitment.id == scope.outcome_commitment_id,
                 ProgrammeOutcomeCommitment.organization_id == actor.organization_id,
                 ProgrammeOutcomeCommitment.programme_id
-                == benefit.strategic_initiative_id,
+                == scope.strategic_initiative_id,
                 or_(
                     ProgrammeOutcomeCommitment.workstream_id
-                    == benefit.programme_workstream_id,
+                    == scope.programme_workstream_id,
                     ProgrammeOutcomeCommitment.workstream_id.is_(None),
                 ),
             )
+            .execution_options(populate_existing=True)
             .with_for_update()
         )
+        if outcome is None:
+            raise NotFound("outcome_commitment_not_found")
+        benefits = tuple(
+            session.scalars(
+                select(Benefit)
+                .where(
+                    Benefit.organization_id == actor.organization_id,
+                    Benefit.outcome_commitment_id == outcome.id,
+                )
+                .order_by(Benefit.id)
+                .execution_options(populate_existing=True)
+                .with_for_update()
+            ).all()
+        )
+        benefit = next((row for row in benefits if row.id == benefit_id), None)
+        if benefit is None:
+            raise NotFound("benefit_not_found")
+        return benefit, outcome, benefits
 
     @staticmethod
     def _load_benefit(session, actor, benefit_id, *, lock):

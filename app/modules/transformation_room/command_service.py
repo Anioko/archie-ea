@@ -375,6 +375,22 @@ class CommandService:
                 error_class=type(error).__name__,
             )
             raise
+        except DBAPIError as error:
+            sqlstate = (
+                getattr(error.orig, "sqlstate", None)
+                or getattr(error.orig, "pgcode", None)
+                or getattr(getattr(error.orig, "diag", None), "sqlstate", None)
+            )
+            if sqlstate in {"40P01", "40001"}:
+                cls.mark_retryable(
+                    actor=actor,
+                    claim=claim_or_result,
+                    error_class=f"PostgreSQLTransient:{sqlstate}",
+                )
+                raise KnownPreCommitTransient(
+                    "database_transaction_retry", sqlstate=sqlstate
+                ) from error
+            raise
         except StaleClaim:
             raise
         except TransformationError as error:

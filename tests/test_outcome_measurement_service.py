@@ -454,6 +454,40 @@ def test_measurement_requires_exactly_one_fact(
         )
 
 
+@pytest.mark.parametrize(
+    "value",
+    (
+        Decimal("1000000000000000000.000000"),
+        Decimal("0.0000001"),
+    ),
+)
+def test_measurement_rejects_values_outside_exact_numeric_24_6_contract(
+    monkeypatch, db_session, make_outcome_scope, value
+):
+    """Catches database rounding/overflow of otherwise accepted observations."""
+    scope = make_outcome_scope()
+    _install_command_harness(monkeypatch, db_session)
+
+    with pytest.raises(ValueError, match=r"Numeric\(24,6\)"):
+        OutcomeMeasurementService.record(
+            actor=scope.actor,
+            benefit_id=scope.benefit_id,
+            value=value,
+            unavailable_reason=None,
+            observed_at=datetime.now(timezone.utc),
+            source_identity="telemetry:contract-boundary",
+            source_version="v1",
+            command_key=f"invalid-contract-{value}",
+        )
+
+    assert db_session.scalar(
+        select(func.count()).select_from(OutcomeMeasurement).where(
+            OutcomeMeasurement.organization_id == scope.organization_id,
+            OutcomeMeasurement.benefit_id == scope.benefit_id,
+        )
+    ) == 0
+
+
 def test_delegate_can_record_but_cross_tenant_identifier_is_not_found(
     db_session, monkeypatch, make_outcome_scope
 ):
