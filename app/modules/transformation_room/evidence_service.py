@@ -1327,7 +1327,7 @@ class TransformationEvidenceService:
         )
 
     @classmethod
-    def load_assigned_open_request(cls, actor, request_id):
+    def load_assigned_request(cls, actor, request_id):
         with Session(db.engine) as session:
             request, _candidate, workstream, programme = cls._load_request_scope(
                 session, actor, request_id, lock=False
@@ -1335,10 +1335,16 @@ class TransformationEvidenceService:
             cls._request_actor(
                 session, actor, request, programme, workstream, lock=False
             )
-            if request.status != "open":
-                raise CommandConflict("evidence_request_not_open")
             session.expunge(request)
             return request
+
+    @classmethod
+    def load_assigned_open_request(cls, actor, request_id):
+        """Compatibility read for callers that explicitly need open state."""
+        request = cls.load_assigned_request(actor, request_id)
+        if request.status != "open":
+            raise CommandConflict("evidence_request_not_open")
+        return request
 
     @classmethod
     def attestation_payload(
@@ -1371,7 +1377,9 @@ class TransformationEvidenceService:
         expected_head_revision: int,
         command_key: str,
     ) -> CommandResult:
-        request = cls.load_assigned_open_request(actor, request_id)
+        # State is deliberately not checked before the command receipt can be
+        # reconciled. The locked handler below owns the new-command precondition.
+        request = cls.load_assigned_request(actor, request_id)
         source_identity = f"attestation:user:{actor.user_id}"
         payload = cls.attestation_payload(
             request, value, expected_head_revision, source_identity
@@ -1870,8 +1878,6 @@ class TransformationEvidenceService:
         if not reason:
             raise ValueError("waiver reason is required")
         expires_at = _utc(expires_at)
-        if expires_at <= utcnow():
-            raise ValueError("waiver expiry must be in the future")
         payload = {
             "request_id": parse_positive_int(request_id),
             "reason": reason,

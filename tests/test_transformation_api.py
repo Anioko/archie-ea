@@ -8,9 +8,30 @@ committed setup because ``CommandService`` opens independent sessions.
 from __future__ import annotations
 
 import os
+import time
 import uuid
+from datetime import datetime, timedelta, timezone
 
 import pytest
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app import db
+from app.models.transformation_programme import ProgrammeWorkstream
+from app.modules.transformation_room.evidence_service import REQUIRED_EVIDENCE_CLAIMS
+
+from tests.test_transformation_evidence_service import (
+    _grant_decision_authority,
+    _plan_all_requests,
+    evidence_scope,
+)
+from tests.test_rationalisation_discovery_service import committed_scope
+from tests.test_decision_brief_service import _remove_fixture_brief
+from tests.test_transformation_option_service import (
+    _option_values,
+    decision_scope,
+)
+from tests.test_transformation_execution_service import committed_execution_scope
 
 
 os.environ.setdefault("TRANSFORMATION_COMMAND_CAPABILITY_SECRET", "74" * 32)
@@ -286,6 +307,16 @@ def _assert_envelope(body, *, error_code=None):
         assert body["errors"][0]["code"] == error_code
 
 
+def _programme_id(workstream_id: int, organization_id: int) -> int:
+    with Session(db.engine) as session:
+        return session.scalar(
+            select(ProgrammeWorkstream.programme_id).where(
+                ProgrammeWorkstream.id == workstream_id,
+                ProgrammeWorkstream.organization_id == organization_id,
+            )
+        )
+
+
 def test_transformation_api_registers_the_complete_single_versioned_surface(app):
     observed = {
         (rule.rule, method)
@@ -368,6 +399,747 @@ def test_transformation_api_real_intake_replays_and_rejects_changed_digest(
         == 1
     )
 
+    db.session.remove()
+    login_as(client, owner.id)
+    listed = client.get(BASE)
+    detail = client.get(f"{BASE}/{first_body['data']['programme_id']}")
+    workstreams = client.get(
+        f"{BASE}/{first_body['data']['programme_id']}/workstreams"
+    )
+    workstream = client.get(
+        f"{BASE}/{first_body['data']['programme_id']}/workstreams/"
+        f"{first_body['data']['workstream_id']}"
+    )
+    assert all(
+        response.status_code == 200
+        for response in (listed, detail, workstreams, workstream)
+    )
+
+    transition_key = f"programme-transition-{uuid.uuid4().hex}"
+    transition_url = (
+        f"{BASE}/{first_body['data']['programme_id']}/workstreams/"
+        f"{first_body['data']['workstream_id']}/transitions"
+    )
+    transition = client.post(
+        transition_url,
+        json={"target_stage": "discover"},
+        headers={"Idempotency-Key": transition_key, "If-Match": "1"},
+    )
+    transition_replay = client.post(
+        transition_url,
+        json={"target_stage": "discover"},
+        headers={"Idempotency-Key": transition_key, "If-Match": "1"},
+    )
+    assert transition.status_code == 200, transition.get_json()
+    assert transition_replay.status_code == 200, transition_replay.get_json()
+    assert transition_replay.get_json()["meta"]["idempotent"] is True
+
+    archive_key = f"programme-archive-{uuid.uuid4().hex}"
+    archive_url = f"{BASE}/{first_body['data']['programme_id']}"
+    archive_body = {"rationale": "The governed transformation has been superseded."}
+    archived = client.delete(
+        archive_url,
+        json=archive_body,
+        headers={"Idempotency-Key": archive_key, "If-Match": "1"},
+    )
+    archived_replay = client.delete(
+        archive_url,
+        json=archive_body,
+        headers={"Idempotency-Key": archive_key, "If-Match": "1"},
+    )
+    assert archived.status_code == 200, archived.get_json()
+    assert archived_replay.status_code == 200, archived_replay.get_json()
+    assert archived_replay.get_json()["meta"]["idempotent"] is True
+
+    changed_archive = client.delete(
+        archive_url,
+        json={"rationale": "A changed archive command."},
+        headers={"Idempotency-Key": archive_key, "If-Match": "1"},
+    )
+    assert changed_archive.status_code == 409
+
+
+def test_discovery_and_candidate_acceptance_use_production_http_services(
+    client, login_as, committed_scope
+):
+    scope = committed_scope
+    programme_id = _programme_id(scope.workstream_id, scope.organization_id)
+    base = f"{BASE}/{programme_id}/workstreams/{scope.workstream_id}"
+    login_as(client, scope.actor_id)
+
+    discovered = client.get(f"{base}/discovery-candidates")
+    assert discovered.status_code == 200, discovered.get_json()
+    candidate = next(
+        item
+        for item in discovered.get_json()["data"]["candidates"]
+        if item["application_id"] == scope.application_id
+    )
+    assert len(candidate["signals"]) == 7
+    body = {
+        "application_id": scope.application_id,
+        "signal_digests": candidate["signal_digests"],
+        "inclusion_reason": "Govern the canonical inventory subject.",
+        "overlap_disposition": {
+            "decision": "justified_distinct",
+            "overlapping_application_ids": [scope.sibling_application_id],
+            "rationale": "The applications serve distinct operating contexts.",
+        },
+    }
+    key = f"api-candidate-{uuid.uuid4().hex}"
+    accepted = client.post(
+        f"{base}/candidates",
+        json=body,
+        headers={"Idempotency-Key": key},
+    )
+    replay = client.post(
+        f"{base}/candidates",
+        json=body,
+        headers={"Idempotency-Key": key},
+    )
+    assert accepted.status_code == 201, accepted.get_json()
+    assert replay.status_code == 200, replay.get_json()
+    assert replay.get_json()["data"] == accepted.get_json()["data"]
+    assert replay.get_json()["meta"]["idempotent"] is True
+
+    changed = dict(body)
+    changed["inclusion_reason"] = "A changed receipt body."
+    conflict = client.post(
+        f"{base}/candidates",
+        json=changed,
+        headers={"Idempotency-Key": key},
+    )
+    assert conflict.status_code == 409
+    _assert_envelope(conflict.get_json(), error_code="conflict")
+
+
+def test_evidence_attestation_and_waiver_routes_reconcile_before_mutable_checks(
+    client, login_as, evidence_scope
+):
+    """Exact HTTP retries survive submitted state and a subsequently expired waiver."""
+    scope = evidence_scope
+    programme_id = _programme_id(scope.workstream_id, scope.organization_id)
+    planned = _plan_all_requests(
+        scope, key=f"api-reconcile-evidence-{uuid.uuid4().hex}"
+    )
+    lifecycle_request_id = planned.object_ids["request_lifecycle_id"]
+    risk_request_id = planned.object_ids["request_risk_id"]
+    base = f"{BASE}/{programme_id}/workstreams/{scope.workstream_id}"
+
+    attestation_key = f"api-attestation-{uuid.uuid4().hex}"
+    attestation_body = {
+        "value": {"value_type": "string", "value": "active"}
+    }
+    login_as(client, scope.actor_id)
+    first = client.post(
+        f"{base}/evidence-requests/{lifecycle_request_id}/attestations",
+        json=attestation_body,
+        headers={"Idempotency-Key": attestation_key, "If-Match": "0"},
+    )
+    assert first.status_code == 201, first.get_json()
+
+    db.session.remove()
+    login_as(client, scope.actor_id)
+    replay = client.post(
+        f"{base}/evidence-requests/{lifecycle_request_id}/attestations",
+        json=attestation_body,
+        headers={"Idempotency-Key": attestation_key, "If-Match": "0"},
+    )
+    assert replay.status_code == 200, replay.get_json()
+    assert replay.get_json()["data"] == first.get_json()["data"]
+    assert replay.get_json()["meta"]["idempotent"] is True
+
+    db.session.remove()
+    login_as(client, scope.actor_id)
+    changed_attestation = client.post(
+        f"{base}/evidence-requests/{lifecycle_request_id}/attestations",
+        json={"value": {"value_type": "string", "value": "retired"}},
+        headers={"Idempotency-Key": attestation_key, "If-Match": "0"},
+    )
+    assert changed_attestation.status_code == 409
+    _assert_envelope(changed_attestation.get_json(), error_code="conflict")
+
+    _grant_decision_authority(scope)
+    decline = client.post(
+        f"{base}/evidence-requests/{risk_request_id}/decline",
+        json={"reason": "The source owner cannot provide the evidence."},
+        headers={
+            "Idempotency-Key": f"api-decline-{uuid.uuid4().hex}",
+            "If-Match": "1",
+        },
+    )
+    assert decline.status_code == 200, decline.get_json()
+    waiver_revision = decline.get_json()["data"]["revision"]
+
+    expiry = datetime.now(timezone.utc) + timedelta(seconds=3)
+    waiver_key = f"api-waiver-{uuid.uuid4().hex}"
+    waiver_body = {
+        "reason": "Proceed temporarily under named accountability.",
+        "expires_at": expiry.isoformat(),
+        "interim_accountable_id": scope.actor_id,
+    }
+    waiver = client.post(
+        f"{base}/evidence-requests/{risk_request_id}/waiver",
+        json=waiver_body,
+        headers={
+            "Idempotency-Key": waiver_key,
+            "If-Match": str(waiver_revision),
+        },
+    )
+    assert waiver.status_code == 201, waiver.get_json()
+    time.sleep(max(0.0, (expiry - datetime.now(timezone.utc)).total_seconds()) + 0.2)
+
+    db.session.remove()
+    login_as(client, scope.actor_id)
+    waiver_replay = client.post(
+        f"{base}/evidence-requests/{risk_request_id}/waiver",
+        json=waiver_body,
+        headers={
+            "Idempotency-Key": waiver_key,
+            "If-Match": str(waiver_revision),
+        },
+    )
+    assert waiver_replay.status_code == 200, waiver_replay.get_json()
+    assert waiver_replay.get_json()["data"] == waiver.get_json()["data"]
+    assert waiver_replay.get_json()["meta"]["idempotent"] is True
+
+    changed_waiver = dict(waiver_body)
+    changed_waiver["reason"] = "A changed body must conflict with the receipt."
+    db.session.remove()
+    login_as(client, scope.actor_id)
+    waiver_conflict = client.post(
+        f"{base}/evidence-requests/{risk_request_id}/waiver",
+        json=changed_waiver,
+        headers={
+            "Idempotency-Key": waiver_key,
+            "If-Match": str(waiver_revision),
+        },
+    )
+    assert waiver_conflict.status_code == 409
+    _assert_envelope(waiver_conflict.get_json(), error_code="conflict")
+
+
+def test_evidence_http_lifecycle_uses_real_observation_conflict_and_request_services(
+    client, login_as, evidence_scope
+):
+    from app.models.transformation_evidence import EvidenceRequest
+
+    scope = evidence_scope
+    programme_id = _programme_id(scope.workstream_id, scope.organization_id)
+    base = f"{BASE}/{programme_id}/workstreams/{scope.workstream_id}"
+    login_as(client, scope.actor_id)
+
+    observation_key = f"api-observation-{uuid.uuid4().hex}"
+    observation_body = {
+        "claim_key": "application_owner",
+        "adapter_key": "application-inventory",
+        "source_key": str(scope.application_id),
+    }
+    observation = client.post(
+        f"{base}/candidates/{scope.candidate_id}/evidence-observations",
+        json=observation_body,
+        headers={"Idempotency-Key": observation_key, "If-Match": "0"},
+    )
+    observation_replay = client.post(
+        f"{base}/candidates/{scope.candidate_id}/evidence-observations",
+        json=observation_body,
+        headers={"Idempotency-Key": observation_key, "If-Match": "0"},
+    )
+    assert observation.status_code == 201, observation.get_json()
+    assert observation_replay.status_code == 200, observation_replay.get_json()
+    observed_evidence_id = observation.get_json()["data"]["evidence_record_id"]
+
+    active = client.get(
+        f"{base}/evidence",
+        query_string={
+            "subject_type": "application",
+            "subject_id": scope.application_id,
+        },
+    )
+    assert active.status_code == 200, active.get_json()
+    assert observed_evidence_id in {
+        row["id"] for row in active.get_json()["data"]["evidence"]
+    }
+
+    plan_key = f"api-plan-{uuid.uuid4().hex}"
+    plan_body = {
+        "assignments": {
+            claim: scope.actor_id for claim in REQUIRED_EVIDENCE_CLAIMS
+        }
+    }
+    planned = client.post(
+        f"{base}/candidates/{scope.candidate_id}/evidence-requests",
+        json=plan_body,
+        headers={"Idempotency-Key": plan_key},
+    )
+    planned_replay = client.post(
+        f"{base}/candidates/{scope.candidate_id}/evidence-requests",
+        json=plan_body,
+        headers={"Idempotency-Key": plan_key},
+    )
+    assert planned.status_code == 201, planned.get_json()
+    assert planned_replay.status_code == 200, planned_replay.get_json()
+    assert len(planned.get_json()["data"]["request_ids"]) == len(
+        REQUIRED_EVIDENCE_CLAIMS
+    )
+
+    with Session(db.engine) as session:
+        request_ids = dict(
+            session.execute(
+                select(EvidenceRequest.claim_key, EvidenceRequest.id).where(
+                    EvidenceRequest.organization_id == scope.organization_id,
+                    EvidenceRequest.candidate_id == scope.candidate_id,
+                )
+            ).all()
+        )
+
+    owner_attestation = client.post(
+        f"{base}/evidence-requests/{request_ids['application_owner']}/attestations",
+        json={
+            "value": {
+                "value_type": "string",
+                "value": "A different accountable owner",
+            }
+        },
+        headers={
+            "Idempotency-Key": f"api-owner-conflict-{uuid.uuid4().hex}",
+            "If-Match": "0",
+        },
+    )
+    assert owner_attestation.status_code == 201, owner_attestation.get_json()
+    owner_data = owner_attestation.get_json()["data"]
+    assert owner_data["conflict_evidence_id"]
+
+    _grant_decision_authority(scope)
+    resolution_key = f"api-resolution-{uuid.uuid4().hex}"
+    resolution_body = {
+        "governing_evidence_id": owner_data["evidence_record_id"],
+        "rationale": "The accountable owner confirmed the current assignment.",
+    }
+    resolution_url = (
+        f"{base}/evidence/{owner_data['conflict_evidence_id']}/resolution"
+    )
+    resolved = client.post(
+        resolution_url,
+        json=resolution_body,
+        headers={"Idempotency-Key": resolution_key},
+    )
+    resolved_replay = client.post(
+        resolution_url,
+        json=resolution_body,
+        headers={"Idempotency-Key": resolution_key},
+    )
+    assert resolved.status_code == 201, resolved.get_json()
+    assert resolved_replay.status_code == 200, resolved_replay.get_json()
+
+    lifecycle_attestation = client.post(
+        f"{base}/evidence-requests/{request_ids['lifecycle']}/attestations",
+        json={"value": {"value_type": "string", "value": "active"}},
+        headers={
+            "Idempotency-Key": f"api-lifecycle-submit-{uuid.uuid4().hex}",
+            "If-Match": "0",
+        },
+    )
+    assert lifecycle_attestation.status_code == 201, lifecycle_attestation.get_json()
+    lifecycle_data = lifecycle_attestation.get_json()["data"]
+    acceptance_key = f"api-acceptance-{uuid.uuid4().hex}"
+    acceptance_body = {"evidence_id": lifecycle_data["evidence_record_id"]}
+    acceptance_url = (
+        f"{base}/evidence-requests/{request_ids['lifecycle']}/acceptance"
+    )
+    accepted = client.post(
+        acceptance_url,
+        json=acceptance_body,
+        headers={"Idempotency-Key": acceptance_key, "If-Match": "2"},
+    )
+    accepted_replay = client.post(
+        acceptance_url,
+        json=acceptance_body,
+        headers={"Idempotency-Key": acceptance_key, "If-Match": "2"},
+    )
+    assert accepted.status_code == 200, accepted.get_json()
+    assert accepted_replay.status_code == 200, accepted_replay.get_json()
+    assert accepted_replay.get_json()["meta"]["idempotent"] is True
+
+    with db.engine.begin() as connection:
+        connection.exec_driver_sql("SET LOCAL session_replication_role = replica")
+        connection.execute(
+            EvidenceRequest.__table__.update()
+            .where(
+                EvidenceRequest.id == request_ids["cost"],
+                EvidenceRequest.organization_id == scope.organization_id,
+            )
+            .values(due_at=datetime.now(timezone.utc) - timedelta(minutes=1))
+        )
+    expiry_key = f"api-expiry-{uuid.uuid4().hex}"
+    expiry_url = f"{base}/evidence-requests/{request_ids['cost']}/expiry"
+    expired = client.post(
+        expiry_url,
+        json={},
+        headers={"Idempotency-Key": expiry_key, "If-Match": "1"},
+    )
+    expired_replay = client.post(
+        expiry_url,
+        json={},
+        headers={"Idempotency-Key": expiry_key, "If-Match": "1"},
+    )
+    assert expired.status_code == 200, expired.get_json()
+    assert expired_replay.status_code == 200, expired_replay.get_json()
+    assert expired_replay.get_json()["meta"]["idempotent"] is True
+
+
+def test_options_brief_and_arb_routes_execute_the_production_command_chain(
+    client, login_as, decision_scope
+):
+    scope = decision_scope
+    programme_id = _programme_id(scope.workstream_id, scope.organization_id)
+    base = f"{BASE}/{programme_id}/workstreams/{scope.workstream_id}"
+    login_as(client, scope.actor_id)
+
+    values = _option_values(
+        scope, title="Retire", action_type="retire", ordinal=3
+    )
+    draft = {
+        key: value
+        for key, value in values.items()
+        if key
+        not in {"organization_id", "workstream_id", "candidate_id", "revision"}
+    }
+    for field in (
+        "cost_min",
+        "cost_max",
+        "benefit_min",
+        "benefit_max",
+        "risk_min",
+        "risk_max",
+    ):
+        draft[field] = str(draft[field])
+    draft["impacts"][0].update(
+        {
+            "status": "planned",
+            "roles": ["service-owner"],
+            "request_id": "impact-source-42",
+        }
+    )
+    option_body = {"candidate_id": scope.candidate_id, "draft": draft}
+    option_key = f"api-option-{uuid.uuid4().hex}"
+    option = client.post(
+        f"{base}/options",
+        json=option_body,
+        headers={"Idempotency-Key": option_key},
+    )
+    option_replay = client.post(
+        f"{base}/options",
+        json=option_body,
+        headers={"Idempotency-Key": option_key},
+    )
+    assert option.status_code == 201, option.get_json()
+    assert option_replay.status_code == 200, option_replay.get_json()
+    assert option_replay.get_json()["meta"]["idempotent"] is True
+    created_option_id = option.get_json()["data"]["option_id"]
+
+    version_ids = []
+    for ordinal, option_id in enumerate(
+        (*scope.option_ids, created_option_id), start=1
+    ):
+        freeze_key = f"api-option-freeze-{ordinal}-{uuid.uuid4().hex}"
+        frozen = client.post(
+            f"{base}/options/{option_id}/versions",
+            json={},
+            headers={"Idempotency-Key": freeze_key, "If-Match": "1"},
+        )
+        assert frozen.status_code == 201, frozen.get_json()
+        version_ids.append(frozen.get_json()["data"]["option_version_id"])
+        if ordinal == 1:
+            frozen_replay = client.post(
+                f"{base}/options/{option_id}/versions",
+                json={},
+                headers={"Idempotency-Key": freeze_key, "If-Match": "1"},
+            )
+            assert frozen_replay.status_code == 200, frozen_replay.get_json()
+            assert frozen_replay.get_json()["meta"]["idempotent"] is True
+
+    comparison = client.get(
+        f"{base}/option-comparison",
+        query_string=[("option_version_id", version_id) for version_id in version_ids],
+    )
+    assert comparison.status_code == 200, comparison.get_json()
+    assert comparison.get_json()["data"]["option_version_ids"] == version_ids
+
+    _remove_fixture_brief(scope)
+    brief_body = {
+        "candidate_id": scope.candidate_id,
+        "title": "Application rationalisation decision",
+        "recommendation_option_id": scope.option_ids[1],
+        "decision_authority_id": scope.actor_id,
+        "unknown_codes": ["cost_source_unknown"],
+        "conflicts": ["Operational cutover window requires confirmation"],
+        "expected_impacts": ["Lower run cost after controlled migration"],
+    }
+    brief_key = f"api-brief-{uuid.uuid4().hex}"
+    brief = client.post(
+        f"{base}/decision-briefs",
+        json=brief_body,
+        headers={"Idempotency-Key": brief_key},
+    )
+    brief_replay = client.post(
+        f"{base}/decision-briefs",
+        json=brief_body,
+        headers={"Idempotency-Key": brief_key},
+    )
+    assert brief.status_code == 201, brief.get_json()
+    assert brief_replay.status_code == 200, brief_replay.get_json()
+    brief_id = brief.get_json()["data"]["decision_brief_id"]
+
+    readiness = client.get(f"{base}/decision-briefs/{brief_id}/readiness")
+    assert readiness.status_code == 200, readiness.get_json()
+    assert readiness.get_json()["data"]["ready"] is True
+
+    assertions = {
+        "reviewed_ai_material": True,
+        "acknowledged_unknown_codes": ["cost_source_unknown"],
+        "acknowledged_superseded_evidence_ids": [],
+        "rationale": "A human reviewed the evidence and recommendation.",
+    }
+    freeze_body = {
+        "option_version_ids": version_ids,
+        "evidence_ids": [scope.evidence_id],
+        "assertions": assertions,
+    }
+    freeze_key = f"api-brief-freeze-{uuid.uuid4().hex}"
+    frozen_brief = client.post(
+        f"{base}/decision-briefs/{brief_id}/versions",
+        json=freeze_body,
+        headers={"Idempotency-Key": freeze_key, "If-Match": "1"},
+    )
+    frozen_brief_replay = client.post(
+        f"{base}/decision-briefs/{brief_id}/versions",
+        json=freeze_body,
+        headers={"Idempotency-Key": freeze_key, "If-Match": "1"},
+    )
+    assert frozen_brief.status_code == 201, frozen_brief.get_json()
+    assert frozen_brief_replay.status_code == 200, frozen_brief_replay.get_json()
+    assert frozen_brief_replay.get_json()["meta"]["idempotent"] is True
+
+    changed_freeze = {
+        **freeze_body,
+        "assertions": {
+            **assertions,
+            "rationale": "A changed body under the same receipt key.",
+        },
+    }
+    freeze_conflict = client.post(
+        f"{base}/decision-briefs/{brief_id}/versions",
+        json=changed_freeze,
+        headers={"Idempotency-Key": freeze_key, "If-Match": "1"},
+    )
+    assert freeze_conflict.status_code == 409
+
+    blocked_submission = client.post(
+        f"{base}/decision-briefs/{brief_id}/arb-submissions",
+        json={"assertions": {"human_reviewed": False}},
+        headers={"Idempotency-Key": f"api-arb-blocked-{uuid.uuid4().hex}"},
+    )
+    assert blocked_submission.status_code == 422, blocked_submission.get_json()
+    _assert_envelope(blocked_submission.get_json(), error_code="blocked_by_evidence")
+
+    submission_key = f"api-arb-{uuid.uuid4().hex}"
+    submission_body = {"assertions": {"human_reviewed": True}}
+    submitted = client.post(
+        f"{base}/decision-briefs/{brief_id}/arb-submissions",
+        json=submission_body,
+        headers={"Idempotency-Key": submission_key},
+    )
+    submitted_replay = client.post(
+        f"{base}/decision-briefs/{brief_id}/arb-submissions",
+        json=submission_body,
+        headers={"Idempotency-Key": submission_key},
+    )
+    assert submitted.status_code == 201, submitted.get_json()
+    assert submitted_replay.status_code == 200, submitted_replay.get_json()
+    assert submitted_replay.get_json()["meta"]["idempotent"] is True
+
+
+def test_execution_solution_export_and_outcome_routes_use_production_services(
+    client, login_as, committed_execution_scope, monkeypatch
+):
+    scope = committed_execution_scope
+    base = f"{BASE}/{scope.programme_id}/workstreams/{scope.workstream_id}"
+    login_as(client, scope.actor.user_id)
+
+    action = scope.action
+    materialise_body = {
+        "actions": [
+            {
+                "action_key": action.action_key,
+                "option_version_id": action.option_version_id,
+                "title": action.title,
+                "owner_id": action.owner_id,
+                "start_date": action.start_date.isoformat(),
+                "target_date": action.target_date.isoformat(),
+                "scheduling_applicable": action.scheduling_applicable,
+            }
+        ]
+    }
+    materialise_url = (
+        f"{base}/decision-brief-versions/{scope.decision_brief_version_id}/execution"
+    )
+    materialise_key = f"api-materialise-{uuid.uuid4().hex}"
+    materialised = client.post(
+        materialise_url,
+        json=materialise_body,
+        headers={"Idempotency-Key": materialise_key},
+    )
+    materialised_replay = client.post(
+        materialise_url,
+        json=materialise_body,
+        headers={"Idempotency-Key": materialise_key},
+    )
+    assert materialised.status_code == 201, materialised.get_json()
+    assert materialised_replay.status_code == 200, materialised_replay.get_json()
+    assert materialised_replay.get_json()["data"] == materialised.get_json()["data"]
+    assert materialised_replay.get_json()["meta"]["idempotent"] is True
+    work_package_id = materialised.get_json()["data"]["work_package_ids"][0]
+    benefit_id = materialised.get_json()["data"]["benefit_ids"][0]
+
+    changed_materialise = {
+        "actions": [{**materialise_body["actions"][0], "title": "Changed action"}]
+    }
+    conflict = client.post(
+        materialise_url,
+        json=changed_materialise,
+        headers={"Idempotency-Key": materialise_key},
+    )
+    assert conflict.status_code == 409
+
+    solution_url = (
+        f"{base}/decision-brief-versions/{scope.decision_brief_version_id}"
+        "/technology-solutions"
+    )
+    solution_body = {"option_version_id": scope.option_version_id}
+    solution_key = f"api-solution-{uuid.uuid4().hex}"
+    solution = client.post(
+        solution_url,
+        json=solution_body,
+        headers={"Idempotency-Key": solution_key},
+    )
+    solution_replay = client.post(
+        solution_url,
+        json=solution_body,
+        headers={"Idempotency-Key": solution_key},
+    )
+    assert solution.status_code == 201, solution.get_json()
+    assert solution_replay.status_code == 200, solution_replay.get_json()
+    assert solution_replay.get_json()["meta"]["idempotent"] is True
+
+    provider_calls = []
+
+    def unavailable_provider(work_package, provider_request, provider_key):
+        provider_calls.append((work_package.id, dict(provider_request), provider_key))
+        raise ConnectionError("provider unavailable")
+
+    providers = {"delivery-provider": unavailable_provider}
+    monkeypatch.setitem(
+        client.application.extensions,
+        "transformation_delivery_exporters",
+        providers,
+    )
+    export_url = f"{base}/work-packages/{work_package_id}/delivery-exports"
+    export_body = {
+        "provider_key": "delivery-provider",
+        "request": {
+            "project": "ARCH",
+            "status": "To Do",
+            "roles": ["delivery"],
+            "request_id": "provider-request-42",
+        },
+    }
+    export_key = f"api-export-{uuid.uuid4().hex}"
+    failed_export = client.post(
+        export_url,
+        json=export_body,
+        headers={"Idempotency-Key": export_key},
+    )
+    failed_export_replay = client.post(
+        export_url,
+        json=export_body,
+        headers={"Idempotency-Key": export_key},
+    )
+    assert failed_export.status_code == 502, failed_export.get_json()
+    assert failed_export_replay.status_code == 502, failed_export_replay.get_json()
+    _assert_envelope(failed_export.get_json(), error_code="provider_failed")
+    assert failed_export_replay.get_json()["meta"]["idempotent"] is True
+    assert len(provider_calls) == 1
+    failed_attempt_id = failed_export.get_json()["meta"][
+        "delivery_export_attempt_id"
+    ]
+
+    changed_export = {
+        **export_body,
+        "request": {**export_body["request"], "project": "DIFFERENT"},
+    }
+    changed_export_response = client.post(
+        export_url,
+        json=changed_export,
+        headers={"Idempotency-Key": export_key},
+    )
+    assert changed_export_response.status_code == 409
+    assert len(provider_calls) == 1
+
+    def available_provider(work_package, provider_request, provider_key):
+        provider_calls.append((work_package.id, dict(provider_request), provider_key))
+        return {"external_key": "ARCH-42"}
+
+    providers["delivery-provider"] = available_provider
+    retry_url = f"{export_url}/{failed_attempt_id}/retries"
+    retry_key = f"api-export-retry-{uuid.uuid4().hex}"
+    retried = client.post(
+        retry_url,
+        json=export_body,
+        headers={"Idempotency-Key": retry_key},
+    )
+    retried_replay = client.post(
+        retry_url,
+        json=export_body,
+        headers={"Idempotency-Key": retry_key},
+    )
+    assert retried.status_code == 201, retried.get_json()
+    assert retried.get_json()["data"]["external_key"] == "ARCH-42"
+    assert retried_replay.status_code == 200, retried_replay.get_json()
+    assert retried_replay.get_json()["meta"]["idempotent"] is True
+    assert len(provider_calls) == 2
+
+    login_as(client, scope.outcome_actor.user_id)
+    measurement_url = f"{base}/benefits/{benefit_id}/measurements"
+    measurement_body = {
+        "value": "700.00",
+        "unavailable_reason": None,
+        "observed_at": "2026-08-29T12:00:00+00:00",
+        "source_identity": "finance-ledger:run-cost",
+        "source_version": "ledger-v42",
+    }
+    measurement_key = f"api-outcome-{uuid.uuid4().hex}"
+    measured = client.post(
+        measurement_url,
+        json=measurement_body,
+        headers={"Idempotency-Key": measurement_key},
+    )
+    measured_replay = client.post(
+        measurement_url,
+        json=measurement_body,
+        headers={"Idempotency-Key": measurement_key},
+    )
+    assert measured.status_code == 201, measured.get_json()
+    assert measured_replay.status_code == 200, measured_replay.get_json()
+    assert measured_replay.get_json()["meta"]["idempotent"] is True
+
+    changed_measurement = {**measurement_body, "value": "701.00"}
+    measurement_conflict = client.post(
+        measurement_url,
+        json=changed_measurement,
+        headers={"Idempotency-Key": measurement_key},
+    )
+    assert measurement_conflict.status_code == 409
+
 
 def test_transformation_api_rejects_server_owned_identity_and_status(
     client, committed_session, login_as
@@ -376,6 +1148,24 @@ def test_transformation_api_rejects_server_owned_identity_and_status(
     org = _make_org(session, cleanup_org_ids, "owned-fields")
     owner = _make_user(session, org)
     session.commit()
+    login_as(client, owner)
+
+    legitimate = _intake(owner.id)
+    legitimate["scope_expression"] = {
+        "portfolio_filter": {
+            "status": "operational",
+            "roles": ["customer-facing"],
+            "request_id": "portfolio-source-request-17",
+        }
+    }
+    accepted = client.post(
+        BASE,
+        json=legitimate,
+        headers={"Idempotency-Key": f"nested-domain-fields-{uuid.uuid4().hex}"},
+    )
+    assert accepted.status_code == 201, accepted.get_json()
+
+    db.session.remove()
     login_as(client, owner)
     payload = _intake(owner.id)
     payload.update(
@@ -553,19 +1343,10 @@ def test_transformation_api_resolves_current_workstream_assignment_server_side(
     assert updated.get_json()["data"]["revision"] == 3
 
 
-def test_transformation_api_maps_blocked_and_retryable_errors_exactly(
-    client, committed_session, login_as, monkeypatch
+def test_transformation_api_maps_real_gate_blockers_exactly(
+    client, committed_session, login_as
 ):
     from app import db
-    from app.modules.transformation_room.domain import (
-        BlockedByEvidence,
-        GateBlocker,
-        KnownPreCommitTransient,
-    )
-    from app.modules.transformation_room.gate_service import TransformationGateService
-    from app.modules.transformation_room.programme_service import (
-        TransformationProgrammeService,
-    )
 
     session, cleanup_org_ids = committed_session
     _ensure_guards(session)
@@ -574,43 +1355,14 @@ def test_transformation_api_maps_blocked_and_retryable_errors_exactly(
     session.commit()
     user_id = user.id
     login_as(client, user_id)
+    intake = _intake(user_id)
+    intake["scope_expression"] = {}
     created = client.post(
         BASE,
-        json=_intake(user_id),
+        json=intake,
         headers={"Idempotency-Key": f"error-map-programme-{uuid.uuid4().hex}"},
     ).get_json()["data"]
 
-    db.session.remove()
-    login_as(client, user_id)
-    monkeypatch.setattr(
-        TransformationProgrammeService,
-        "list_programmes",
-        classmethod(
-            lambda cls, **_kwargs: (_ for _ in ()).throw(
-                KnownPreCommitTransient("database_busy")
-            )
-        ),
-    )
-    retryable = client.get(BASE)
-    assert retryable.status_code == 503
-    _assert_envelope(retryable.get_json(), error_code="retryable_failure")
-
-    blocker = GateBlocker(
-        "missing_evidence",
-        "Evidence is required.",
-        "workstream",
-        1,
-        None,
-    )
-    monkeypatch.setattr(
-        TransformationGateService,
-        "transition",
-        classmethod(
-            lambda cls, **_kwargs: (_ for _ in ()).throw(
-                BlockedByEvidence("gate_requirements_not_met", blockers=(blocker,))
-            )
-        ),
-    )
     db.session.remove()
     login_as(client, user_id)
     blocked = client.post(
@@ -624,62 +1376,10 @@ def test_transformation_api_maps_blocked_and_retryable_errors_exactly(
     assert blocked.status_code == 422
     blocked_body = blocked.get_json()
     _assert_envelope(blocked_body, error_code="blocked_by_evidence")
-    assert blocked_body["errors"][0]["details"]["blockers"][0]["code"] == "missing_evidence"
-
-
-def test_transformation_api_maps_persisted_delivery_failure_to_provider_failed(
-    client, committed_session, login_as, monkeypatch
-):
-    from app import db
-    from app.modules.transformation_room.domain import CommandResult
-    from app.modules.transformation_room.execution_service import (
-        TransformationExecutionService,
-    )
-
-    session, cleanup_org_ids = committed_session
-    _ensure_guards(session)
-    org = _make_org(session, cleanup_org_ids, "provider-map")
-    user = _make_user(session, org)
-    session.commit()
-    user_id = user.id
-    login_as(client, user_id)
-    created = client.post(
-        BASE,
-        json=_intake(user_id),
-        headers={"Idempotency-Key": f"provider-map-programme-{uuid.uuid4().hex}"},
-    ).get_json()["data"]
-    failed_result = CommandResult(
-        created=True,
-        idempotent=False,
-        operation_result_id=991,
-        object_ids={"work_package_id": 771, "delivery_export_attempt_id": 881},
-        response={
-            "work_package_id": 771,
-            "delivery_export_attempt_id": 881,
-            "exported": False,
-            "status": "failed",
-            "external_key": None,
-        },
-    )
-    monkeypatch.setattr(
-        TransformationExecutionService,
-        "export_work_package",
-        classmethod(lambda cls, **_kwargs: failed_result),
-    )
-
-    db.session.remove()
-    login_as(client, user_id)
-    response = client.post(
-        f"{BASE}/{created['programme_id']}/workstreams/{created['workstream_id']}"
-        "/work-packages/771/delivery-exports",
-        json={"provider_key": "jira", "request": {"project": "ARCH"}},
-        headers={"Idempotency-Key": f"provider-map-{uuid.uuid4().hex}"},
-    )
-
-    assert response.status_code == 502
-    body = response.get_json()
-    _assert_envelope(body, error_code="provider_failed")
-    assert body["meta"]["delivery_export_attempt_id"] == 881
+    blocker_codes = {
+        item["code"] for item in blocked_body["errors"][0]["details"]["blockers"]
+    }
+    assert "scope_required" in blocker_codes
 
 
 def test_transformation_api_write_surface_remains_csrf_protected(app):
@@ -716,24 +1416,50 @@ def test_transformation_api_repeated_foreign_id_probes_use_established_limiter(
         ),
     )
     session, cleanup_org_ids = committed_session
+    _ensure_guards(session)
     org = _make_org(session, cleanup_org_ids, "probe-limit")
+    foreign_org = _make_org(session, cleanup_org_ids, "probe-limit-foreign")
     user = _make_user(session, org)
+    foreign_user = _make_user(session, foreign_org)
     session.commit()
-    login_as(client, user.id)
+    user_id = user.id
+    foreign_user_id = foreign_user.id
+
+    login_as(client, user_id)
+    local_programme = client.post(
+        BASE,
+        json=_intake(user_id),
+        headers={"Idempotency-Key": f"probe-local-{uuid.uuid4().hex}"},
+    ).get_json()["data"]["programme_id"]
+    db.session.remove()
+    login_as(client, foreign_user_id)
+    foreign_programme = client.post(
+        BASE,
+        json=_intake(foreign_user_id),
+        headers={"Idempotency-Key": f"probe-foreign-{uuid.uuid4().hex}"},
+    ).get_json()["data"]["programme_id"]
+
+    db.session.remove()
+    login_as(client, user_id)
     monkeypatch.setitem(client.application.config, "RATE_LIMITING_ENABLED", True)
     monkeypatch.setitem(
-        client.application.config, "TRANSFORMATION_FOREIGN_ID_PROBE_LIMIT", 1
+        client.application.config, "TRANSFORMATION_FOREIGN_ID_PROBE_LIMIT", 2
     )
 
-    first = client.get(f"{BASE}/2147483001")
-    second = client.get(f"{BASE}/2147483002")
+    successful = [client.get(f"{BASE}/{local_programme}") for _ in range(4)]
+    foreign = client.get(f"{BASE}/{foreign_programme}")
+    missing = client.get(f"{BASE}/2147483001")
+    limited = client.get(f"{BASE}/2147483002")
 
-    assert first.status_code == 404
-    assert second.status_code == 429
-    body = second.get_json()
+    assert [response.status_code for response in successful] == [200, 200, 200, 200]
+    assert foreign.status_code == 404
+    assert missing.status_code == 404
+    assert limited.status_code == 429
+    body = limited.get_json()
     _assert_envelope(body, error_code="retryable_failure")
     assert body["meta"]["retry_after"] >= 1
     assert [event[2]["reason_code"] for event in audited] == [
+        "programme_not_found",
         "programme_not_found",
         "identifier_probe_rate_limited",
     ]

@@ -262,7 +262,9 @@ def command_success(
     )
 
 
-def json_object() -> dict[str, Any]:
+def json_object(
+    *, authority_paths: Sequence[Sequence[str]] = ((),)
+) -> dict[str, Any]:
     if not request.is_json:
         raise RequestValidationError(
             "A JSON object is required.", field="Content-Type"
@@ -273,25 +275,36 @@ def json_object() -> dict[str, Any]:
         raise RequestValidationError("The JSON body is malformed.") from error
     if not isinstance(payload, dict):
         raise RequestValidationError("A JSON object is required.")
-    reject_server_owned_fields(payload)
+    reject_server_owned_fields(payload, authority_paths=authority_paths)
     return payload
 
 
-def reject_server_owned_fields(payload: Mapping[str, Any]) -> None:
+def reject_server_owned_fields(
+    payload: Mapping[str, Any],
+    *,
+    authority_paths: Sequence[Sequence[str]] = ((),),
+) -> None:
+    """Reject authority/projection fields only in API-owned schema objects.
+
+    Nested domain and provider documents are deliberately opaque to this
+    boundary. Operation services validate the schemas they own; callers can
+    name additional API-owned object paths explicitly when a route has more
+    than one authority-bearing command object.
+    """
     found: set[str] = set()
-
-    def inspect(value: Any) -> None:
-        if isinstance(value, Mapping):
-            for raw_key, item in value.items():
-                key = str(raw_key).strip().lower()
-                if key in SERVER_OWNED_FIELDS:
-                    found.add(key)
-                inspect(item)
-        elif isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
-            for item in value:
-                inspect(item)
-
-    inspect(payload)
+    for raw_path in authority_paths:
+        value: Any = payload
+        for segment in raw_path:
+            if not isinstance(value, Mapping) or segment not in value:
+                value = None
+                break
+            value = value[segment]
+        if not isinstance(value, Mapping):
+            continue
+        for raw_key in value:
+            key = str(raw_key).strip().lower()
+            if key in SERVER_OWNED_FIELDS:
+                found.add(key)
     if found:
         raise RequestValidationError(
             "Server-owned fields are not accepted.",
@@ -370,7 +383,7 @@ def ensure_workstream_scope(
 
 
 def enforce_foreign_probe_limit() -> None:
-    """Apply a shared per-actor bucket to all identifier-bearing API probes."""
+    """Charge one opaque denied identifier resolution to the shared bucket."""
     if not request.view_args or not current_app.config.get("RATE_LIMITING_ENABLED", True):
         return
     if not any(name.endswith("_id") for name in request.view_args):
@@ -383,6 +396,27 @@ def enforce_foreign_probe_limit() -> None:
     )
     if not allowed:
         raise RateLimitExceeded(limit, "1m", retry_after)
+
+
+def _rate_limit_response(error: RateLimitExceeded):
+    _audit_security_denial("identifier_probe_rate_limited", alert=True)
+    response = api_error(
+        "retryable_failure",
+        "Too many identifier-bearing requests; retry later.",
+        status=429,
+        meta={"retry_after": error.retry_after},
+    )
+    if error.retry_after:
+        response.headers["Retry-After"] = str(error.retry_after)
+    return response
+
+
+def _denial_rate_limit_response():
+    try:
+        enforce_foreign_probe_limit()
+    except RateLimitExceeded as error:
+        return _rate_limit_response(error)
+    return None
 
 
 def _audit_security_denial(
@@ -432,7 +466,6 @@ def api_endpoint(view):
                 # every mutation.  This both pins the public contract and
                 # avoids route-by-route precedence drift.
                 idempotency_key()
-            enforce_foreign_probe_limit()
             return view(*args, **kwargs)
         except AuthenticationRequired as error:
             _audit_security_denial(error.reason)
@@ -442,11 +475,17 @@ def api_endpoint(view):
                 status=401,
             )
         except NotFound as error:
+            limited = _denial_rate_limit_response()
+            if limited is not None:
+                return limited
             _audit_security_denial(error.reason)
             return api_error(
                 "not_found", "The requested resource was not found.", status=404
             )
         except NotAuthorised as error:
+            limited = _denial_rate_limit_response()
+            if limited is not None:
+                return limited
             _audit_security_denial(error.reason)
             return api_error(
                 "not_authorised",
@@ -483,16 +522,7 @@ def api_endpoint(view):
         except (TypeError, ValueError) as error:
             return api_error("validation_failed", str(error), status=400)
         except RateLimitExceeded as error:
-            _audit_security_denial("identifier_probe_rate_limited", alert=True)
-            response = api_error(
-                "retryable_failure",
-                "Too many identifier-bearing requests; retry later.",
-                status=429,
-                meta={"retry_after": error.retry_after},
-            )
-            if error.retry_after:
-                response.headers["Retry-After"] = str(error.retry_after)
-            return response
+            return _rate_limit_response(error)
         except TransformationError:
             logger.exception("unmapped transformation domain error")
             return api_error(

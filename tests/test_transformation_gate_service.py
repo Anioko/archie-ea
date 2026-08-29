@@ -38,6 +38,10 @@ from app.modules.transformation_room.programme_service import TransformationProg
 
 from tests.test_transformation_programme_service import _intake, programme_fixture
 from tests.test_transformation_option_service import DecisionScope, decision_scope
+from tests.test_decision_brief_service import (
+    _freeze_brief,
+    _freeze_options,
+)
 from tests.test_transformation_evidence_service import (
     _grant_decision_authority,
     evidence_scope,
@@ -853,6 +857,81 @@ def test_objective_gate_is_pure_and_transition_is_locked(programme_fixture):
         changed = session.get(ProgrammeWorkstream, workstream_id)
         assert changed.lifecycle_stage == "discover"
         assert changed.revision == 2
+
+
+def test_transition_replay_uses_immutable_original_edge_and_current_authority(
+    decision_scope,
+):
+    """A post-state role must not unlock an earlier transition result."""
+    scope = decision_scope
+    option_version_ids = _freeze_options(scope)
+    _freeze_brief(scope, option_version_ids, key="transition-replay-brief")
+    with db.engine.begin() as connection:
+        connection.exec_driver_sql("SET LOCAL session_replication_role = replica")
+        connection.execute(
+            text(
+                "UPDATE programme_workstreams SET lifecycle_stage = 'decision_ready', "
+                "revision = 1 WHERE id = :workstream_id "
+                "AND organization_id = :organization_id"
+            ),
+            {
+                "workstream_id": scope.workstream_id,
+                "organization_id": scope.organization_id,
+            },
+        )
+
+    command_key = f"immutable-transition-edge-{uuid.uuid4().hex}"
+    transitioned = TransformationGateService.transition(
+        actor=scope.actor,
+        workstream_id=scope.workstream_id,
+        target_stage="in_governance",
+        expected_revision=1,
+        command_key=command_key,
+    )
+
+    # The original edge requires objective authority. Revocation must deny an
+    # exact replay, even after the live projection has moved to in_governance.
+    with Session(db.engine) as session, session.begin():
+        user = session.get(User, scope.actor_id)
+        user.enterprise_role = "portfolio_manager"
+    with pytest.raises(NotAuthorised, match="transition_not_authorised"):
+        TransformationGateService.transition(
+            actor=scope.actor,
+            workstream_id=scope.workstream_id,
+            target_stage="in_governance",
+            expected_revision=1,
+            command_key=command_key,
+        )
+
+    # decision_authority applies to transitions *from* in_governance, not the
+    # immutable decision_ready -> in_governance command being replayed.
+    with Session(db.engine) as session, session.begin():
+        user = session.get(User, scope.actor_id)
+        user.enterprise_role = "decision_authority"
+    with pytest.raises(NotAuthorised, match="transition_not_authorised"):
+        TransformationGateService.transition(
+            actor=scope.actor,
+            workstream_id=scope.workstream_id,
+            target_stage="in_governance",
+            expected_revision=1,
+            command_key=command_key,
+        )
+
+    # Restoring current authority for the original edge returns the exact
+    # immutable result without repeating the mutation.
+    with Session(db.engine) as session, session.begin():
+        user = session.get(User, scope.actor_id)
+        user.enterprise_role = "enterprise_architect"
+    replayed = TransformationGateService.transition(
+        actor=scope.actor,
+        workstream_id=scope.workstream_id,
+        target_stage="in_governance",
+        expected_revision=1,
+        command_key=command_key,
+    )
+
+    assert replayed.idempotent is True
+    assert replayed.operation_result_id == transitioned.operation_result_id
 
 
 def test_objective_gate_returns_stable_blockers_and_denial_does_not_mutate(programme_fixture):

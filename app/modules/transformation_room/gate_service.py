@@ -29,6 +29,7 @@ from app.models.transformation_evidence import (
     EvidenceRequest,
     TransformationCandidate,
 )
+from app.models.transformation_execution import CommandMaterialisation
 from app.models.transformation_programme import (
     ISO_4217_CURRENCIES,
     MeasureDefinition,
@@ -1316,12 +1317,58 @@ class TransformationGateService:
             if programme is None:
                 raise NotFound("programme_not_found")
             TransformationProgrammeService._require_active_programme(programme)
+            source_stage = workstream.lifecycle_stage
+            materialisation = session.scalar(
+                select(CommandMaterialisation).where(
+                    CommandMaterialisation.organization_id == actor.organization_id,
+                    CommandMaterialisation.operation == "workstream.transition",
+                    CommandMaterialisation.natural_key == expected_key,
+                )
+            )
+            if materialisation is not None:
+                if materialisation.actor_id != actor.user_id:
+                    raise NotAuthorised("transition_result_not_owned")
+                source_stage = cls._materialised_transition_source(
+                    materialisation,
+                    workstream_id=workstream_id,
+                    target_stage=target_stage,
+                    expected_revision=expected_revision,
+                )
             TransformationProgrammeService._require_programme_authority(
                 session, actor, workstream.programme_id, workstream.id,
-                cls._transition_roles(workstream.lifecycle_stage, target_stage),
+                cls._transition_roles(source_stage, target_stage),
                 "transition_not_authorised",
             )
         return authorize
+
+    @classmethod
+    def _materialised_transition_source(
+        cls,
+        materialisation: CommandMaterialisation,
+        *,
+        workstream_id: int,
+        target_stage: str,
+        expected_revision: int,
+    ) -> str:
+        """Recover the immutable edge without trusting the live projection."""
+        events = materialisation.outbox_events
+        if not isinstance(events, list) or len(events) != 1:
+            raise CommandConflict("transition_materialisation_invalid")
+        event = events[0]
+        payload = event.get("payload") if isinstance(event, Mapping) else None
+        if (
+            event.get("event_type") != "workstream.transitioned"
+            or not isinstance(payload, Mapping)
+            or payload.get("workstream_id") != workstream_id
+            or payload.get("lifecycle_stage") != target_stage
+            or payload.get("before_revision") != expected_revision
+        ):
+            raise CommandConflict("transition_materialisation_invalid")
+        source_stage = payload.get("source_stage")
+        if not isinstance(source_stage, str):
+            raise CommandConflict("transition_materialisation_invalid")
+        transition = cls.require_valid_transition(source_stage, target_stage)
+        return transition.source
 
     @classmethod
     def _transition_roles(cls, source, target):
