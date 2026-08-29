@@ -150,7 +150,21 @@ def test_every_protected_write_route_rejects_missing_token(app, _csrf_enabled, _
         resp = client.open(path, method=method, json={"probe": "r30-no-csrf-token"})
         if resp.status_code == 400:
             body = resp.get_json(silent=True) or {}
-            body_text = (body.get("error_type") or body.get("message") or body.get("error") or "").lower()
+            error_messages = [
+                str(error.get("message", ""))
+                for error in body.get("errors", [])
+                if isinstance(error, dict)
+            ]
+            body_text = " ".join(
+                str(value)
+                for value in (
+                    body.get("error_type"),
+                    body.get("message"),
+                    body.get("error"),
+                    *error_messages,
+                )
+                if value
+            ).lower()
             if "csrf" in body_text:
                 continue  # correctly rejected by the CSRF gate (app-wide or
                 # a framework's own 400 body, e.g. flask-restx's
