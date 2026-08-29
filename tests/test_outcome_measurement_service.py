@@ -29,6 +29,7 @@ from app.modules.transformation_room.domain import (
     NotFound,
 )
 from app.modules.transformation_room.outcome_service import OutcomeMeasurementService
+from app.modules.transformation_room.outcome_service import _source_identity
 
 
 @dataclass(frozen=True)
@@ -284,6 +285,151 @@ def test_missing_baseline_keeps_comparison_and_follow_up_null(
     assert benefit.status == "realising"
     assert result.response["variance"] is None
     assert result.object_ids["owner_follow_up_work_package_id"] is None
+
+
+def test_late_historical_observation_appends_without_regressing_current_projection(
+    db_session, monkeypatch, make_outcome_scope
+):
+    """Catches arrival order replacing a newer observed fact with older history."""
+    scope = make_outcome_scope()
+    _install_command_harness(monkeypatch, db_session)
+    current_time = datetime.now(timezone.utc)
+    current = OutcomeMeasurementService.record(
+        actor=scope.actor,
+        benefit_id=scope.benefit_id,
+        value=Decimal("800.00"),
+        unavailable_reason=None,
+        observed_at=current_time,
+        source_identity="finance-ledger:q4-close",
+        source_version="v4",
+        command_key="current-observation",
+    )
+    historical = OutcomeMeasurementService.record(
+        actor=scope.actor,
+        benefit_id=scope.benefit_id,
+        value=Decimal("700.00"),
+        unavailable_reason=None,
+        observed_at=current_time - timedelta(days=30),
+        source_identity="finance-ledger:q3-close",
+        source_version="v3",
+        command_key="historical-observation",
+    )
+    benefit = db_session.get(Benefit, scope.benefit_id)
+
+    assert current.response["status"] == "not_realised"
+    assert historical.response["actual_value"] == "800"
+    assert historical.response["status"] == "not_realised"
+    assert historical.object_ids["owner_follow_up_work_package_id"] is None
+    assert benefit.actual_value == Decimal("800.00")
+    assert benefit.actual_date == current_time.date()
+    assert db_session.scalar(
+        select(func.count()).select_from(OutcomeMeasurement).where(
+            OutcomeMeasurement.organization_id == scope.organization_id,
+            OutcomeMeasurement.benefit_id == scope.benefit_id,
+        )
+    ) == 2
+
+
+def test_repeated_effective_miss_does_not_duplicate_projection_transition_follow_up(
+    db_session, monkeypatch, make_outcome_scope
+):
+    scope = make_outcome_scope()
+    _install_command_harness(monkeypatch, db_session)
+    first_time = datetime.now(timezone.utc)
+    first = OutcomeMeasurementService.record(
+        actor=scope.actor,
+        benefit_id=scope.benefit_id,
+        value=Decimal("800.00"),
+        unavailable_reason=None,
+        observed_at=first_time,
+        source_identity="finance-ledger:q4-close",
+        source_version="v4",
+        command_key="first-missed-projection",
+    )
+    repeated = OutcomeMeasurementService.record(
+        actor=scope.actor,
+        benefit_id=scope.benefit_id,
+        value=Decimal("810.00"),
+        unavailable_reason=None,
+        observed_at=first_time + timedelta(days=30),
+        source_identity="finance-ledger:q1-close",
+        source_version="v5",
+        command_key="repeated-missed-projection",
+    )
+
+    assert first.object_ids["owner_follow_up_work_package_id"] is not None
+    assert repeated.object_ids["owner_follow_up_work_package_id"] is None
+    assert db_session.scalar(
+        select(func.count()).select_from(WorkPackage).where(
+            WorkPackage.organization_id == scope.organization_id,
+            WorkPackage.context == "outcome_follow_up",
+        )
+    ) == 1
+
+
+def test_outcome_commitment_aggregates_all_required_benefit_measurements(
+    db_session, monkeypatch, make_outcome_scope
+):
+    """Catches one realised measure marking a multi-measure outcome realised."""
+    scope = make_outcome_scope()
+    _install_command_harness(monkeypatch, db_session)
+    benefit = db_session.get(Benefit, scope.benefit_id)
+    second = Benefit(
+        organization_id=scope.organization_id,
+        name="Service continuity",
+        status="realising",
+        measure="Unplanned outage minutes",
+        unit="minutes/year",
+        baseline_value=Decimal("100.00"),
+        target_value=Decimal("50.00"),
+        owner_id=benefit.owner_id,
+        strategic_initiative_id=benefit.strategic_initiative_id,
+        programme_workstream_id=benefit.programme_workstream_id,
+        outcome_commitment_id=benefit.outcome_commitment_id,
+        work_package_id=benefit.work_package_id,
+        materialisation_key=uuid4().hex + uuid4().hex,
+    )
+    db_session.add(second)
+    db_session.flush()
+
+    result = OutcomeMeasurementService.record(
+        actor=scope.actor,
+        benefit_id=scope.benefit_id,
+        value=Decimal("700.00"),
+        unavailable_reason=None,
+        observed_at=datetime.now(timezone.utc),
+        source_identity="finance-ledger:q4-close",
+        source_version="v4",
+        command_key="one-of-two-measures",
+    )
+    outcome = db_session.get(
+        ProgrammeOutcomeCommitment, benefit.outcome_commitment_id
+    )
+
+    assert result.response["status"] == "realised"
+    assert outcome.lifecycle == "monitoring"
+
+
+def test_measurement_identity_uses_canonical_adapter_uri_and_digest_key():
+    """Catches unstable source identities and oversized concatenated natural keys."""
+    assert _source_identity(
+        "HTTPS://Inventory.EXAMPLE/Measures/CaseSensitive?Key=ABC"
+    ) == "https://inventory.example/Measures/CaseSensitive?Key=ABC"
+    with pytest.raises(ValueError, match="canonical adapter identity"):
+        _source_identity("opaque-without-adapter")
+
+    identity = "ledger:" + ("A" * 500)
+    version = "v" + ("9" * 250)
+    key = OutcomeMeasurementService.measurement_natural_key(
+        organization_id=71,
+        benefit_id=91,
+        source_identity=identity,
+        observed_at=datetime(2026, 8, 29, 8, 30, tzinfo=timezone.utc),
+        source_version=version,
+    )
+    assert key.startswith("measurement:")
+    assert len(key) == len("measurement:") + 64
+    assert identity not in key and version not in key
 
 
 @pytest.mark.parametrize(

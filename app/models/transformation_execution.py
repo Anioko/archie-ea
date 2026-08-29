@@ -362,16 +362,25 @@ event.listen(DeliveryExportAttempt, "before_delete", _guard_completed_export_del
 
 def ensure_execution_history_immutability(connection):
     """Install database guards for Task 9 append-only/completed history."""
+    if connection.dialect.name != "postgresql":
+        return
+    schema = connection.scalar(db.text("SELECT current_schema()"))
+    preparer = connection.dialect.identifier_preparer
+    quoted_schema = preparer.quote(schema)
+    connection.execute(
+        db.text("SELECT pg_advisory_xact_lock(hashtextextended(:scope, 0))"),
+        {"scope": f"{schema}:transformation-execution-history-guards"},
+    )
     connection.execute(
         db.text(
-            """
-            CREATE OR REPLACE FUNCTION archie_reject_outcome_measurement_mutation()
+            f"""
+            CREATE OR REPLACE FUNCTION {quoted_schema}.archie_reject_outcome_measurement_mutation()
             RETURNS trigger LANGUAGE plpgsql AS $$
             BEGIN
                 RAISE EXCEPTION 'outcome measurements are append-only';
             END;
             $$;
-            CREATE OR REPLACE FUNCTION archie_guard_delivery_export_attempt_mutation()
+            CREATE OR REPLACE FUNCTION {quoted_schema}.archie_guard_delivery_export_attempt_mutation()
             RETURNS trigger LANGUAGE plpgsql AS $$
             BEGIN
                 IF OLD.status IN ('succeeded', 'failed') THEN
@@ -383,35 +392,107 @@ def ensure_execution_history_immutability(connection):
                 RETURN NEW;
             END;
             $$;
-            DO $$
-            BEGIN
-                IF to_regclass('outcome_measurements') IS NOT NULL
-                   AND NOT EXISTS (
-                       SELECT 1 FROM pg_trigger
-                       WHERE tgname = 'trg_reject_outcome_measurement_mutation'
-                         AND tgrelid = to_regclass('outcome_measurements')
-                   ) THEN
-                    CREATE TRIGGER trg_reject_outcome_measurement_mutation
-                    BEFORE UPDATE OR DELETE ON outcome_measurements
-                    FOR EACH ROW EXECUTE FUNCTION
-                    archie_reject_outcome_measurement_mutation();
-                END IF;
-                IF to_regclass('delivery_export_attempts') IS NOT NULL
-                   AND NOT EXISTS (
-                       SELECT 1 FROM pg_trigger
-                       WHERE tgname = 'trg_guard_delivery_export_attempt_mutation'
-                         AND tgrelid = to_regclass('delivery_export_attempts')
-                   ) THEN
-                    CREATE TRIGGER trg_guard_delivery_export_attempt_mutation
-                    BEFORE UPDATE OR DELETE ON delivery_export_attempts
-                    FOR EACH ROW EXECUTE FUNCTION
-                    archie_guard_delivery_export_attempt_mutation();
-                END IF;
-            END;
-            $$;
             """
         )
     )
+    for table, trigger, function in (
+        (
+            "outcome_measurements",
+            "trg_reject_outcome_measurement_mutation",
+            "archie_reject_outcome_measurement_mutation",
+        ),
+        (
+            "delivery_export_attempts",
+            "trg_guard_delivery_export_attempt_mutation",
+            "archie_guard_delivery_export_attempt_mutation",
+        ),
+    ):
+        exists = connection.scalar(
+            db.text(
+                "SELECT EXISTS (SELECT 1 FROM information_schema.tables "
+                "WHERE table_schema=:schema AND table_name=:table)"
+            ),
+            {"schema": schema, "table": table},
+        )
+        if not exists:
+            continue
+        trigger_state = connection.scalar(
+            db.text(
+                "SELECT t.tgenabled FROM pg_trigger t "
+                "JOIN pg_class c ON c.oid=t.tgrelid "
+                "JOIN pg_namespace n ON n.oid=c.relnamespace "
+                "WHERE n.nspname=:schema AND c.relname=:table "
+                "AND t.tgname=:trigger AND NOT t.tgisinternal"
+            ),
+            {"schema": schema, "table": table, "trigger": trigger},
+        )
+        quoted_table = preparer.quote(table)
+        quoted_trigger = preparer.quote(trigger)
+        if trigger_state is None:
+            connection.execute(
+                db.text(
+                    f"CREATE TRIGGER {quoted_trigger} BEFORE UPDATE OR DELETE "
+                    f"ON {quoted_schema}.{quoted_table} FOR EACH ROW EXECUTE FUNCTION "
+                    f"{quoted_schema}.{preparer.quote(function)}()"
+                )
+            )
+        elif trigger_state == "D":
+            connection.execute(
+                db.text(
+                    f"ALTER TABLE {quoted_schema}.{quoted_table} "
+                    f"ENABLE TRIGGER {quoted_trigger}"
+                )
+            )
+
+
+def inspect_execution_history_immutability(connection):
+    """Return deterministic Task 9 function/trigger drift labels."""
+    if connection.dialect.name != "postgresql":
+        return []
+    schema = connection.scalar(db.text("SELECT current_schema()"))
+    drift = []
+    for function in (
+        "archie_reject_outcome_measurement_mutation",
+        "archie_guard_delivery_export_attempt_mutation",
+    ):
+        present = connection.scalar(
+            db.text(
+                "SELECT EXISTS (SELECT 1 FROM pg_proc p "
+                "JOIN pg_namespace n ON n.oid=p.pronamespace "
+                "WHERE n.nspname=:schema AND p.proname=:function)"
+            ),
+            {"schema": schema, "function": function},
+        )
+        if not present:
+            drift.append(f"function_missing:{function}")
+    for table, trigger in (
+        ("delivery_export_attempts", "trg_guard_delivery_export_attempt_mutation"),
+        ("outcome_measurements", "trg_reject_outcome_measurement_mutation"),
+    ):
+        table_present = connection.scalar(
+            db.text(
+                "SELECT EXISTS (SELECT 1 FROM information_schema.tables "
+                "WHERE table_schema=:schema AND table_name=:table)"
+            ),
+            {"schema": schema, "table": table},
+        )
+        if not table_present:
+            continue
+        state = connection.scalar(
+            db.text(
+                "SELECT t.tgenabled FROM pg_trigger t "
+                "JOIN pg_class c ON c.oid=t.tgrelid "
+                "JOIN pg_namespace n ON n.oid=c.relnamespace "
+                "WHERE n.nspname=:schema AND c.relname=:table "
+                "AND t.tgname=:trigger AND NOT t.tgisinternal"
+            ),
+            {"schema": schema, "table": table, "trigger": trigger},
+        )
+        if state is None:
+            drift.append(f"trigger_missing:{table}.{trigger}")
+        elif state == "D":
+            drift.append(f"trigger_disabled:{table}.{trigger}")
+    return sorted(drift)
 
 
 @event.listens_for(OutcomeMeasurement.__table__, "after_create")
@@ -433,4 +514,5 @@ __all__ = [
     "OperationResult",
     "OutcomeMeasurement",
     "ensure_execution_history_immutability",
+    "inspect_execution_history_immutability",
 ]

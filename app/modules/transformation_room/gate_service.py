@@ -1326,10 +1326,25 @@ class TransformationGateService:
         snapshot = cls._load_policy_snapshot(
             session=session, actor=actor, workstream_id=request["workstream_id"], lock=True
         )
+        return cls.apply_locked_transition(
+            session,
+            actor,
+            snapshot=snapshot,
+            target_stage=request["target_stage"],
+            expected_revision=request["expected_revision"],
+        )
+
+    @classmethod
+    def apply_locked_transition(
+        cls, session, actor, *, snapshot, target_stage, expected_revision
+    ):
+        """Apply the canonical gate to a snapshot already locked by its caller."""
         workstream = snapshot.workstream
-        if workstream.revision != request["expected_revision"]:
+        if workstream.revision != expected_revision:
             raise CommandConflict("stale_revision")
-        transition = cls.require_valid_transition(workstream.lifecycle_stage, request["target_stage"])
+        transition = cls.require_valid_transition(
+            workstream.lifecycle_stage, target_stage
+        )
         TransformationProgrammeService._require_programme_authority(
             session, actor, workstream.programme_id, workstream.id,
             cls._transition_roles(transition.source, transition.target),

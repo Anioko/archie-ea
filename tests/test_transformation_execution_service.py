@@ -2,19 +2,25 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta, timezone
+from decimal import Decimal
+import hashlib
+import threading
 from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import func, select, text
+from sqlalchemy import create_engine, func, select, text
 from sqlalchemy.exc import DBAPIError, IntegrityError
+from sqlalchemy.orm import Session
 
+from app import db
 from app.models.archimate_core import ArchiMateElement
 from app.models.architecture_review_board import ARBReviewCycle, ARBReviewItem
 from app.models.benefit import Benefit
 from app.models.implementation_migration import WorkPackage
+from app.models.organization import Organization
 from app.models.solution_models import Solution
 from app.models.strategic import RoadmapItem, StrategicInitiative
 from app.models.transformation_decision import (
@@ -23,7 +29,13 @@ from app.models.transformation_decision import (
     TransformationOption,
     TransformationOptionVersion,
 )
-from app.models.transformation_execution import DeliveryExportAttempt
+from app.models.transformation_db_guards import ensure_transformation_db_guards
+from app.models.transformation_execution import (
+    CommandIdempotencyRecord,
+    DeliveryExportAttempt,
+    OperationOutboxEvent,
+    OutcomeMeasurement,
+)
 from app.models.transformation_programme import (
     MeasureDefinition,
     ProgrammeOutcomeCommitment,
@@ -32,22 +44,33 @@ from app.models.transformation_programme import (
 )
 from app.models.user import User
 from app.modules.transformation_room.command_service import canonical_request_digest
+from app.modules.transformation_room.decision_service import (
+    DecisionBriefService,
+    TransformationOptionService,
+    _canonical_json,
+    _sha256_canonical,
+)
 from app.modules.transformation_room.domain import (
     ActorContext,
     ApprovedAction,
+    BlockedByEvidence,
     CommandClaim,
     CommandConflict,
     CommandResult,
+    GateBlocker,
     NotFound,
 )
+from app.modules.transformation_room.gate_service import TransformationGateService
 from app.modules.transformation_room.execution_service import (
     TransformationExecutionService,
 )
+from app.modules.transformation_room.outcome_service import OutcomeMeasurementService
 
 
 @dataclass(frozen=True)
 class ExecutionScope:
     actor: ActorContext
+    outcome_actor: ActorContext
     foreign_actor: ActorContext
     programme_id: int
     workstream_id: int
@@ -155,12 +178,12 @@ def make_execution_scope(db_session, make_org):
             affected_capability_ids=[17],
             affected_value_stream_ids=[23],
             recommendation_rationale="Best evidence-backed value and risk balance",
-            cost_min="100.00",
-            cost_max="200.00",
-            benefit_min="250.00",
-            benefit_max="300.00",
-            risk_min="0.10",
-            risk_max="0.20",
+            cost_min=Decimal("100.00"),
+            cost_max=Decimal("200.00"),
+            benefit_min=Decimal("250.00"),
+            benefit_max=Decimal("300.00"),
+            risk_min=Decimal("0.10"),
+            risk_max=Decimal("0.20"),
             currency="GBP",
             technology_required=technology_required,
         )
@@ -182,16 +205,20 @@ def make_execution_scope(db_session, make_org):
                 "risks": list(option.risks),
                 "transition_approach": option.transition_approach,
             },
-            cost_min="100.00",
-            cost_max="200.00",
-            benefit_min="250.00",
-            benefit_max="300.00",
-            risk_min="0.10",
-            risk_max="0.20",
+            cost_min=Decimal("100.00"),
+            cost_max=Decimal("200.00"),
+            benefit_min=Decimal("250.00"),
+            benefit_max=Decimal("300.00"),
+            risk_min=Decimal("0.10"),
+            risk_max=Decimal("0.20"),
             currency="GBP",
             technology_required=technology_required,
             captured_by_id=delivery_lead.id,
-            content_hash="a" * 64,
+            captured_at=datetime.now(timezone.utc),
+            content_hash="0" * 64,
+        )
+        option_version.content_hash = _sha256_canonical(
+            TransformationOptionService.reconstruct_canonical_version(option_version)
         )
         db_session.add(option_version)
         db_session.flush()
@@ -233,8 +260,9 @@ def make_execution_scope(db_session, make_org):
             measure_ids=[measure.id],
             policy_version="transformation-r1.1",
             created_by_id=delivery_lead.id,
-            content_hash="b" * 64,
-            canonical_document="{}",
+            created_at=datetime.now(timezone.utc),
+            content_hash="0" * 64,
+            canonical_document="pending",
             submitted_by_id=delivery_lead.id,
             submitter_authorized=True,
             decision_authority_id=delivery_lead.id,
@@ -242,6 +270,12 @@ def make_execution_scope(db_session, make_org):
             blockers_cleared=True,
             unknowns_acknowledged=True,
         )
+        version.canonical_document = _canonical_json(
+            DecisionBriefService.reconstruct_canonical_payload(version)
+        )
+        version.content_hash = hashlib.sha256(
+            version.canonical_document.encode("utf-8")
+        ).hexdigest()
         db_session.add(version)
         db_session.flush()
         review_number = f"TR-{uuid4().hex[:12]}"
@@ -280,6 +314,8 @@ def make_execution_scope(db_session, make_org):
         )
         db_session.add(review)
         db_session.flush()
+        assert DecisionBriefService.verify_hash(version)
+        assert TransformationOptionService.verify_version_hash(option_version)
         actor = ActorContext(
             delivery_lead.id, organization.id, frozenset(), f"req-{uuid4().hex}"
         )
@@ -290,9 +326,9 @@ def make_execution_scope(db_session, make_org):
             f"req-{uuid4().hex}",
         )
         action = ApprovedAction(
-            action_key="consolidate-cited-estate",
+            action_key=f"approved-option:{option_version.id}",
             option_version_id=option_version.id,
-            title="Consolidate cited application estate",
+            title=option.title,
             owner_id=delivery_lead.id,
             start_date=date.today() + timedelta(days=7),
             target_date=date.today() + timedelta(days=90),
@@ -300,6 +336,12 @@ def make_execution_scope(db_session, make_org):
         )
         return ExecutionScope(
             actor,
+            ActorContext(
+                outcome_owner.id,
+                organization.id,
+                frozenset(),
+                f"req-{uuid4().hex}",
+            ),
             foreign_actor,
             programme.id,
             workstream.id,
@@ -355,6 +397,628 @@ def _install_command_harness(monkeypatch, session):
         "app.modules.transformation_room.execution_service.CommandService.execute",
         execute,
     )
+
+
+@pytest.fixture
+def committed_execution_scope(app):
+    """A committed isolated schema visible to production CommandService sessions."""
+    schema = f"test_task9_command_{uuid4().hex[:12]}"
+    with app.app_context():
+        public_engine = db.engine
+        with public_engine.begin() as connection:
+            connection.execute(text(f'CREATE SCHEMA "{schema}"'))
+        isolated_engine = create_engine(
+            public_engine.url,
+            connect_args={"options": f"-csearch_path={schema},public"},
+        )
+        original_engine = db.engines[None]
+        db.session.remove()
+        db.engines[None] = isolated_engine
+        try:
+            table_names = (
+                "organizations",
+                "roles",
+                "users",
+                "strategic_initiatives",
+                "programme_workstreams",
+                "programme_role_assignments",
+                "programme_outcome_commitments",
+                "measure_definitions",
+                "transformation_options",
+                "transformation_option_versions",
+                "decision_briefs",
+                "decision_brief_versions",
+                "arb_review_cycles",
+                "arb_review_items",
+                "archimate_elements",
+                "work_packages",
+                "strategic_roadmap_items",
+                "benefits",
+                "solutions",
+                "command_idempotency_records",
+                "operation_results",
+                "command_materialisations",
+                "transformation_outbox_events",
+                "delivery_export_attempts",
+                "outcome_measurements",
+            )
+            for table_name in table_names:
+                db.metadata.tables[table_name].create(
+                    bind=isolated_engine, checkfirst=False
+                )
+            ensure_transformation_db_guards(db.session.connection())
+            db.session.commit()
+            session = db.session
+            with session.begin():
+                suffix = uuid4().hex
+                organization = Organization(
+                    name=f"Task 9 committed {suffix}",
+                    slug=f"task9-committed-{suffix}",
+                )
+                foreign_organization = Organization(
+                    name=f"Task 9 foreign {suffix}",
+                    slug=f"task9-foreign-{suffix}",
+                )
+                session.add_all([organization, foreign_organization])
+                session.flush()
+                delivery_lead = _user(
+                    session, organization.id, "application_architect"
+                )
+                outcome_owner = _user(
+                    session, organization.id, "business_architect"
+                )
+                foreign_user = _user(
+                    session, foreign_organization.id, "application_architect"
+                )
+                programme = StrategicInitiative(
+                    organization_id=organization.id,
+                    name="Committed execution programme",
+                    record_kind="transformation_programme",
+                    status="in_progress",
+                    owner_id=delivery_lead.id,
+                )
+                session.add(programme)
+                session.flush()
+                workstream = ProgrammeWorkstream(
+                    organization_id=organization.id,
+                    programme_id=programme.id,
+                    workstream_type="application_rationalisation",
+                    objective="Execute the frozen option",
+                    scope_expression={"application_ids": [41]},
+                    lifecycle_stage="approved",
+                    lead_id=delivery_lead.id,
+                )
+                session.add(workstream)
+                session.flush()
+                session.add(
+                    ProgrammeRoleAssignment(
+                        organization_id=organization.id,
+                        programme_id=programme.id,
+                        workstream_id=workstream.id,
+                        user_id=delivery_lead.id,
+                        role="delivery_lead",
+                        effective_from=date.today() - timedelta(days=1),
+                        assigned_by_id=delivery_lead.id,
+                    )
+                )
+                outcome = ProgrammeOutcomeCommitment(
+                    organization_id=organization.id,
+                    programme_id=programme.id,
+                    workstream_id=workstream.id,
+                    statement="Reduce annual run cost",
+                    owner_id=outcome_owner.id,
+                    improvement_direction="decrease",
+                    target_date=date.today() + timedelta(days=180),
+                    lifecycle="committed",
+                )
+                session.add(outcome)
+                session.flush()
+                measure = MeasureDefinition(
+                    organization_id=organization.id,
+                    outcome_commitment_id=outcome.id,
+                    metric_name="Annual run cost",
+                    unit="GBP/year",
+                    currency="GBP",
+                    aggregation="latest",
+                    baseline_amount=Decimal("1000.00"),
+                    target_amount=Decimal("750.00"),
+                    baseline_date=date.today(),
+                    target_date=outcome.target_date,
+                    cadence="quarterly",
+                    source_adapter="finance-ledger",
+                    source_key="run-cost",
+                )
+                option = TransformationOption(
+                    organization_id=organization.id,
+                    workstream_id=workstream.id,
+                    title="Controlled consolidation",
+                    action_type="consolidate",
+                    description="Consolidate the cited application estate",
+                    assumptions=["Service owners approve the cutover window"],
+                    dependencies=["Accepted service continuity evidence"],
+                    impacts=["Lower run cost"],
+                    risks=["Cutover interruption"],
+                    reversibility="Rollback during the controlled window",
+                    transition_approach="Phased consolidation",
+                    affected_capability_ids=[17],
+                    affected_value_stream_ids=[23],
+                    recommendation_rationale="Best evidence-backed balance",
+                    cost_min=Decimal("100.00"),
+                    cost_max=Decimal("200.00"),
+                    benefit_min=Decimal("250.00"),
+                    benefit_max=Decimal("300.00"),
+                    risk_min=Decimal("0.10"),
+                    risk_max=Decimal("0.20"),
+                    currency="GBP",
+                    technology_required=True,
+                )
+                session.add_all([measure, option])
+                session.flush()
+                captured_at = datetime.now(timezone.utc)
+                option_version = TransformationOptionVersion(
+                    organization_id=organization.id,
+                    option_id=option.id,
+                    workstream_id=workstream.id,
+                    version=1,
+                    source_revision=1,
+                    content_json={
+                        "title": option.title,
+                        "action_type": option.action_type,
+                        "description": option.description,
+                        "assumptions": list(option.assumptions),
+                        "dependencies": list(option.dependencies),
+                        "impacts": list(option.impacts),
+                        "risks": list(option.risks),
+                        "transition_approach": option.transition_approach,
+                    },
+                    cost_min=Decimal("100.00"),
+                    cost_max=Decimal("200.00"),
+                    benefit_min=Decimal("250.00"),
+                    benefit_max=Decimal("300.00"),
+                    risk_min=Decimal("0.10"),
+                    risk_max=Decimal("0.20"),
+                    currency="GBP",
+                    technology_required=True,
+                    captured_by_id=delivery_lead.id,
+                    captured_at=captured_at,
+                    content_hash="0" * 64,
+                )
+                option_version.content_hash = _sha256_canonical(
+                    TransformationOptionService.reconstruct_canonical_version(
+                        option_version
+                    )
+                )
+                session.add(option_version)
+                session.flush()
+                brief = DecisionBrief(
+                    organization_id=organization.id,
+                    workstream_id=workstream.id,
+                    title="Committed consolidation decision",
+                    recommendation_option_id=option.id,
+                    decision_authority_id=delivery_lead.id,
+                    unknown_codes=[],
+                    conflicts=["Cutover window remains governed"],
+                    expected_impacts=["Lower run cost"],
+                    status="frozen",
+                )
+                session.add(brief)
+                session.flush()
+                created_at = datetime.now(timezone.utc)
+                version = DecisionBriefVersion(
+                    organization_id=organization.id,
+                    brief_id=brief.id,
+                    workstream_id=workstream.id,
+                    version=1,
+                    source_revision=1,
+                    frozen_payload={
+                        "programme_id": programme.id,
+                        "workstream_id": workstream.id,
+                        "objective": workstream.objective,
+                        "scope_expression": workstream.scope_expression,
+                        "conflicts": list(brief.conflicts),
+                        "option_exception": None,
+                        "evidence": [{"id": 701, "claim_key": "continuity"}],
+                        "outcomes": [{"id": outcome.id, "statement": outcome.statement}],
+                        "measures": [{"id": measure.id, "metric_name": measure.metric_name}],
+                    },
+                    recommendation_option_version_id=option_version.id,
+                    option_version_ids=[option_version.id],
+                    cited_evidence_ids=[701],
+                    outcome_ids=[outcome.id],
+                    measure_ids=[measure.id],
+                    policy_version="transformation-r1.1",
+                    created_by_id=delivery_lead.id,
+                    created_at=created_at,
+                    content_hash="0" * 64,
+                    canonical_document="pending",
+                    submitted_by_id=delivery_lead.id,
+                    submitter_authorized=True,
+                    decision_authority_id=delivery_lead.id,
+                    human_reviewed_ai=True,
+                    blockers_cleared=True,
+                    unknowns_acknowledged=True,
+                )
+                version.canonical_document = _canonical_json(
+                    DecisionBriefService.reconstruct_canonical_payload(version)
+                )
+                version.content_hash = hashlib.sha256(
+                    version.canonical_document.encode("utf-8")
+                ).hexdigest()
+                session.add(version)
+                session.flush()
+                review_number = f"TR-{uuid4().hex[:12]}"
+                cycle = ARBReviewCycle(
+                    organization_id=organization.id,
+                    subject_type="decision_brief",
+                    subject_id=brief.id,
+                    decision_brief_id=brief.id,
+                    decision_brief_version_id=version.id,
+                    review_number=review_number,
+                    cycle_number=1,
+                    status="approved",
+                    closed_at=datetime.now(timezone.utc),
+                    terminal_outcome="approved",
+                )
+                session.add(cycle)
+                session.flush()
+                session.add(
+                    ARBReviewItem(
+                        organization_id=organization.id,
+                        review_number=review_number,
+                        title=brief.title,
+                        review_type="architecture_change",
+                        subject_type="decision_brief",
+                        subject_id=brief.id,
+                        decision_brief_id=brief.id,
+                        decision_brief_version_id=version.id,
+                        review_cycle_id=cycle.id,
+                        status="approved",
+                        submitter_id=outcome_owner.id,
+                        submitted_at=datetime.now(),
+                        decision="approved",
+                        decision_rationale="Approved from frozen evidence",
+                        decision_date=datetime.now(),
+                        decided_by_id=delivery_lead.id,
+                    )
+                )
+                session.flush()
+                scope = ExecutionScope(
+                    ActorContext(
+                        delivery_lead.id,
+                        organization.id,
+                        frozenset(),
+                        f"req-{uuid4().hex}",
+                    ),
+                    ActorContext(
+                        outcome_owner.id,
+                        organization.id,
+                        frozenset(),
+                        f"req-{uuid4().hex}",
+                    ),
+                    ActorContext(
+                        foreign_user.id,
+                        foreign_organization.id,
+                        frozenset(),
+                        f"req-{uuid4().hex}",
+                    ),
+                    programme.id,
+                    workstream.id,
+                    version.id,
+                    option_version.id,
+                    ApprovedAction(
+                        action_key=f"approved-option:{option_version.id}",
+                        option_version_id=option_version.id,
+                        title=option.title,
+                        owner_id=delivery_lead.id,
+                        start_date=date.today() + timedelta(days=7),
+                        target_date=date.today() + timedelta(days=90),
+                        scheduling_applicable=True,
+                    ),
+                )
+            db.session.remove()
+            yield scope
+        finally:
+            db.session.remove()
+            db.engines[None] = original_engine
+            isolated_engine.dispose()
+            with public_engine.begin() as connection:
+                connection.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
+
+
+def _run_two_session_race(app, first, second):
+    barrier = threading.Barrier(2, timeout=20)
+    results = []
+    errors = []
+
+    def run(call):
+        try:
+            barrier.wait()
+            with app.app_context():
+                results.append(call())
+                db.session.remove()
+        except BaseException as error:  # noqa: BLE001 — preserve thread failure
+            errors.append(error)
+
+    threads = [
+        threading.Thread(target=run, args=(first,)),
+        threading.Thread(target=run, args=(second,)),
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=40)
+    assert all(not thread.is_alive() for thread in threads)
+    assert errors == []
+    assert len(results) == 2
+    return results
+
+
+def test_production_command_service_two_session_races_replay_canonical_ids(
+    app, monkeypatch, committed_execution_scope
+):
+    """Exercise real claims, fences, envelopes and natural-key reconciliation."""
+    scope = committed_execution_scope
+    original_materialise = TransformationExecutionService._materialise_locked
+    handler_barrier = threading.Barrier(2, timeout=20)
+
+    def racing_materialise(*args, **kwargs):
+        handler_barrier.wait()
+        return original_materialise(*args, **kwargs)
+
+    monkeypatch.setattr(
+        TransformationExecutionService, "_materialise_locked", racing_materialise
+    )
+    materialised = _run_two_session_race(
+        app,
+        lambda: TransformationExecutionService.materialise(
+            actor=replace(scope.actor, request_id=f"race-a-{uuid4().hex}"),
+            decision_brief_version_id=scope.decision_brief_version_id,
+            actions=(scope.action,),
+            command_key=f"materialise-a-{uuid4().hex}",
+        ),
+        lambda: TransformationExecutionService.materialise(
+            actor=replace(scope.actor, request_id=f"race-b-{uuid4().hex}"),
+            decision_brief_version_id=scope.decision_brief_version_id,
+            actions=(scope.action,),
+            command_key=f"materialise-b-{uuid4().hex}",
+        ),
+    )
+    monkeypatch.setattr(
+        TransformationExecutionService, "_materialise_locked", original_materialise
+    )
+    assert materialised[0].object_ids == materialised[1].object_ids
+    assert sorted((row.created, row.idempotent) for row in materialised) == [
+        (False, True),
+        (True, False),
+    ]
+
+    original_solution = TransformationExecutionService._create_solution_if_required
+    handler_barrier = threading.Barrier(2, timeout=20)
+
+    def racing_solution(*args, **kwargs):
+        handler_barrier.wait()
+        return original_solution(*args, **kwargs)
+
+    monkeypatch.setattr(
+        TransformationExecutionService,
+        "_create_solution_if_required",
+        racing_solution,
+    )
+    solutions = _run_two_session_race(
+        app,
+        lambda: TransformationExecutionService.create_technology_solution(
+            actor=replace(scope.actor, request_id=f"solution-a-{uuid4().hex}"),
+            decision_brief_version_id=scope.decision_brief_version_id,
+            option_version_id=scope.option_version_id,
+            command_key=f"solution-a-{uuid4().hex}",
+        ),
+        lambda: TransformationExecutionService.create_technology_solution(
+            actor=replace(scope.actor, request_id=f"solution-b-{uuid4().hex}"),
+            decision_brief_version_id=scope.decision_brief_version_id,
+            option_version_id=scope.option_version_id,
+            command_key=f"solution-b-{uuid4().hex}",
+        ),
+    )
+    monkeypatch.setattr(
+        TransformationExecutionService,
+        "_create_solution_if_required",
+        original_solution,
+    )
+    assert solutions[0].object_ids == solutions[1].object_ids
+
+    benefit_id = materialised[0].object_ids["benefit_ids"][0]
+    observed_at = datetime.now(timezone.utc)
+    original_measure = OutcomeMeasurementService._append_measurement_and_project
+    handler_barrier = threading.Barrier(2, timeout=20)
+
+    def racing_measure(*args, **kwargs):
+        handler_barrier.wait()
+        return original_measure(*args, **kwargs)
+
+    monkeypatch.setattr(
+        OutcomeMeasurementService, "_append_measurement_and_project", racing_measure
+    )
+    measurements = _run_two_session_race(
+        app,
+        lambda: OutcomeMeasurementService.record(
+            actor=replace(scope.outcome_actor, request_id=f"measure-a-{uuid4().hex}"),
+            benefit_id=benefit_id,
+            value=Decimal("800.00"),
+            unavailable_reason=None,
+            observed_at=observed_at,
+            source_identity="finance-ledger:q4-close",
+            source_version="v4",
+            command_key=f"measure-a-{uuid4().hex}",
+        ),
+        lambda: OutcomeMeasurementService.record(
+            actor=replace(scope.outcome_actor, request_id=f"measure-b-{uuid4().hex}"),
+            benefit_id=benefit_id,
+            value=Decimal("800.00"),
+            unavailable_reason=None,
+            observed_at=observed_at,
+            source_identity="finance-ledger:q4-close",
+            source_version="v4",
+            command_key=f"measure-b-{uuid4().hex}",
+        ),
+    )
+    assert measurements[0].object_ids == measurements[1].object_ids
+    with Session(db.engine) as session:
+        assert session.scalar(
+            select(func.count()).select_from(OutcomeMeasurement).where(
+                OutcomeMeasurement.organization_id == scope.actor.organization_id,
+                OutcomeMeasurement.benefit_id == benefit_id,
+            )
+        ) == 1
+
+    work_package_id = materialised[0].object_ids["work_package_ids"][0]
+    original_prepare = TransformationExecutionService._prepare_export_locked
+    handler_barrier = threading.Barrier(2, timeout=20)
+
+    def racing_prepare(*args, **kwargs):
+        handler_barrier.wait()
+        return original_prepare(*args, **kwargs)
+
+    monkeypatch.setattr(
+        TransformationExecutionService, "_prepare_export_locked", racing_prepare
+    )
+    provider_keys = []
+
+    def provider(_work_package, _request, provider_idempotency_key):
+        provider_keys.append(provider_idempotency_key)
+        return {"external_key": "ARCH-RACE"}
+
+    exports = _run_two_session_race(
+        app,
+        lambda: TransformationExecutionService.export_work_package(
+            actor=replace(scope.actor, request_id=f"export-a-{uuid4().hex}"),
+            work_package_id=work_package_id,
+            provider_key="delivery-provider",
+            request={"project": "ARCH-RACE"},
+            exporter=provider,
+            command_key=f"export-a-{uuid4().hex}",
+        ),
+        lambda: TransformationExecutionService.export_work_package(
+            actor=replace(scope.actor, request_id=f"export-b-{uuid4().hex}"),
+            work_package_id=work_package_id,
+            provider_key="delivery-provider",
+            request={"project": "ARCH-RACE"},
+            exporter=provider,
+            command_key=f"export-b-{uuid4().hex}",
+        ),
+    )
+    assert exports[0].object_ids == exports[1].object_ids
+    assert provider_keys and set(provider_keys) == {provider_keys[0]}
+    with Session(db.engine) as session:
+        assert session.scalar(
+            select(func.count()).select_from(DeliveryExportAttempt).where(
+                DeliveryExportAttempt.organization_id
+                == scope.actor.organization_id,
+                DeliveryExportAttempt.work_package_id == work_package_id,
+            )
+        ) == 1
+
+
+def test_export_attempt_and_outbox_commit_before_provider_and_crash_replays(
+    app, monkeypatch, committed_execution_scope
+):
+    scope = committed_execution_scope
+    with app.app_context():
+        materialised = TransformationExecutionService.materialise(
+            actor=scope.actor,
+            decision_brief_version_id=scope.decision_brief_version_id,
+            actions=(scope.action,),
+            command_key=f"export-materialise-{uuid4().hex}",
+        )
+    work_package_id = materialised.object_ids["work_package_ids"][0]
+    provider_keys = []
+
+    def provider(_work_package, _request, provider_idempotency_key):
+        with Session(db.engine) as session:
+            attempt = session.scalar(
+                select(DeliveryExportAttempt).where(
+                    DeliveryExportAttempt.organization_id
+                    == scope.actor.organization_id,
+                    DeliveryExportAttempt.work_package_id == work_package_id,
+                )
+            )
+            assert attempt is not None and attempt.status == "in_progress"
+            assert session.scalar(
+                select(func.count()).select_from(OperationOutboxEvent).where(
+                    OperationOutboxEvent.organization_id
+                    == scope.actor.organization_id,
+                    OperationOutboxEvent.event_type
+                    == "transformation.delivery_export_requested",
+                )
+            ) == 1
+            prepare_receipt = session.scalar(
+                select(CommandIdempotencyRecord).where(
+                    CommandIdempotencyRecord.organization_id
+                    == scope.actor.organization_id,
+                    CommandIdempotencyRecord.operation
+                    == TransformationExecutionService.EXPORT_OPERATION,
+                )
+            )
+            assert prepare_receipt is not None
+            assert prepare_receipt.status == "succeeded"
+            assert prepare_receipt.lease_expires_at is None
+        provider_keys.append(provider_idempotency_key)
+        return {"external_key": "ARCH-42"}
+
+    crashes = iter((True, False))
+
+    def crash_after_provider(*_args, **_kwargs):
+        if next(crashes):
+            raise RuntimeError("crash after provider success")
+
+    monkeypatch.setattr(
+        TransformationExecutionService,
+        "_after_provider_before_finalise",
+        staticmethod(crash_after_provider),
+        raising=False,
+    )
+    with app.app_context(), pytest.raises(
+        RuntimeError, match="crash after provider success"
+    ):
+        TransformationExecutionService.export_work_package(
+            actor=scope.actor,
+            work_package_id=work_package_id,
+            provider_key="delivery-provider",
+            request={"project": "ARCH"},
+            exporter=provider,
+            command_key="durable-export-root",
+        )
+    with Session(db.engine) as session:
+        pending = session.scalar(
+            select(DeliveryExportAttempt).where(
+                DeliveryExportAttempt.organization_id
+                == scope.actor.organization_id,
+                DeliveryExportAttempt.work_package_id == work_package_id,
+            )
+        )
+        assert pending is not None and pending.status == "in_progress"
+
+    with app.app_context():
+        replay = TransformationExecutionService.export_work_package(
+            actor=replace(scope.actor, request_id=f"export-retry-{uuid4().hex}"),
+            work_package_id=work_package_id,
+            provider_key="delivery-provider",
+            request={"project": "ARCH"},
+            exporter=provider,
+            command_key="durable-export-root",
+        )
+    assert replay.response["exported"] is True
+    assert len(provider_keys) == 2 and len(set(provider_keys)) == 1
+    with Session(db.engine) as session:
+        attempts = tuple(
+            session.scalars(
+                select(DeliveryExportAttempt).where(
+                    DeliveryExportAttempt.organization_id
+                    == scope.actor.organization_id,
+                    DeliveryExportAttempt.work_package_id == work_package_id,
+                )
+            ).all()
+        )
+        assert len(attempts) == 1 and attempts[0].status == "succeeded"
 
 
 def test_materialise_creates_one_canonical_set_replays_and_never_implies_solution(
@@ -526,6 +1190,179 @@ def test_cross_tenant_decision_identifier_is_not_found(
         )
 
 
+def test_materialisation_rejects_action_identity_and_content_not_in_frozen_option(
+    db_session, monkeypatch, make_execution_scope
+):
+    """Catches callers inventing work after the immutable option was approved."""
+    scope = make_execution_scope()
+    _install_command_harness(monkeypatch, db_session)
+    invented = replace(
+        scope.action,
+        action_key="caller-invented-action",
+        title="Unapproved delivery scope",
+    )
+    graph = TransformationExecutionService._load_execution_graph(
+        db_session, scope.actor, scope.decision_brief_version_id, lock=False
+    )
+    assert DecisionBriefService.verify_hash(graph.version)
+    assert all(
+        TransformationOptionService.verify_version_hash(row)
+        for row in graph.options.values()
+    )
+
+    with pytest.raises(CommandConflict, match="approved_action_not_frozen"):
+        TransformationExecutionService.materialise(
+            actor=scope.actor,
+            decision_brief_version_id=scope.decision_brief_version_id,
+            actions=(invented,),
+            command_key="invented-action",
+        )
+
+
+@pytest.mark.parametrize(
+    "aggregate_change",
+    ("workstream_completed", "workstream_archived", "programme_archived"),
+)
+def test_materialisation_requires_current_approved_non_archived_aggregate(
+    db_session, monkeypatch, make_execution_scope, aggregate_change
+):
+    """Catches an old approval reopening a terminal or archived aggregate."""
+    scope = make_execution_scope()
+    _install_command_harness(monkeypatch, db_session)
+    workstream = db_session.get(ProgrammeWorkstream, scope.workstream_id)
+    programme = db_session.get(StrategicInitiative, scope.programme_id)
+    if aggregate_change == "workstream_completed":
+        workstream.lifecycle_stage = "completed"
+    elif aggregate_change == "workstream_archived":
+        workstream.archived_at = datetime.now(timezone.utc)
+    else:
+        programme.status = "archived"
+        programme.archived_at = datetime.now(timezone.utc)
+    db_session.flush()
+
+    with pytest.raises(CommandConflict, match="execution_aggregate_not_approved"):
+        TransformationExecutionService.materialise(
+            actor=scope.actor,
+            decision_brief_version_id=scope.decision_brief_version_id,
+            actions=(scope.action,),
+            command_key=f"invalid-aggregate-{aggregate_change}",
+        )
+
+
+@pytest.mark.parametrize(
+    ("table_name", "row_id_field", "scope_id_field"),
+    (
+        (
+            "decision_brief_versions",
+            "decision_brief_version_id",
+            "decision_brief_version_id",
+        ),
+        (
+            "transformation_option_versions",
+            "option_version_id",
+            "option_version_id",
+        ),
+    ),
+)
+def test_materialisation_rejects_corrupt_frozen_hashes(
+    db_session,
+    monkeypatch,
+    make_execution_scope,
+    table_name,
+    row_id_field,
+    scope_id_field,
+):
+    """Catches execution trusting a modified frozen brief or option snapshot."""
+    scope = make_execution_scope()
+    _install_command_harness(monkeypatch, db_session)
+    row_id = getattr(scope, scope_id_field)
+    db_session.execute(text("SET LOCAL session_replication_role = replica"))
+    db_session.execute(
+        text(
+            f'UPDATE "{table_name}" SET content_hash = :bad_hash '
+            f'WHERE id = :row_id AND organization_id = :organization_id'
+        ),
+        {
+            "bad_hash": "f" * 64,
+            "row_id": row_id,
+            "organization_id": scope.actor.organization_id,
+        },
+    )
+    db_session.execute(text("SET LOCAL session_replication_role = origin"))
+    db_session.expire_all()
+
+    with pytest.raises(CommandConflict, match="decision_snapshot_hash_invalid"):
+        TransformationExecutionService.materialise(
+            actor=scope.actor,
+            decision_brief_version_id=scope.decision_brief_version_id,
+            actions=(scope.action,),
+            command_key=f"corrupt-{row_id_field}",
+        )
+
+
+def test_materialisation_applies_the_locked_approved_to_execute_gate(
+    db_session, monkeypatch, make_execution_scope
+):
+    """Catches direct lifecycle mutation that bypasses the canonical gate policy."""
+    scope = make_execution_scope()
+    _install_command_harness(monkeypatch, db_session)
+
+    def blocked(_snapshot, _transition):
+        return (
+            [
+                GateBlocker(
+                    "review_test_blocker",
+                    "The approved-to-execute policy blocked this transition.",
+                    "workstream",
+                    scope.workstream_id,
+                    None,
+                )
+            ],
+            [],
+            set(),
+        )
+
+    monkeypatch.setattr(
+        TransformationGateService, "evaluate_requirements", staticmethod(blocked)
+    )
+
+    with pytest.raises(BlockedByEvidence, match="gate_requirements_not_met"):
+        TransformationExecutionService.materialise(
+            actor=scope.actor,
+            decision_brief_version_id=scope.decision_brief_version_id,
+            actions=(scope.action,),
+            command_key="blocked-approved-to-execute",
+        )
+    assert db_session.scalar(
+        select(func.count()).select_from(WorkPackage).where(
+            WorkPackage.organization_id == scope.actor.organization_id,
+            WorkPackage.decision_brief_version_id
+            == scope.decision_brief_version_id,
+        )
+    ) == 0
+
+
+def test_text_dependencies_remain_provenance_not_canonical_work_package_ids(
+    db_session, monkeypatch, make_execution_scope
+):
+    """Catches prose being written into the WorkPackage-ID dependency field."""
+    scope = make_execution_scope()
+    _install_command_harness(monkeypatch, db_session)
+    result = TransformationExecutionService.materialise(
+        actor=scope.actor,
+        decision_brief_version_id=scope.decision_brief_version_id,
+        actions=(scope.action,),
+        command_key="canonical-dependencies",
+    )
+    work_package = db_session.get(WorkPackage, result.object_ids["work_package_ids"][0])
+    element = db_session.get(ArchiMateElement, work_package.archimate_element_id)
+
+    assert work_package.dependencies is None
+    assert element.custom_properties["unresolved_dependency_claims"] == [
+        "Accepted service continuity evidence"
+    ]
+
+
 def test_subordinate_write_failure_rolls_back_the_whole_materialisation(
     db_session, monkeypatch, make_execution_scope
 ):
@@ -600,7 +1437,7 @@ def test_export_failure_preserves_pending_work_and_completed_attempt_is_immutabl
     )
     work_package_id = materialised.object_ids["work_package_ids"][0]
 
-    def unavailable(_work_package, _request):
+    def unavailable(_work_package, _request, _provider_idempotency_key):
         raise ConnectionError("provider unavailable")
 
     exported = TransformationExecutionService.export_work_package(
@@ -646,7 +1483,9 @@ def test_export_failure_preserves_pending_work_and_completed_attempt_is_immutabl
         work_package_id=work_package_id,
         provider_key="delivery-provider",
         request={"project": "ARCH"},
-        exporter=lambda _work_package, _request: {"external_key": "ARCH-42"},
+        exporter=lambda _work_package, _request, _provider_idempotency_key: {
+            "external_key": "ARCH-42"
+        },
         command_key="export-successful-retry",
         predecessor_attempt_id=attempt.id,
     )

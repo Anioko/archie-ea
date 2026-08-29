@@ -6,6 +6,7 @@ from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any
 import unicodedata
+from urllib.parse import urlsplit
 
 from sqlalchemy import or_, select
 
@@ -31,6 +32,7 @@ from app.modules.transformation_room.domain import (
     NotAuthorised,
     NotFound,
 )
+from app.modules.transformation_room.evidence_service import canonical_source_identity
 
 
 def _positive_id(value: Any, field: str) -> int:
@@ -54,14 +56,13 @@ def _required_text(value: Any, field: str, limit: int) -> str:
 
 def _source_identity(value: Any) -> str:
     identity = _required_text(value, "source_identity", 512)
-    prefix, separator, opaque = identity.partition(":")
-    if not separator:
-        return identity.casefold()
-    prefix = prefix.strip().casefold()
-    opaque = opaque.strip()
-    if not prefix or not opaque:
-        raise ValueError("invalid source_identity")
-    return f"{prefix}:{opaque}"
+    parsed = urlsplit(identity)
+    if parsed.scheme and parsed.netloc:
+        return canonical_source_identity(parsed.scheme, identity)
+    adapter, separator, opaque = identity.partition(":")
+    if not separator or not adapter.strip() or not opaque.strip():
+        raise ValueError("source_identity requires canonical adapter identity")
+    return canonical_source_identity(adapter, identity)
 
 
 def _decimal(value: Any) -> Decimal:
@@ -92,6 +93,20 @@ class OutcomeMeasurementService:
 
     OPERATION = "outcome.measure"
 
+    @staticmethod
+    def measurement_natural_key(
+        *, organization_id, benefit_id, source_identity, observed_at, source_version
+    ):
+        return "measurement:" + canonical_request_digest(
+            {
+                "organization_id": organization_id,
+                "benefit_id": benefit_id,
+                "source_identity": source_identity,
+                "observed_at": _utc(observed_at).isoformat(),
+                "source_version": source_version,
+            }
+        )
+
     @classmethod
     def record(
         cls,
@@ -115,9 +130,12 @@ class OutcomeMeasurementService:
             source_identity,
             source_version,
         )
-        natural_key = (
-            f"measurement:{benefit_id}:{request['source_identity']}:"
-            f"{request['observed_at']}:{request['source_version']}"
+        natural_key = cls.measurement_natural_key(
+            organization_id=actor.organization_id,
+            benefit_id=benefit_id,
+            source_identity=request["source_identity"],
+            observed_at=datetime.fromisoformat(request["observed_at"]),
+            source_version=request["source_version"],
         )
         return CommandService.execute(
             actor=actor,
@@ -185,13 +203,17 @@ class OutcomeMeasurementService:
         observed_at: datetime,
         source_version: str,
     ) -> OperationAuthorizer:
-        expected_key = (
-            f"measurement:{benefit_id}:{source_identity}:"
-            f"{_utc(observed_at).isoformat()}:{source_version}"
-        )
+        def expected_key(actor):
+            return cls.measurement_natural_key(
+                organization_id=actor.organization_id,
+                benefit_id=benefit_id,
+                source_identity=source_identity,
+                observed_at=observed_at,
+                source_version=source_version,
+            )
 
         def authorize(session, actor, operation, natural_key):
-            if operation != cls.OPERATION or natural_key != expected_key:
+            if operation != cls.OPERATION or natural_key != expected_key(actor):
                 raise NotAuthorised("outcome_measurement_command_mismatch")
             benefit = cls._load_benefit(
                 session, actor, benefit_id, lock=False
@@ -203,13 +225,22 @@ class OutcomeMeasurementService:
         return authorize
 
     @classmethod
-    def _append_measurement_and_project(cls, session, actor, request, _claim):
+    def _append_measurement_and_project(cls, session, actor, request, claim):
         benefit = cls._load_benefit(
             session, actor, request["benefit_id"], lock=True
         )
         cls._require_measurement_authority(session, actor, benefit, lock=True)
         if benefit.owner_id is None:
             raise CommandConflict("benefit_owner_required")
+        reconciled = CommandService.resolve_materialisation(
+            session,
+            actor=actor,
+            operation=cls.OPERATION,
+            claim=claim,
+        )
+        if reconciled is not None:
+            return reconciled
+        prior_projection_status = benefit.status
         observed_at = datetime.fromisoformat(request["observed_at"])
         duplicate = session.scalar(
             select(OutcomeMeasurement.id).where(
@@ -236,41 +267,33 @@ class OutcomeMeasurementService:
         session.add(measurement)
         session.flush()
 
-        variance = None
-        missed = False
-        realised = False
-        if value is not None:
-            benefit.actual_value = value
-            benefit.actual_date = observed_at.date()
-            if cls._is_comparable(benefit):
-                target = Decimal(str(benefit.target_value))
-                baseline = Decimal(str(benefit.baseline_value))
-                variance = value - target
-                if target > baseline:
-                    realised = value >= target
-                elif target < baseline:
-                    realised = value <= target
-                else:
-                    realised = value == target
-                missed = not realised
-                benefit.status = "realised" if realised else "not_realised"
-            else:
-                benefit.status = "realising"
+        latest = session.scalar(
+            select(OutcomeMeasurement)
+            .where(
+                OutcomeMeasurement.organization_id == actor.organization_id,
+                OutcomeMeasurement.benefit_id == benefit.id,
+            )
+            .order_by(
+                OutcomeMeasurement.observed_at.desc(),
+                OutcomeMeasurement.id.desc(),
+            )
+            .limit(1)
+        )
+        variance, missed, _realised = cls._project_latest(benefit, latest)
         session.flush()
 
         outcome = cls._lock_outcome(session, actor, benefit)
         if outcome is not None:
-            if missed:
-                outcome.lifecycle = "not_realised"
-            elif realised:
-                outcome.lifecycle = "realised"
-            elif value is not None:
-                outcome.lifecycle = "monitoring"
+            cls._project_outcome_aggregate(session, actor, outcome)
         follow_up = (
             cls._create_owner_follow_up(
-                session, actor, benefit, measurement, value, variance
+                session, actor, benefit, measurement, latest.value, variance
             )
-            if missed
+            if (
+                latest.id == measurement.id
+                and missed
+                and prior_projection_status != "not_realised"
+            )
             else None
         )
         session.flush()
@@ -281,7 +304,11 @@ class OutcomeMeasurementService:
         }
         response = {
             **object_ids,
-            "actual_value": _decimal_text(value) if value is not None else None,
+            "actual_value": (
+                _decimal_text(Decimal(str(benefit.actual_value)))
+                if benefit.actual_value is not None
+                else None
+            ),
             "actual_date": benefit.actual_date.isoformat()
             if benefit.actual_date
             else None,
@@ -299,6 +326,69 @@ class OutcomeMeasurementService:
                 },
             ),
         )
+
+    @classmethod
+    def _project_latest(cls, benefit, measurement):
+        benefit.actual_value = measurement.value
+        benefit.actual_date = (
+            _utc(measurement.observed_at).date()
+            if measurement.value is not None
+            else None
+        )
+        if measurement.value is None or not cls._is_comparable(benefit):
+            benefit.status = "realising"
+            return None, False, False
+        value = Decimal(str(measurement.value))
+        target = Decimal(str(benefit.target_value))
+        baseline = Decimal(str(benefit.baseline_value))
+        realised = (
+            value >= target
+            if target > baseline
+            else value <= target
+            if target < baseline
+            else value == target
+        )
+        benefit.status = "realised" if realised else "not_realised"
+        return value - target, not realised, realised
+
+    @classmethod
+    def _project_outcome_aggregate(cls, session, actor, outcome):
+        benefits = tuple(
+            session.scalars(
+                select(Benefit)
+                .where(
+                    Benefit.organization_id == actor.organization_id,
+                    Benefit.outcome_commitment_id == outcome.id,
+                )
+                .order_by(Benefit.id)
+                .with_for_update()
+            ).all()
+        )
+        states = []
+        for row in benefits:
+            latest = session.scalar(
+                select(OutcomeMeasurement)
+                .where(
+                    OutcomeMeasurement.organization_id == actor.organization_id,
+                    OutcomeMeasurement.benefit_id == row.id,
+                )
+                .order_by(
+                    OutcomeMeasurement.observed_at.desc(),
+                    OutcomeMeasurement.id.desc(),
+                )
+                .limit(1)
+            )
+            if latest is None or latest.value is None or not cls._is_comparable(row):
+                states.append("monitoring")
+                continue
+            _variance, missed, realised = cls._project_latest(row, latest)
+            states.append("not_realised" if missed else "realised" if realised else "monitoring")
+        if "not_realised" in states:
+            outcome.lifecycle = "not_realised"
+        elif states and all(state == "realised" for state in states):
+            outcome.lifecycle = "realised"
+        else:
+            outcome.lifecycle = "monitoring"
 
     @staticmethod
     def _is_comparable(benefit):
@@ -338,7 +428,7 @@ class OutcomeMeasurementService:
             ),
             description=description,
             owner_id=benefit.owner_id,
-            start_date=date.today(),
+            start_date=_utc(measurement.observed_at).date(),
             target_date=None,
             dependencies=(benefit.work_package_id,)
             if benefit.work_package_id is not None

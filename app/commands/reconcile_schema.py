@@ -74,6 +74,8 @@ _TRANSFORMATION_TABLES = (
     "arb_waiver_expiry_checkpoints",
     "arb_condition_evidence_records",
     "arb_condition_events",
+    "delivery_export_attempts",
+    "outcome_measurements",
 )
 
 _TRANSFORMATION_FOREIGN_KEYS = (
@@ -1217,6 +1219,31 @@ def _reconcile(dry_run=False):
         except Exception as exc:  # noqa: BLE001 — report alongside column failures
             db.session.rollback()
             failed.append(f"transformation_db_guards: {str(exc)[:120]}")
+
+    execution_tables = {"delivery_export_attempts", "outcome_measurements"}
+    if execution_tables <= existing_tables:
+        try:
+            from app.models.transformation_execution import (
+                ensure_execution_history_immutability,
+                inspect_execution_history_immutability,
+            )
+
+            execution_drift = inspect_execution_history_immutability(
+                db.session.connection()
+            )
+            if dry_run:
+                failed.extend(
+                    f"execution_history_guards:{item}" for item in execution_drift
+                )
+            elif execution_drift:
+                ensure_execution_history_immutability(db.session.connection())
+                db.session.commit()
+                added.extend(
+                    f"execution_history_guards:{item}" for item in execution_drift
+                )
+        except Exception as exc:  # noqa: BLE001 — report inspection/repair failure
+            db.session.rollback()
+            failed.append(f"execution_history_guards: {str(exc)[:120]}")
 
     if not dry_run:
         try:

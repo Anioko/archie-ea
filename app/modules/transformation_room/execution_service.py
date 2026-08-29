@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, timezone
 from typing import Any, Callable, Mapping, Sequence
 import unicodedata
@@ -34,6 +34,10 @@ from app.modules.transformation_room.command_service import (
     OperationAuthorizer,
     canonical_request_digest,
 )
+from app.modules.transformation_room.decision_service import (
+    DecisionBriefService,
+    TransformationOptionService,
+)
 from app.modules.transformation_room.domain import (
     ActorContext,
     ApprovedAction,
@@ -43,6 +47,7 @@ from app.modules.transformation_room.domain import (
     NotAuthorised,
     NotFound,
 )
+from app.modules.transformation_room.gate_service import TransformationGateService
 from app.modules.transformation_room.programme_service import (
     CREATE_ROLES,
     TransformationProgrammeService,
@@ -104,7 +109,8 @@ class TransformationExecutionService:
 
     OPERATION = "execution.materialise"
     SOLUTION_OPERATION = "execution.create_solution"
-    EXPORT_OPERATION = "execution.delivery_export"
+    EXPORT_OPERATION = "execution.delivery_export.prepare"
+    EXPORT_FINALISE_OPERATION = "execution.delivery_export.finalise"
 
     @classmethod
     def materialise(
@@ -189,6 +195,8 @@ class TransformationExecutionService:
         graph = cls._load_execution_graph(
             db.session, actor, decision_brief_version_id, lock=False
         )
+        cls._assert_active_aggregate(graph)
+        cls._assert_snapshot_integrity(graph)
         cls._require_execution_authority(db.session, actor, graph, lock=False)
         cls._assert_governance_ready(
             graph.cycle,
@@ -250,10 +258,22 @@ class TransformationExecutionService:
             lock=True,
         )
         cls._require_execution_authority(session, actor, graph, lock=True)
+        cls._assert_active_aggregate(graph)
+        cls._assert_snapshot_integrity(graph)
         now = CommandService._database_now(session)
         cls._assert_governance_ready(
             graph.cycle, graph.review, graph.conditions, now
         )
+        reconciled = CommandService.resolve_materialisation(
+            session,
+            actor=actor,
+            operation=cls.OPERATION,
+            claim=_claim,
+        )
+        if reconciled is not None:
+            return reconciled
+        if graph.workstream.lifecycle_stage != "approved":
+            raise CommandConflict("execution_aggregate_not_approved")
         actions = cls._canonical_actions(
             session,
             actor,
@@ -335,7 +355,7 @@ class TransformationExecutionService:
                     if action["target_date"]
                     else None
                 ),
-                dependencies=content.get("dependencies") or (),
+                dependencies=None,
                 provenance={
                     "source": "transformation_room",
                     "decision_brief_version_id": graph.version.id,
@@ -345,6 +365,9 @@ class TransformationExecutionService:
                         graph.version.cited_evidence_ids or ()
                     ),
                     "conditions": condition_snapshot,
+                    "unresolved_dependency_claims": list(
+                        content.get("dependencies") or ()
+                    ),
                 },
             )
             work_package.sequence_order = ordinal
@@ -359,8 +382,15 @@ class TransformationExecutionService:
         benefits = cls._create_benefits(
             session, actor, graph, work_packages[0]
         )
-        graph.workstream.lifecycle_stage = "execute"
         session.flush()
+        gate_result = cls._apply_execution_gate(
+            session,
+            actor,
+            graph,
+            actions,
+            work_packages,
+            roadmap_items,
+        )
         object_ids = {
             "decision_brief_version_id": graph.version.id,
             "work_package_ids": [row.id for row in work_packages],
@@ -368,11 +398,14 @@ class TransformationExecutionService:
             "benefit_ids": [row.id for row in benefits],
             "solution_ids": [],
         }
-        response = {**object_ids, "lifecycle_stage": "execute"}
+        response = {
+            **object_ids,
+            "lifecycle_stage": gate_result.response["lifecycle_stage"],
+        }
         return DomainMutationResult(
             object_ids,
             response,
-            (
+            (*gate_result.outbox_events,
                 {
                     "event_type": "transformation.execution_materialised",
                     "payload": response,
@@ -391,12 +424,22 @@ class TransformationExecutionService:
             lock=True,
         )
         cls._require_execution_authority(session, actor, graph, lock=True)
+        cls._assert_active_aggregate(graph, allowed_stages={"approved", "execute", "outcomes"})
+        cls._assert_snapshot_integrity(graph)
         cls._assert_governance_ready(
             graph.cycle,
             graph.review,
             graph.conditions,
             CommandService._database_now(session),
         )
+        reconciled = CommandService.resolve_materialisation(
+            session,
+            actor=actor,
+            operation=cls.SOLUTION_OPERATION,
+            claim=_claim,
+        )
+        if reconciled is not None:
+            return reconciled
         option = graph.options.get(request["option_version_id"])
         if option is None:
             raise NotFound("option_version_not_found")
@@ -469,7 +512,9 @@ class TransformationExecutionService:
         work_package_id: int,
         provider_key: str,
         request: Mapping[str, Any],
-        exporter: Callable[[WorkPackage, Mapping[str, Any]], Mapping[str, Any]],
+        exporter: Callable[
+            [WorkPackage, Mapping[str, Any], str], Mapping[str, Any]
+        ],
         command_key: str,
         predecessor_attempt_id: int | None = None,
     ) -> CommandResult:
@@ -497,7 +542,7 @@ class TransformationExecutionService:
             f"delivery-export:{work_package_id}:{provider_key}:"
             f"{predecessor_attempt_id or 'root'}:{attempt_key}"
         )
-        return CommandService.execute(
+        prepared = CommandService.execute(
             actor=actor,
             operation=cls.EXPORT_OPERATION,
             idempotency_key=command_key,
@@ -510,14 +555,76 @@ class TransformationExecutionService:
                 attempt_key,
             ),
             natural_key_resolver=CommandService.fail_closed_pre_envelope_recovery,
-            handler=lambda session, claim: cls._export_locked(
+            handler=lambda session, claim: cls._prepare_export_locked(
                 session,
                 actor,
                 payload,
                 attempt_key,
-                exporter,
                 claim,
             ),
+        )
+        attempt_id = prepared.object_ids["delivery_export_attempt_id"]
+        attempt = db.session.scalar(
+            select(DeliveryExportAttempt)
+            .where(
+                DeliveryExportAttempt.id == attempt_id,
+                DeliveryExportAttempt.organization_id == actor.organization_id,
+            )
+            .execution_options(populate_existing=True)
+        )
+        work_package = db.session.scalar(
+            select(WorkPackage).where(
+                WorkPackage.id == work_package_id,
+                WorkPackage.organization_id == actor.organization_id,
+            )
+        )
+        if attempt is None or work_package is None:
+            raise RuntimeError("durable delivery export preparation is missing")
+        if attempt.status == "in_progress":
+            try:
+                provider_response = exporter(
+                    work_package,
+                    dict(payload["request"]),
+                    attempt.attempt_key,
+                )
+                if not isinstance(provider_response, Mapping):
+                    raise ValueError("provider response must be a mapping")
+                external_key = _required_text(
+                    provider_response.get("external_key"), "external_key", 512
+                )
+                final_payload = {
+                    "delivery_export_attempt_id": attempt.id,
+                    "attempt_key": attempt.attempt_key,
+                    "status": "succeeded",
+                    "external_key": external_key,
+                    "response_digest": canonical_request_digest(
+                        dict(provider_response)
+                    ),
+                    "error_class": None,
+                    "error_message": None,
+                }
+            except Exception as error:  # provider boundary: persist honest failure
+                error_message = " ".join(
+                    unicodedata.normalize("NFC", str(error)).split()
+                )
+                final_payload = {
+                    "delivery_export_attempt_id": attempt.id,
+                    "attempt_key": attempt.attempt_key,
+                    "status": "failed",
+                    "external_key": None,
+                    "response_digest": None,
+                    "error_class": type(error).__name__,
+                    "error_message": (
+                        error_message or type(error).__name__
+                    )[:4000],
+                }
+            cls._after_provider_before_finalise(attempt.id, final_payload)
+        else:
+            final_payload = cls._persisted_export_outcome(attempt)
+        return cls._finalise_export_attempt(
+            actor=actor,
+            payload=final_payload,
+            originating_command_key=command_key,
         )
 
     @classmethod
@@ -546,13 +653,19 @@ class TransformationExecutionService:
         return authorize
 
     @classmethod
-    def _export_locked(
-        cls, session, actor, payload, attempt_key, exporter, _claim
-    ):
+    def _prepare_export_locked(cls, session, actor, payload, attempt_key, claim):
         work_package = cls._load_work_package(
             session, actor, payload["work_package_id"], lock=True
         )
         cls._require_work_package_authority(session, actor, work_package, lock=True)
+        reconciled = CommandService.resolve_materialisation(
+            session,
+            actor=actor,
+            operation=cls.EXPORT_OPERATION,
+            claim=claim,
+        )
+        if reconciled is not None:
+            return reconciled
         predecessor = None
         if payload["predecessor_attempt_id"] is not None:
             predecessor = session.scalar(
@@ -592,51 +705,147 @@ class TransformationExecutionService:
         )
         session.add(attempt)
         session.flush()
-        try:
-            provider_response = exporter(work_package, dict(payload["request"]))
-            if not isinstance(provider_response, Mapping):
-                raise ValueError("provider response must be a mapping")
-            external_key = _required_text(
-                provider_response.get("external_key"), "external_key", 512
-            )
-            attempt.response_digest = canonical_request_digest(
-                dict(provider_response)
-            )
-            attempt.external_key = external_key
-            attempt.status = "succeeded"
-            attempt.completed_at = CommandService._database_now(session)
-            exported = True
-        except Exception as error:  # provider boundary: persist honest failure
-            attempt.status = "failed"
-            attempt.error_class = type(error).__name__
-            error_message = " ".join(
-                unicodedata.normalize("NFC", str(error)).split()
-            )
-            attempt.error_message = (error_message or type(error).__name__)[:4000]
-            attempt.completed_at = CommandService._database_now(session)
-            exported = False
-        session.flush()
         object_ids = {
             "work_package_id": work_package.id,
             "delivery_export_attempt_id": attempt.id,
         }
         response = {
             **object_ids,
-            "exported": exported,
+            "exported": False,
+            "status": attempt.status,
+            "external_key": None,
+            "provider_idempotency_key": attempt.attempt_key,
+        }
+        return DomainMutationResult(
+            object_ids,
+            response,
+            ({
+                "event_type": "transformation.delivery_export_requested",
+                "payload": response,
+            },),
+        )
+
+    @staticmethod
+    def _after_provider_before_finalise(_attempt_id, _payload):
+        """Explicit crash-injection boundary after I/O and before local finalisation."""
+
+    @staticmethod
+    def _persisted_export_outcome(attempt):
+        return {
+            "delivery_export_attempt_id": attempt.id,
+            "attempt_key": attempt.attempt_key,
+            "status": attempt.status,
+            "external_key": attempt.external_key,
+            "response_digest": attempt.response_digest,
+            "error_class": attempt.error_class,
+            "error_message": attempt.error_message,
+        }
+
+    @classmethod
+    def _finalise_export_attempt(cls, *, actor, payload, originating_command_key):
+        attempt_id = payload["delivery_export_attempt_id"]
+        natural_key = f"delivery-export-finalise:{attempt_id}"
+        finalisation_key = "delivery-export-finalise:" + canonical_request_digest(
+            {
+                "attempt_key": payload["attempt_key"],
+                "originating_command_key": originating_command_key,
+            }
+        )
+        return CommandService.execute(
+            actor=actor,
+            operation=cls.EXPORT_FINALISE_OPERATION,
+            idempotency_key=finalisation_key,
+            payload=payload,
+            natural_key=natural_key,
+            authorizer=cls.authorise_delivery_export_finalisation(
+                attempt_id, natural_key
+            ),
+            natural_key_resolver=CommandService.fail_closed_pre_envelope_recovery,
+            handler=lambda session, claim: cls._finalise_export_locked(
+                session, actor, payload, claim
+            ),
+        )
+
+    @classmethod
+    def authorise_delivery_export_finalisation(
+        cls, attempt_id, expected_natural_key
+    ) -> OperationAuthorizer:
+        def authorize(session, actor, operation, natural_key):
+            if (
+                operation != cls.EXPORT_FINALISE_OPERATION
+                or natural_key != expected_natural_key
+            ):
+                raise NotAuthorised("delivery_export_finalisation_command_mismatch")
+            attempt = session.scalar(
+                select(DeliveryExportAttempt).where(
+                    DeliveryExportAttempt.id == attempt_id,
+                    DeliveryExportAttempt.organization_id
+                    == actor.organization_id,
+                )
+            )
+            if attempt is None:
+                raise NotFound("delivery_export_attempt_not_found")
+            work_package = cls._load_work_package(
+                session, actor, attempt.work_package_id, lock=False
+            )
+            cls._require_work_package_authority(
+                session, actor, work_package, lock=False
+            )
+
+        return authorize
+
+    @classmethod
+    def _finalise_export_locked(cls, session, actor, payload, claim):
+        attempt = session.scalar(
+            select(DeliveryExportAttempt)
+            .where(
+                DeliveryExportAttempt.id == payload["delivery_export_attempt_id"],
+                DeliveryExportAttempt.organization_id == actor.organization_id,
+                DeliveryExportAttempt.attempt_key == payload["attempt_key"],
+            )
+            .execution_options(populate_existing=True)
+            .with_for_update()
+        )
+        if attempt is None:
+            raise NotFound("delivery_export_attempt_not_found")
+        reconciled = CommandService.resolve_materialisation(
+            session,
+            actor=actor,
+            operation=cls.EXPORT_FINALISE_OPERATION,
+            claim=claim,
+        )
+        if reconciled is not None:
+            return reconciled
+        if attempt.status != "in_progress":
+            raise CommandConflict("delivery_export_attempt_already_completed")
+        attempt.status = payload["status"]
+        attempt.external_key = payload["external_key"]
+        attempt.response_digest = payload["response_digest"]
+        attempt.error_class = payload["error_class"]
+        attempt.error_message = payload["error_message"]
+        attempt.completed_at = CommandService._database_now(session)
+        session.flush()
+        object_ids = {
+            "work_package_id": attempt.work_package_id,
+            "delivery_export_attempt_id": attempt.id,
+        }
+        response = {
+            **object_ids,
+            "exported": attempt.status == "succeeded",
             "status": attempt.status,
             "external_key": attempt.external_key,
         }
         return DomainMutationResult(
             object_ids,
             response,
-            (
-                {
-                    "event_type": "transformation.delivery_export_succeeded",
-                    "payload": response,
-                },
-            )
-            if exported
-            else (),
+            ({
+                "event_type": (
+                    "transformation.delivery_export_succeeded"
+                    if attempt.status == "succeeded"
+                    else "transformation.delivery_export_failed"
+                ),
+                "payload": response,
+            },),
         )
 
     @classmethod
@@ -793,8 +1002,16 @@ class TransformationExecutionService:
     def _canonical_actions(cls, session, actor, graph, actions):
         if isinstance(actions, (str, bytes)) or not isinstance(actions, Sequence):
             raise TypeError("actions must be a sequence")
-        if not actions:
-            raise ValueError("at least one approved action is required")
+        if len(actions) != 1:
+            raise CommandConflict("approved_action_not_frozen")
+        approved_option_id = graph.version.recommendation_option_version_id
+        approved_option = graph.options.get(approved_option_id)
+        if approved_option is None:
+            raise CommandConflict("approved_action_not_frozen")
+        expected_key = f"approved-option:{approved_option_id}"
+        expected_title = _required_text(
+            (approved_option.content_json or {}).get("title"), "option title", 100
+        )
         canonical = []
         seen = set()
         for action in actions:
@@ -813,6 +1030,12 @@ class TransformationExecutionService:
                 != graph.version.recommendation_option_version_id
             ):
                 raise CommandConflict("option_version_not_approved")
+            if (
+                action_key != expected_key
+                or _required_text(action.title, "action title", 100)
+                != expected_title
+            ):
+                raise CommandConflict("approved_action_not_frozen")
             owner_id = _positive_id(action.owner_id, "owner_id")
             owner = session.scalar(
                 select(User.id).where(
@@ -846,9 +1069,9 @@ class TransformationExecutionService:
                 raise ValueError("scheduled actions require a date")
             canonical.append(
                 {
-                    "action_key": action_key,
+                    "action_key": expected_key,
                     "option_version_id": option_version_id,
-                    "title": _required_text(action.title, "action title", 100),
+                    "title": expected_title,
                     "owner_id": owner_id,
                     "start_date": (
                         action.start_date.isoformat() if action.start_date else None
@@ -861,6 +1084,122 @@ class TransformationExecutionService:
             )
         canonical.sort(key=lambda row: row["action_key"])
         return canonical
+
+    @staticmethod
+    def _assert_active_aggregate(graph, allowed_stages=None):
+        try:
+            TransformationProgrammeService._require_active_programme(graph.programme)
+        except CommandConflict as error:
+            raise CommandConflict("execution_aggregate_not_approved") from error
+        allowed = allowed_stages or {
+            "approved",
+            "execute",
+            "outcomes",
+        }
+        if graph.workstream.archived_at is not None or graph.workstream.lifecycle_stage not in allowed:
+            raise CommandConflict("execution_aggregate_not_approved")
+
+    @staticmethod
+    def _assert_snapshot_integrity(graph):
+        if not DecisionBriefService.verify_hash(graph.version) or any(
+            not TransformationOptionService.verify_version_hash(row)
+            for row in graph.options.values()
+        ):
+            raise CommandConflict("decision_snapshot_hash_invalid")
+
+    @classmethod
+    def _apply_execution_gate(
+        cls, session, actor, graph, actions, work_packages, roadmap_items
+    ):
+        snapshot = TransformationGateService._load_policy_snapshot(
+            session=session,
+            actor=actor,
+            workstream_id=graph.workstream.id,
+            lock=True,
+        )
+        roadmap_by_work_package = {
+            row.work_package_id: row for row in roadmap_items
+        }
+        action_rows = tuple(
+            {
+                "workstream_id": graph.workstream.id,
+                "decision_brief_version_id": graph.version.id,
+                "status": "accepted",
+                "owner_id": action["owner_id"],
+                "work_package_id": work_package.id,
+                "scheduling_applicable": action["scheduling_applicable"],
+                "roadmap_item_id": (
+                    roadmap_by_work_package[work_package.id].id
+                    if work_package.id in roadmap_by_work_package
+                    else None
+                ),
+            }
+            for action, work_package in zip(actions, work_packages, strict=True)
+        )
+        cycle_decision = graph.cycle.terminal_outcome
+        cycle_row = {
+            "id": graph.cycle.id,
+            "workstream_id": graph.workstream.id,
+            "subject_type": "decision_brief",
+            "subject_id": graph.brief.id,
+            "brief_id": graph.brief.id,
+            "decision_brief_version_id": graph.version.id,
+            "status": "terminal",
+            "decision": cycle_decision,
+            "target_stage": cycle_decision,
+            "decision_maker_id": graph.review.decided_by_id,
+            "rationale": graph.review.decision_rationale,
+            "decided_at": graph.review.decision_date,
+        }
+        condition_rows = tuple(
+            {
+                "id": row.id,
+                "organization_id": actor.organization_id,
+                "arb_cycle_id": row.review_cycle_id,
+                "status": row.status,
+                "accepted_evidence_id": (
+                    row.fulfilment_evidence_id or row.submitted_evidence_id
+                ),
+                "approver_id": row.waived_by_id,
+                "reason": row.waiver_reason,
+                "expires_at": row.waiver_expires_at,
+                "waiver_condition_id": row.id,
+                "waiver_arb_cycle_id": row.review_cycle_id,
+                "waiver_subject_type": "decision_brief",
+                "waiver_subject_id": graph.brief.id,
+            }
+            for row in graph.conditions
+        )
+        accepted_condition_evidence_ids = {
+            row["accepted_evidence_id"]
+            for row in condition_rows
+            if row["accepted_evidence_id"] is not None
+        }
+        projected_evidence_ids = set(graph.version.cited_evidence_ids or ()) | (
+            accepted_condition_evidence_ids
+        )
+        evidence_rows = tuple(snapshot.evidence_records) + tuple(
+            {"id": evidence_id, "status": "accepted"}
+            for evidence_id in projected_evidence_ids
+            if evidence_id
+            not in {getattr(row, "id", None) for row in snapshot.evidence_records}
+        )
+        projected = replace(
+            snapshot,
+            evidence_records=evidence_rows,
+            arb_cycles=(cycle_row,),
+            arb_conditions=condition_rows,
+            approved_actions=action_rows,
+            unavailable_resources=snapshot.unavailable_resources
+            - {"arb", "conditions", "approved_actions"},
+        )
+        return TransformationGateService.apply_locked_transition(
+            session,
+            actor,
+            snapshot=projected,
+            target_stage="execute",
+            expected_revision=graph.workstream.revision,
+        )
 
     @staticmethod
     def _assert_governance_ready(cycle, review, conditions, now):

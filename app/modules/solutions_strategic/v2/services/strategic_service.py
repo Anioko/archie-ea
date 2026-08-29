@@ -100,7 +100,7 @@ class StrategicService:
             status="planned",
             start_date=start_date,
             target_date=target_date,
-            dependencies=list(dependencies or ()),
+            dependencies=list(dependencies) if dependencies else None,
             context=context,
             context_id=decision_brief_version_id,
             element_type="WorkPackage",

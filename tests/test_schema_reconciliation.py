@@ -10,6 +10,9 @@ from sqlalchemy import Column, Integer, String, Table, create_engine, inspect, t
 from app import db
 from app.commands.reconcile_schema import _reconcile
 from app.models.transformation_db_guards import inspect_transformation_db_guards
+from app.models.transformation_execution import (
+    inspect_execution_history_immutability,
+)
 
 
 @pytest.fixture
@@ -477,6 +480,84 @@ def test_task7_guards_install_and_repair_inside_the_active_non_public_schema(
                             "INSERT INTO decision_brief_option_citations "
                             "(organization_id, brief_version_id, option_version_id) "
                             "VALUES (1, 999999, 999999)"
+                        )
+                    )
+
+
+def test_task9_history_tables_and_dropped_triggers_reconcile_idempotently(
+    app, pre_feature_transformation_schema
+):
+    """Catches existing Task 9 tables remaining writable after trigger drift."""
+    _schema_name, isolated_engine = pre_feature_transformation_schema
+    with app.app_context():
+        first_added, first_failed, _missing, _blocking = _reconcile(dry_run=False)
+        assert first_failed == []
+        assert "table.delivery_export_attempts :: CREATE TABLE" in first_added
+        assert "table.outcome_measurements :: CREATE TABLE" in first_added
+
+        with isolated_engine.begin() as connection:
+            assert inspect_execution_history_immutability(connection) == []
+            connection.execute(
+                text(
+                    "DROP TRIGGER trg_guard_delivery_export_attempt_mutation "
+                    "ON delivery_export_attempts; "
+                    "DROP TRIGGER trg_reject_outcome_measurement_mutation "
+                    "ON outcome_measurements"
+                )
+            )
+
+        dry_added, dry_failed, _missing, _blocking = _reconcile(dry_run=True)
+        assert dry_added == []
+        assert {
+            "execution_history_guards:trigger_missing:"
+            "delivery_export_attempts.trg_guard_delivery_export_attempt_mutation",
+            "execution_history_guards:trigger_missing:"
+            "outcome_measurements.trg_reject_outcome_measurement_mutation",
+        } <= set(dry_failed)
+
+        repaired, repair_failed, _missing, _blocking = _reconcile(dry_run=False)
+        assert repair_failed == []
+        assert {
+            "execution_history_guards:trigger_missing:"
+            "delivery_export_attempts.trg_guard_delivery_export_attempt_mutation",
+            "execution_history_guards:trigger_missing:"
+            "outcome_measurements.trg_reject_outcome_measurement_mutation",
+        } <= set(repaired)
+
+        with isolated_engine.begin() as connection:
+            assert inspect_execution_history_immutability(connection) == []
+            connection.execute(
+                text(
+                    "INSERT INTO work_packages (id, name, organization_id) "
+                    "VALUES (901, 'Task 9 guarded work', 1); "
+                    "INSERT INTO delivery_export_attempts "
+                    "(id, organization_id, work_package_id, provider_key, attempt_key, "
+                    " request_json, status, error_class, error_message, attempted_by_id, "
+                    " completed_at) VALUES "
+                    "(902, 1, 901, 'delivery', :attempt_key, '{}'::json, 'failed', "
+                    " 'ConnectionError', 'unavailable', 1, clock_timestamp()); "
+                    "INSERT INTO outcome_measurements "
+                    "(id, organization_id, benefit_id, value, observed_at, "
+                    " source_identity, source_version, recorded_by_id) VALUES "
+                    "(903, 1, 200, 1.000000, clock_timestamp(), "
+                    " 'ledger:run-cost', 'v1', 1)"
+                ),
+                {"attempt_key": "9" * 64},
+            )
+            with pytest.raises(Exception, match="completed delivery export attempts"):
+                with connection.begin_nested():
+                    connection.execute(
+                        text(
+                            "UPDATE delivery_export_attempts SET error_message='changed' "
+                            "WHERE id=902 AND organization_id=1"
+                        )
+                    )
+            with pytest.raises(Exception, match="outcome measurements are append-only"):
+                with connection.begin_nested():
+                    connection.execute(
+                        text(
+                            "DELETE FROM outcome_measurements "
+                            "WHERE id=903 AND organization_id=1"
                         )
                     )
 
