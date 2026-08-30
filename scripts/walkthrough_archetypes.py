@@ -37,6 +37,9 @@ from playwright.sync_api import sync_playwright
 BASE = os.environ.get("WALKTHROUGH_BASE_URL", "http://127.0.0.1:5001")
 PASSWORD = os.environ.get("WALKTHROUGH_PASSWORD", "Walk!2026")
 VIEWPORT = {"width": 1440, "height": 900}
+# A phone, for the shell check below. The sidebar defect that made the app
+# desktop-only lived entirely under 1024px, where nothing had ever looked.
+MOBILE = {"width": 390, "height": 844}
 
 findings = []
 
@@ -153,6 +156,72 @@ def cto_classifies_in_the_ui(page, persona):
          "submitted and returned to %s" % landed)
 
 
+
+def can_navigate_on_a_phone(browser, persona, email):
+    """Below 1024px, can this archetype reach a second page at all?
+
+    The QA audit of 30 Aug 2026 (High 4) found the sidebar toggle cancelling
+    itself: the button sits OUTSIDE the sidebar, so the same click both opened it
+    and reached the sidebar's own @click.away, which closed it in the same tick.
+    Measured before the fix: store stayed false, sidebar transform stayed
+    -256px, 0 of 25 nav links reachable. The application was desktop-only and
+    nothing in the suite looked below 1024px.
+
+    Asserts the store, the geometry AND that links are actually reachable --
+    a sidebar that is "open" but rendered off-screen is still unusable.
+    """
+    ctx = browser.new_context(viewport=MOBILE)
+    page = ctx.new_page()
+    errors = []
+
+    def on_console(message):
+        if message.type == "error":
+            errors.append(message.text)
+
+    page.on("console", on_console)
+    try:
+        if not sign_in(page, email):
+            note(persona, "phone: sign in", "BROKEN", "still on the login page at 390px")
+            return
+        page.goto(BASE + "/applications/", wait_until="networkidle")
+        page.wait_for_timeout(600)
+
+        toggle = page.locator("button[aria-label='Open sidebar']")
+        if not toggle.count():
+            note(persona, "phone: open the menu", "BROKEN",
+                 "no sidebar toggle rendered below 1024px")
+            return
+        toggle.first.click()
+        page.wait_for_timeout(700)
+
+        geometry = page.evaluate("""() => {
+            const el = document.getElementById('admin-sidebar');
+            if (!el) return {found: false, reachable: 0, left: null};
+            const r = el.getBoundingClientRect();
+            const links = [...el.querySelectorAll('a[href]')].filter(a => {
+                const b = a.getBoundingClientRect();
+                return b.width > 0 && b.right > 0 && b.left < window.innerWidth;
+            });
+            return {found: true, left: Math.round(r.left), reachable: links.length};
+        }""")
+
+        problems = []
+        if not geometry.get("found"):
+            problems.append("no sidebar element")
+        if geometry.get("left", -1) < 0:
+            problems.append("sidebar still off-screen at %spx" % geometry.get("left"))
+        if not geometry.get("reachable"):
+            problems.append("0 navigation links reachable")
+        if errors:
+            problems.append("console: %s" % errors[0][:60])
+
+        note(persona, "phone: open the menu",
+             "WORKS WELL" if not problems else "BROKEN",
+             "; ".join(problems) or "%d links reachable at 390px" % geometry["reachable"])
+    finally:
+        ctx.close()
+
+
 with sync_playwright() as pw:
     browser = pw.chromium.launch()
     for persona, email, steps in [
@@ -188,6 +257,10 @@ with sync_playwright() as pw:
             check_page(page, persona, "ARB dashboard", "/arb/")
             check_page(page, persona, "ARB review queue", "/arb/reviews")
         ctx.close()
+
+    # One archetype is enough to prove the shell navigates on a phone: the
+    # sidebar is shared, and the defect was in the shell rather than any page.
+    can_navigate_on_a_phone(browser, "enterprise_architect", "ea@walkthrough.example.com")
     browser.close()
 
 json.dump(findings, open("walkthrough_report.json", "w"), indent=2)

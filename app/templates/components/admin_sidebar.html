@@ -55,7 +55,16 @@ DEPENDENCIES:
         'sidebar-collapsed': $store.sidebar.collapsed
     }"
     :style="{ width: $store.sidebar.collapsed ? '4rem' : '16rem' }"
-    @click.away="isDesktop ? null : $store.sidebar.open = false"
+    {#
+      Written as a guarded assignment, not `isDesktop ? null : $store.sidebar.open = false`.
+      That parses as `(isDesktop ? null : $store.sidebar.open) = false` -- an
+      assignment to a conditional expression, which is a SyntaxError in any
+      JavaScript engine. It ran only because this platform's CSP-safe evaluator
+      is more forgiving than the language, so the codebase carried an expression
+      that stock Alpine would have refused. Depending on that leniency is how a
+      handler nobody could have tested in a normal engine stayed live.
+    #}
+    @click.away="!isDesktop && ($store.sidebar.open = false)"
     class="fixed inset-y-0 left-0 z-50 bg-card border-r border-border lg:translate-x-0 lg:static flex flex-col h-screen shadow-lg lg:shadow-none transition-all duration-200 ease-in-out"
 >
     <!-- Sidebar Header -->
