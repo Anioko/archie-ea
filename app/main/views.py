@@ -410,6 +410,25 @@ def save_system_settings():
     try:
         data = request.get_json(silent=True) or {}
         settings_data = data.get("settings", {})
+
+        # Settings that must never be saved blank. app-name is the platform's
+        # own branding, rendered in the header of every page: the QA audit of
+        # 30 Aug 2026 (High #12) cleared the field, saved, and got a 200 -- the
+        # application name was gone platform-wide with no validation anywhere,
+        # client or server. A settings endpoint that accepts any key with any
+        # value will eventually be handed an empty one.
+        REQUIRED_NON_EMPTY = {"app-name"}
+        blank = sorted(
+            key for key in REQUIRED_NON_EMPTY
+            if key in settings_data and not str(settings_data.get(key) or "").strip()
+        )
+        if blank:
+            return jsonify({
+                "status": "error",
+                "message": "These settings cannot be empty: %s" % ", ".join(blank),
+                "fields": blank,
+            }), 400
+
         for key, value in settings_data.items():
             db.session.execute(
                 db.text(

@@ -126,6 +126,25 @@ def _apply_contract_form(contract, form):
     # at flush with an IntegrityError instead of a message anyone can act on.
     if contract.start_date is None:
         contract.start_date = date.today()
+
+    # An end date before the start date produced a contract that two screens
+    # disagreed about: the stored status said "Active" while the Renewal Alerts
+    # page, which computes expiry independently, said "Expired". The QA audit of
+    # 30 Aug 2026 (High #7) created one with an end date of 01/01/2020 and saw
+    # exactly that. Two views of the same contract contradicting each other is
+    # the worst outcome for a system of record, and the range is nonsense on its
+    # own terms regardless.
+    if contract.end_date is not None and contract.end_date < contract.start_date:
+        raise ValueError(
+            "The end date (%s) is before the start date (%s)."
+            % (contract.end_date, contract.start_date)
+        )
+    # A renewal date before the start is the same class of nonsense.
+    if contract.renewal_date is not None and contract.renewal_date < contract.start_date:
+        raise ValueError(
+            "The renewal date (%s) is before the start date (%s)."
+            % (contract.renewal_date, contract.start_date)
+        )
     return contract
 
 
@@ -140,9 +159,17 @@ def contract_create():
             _apply_contract_form(contract, request.form)
             db.session.add(contract)
             db.session.commit()
-        except ValueError:
+        except ValueError as exc:
             db.session.rollback()
-            flash("Check the contract name, dates (YYYY-MM-DD) and amounts.", "danger")
+            # Say WHICH field is wrong. The catch-all told a user who had put the
+            # end date before the start date to "check the dates (YYYY-MM-DD)",
+            # which is advice about formatting for a problem that is not one.
+            reason = str(exc)
+            flash(
+                reason if reason.endswith(".")
+                else "Check the contract name, dates (YYYY-MM-DD) and amounts.",
+                "danger",
+            )
             return render_template(
                 "procurement/contract_form.html",
                 **_contract_form_context(None, request.form)
@@ -177,9 +204,17 @@ def contract_edit(contract_id):
         try:
             _apply_contract_form(contract, request.form)
             db.session.commit()
-        except ValueError:
+        except ValueError as exc:
             db.session.rollback()
-            flash("Check the contract name, dates (YYYY-MM-DD) and amounts.", "danger")
+            # Say WHICH field is wrong. The catch-all told a user who had put the
+            # end date before the start date to "check the dates (YYYY-MM-DD)",
+            # which is advice about formatting for a problem that is not one.
+            reason = str(exc)
+            flash(
+                reason if reason.endswith(".")
+                else "Check the contract name, dates (YYYY-MM-DD) and amounts.",
+                "danger",
+            )
             return render_template(
                 "procurement/contract_form.html",
                 **_contract_form_context(contract, request.form)
