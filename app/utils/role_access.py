@@ -16,7 +16,9 @@ from app.models.user import (
     ROLE_BUSINESS_ARCHITECT,
     ROLE_CTO,
     ROLE_ENTERPRISE_ARCHITECT,
+    ROLE_DATA_ARCHITECT,
     ROLE_PLATFORM_ADMIN,
+    ROLE_SECURITY_ARCHITECT,
     ROLE_PORTFOLIO_MANAGER,
     ROLE_PROCUREMENT,
     ROLE_SOLUTION_ARCHITECT,
@@ -594,6 +596,32 @@ _MY_WORK_LINKS = {
         # roles is invisible to most real accounts. Rendered total for this
         # role goes 25 -> 26, still under SIDEBAR_LINK_BUDGET (27).
         _link("Architecture Journey", "architecture_journey.index", "compass"),
+    ],
+    # Promoted from charter-only, 31 Aug 2026. The blueprint scores a Security
+    # Viewpoint as one of its fifteen sections and nobody owned it; every link
+    # here is a page that already ships, previously reachable only from another
+    # persona's zone or from the module catalogue.
+    ROLE_SECURITY_ARCHITECT: [
+        _link("Policy Monitoring", "policy_monitoring.dashboard", "shield-alert"),
+        _link("Governance Gates", "admin.governance_gates", "shield-check"),
+        _link("Risk Register", "risk.risk_register", "alert-triangle"),
+        _link("Compliance", "procurement.compliance_dashboard", "clipboard-check"),
+        _link("Applications", "unified_applications.application_list", "list"),
+        _link("Data Architecture", "data_architecture.data_architecture_dashboard", "database"),
+        _link("Traceability Matrix", "architect_ui.traceability_matrix", "git-compare"),
+        _link("Tech Radar", "tech_radar.index", "radar"),
+    ],
+    # ARCH-123 folded this into enterprise_architect with the note "no dedicated
+    # role for either yet". These three surfaces ship and are the whole of the
+    # persona's remit, so the fold is now unnecessary rather than pragmatic.
+    ROLE_DATA_ARCHITECT: [
+        _link("Data Architecture", "data_architecture.data_architecture_dashboard", "database"),
+        _link("Data Lineage", "data_architecture.data_lineage_view", "git-fork"),
+        _link("Data Stewardship", "solution_design.data_stewardship", "shield"),
+        _link("ArchiMate Model", "archimate_crud.dashboard", "boxes"),
+        _link("Applications", "unified_applications.application_list", "list"),
+        _link("Capability Map", "capability_map.index", "layers"),
+        _link("Traceability Matrix", "architect_ui.traceability_matrix", "git-compare"),
     ],
 }
 

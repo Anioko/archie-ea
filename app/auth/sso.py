@@ -61,6 +61,8 @@ DEFAULT_GROUP_ROLE_MAP = {
     "CTO": "cto",
     "Procurement": "procurement",
     "Application-Managers": "application_manager",
+    "Security-Architects": "security_architect",
+    "Data-Architects": "data_architect",
 }
 
 

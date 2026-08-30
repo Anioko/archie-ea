@@ -19,6 +19,25 @@ ROLE_CTO = "cto"
 ROLE_PROCUREMENT = "procurement"
 ROLE_APPLICATION_MANAGER = "application_manager"
 ROLE_PLATFORM_ADMIN = "platform_admin"
+# Promoted from charter-only to assignable, 31 Aug 2026.
+#
+# security_architect: the solution blueprint scores a Security Viewpoint as one
+# of its fifteen sections, and no persona owned it. A governance artefact the
+# product grades with nobody accountable for it is the same defect shape as an
+# ARB decision with no visible decider -- which this codebase has been fixing
+# all week. TOGAF 9.2, which Archie implements, names the role.
+#
+# data_architect: /architecture/data-architecture, data lineage and data
+# stewardship all ship and were reachable only inside enterprise_architect's
+# zone, which ARCH-123 recorded as a temporary fold ("no dedicated role yet")
+# rather than a decision to leave them there.
+#
+# The other five charters (application_architect, integration_architect,
+# systems_architect, business_analyst, product_analyst) stay charter-only: they
+# own no surface the product grades, and two are analyst rather than architect
+# roles. See ASPIRATIONAL in scripts/check_persona_vocabularies.py.
+ROLE_SECURITY_ARCHITECT = "security_architect"
+ROLE_DATA_ARCHITECT = "data_architect"
 
 VALID_ROLES = [
     ROLE_SOLUTION_ARCHITECT,
@@ -30,6 +49,8 @@ VALID_ROLES = [
     ROLE_PROCUREMENT,
     ROLE_APPLICATION_MANAGER,
     ROLE_PLATFORM_ADMIN,
+    ROLE_SECURITY_ARCHITECT,
+    ROLE_DATA_ARCHITECT,
 ]
 
 # Role display names for UI
@@ -43,6 +64,8 @@ ROLE_DISPLAY_NAMES = {
     ROLE_PROCUREMENT: "Procurement",
     ROLE_APPLICATION_MANAGER: "Application Manager",
     ROLE_PLATFORM_ADMIN: "Platform Admin",
+    ROLE_SECURITY_ARCHITECT: "Security Architect",
+    ROLE_DATA_ARCHITECT: "Data Architect",
 }
 
 
