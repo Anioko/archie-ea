@@ -992,7 +992,11 @@ def api_roadmap_add_from_capability():
         }
 
         # Convert to ArchiMate Gap
-        gap = gap_archimate_service.convert_capability_gap_to_archimate(gap_data)
+        # Returns (Gap, was_created). Assigning the tuple straight to `gap`
+        # made the `gap.id` below raise AttributeError on every call.
+        gap, _was_created = gap_archimate_service.convert_capability_gap_to_archimate(
+            gap_data
+        )
 
         # Create work packages if requested
         if data.get("create_work_packages", False):
@@ -1242,6 +1246,110 @@ def api_roadmap_work_packages():
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
+def _resolve_roadmap_gap_id(raw_gap_id):
+    """Turn whatever the roadmap sent into a real Gap row, or explain why not.
+
+    GET /api/roadmap/gaps returns TWO kinds of gap. Stored Gap rows carry their
+    integer primary key. Derived gaps -- one per capability with no application
+    mapped -- are synthesised on read and carry a composite id of the form
+    "{capability_type}-{capability_id}", e.g. "business-279". They are not rows;
+    nothing with that id exists to point a foreign key at.
+
+    The roadmap's own "Add Work Package" dropdown is populated from that combined
+    list, so selecting a derived gap and submitting sent "business-279" to an
+    endpoint doing Gap.query.get(...), which raised and returned 500. The QA
+    audit of 30 Aug 2026 (High 1) called it correctly: "The single most important
+    link in an EA tool -- turning an identified gap into planned work -- cannot
+    be completed through the UI", with a modal reading only "Notice / Not Found".
+
+    Converting a derived gap into planned work is exactly the user's intent, and
+    the machinery for it already existed: add-from-capability materialises a real
+    Gap from a capability via gap_archimate_service. This routes the composite id
+    through the same service -- reusing an existing gap for that capability if
+    one is already on the roadmap, creating it if not -- so the work package
+    lands against a real row and keeps the traceability that justified it.
+
+    Returns (gap, error_response). Exactly one is not None.
+    """
+    from app.models.implementation_migration import Gap
+
+    if raw_gap_id in (None, ""):
+        return None, None
+
+    # A plain integer is a stored Gap: the original path, unchanged.
+    try:
+        return_gap = Gap.query.get(int(raw_gap_id))
+    except (TypeError, ValueError):
+        return_gap = None
+    else:
+        if return_gap is None:
+            return None, (jsonify({"success": False, "error": "Gap not found"}), 404)
+        return return_gap, None
+
+    # Otherwise it should be a derived "{type}-{id}" composite.
+    text = str(raw_gap_id)
+    capability_type, _, capability_ref = text.partition("-")
+    valid_types = ("business", "technical", "process")
+    if capability_type not in valid_types or not capability_ref.isdigit():
+        return None, (
+            jsonify({
+                "success": False,
+                "error": (
+                    "gap_id %r is neither a stored gap nor a derived "
+                    "{type}-{id} reference" % text
+                ),
+            }),
+            400,
+        )
+
+    from app.services.gap_archimate_service import gap_archimate_service
+
+    capability_id = int(capability_ref)
+    existing = gap_archimate_service.find_existing_gap(capability_type, capability_id)
+    if existing is not None:
+        return existing, None
+
+    name = _derived_capability_name(capability_type, capability_id)
+    if name is None:
+        return None, (
+            jsonify({
+                "success": False,
+                "error": "No %s capability %d exists to raise a gap against"
+                         % (capability_type, capability_id),
+            }),
+            404,
+        )
+
+    gap, _was_created = gap_archimate_service.convert_capability_gap_to_archimate({
+        "capability_id": capability_id,
+        "capability_type": capability_type,
+        "name": name,
+        "gap_types": ["coverage"],
+        "priority": "medium",
+        "level": 1,
+        "color": "#6B7280",
+    })
+    db.session.flush()
+    return gap, None
+
+
+def _derived_capability_name(capability_type, capability_id):
+    """The capability a derived gap was synthesised from, or None if it is gone."""
+    if capability_type == "business":
+        from app.models.business_capabilities import BusinessCapability
+
+        row = BusinessCapability.query.get(capability_id)
+    elif capability_type == "technical":
+        from app.models.technical_capability import TechnicalCapability
+
+        row = TechnicalCapability.query.get(capability_id)
+    else:
+        from app.models.apqc_process import APQCProcess
+
+        row = APQCProcess.query.get(capability_id)
+    return getattr(row, "name", None) if row is not None else None
+
+
 @capability_map.route("/api/roadmap/work-packages", methods=["POST"])
 @login_required
 @rate_limit(30, "1m")
@@ -1262,7 +1370,7 @@ def api_roadmap_create_standalone_work_package():
     Returns 201 with work_package dict on success.
     """
     try:
-        from app.models.implementation_migration import Gap, Plateau, WorkPackage
+        from app.models.implementation_migration import Plateau, WorkPackage
 
         data = request.get_json() or {}
         if not data.get("name"):
@@ -1281,11 +1389,11 @@ def api_roadmap_create_standalone_work_package():
         gap_id = data.get("gap_id")
         plateau_id = data.get("plateau_id")
 
-        gap = None
-        if gap_id:
-            gap = Gap.query.get(gap_id)
-            if not gap:
-                return jsonify({"success": False, "error": "Gap not found"}), 404
+        # Accepts a stored Gap id OR a derived "{type}-{id}" reference, which is
+        # what this page's own dropdown supplies for the 500-odd gaps it computes.
+        gap, gap_error = _resolve_roadmap_gap_id(gap_id)
+        if gap_error is not None:
+            return gap_error
 
         plateau = None
         if plateau_id:
