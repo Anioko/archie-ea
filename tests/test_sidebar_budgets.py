@@ -193,6 +193,11 @@ def test_cto_my_work_membership():
         # NAV-1: nav-coverage output 9 (KPI/metric dashboards) had routes but
         # no sidebar link in any persona.
         "Portfolio KPIs",
+        # Level 10 walkthrough, 30 Aug 2026: the radar is the CTO's technology
+        # direction instrument and /technology/radar/classify names "cto" in
+        # its own require_roles list -- the persona was authorised to set the
+        # rings and had no link to the page from anywhere.
+        "Tech Radar",
     ]
 
 

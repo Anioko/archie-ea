@@ -149,6 +149,14 @@ def test_directory_renders_and_is_searchable(app, db_session, org, client, login
     assert "modulesDirectory()" in html, "Alpine component not wired to the page"
 
 
+# The attribute may be single- or double-quoted: `| tojson` emits double quotes
+# inside the value, so the row markup is x-show='matches("Label")'. Pinning one
+# quote style made this test pass on markup nobody ships -- it matched nothing
+# and reported "directory rendered no rows at all", which reads as a broken page
+# rather than a stale regex.
+ROW_HREF = r'''<li x-show=['"]matches\([^)]*\)['"]>\s*<a href="([^"]*)"'''
+
+
 def test_every_rendered_row_has_a_real_href(app, db_session, org, client, login_as):
     """No row may ship `href="#"`, an empty href, or an unresolved URL: the
     route resolves each endpoint itself and drops the ones it cannot build."""
@@ -159,7 +167,7 @@ def test_every_rendered_row_has_a_real_href(app, db_session, org, client, login_
     html = client.get("/modules/").get_data(as_text=True)
 
     body = html.split('data-testid="modules-directory"', 1)[1]
-    hrefs = re.findall(r'<li x-show="matches\([^)]*\)">\s*<a href="([^"]*)"', body)
+    hrefs = re.findall(ROW_HREF, body)
     assert hrefs, "directory rendered no rows at all"
     assert all(h.startswith("/") for h in hrefs), f"non-navigating rows: {hrefs}"
     assert "#" not in hrefs
@@ -175,7 +183,7 @@ def _rendered_hrefs(client):
 
     html = client.get("/modules/").get_data(as_text=True)
     body = html.split('data-testid="modules-directory"', 1)[1]
-    return re.findall(r'<li x-show="matches\([^)]*\)">\s*<a href="([^"]*)"', body)
+    return re.findall(ROW_HREF, body)
 
 
 @pytest.mark.parametrize(

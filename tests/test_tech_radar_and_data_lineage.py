@@ -131,12 +131,16 @@ class TestTechRadar:
         node = _make_technology_element(db_session, org.id, "Kafka Cluster", "SystemSoftware")
         _login(client, app, user)
 
+        # The radar page submits a plain HTML form, so this path redirects back
+        # to the radar. It used to reply with jsonify() unconditionally, which
+        # navigated the architect to /technology/radar/classify and left them
+        # looking at a raw {"success": true, ...} body with no way back.
         resp = client.post(
             "/technology/radar/classify",
             data={"archimate_element_id": node.id, "ring": "trial", "rationale": "piloting"},
         )
-        assert resp.status_code == 200, resp.get_data(as_text=True)
-        assert resp.get_json()["success"] is True
+        assert resp.status_code == 302, resp.get_data(as_text=True)
+        assert "/technology/radar" in resp.headers["Location"]
 
         entry = TechRadarEntry.query.filter_by(archimate_element_id=node.id).first()
         assert entry is not None
@@ -154,6 +158,15 @@ class TestTechRadar:
         resp = client.post(
             "/technology/radar/classify",
             data={"archimate_element_id": data_object.id, "ring": "adopt"},
+        )
+        assert resp.status_code == 400
+
+        # And the API surface keeps its JSON contract, with the reason in it --
+        # a form caller gets the same refusal as a flash on the radar.
+        resp = client.post(
+            "/technology/radar/classify",
+            data={"archimate_element_id": data_object.id, "ring": "adopt"},
+            headers={"X-Requested-With": "XMLHttpRequest"},
         )
         assert resp.status_code == 400
         assert resp.get_json()["success"] is False
