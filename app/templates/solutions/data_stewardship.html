@@ -57,18 +57,27 @@
                     <div class="flex items-center gap-2 shrink-0">
                         {% if f.writeback == 'classify_baseline' %}
                         <span x-data="{ busy:false, done:false, msg:'', errorMsg:'',
-                            async fix(){ this.busy=true; this.errorMsg='';
-                                try {
-                                    const d = await Platform.fetch.post('/solutions/data-stewardship/classify-baseline', null, { silent: true });
-                                    if (d.success) {
-                                        this.done=true;
-                                        this.msg=d.classified+' classified ('+d.confidential+' confidential, '+d.internal+' internal)';
-                                    }
-                                } catch (err) {
-                                    this.errorMsg = err.message || 'Classification failed';
-                                } finally {
-                                    this.busy=false;
-                                }
+                            /* Promise chain, not async/await: this expression lives in an
+                               HTML attribute and is run by the CSP-safe interpreter in
+                               app/static/js/csp/csp-evaluator.js, which cannot await and
+                               does not parse `async`. */
+                            fix(){ const self = this; self.busy=true; self.errorMsg='';
+                                return Platform.fetch.post('/solutions/data-stewardship/classify-baseline', null, { silent: true })
+                                    .then(function (d) {
+                                        if (d.success) {
+                                            self.done=true;
+                                            self.msg=d.classified+' classified ('+d.confidential+' confidential, '+d.internal+' internal)';
+                                        } else {
+                                            self.msg='';
+                                            self.errorMsg = d.error || 'Classification failed';
+                                        }
+                                        self.busy=false;
+                                    })
+                                    .catch(function (err) {
+                                        self.msg='';
+                                        self.errorMsg = err.message || 'Classification failed';
+                                        self.busy=false;
+                                    });
                             } }">
                             <button type="button" x-show="!done" @click="fix()" :disabled="busy"
                                     class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-2xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50">

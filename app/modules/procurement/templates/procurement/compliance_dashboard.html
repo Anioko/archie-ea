@@ -115,25 +115,28 @@
                     loading: false,
                     error: null,
                     remediation: null,
-                    async generate() {
+                    generate() {
+                        const self = this;
                         this.loading = true;
                         this.error = null;
-                        try {
-                            // silent: this card paints its own inline error below, so
-                            // the wrapper's toast would be a duplicate. CSRF is
-                            // injected for us, and a non-2xx throws rather than
-                            // returning a body that could be read as a result.
-                            const body = await Platform.fetch.post(
+                        // silent: this card paints its own inline error below, so
+                        // the wrapper's toast would be a duplicate. CSRF is
+                        // injected for us, and a non-2xx throws rather than
+                        // returning a body that could be read as a result.
+                        return Platform.fetch.post(
                                 '{{ url_for('procurement.compliance_ai_remediation', license_id=license.id) }}',
                                 undefined,
                                 { silent: true }
-                            );
-                            this.remediation = body.remediation;
-                        } catch (e) {
-                            this.error = e.message || 'AI remediation failed - check your connection and try again.';
-                        } finally {
-                            this.loading = false;
-                        }
+                            )
+                            .then(function (body) {
+                                self.remediation = body.remediation;
+                                self.loading = false;
+                            })
+                            .catch(function (e) {
+                                self.remediation = null;
+                                self.error = e.message || 'AI remediation failed - check your connection and try again.';
+                                self.loading = false;
+                            });
                     }
                  }">
                 <div class="flex items-center justify-between">

@@ -38,33 +38,38 @@
             this.searchError = null;
         },
         
-        async search() {
+        // Promise chain, not async/await: this expression lives in an Alpine
+        // attribute and is run by the CSP-safe interpreter
+        // (app/static/js/csp/csp-evaluator.js), which cannot await.
+        search() {
+            const self = this;
             if (this.query.length < 2) {
                 this.results = [];
                 this.searchError = null;
-                return;
+                return Promise.resolve();
             }
-            
+
             this.loading = true;
-            try {
-                // Use Platform.fetch.get for automatic CSRF, JSON parsing, and error handling
-                // silent:true prevents duplicate toast because we show inline error state
-                const data = await Platform.fetch.get('/api/sidebar/search', 
+            // Use Platform.fetch.get for automatic CSRF, JSON parsing, and error handling
+            // silent:true prevents duplicate toast because we show inline error state
+            return Platform.fetch.get('/api/sidebar/search',
                     { q: this.query },
                     { silent: true }
-                );
-                this.results = data.results || [];
-                this.selectedIndex = 0;
-                this.searchError = null;
-            } catch (error) {
-                // A search that never ran must not read as "No results found".
-                // Platform.fetch throws on network errors and non-ok responses
-                this.results = [];
-                // Ensure error.message exists to avoid TypeError if error is null/undefined
-                this.searchError = (error && error.message) || 'Search failed';
-            } finally {
-                this.loading = false;
-            }
+                )
+                .then(function (data) {
+                    self.results = (data && data.results) || [];
+                    self.selectedIndex = 0;
+                    self.searchError = null;
+                    self.loading = false;
+                })
+                .catch(function (error) {
+                    // A search that never ran must not read as "No results found".
+                    // Platform.fetch throws on network errors and non-ok responses
+                    self.results = [];
+                    // Ensure error.message exists to avoid TypeError if error is null/undefined
+                    self.searchError = (error && error.message) || 'Search failed';
+                    self.loading = false;
+                });
         },
         
         navigateDown() {

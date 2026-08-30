@@ -352,10 +352,34 @@ def import_oef():
 @architect_ui_bp.route("/architecture/elements/new", methods=["GET"])
 @login_required
 def new_archimate_element():
-    """Redirect to archimate_crud create page with pre-filled layer/type params."""
-    element_type = request.args.get("type", "")
-    layer = request.args.get("layer", "")
-    return redirect(url_for("archimate_crud.create_element", layer=layer.lower(), element_type=element_type))
+    """Redirect to the archimate_crud create page for a known (layer, type) pair.
+
+    `archimate_crud.create_element` is bound to
+    `/<any(application, business, ...):layer>/<element_type>/new`, so the
+    `any` converter refuses to build a URL for a layer it does not know.
+    Reaching this route with no query string (the plain "New element" link)
+    passed `layer=""` straight into `url_for`, which raised
+    `ValueError: '' is not one of 'application', 'business', ...` and 500'd.
+    An unset or unrecognised layer is a legitimate state — the user has not
+    chosen yet — so it belongs on the dashboard picker, not on an exception.
+    """
+    from app.modules.architecture.routes.archimate_crud.routes import (
+        LAYER_CONFIG,
+        MODEL_REGISTRY,
+    )
+
+    element_type = request.args.get("type", "").strip()
+    layer = request.args.get("layer", "").strip().lower()
+
+    if layer in LAYER_CONFIG and element_type in MODEL_REGISTRY:
+        return redirect(
+            url_for("archimate_crud.create_element", layer=layer, element_type=element_type)
+        )
+
+    # Preselect the layer when it is the type that is missing or unknown.
+    if layer in LAYER_CONFIG:
+        return redirect(url_for("archimate_crud.dashboard", layer=layer))
+    return redirect(url_for("archimate_crud.dashboard"))
 
 
 # =============================================================================

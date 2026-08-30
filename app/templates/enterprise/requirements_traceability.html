@@ -7,7 +7,7 @@
 {% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
 {{ breadcrumb_nav(items=[
     {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
-    {'text': 'Enterprise Architecture'},
+    {'text': 'Enterprise Architecture', 'href': url_for('enterprise.enterprise_dashboard')},
     {'text': 'Requirements Traceability', 'current': true}
 ]) }}
 {% endblock %}

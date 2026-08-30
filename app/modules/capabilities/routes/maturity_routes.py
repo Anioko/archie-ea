@@ -300,6 +300,14 @@ def batch_update_maturity():
             where_conditions = ["organization_id = :org_id"]
             params["org_id"] = _org
 
+            # The form's domain selector says "Only update capabilities in this
+            # domain". It was read from the form and then never used in the WHERE,
+            # so a domain-scoped batch update silently rewrote every capability in
+            # the organisation. The predicate is the contract the label states.
+            if domain:
+                where_conditions.append("business_domain = :domain")
+                params["domain"] = domain
+
             if strategic_importance:
                 where_conditions.append("strategic_importance = :strategic_importance")
                 params["strategic_importance"] = strategic_importance
@@ -343,6 +351,10 @@ def batch_update_maturity():
         """
 
         params = {"org": _org} if _org is not None else {}
+
+        if domain:
+            preview_query += " AND business_domain = :domain"
+            params["domain"] = domain
 
         if strategic_importance:
             preview_query += " AND strategic_importance = :strategic_importance"

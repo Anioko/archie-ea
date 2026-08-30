@@ -3,14 +3,18 @@
   "_note": "updated 2026-08-27 (raw_fetch_sites -> 0; only sidebar_links 25 (at budget) and shell_conformance 3 remain)",
   "ratchets": {
     "air_gap": 0,
+    "alpine_await": 0,
     "broken_surfaces": 0,
     "console_reporting": 0,
+    "control_labels": 0,
     "design_tokens": 0,
     "design_tokens_extended": 0,
     "dynamic_link_prefixes": 0,
     "fabricated_data_server": 209,
     "fetch_guards": 0,
+    "input_labels": 0,
     "lint_core": 0,
+    "macro_kwargs": 0,
     "nav_coverage": 0,
     "nav_verified": 0,
     "raw_fetch_sites": 0,
@@ -20,6 +24,8 @@
     "sidebar_links": 25,
     "tenant_scoping": 0,
     "ui_contract": 0,
-    "undefined_names": 0
+    "undefined_names": 0,
+    "attr_quoting": 0,
+    "journey_coverage": 0
   }
 }

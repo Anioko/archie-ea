@@ -372,6 +372,160 @@ def gate_air_gap(baseline: int) -> Result:
     return Result("air-gap", PASS if count <= baseline else FAIL, "", count, baseline)
 
 
+def gate_control_labels(baseline: int) -> Result:
+    """No button a screen reader announces as just "button".
+
+    An icon-only button contributes no text, so without an aria-label the only
+    way to learn what it does is to press it. A live browser audit of every
+    route (Aug 2026) found 50, on close buttons, delete buttons and send
+    buttons across the whole app.
+
+    The gate exists rather than the cleanup alone because of the shape it also
+    catches: /account/manage's notification toggles carried an
+    `aria-labelledby` pointing at the `sr-only` checkbox rather than the visible
+    <label>. It read like a deliberate, filed label and resolved to an empty
+    name. Counted by scripts/check_control_labels.py, which follows the id.
+    """
+    proc = _run([sys.executable, "scripts/check_control_labels.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("control-labels", FAIL, f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    detail = "" if count <= baseline else "run scripts/check_control_labels.py to list them"
+    return Result("control-labels", PASS if count <= baseline else FAIL, detail, count, baseline)
+
+def gate_alpine_await(baseline: int) -> Result:
+    """No `await` / `async` inside an Alpine attribute expression.
+
+    Pages are served under a CSP with no 'unsafe-eval', so Alpine expressions
+    written in HTML attributes are executed by our own synchronous interpreter
+    (app/static/js/csp/csp-evaluator.js), not by the browser. It cannot await:
+    `await p` used to return the Promise object unchanged, so
+    `this.total = await api.count()` left `total` holding a Promise and the
+    template rendered the seeded initialiser. The strategic-roadmap and sprint
+    statistic tiles sat on a fabricated `0` for months -- indistinguishable
+    from a measured zero on a page that looked perfectly healthy. `async` is a
+    parse error in that grammar, which kills the whole component.
+
+    The evaluator now throws on `await` rather than fabricating, and this gate
+    keeps the templates at zero so that throw stays unreachable. Counted by
+    scripts/check_alpine_await.py, which ignores <script> bodies, string
+    literals and comments.
+    """
+    proc = _run([sys.executable, "scripts/check_alpine_await.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("alpine-await", FAIL, f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    detail = "" if count <= baseline else "run scripts/check_alpine_await.py to list them"
+    return Result("alpine-await", PASS if count <= baseline else FAIL, detail, count, baseline)
+
+
+def gate_attr_quoting(baseline: int) -> Result:
+    """No `| tojson` inside a DOUBLE-quoted HTML attribute.
+
+    Jinja's tojson emits HTML-safe JSON: it escapes `<`, `>`, `&` and `'`
+    (to \u0027) but deliberately leaves `"` literal, because JSON without
+    double quotes is not JSON. So `x-data="foo({{ report | tojson }})"`
+    renders as `x-data="foo({"score": 3, ...})"` and the payload's own first
+    `"` closes the attribute early. Alpine's CSP-safe parser then receives a
+    truncated expression and throws `Uncaught SyntaxError: expected } got ""`,
+    which aborts x-data init and kills the whole component -- every x-show,
+    x-text and @click inside it silently stops working. Measured live in a
+    browser on /solutions/1/completeness and /modules/.
+
+    A single-quoted attribute is safe precisely because tojson escapes `'`,
+    so the fix is normally a delimiter swap; where the expression carries its
+    own single-quoted JS strings those become double-quoted, or the value
+    moves to a data-* attribute. Counted by scripts/check_attr_quoting.py,
+    which masks Jinja comment regions and flags every tojson in a
+    double-quoted attribute -- "this value can never contain a quote" is a
+    property of today's data, not of the template.
+    """
+    proc = _run([sys.executable, "scripts/check_attr_quoting.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("attr-quoting", FAIL, f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    detail = "" if count <= baseline else "run scripts/check_attr_quoting.py to list them"
+    return Result("attr-quoting", PASS if count <= baseline else FAIL, detail, count, baseline)
+
+
+def gate_input_labels(baseline: int) -> Result:
+    """No form control a screen reader cannot name.
+
+    An unlabelled <input>/<select>/<textarea> is announced as its type and
+    nothing else, so the only way to learn what a field holds is to fill it in.
+    The same audit found 34 in rendered pages alone -- toolbar filter selects,
+    every table's select-all checkbox, and a "Paste CSV Data" textarea whose
+    visible <label> simply had no `for`, so the association was never made.
+
+    A placeholder does not count: it is not reliably exposed as an accessible
+    name, and it disappears the moment the user types.
+    """
+    proc = _run([sys.executable, "scripts/check_input_labels.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("input-labels", FAIL, f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    detail = "" if count <= baseline else "run scripts/check_input_labels.py to list them"
+    return Result("input-labels", PASS if count <= baseline else FAIL, detail, count, baseline)
+
+
+def gate_macro_kwargs(baseline: int) -> Result:
+    """No Jinja macro call passing a keyword the macro does not accept.
+
+    Jinja resolves a macro signature only when the call executes, so this is
+    invisible to `template-syntax` (the file parses) and to `boot-health` (the
+    url_for resolves). The page raises `TypeError: macro 'x' takes no keyword
+    argument 'y'` the first time a request renders that branch.
+
+    Found by the Aug 2026 route audit: capability_maturity/heatmap.html called
+    components/empty_state.html's `empty_state` with `cta_label=`, which is the
+    correct parameter of a *different, identically named* macro in
+    macros/page_shell.html. It rendered only for an organisation with zero
+    capabilities, so every seeded database hid it and only a brand-new customer
+    could reach the 500 -- which is why counting the class beats fixing the one
+    instance.
+    """
+    proc = _run([sys.executable, "scripts/check_macro_kwargs.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("macro-kwargs", FAIL, f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    detail = "" if count <= baseline else "run scripts/check_macro_kwargs.py to list them"
+    return Result("macro-kwargs", PASS if count <= baseline else FAIL, detail, count, baseline)
+
+
+def gate_journey_coverage(baseline: int) -> Result:
+    """Every persona has a journey test that writes and asserts the outcome.
+
+    Levels 0-8 all ask "does this break?". None of them asks "can a person
+    achieve their goal?" -- and a screen can compile, render, label its controls
+    correctly, leak nothing, and still be a workflow nobody can complete.
+    /capability-analysis/unmapped returned 200 for months while never querying
+    the rows it exists to show, because the view's own name shadowed the query
+    result; a status assertion could not have caught it and a journey would
+    have.
+
+    Writing the four missing journeys this gate demanded found, in one pass: a
+    portfolio manager's core action rejected with 400 by its own endpoint, a
+    governed retire disposition approvable with no ARB decision, a 500 on every
+    successful bulk approval (a dict written to a TEXT column, raised at commit
+    outside the caller's try/except), and an ARB decision that was recorded
+    correctly and then displayed nowhere on the review page.
+
+    See docs/TESTING_STANDARD.md, Level 9.
+    """
+    proc = _run([sys.executable, "scripts/check_journey_coverage.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("journey-coverage", FAIL, f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    detail = "" if count <= baseline else "run scripts/check_journey_coverage.py to list them"
+    return Result("journey-coverage", PASS if count <= baseline else FAIL, detail, count, baseline)
+
+
 def gate_template_syntax() -> Result:
     """Every Jinja template parses. Gated at ZERO.
 
@@ -666,6 +820,35 @@ def gate_template_references() -> Result:
                       f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
     detail = "" if count == 0 else "run scripts/check_template_references.py to list them"
     return Result("template-references", PASS if count == 0 else FAIL, detail, count, 0)
+
+
+def gate_alpine_data_binding() -> Result:
+    """Every `x-data` names something the CSP evaluator can resolve. Gated at ZERO.
+
+    Alpine expressions run through the hand-written interpreter in
+    `app/static/js/csp/csp-evaluator.js` (so script-src can drop
+    'unsafe-eval'). It resolves a bare identifier against the component scope
+    and then `window` -- it never reads Alpine's `Alpine.data()` registry. A
+    template that registers `Alpine.data('foo', ...)` and then writes a bare
+    `foo` in the attribute therefore mounts an EMPTY component, and nothing
+    goes red: no console error, no failed request, no 5xx.
+
+    Measured on Impact Analysis, the enterprise architect's "if I retire this,
+    what breaks?" page. Typing in the element picker fired no request and
+    Analyze Impact did nothing. Worse, the surviving expressions fell through
+    to globals of the same name, so `x-text="'(' + history.length + ')'"`
+    rendered `window.history.length` -- the page showed a badge reading
+    "Recent Analyses (4)", counting the browser's navigation entries, above an
+    empty table. Three other templates carried the same binding.
+    """
+    proc = _run([sys.executable, "scripts/check_alpine_data_binding.py", "--json"])
+    try:
+        count = int(json.loads(proc.stdout)["count"])
+    except (ValueError, KeyError, json.JSONDecodeError):
+        return Result("alpine-data-binding", FAIL,
+                      f"could not parse output: {proc.stdout[:200]!r} {proc.stderr[:200]}")
+    detail = "" if count == 0 else "run scripts/check_alpine_data_binding.py to list them"
+    return Result("alpine-data-binding", PASS if count == 0 else FAIL, detail, count, 0)
 
 
 def gate_asset_urls() -> Result:
@@ -1346,6 +1529,44 @@ def build_gates(baseline: dict) -> list[Gate]:
              "ratchet", lambda: gate_nav_coverage(baseline["nav_coverage"]),
              remediation="add a link to the owning persona's zone in app/utils/role_access.py",
              tags=["static"]),
+        Gate("control-labels", "every button has an accessible name", "ratchet",
+             lambda: gate_control_labels(baseline["control_labels"]),
+             remediation="add an aria-label naming the ACTION ('Delete board', not "
+                         "'trash icon'), or append 'control-label-ok: <reason>'",
+             tags=["static", "ui", "a11y"]),
+        Gate("alpine-await", "no await/async in an Alpine attribute expression",
+             "ratchet", lambda: gate_alpine_await(baseline["alpine_await"]),
+             remediation="rewrite as a promise chain (.then/.catch) and set unmeasured "
+                         "values to null (never 0) on the error path, or append "
+                         "'alpine-await-ok: <reason>'",
+             tags=["static", "ui"]),
+        Gate("attr-quoting", "no tojson inside a double-quoted HTML attribute",
+             "ratchet", lambda: gate_attr_quoting(baseline["attr_quoting"]),
+             remediation="switch the attribute delimiter to single quotes (tojson "
+                         "escapes ' but not \"); if the expression already contains "
+                         "single-quoted JS strings, double-quote those or move the "
+                         "payload to a data-* attribute, or append "
+                         "'attr-quoting-ok: <reason>'",
+             tags=["static", "ui"]),
+        Gate("input-labels", "every form control has a label", "ratchet",
+             lambda: gate_input_labels(baseline["input_labels"]),
+             remediation="add a <label for=...> or an aria-label (a placeholder is not "
+                         "a label), or append 'input-label-ok: <reason>'",
+             tags=["static", "ui", "a11y"]),
+        Gate("macro-kwargs", "every macro call uses that macro's parameter names",
+             "ratchet", lambda: gate_macro_kwargs(baseline["macro_kwargs"]),
+             remediation="open the macro named in the message and use ITS parameter "
+                         "names (a same-named macro in another file is the usual "
+                         "cause), or append 'macro-kwargs-ok: <reason>'",
+             tags=["static", "ui"]),
+        Gate("journey-coverage", "every persona has a journey proving they can do their job",
+             "ratchet", lambda: gate_journey_coverage(baseline["journey_coverage"]),
+             remediation="add a test under tests/journeys/ that signs in as the persona, "
+                         "performs its write, and asserts the result BOTH persisted and is "
+                         "visible on the page they look at next (docs/TESTING_STANDARD.md, "
+                         "Level 9); or append 'journey-coverage-ok: <reason>' naming a "
+                         "persona that genuinely cannot act",
+             tags=["static", "journey"]),
         Gate("air-gap", "No UI assets loaded from public CDNs", "ratchet",
              lambda: gate_air_gap(baseline["air_gap"]),
              remediation="vendor the asset into app/static/ and use url_for('static', ...)",
@@ -1371,6 +1592,12 @@ def build_gates(baseline: dict) -> list[Gate]:
              gate_template_references,
              remediation="create the missing partial, correct the path, or delete the "
                          "dead reference; run scripts/check_template_references.py",
+             tags=["static", "ui"]),
+        Gate("alpine-data-binding", "every x-data resolves under the CSP evaluator", "zero",
+             gate_alpine_data_binding,
+             remediation='use x-data="component()" with a top-level '
+                         "`function component()` assigned to window; Alpine.data() "
+                         "plus a bare name mounts an empty component silently",
              tags=["static", "ui"]),
         Gate("broken-surfaces", "front-end targets resolve to real routes", "ratchet",
              lambda: gate_broken_surfaces(baseline.get("broken_surfaces", 479)),
@@ -1538,6 +1765,12 @@ DEFAULT_BASELINE = {
     "design_tokens": 1255,
     "design_tokens_extended": 4552,
     "air_gap": 78,
+    "control_labels": 0,
+    "input_labels": 0,
+    "macro_kwargs": 0,
+    "alpine_await": 0,
+    "attr_quoting": 0,
+    "journey_coverage": 0,
 }
 
 

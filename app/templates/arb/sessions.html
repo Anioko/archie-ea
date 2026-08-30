@@ -180,6 +180,7 @@
                         </a>
                         {% if not is_reviews_view and session.status == 'scheduled' %}
                         <form action="{{ url_for('arb.complete_session', id=session.id) }}" method="POST" class="inline">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                             <button type="submit"
                                     class="inline-flex items-center px-3 py-1.5 text-sm bg-success text-primary-foreground rounded-md hover:bg-success transition-colors" aria-label="Submit">
                                 <i data-lucide="check" class="w-3.5 h-3.5 mr-1" aria-hidden="true"></i>

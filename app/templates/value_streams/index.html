@@ -76,6 +76,7 @@
 
     {% call modal(id='vs-create-modal', title='New Value Stream', description='Define an end-to-end value delivery flow.', size='default') %}
     <form method="POST" action="{{ url_for('value_stream.create') }}" class="space-y-4">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div>
             <label for="vs-name" class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Name</label>
             <input type="text" id="vs-name" name="name" required

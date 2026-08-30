@@ -145,28 +145,36 @@
                         showDropdown: false,
                         searching: false,
                         _searchErrorShown: false,
-                        async search() {
-                            if (this.query.length < 2) { this.results = []; this.showDropdown = false; return; }
+                        /* Promise chain, not async/await: this expression lives in an
+                           Alpine attribute and is run by the CSP-safe interpreter
+                           (app/static/js/csp/csp-evaluator.js), which cannot await. */
+                        search() {
+                            const self = this;
+                            if (this.query.length < 2) { this.results = []; this.showDropdown = false; return Promise.resolve(); }
                             this.searching = true;
-                            try {
-                                const data = await Platform.fetch.get('/api/users', null, { silent: true });
-                                if (data.success) {
-                                    const q = this.query.toLowerCase();
-                                    this.results = data.users.filter(u => u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q)).slice(0, 5);
-                                    this.showDropdown = this.results.length > 0;
-                                    this._searchErrorShown = false;
-                                } else {
-                                    throw new Error(data.error || 'User search failed');
-                                }
-                            } catch (e) {
-                                // Fires on every debounced keystroke — toast once
-                                // per outage rather than once per character typed.
-                                if (!this._searchErrorShown) {
-                                    this._searchErrorShown = true;
-                                    if (window.Platform && Platform.toast) Platform.toast.error('User search failed');
-                                }
-                            }
-                            this.searching = false;
+                            return Platform.fetch.get('/api/users', null, { silent: true })
+                                .then(function (data) {
+                                    if (!data || !data.success) {
+                                        throw new Error((data && data.error) || 'User search failed');
+                                    }
+                                    const q = self.query.toLowerCase();
+                                    self.results = data.users.filter(u => u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q)).slice(0, 5);
+                                    self.showDropdown = self.results.length > 0;
+                                    self._searchErrorShown = false;
+                                    self.searching = false;
+                                })
+                                .catch(function () {
+                                    // Fires on every debounced keystroke — toast once
+                                    // per outage rather than once per character typed.
+                                    // Nothing is invented: a search that never ran shows no results.
+                                    self.results = [];
+                                    self.showDropdown = false;
+                                    if (!self._searchErrorShown) {
+                                        self._searchErrorShown = true;
+                                        if (window.Platform && Platform.toast) Platform.toast.error('User search failed');
+                                    }
+                                    self.searching = false;
+                                });
                         },
                         select(user) {
                             this.query = user.name;

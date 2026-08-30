@@ -6,7 +6,9 @@
 {% block title %}Transformation Programmes{% endblock %}
 
 {% block content %}
-<main class="p-6 space-y-6 mx-auto max-w-7xl">
+{# layouts/admin_base.html already renders the sole <main id="main-content">
+   landmark; a second <main> here gave the document two main landmarks. #}
+<div class="p-6 space-y-6 mx-auto max-w-7xl">
   {{ page_header(
       title='Transformation programmes',
       description='Govern business change from its objective and evidence through to accountable outcomes.',
@@ -68,5 +70,5 @@
       class='mt-6 rounded-lg border border-dashed border-border'
   ) }}
   {% endif %}
-</main>
+</div>
 {% endblock %}

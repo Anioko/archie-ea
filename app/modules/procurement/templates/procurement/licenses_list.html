@@ -25,20 +25,23 @@
             loading: false,
             error: null,
             position: null,
-            async generate() {
+            generate() {
+                const self = this;
                 this.loading = true;
                 this.error = null;
-                try {
-                    const body = await Platform.fetch('{{ url_for('procurement.licenses_ai_position') }}', {
+                return Platform.fetch('{{ url_for('procurement.licenses_ai_position') }}', {
                         method: 'POST',
                         silent: true
+                    })
+                    .then(function (body) {
+                        self.position = body.position;
+                        self.loading = false;
+                    })
+                    .catch(function (e) {
+                        self.position = null;
+                        self.error = e.message || 'AI licence position failed - check your connection and try again.';
+                        self.loading = false;
                     });
-                    this.position = body.position;
-                } catch (e) {
-                    this.error = e.message || 'AI licence position failed - check your connection and try again.';
-                } finally {
-                    this.loading = false;
-                }
             }
          }">
         <div class="flex items-center justify-between">

@@ -254,23 +254,23 @@
         <!-- Action Buttons -->
         <div class="flex gap-3">
             <button type="button"
-                @click="if ((await Platform.modal.confirm('Are you sure? This cannot be undone.'))) {
-                    try {
-                        const body = {
-                            source_id: {{ abacus_cap.id }},
-                            target_id: {{ manual_cap.id }},
-                            strategy: strategy
-                        };
-                        if (strategy === 'merge_fields') {
-                            body.field_rules = fieldRules;
-                        }
-                        const data = await Platform.fetch.post('{{ url_for("abacus_consolidation.merge_capabilities") }}', body, { silent: true });
+                @click="Platform.modal.confirm('Are you sure? This cannot be undone.').then(function (ok) {
+                    if (!ok) return null;
+                    const body = {
+                        source_id: {{ abacus_cap.id }},
+                        target_id: {{ manual_cap.id }},
+                        strategy: strategy
+                    };
+                    if (strategy === 'merge_fields') {
+                        body.field_rules = fieldRules;
+                    }
+                    return Platform.fetch.post('{{ url_for("abacus_consolidation.merge_capabilities") }}', body, { silent: true }).then(function (data) {
                         if (!data.success) throw new Error(data.error || 'Merge failed');
                         window.location.href = '{{ url_for("abacus_consolidation.index") }}';
-                    } catch (err) {
-                        Platform.toast.error(err.message);
-                    }
-                }"
+                    });
+                }).catch(function (err) {
+                    Platform.toast.error(err.message);
+                })"
                 class="px-6 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 font-medium"
              aria-label="Confirm">
                 Execute Merge
@@ -284,7 +284,7 @@
             </a>
 
             <button type="button"
-                @click="(async function(){ const tmpl = '{{ url_for("abacus_consolidation.reject_merge", abacus_id=0, manual_id=0) }}'; const url = tmpl.replace('/0/0','/{{ abacus_cap.id }}/{{ manual_cap.id }}'); try { await Platform.fetch.post(url, null, { silent: true }); window.location.href='{{ url_for("abacus_consolidation.index") }}'; } catch (err) { Platform.toast.error('Failed to mark as not duplicate.'); } })()"
+                @click="Platform.fetch.post('{{ url_for("abacus_consolidation.reject_merge", abacus_id=0, manual_id=0) }}'.replace('/0/0','/{{ abacus_cap.id }}/{{ manual_cap.id }}'), null, { silent: true }).then(function () { window.location.href='{{ url_for("abacus_consolidation.index") }}'; }).catch(function (err) { Platform.toast.error('Failed to mark as not duplicate: ' + (err.message || err)); })"
                 class="ml-auto px-6 py-2 bg-destructive/10 text-destructive-emphasis rounded-md hover:bg-destructive/20 font-medium"
              aria-label="Action">
                 Mark as Not Duplicate

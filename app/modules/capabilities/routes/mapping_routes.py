@@ -28,7 +28,7 @@ Routes:
 
 from datetime import datetime
 
-from flask import current_app, jsonify, request
+from flask import current_app, g, jsonify, request
 from flask_login import login_required
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import joinedload
@@ -1150,6 +1150,56 @@ def api_capability_applications(capability_id):
         return jsonify({"error": "An internal error occurred"}), 500
 
 
+# --------------------------------------------------------------------------- dual write
+
+def _mirror_mapping(capability_id, application_id, support_level, delete=False):
+    """Keep application_capability_mapping in step with application_capability_coverage.
+
+    Two tables model the same fact -- "this application supports this capability".
+    This endpoint wrote only ApplicationCapabilityCoverage, while the flagship
+    Capability Map (api_unified_capabilities), its gap analysis and its coverage
+    percentage all read ApplicationCapabilityMapping. The result: you could map
+    two applications on the mapping screen, see them listed there, and the
+    Capability Map would still report "Mapped to Apps 0 / Coverage 0% / No
+    Application Mapped" for the same capability. Two screens disagreeing about
+    the same fact is the worst failure mode for a system of record.
+
+    Consolidating onto one table is a data migration across ~600 call sites and
+    is not this change; keeping both in step at the single point that writes them
+    is, and it makes every existing reader correct.
+    """
+    from app.models.application_capability import ApplicationCapabilityMapping
+
+    # This model carries organization_id but NOT TenantMixin, so nothing filters
+    # it for us -- the predicate has to be written here. Without it the lookup
+    # could match another tenant's row for the same (capability, application)
+    # pair and then update or delete it, which is exactly what the insert below
+    # already guards against by setting organization_id explicitly.
+    existing = ApplicationCapabilityMapping.query.filter_by(
+        business_capability_id=capability_id,
+        application_component_id=application_id,
+        organization_id=getattr(g, "current_org_id", None),
+    ).first()
+
+    if delete:
+        if existing:
+            db.session.delete(existing)
+        return
+
+    if existing:
+        existing.support_level = support_level
+        return
+
+    db.session.add(
+        ApplicationCapabilityMapping(
+            business_capability_id=capability_id,
+            application_component_id=application_id,
+            support_level=support_level,
+            organization_id=getattr(g, "current_org_id", None),
+        )
+    )
+
+
 @capability_map.route("/api/mappings", methods=["POST"])
 @login_required
 @audit_log("capability_mapping_create")
@@ -1251,6 +1301,7 @@ def api_create_mapping():
                     if key in ALLOWED_MAPPING_FIELDS and hasattr(existing, key):
                         setattr(existing, key, value)
                 existing.updated_at = datetime.utcnow()
+                _mirror_mapping(capability_id_int, app_id_int, existing.support_level)
                 updated_count += 1
             else:
                 # Create new mapping
@@ -1265,6 +1316,7 @@ def api_create_mapping():
                     notes=mapping_fields.get("notes", ""),
                 )
                 db.session.add(mapping)
+                _mirror_mapping(capability_id_int, app_id_int, mapping.support_level)
                 created_count += 1
 
         db.session.commit()
@@ -1313,14 +1365,27 @@ def api_delete_mapping(mapping_id):
     try:
         from app.models.business_capabilities import ApplicationCapabilityCoverage
 
-        mapping = ApplicationCapabilityCoverage.query.get(mapping_id)
+        from app.models.business_capabilities import BusinessCapability
+
+        mapping = ApplicationCapabilityCoverage.query.filter_by(id=mapping_id).first()
         if not mapping:
+            return jsonify({"error": "Mapping not found"}), 404
+
+        # ApplicationCapabilityCoverage has no TenantMixin, so nothing scopes it
+        # to the caller's organisation -- a bare id lookup would let any tenant
+        # delete any other tenant's mapping. BusinessCapability IS tenant-filtered,
+        # so resolving the parent capability is the check.
+        owning_capability = BusinessCapability.query.filter_by(
+            id=mapping.capability_id
+        ).first()
+        if owning_capability is None:
             return jsonify({"error": "Mapping not found"}), 404
 
         capability_id = mapping.capability_id
         application_id = mapping.application_component_id
 
         db.session.delete(mapping)
+        _mirror_mapping(capability_id, application_id, None, delete=True)
         db.session.commit()
 
         return jsonify(
@@ -1334,6 +1399,46 @@ def api_delete_mapping(mapping_id):
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f"Error deleting mapping: {str(e)}")
+        return jsonify({"error": "An internal error occurred"}), 500
+
+
+@capability_map.route(
+    "/api/mappings/by-capability/<int:capability_id>/application/<int:application_id>",
+    methods=["DELETE"],
+)
+@login_required
+@audit_log("capability_mapping_delete")
+def api_delete_mapping_by_pair(capability_id, application_id):
+    """Delete a mapping addressed by the pair it connects.
+
+    The mapping UI knows which capability and which application the user
+    unticked; it has no reason to also track the surrogate id of the join row.
+    Scoped through BusinessCapability, which carries the tenant filter.
+    """
+    try:
+        from app.models.business_capabilities import (
+            ApplicationCapabilityCoverage,
+            BusinessCapability,
+        )
+
+        capability = BusinessCapability.query.filter_by(id=capability_id).first()
+        if capability is None:
+            return jsonify({"error": "Capability not found"}), 404
+
+        mapping = ApplicationCapabilityCoverage.query.filter_by(
+            capability_id=capability_id, application_component_id=application_id
+        ).first()
+        if mapping is None:
+            return jsonify({"error": "Mapping not found"}), 404
+
+        db.session.delete(mapping)
+        _mirror_mapping(capability_id, application_id, None, delete=True)
+        db.session.commit()
+        return jsonify({"success": True, "capability_id": capability_id,
+                        "application_id": application_id})
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error deleting mapping by pair: {e}")
         return jsonify({"error": "An internal error occurred"}), 500
 
 

@@ -128,6 +128,7 @@
                     </ul>
                     {% if stripe_configured %}
                     <form method="post" action="{{ url_for('billing.billing_upgrade') }}" class="mt-auto">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <input type="hidden" name="plan" value="pro">
                         <input type="hidden" name="seats" value="5">
                         <button type="submit"
@@ -155,6 +156,7 @@
                     </ul>
                     {% if stripe_configured %}
                     <form method="post" action="{{ url_for('billing.billing_upgrade') }}" class="mt-auto">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <input type="hidden" name="plan" value="pro">
                         <input type="hidden" name="seats" value="20">
                         <button type="submit"

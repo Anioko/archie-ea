@@ -27,29 +27,40 @@
                 event.target.value = '';
             },
             removeFile(idx) { this.pendingFiles.splice(idx, 1); },
-            async submit() {
+            /* .then()/.catch(), not async/await: this body lives in an Alpine
+               attribute and is run by the CSP-safe interpreter
+               (app/static/js/csp/csp-evaluator.js), which cannot await. The
+               uploads are chained with reduce so they still run one at a time,
+               in order, exactly as the old sequential awaits did. */
+            submit() {
+                const self = this;
                 this.submitting = true;
                 const payload = {title: this.title, description: this.description, trigger_type: this.trigger_type};
                 if (this.capability_id) payload.capability_id = parseInt(this.capability_id);
                 if (this.solution_id) payload.solution_id = parseInt(this.solution_id);
-                try {
-                    const cr = await Platform.fetch.post('/arb/api/change-requests', payload, { silent: true });
-                    const crId = cr.id;
-                    // Upload any attached files against the new change request
-                    for (const file of this.pendingFiles) {
-                        const fd = new FormData();
-                        fd.append('file', file);
-                        fd.append('document_type', this.docType);
-                        await Platform.fetch.post(`/arb/api/change-requests/${crId}/documents`, fd);
-                    }
-                    window.location.href = '/arb/change-requests';
-                } catch (error) {
-                    this.submitting = false;
-                    Platform.toast.error('Submission failed');
-                    // The error is already logged by Platform.fetch; we do not need to rethrow
-                    // because we are showing a user-visible toast above.
-                    // The loop will not continue if any file upload fails, which is acceptable.
-                }
+                return Platform.fetch.post('/arb/api/change-requests', payload, { silent: true })
+                    .then(function (cr) {
+                        const crId = cr.id;
+                        // Upload any attached files against the new change request,
+                        // sequentially — a rejection short-circuits the rest of the chain.
+                        return self.pendingFiles.reduce(function (chain, file) {
+                            return chain.then(function () {
+                                const fd = new FormData();
+                                fd.append('file', file);
+                                fd.append('document_type', self.docType);
+                                return Platform.fetch.post('/arb/api/change-requests/' + crId + '/documents', fd);
+                            });
+                        }, Promise.resolve());
+                    })
+                    .then(function () {
+                        window.location.href = '/arb/change-requests';
+                    })
+                    .catch(function () {
+                        self.submitting = false;
+                        Platform.toast.error('Submission failed');
+                        // The error is already logged by Platform.fetch; we do not rethrow
+                        // because the user-visible toast above is the report.
+                    });
             }
         }" @submit.prevent="submit()" class="space-y-5">
 

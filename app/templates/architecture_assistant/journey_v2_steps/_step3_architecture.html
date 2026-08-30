@@ -651,7 +651,7 @@
                                               class="text-2xs font-bold uppercase tracking-wider {{ text_color }}"
                                               x-text="el.acm_domain"></span>
                                         {# Accept/reject toggle #}
-                                        <button type="button" @click.stop="toggleElement(el.id || el.name)"
+                                        <button aria-label="Accept or reject element" type="button" @click.stop="toggleElement(el.id || el.name)"
                                                 class="p-1 rounded hover:bg-muted transition-colors">
                                             <svg x-show="isElementAccepted(el.id || el.name)" class="w-4 h-4 text-success" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                                                 <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
@@ -709,14 +709,14 @@
 
                                                         {# Boolean toggle #}
                                                         <template x-if="tmpl.property_type === 'boolean'">
-                                                            <input type="checkbox" class="rounded border-input"
+                                                            <input :aria-label="tmpl.property_key" type="checkbox" class="rounded border-input"
                                                                    :checked="getPropertyValue(el.acm_domain, el.id || el.name, tmpl.property_key) === true || getPropertyValue(el.acm_domain, el.id || el.name, tmpl.property_key) === 'true'"
                                                                    @change="setPropertyValue(el.acm_domain, el.id || el.name, tmpl.property_key, $event.target.checked)">
                                                         </template>
 
                                                         {# Text/number input #}
                                                         <template x-if="tmpl.property_type === 'text' || tmpl.property_type === 'number'">
-                                                            <input type="text" class="flex-1 text-xs border border-input rounded px-2 py-1 bg-background"
+                                                            <input :aria-label="tmpl.property_key" type="text" class="flex-1 text-xs border border-input rounded px-2 py-1 bg-background"
                                                                    :value="getPropertyValue(el.acm_domain, el.id || el.name, tmpl.property_key)"
                                                                    @blur="setPropertyValue(el.acm_domain, el.id || el.name, tmpl.property_key, $event.target.value)"
                                                                    :placeholder="tmpl.help_text ? tmpl.help_text.substring(0, 40) : ''">
@@ -724,7 +724,7 @@
 
                                                         {# Multi-select as text #}
                                                         <template x-if="tmpl.property_type === 'multi-select'">
-                                                            <input type="text" class="flex-1 text-xs border border-input rounded px-2 py-1 bg-background"
+                                                            <input :aria-label="tmpl.property_key" type="text" class="flex-1 text-xs border border-input rounded px-2 py-1 bg-background"
                                                                    :value="getPropertyValue(el.acm_domain, el.id || el.name, tmpl.property_key)"
                                                                    @blur="setPropertyValue(el.acm_domain, el.id || el.name, tmpl.property_key, $event.target.value)"
                                                                    :placeholder="(tmpl.enum_options || []).join(', ')">
@@ -758,14 +758,21 @@
                                                     this.brRules.splice(idx, 1);
                                                     this.saveRules();
                                                 },
-                                                async saveRules() {
+                                                /* Promise chain, not async/await — Alpine attribute
+                                                   expressions run in the CSP-safe interpreter
+                                                   (app/static/js/csp/csp-evaluator.js), which cannot
+                                                   await and rejects `async`. */
+                                                saveRules() {
+                                                    const self = this;
                                                     this.brSaving = true; this.brError = '';
-                                                    try {
-                                                        await Platform.fetch.patch('/architecture-journey/{{ solution_id }}/proposal/' + el.proposal_id + '/business-rules', {rules: this.brRules}, {silent: true});
-                                                    } catch(e) {
-                                                        this.brError = e.type === 'NetworkError' ? 'Network error' : 'Save failed';
-                                                    }
-                                                    this.brSaving = false;
+                                                    return Platform.fetch.patch('/architecture-journey/{{ solution_id }}/proposal/' + el.proposal_id + '/business-rules', {rules: this.brRules}, {silent: true})
+                                                        .then(function () {
+                                                            self.brSaving = false;
+                                                        })
+                                                        .catch(function (e) {
+                                                            self.brError = e && e.type === 'NetworkError' ? 'Network error' : 'Save failed';
+                                                            self.brSaving = false;
+                                                        });
                                                 }
                                              }">
                                             <button type="button"
@@ -794,7 +801,7 @@
                                                             </div>
                                                             <p class="text-xs text-muted-foreground leading-snug" x-text="rule.condition || ''" x-show="rule.condition"></p>
                                                         </div>
-                                                        <button type="button" @click="removeRule(idx)"
+                                                        <button aria-label="Remove rule" type="button" @click="removeRule(idx)"
                                                                 class="shrink-0 p-0.5 text-muted-foreground hover:text-destructive-emphasis transition-colors">
                                                             <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                                                                 <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>

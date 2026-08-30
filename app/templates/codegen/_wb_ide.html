@@ -21,7 +21,7 @@
                                 <div class="flex items-start gap-2 text-xs text-destructive-emphasis">
                                     <i data-lucide="alert-circle" class="h-3 w-3 mt-0.5 shrink-0"></i>
                                     <span x-text="err.text" class="flex-1"></span>
-                                    <button type="button" @click="errors=errors.filter(e=>e.id!==err.id)" class="shrink-0 hover:text-destructive-emphasis"><i data-lucide="x" class="h-3 w-3"></i></button>
+                                    <button aria-label="Dismiss error" type="button" @click="errors=errors.filter(e=>e.id!==err.id)" class="shrink-0 hover:text-destructive-emphasis"><i data-lucide="x" class="h-3 w-3"></i></button>
                                 </div>
                             </template>
                         </div>
@@ -71,7 +71,7 @@
                         <span x-text="sharing ? 'Generating…' : 'Share'"></span>
                     </button>
                     <div x-show="shareUrl" x-cloak class="flex items-center gap-1.5">
-                        <input :value="shareUrl" readonly
+                        <input aria-label="Shareable link" :value="shareUrl" readonly
                                class="h-7 px-2 text-xs font-mono bg-info/5 border border-info/30 rounded-md text-info-emphasis w-48 focus:outline-none"/>
                         <button type="button" @click="navigator.clipboard.writeText(shareUrl).then(()=>{copied=true;setTimeout(()=>copied=false,2000);})"
                                 class="h-7 px-2 text-xs border border-border rounded-md hover:bg-accent transition-colors text-muted-foreground flex items-center gap-1">
@@ -199,7 +199,7 @@
              class="shrink-0 border-b border-success/30 bg-success/8 px-4 py-2 flex items-center gap-2 text-xs text-success-emphasis">
             <i data-lucide="check-circle-2" class="h-3.5 w-3.5 shrink-0"></i>
             <span x-text="successMsg" class="flex-1"></span>
-            <button type="button" @click="successMsg=''" class="text-success-emphasis hover:text-success-emphasis/80"><i data-lucide="x" class="h-3 w-3"></i></button>
+            <button aria-label="Dismiss success message" type="button" @click="successMsg=''" class="text-success-emphasis hover:text-success-emphasis/80"><i data-lucide="x" class="h-3 w-3"></i></button>
         </div>
 
         <!-- ── 3-pane layout ── -->
@@ -311,7 +311,7 @@
                              @click="selectFile(tab.path)">
                             <span x-text="tab.name"></span>
                             <span x-show="dirtyFiles[tab.path]" class="w-1.5 h-1.5 rounded-full bg-warning ml-0.5 shrink-0" title="Unsaved changes"></span>
-                            <button type="button" @click.stop="closeTab(tab.path)"
+                            <button aria-label="Close file tab" type="button" @click.stop="closeTab(tab.path)"
                                     class="ml-0.5 w-3.5 h-3.5 rounded flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-muted-foreground/20 transition-all shrink-0 text-muted-foreground hover:text-foreground">
                                 <svg class="w-2.5 h-2.5" viewBox="0 0 10 10" fill="currentColor"><path d="M1 1l8 8M9 1l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
                             </button>
@@ -427,7 +427,7 @@
                             <i data-lucide="paintbrush" class="h-3 w-3"></i> Refactor
                         </button>
                         <div class="w-px h-4 bg-border mx-0.5"></div>
-                        <button type="button" @click="aiSelectionMenu = false" class="p-1 text-muted-foreground hover:text-foreground rounded">
+                        <button aria-label="Close AI actions menu" type="button" @click="aiSelectionMenu = false" class="p-1 text-muted-foreground hover:text-foreground rounded">
                             <i data-lucide="x" class="h-3 w-3"></i>
                         </button>
                     </div>
@@ -1034,17 +1034,26 @@
                                      x-data="{
                                          iacDeploying: false, iacDeployResult: null, iacDeployError: '',
                                          iacOwner: '', iacRepo: '', iacBaseBranch: 'main', iacShowForm: false,
-                                         async deployIac() {
-                                             if (!this.iacOwner || !this.iacRepo) { this.iacDeployError = 'Owner and repo are required'; return; }
+                                         /* Promise chain, not async/await: Alpine attribute expressions are
+                                            evaluated by the CSP-safe interpreter (app/static/js/csp/csp-evaluator.js),
+                                            which cannot parse `async` and throws on `await`. */
+                                         deployIac() {
+                                             const self = this;
+                                             if (!this.iacOwner || !this.iacRepo) { this.iacDeployError = 'Owner and repo are required'; return Promise.resolve(); }
                                              this.iacDeploying = true; this.iacDeployError = ''; this.iacDeployResult = null;
-                                             try {
-                                                 const data = await Platform.fetch.post(`/solutions/{{ solution.id }}/codegen/deploy-iac`,
+                                             return Platform.fetch.post(`/solutions/{{ solution.id }}/codegen/deploy-iac`,
                                                      {owner: this.iacOwner, repo: this.iacRepo, base_branch: this.iacBaseBranch},
-                                                     {silent: true});
-                                                 if (data.success) { this.iacDeployResult = data; this.iacShowForm = false; }
-                                                 else { this.iacDeployError = data.error || 'Deployment failed'; }
-                                             } catch(e) { this.iacDeployError = e.message || 'Deployment failed'; }
-                                             this.iacDeploying = false;
+                                                     {silent: true})
+                                                 .then(function (data) {
+                                                     if (data.success) { self.iacDeployResult = data; self.iacShowForm = false; }
+                                                     else { self.iacDeployResult = null; self.iacDeployError = data.error || 'Deployment failed'; }
+                                                     self.iacDeploying = false;
+                                                 })
+                                                 .catch(function (e) {
+                                                     self.iacDeployResult = null;
+                                                     self.iacDeployError = e.message || 'Deployment failed';
+                                                     self.iacDeploying = false;
+                                                 });
                                          }
                                      }">
                                     <template x-if="!iacDeployResult">
@@ -1651,7 +1660,7 @@
                             <input x-model="chatInstruction" @keydown.enter="chatRegenerate()" :disabled="chatSending"
                                    placeholder="Describe the change…"
                                    class="flex-1 bg-input rounded-lg px-3 py-1.5 text-2xs text-foreground placeholder:text-muted-foreground border border-border focus:outline-none focus:border-primary/50 transition-colors" aria-label="Describe the change…"/>
-                            <button type="button" @click="chatRegenerate()" :disabled="chatSending || !chatInstruction.trim() || isChatBlockedByVerify()"
+                            <button aria-label="Regenerate response" type="button" @click="chatRegenerate()" :disabled="chatSending || !chatInstruction.trim() || isChatBlockedByVerify()"
                                     class="h-7 w-7 flex items-center justify-center rounded-lg bg-primary/15 text-primary border border-primary/30 hover:bg-primary/25 disabled:opacity-50 transition-colors shrink-0">
                                 <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="m6 12 6-6 6 6M12 6v12"/></svg>
                             </button>
@@ -1674,7 +1683,7 @@
                                 </div>
                                 <div class="flex items-center gap-2 shrink-0">
                                     <span class="text-xs text-muted-foreground" x-text="searchResults.total_files + ' file(s)'"></span>
-                                    <button type="button" @click="searchResults = null; rightTab = 'ai'"
+                                    <button aria-label="Clear search results" type="button" @click="searchResults = null; rightTab = 'ai'"
                                             class="h-5 w-5 flex items-center justify-center rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors">
                                         <i data-lucide="x" class="h-3 w-3"></i>
                                     </button>
@@ -1747,7 +1756,7 @@
                                 <div class="p-3">
                                     <div class="flex items-start gap-2">
                                         <!-- Active indicator + select -->
-                                        <button type="button" @click="config.template_set_id = (config.template_set_id === tmpl.id ? null : tmpl.id)"
+                                        <button aria-label="Select template set" type="button" @click="config.template_set_id = (config.template_set_id === tmpl.id ? null : tmpl.id)"
                                                 class="shrink-0 mt-0.5 w-3.5 h-3.5 rounded-full border-2 transition-colors"
                                                 :class="config.template_set_id === tmpl.id ? 'border-primary bg-primary' : 'border-muted-foreground/40 hover:border-primary/60'">
                                         </button>
@@ -1772,7 +1781,7 @@
                                                 Files
                                             </button>
                                             <!-- Delete -->
-                                            <button type="button" @click="deleteTemplateSet(tmpl.id)"
+                                            <button aria-label="Delete template set" type="button" @click="deleteTemplateSet(tmpl.id)"
                                                     class="h-5 w-5 rounded border border-border text-muted-foreground hover:text-destructive-emphasis hover:border-destructive/30 transition-colors flex items-center justify-center">
                                                 <svg class="w-2.5 h-2.5" viewBox="0 0 10 10" fill="currentColor"><path d="M3 1h4M1.5 2.5h7l-.75 6H2.25l-.75-6ZM4 4.5v2.5M6 4.5v2.5"/><path d="M1.5 2.5h7" stroke="currentColor" stroke-width=".5" fill="none"/></svg>
                                             </button>
@@ -1816,28 +1825,36 @@
                          sbLaunching: false,
                          get hasFrontend() { return fileList.some(f => f.startsWith('frontend/')); },
                          get hasMobile()   { return fileList.some(f => f.startsWith('mobile/')); },
-                         async launchStackBlitz() {
+                         /* Promise chain, not async/await: Alpine attribute expressions are
+                            evaluated by the CSP-safe interpreter (app/static/js/csp/csp-evaluator.js),
+                            which cannot parse `async` and throws on `await`. */
+                         launchStackBlitz() {
+                             const self = this;
                              this.sbLaunching = true;
-                             try {
-                                 const d = await Platform.fetch('/solutions/' + solutionId + '/codegen/stackblitz-data',
-                                     { silent: true, errorMsg: 'the project bundle could not be built' });
-                                 if (d.error) { Platform.toast.error(d.error); return; }
-                                 const form = document.createElement('form');
-                                 form.method = 'POST';
-                                 form.action = 'https://stackblitz.com/run';
-                                 form.target = '_blank';
-                                 const f = (n, v) => { const i = document.createElement('input'); i.type='hidden'; i.name=n; i.value=v; form.appendChild(i); };
-                                 f('project[title]', d.title || 'Generated App');
-                                 f('project[description]', 'Generated by A.R.C.H.I.E.');
-                                 f('project[template]', 'nextjs');
-                                 for (const [path, content] of Object.entries(d.files || {})) {
-                                     f('project[files][' + path + ']', content);
-                                 }
-                                 document.body.appendChild(form);
-                                 form.submit();
-                                 document.body.removeChild(form);
-                             } catch(e) { Platform.toast.error('StackBlitz launch failed: ' + e.message); }
-                             finally { this.sbLaunching = false; }
+                             return Platform.fetch('/solutions/' + solutionId + '/codegen/stackblitz-data',
+                                     { silent: true, errorMsg: 'the project bundle could not be built' })
+                                 .then(function (d) {
+                                     if (d.error) { Platform.toast.error(d.error); self.sbLaunching = false; return; }
+                                     const form = document.createElement('form');
+                                     form.method = 'POST';
+                                     form.action = 'https://stackblitz.com/run';
+                                     form.target = '_blank';
+                                     const f = (n, v) => { const i = document.createElement('input'); i.type='hidden'; i.name=n; i.value=v; form.appendChild(i); };
+                                     f('project[title]', d.title || 'Generated App');
+                                     f('project[description]', 'Generated by A.R.C.H.I.E.');
+                                     f('project[template]', 'nextjs');
+                                     for (const [path, content] of Object.entries(d.files || {})) {
+                                         f('project[files][' + path + ']', content);
+                                     }
+                                     document.body.appendChild(form);
+                                     form.submit();
+                                     document.body.removeChild(form);
+                                     self.sbLaunching = false;
+                                 })
+                                 .catch(function (e) {
+                                     Platform.toast.error('StackBlitz launch failed: ' + e.message);
+                                     self.sbLaunching = false;
+                                 });
                          }
                      }"
                      @keydown.escape.window="previewModal = false">
@@ -1896,7 +1913,7 @@
                             </svg>
                             New tab
                         </a>
-                        <button type="button" @click="previewModal = false"
+                        <button aria-label="Close preview" type="button" @click="previewModal = false"
                                 class="ml-1 h-7 w-7 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
                             <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>

@@ -20,19 +20,27 @@
         residual_probability: '',
         residual_impact: '',
 
-        async initModal(capabilityId) {
+        // Promise chains, not async/await: these expressions live in an Alpine
+        // attribute and are run by the CSP-safe interpreter
+        // (app/static/js/csp/csp-evaluator.js), which cannot await.
+        initModal(capabilityId) {
+            const self = this;
             this.loading = true;
             Platform.modal.open('risk-detail');
 
-            try {
-                const data = await Platform.fetch.get(`/strategic/api/risks/${capabilityId}/details`, null, { silent: true });
-                this.risk = data;
-                this.loadMitigationData(data);
-                this.loading = false;
-            } catch (err) {
-                this.loading = false;
-                Platform.toast.error('Failed to load risk details: ' + (err.message || 'request failed'));
-            }
+            return Platform.fetch.get(`/strategic/api/risks/${capabilityId}/details`, null, { silent: true })
+                .then(function (data) {
+                    self.risk = data;
+                    self.loadMitigationData(data);
+                    self.loading = false;
+                })
+                .catch(function (err) {
+                    // Nothing was measured: leave the risk unset so the modal shows
+                    // its empty state rather than stale or invented values.
+                    self.risk = null;
+                    self.loading = false;
+                    Platform.toast.error('Failed to load risk details: ' + ((err && err.message) || 'request failed'));
+                });
         },
 
         loadMitigationData(data) {
@@ -67,7 +75,7 @@
             this.residual_impact = '';
         },
 
-        async saveMitigation() {
+        saveMitigation() {
             if (!this.risk) return;
 
             this.saving = true;
@@ -86,19 +94,20 @@
                 residual_impact: this.residual_impact ? parseInt(this.residual_impact) : null
             };
 
-            try {
-                const data = await Platform.fetch.post(`/strategic/api/risks/${this.risk.capability_id}/mitigation`, payload, { silent: true });
-                this.loadMitigationData(data);
+            const self = this;
+            return Platform.fetch.post(`/strategic/api/risks/${this.risk.capability_id}/mitigation`, payload, { silent: true })
+                .then(function (data) {
+                    self.loadMitigationData(data);
 
-                window.toast && window.toast.success('Mitigation plan saved successfully');
+                    window.toast && window.toast.success('Mitigation plan saved successfully');
 
-                setTimeout(() => window.location.reload(), 1500);
-
-            } catch (err) {
-                Platform.toast.error('Failed to save mitigation plan: ' + (err.message || 'request failed'));
-            } finally {
-                this.saving = false;
-            }
+                    setTimeout(() => window.location.reload(), 1500);
+                    self.saving = false;
+                })
+                .catch(function (err) {
+                    Platform.toast.error('Failed to save mitigation plan: ' + ((err && err.message) || 'request failed'));
+                    self.saving = false;
+                });
         },
 
         createInitiative() {

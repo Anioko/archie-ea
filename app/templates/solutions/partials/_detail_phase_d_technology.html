@@ -179,44 +179,50 @@
                                  return window.__SOLUTION_CONFIG__ ? window.__SOLUTION_CONFIG__.solutionId : null;
                              },
 
-                             async loadDeployments() {
-                                 if (!this.solId) return;
+                             /* Promise chains, not async/await: Alpine attribute
+                                expressions are evaluated by the CSP-safe interpreter in
+                                app/static/js/csp/csp-evaluator.js, which cannot await. */
+                             loadDeployments() {
+                                 const self = this;
+                                 if (!this.solId) return Promise.resolve();
                                  this.depLoading = true;
                                  this.depError = null;
-                                 try {
-                                     // Platform.fetch returns parsed data directly; throws on non‑ok.
-                                     const data = await Platform.fetch('/api/solutions/' + this.solId + '/archimate-elements');
-                                     const allEls = [];
-                                     for (const [layer, items] of Object.entries(data.elements_by_layer || {})) {
-                                         for (const el of items) allEls.push(el);
-                                     }
-                                     this.deployables = allEls.filter(e => {
-                                         const t = (e.type || '').toLowerCase();
-                                         return t.includes('applicationcomponent') || t.includes('applicationservice') || t.includes('artifact');
+                                 // Platform.fetch returns parsed data directly; throws on non-ok.
+                                 return Platform.fetch('/api/solutions/' + this.solId + '/archimate-elements')
+                                     .then(function (data) {
+                                         const allEls = [];
+                                         for (const [layer, items] of Object.entries(data.elements_by_layer || {})) {
+                                             for (const el of items) allEls.push(el);
+                                         }
+                                         self.deployables = allEls.filter(e => {
+                                             const t = (e.type || '').toLowerCase();
+                                             return t.includes('applicationcomponent') || t.includes('applicationservice') || t.includes('artifact');
+                                         });
+                                         self.techNodes = allEls.filter(e => {
+                                             const t = (e.type || '').toLowerCase();
+                                             return t.includes('node') || t.includes('device') || t.includes('systemsoftware');
+                                         });
+                                         return Platform.fetch('/api/solutions/' + self.solId + '/relationships?type=assignment');
+                                     })
+                                     .then(function (relData) {
+                                         for (const r of (relData.relationships || [])) {
+                                             const srcId = r.source?.id || r.source_element_id;
+                                             const tgtId = r.target?.id || r.target_element_id;
+                                             self.assignments[srcId] = { relId: r.id, nodeId: tgtId };
+                                         }
+                                         self.depLoading = false;
+                                         self.depLoaded = true;
+                                     })
+                                     .catch(function (e) {
+                                         /* Nothing was measured — clear rather than render a
+                                            partial mapping that reads as "nothing deployed". */
+                                         self.deployables = [];
+                                         self.techNodes = [];
+                                         self.assignments = {};
+                                         self.depError = e && e.message ? e.message : 'Deployment mapping could not be loaded.';
+                                         self.depLoading = false;
+                                         self.depLoaded = true;
                                      });
-                                     this.techNodes = allEls.filter(e => {
-                                         const t = (e.type || '').toLowerCase();
-                                         return t.includes('node') || t.includes('device') || t.includes('systemsoftware');
-                                     });
-
-                                     const relData = await Platform.fetch('/api/solutions/' + this.solId + '/relationships?type=assignment');
-                                     for (const r of (relData.relationships || [])) {
-                                         const srcId = r.source?.id || r.source_element_id;
-                                         const tgtId = r.target?.id || r.target_element_id;
-                                         this.assignments[srcId] = { relId: r.id, nodeId: tgtId };
-                                     }
-                                 } catch(e) {
-                                     // Platform.fetch already shows a toast unless { silent: true }.
-                                     // We keep the inline error state, so pass silent:true to avoid duplicate toast.
-                                     // However, the existing code already paints depError, which is a user‑visible inline state.
-                                     // Therefore we must not swallow the error; we surface it via depError.
-                                     this.depError = e.message;
-                                     // Re‑throw to preserve the rule that errors are not swallowed.
-                                     throw e;
-                                 } finally {
-                                     this.depLoading = false;
-                                     this.depLoaded = true;
-                                 }
                              },
 
                              getAssignedNode(deployableId) {
@@ -225,33 +231,32 @@
                                  return this.techNodes.find(n => n.id === a.nodeId) || null;
                              },
 
-                             async assignNode(deployableId, nodeId) {
+                             assignNode(deployableId, nodeId) {
+                                 const self = this;
                                  const existing = this.assignments[deployableId];
-                                 try {
-                                     if (existing && existing.relId) {
-                                         // Platform.fetch.delete returns null for 204 No Content.
-                                         await Platform.fetch.delete('/api/solutions/' + this.solId + '/relationships/' + existing.relId);
-                                         delete this.assignments[deployableId];
-                                     }
-                                     if (nodeId) {
-                                         // Platform.fetch.post serialises plain‑object body automatically.
+                                 const removal = (existing && existing.relId)
+                                     // Platform.fetch.delete returns null for 204 No Content.
+                                     ? Platform.fetch.delete('/api/solutions/' + this.solId + '/relationships/' + existing.relId)
+                                         .then(function () { delete self.assignments[deployableId]; })
+                                     : Promise.resolve();
+
+                                 return removal
+                                     .then(function () {
+                                         if (!nodeId) return null;
+                                         // Platform.fetch.post serialises plain-object body automatically.
                                          // CSRF token is injected by Platform.fetch.
-                                         const data = await Platform.fetch.post('/api/solutions/' + this.solId + '/relationships', {
+                                         return Platform.fetch.post('/api/solutions/' + self.solId + '/relationships', {
                                              source_element_id: parseInt(nodeId),
                                              target_element_id: deployableId,
                                              relationship_type: 'assignment'
+                                         }).then(function (data) {
+                                             self.assignments[deployableId] = { relId: data.id, nodeId: parseInt(nodeId) };
                                          });
-                                         this.assignments[deployableId] = { relId: data.id, nodeId: parseInt(nodeId) };
-                                     }
-                                 } catch(e) {
-                                     // Platform.fetch already shows a toast unless { silent: true }.
-                                     // We keep the inline error state, so pass silent:true to avoid duplicate toast.
-                                     // However, the existing code already paints depError, which is a user‑visible inline state.
-                                     // Therefore we must not swallow the error; we surface it via depError.
-                                     this.depError = e.message;
-                                     // Re‑throw to preserve the rule that errors are not swallowed.
-                                     throw e;
-                                 }
+                                     })
+                                     .catch(function (e) {
+                                         // Surfaced inline via depError; not swallowed.
+                                         self.depError = e && e.message ? e.message : 'The deployment assignment could not be saved.';
+                                     });
                              }
                          }"
                          x-init="loadDeployments()">
@@ -293,7 +298,7 @@
                                                           x-text="dep.type"></span>
                                                 </td>
                                                 <td class="px-3 py-2">
-                                                    <select
+                                                    <select aria-label="Assign to technology node"
                                                         @change="assignNode(dep.id, $event.target.value)"
                                                         class="text-xs rounded-md border border-input bg-background px-2 py-1 min-w-[160px]"
                                                     >

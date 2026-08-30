@@ -77,21 +77,21 @@
                     <div class="font-medium">{{ item.name }}</div>
                     <button type="button"
                             @click="
-                                (async () => {
-                                    loading['{{ item.id }}'] = true;
-                                    error['{{ item.id }}'] = null;
-                                    try {
-                                        const data = await Platform.fetch.post('{{ url_for('my_applications.ai_health_assessment', app_id=item.id) }}', null, { silent: true });
+                                loading['{{ item.id }}'] = true;
+                                error['{{ item.id }}'] = null;
+                                Platform.fetch.post('{{ url_for('my_applications.ai_health_assessment', app_id=item.id) }}', null, { silent: true })
+                                    .then(function (data) {
                                         result['{{ item.id }}'] = data.assessment;
                                         open['{{ item.id }}'] = true;
-                                    } catch (err) {
+                                        loading['{{ item.id }}'] = false;
+                                    })
+                                    .catch(function (err) {
                                         const body = err.data;
+                                        result['{{ item.id }}'] = null;
                                         error['{{ item.id }}'] = (body && (body.message || body.error)) || err.message || 'AI health assessment failed.';
                                         open['{{ item.id }}'] = true;
-                                    } finally {
                                         loading['{{ item.id }}'] = false;
-                                    }
-                                })()
+                                    })
                             "
                             :disabled="loading['{{ item.id }}']"
                             :class="{ 'opacity-50': loading['{{ item.id }}'] }"

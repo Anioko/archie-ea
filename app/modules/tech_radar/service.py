@@ -64,7 +64,14 @@ def classify(archimate_element_id: int, ring: str, rationale: str, user_id: int)
     if ring not in RADAR_RINGS:
         raise ValueError(f"ring must be one of {RADAR_RINGS}")
 
-    element = ArchiMateElement.query.get(archimate_element_id)
+    # Not .query.get(): on an identity-map HIT it returns the cached object
+    # without emitting SQL, so do_orm_execute never runs and no tenant predicate
+    # is applied (CLAUDE.md). An explicit filter() always emits the query, which
+    # is what makes "in this tenant" above a guarantee rather than a side effect
+    # of the session happening to be cold.
+    element = ArchiMateElement.query.filter(
+        ArchiMateElement.id == archimate_element_id
+    ).first()
     if element is None or element.layer != "Technology":
         raise ValueError("not a technology-layer element in this tenant")
 

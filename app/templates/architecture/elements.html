@@ -250,7 +250,7 @@
                 <option value="supporting">Supporting</option>
                 <option value="generic">Generic</option>
             </select>
-            <select x-model="filterBuildingBlock" @change="page=1; fetchElements()"
+            <select aria-label="Filter by building block type" x-model="filterBuildingBlock" @change="page=1; fetchElements()"
                     class="h-9 rounded-md border border-input bg-background px-3 text-sm">
                 <option value="">Building Block Type</option>
                 <option value="architecture">Architecture Building Block</option>
@@ -263,13 +263,13 @@
                 <option value="target">Target</option>
                 <option value="transition">Transition</option>
             </select>
-            <select x-model="filterHasRels" @change="page=1; fetchElements()"
+            <select aria-label="Filter by relationships" x-model="filterHasRels" @change="page=1; fetchElements()"
                     class="h-9 rounded-md border border-input bg-background px-3 text-sm">
                 <option value="">Has Relationships</option>
                 <option value="yes">With Relationships</option>
                 <option value="no">Without Relationships</option>
             </select>
-            <select x-model="filterHasSolutions" @change="page=1; fetchElements()"
+            <select aria-label="Filter by linked solution" x-model="filterHasSolutions" @change="page=1; fetchElements()"
                     class="h-9 rounded-md border border-input bg-background px-3 text-sm">
                 <option value="">Linked to Solution</option>
                 <option value="yes">Linked</option>
@@ -313,7 +313,7 @@
         <table x-show="!loading && elements.length > 0" x-cloak class="w-full text-sm" data-testid="elements-table">
             <thead>
                 <tr class="border-b border-border">
-                    <th class="w-8 px-3 py-3"><input type="checkbox" @change="toggleSelectAll($event)" class="rounded border-input"></th>
+                    <th class="w-8 px-3 py-3"><input aria-label="Select all elements" type="checkbox" @change="toggleSelectAll($event)" class="rounded border-input"></th>
                     <th class="px-4 py-3 text-left font-medium text-muted-foreground cursor-pointer hover:text-foreground" @click="sort('name')">
                         Name <span x-show="sortField==='name'" x-text="sortDir==='asc'?'↑':'↓'" x-cloak></span>
                     </th>
@@ -337,7 +337,7 @@
                 <template x-for="el in elements" :key="el.id">
                     <tr class="hover:bg-muted/30 cursor-pointer" @click="selectElement(el)" data-testid="element-row">
                         <td class="px-3 py-3" @click.stop>
-                            <input type="checkbox" :value="el.id" x-model="selectedIds" class="rounded border-input">
+                            <input aria-label="Select element" type="checkbox" :value="el.id" x-model="selectedIds" class="rounded border-input">
                         </td>
                         <td class="px-4 py-3 font-medium text-foreground" x-text="el.name"></td>
                         <td class="px-4 py-3">
@@ -407,7 +407,7 @@
         <div class="p-6">
             <div class="flex items-center justify-between mb-6">
                 <h2 class="text-lg font-semibold text-foreground" x-text="selectedElement?.name || ''"></h2>
-                <button type="button" @click="selectedElement = null" class="text-muted-foreground hover:text-foreground p-1">
+                <button aria-label="Close element details" type="button" @click="selectedElement = null" class="text-muted-foreground hover:text-foreground p-1">
                     <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
                 </button>
             </div>
@@ -435,10 +435,16 @@
                         class="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground h-8 px-3">
                     Edit
                 </button>
-                <a :href="selectedElement?.id ? '/archimate/composer?element=' + selectedElement.id : '#'"
-                   class="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground h-8 px-3">
-                    Open in Composer
-                </a>
+                {# Rendered only once an element is selected: the previous
+                   `: '#'` fallback left a link that went nowhere in the DOM
+                   whenever the drawer had no selection (browser-audit
+                   "dead-link"). #}
+                <template x-if="selectedElement?.id">
+                    <a :href="'/archimate/composer?element=' + selectedElement.id"
+                       class="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground h-8 px-3">
+                        Open in Composer
+                    </a>
+                </template>
             </div>
 
             {# Relationships (loaded on select) #}

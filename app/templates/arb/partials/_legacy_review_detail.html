@@ -221,9 +221,68 @@
     </div>
     {% endif %}
 
+    {#
+      The recorded decision was never rendered anywhere on this page. Once a
+      decision existed the "ARB Decision Required" bar above disappeared (its
+      `not review.decision` guard) and nothing replaced it, so the outcome, the
+      approver and the rationale -- the entire governance record -- were
+      invisible to the board member who had just recorded them, and to everyone
+      who came to the review afterwards to find out what was decided.
+    #}
+    {% if review.decision %}
+    {% set _decision_tone = {
+        'approved': 'success',
+        'approved_with_conditions': 'warning',
+        'rejected': 'destructive',
+        'deferred': 'muted',
+    }.get(review.decision, 'muted') %}
+    <div class="mb-6 rounded-lg border border-border bg-card">
+        <div class="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-border">
+            <div class="flex items-center gap-2">
+                <i data-lucide="gavel" class="h-4 w-4 text-muted-foreground"></i>
+                <h3 class="font-semibold text-sm text-foreground">ARB Decision</h3>
+                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium
+                    {% if _decision_tone == 'success' %}bg-success/10 text-success-emphasis
+                    {% elif _decision_tone == 'warning' %}bg-warning/10 text-warning-emphasis
+                    {% elif _decision_tone == 'destructive' %}bg-destructive/10 text-destructive-emphasis
+                    {% else %}bg-muted text-muted-foreground{% endif %}">
+                    {{ review.decision | replace('_', ' ') | title }}
+                </span>
+            </div>
+            <a href="{{ url_for('arb.review_audit_trail_csv', id=review.id) }}"
+               class="text-xs text-primary hover:underline">Export audit trail</a>
+        </div>
+        <dl class="grid grid-cols-1 sm:grid-cols-3 gap-4 px-4 py-3">
+            <div>
+                <dt class="text-xs font-semibold text-foreground/80 uppercase tracking-wide">Outcome</dt>
+                <dd class="mt-1 text-sm text-foreground">{{ review.decision | replace('_', ' ') | title }}</dd>
+            </div>
+            <div>
+                <dt class="text-xs font-semibold text-foreground/80 uppercase tracking-wide">Decided by</dt>
+                {# An em dash, never a fabricated name: decided_by is nullable in
+                   the schema and the invariant is enforced in application code. #}
+                <dd class="mt-1 text-sm text-foreground">
+                    {{ review.decided_by.full_name if review.decided_by and review.decided_by.full_name
+                       else (review.decided_by.email if review.decided_by else '—') }}
+                </dd>
+            </div>
+            <div>
+                <dt class="text-xs font-semibold text-foreground/80 uppercase tracking-wide">Decided on</dt>
+                <dd class="mt-1 text-sm text-foreground">
+                    {{ review.decision_date.strftime('%d %b %Y') if review.decision_date else '—' }}
+                </dd>
+            </div>
+        </dl>
+        <div class="px-4 pb-4">
+            <h4 class="text-xs font-semibold text-foreground/80 uppercase tracking-wide mb-1">Rationale</h4>
+            <p class="text-sm text-muted-foreground whitespace-pre-line">{{ review.decision_rationale or '—' }}</p>
+        </div>
+    </div>
+    {% endif %}
+
     {% if review.decision == 'approved_with_conditions' and conditions_with_flags %}
     <!-- ARB-102: Conditions Tracker -->
-    <div x-data="conditionsTracker({{ conditions_with_flags | tojson }})"
+    <div x-data='conditionsTracker({{ conditions_with_flags | tojson }})'
          class="mb-6 rounded-lg border border-warning/30 bg-warning/10">
         <div class="flex items-center justify-between px-4 py-3 border-b border-warning/30">
             <div class="flex items-center gap-2">

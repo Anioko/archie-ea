@@ -51,16 +51,20 @@
             loading: false,
             error: null,
             result: null,
-            async generate() {
+            generate() {
+                const self = this;
                 this.loading = true;
                 this.error = null;
-                try {
-                    this.result = await Platform.fetch.post('{{ url_for('procurement.spend_ai_recommendations') }}', null, { silent: true });
-                } catch (e) {
-                    this.error = e.message || 'AI spend recommendations failed - check your connection and try again.';
-                } finally {
-                    this.loading = false;
-                }
+                return Platform.fetch.post('{{ url_for('procurement.spend_ai_recommendations') }}', null, { silent: true })
+                    .then(function (data) {
+                        self.result = data;
+                        self.loading = false;
+                    })
+                    .catch(function (e) {
+                        self.result = null;
+                        self.error = e.message || 'AI spend recommendations failed - check your connection and try again.';
+                        self.loading = false;
+                    });
             }
          }">
         <div class="flex items-center justify-between">

@@ -8,7 +8,9 @@
 {% endblock %}
 
 {% block content %}
-<main class="p-6 space-y-6 mx-auto max-w-4xl"
+{# layouts/admin_base.html already renders the sole <main id="main-content">
+   landmark; a second <main> here gave the document two main landmarks. #}
+<div class="p-6 space-y-6 mx-auto max-w-4xl"
       x-data="transformationProgrammeIntake()" x-init="init()">
   {{ page_header(
       title='New transformation programme',
@@ -63,7 +65,7 @@
       </button>
     </div>
   </form>
-</main>
+</div>
 {% endblock %}
 
 {% block extra_js %}

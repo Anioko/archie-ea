@@ -8,8 +8,8 @@
 {% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
 {{ breadcrumb_nav(items=[
     {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
-    {'text': 'Enterprise Architecture'},
-    {'text': 'Enterprise', 'current': true}
+    {'text': 'Enterprise Architecture', 'href': url_for('enterprise.enterprise_dashboard')},
+    {'text': 'Work Packages', 'current': true}
 ]) }}
 {% endblock %}
 
@@ -45,7 +45,7 @@
             @input.debounce.300ms="setSearch($event.target.value)" aria-label="Search work packages...">
       </div>
       <div class="flex items-center gap-2 shrink-0">
-        <select class="h-9 rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        <select aria-label="Work packages per page" class="h-9 rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 @change="setPerPage($event.target.value)">
           <option value="10">10 / page</option>
           <option value="25" selected>25 / page</option>
@@ -92,7 +92,7 @@
         <thead class="border-b bg-muted/40">
           <tr>
             <th class="w-10 h-12 px-3 align-middle" scope="col">
-              <input type="checkbox"
+              <input aria-label="Select all work packages" type="checkbox"
                      class="h-4 w-4 rounded border-input text-primary focus:ring-ring cursor-pointer"
                      :checked="items.length > 0 && items.every(function(r){ return _selectedIds.indexOf(r.id) !== -1; })"
                      @change="toggleSelectAll()"

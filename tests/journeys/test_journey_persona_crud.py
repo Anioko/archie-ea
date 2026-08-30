@@ -290,7 +290,15 @@ def test_an_application_manager_cannot_edit_an_application_they_do_not_own(app, 
     assert response.status_code == 404
 
     with app.app_context():
-        assert ApplicationComponent.query.get(app_id).lifecycle_status != "retired"
+        # Read the DATABASE, not the identity map. ApplicationComponent.query.get()
+        # returns the cached object without emitting SQL on a hit (CLAUDE.md), so
+        # it would report the pre-request value and pass even if the unauthorised
+        # edit HAD been applied -- a false pass on the exact thing under test.
+        db.session.expunge_all()
+        saved = db.session.execute(
+            db.select(ApplicationComponent).filter_by(id=app_id)
+        ).scalar_one()
+        assert saved.lifecycle_status != "retired"
 
 
 def test_licence_entitlement_is_tenant_scoped():

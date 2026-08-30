@@ -567,6 +567,13 @@ nav[aria-label="Composer toolbar"] { margin-bottom: 0 !important; }
   <a href="{{ url_for('unified_ai_chat.index') }}?element_id={{ solution_id }}&context_type=solution" class="font-medium underline hover:no-underline ml-1">Return to AI Chat &rarr;</a>
 </div>
 {% endif %}
+{# The composer is a full-bleed canvas with no visible page-title element, so
+   without this the document had no <h1> and a screen reader announced no page
+   name. Visually hidden rather than displayed: the toolbar's "Composer"
+   branding is display:none below the wide breakpoint, so it cannot carry the
+   accessible page name. /archimate/viewpoints redirects here, so this is that
+   page's <h1> too. #}
+<h1 class="sr-only">Architecture Composer</h1>
 <div x-data="composerApp()"
      class="flex flex-col h-full w-full min-w-0"
      :class="{ 'view-mode': mode === 'view' }"
@@ -621,7 +628,7 @@ nav[aria-label="Composer toolbar"] { margin-bottom: 0 !important; }
                aria-label="Search navigation"
                class="flex-1 bg-transparent text-sm border-none focus:outline-none placeholder:text-muted-foreground/50">
         <span class="text-2xs text-muted-foreground">layer: | type: | name:</span>
-        <button type="button" @click="clearFilter(); filterBarVisible = false" class="p-1 rounded hover:bg-muted">
+        <button aria-label="Clear filter" type="button" @click="clearFilter(); filterBarVisible = false" class="p-1 rounded hover:bg-muted">
             <i data-lucide="x" class="w-3 h-3"></i>
         </button>
     </div>
@@ -629,7 +636,7 @@ nav[aria-label="Composer toolbar"] { margin-bottom: 0 !important; }
     {# ── CMP-040: Drill-down breadcrumb navigation ── #}
     <div x-show="breadcrumbStack.length > 0" x-cloak x-transition
          class="flex items-center gap-1 px-3 py-1.5 bg-muted/50 border-b border-border text-xs">
-        <button type="button" @click="navigateBreadcrumb(0)"
+        <button aria-label="Go to top level" type="button" @click="navigateBreadcrumb(0)"
                 class="text-muted-foreground hover:text-foreground transition-colors">
             <i data-lucide="home" class="w-3 h-3"></i>
         </button>
@@ -807,7 +814,7 @@ nav[aria-label="Composer toolbar"] { margin-bottom: 0 !important; }
                     <div class="flex items-center gap-2 mb-3">
                         <i data-lucide="info" class="w-4 h-4 text-primary"></i>
                         <span class="font-semibold text-sm">Diagram Metadata</span>
-                        <button type="button" @click="metadataPanelOpen = false" class="ml-auto p-1 rounded hover:bg-muted">
+                        <button aria-label="Close metadata panel" type="button" @click="metadataPanelOpen = false" class="ml-auto p-1 rounded hover:bg-muted">
                             <i data-lucide="x" class="w-3 h-3"></i>
                         </button>
                     </div>
@@ -1555,7 +1562,7 @@ nav[aria-label="Composer toolbar"] { margin-bottom: 0 !important; }
                     <div>
                         <dt class="font-semibold text-muted-foreground uppercase tracking-wide text-2xs">Status</dt>
                         <dd class="mt-1">
-                            <select x-model="selectedNode.status"
+                            <select aria-label="Element status" x-model="selectedNode.status"
                                     @change="updateSelectedNodeStatus()"
                                     class="w-full text-xs bg-background border border-border rounded px-2 py-1 text-foreground focus:border-primary outline-none transition-colors">
                                 <option value="">— not set —</option>
@@ -1593,7 +1600,7 @@ nav[aria-label="Composer toolbar"] { margin-bottom: 0 !important; }
                     <div x-show="selectedNode && selectedNode.elType === 'DataObject'" x-cloak>
                         <dt class="font-semibold text-muted-foreground uppercase tracking-wide text-2xs">Data Classification</dt>
                         <dd class="mt-1">
-                            <select x-model="selectedNode._dataClassification"
+                            <select aria-label="Data classification" x-model="selectedNode._dataClassification"
                                     @change="updateDataClassification()"
                                     class="w-full text-xs bg-background border border-border rounded px-2 py-1 text-foreground focus:border-primary outline-none transition-colors">
                                 <option value="">— not set —</option>
@@ -1852,7 +1859,7 @@ nav[aria-label="Composer toolbar"] { margin-bottom: 0 !important; }
                                     <button type="button" @click="drillDown(_currentSelectedCell)" class="flex-1 px-2 py-1 rounded text-xs bg-primary/10 text-primary hover:bg-primary/20 transition-colors">
                                         <i data-lucide="arrow-down-right" class="w-3 h-3 inline"></i> Drill Down
                                     </button>
-                                    <button type="button" @click="unlinkViewpoint()" class="px-2 py-1 rounded text-xs text-destructive-emphasis hover:bg-destructive/10 transition-colors">
+                                    <button aria-label="Unlink viewpoint" type="button" @click="unlinkViewpoint()" class="px-2 py-1 rounded text-xs text-destructive-emphasis hover:bg-destructive/10 transition-colors">
                                         <i data-lucide="unlink" class="w-3 h-3 inline"></i>
                                     </button>
                                 </div>
@@ -1891,12 +1898,12 @@ nav[aria-label="Composer toolbar"] { margin-bottom: 0 !important; }
                     <div>
                         <dt class="font-semibold text-muted-foreground uppercase tracking-wide text-2xs">Cardinality (optional)</dt>
                         <dd class="mt-1 flex items-center gap-2">
-                            <input type="text" x-model="selectedEdge.sourceCardinality"
+                            <input aria-label="Source cardinality" type="text" x-model="selectedEdge.sourceCardinality"
                                    @blur="updateSelectedLinkCardinality()"
                                    placeholder="1" maxlength="10"
                                    class="w-16 text-xs bg-muted/30 border border-border rounded px-2 py-1 focus:border-primary outline-none text-foreground text-center">
                             <span class="text-2xs text-muted-foreground">to</span>
-                            <input type="text" x-model="selectedEdge.targetCardinality"
+                            <input aria-label="Target cardinality" type="text" x-model="selectedEdge.targetCardinality"
                                    @blur="updateSelectedLinkCardinality()"
                                    placeholder="*" maxlength="10"
                                    class="w-16 text-xs bg-muted/30 border border-border rounded px-2 py-1 focus:border-primary outline-none text-foreground text-center">

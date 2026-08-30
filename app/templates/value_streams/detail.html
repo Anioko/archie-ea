@@ -334,6 +334,7 @@
     <!-- Stage create modal -->
     {% call modal(id='stage-create-modal', title='Add Stage', size='default') %}
     <form method="POST" action="{{ url_for('value_stream.create_stage', value_stream_id=value_stream.id) }}" class="space-y-4">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div>
             <label for="stage-name" class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Name</label>
             <input type="text" id="stage-name" name="name" required
@@ -387,6 +388,7 @@
     <!-- Stage edit modal -->
     {% call modal(id='stage-edit-modal', title='Edit Stage', size='default') %}
     <form method="POST" x-bind:action="stageEditForm.id ? '{{ url_for('value_stream.edit_stage', stage_id=0) }}'.replace('/0/', '/' + stageEditForm.id + '/') : '#'" class="space-y-4">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="value_stream_id" value="{{ value_stream.id }}">
         <div>
             <label class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Name</label>
@@ -445,6 +447,7 @@
                 Delete stage <span class="font-medium text-foreground" x-text="stageDeleteForm.name"></span> and all its capability mappings? This cannot be undone.
             </p>
             <form method="POST" x-bind:action="'{{ url_for('value_stream.delete_stage', stage_id=0) }}'.replace('/0/', '/' + stageDeleteForm.id + '/')" class="flex justify-end gap-2">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <input type="hidden" name="value_stream_id" value="{{ value_stream.id }}">
                 <button type="button" data-modal-close="stage-delete-modal"
                         class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 h-9 px-4 py-2">
@@ -462,6 +465,7 @@
     <!-- Value stream edit modal -->
     {% call modal(id='vs-edit-modal', title='Edit Value Stream', size='default') %}
     <form method="POST" action="{{ url_for('value_stream.edit', value_stream_id=value_stream.id) }}" class="space-y-4">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div>
             <label class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Name</label>
             <input type="text" name="name" value="{{ value_stream.name }}" required
@@ -504,6 +508,7 @@
             Delete <span class="font-medium text-foreground">{{ value_stream.name }}</span> along with all its stages and capability mappings? This cannot be undone.
         </p>
         <form method="POST" action="{{ url_for('value_stream.delete', value_stream_id=value_stream.id) }}" class="flex justify-end gap-2">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="button" data-modal-close="vs-delete-modal"
                     class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 h-9 px-4 py-2">
                 Cancel

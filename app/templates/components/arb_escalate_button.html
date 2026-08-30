@@ -8,25 +8,36 @@
 {% macro arb_escalate(f, solution_id='') %}
 <span x-data="{
         done: false, busy: false, num: '',
-        async go() {
+        /* .then()/.catch(), not async/await: this body is an Alpine attribute
+           expression, run by the CSP-safe interpreter
+           (app/static/js/csp/csp-evaluator.js), which cannot await. */
+        go() {
+            const self = this;
             this.busy = true;
-            try {
-                const ds = this.$root.dataset;
-                const d = await Platform.fetch.post('/solutions/arb/escalate', {
+            const ds = this.$root.dataset;
+            return Platform.fetch.post('/solutions/arb/escalate', {
                     title: ds.title,
                     detail: ds.detail,
                     category: ds.category,
                     severity: ds.severity,
                     solution_id: ds.solution || null,
+                }, { silent: true })
+                .then(function (d) {
+                    // Platform.fetch.post throws on non-ok responses, so reaching here means success
+                    if (d.success) {
+                        self.done = true;
+                        self.num = d.review_number;
+                    }
+                    self.busy = false;
+                })
+                .catch(function (error) {
+                    // Nothing was escalated and no review number exists — say so rather
+                    // than leaving the button silently un-busy.
+                    self.done = false;
+                    self.num = '';
+                    self.busy = false;
+                    Platform.toast.error('Escalation to ARB failed: ' + (error && error.message ? error.message : 'unknown error'));
                 });
-                // Platform.fetch.post throws on non-ok responses, so reaching here means success
-                if (d.success) {
-                    this.done = true;
-                    this.num = d.review_number;
-                }
-            } finally {
-                this.busy = false;
-            }
         }
      }"
      data-title="{{ f.title }}"

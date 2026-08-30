@@ -170,33 +170,46 @@
                          return 'bg-muted/30 text-muted-foreground hover:bg-muted/50';
                      },
 
-                     async loadMatrix() {
-                         if (!this.solutionId) return;
+                     /* Promise chains, not async/await: Alpine attribute expressions
+                        are evaluated by the CSP-safe interpreter in
+                        app/static/js/csp/csp-evaluator.js, which cannot await. */
+                     loadMatrix() {
+                         const self = this;
+                         if (!this.solutionId) return Promise.resolve();
                          this.damLoading = true;
                          this.damError = null;
-                         try {
-                             const elData = await Platform.fetch('/api/solutions/' + this.solutionId + '/archimate-elements', { silent: true });
-                             const allEls = [];
-                             for (const [layer, items] of Object.entries(elData.elements_by_layer || {})) {
-                                 for (const el of items) allEls.push(el);
-                             }
-                             this.appComponents = allEls.filter(e => (e.type || '').includes('ApplicationComponent') || (e.type || '').includes('ApplicationService'));
-                             this.dataObjects = allEls.filter(e => (e.type || '').includes('DataObject') || (e.type || '').includes('DataEntity') || (e.type || '').includes('DatabaseInstance'));
-
-                             const relData = await Platform.fetch('/api/solutions/' + this.solutionId + '/relationships?type=access', { silent: true });
-                             for (const r of (relData.relationships || [])) {
-                                 const key = this.accessKey(r.source?.id || r.source_element_id, r.target?.id || r.target_element_id);
-                                 this.accessMap[key] = { id: r.id, access_type: r.access_type || 'read' };
-                             }
-                         } catch(e) {
-                             this.damError = e.message;
-                         } finally {
-                             this.damLoading = false;
-                             this.damLoaded = true;
-                         }
+                         return Platform.fetch('/api/solutions/' + this.solutionId + '/archimate-elements', { silent: true })
+                             .then(function (elData) {
+                                 const allEls = [];
+                                 for (const [layer, items] of Object.entries(elData.elements_by_layer || {})) {
+                                     for (const el of items) allEls.push(el);
+                                 }
+                                 self.appComponents = allEls.filter(e => (e.type || '').includes('ApplicationComponent') || (e.type || '').includes('ApplicationService'));
+                                 self.dataObjects = allEls.filter(e => (e.type || '').includes('DataObject') || (e.type || '').includes('DataEntity') || (e.type || '').includes('DatabaseInstance'));
+                                 return Platform.fetch('/api/solutions/' + self.solutionId + '/relationships?type=access', { silent: true });
+                             })
+                             .then(function (relData) {
+                                 for (const r of (relData.relationships || [])) {
+                                     const key = self.accessKey(r.source?.id || r.source_element_id, r.target?.id || r.target_element_id);
+                                     self.accessMap[key] = { id: r.id, access_type: r.access_type || 'read' };
+                                 }
+                                 self.damLoading = false;
+                                 self.damLoaded = true;
+                             })
+                             .catch(function (e) {
+                                 /* Nothing was measured: clear rather than leave a partial
+                                    matrix that reads as "no access anywhere". */
+                                 self.appComponents = [];
+                                 self.dataObjects = [];
+                                 self.accessMap = {};
+                                 self.damError = e && e.message ? e.message : 'The data access matrix could not be loaded.';
+                                 self.damLoading = false;
+                                 self.damLoaded = true;
+                             });
                      },
 
-                     async toggleAccess(appId, dataId) {
+                     toggleAccess(appId, dataId) {
+                         const self = this;
                          const key = this.accessKey(appId, dataId);
                          const current = this.accessMap[key];
                          const cycle = [null, 'read', 'write', 'readwrite'];
@@ -204,22 +217,25 @@
                          const nextIdx = (curIdx + 1) % cycle.length;
                          const nextType = cycle[nextIdx];
 
-                         try {
-                             if (current && current.id) {
-                                 await Platform.fetch.delete('/api/solutions/' + this.solutionId + '/relationships/' + current.id, { silent: true });
-                                 delete this.accessMap[key];
-                             }
-                             if (nextType) {
-                                 const data = await Platform.fetch.post('/api/solutions/' + this.solutionId + '/relationships', {
+                         const removal = (current && current.id)
+                             ? Platform.fetch.delete('/api/solutions/' + this.solutionId + '/relationships/' + current.id, { silent: true })
+                                 .then(function () { delete self.accessMap[key]; })
+                             : Promise.resolve();
+
+                         return removal
+                             .then(function () {
+                                 if (!nextType) return null;
+                                 return Platform.fetch.post('/api/solutions/' + self.solutionId + '/relationships', {
                                      source_element_id: appId,
                                      target_element_id: dataId,
                                      relationship_type: 'access'
-                                 }, { silent: true });
-                                 this.accessMap[key] = { id: data.id, access_type: nextType };
-                             }
-                         } catch(e) {
-                             this.damError = e.message;
-                         }
+                                 }, { silent: true }).then(function (data) {
+                                     self.accessMap[key] = { id: data.id, access_type: nextType };
+                                 });
+                             })
+                             .catch(function (e) {
+                                 self.damError = e && e.message ? e.message : 'The access relationship could not be updated.';
+                             });
                      }
                  }"
                  x-init="loadMatrix()">

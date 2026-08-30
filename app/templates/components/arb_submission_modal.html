@@ -16,10 +16,13 @@
         this.formData.estimated_timeline = '';
     },
 
-    async submitToARB() {
+    /* .then()/.catch(), not async/await: this body is an Alpine attribute
+       expression, run by the CSP-safe interpreter
+       (app/static/js/csp/csp-evaluator.js), which cannot await. */
+    submitToARB() {
+        const self = this;
         this.loading = true;
-        try {
-            const data = await Platform.fetch.post(`/strategic/api/arb/submit-capability/${this.capability.id}`, {
+        return Platform.fetch.post('/strategic/api/arb/submit-capability/' + this.capability.id, {
                 justification: this.formData.justification,
                 priority_override: this.formData.priority_override || null,
                 estimated_timeline: this.formData.estimated_timeline || null,
@@ -27,36 +30,37 @@
                     source_dashboard: 'investment_matrix',
                     submitted_via: 'one_click_submission'
                 }
-            }, { silent: true });
-
-            // Platform.fetch returns parsed data directly
-            if (data.success) {
-                Platform.toast.success(`ARB submission created: ${data.review_number}`);
-                Platform.modal.close('arb-submission');
-                setTimeout(() => {
-                    window.location.href = data.review_url;
-                }, 1500);
-            } else {
-                Platform.toast.error(data.error || 'Submission failed');
-            }
-        } catch (error) {
-            // Platform.fetch throws for network errors and non-ok responses
-            // Check if it's an HTTP error with data
-            if (error.type === 'HttpError' && error.data) {
-                // The server returned a non-ok response with JSON body
-                if (error.data.success === false) {
-                    Platform.toast.error(error.data.error || 'Submission failed');
+            }, { silent: true })
+            .then(function (data) {
+                // Platform.fetch returns parsed data directly
+                if (data.success) {
+                    Platform.toast.success('ARB submission created: ' + data.review_number);
+                    Platform.modal.close('arb-submission');
+                    setTimeout(function () {
+                        window.location.href = data.review_url;
+                    }, 1500);
                 } else {
-                    // Use the error message from Platform.fetch
-                    Platform.toast.error(error.message);
+                    Platform.toast.error(data.error || 'Submission failed');
                 }
-            } else {
-                // Network error or other
-                Platform.toast.error('Failed to submit to ARB');
-            }
-        } finally {
-            this.loading = false;
-        }
+                self.loading = false;
+            })
+            .catch(function (error) {
+                // Platform.fetch throws for network errors and non-ok responses
+                // Check if it's an HTTP error with data
+                if (error.type === 'HttpError' && error.data) {
+                    // The server returned a non-ok response with JSON body
+                    if (error.data.success === false) {
+                        Platform.toast.error(error.data.error || 'Submission failed');
+                    } else {
+                        // Use the error message from Platform.fetch
+                        Platform.toast.error(error.message);
+                    }
+                } else {
+                    // Network error or other
+                    Platform.toast.error('Failed to submit to ARB');
+                }
+                self.loading = false;
+            });
     }
 }"
 @open-arb-submission-modal.window="capability = $event.detail; resetForm(); Platform.modal.open('arb-submission')"

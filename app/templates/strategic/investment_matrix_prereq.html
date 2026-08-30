@@ -8,7 +8,8 @@
 {{ breadcrumb_nav(items=[
     {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
     {'text': 'Strategy Layer', 'href': url_for('archimate_crud.dashboard') + '#strategy'},
-    {'text': 'Strategic Planning', 'current': true}
+    {'text': 'Strategic Planning', 'href': url_for('enterprise.strategic_planning_dashboard')},
+    {'text': 'Investment Matrix', 'current': true}
 ]) }}
 {% endblock %}
 
@@ -16,11 +17,7 @@
 <div class="space-y-6">
     {{ page_header(
         title='Investment Prioritization Matrix',
-        description='Data-driven investment recommendations based on strategic importance, coverage gaps, and risk assessment',
-        breadcrumbs=[
-            {'label': 'Home', 'href': url_for('main.index')},
-            {'label': 'Investment Matrix'}
-        ]
+        description='Data-driven investment recommendations based on strategic importance, coverage gaps, and risk assessment'
     ) }}
 
     <div class="flex items-center justify-center min-h-[480px]">

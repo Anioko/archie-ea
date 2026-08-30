@@ -362,7 +362,7 @@ function archieShowBanner(msg, type) {
                         <h3 class="text-sm font-semibold text-foreground">Import from Document</h3>
                         <span class="text-xs text-muted-foreground">— upload a document and AI extracts architecture elements for review</span>
                     </div>
-                    <button type="button" @click="open = false" class="text-muted-foreground hover:text-foreground">
+                    <button aria-label="Close document import" type="button" @click="open = false" class="text-muted-foreground hover:text-foreground">
                         <i data-lucide="x" class="w-4 h-4"></i>
                     </button>
                 </div>
@@ -528,7 +528,7 @@ function archieShowBanner(msg, type) {
                         </button>
                     </div>
                     <div class="group relative">
-                        <textarea x-model="narratives.executive_summary"
+                        <textarea aria-label="Executive summary" x-model="narratives.executive_summary"
                                   @input.debounce.2000ms="autoSave('executive_summary')"
                                   @blur="autoSave('executive_summary')"
                                   @focus="narrativeSaving['executive_summary'] = narrativeSaving['executive_summary'] || 'idle'"
@@ -1294,7 +1294,7 @@ function archieShowBanner(msg, type) {
                     class="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium border transition-colors">
                     <span x-text="autoExecute ? 'Auto ON' : 'Approve each'"></span>
                 </button>
-                <button type="button" @click="toggle()" class="text-muted-foreground/60 hover:text-muted-foreground p-1 rounded">
+                <button aria-label="Close AI Copilot panel" type="button" @click="toggle()" class="text-muted-foreground/60 hover:text-muted-foreground p-1 rounded">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
                     </svg>
@@ -1595,7 +1595,7 @@ function entityAddModal() {
                 </h3>
                 <p class="text-xs text-muted-foreground mt-0.5" x-text="sectionLabel"></p>
             </div>
-            <button type="button" @click="open = false; $store.modal.close('bp-codegen-modal')" class="text-muted-foreground hover:text-foreground transition-colors">
+            <button aria-label="Close code generation dialog" type="button" @click="open = false; $store.modal.close('bp-codegen-modal')" class="text-muted-foreground hover:text-foreground transition-colors">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
             </button>
         </div>
@@ -1797,7 +1797,7 @@ function codegenModal() {
                 <h3 class="text-sm font-semibold text-foreground">Link Elements</h3>
                 <p class="text-xs text-muted-foreground mt-0.5" x-text="sectionName"></p>
             </div>
-            <button type="button" @click="open = false; $store.modal.close('bp-link-modal')" class="text-muted-foreground hover:text-foreground transition-colors">
+            <button aria-label="Close link dialog" type="button" @click="open = false; $store.modal.close('bp-link-modal')" class="text-muted-foreground hover:text-foreground transition-colors">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
             </button>
         </div>
@@ -2108,39 +2108,47 @@ document.addEventListener('click', function(e) {
             this.$nextTick(() => { const inp = this.$el.querySelector('input[type=search]'); if (inp) inp.focus(); });
         });
     },
-    async search() {
+    /* Promise chains, not async/await: Alpine attribute expressions on this page
+       are run by the CSP-safe interpreter (app/static/js/csp/csp-evaluator.js),
+       which cannot await and rejects `async`. */
+    search() {
+        const self = this;
         if (this.query.length < 2) { this.results = []; return; }
         if (this._timer) clearTimeout(this._timer);
-        this._timer = setTimeout(async () => {
-            this.loading = true;
-            this.error = '';
-            try {
-                const json = await Platform.fetch('/archimate/api/elements/search?q=' + encodeURIComponent(this.query) + '&limit=20', { silent: true });
-                this.results = json.data || json.results || [];
-            } catch (e) {
-                this.error = e.message || 'Search unavailable';
-                this.results = [];
-            }
-            this.loading = false;
+        this._timer = setTimeout(function () {
+            self.loading = true;
+            self.error = '';
+            Platform.fetch('/archimate/api/elements/search?q=' + encodeURIComponent(self.query) + '&limit=20', { silent: true })
+                .then(function (json) {
+                    self.results = json.data || json.results || [];
+                    self.loading = false;
+                })
+                .catch(function (e) {
+                    self.error = (e && e.message) || 'Search unavailable';
+                    self.results = [];
+                    self.loading = false;
+                });
         }, 300);
     },
-    async select(element) {
-        if (!this.linkEndpoint) { this.open = false; return; }
-        try {
-            await Platform.fetch.post(this.linkEndpoint,
+    select(element) {
+        const self = this;
+        if (!this.linkEndpoint) { this.open = false; return Promise.resolve(); }
+        return Platform.fetch.post(this.linkEndpoint,
                 { element_id: element.id, layer: element.layer || element.layer_name || '' },
-                { silent: true });
-            this.open = false;
-            window.location.reload();
-        } catch (e) {
-            if (e.status === 409) {
-                // 409 = already linked server-side; the desired end state either way.
-                this.open = false;
+                { silent: true })
+            .then(function () {
+                self.open = false;
                 window.location.reload();
-                return;
-            }
-            this.error = e.message || 'Failed to link element';
-        }
+            })
+            .catch(function (e) {
+                if (e && e.status === 409) {
+                    // 409 = already linked server-side; the desired end state either way.
+                    self.open = false;
+                    window.location.reload();
+                    return;
+                }
+                self.error = (e && e.message) || 'Failed to link element';
+            });
     }
 }"
     x-show="open" x-cloak

@@ -47,6 +47,9 @@
 {% endblock %}
 
 {% block content %}
+{# Full-bleed designer canvas with no visible page-title element; without this
+   the document had no <h1> and a screen reader announced no page name. #}
+<h1 class="sr-only">Workflow Designer</h1>
 <div x-data="workflowDesigner()" x-init="init()" class="flex h-full w-full overflow-hidden">
 
     {# -- Left: Step Palette ------------------------------------ #}
@@ -118,7 +121,7 @@
             <div class="p-3">
                 <div class="flex items-center justify-between mb-3">
                     <h3 class="text-sm font-semibold text-foreground">Properties</h3>
-                    <button type="button" @click="selectedStep = null" class="text-muted-foreground hover:text-foreground">
+                    <button aria-label="Close step details" type="button" @click="selectedStep = null" class="text-muted-foreground hover:text-foreground">
                         <svg class="w-4 h-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4l8 8M12 4l-8 8"/></svg>
                     </button>
                 </div>
@@ -269,7 +272,12 @@
 {% endblock %}
 
 {% block extra_head_js %}
-{# JointJS dependencies (same CDN as ArchiMate Composer) #}
+{# JointJS peer deps (jQuery → Lodash → Backbone) MUST load before joint.min.js;
+   without jQuery, joint dereferences `$.event` and throws
+   "Cannot read properties of undefined (reading 'event')". #}
+<script src="/static/vendor/jquery.min.js"
+        integrity="sha384-1H217gwSVyLSIfaLxHbE7dRb3v4mYCKbpQvzx0cegeju1MVsGrX5xXxAvs/HgeFs"
+        crossorigin="anonymous"></script>
 <script src="/static/vendor/lodash.min.js"
         integrity="sha384-H6KKS1H1WwuERMSm+54dYLzjg0fKqRK5ZRyASdbrI/lwrCc6bXEmtGYr5SwvP1pZ"
         crossorigin="anonymous"></script>

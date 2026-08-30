@@ -11,7 +11,7 @@
                     <i data-lucide="loader-2" class="h-3 w-3 animate-spin" aria-hidden="true"></i>Loading…
                 </span>
             </div>
-            <button type="button" class="text-muted-foreground hover:text-foreground transition-colors p-1" :aria-expanded="aiInsightsOpen">
+            <button aria-label="Toggle AI insights" type="button" class="text-muted-foreground hover:text-foreground transition-colors p-1" :aria-expanded="aiInsightsOpen">
                 <i data-lucide="chevron-down" class="h-4 w-4 transition-transform duration-200"
                    :class="aiInsightsOpen ? 'rotate-0' : '-rotate-90'" aria-hidden="true"></i>
             </button>
@@ -215,30 +215,43 @@
 
                      get archSid() { return (window.__SOLUTION_CONFIG__ || {}).solutionId; },
 
-                     async generateSuggestions() {
-                         if (!this.archSid || this.archLoading) return;
+                     /* NOTE ON STYLE: .then()/.catch(), never async/await. These are
+                        Alpine ATTRIBUTE expressions, evaluated by the CSP-safe
+                        interpreter in app/static/js/csp/csp-evaluator.js, which cannot
+                        await and now throws on it. */
+                     generateSuggestions() {
+                         const self = this;
+                         if (!this.archSid || this.archLoading) return Promise.resolve();
                          this.archLoading = true;
                          this.archSuggestions = [];
                          this.archAccepted = new Set();
                          this.archRejected = new Set();
                          this.archSelected = new Set();
-                         try {
-                             const d = await Platform.fetch.post('/solutions/' + this.archSid + '/ai/suggest-archimate', {}, { silent: true });
-                             // A 200 carrying success:false used to fall through silently,
-                             // leaving the button looking dead. Treat it as the failure it is.
-                             if (!d || !d.success) throw new Error((d && (d.error || d.message)) || 'Failed to generate ArchiMate suggestions');
-                             this.archSuggestions = d.suggestions || [];
-                             this.archReasoningStateId = d.reasoning_state_id;
-                         } catch (e) {
-                             if (window.Platform && Platform.toast) Platform.toast.error(e.message || 'Failed to generate ArchiMate suggestions');
+                         function done() {
+                             self.archLoading = false;
+                             if (typeof lucide !== 'undefined') self.$nextTick(function () { lucide.createIcons(); });
                          }
-                         this.archLoading = false;
-                         if (typeof lucide !== 'undefined') this.$nextTick(() => lucide.createIcons());
+                         return Platform.fetch.post('/solutions/' + this.archSid + '/ai/suggest-archimate', {}, { silent: true })
+                             .then(function (d) {
+                                 // A 200 carrying success:false used to fall through silently,
+                                 // leaving the button looking dead. Treat it as the failure it is.
+                                 if (!d || !d.success) throw new Error((d && (d.error || d.message)) || 'Failed to generate ArchiMate suggestions');
+                                 self.archSuggestions = d.suggestions || [];
+                                 self.archReasoningStateId = d.reasoning_state_id;
+                                 done();
+                             })
+                             .catch(function (e) {
+                                 self.archSuggestions = [];
+                                 self.archReasoningStateId = null;
+                                 if (window.Platform && Platform.toast) Platform.toast.error(e.message || 'Failed to generate ArchiMate suggestions');
+                                 done();
+                             });
                      },
 
-                     async acceptOne(idx) {
+                     acceptOne(idx) {
+                         const self = this;
                          const s = this.archSuggestions[idx];
-                         if (!s || this.archAccepted.has(idx) || this.archRejected.has(idx)) return;
+                         if (!s || this.archAccepted.has(idx) || this.archRejected.has(idx)) return Promise.resolve();
                          this.archAcceptingIdx = idx;
                          const body = {
                              name: (this.archEditIdx === idx ? this.archEditName : s.name),
@@ -248,28 +261,32 @@
                              suggestion_id: s.suggestion_id,
                              reasoning_state_id: this.archReasoningStateId
                          };
-                         try {
-                             const d = await Platform.fetch.post('/solutions/' + this.archSid + '/ai/accept-suggestion', body, { silent: true });
-                             // A 200 carrying success:false used to leave the row unmarked
-                             // with no message - the accept button read as dead.
-                             if (!d || !d.success) throw new Error((d && (d.error || d.message)) || 'Failed to accept suggestion');
-                             this.archAccepted.add(idx);
-                             this.archEditIdx = null;
-                         } catch (e) {
-                             if (window.Platform && Platform.toast) Platform.toast.error(e.message || 'Failed to accept suggestion');
-                         }
-                         this.archAcceptingIdx = null;
+                         return Platform.fetch.post('/solutions/' + this.archSid + '/ai/accept-suggestion', body, { silent: true })
+                             .then(function (d) {
+                                 // A 200 carrying success:false used to leave the row unmarked
+                                 // with no message - the accept button read as dead.
+                                 if (!d || !d.success) throw new Error((d && (d.error || d.message)) || 'Failed to accept suggestion');
+                                 self.archAccepted.add(idx);
+                                 self.archEditIdx = null;
+                                 self.archAcceptingIdx = null;
+                             })
+                             .catch(function (e) {
+                                 if (window.Platform && Platform.toast) Platform.toast.error(e.message || 'Failed to accept suggestion');
+                                 self.archAcceptingIdx = null;
+                             });
                      },
 
-                     async rejectOne(idx) {
+                     rejectOne(idx) {
+                         const self = this;
                          const s = this.archSuggestions[idx];
-                         if (!s || this.archAccepted.has(idx) || this.archRejected.has(idx)) return;
-                         try {
-                             await Platform.fetch.post('/solutions/' + this.archSid + '/ai/reject-suggestion', { suggestion_id: s.suggestion_id, reasoning_state_id: this.archReasoningStateId }, { silent: true });
-                             this.archRejected.add(idx);
-                         } catch (e) {
-                             if (window.Platform && Platform.toast) Platform.toast.error(e.message || 'Failed to reject suggestion');
-                         }
+                         if (!s || this.archAccepted.has(idx) || this.archRejected.has(idx)) return Promise.resolve();
+                         return Platform.fetch.post('/solutions/' + this.archSid + '/ai/reject-suggestion', { suggestion_id: s.suggestion_id, reasoning_state_id: this.archReasoningStateId }, { silent: true })
+                             .then(function () {
+                                 self.archRejected.add(idx);
+                             })
+                             .catch(function (e) {
+                                 if (window.Platform && Platform.toast) Platform.toast.error(e.message || 'Failed to reject suggestion');
+                             });
                      },
 
                      startEdit(idx) {
@@ -291,7 +308,8 @@
                      },
                      deselectAll() { this.archSelected = new Set(); },
 
-                     async bulkAccept() {
+                     bulkAccept() {
+                         const self = this;
                          const items = [];
                          this.archSelected.forEach(idx => {
                              if (!this.archAccepted.has(idx) && !this.archRejected.has(idx)) {
@@ -299,28 +317,32 @@
                                  items.push({ name: s.name, type: s.type, layer: s.layer, description: s.description, suggestion_id: s.suggestion_id });
                              }
                          });
-                         if (!items.length) return;
+                         if (!items.length) return Promise.resolve();
                          this.archLoading = true;
-                         try {
-                             const d = await Platform.fetch.post('/solutions/' + this.archSid + '/ai/bulk-accept', { suggestions: items, reasoning_state_id: this.archReasoningStateId }, { silent: true });
-                             // A 200 carrying success:false used to leave every selected row
-                             // untouched with no message - indistinguishable from a no-op.
-                             if (!d || !d.success) throw new Error((d && (d.error || d.message)) || 'Failed to accept selected suggestions');
-                             const acceptedIds = new Set((d.accepted || []).map(a => a.suggestion_id));
-                             this.archSelected.forEach(idx => {
-                                 const s = this.archSuggestions[idx];
-                                 if (acceptedIds.has(s.suggestion_id)) this.archAccepted.add(idx);
+                         return Platform.fetch.post('/solutions/' + this.archSid + '/ai/bulk-accept', { suggestions: items, reasoning_state_id: this.archReasoningStateId }, { silent: true })
+                             .then(function (d) {
+                                 // A 200 carrying success:false used to leave every selected row
+                                 // untouched with no message - indistinguishable from a no-op.
+                                 if (!d || !d.success) throw new Error((d && (d.error || d.message)) || 'Failed to accept selected suggestions');
+                                 const acceptedIds = new Set((d.accepted || []).map(a => a.suggestion_id));
+                                 self.archSelected.forEach(idx => {
+                                     const s = self.archSuggestions[idx];
+                                     if (acceptedIds.has(s.suggestion_id)) self.archAccepted.add(idx);
+                                 });
+                                 self.archSelected = new Set();
+                                 self.archLoading = false;
+                             })
+                             .catch(function (e) {
+                                 if (window.Platform && Platform.toast) Platform.toast.error(e.message || 'Failed to accept selected suggestions');
+                                 self.archLoading = false;
                              });
-                             this.archSelected = new Set();
-                         } catch (e) {
-                             if (window.Platform && Platform.toast) Platform.toast.error(e.message || 'Failed to accept selected suggestions');
-                         }
-                         this.archLoading = false;
                      },
 
-                     async bulkReject() {
-                         this.archSelected.forEach(idx => { this.rejectOne(idx); });
+                     bulkReject() {
+                         const pending = [];
+                         this.archSelected.forEach(idx => { pending.push(this.rejectOne(idx)); });
                          this.archSelected = new Set();
+                         return Promise.all(pending);
                      },
 
                      pendingCount() {
@@ -388,7 +410,7 @@
                             <div x-show="archEditIdx !== i" x-cloak class="flex items-start gap-2">
                                 {# Bulk checkbox #}
                                 <template x-if="archBulkMode && !archAccepted.has(i) && !archRejected.has(i)">
-                                    <input type="checkbox" :checked="archSelected.has(i)" @change="toggleSelect(i)"
+                                    <input aria-label="Select suggestion" type="checkbox" :checked="archSelected.has(i)" @change="toggleSelect(i)"
                                            class="mt-1 h-4 w-4 rounded border-input text-primary focus:ring-primary/50" />
                                 </template>
 
@@ -514,51 +536,67 @@
 
                      get relSid() { return (window.__SOLUTION_CONFIG__ || {}).solutionId; },
 
-                     async extractRelationships() {
-                         if (!this.relSid || !this.relChatMsg.trim() || this.relChatLoading) return;
+                     /* .then()/.catch() only — see the CSP-evaluator note above. */
+                     extractRelationships() {
+                         const self = this;
+                         if (!this.relSid || !this.relChatMsg.trim() || this.relChatLoading) return Promise.resolve();
                          this.relChatLoading = true;
                          this.relChatError = null;
                          this.relChatProposals = [];
                          this.relChatUnresolved = [];
-                         try {
-                             const d = await Platform.fetch.post('/api/solutions/' + this.relSid + '/relationships/extract', { message: this.relChatMsg }, { silent: true });
-                             this.relChatProposals = (d.proposals || []).map(p => ({...p, checked: (p.confidence || 0) >= 80}));
-                             this.relChatUnresolved = d.unresolved || [];
-                             if (this.relChatProposals.length === 0 && this.relChatUnresolved.length === 0) {
-                                 this.relChatError = 'No relationships could be extracted. Try being more specific about element names.';
-                             }
-                         } catch(e) { this.relChatError = e.message || 'Extraction failed'; }
-                         finally { this.relChatLoading = false; }
+                         return Platform.fetch.post('/api/solutions/' + this.relSid + '/relationships/extract', { message: this.relChatMsg }, { silent: true })
+                             .then(function (d) {
+                                 self.relChatProposals = ((d && d.proposals) || []).map(p => ({...p, checked: (p.confidence || 0) >= 80}));
+                                 self.relChatUnresolved = (d && d.unresolved) || [];
+                                 if (self.relChatProposals.length === 0 && self.relChatUnresolved.length === 0) {
+                                     self.relChatError = 'No relationships could be extracted. Try being more specific about element names.';
+                                 }
+                                 self.relChatLoading = false;
+                             })
+                             .catch(function (e) {
+                                 self.relChatProposals = [];
+                                 self.relChatUnresolved = [];
+                                 self.relChatError = e.message || 'Extraction failed';
+                                 self.relChatLoading = false;
+                             });
                      },
 
-                     async acceptChatProposals() {
+                     acceptChatProposals() {
+                         const self = this;
                          const sel = this.relChatProposals.filter(p => p.checked);
-                         if (!sel.length) return;
+                         if (!sel.length) return Promise.resolve();
                          this.relChatAccepting = true;
                          // Track which proposals actually saved — previously every
                          // checked proposal was dropped from the list regardless of
                          // outcome, so a failed save still disappeared as if it had
                          // been created, and the user had no way to tell.
                          const succeeded = [];
-                         let failCount = 0;
-                         for (const p of sel) {
-                             try {
-                                 await Platform.fetch.post('/api/solutions/' + this.relSid + '/relationships', {
+                         const failures = { count: 0 };
+                         // Sequential, one request at a time — the same ordering the
+                         // awaited for-loop had.
+                         let chain = Promise.resolve();
+                         sel.forEach(function (p) {
+                             chain = chain.then(function () {
+                                 return Platform.fetch.post('/api/solutions/' + self.relSid + '/relationships', {
                                      source_element_id: p.source_element_id,
                                      target_element_id: p.target_element_id,
                                      relationship_type: p.relationship_type
-                                 }, { silent: true });
-                                 succeeded.push(p);
-                             } catch(e) {
-                                 // Counted, then surfaced in the aggregate toast below.
-                                 failCount++;
+                                 }, { silent: true })
+                                     .then(function () { succeeded.push(p); })
+                                     .catch(function () {
+                                         // Counted, then surfaced in the aggregate toast below.
+                                         failures.count++;
+                                     });
+                             });
+                         });
+                         function done() {
+                             self.relChatProposals = self.relChatProposals.filter(p => !succeeded.includes(p));
+                             self.relChatAccepting = false;
+                             if (failures.count > 0 && window.Platform && Platform.toast) {
+                                 Platform.toast.error(failures.count + ' relationship' + (failures.count > 1 ? 's' : '') + ' failed to save — still shown below, please retry');
                              }
                          }
-                         this.relChatProposals = this.relChatProposals.filter(p => !succeeded.includes(p));
-                         this.relChatAccepting = false;
-                         if (failCount > 0 && window.Platform && Platform.toast) {
-                             Platform.toast.error(failCount + ' relationship' + (failCount > 1 ? 's' : '') + ' failed to save — still shown below, please retry');
-                         }
+                         return chain.then(done).catch(done);
                      },
 
                      relConfBadge(c) {
@@ -605,7 +643,7 @@
                         <div class="space-y-1">
                             <template x-for="(p, idx) in relChatProposals" :key="idx">
                                 <div class="flex items-center gap-2 px-2 py-1.5 rounded-md border border-border bg-muted/20 text-xs">
-                                    <input type="checkbox" x-model="p.checked" class="rounded border-input">
+                                    <input aria-label="Select proposal" type="checkbox" x-model="p.checked" class="rounded border-input">
                                     <span class="font-medium text-foreground" x-text="p.source_name"></span>
                                     <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-info/10 text-primary border border-info/30"
                                           x-text="(p.relationship_type || '').charAt(0).toUpperCase() + (p.relationship_type || '').slice(1)"></span>
@@ -655,20 +693,28 @@
                               : tone === 'warn'  ? 'bg-warning/10 text-warning-emphasis border-warning/30'
                               : 'bg-info/10 text-info border-info/30';
                      },
-                     async load() {
-                         if (this.bpLoaded || this.bpLoading || !this.bpSid) return;
+                     /* .then()/.catch() only — see the CSP-evaluator note above. */
+                     load() {
+                         const self = this;
+                         if (this.bpLoaded || this.bpLoading || !this.bpSid) return Promise.resolve();
                          this.bpLoading = true;
-                         try {
-                             this.bpData = await Platform.fetch('/api/solutions/' + this.bpSid + '/chief-packet', { silent: true, errorMsg: 'the synthesis could not be generated' });
-                             this.bpLoaded = true;
-                             this.bpError = null;
-                         } catch(e) {
-                             this.bpData = null;
-                             this.bpError = 'Board packet failed: ' + e.message;
-                             if (window.Platform && Platform.toast) Platform.toast.error(this.bpError);
+                         function done() {
+                             self.bpLoading = false;
+                             if (typeof lucide !== 'undefined') self.$nextTick(function () { lucide.createIcons(); });
                          }
-                         this.bpLoading = false;
-                         if (typeof lucide !== 'undefined') this.$nextTick(() => lucide.createIcons());
+                         return Platform.fetch('/api/solutions/' + this.bpSid + '/chief-packet', { silent: true, errorMsg: 'the synthesis could not be generated' })
+                             .then(function (d) {
+                                 self.bpData = d;
+                                 self.bpLoaded = true;
+                                 self.bpError = null;
+                                 done();
+                             })
+                             .catch(function (e) {
+                                 self.bpData = null;
+                                 self.bpError = 'Board packet failed: ' + e.message;
+                                 if (window.Platform && Platform.toast) Platform.toast.error(self.bpError);
+                                 done();
+                             });
                      }
                  }"
                  @click.once="load()">

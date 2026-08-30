@@ -5,7 +5,7 @@
         amError: null,
         amElements: {},
         amLayerSummary: {},
-        amTotal: 0,
+        amTotal: null,
         amLoaded: false,
         amUnlinking: null,
         viewerVisible: false,
@@ -83,47 +83,73 @@
                 this.renderer = null;
             }
         },
-        async load() {
+        /* NOTE ON STYLE: .then()/.catch(), never async/await. Alpine attribute
+           expressions on this page are run by the CSP-safe interpreter in
+           app/static/js/csp/csp-evaluator.js, which cannot await and rejects
+           `async` outright. Promise chains resolve correctly. */
+        load() {
+            const self = this;
             this.amLoading = true;
             this.amError = null;
-            try {
-                const sid = window.__SOLUTION_CONFIG__ ? window.__SOLUTION_CONFIG__.solutionId : null;
-                if (!sid) throw new Error('Solution ID not configured');
-                const data = await Platform.fetch('/solutions/' + sid + '/archimate-elements');
-                this.amElements    = data.elements_by_layer || {};
-                this.amLayerSummary= data.layer_summary     || {};
-                this.amTotal       = data.total_count       || 0;
-                /* Flatten elements for diagram viewer */
-                var flatElements = [];
-                var layers = Object.keys(this.amElements);
-                for (var li = 0; li < layers.length; li++) {
-                    var layerName = layers[li];
-                    var els = this.amElements[layerName] || [];
-                    for (var ei = 0; ei < els.length; ei++) {
-                        var el = Object.assign({}, els[ei], { layer: layerName });
-                        flatElements.push(el);
-                    }
-                }
-                this.initViewer(flatElements, data.relationships || []);
-            } catch(e) {
-                this.amError = e.message;
-            } finally {
+            const sid = window.__SOLUTION_CONFIG__ ? window.__SOLUTION_CONFIG__.solutionId : null;
+            if (!sid) {
+                this.amError = 'Solution ID not configured';
+                this.amElements = {};
+                this.amLayerSummary = {};
+                this.amTotal = null;
                 this.amLoading = false;
-                this.amLoaded  = true;
+                this.amLoaded = true;
+                return Promise.resolve();
             }
+            return Platform.fetch('/solutions/' + sid + '/archimate-elements')
+                .then(function (data) {
+                    self.amElements    = data.elements_by_layer || {};
+                    self.amLayerSummary= data.layer_summary     || {};
+                    self.amTotal       = data.total_count       || 0;
+                    /* Flatten elements for diagram viewer */
+                    var flatElements = [];
+                    var layers = Object.keys(self.amElements);
+                    for (var li = 0; li < layers.length; li++) {
+                        var layerName = layers[li];
+                        var els = self.amElements[layerName] || [];
+                        for (var ei = 0; ei < els.length; ei++) {
+                            var el = Object.assign({}, els[ei], { layer: layerName });
+                            flatElements.push(el);
+                        }
+                    }
+                    self.initViewer(flatElements, data.relationships || []);
+                    self.amLoading = false;
+                    self.amLoaded  = true;
+                })
+                .catch(function (e) {
+                    /* Nothing was read — do not leave a plausible-looking zero behind. */
+                    self.amElements     = {};
+                    self.amLayerSummary = {};
+                    self.amTotal        = null;
+                    self.amError        = e.message;
+                    self.amLoading      = false;
+                    self.amLoaded       = true;
+                });
         },
-        async unlinkElement(elementId) {
-            if (!(await Platform.modal.confirm('Remove this ArchiMate element from the solution?'))) return;
-            this.amUnlinking = elementId;
-            try {
-                const sid = window.__SOLUTION_CONFIG__.solutionId;
-                await Platform.fetch.delete('/solutions/' + sid + '/archimate-elements/' + elementId);
-                await this.load();
-            } catch(e) {
-                this.amError = 'Unlink failed: ' + e.message;
-            } finally {
-                this.amUnlinking = null;
-            }
+        unlinkElement(elementId) {
+            const self = this;
+            return Platform.modal.confirm('Remove this ArchiMate element from the solution?')
+                .then(function (confirmed) {
+                    if (!confirmed) return null;
+                    self.amUnlinking = elementId;
+                    const sid = window.__SOLUTION_CONFIG__.solutionId;
+                    return Platform.fetch.delete('/solutions/' + sid + '/archimate-elements/' + elementId)
+                        .then(function () {
+                            return self.load();
+                        })
+                        .then(function () {
+                            self.amUnlinking = null;
+                        })
+                        .catch(function (e) {
+                            self.amError = 'Unlink failed: ' + e.message;
+                            self.amUnlinking = null;
+                        });
+                });
         }
     }"
     x-init="load()"

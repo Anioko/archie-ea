@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Every `{% include %}` / `{% extends %}` target must exist on disk.
+"""Every `{% include %}` / `{% extends %}` / `render_template()` target must exist on disk.
 
 `template-syntax` proves a template *parses*. It says nothing about whether the
 files that template pulls in are actually there, because Jinja resolves
@@ -19,9 +19,22 @@ Found three of these in one sweep:
     which is the only reason it has not been noticed; it also means the entire
     per-application ArchiMate layer UI it contains has never worked.
 
-Dynamic targets (`{% include some_var %}`, or a name built with `{{ }}`) cannot
-be resolved statically and are skipped rather than guessed at — this reports
-what it can prove, and stays silent about the rest.
+The same hole existed one level up, in the *views*. This gate started out
+checking only template-to-template references, so a `render_template("x.html")`
+naming a file that does not exist was invisible to it — and that is a harder
+500 than a missing partial, because it takes out the whole page rather than a
+fragment of one. Found four in one sweep, all in
+`app/modules/architecture/routes/adr_routes.py`, all pointing into an
+`architecture/adrs/` directory that has never existed: GET
+`/architecture/adrs/new`, `/architecture/adrs/<id>`, `/architecture/adrs/<id>/edit`
+and the edit form. A live browser audit caught the first one; the other three
+need an existing ADR row to reach, so an anonymous crawl walked straight past
+them. Hence checking this statically rather than trusting a crawler.
+
+Dynamic targets (`{% include some_var %}`, a name built with `{{ }}`, or a
+`render_template(variable)`) cannot be resolved statically and are skipped
+rather than guessed at — this reports what it can prove, and stays silent
+about the rest.
 
 Usage:
     python scripts/check_template_references.py            # list broken references
@@ -30,6 +43,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import ast
 import os
 import re
 import sys
@@ -97,13 +111,68 @@ def find_broken_references():
                         yield rel, target
 
 
+# Views render through these. `render_template_string` takes source, not a
+# name, so it is deliberately absent.
+RENDER_CALLS = {"render_template", "stream_template"}
+
+# Where the view code lives. Tests and scripts are excluded: a template name in
+# a test is usually an assertion about a string, not a render.
+PYTHON_ROOT = os.path.join(ROOT, "app")
+
+SKIP_DIRS = {"__pycache__", "node_modules", ".git", "migrations"}
+
+
+def _render_target(node: ast.Call) -> str | None:
+    """The literal template name a render call names, if it is a literal."""
+    func = node.func
+    name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", None)
+    if name not in RENDER_CALLS or not node.args:
+        return None
+    first = node.args[0]
+    if isinstance(first, ast.Constant) and isinstance(first.value, str):
+        return first.value
+    return None
+
+
+def find_broken_render_calls():
+    """Yield (python_path:line, missing_target) for literal render targets."""
+    seen = set()
+    for dirpath, dirs, files in os.walk(PYTHON_ROOT):
+        dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
+        for filename in sorted(files):
+            if not filename.endswith(".py"):
+                continue
+            path = os.path.join(dirpath, filename)
+            try:
+                with open(path, encoding="utf-8", errors="replace") as handle:
+                    tree = ast.parse(handle.read())
+            except (OSError, SyntaxError):
+                # `compile` is the gate that owns unparseable modules.
+                continue
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.Call):
+                    continue
+                target = _render_target(node)
+                if target is None or _is_dynamic(target):
+                    continue
+                # A name with no suffix is not a template path (e.g. a macro
+                # name passed positionally to something else called `render`).
+                if not target.endswith(SUFFIXES) or _resolve(target):
+                    continue
+                rel = os.path.relpath(path, ROOT).replace("\\", "/")
+                key = (f"{rel}:{node.lineno}", target)
+                if key not in seen:
+                    seen.add(key)
+                    yield key
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--count", action="store_true",
                         help="print only the count, as the trailing line")
     args = parser.parse_args()
 
-    broken = sorted(find_broken_references())
+    broken = sorted(find_broken_references()) + sorted(find_broken_render_calls())
 
     if not args.count:
         if not broken:

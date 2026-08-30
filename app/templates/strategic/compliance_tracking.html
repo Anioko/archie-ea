@@ -10,7 +10,8 @@
 {{ breadcrumb_nav(items=[
     {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
     {'text': 'Strategy Layer', 'href': url_for('archimate_crud.dashboard') + '#strategy'},
-    {'text': 'Strategic Planning', 'current': true}
+    {'text': 'Strategic Planning', 'href': url_for('enterprise.strategic_planning_dashboard')},
+    {'text': 'Compliance Tracking', 'current': true}
 ]) }}
 {% endblock %}
 
@@ -18,11 +19,7 @@
 <div class="flex flex-col space-y-8 animate-in fade-in duration-500">
     {{ page_header(
         title='Compliance Tracking',
-        description='Monitor compliance status across business capabilities and applications.',
-        breadcrumbs=[
-            {'label': 'Home', 'href': url_for('main.index')},
-            {'label': 'Compliance Tracking'}
-        ]
+        description='Monitor compliance status across business capabilities and applications.'
     ) }}
 
     {# ── Metrics (v4 SectionCards) ────────────────────────────────────────── #}

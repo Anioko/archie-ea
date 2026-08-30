@@ -130,10 +130,15 @@
                             class="inline-flex items-center gap-2 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-sm hover:bg-primary/90" aria-label="Edit element">
                         <i data-lucide="pencil" class="h-3 w-3" aria-hidden="true"></i> Edit
                     </button>
-                    <a x-cloak x-show="detailElement" :href="detailElement ? detailUrl(detailElement) : '#'"
-                       class="inline-flex items-center gap-2 px-3 py-1.5 border rounded-md text-sm hover:bg-accent" aria-label="View full detail">
-                        Full Detail &rarr;
-                    </a>
+                    {# x-if, not x-show: with x-show the anchor is always in the DOM
+                       and carried href="#" until an element was selected — a link
+                       that went nowhere (browser-audit "dead-link"). #}
+                    <template x-if="detailElement">
+                        <a :href="detailUrl(detailElement)"
+                           class="inline-flex items-center gap-2 px-3 py-1.5 border rounded-md text-sm hover:bg-accent" aria-label="View full detail">
+                            Full Detail &rarr;
+                        </a>
+                    </template>
                 </div>
             </div>
             <!-- Edit mode -->
@@ -324,10 +329,13 @@
                     </button>
                     <button type="button" @click="Platform.modal.close('archimate-form-modal')"
                         class="px-4 py-2 border rounded-md text-sm hover:bg-accent" aria-label="Close">Cancel</button>
-                    <a x-cloak x-show="editingElement" :href="editPageUrl(editingElement)"
-                       class="ml-auto text-sm text-primary hover:underline flex items-center gap-1 self-center">
-                        Full Edit Page &rarr;
-                    </a>
+                    {# x-if, not x-show — see the "Full Detail" anchor above. #}
+                    <template x-if="editingElement">
+                        <a :href="editPageUrl(editingElement)"
+                           class="ml-auto text-sm text-primary hover:underline flex items-center gap-1 self-center">
+                            Full Edit Page &rarr;
+                        </a>
+                    </template>
                 </div>
             </form>
         </div>

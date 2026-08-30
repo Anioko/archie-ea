@@ -18,10 +18,6 @@
     {{ page_header(
         title='Capability Health Dashboard',
         description='Real-time assessment of business capabilities based on maturity, coverage, and technical risk.',
-        breadcrumbs=[
-            {'label': 'Home', 'href': url_for('main.index')},
-            {'label': 'Capability Health'}
-        ],
         actions=[
             {'text': 'Create Plan', 'icon': 'lightbulb', 'onclick': "document.dispatchEvent(new CustomEvent('open-initiative-health-remediation-modal'))", 'variant': 'default'}
         ]

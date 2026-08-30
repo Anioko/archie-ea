@@ -20,19 +20,25 @@
         loading: true,
         loadError: null,
         data: null,
-        async init() {
-            try {
-                this.data = await Platform.fetch('/api/arb/capabilities/{{ capability_id }}/governance');
-                this.loadError = null;
-            } catch (e) {
-                // data stays null so every panel below shows its own empty state; the
-                // banner is what tells the user those panels are unread, not empty.
-                this.data = null;
-                this.loadError = e.message || 'Could not load capability governance.';
-                Platform.toast.error(this.loadError);
-            } finally {
-                this.loading = false;
-            }
+        /* .then()/.catch(), not async/await: Alpine attribute expressions are run
+           by the CSP-safe interpreter (app/static/js/csp/csp-evaluator.js), which
+           cannot await and rejects `async` as a parse error. */
+        init() {
+            const self = this;
+            return Platform.fetch('/api/arb/capabilities/{{ capability_id }}/governance')
+                .then(function (data) {
+                    self.data = data;
+                    self.loadError = null;
+                    self.loading = false;
+                })
+                .catch(function (e) {
+                    // data stays null so every panel below shows its own empty state; the
+                    // banner is what tells the user those panels are unread, not empty.
+                    self.data = null;
+                    self.loadError = e.message || 'Could not load capability governance.';
+                    Platform.toast.error(self.loadError);
+                    self.loading = false;
+                });
         }
     }">
         <!-- Loading spinner -->

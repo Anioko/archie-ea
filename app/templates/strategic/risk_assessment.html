@@ -10,7 +10,8 @@
 {{ breadcrumb_nav(items=[
     {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
     {'text': 'Strategy Layer', 'href': url_for('archimate_crud.dashboard') + '#strategy'},
-    {'text': 'Strategic Planning', 'current': true}
+    {'text': 'Strategic Planning', 'href': url_for('enterprise.strategic_planning_dashboard')},
+    {'text': 'Risk Assessment', 'current': true}
 ]) }}
 {% endblock %}
 
@@ -19,11 +20,6 @@
     {{ page_header(
         title='Risk Assessment',
         description='Portfolio-wide risk analysis with mitigation recommendations.',
-        breadcrumbs=[
-            {'label': 'Dashboard', 'href': url_for('main.index')},
-            {'label': 'Strategic Planning'},
-            {'label': 'Risk Assessment'}
-        ],
         actions=[
             {'text': 'Mitigate Risk', 'icon': 'shield-alert', 'onclick': "$dispatch('open-initiative-risk-mitigation-modal')", 'variant': 'destructive'}
         ]

@@ -61,9 +61,13 @@
         
         {% for item in items %}
         <li class="flex items-center gap-1.5">
-            {% if item.current or loop.last and not item.href %}
+            {# A crumb with no href is not a destination — render it as text.
+               Emitting <a href=""> for it produced a control that looked like a
+               link and reloaded the current page (browser-audit "dead-link"). #}
+            {% if item.current or not item.href %}
                 {# Current page - not a link #}
-                <span class="text-foreground font-medium inline-flex items-center gap-1" aria-current="page">
+                {% set _is_current = item.current or loop.last %}
+                <span class="{{ 'text-foreground font-medium' if _is_current else '' }} inline-flex items-center gap-1"{% if _is_current %} aria-current="page"{% endif %}>
                     {% if item.icon %}
                     <i data-lucide="{{ item.icon }}" class="w-3.5 h-3.5" aria-hidden="true"></i>
                     {% endif %}

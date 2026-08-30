@@ -16,43 +16,52 @@
         flashMessage: '',
         flashType: '',
         showFlash(msg, type) { this.flashMessage = msg; this.flashType = type; setTimeout(() => this.flashMessage = '', 4000); },
-        async assessImpact() {
+        /* .then()/.catch(), not async/await: Alpine attribute expressions here are
+           run by the CSP-safe interpreter (app/static/js/csp/csp-evaluator.js),
+           which cannot await and rejects `async`. */
+        assessImpact() {
+            const self = this;
             this.assessLoading = true;
-            try {
-                await Platform.fetch.post('/arb/api/arb/change-requests/{{ cr.id }}/assess-impact', {impact_level: 'medium'}, { silent: true });
-                this.showFlash('Impact assessment complete — page will refresh.', 'success');
-                setTimeout(() => location.reload(), 1500);
-            } catch (error) {
-                this.showFlash('Assessment failed: ' + (error.data ? JSON.stringify(error.data) : error.message), 'error');
-            } finally {
-                this.assessLoading = false;
-            }
+            return Platform.fetch.post('/arb/api/arb/change-requests/{{ cr.id }}/assess-impact', {impact_level: 'medium'}, { silent: true })
+                .then(function () {
+                    self.showFlash('Impact assessment complete — page will refresh.', 'success');
+                    setTimeout(function () { location.reload(); }, 1500);
+                    self.assessLoading = false;
+                })
+                .catch(function (error) {
+                    self.showFlash('Assessment failed: ' + (error.data ? JSON.stringify(error.data) : error.message), 'error');
+                    self.assessLoading = false;
+                });
         },
-        async setDisposition() {
-            if (!this.selectedDisposition) { this.showFlash('Select a disposition first.', 'error'); return; }
+        setDisposition() {
+            const self = this;
+            if (!this.selectedDisposition) { this.showFlash('Select a disposition first.', 'error'); return Promise.resolve(); }
             this.dispositionLoading = true;
-            try {
-                await Platform.fetch.post('/arb/api/arb/change-requests/{{ cr.id }}/set-disposition', {disposition: this.selectedDisposition}, { silent: true });
-                this.showFlash('Disposition set — page will refresh.', 'success');
-                setTimeout(() => location.reload(), 1500);
-            } catch (error) {
-                this.showFlash('Failed: ' + (error.data ? JSON.stringify(error.data) : error.message), 'error');
-            } finally {
-                this.dispositionLoading = false;
-            }
+            return Platform.fetch.post('/arb/api/arb/change-requests/{{ cr.id }}/set-disposition', {disposition: this.selectedDisposition}, { silent: true })
+                .then(function () {
+                    self.showFlash('Disposition set — page will refresh.', 'success');
+                    setTimeout(function () { location.reload(); }, 1500);
+                    self.dispositionLoading = false;
+                })
+                .catch(function (error) {
+                    self.showFlash('Failed: ' + (error.data ? JSON.stringify(error.data) : error.message), 'error');
+                    self.dispositionLoading = false;
+                });
         },
-        async issueNotice() {
-            if (!this.noticeText.trim()) { this.showFlash('Enter notice text first.', 'error'); return; }
+        issueNotice() {
+            const self = this;
+            if (!this.noticeText.trim()) { this.showFlash('Enter notice text first.', 'error'); return Promise.resolve(); }
             this.noticeLoading = true;
-            try {
-                await Platform.fetch.post('/arb/api/arb/change-requests/{{ cr.id }}/issue-notice', {notice_text: this.noticeText}, { silent: true });
-                this.showFlash('Change notice issued — page will refresh.', 'success');
-                setTimeout(() => location.reload(), 1500);
-            } catch (error) {
-                this.showFlash('Failed: ' + (error.data ? JSON.stringify(error.data) : error.message), 'error');
-            } finally {
-                this.noticeLoading = false;
-            }
+            return Platform.fetch.post('/arb/api/arb/change-requests/{{ cr.id }}/issue-notice', {notice_text: this.noticeText}, { silent: true })
+                .then(function () {
+                    self.showFlash('Change notice issued — page will refresh.', 'success');
+                    setTimeout(function () { location.reload(); }, 1500);
+                    self.noticeLoading = false;
+                })
+                .catch(function (error) {
+                    self.showFlash('Failed: ' + (error.data ? JSON.stringify(error.data) : error.message), 'error');
+                    self.noticeLoading = false;
+                });
         }
      }">
 

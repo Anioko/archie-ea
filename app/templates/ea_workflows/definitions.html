@@ -98,14 +98,14 @@
                 </div>
                 <div class="flex items-center gap-2">
                     <span class="inline-flex items-center rounded-full px-2 py-1 text-xs font-medium
- {% if defn.is_active %}bg-success/10 text-success-emphasis else %}bg-muted text-foreground/80{% endif %}">
+ {% if defn.is_active %}bg-success/10 text-success-emphasis{% else %}bg-muted text-foreground/80{% endif %}">
                         {{ 'Active' if defn.is_active else 'Inactive' }}
                     </span>
                     <span class="inline-flex items-center rounded-full px-2 py-1 text-xs font-medium
  {% if defn.automation_level == 'automated' %}bg-success/10 text-success-emphasis
  {% elif defn.automation_level == 'assisted' %}bg-primary/10 text-primary
  {% else %}bg-muted text-foreground/80{% endif %}">
-                        {{ defn.automation_level|title }}
+                        {{ defn.automation_level|dash|title }}
                     </span>
                 </div>
             </div>
@@ -113,15 +113,15 @@
             <h3 class="text-xl font-semibold mb-1">{{ defn.workflow_name }}</h3>
             {% if defn.adm_phase %}
             <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-primary/10 text-primary mb-2">
-                Phase {{ defn.adm_phase }}: {{ defn.adm_phase_name }}
+                Phase {{ defn.adm_phase }}: {{ defn.adm_phase_name|dash }}
             </span>
             {% endif %}
-            <p class="text-muted-foreground mb-4 line-clamp-2 text-sm">{{ defn.workflow_description }}</p>
+            <p class="text-muted-foreground mb-4 line-clamp-2 text-sm">{{ defn.workflow_description|dash }}</p>
 
             <div class="grid grid-cols-2 gap-4 text-sm mb-4">
                 <div>
                     <span class="text-muted-foreground">Category:</span>
-                    <span class="ml-1 font-medium">{{ defn.workflow_category|replace('_', ' ')|title }}</span>
+                    <span class="ml-1 font-medium">{{ defn.workflow_category|dash|replace('_', ' ')|title }}</span>
                 </div>
                 <div>
                     <span class="text-muted-foreground">Steps:</span>

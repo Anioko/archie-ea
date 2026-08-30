@@ -84,7 +84,7 @@
         Skip to search
     </a>
     
-    <div class="flex h-screen overflow-hidden"
+    <div class="relative flex h-screen overflow-hidden"
          @keydown.ctrl.b.window.prevent="$store.sidebar.toggle()"
          x-data="{
             isDesktop: window.innerWidth >= 1024,
@@ -125,7 +125,7 @@
         {% include 'components/admin_sidebar.html' %}
 
         <!-- Main Content -->
-        <div class="flex-1 flex flex-col overflow-x-hidden overflow-y-auto">
+        <div class="relative flex-1 flex flex-col overflow-x-hidden overflow-y-auto">
             <!-- Header -->
             {% block header %}
             {% include 'components/admin_header.html' %}
@@ -258,22 +258,31 @@
                 procurement: 'Procurement',
                 platform_admin: 'Platform Admin',
             },
-            async completeOnboarding() {
-                try {
-                    const _f = (window.Platform && window.Platform.fetch) || window.apiFetch || fetch;
-                    await _f('/dashboard/api/onboarding-complete', {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''},
-                        body: JSON.stringify({enterprise_role: this.selectedRole}),
-                    });
-                } catch (_) {
-                    // Best-effort: the localStorage timestamp below is what actually
-                    // suppresses the onboarding modal on future visits, so a failed
-                    // server persist just means the role card personalization may
-                    // not fully apply until it succeeds later.
-                }
-                localStorage.setItem('archie_onboarding_ts', Date.now().toString());
-                this.showOnboarding = false;
+            /* Promise chain, not async/await: Alpine attribute expressions are
+               evaluated by the CSP-safe interpreter (app/static/js/csp/csp-evaluator.js),
+               which cannot parse `async` and throws on `await`. */
+            completeOnboarding() {
+                const self = this;
+                // Best-effort persist: the localStorage timestamp below is what actually
+                // suppresses the onboarding modal on future visits, so a failed server
+                // persist just means the role card personalization may not fully apply
+                // until it succeeds later. Dismissal therefore happens on BOTH paths.
+                const dismiss = function () {
+                    localStorage.setItem('archie_onboarding_ts', Date.now().toString());
+                    self.showOnboarding = false;
+                };
+                const _f = (window.Platform && window.Platform.fetch) || window.apiFetch || fetch;
+                const csrfMeta = document.querySelector('meta[name=csrf-token]');
+                return Promise.resolve()
+                    .then(function () {
+                        return _f('/dashboard/api/onboarding-complete', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json', 'X-CSRFToken': (csrfMeta && csrfMeta.content) || ''},
+                            body: JSON.stringify({enterprise_role: self.selectedRole}),
+                        });
+                    })
+                    .then(dismiss)
+                    .catch(dismiss);
             }
         }"
         x-show="showOnboarding" x-cloak

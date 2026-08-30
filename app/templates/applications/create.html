@@ -62,21 +62,25 @@
                     {% for field_id, field_label in [('business_owner', 'Business Owner'), ('technical_owner', 'Technical Owner')] %}
                     <div class="space-y-2" x-data="{
                         ures: [], ushow: false, uErrorShown: false,
-                        async usearch() {
+                        usearch() {
+                            const self = this;
                             const q = document.getElementById('{{ field_id }}').value;
-                            if (q.length < 2) { this.ures = []; this.ushow = false; return; }
-                            try {
-                                const d = await Platform.fetch.get('/api/users', {}, { silent: true });
-                                if (d.success) { const lq = q.toLowerCase(); this.ures = d.users.filter(u => u.name.toLowerCase().includes(lq) || u.email.toLowerCase().includes(lq)).slice(0, 5); this.ushow = this.ures.length > 0; }
-                                this.uErrorShown = false;
-                            } catch (e) {
-                                // Debounced on every keystroke — toast once per outage, not on every retry.
-                                // The field still accepts free text, so this only disables suggestions.
-                                if (!this.uErrorShown) {
-                                    this.uErrorShown = true;
-                                    if (window.Platform && Platform.toast) Platform.toast.error('User search failed.');
-                                }
-                            }
+                            if (q.length < 2) { this.ures = []; this.ushow = false; return Promise.resolve(); }
+                            return Platform.fetch.get('/api/users', {}, { silent: true })
+                                .then(function (d) {
+                                    if (d.success) { const lq = q.toLowerCase(); self.ures = d.users.filter(u => u.name.toLowerCase().includes(lq) || u.email.toLowerCase().includes(lq)).slice(0, 5); self.ushow = self.ures.length > 0; }
+                                    self.uErrorShown = false;
+                                })
+                                .catch(function (e) {
+                                    // Debounced on every keystroke — toast once per outage, not on every retry.
+                                    // The field still accepts free text, so this only disables suggestions.
+                                    self.ures = [];
+                                    self.ushow = false;
+                                    if (!self.uErrorShown) {
+                                        self.uErrorShown = true;
+                                        if (window.Platform && Platform.toast) Platform.toast.error('User search failed.');
+                                    }
+                                });
                         },
                         uselect(u) { document.getElementById('{{ field_id }}').value = u.name; this.ushow = false; this.ures = []; }
                     }" @click.outside="ushow = false">

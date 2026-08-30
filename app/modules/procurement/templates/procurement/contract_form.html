@@ -49,24 +49,22 @@
            payment_terms: 'Payment terms', termination_clause_summary: 'Termination clause',
            liability_cap: 'Liability cap', risk_flags: 'Risk flags'
          },
-         async extract() {
-           if (!this.text.trim()) { return; }
+         extract() {
+           const self = this;
+           if (!this.text.trim()) { return Promise.resolve(); }
            this.extracting = true;
            this.error = null;
            this.extracted = null;
-           try {
-             try {
-               const body = await Platform.fetch.post('{{ url_for('procurement.contract_ai_extract') }}', { text: this.text });
-               this.extracted = body.extracted;
-             } catch (err) {
-               this.error = err.message || ('Extraction failed (' + (err.status || 'unknown') + ')');
-               return;
-             }
-           } catch (e) {
-             this.error = 'Extraction request failed - check your connection and try again.';
-           } finally {
-             this.extracting = false;
-           }
+           return Platform.fetch.post('{{ url_for('procurement.contract_ai_extract') }}', { text: this.text })
+             .then(function (body) {
+               self.extracted = body.extracted;
+               self.extracting = false;
+             })
+             .catch(function (err) {
+               self.extracted = null;
+               self.error = err.message || ('Extraction failed (' + (err.status || 'unknown') + ')');
+               self.extracting = false;
+             });
          },
          applyField(key, value) {
            if (value === null || value === undefined || value === '') { return; }
@@ -120,7 +118,7 @@
         Paste the contract text below and Archie will pull out the fields it can find.
         Anything not stated in the text is left blank - review every applied value before saving.
       </p>
-      <textarea x-model="text" rows="8" placeholder="Paste contract text here…"
+      <textarea aria-label="Contract text" x-model="text" rows="8" placeholder="Paste contract text here…"
                 class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-ring resize-y"></textarea>
 
       <div class="flex items-center gap-3">
@@ -323,28 +321,29 @@
           showDropdown: false,
           searching: false,
           _searchErrorShown: false,
-          async search() {
-              if (this.query.length < 2) { this.results = []; this.showDropdown = false; return; }
+          search() {
+              const self = this;
+              if (this.query.length < 2) { this.results = []; this.showDropdown = false; return Promise.resolve(); }
               this.searching = true;
-              try {
-                  try {
-                    const data = await Platform.fetch.get('/api/users');
-                    if (data.success) {
-                        const q = this.query.toLowerCase();
-                        this.results = data.users.filter(u => u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q)).slice(0, 5);
-                        this.showDropdown = this.results.length > 0;
-                        this._searchErrorShown = false;
-                    }
-                  } catch (err) {
-                    throw new Error('users request failed: ' + (err.status || 'unknown'));
-                  }
-              } catch (e) {
-                  if (!this._searchErrorShown) {
-                      this._searchErrorShown = true;
-                      if (window.Platform && Platform.toast) Platform.toast.error('User search failed');
-                  }
-              }
-              this.searching = false;
+              return Platform.fetch.get('/api/users')
+                  .then(function (data) {
+                      if (data.success) {
+                          const q = self.query.toLowerCase();
+                          self.results = data.users.filter(u => u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q)).slice(0, 5);
+                          self.showDropdown = self.results.length > 0;
+                          self._searchErrorShown = false;
+                      }
+                      self.searching = false;
+                  })
+                  .catch(function () {
+                      self.results = [];
+                      self.showDropdown = false;
+                      if (!self._searchErrorShown) {
+                          self._searchErrorShown = true;
+                          if (window.Platform && Platform.toast) Platform.toast.error('User search failed');
+                      }
+                      self.searching = false;
+                  });
           },
           select(user) {
               this.query = user.name;

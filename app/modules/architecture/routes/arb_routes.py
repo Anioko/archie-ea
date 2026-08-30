@@ -580,8 +580,6 @@ def _typed_decision_json(result, *, extra=None):
     return jsonify(payload), 200
 
 
-@arb_bp.route("/dashboard")
-@login_required
 # ── typed ARB governance workspace wiring ────────────────────────────────────
 # The typed read model, the typed partials and the Alpine component were each
 # landed correctly, but nothing joined them: no view called the read model and
@@ -665,8 +663,18 @@ def _typed_review_context(review_item_id):
         return None
 
 
+@arb_bp.route("/dashboard")
+@login_required
 def dashboard_redirect():
-    """Redirect /arb/dashboard to canonical /arb/ URL."""
+    """Redirect /arb/dashboard to canonical /arb/ URL.
+
+    The `@arb_bp.route("/dashboard")` decorator used to sit above the block
+    comment that introduces the typed-workspace helpers, so Flask bound the
+    URL to the *next* function definition — `_typed_actor` — and GET
+    /arb/dashboard returned an ActorContext instead of a response
+    ("view function did not return a valid response ... it was a
+    ActorContext"). The decorator belongs here, on the redirect it names.
+    """
     return redirect(url_for("arb.dashboard"))
 
 

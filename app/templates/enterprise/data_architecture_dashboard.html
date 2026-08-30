@@ -8,8 +8,8 @@
 {% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
 {{ breadcrumb_nav(items=[
     {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
-    {'text': 'Enterprise Architecture'},
-    {'text': 'Enterprise', 'current': true}
+    {'text': 'Enterprise Architecture', 'href': url_for('enterprise.enterprise_dashboard')},
+    {'text': 'Data Architecture', 'current': true}
 ]) }}
 {% endblock %}
 
@@ -19,10 +19,6 @@
     {{ page_header(
         title='Data Architecture',
         description='Manage and analyze data architecture models',
-        breadcrumbs=[
-            {'label': 'Dashboard', 'href': url_for('main.index')},
-            {'label': 'Data Architecture'}
-        ],
         actions=[
             {'text': 'Data Models', 'icon': 'database', 'href': url_for('enterprise.data_models'), 'variant': 'default'}
         ]

@@ -43,7 +43,7 @@
         Skip to sidebar navigation
     </a>
 
-    <div class="flex h-screen overflow-hidden"
+    <div class="relative flex h-screen overflow-hidden"
          @keydown.ctrl.b.window.prevent="$store.sidebar.toggle()"
          x-data="{
             isDesktop: window.innerWidth >= 1024,

@@ -8,7 +8,7 @@
 {{ breadcrumb_nav(items=[
     {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
     {'text': 'Technology Layer', 'href': url_for('archimate_crud.dashboard') + '#technology'},
-    {'text': 'Data Architecture'},
+    {'text': 'Data Architecture', 'href': url_for('data_architecture.data_architecture_dashboard')},
     {'text': 'Entity Catalog', 'current': true}
 ]) }}
 {% endblock %}

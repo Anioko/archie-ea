@@ -89,41 +89,55 @@
             return [...layers].sort();
         },
 
-        async load() {
-            if (!this.solutionId) return;
+        /* NOTE ON STYLE: everything below is written with .then()/.catch(),
+           NOT async/await. Alpine expressions in HTML attributes are evaluated
+           by the CSP-safe interpreter in app/static/js/csp/csp-evaluator.js,
+           which runs bodies synchronously and cannot await; `async` is not even
+           in its keyword table, so an `async` method here is a parse error that
+           kills the whole component. Promise chains resolve correctly. */
+        load() {
+            const self = this;
+            if (!this.solutionId) return Promise.resolve();
             this.relLoading = true;
             this.relError = null;
-            try {
-                const data = await Platform.fetch('/api/solutions/' + this.solutionId + '/relationships', { silent: true });
-                this.relRows = data.relationships || [];
-            } catch(e) {
-                this.relError = e.message;
-            } finally {
-                this.relLoading = false;
-                this.relLoaded = true;
-            }
+            return Platform.fetch('/api/solutions/' + this.solutionId + '/relationships', { silent: true })
+                .then(function (data) {
+                    self.relRows = data.relationships || [];
+                    self.relLoading = false;
+                    self.relLoaded = true;
+                })
+                .catch(function (e) {
+                    self.relRows = [];
+                    self.relError = e.message || 'Relationships could not be loaded.';
+                    self.relLoading = false;
+                    self.relLoaded = true;
+                });
         },
 
-        async searchElements(query, target) {
+        searchElements(query, target) {
+            const self = this;
             if (!query || query.length < 2) {
                 if (target === 'source') this.sourceResults = [];
                 else this.targetResults = [];
-                return;
+                return Promise.resolve();
             }
-            try {
-                const data = await Platform.fetch('/solutions/api/archimate-all-elements?search=' + encodeURIComponent(query), { silent: true });
-                const results = data.elements || data || [];
-                if (target === 'source') this.sourceResults = results.slice(0, 10);
-                else this.targetResults = results.slice(0, 10);
-                this._elementSearchErrorShown = false;
-            } catch(e) {
-                // Fires on every debounced keystroke — toast once per
-                // outage rather than once per character typed.
-                if (!this._elementSearchErrorShown) {
-                    this._elementSearchErrorShown = true;
-                    if (window.Platform && Platform.toast) Platform.toast.error('Element search failed');
-                }
-            }
+            return Platform.fetch('/solutions/api/archimate-all-elements?search=' + encodeURIComponent(query), { silent: true })
+                .then(function (data) {
+                    const results = data.elements || data || [];
+                    if (target === 'source') self.sourceResults = results.slice(0, 10);
+                    else self.targetResults = results.slice(0, 10);
+                    self._elementSearchErrorShown = false;
+                })
+                .catch(function () {
+                    // Fires on every debounced keystroke — toast once per
+                    // outage rather than once per character typed.
+                    if (target === 'source') self.sourceResults = [];
+                    else self.targetResults = [];
+                    if (!self._elementSearchErrorShown) {
+                        self._elementSearchErrorShown = true;
+                        if (window.Platform && Platform.toast) Platform.toast.error('Element search failed');
+                    }
+                });
         },
 
         selectSource(elem) {
@@ -139,39 +153,46 @@
             this.targetResults = [];
         },
 
-        async addRelationship() {
+        addRelationship() {
+            const self = this;
             if (!this.newSource || !this.newTarget || !this.newType) {
                 this.relError = 'Select source, target, and relationship type';
-                return;
+                return Promise.resolve();
             }
             this.relSaving = true;
             this.relError = null;
-            try {
-                const data = await Platform.fetch.post('/api/solutions/' + this.solutionId + '/relationships', {
+            return Platform.fetch.post('/api/solutions/' + this.solutionId + '/relationships', {
                     source_element_id: this.newSource.id,
                     target_element_id: this.newTarget.id,
                     relationship_type: this.newType
-                }, { silent: true });
-                this.relRows.push(data.relationship || data);
-                this.resetNewRow();
-            } catch(e) {
-                this.relError = e.message || 'Failed to create relationship';
-            } finally {
-                this.relSaving = false;
-            }
+                }, { silent: true })
+                .then(function (data) {
+                    self.relRows.push(data.relationship || data);
+                    self.resetNewRow();
+                    self.relSaving = false;
+                })
+                .catch(function (e) {
+                    self.relError = e.message || 'Failed to create relationship';
+                    self.relSaving = false;
+                });
         },
 
-        async deleteRelationship(relId) {
-            if (!(await Platform.modal.confirm('Remove this relationship?'))) return;
-            try {
-                // Platform.fetch throws on a non-ok response; its message is already
-                // taken from the error BODY when that body is JSON, and falls back to
-                // the status text when the server returns a non-JSON error page.
-                await Platform.fetch.delete('/api/solutions/' + this.solutionId + '/relationships/' + relId, { silent: true });
-                this.relRows = this.relRows.filter(r => r.id !== relId);
-            } catch(e) {
-                this.relError = e.message || 'Failed to delete';
-            }
+        deleteRelationship(relId) {
+            const self = this;
+            return Platform.modal.confirm('Remove this relationship?')
+                .then(function (confirmed) {
+                    if (!confirmed) return null;
+                    // Platform.fetch throws on a non-ok response; its message is already
+                    // taken from the error BODY when that body is JSON, and falls back to
+                    // the status text when the server returns a non-JSON error page.
+                    return Platform.fetch.delete('/api/solutions/' + self.solutionId + '/relationships/' + relId, { silent: true })
+                        .then(function () {
+                            self.relRows = self.relRows.filter(r => r.id !== relId);
+                        });
+                })
+                .catch(function (e) {
+                    self.relError = e.message || 'Failed to delete';
+                });
         },
 
         resetNewRow() {
@@ -189,52 +210,60 @@
             return 'bg-destructive/10 text-destructive-emphasis border-destructive/30';
         },
 
-        async generateRelationships() {
-            if (!this.solutionId) return;
+        generateRelationships() {
+            const self = this;
+            if (!this.solutionId) return Promise.resolve();
             this.generating = true;
             this.relError = null;
             this.proposals = [];
-            try {
-                const data = await Platform.fetch.post('/api/solutions/' + this.solutionId + '/relationships/generate', undefined, { silent: true });
-                this.proposals = (data.proposals || []).map(p => ({
-                    ...p,
-                    checked: (p.confidence || 0) >= 80
-                }));
-                this.showProposals = true;
-                if (this.proposals.length === 0) {
-                    this.relError = 'No relationship proposals generated. Link more ArchiMate elements first.';
-                }
-            } catch(e) {
-                this.relError = e.message;
-            } finally {
-                this.generating = false;
-            }
+            return Platform.fetch.post('/api/solutions/' + this.solutionId + '/relationships/generate', undefined, { silent: true })
+                .then(function (data) {
+                    self.proposals = (data.proposals || []).map(p => ({
+                        ...p,
+                        checked: (p.confidence || 0) >= 80
+                    }));
+                    self.showProposals = true;
+                    if (self.proposals.length === 0) {
+                        self.relError = 'No relationship proposals generated. Link more ArchiMate elements first.';
+                    }
+                    self.generating = false;
+                })
+                .catch(function (e) {
+                    self.proposals = [];
+                    self.relError = e.message || 'Relationship generation failed.';
+                    self.generating = false;
+                });
         },
 
-        async acceptSelected() {
+        acceptSelected() {
+            const self = this;
             const selected = this.proposals.filter(p => p.checked);
-            if (!selected.length) return;
+            if (!selected.length) return Promise.resolve();
             this.accepting = true;
             this.relError = null;
-            let accepted = 0;
             let failed = 0;
-            for (const p of selected) {
-                try {
-                    const data = await Platform.fetch.post('/api/solutions/' + this.solutionId + '/relationships', {
-                        source_element_id: p.source_element_id,
-                        target_element_id: p.target_element_id,
-                        relationship_type: p.relationship_type
-                    }, { silent: true });
-                    this.relRows.push(data.relationship || data);
-                    accepted++;
-                } catch(e) { failed++; }
-            }
-            this.proposals = this.proposals.filter(p => !p.checked);
-            if (this.proposals.length === 0) this.showProposals = false;
-            if (failed > 0) {
-                this.relError = failed + ' of ' + selected.length + ' relationship(s) could not be created.';
-            }
-            this.accepting = false;
+            // Sequential, one request at a time — same ordering the await loop had.
+            const chain = selected.reduce(function (prev, p) {
+                return prev.then(function () {
+                    return Platform.fetch.post('/api/solutions/' + self.solutionId + '/relationships', {
+                            source_element_id: p.source_element_id,
+                            target_element_id: p.target_element_id,
+                            relationship_type: p.relationship_type
+                        }, { silent: true })
+                        .then(function (data) {
+                            self.relRows.push(data.relationship || data);
+                        })
+                        .catch(function () { failed++; });
+                });
+            }, Promise.resolve());
+            return chain.then(function () {
+                self.proposals = self.proposals.filter(p => !p.checked);
+                if (self.proposals.length === 0) self.showProposals = false;
+                if (failed > 0) {
+                    self.relError = failed + ' of ' + selected.length + ' relationship(s) could not be created.';
+                }
+                self.accepting = false;
+            });
         },
 
         layerColor(layer) {
@@ -249,24 +278,29 @@
             return map[(layer || '').toLowerCase()] || 'bg-muted text-muted-foreground border-border';
         },
 
-        async loadTraceability() {
-            if (!this.solutionId) return;
+        loadTraceability() {
+            const self = this;
+            if (!this.solutionId) return Promise.resolve();
             this.traceLoading = true;
             this.relError = null;
-            try {
-                this.traceData = await Platform.fetch('/api/solutions/' + this.solutionId + '/relationships/traceability', { silent: true });
-            } catch(e) {
-                this.relError = e.message;
-            } finally {
-                this.traceLoading = false;
-            }
+            return Platform.fetch('/api/solutions/' + this.solutionId + '/relationships/traceability', { silent: true })
+                .then(function (data) {
+                    self.traceData = data;
+                    self.traceLoading = false;
+                })
+                .catch(function (e) {
+                    self.traceData = null;
+                    self.relError = e.message || 'Traceability view could not be loaded.';
+                    self.traceLoading = false;
+                });
         },
 
-        async toggleTraceability() {
+        toggleTraceability() {
             this.showTraceability = !this.showTraceability;
             if (this.showTraceability && !this.traceData) {
-                await this.loadTraceability();
+                return this.loadTraceability();
             }
+            return Promise.resolve();
         }
     }"
     x-init="load()"
@@ -401,7 +435,7 @@
                 <table class="w-full text-sm">
                     <thead>
                         <tr class="border-b border-border">
-                            <th class="text-left py-2 px-2 w-8"><input type="checkbox" @change="proposals.forEach(p => p.checked = $event.target.checked)" class="rounded border-input"></th>
+                            <th class="text-left py-2 px-2 w-8"><input aria-label="Select all proposals" type="checkbox" @change="proposals.forEach(p => p.checked = $event.target.checked)" class="rounded border-input"></th>
                             <th class="text-left py-2 px-3 font-medium text-muted-foreground">Source</th>
                             <th class="text-left py-2 px-3 font-medium text-muted-foreground">Type</th>
                             <th class="text-left py-2 px-3 font-medium text-muted-foreground">Target</th>
@@ -411,7 +445,7 @@
                     <tbody>
                         <template x-for="(prop, idx) in proposals" :key="idx">
                             <tr class="border-b border-border/50 hover:bg-muted/30 transition-colors">
-                                <td class="py-2 px-2"><input type="checkbox" x-model="prop.checked" class="rounded border-input"></td>
+                                <td class="py-2 px-2"><input aria-label="Select proposal" type="checkbox" x-model="prop.checked" class="rounded border-input"></td>
                                 <td class="py-2 px-3 font-medium text-foreground" x-text="prop.source_name || 'Unknown'"></td>
                                 <td class="py-2 px-3">
                                     <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border"

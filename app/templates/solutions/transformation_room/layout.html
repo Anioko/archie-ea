@@ -5,7 +5,9 @@
 {% block title %}{{ room.programme.name }} · Transformation Room{% endblock %}
 
 {% block content %}
-<main class="p-6 space-y-6 mx-auto max-w-7xl">
+{# layouts/admin_base.html already renders the sole <main id="main-content">
+   landmark; a second <main> here gave the document two main landmarks. #}
+<div class="p-6 space-y-6 mx-auto max-w-7xl">
   {{ page_header(
       title=room.programme.name,
       description='Transformation Room · ' ~ room.stage_label,
@@ -61,5 +63,5 @@
     {% endif %}
     {% block room_content %}{% endblock %}
   </div>
-</main>
+</div>
 {% endblock %}

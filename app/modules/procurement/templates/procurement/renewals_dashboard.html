@@ -90,20 +90,23 @@
                 loading: false,
                 error: null,
                 brief: null,
-                async generate() {
+                generate() {
+                    const self = this;
                     this.loading = true;
                     this.error = null;
-                    try {
-                        const body = await Platform.fetch('{{ url_for('procurement.contract_ai_renewal_brief', contract_id=item.contract.id) }}', {
+                    return Platform.fetch('{{ url_for('procurement.contract_ai_renewal_brief', contract_id=item.contract.id) }}', {
                             method: 'POST',
                             silent: true
+                        })
+                        .then(function (body) {
+                            self.brief = body.brief;
+                            self.loading = false;
+                        })
+                        .catch(function (e) {
+                            self.brief = null;
+                            self.error = e.message || 'AI renewal brief failed - check your connection and try again.';
+                            self.loading = false;
                         });
-                        this.brief = body.brief;
-                    } catch (e) {
-                        this.error = e.message || 'AI renewal brief failed - check your connection and try again.';
-                    } finally {
-                        this.loading = false;
-                    }
                 }
             }">
             <div class="flex items-start justify-between">

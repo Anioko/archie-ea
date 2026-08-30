@@ -494,7 +494,20 @@
         if (node.op === 'typeof') { if (node.arg.t === 'id') { try { return typeof readId(node.arg.name, scope, ctx); } catch (e) { return 'undefined'; } } return typeof ev(node.arg, scope, ctx); }
         if (node.op === 'delete') { if (node.arg.t === 'member') { var mo = ev(node.arg.obj, scope, ctx); var mk = node.arg.computed ? ev(node.arg.prop, scope, ctx) : node.arg.prop.v; return delete mo[mk]; } return true; }
         var a = ev(node.arg, scope, ctx);
-        switch (node.op) { case '!': return !a; case '-': return -a; case '+': return +a; case '~': return ~a; case 'void': return undefined; case 'await': return a; }
+        switch (node.op) { case '!': return !a; case '-': return -a; case '+': return +a; case '~': return ~a; case 'void': return undefined;
+          // `await` used to be a pass-through here, and that silently fabricated
+          // data. This interpreter is synchronous and has no coroutine
+          // machinery, so `await p` returned the Promise OBJECT rather than its
+          // resolved value: `this.total = await api.count()` left `total` holding
+          // a Promise, the template rendered the initialiser, and a seeded `0`
+          // became indistinguishable from a measured zero on the strategic
+          // roadmap and sprint-chart statistic tiles. Failing loudly is the
+          // correct trade for a system of record — a broken component is visible,
+          // a plausible wrong number is not. Alpine expressions must use promise
+          // chains (.then/.catch); the `alpine-await` verify.py gate keeps the
+          // templates at zero so this throw is unreachable in shipped code.
+          case 'await': throw new Error('CSPExpr: `await` is not supported in an Alpine expression — the CSP-safe evaluator is synchronous. Use a promise chain (.then/.catch) instead.');
+        }
         break;
       }
       case 'update': { var ref = lref(node.arg, scope, ctx); var old = Number(ref.get()); var nv = node.op === '++' ? old + 1 : old - 1; ref.set(nv); return node.prefix ? nv : old; }

@@ -8,8 +8,8 @@
 {% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
 {{ breadcrumb_nav(items=[
     {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
-    {'text': 'Enterprise Architecture'},
-    {'text': 'Enterprise', 'current': true}
+    {'text': 'Enterprise Architecture', 'href': url_for('enterprise.enterprise_dashboard')},
+    {'text': 'Risk Assessment', 'current': true}
 ]) }}
 {% endblock %}
 

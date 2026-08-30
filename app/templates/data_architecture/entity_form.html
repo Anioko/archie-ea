@@ -7,8 +7,8 @@
 {% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
 {{ breadcrumb_nav(items=[
     {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
-    {'text': 'Technology Layer'},
-    {'text': 'Data Architecture'},
+    {'text': 'Technology Layer', 'href': url_for('archimate_crud.dashboard') + '#technology'},
+    {'text': 'Data Architecture', 'href': url_for('data_architecture.data_architecture_dashboard')},
     {'text': 'Entity Form', 'current': true}
 ]) }}
 {% endblock %}
@@ -17,11 +17,7 @@
 <div class="max-w-2xl mx-auto space-y-6">
     {{ page_shell(
         title=('Edit' if entity else 'Create') ~ ' Data Entity',
-        subtitle=('Update this data entity definition.' if entity else 'Define a new business data entity in the catalog.'),
-        breadcrumb=[
-            ('Data Entity Catalog', url_for('data_architecture.data_entity_catalog')),
-            (('Edit' if entity else 'Create') ~ ' Data Entity', None)
-        ]
+        subtitle=('Update this data entity definition.' if entity else 'Define a new business data entity in the catalog.')
     ) }}
 
     <form method="post" action="{{ request.path }}" class="space-y-6">

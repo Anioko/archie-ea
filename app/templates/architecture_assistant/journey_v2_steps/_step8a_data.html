@@ -78,57 +78,68 @@
              this.uploadError = null;
          },
 
-         async uploadData() {
-             if (!this.uploadFile || !solutionId) return;
+         /* NOTE ON STYLE: the handlers below are written with .then()/.catch(),
+            NOT async/await. Alpine expressions in attributes on this page are
+            evaluated by the CSP-safe interpreter in
+            app/static/js/csp/csp-evaluator.js, which cannot await (and throws on
+            `async`). See app/templates/sprints/charts.html for the agreed style. */
+         uploadData() {
+             const self = this;
+             if (!this.uploadFile || !solutionId) return Promise.resolve();
              this.uploadLoading = true;
              this.uploadError = null;
-             try {
-                 const fd = new FormData();
-                 fd.append('file', this.uploadFile);
-                 const data = await Platform.fetch('/solutions/' + solutionId + '/codegen/data/upload', {
+             const fd = new FormData();
+             fd.append('file', this.uploadFile);
+             return Platform.fetch('/solutions/' + solutionId + '/codegen/data/upload', {
                      method: 'POST',
                      body: fd,
                      silent: true  // we show inline error via uploadError
+                 })
+                 .then(function (data) {
+                     self.uploadedSheets = (data && data.sheets) || [];
+                     self.uploadLoading = false;
+                     if (self.uploadedSheets.length > 0) {
+                         self.selectedSheet = self.uploadedSheets[0];
+                         self.dataPhase = 'mapping';
+                         return self.autoMapSheet(self.selectedSheet);
+                     }
+                     return null;
+                 })
+                 .catch(function (e) {
+                     // Platform.fetch already threw; we keep the error for inline display
+                     self.uploadError = (e && e.message) || 'Upload failed.';
+                     self.uploadLoading = false;
                  });
-                 this.uploadedSheets = data.sheets || [];
-                 if (this.uploadedSheets.length > 0) {
-                     this.selectedSheet = this.uploadedSheets[0];
-                     this.dataPhase = 'mapping';
-                     this.autoMapSheet(this.selectedSheet);
-                 }
-             } catch (e) {
-                 this.uploadError = e.message;
-                 // Platform.fetch already threw; we keep the error for inline display
-             } finally {
-                 this.uploadLoading = false;
-             }
          },
 
          // Mapping handlers
-         async autoMapSheet(sheet) {
-             if (!sheet || !solutionId) return;
+         autoMapSheet(sheet) {
+             const self = this;
+             if (!sheet || !solutionId) return Promise.resolve();
              this.mappingLoading = true;
              this.mappingError = null;
-             try {
-                 const colTypes = {};
-                 (sheet.columns || []).forEach(c => {
-                     colTypes[c.name || c] = c.inferred_type || 'string';
-                 });
-                 const colNames = (sheet.columns || []).map(c => c.name || c);
+             const colTypes = {};
+             (sheet.columns || []).forEach(c => {
+                 colTypes[c.name || c] = c.inferred_type || 'string';
+             });
+             const colNames = (sheet.columns || []).map(c => c.name || c);
 
-                 const data = await Platform.fetch.post('/solutions/' + solutionId + '/codegen/data/auto-map', {
+             return Platform.fetch.post('/solutions/' + solutionId + '/codegen/data/auto-map', {
                      columns: colNames,
                      column_types: colTypes
-                 }, { silent: true }); // we show inline error via mappingError
-                 this.sheetMappings[sheet.name] = data.mappings || [];
-                 // Collect all target fields for dropdown overrides
-                 this.allModelFields = this.extractAllFields(data.mappings || []);
-             } catch (e) {
-                 this.mappingError = e.message;
-                 // Platform.fetch already threw; we keep the error for inline display
-             } finally {
-                 this.mappingLoading = false;
-             }
+                 }, { silent: true }) // we show inline error via mappingError
+                 .then(function (data) {
+                     const mappings = (data && data.mappings) || [];
+                     self.sheetMappings[sheet.name] = mappings;
+                     // Collect all target fields for dropdown overrides
+                     self.allModelFields = self.extractAllFields(mappings);
+                     self.mappingLoading = false;
+                 })
+                 .catch(function (e) {
+                     // Platform.fetch already threw; we keep the error for inline display
+                     self.mappingError = (e && e.message) || 'Auto-mapping failed.';
+                     self.mappingLoading = false;
+                 });
          },
 
          extractAllFields(mappings) {
@@ -164,22 +175,24 @@
              mapping.method = 'manual';
          },
 
-         async addFieldForColumn(sheet, mapping) {
-             if (!solutionId) return;
-             try {
-                 const data = await Platform.fetch.post('/solutions/' + solutionId + '/codegen/data/add-field', {
+         addFieldForColumn(sheet, mapping) {
+             const self = this;
+             if (!solutionId) return Promise.resolve();
+             return Platform.fetch.post('/solutions/' + solutionId + '/codegen/data/add-field', {
                      column_name: mapping.source_column,
                      column_type: mapping.inferred_type || 'string'
-                 }, { silent: true }); // we show inline error via mappingError
-                 // Update the mapping with the new field
-                 mapping.target_entity = data.entity || data.target_entity;
-                 mapping.target_field = data.field || data.target_field;
-                 mapping.confidence = 1.0;
-                 mapping.method = 'added';
-             } catch (e) {
-                 this.mappingError = e.message;
-                 // Platform.fetch already threw; we keep the error for inline display
-             }
+                 }, { silent: true }) // we show inline error via mappingError
+                 .then(function (data) {
+                     // Update the mapping with the new field
+                     mapping.target_entity = (data && (data.entity || data.target_entity)) || null;
+                     mapping.target_field = (data && (data.field || data.target_field)) || null;
+                     mapping.confidence = 1.0;
+                     mapping.method = 'added';
+                 })
+                 .catch(function (e) {
+                     // Platform.fetch already threw; we keep the error for inline display
+                     self.mappingError = (e && e.message) || 'Could not add a field for this column.';
+                 });
          },
 
          confirmMapping() {
@@ -206,28 +219,31 @@
          },
 
          // Import handler
-         async importData() {
-             if (!solutionId || !this.selectedSheet) return;
+         importData() {
+             const self = this;
+             if (!solutionId || !this.selectedSheet) return Promise.resolve();
              this.importLoading = true;
              this.importError = null;
              this.importProgress = 0;
-             try {
-                 const mappings = this.getCurrentMappings().filter(m => m.target_field);
-                 const data = await Platform.fetch.post('/solutions/' + solutionId + '/codegen/data/import', {
+             const mappings = this.getCurrentMappings().filter(m => m.target_field);
+             return Platform.fetch.post('/solutions/' + solutionId + '/codegen/data/import', {
                      sheet_name: this.selectedSheet.name,
                      file_name: this.uploadFileName,
                      mappings: mappings
-                 }, { silent: true }); // we show inline error via importError
-                 this.importResult = data;
-                 this.importProgress = 100;
-                 this.dataPhase = 'done';
-             } catch (e) {
-                 this.importError = e.message;
-                 this.importProgress = 0;
-                 // Platform.fetch already threw; we keep the error for inline display
-             } finally {
-                 this.importLoading = false;
-             }
+                 }, { silent: true }) // we show inline error via importError
+                 .then(function (data) {
+                     self.importResult = data;
+                     self.importProgress = 100;
+                     self.dataPhase = 'done';
+                     self.importLoading = false;
+                 })
+                 .catch(function (e) {
+                     // Platform.fetch already threw; we keep the error for inline display
+                     self.importError = (e && e.message) || 'Import failed.';
+                     self.importResult = null;
+                     self.importProgress = 0;
+                     self.importLoading = false;
+                 });
          },
 
          resetDataFlow() {
@@ -484,7 +500,7 @@
                                     </td>
                                     <td class="px-2 py-2.5 text-center text-muted-foreground">&rarr;</td>
                                     <td class="px-4 py-2.5">
-                                        <select @change="overrideMapping(m, $event.target.value)"
+                                        <select aria-label="Override target mapping" @change="overrideMapping(m, $event.target.value)"
                                                 class="w-full px-2.5 py-1.5 text-xs bg-background border border-input rounded-md focus:outline-none focus:ring-1 focus:ring-primary">
                                             <option value="">-- No mapping --</option>
                                             <template x-for="field in allModelFields" :key="field">

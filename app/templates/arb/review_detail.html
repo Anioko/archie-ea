@@ -118,6 +118,10 @@
 {% endblock %}
 
 {% block content %}{% set _typed = typed_review | default(none) %}
+{# The typed branch rebinds `review` to the read-model view, which shadows the
+   ORM row for every included partial. Capture it first: a partial that needs a
+   stored column (the recorded decision, say) has no other way to reach it. #}
+{% set _orm_review = review %}
 {% if _typed %}
 {% set review = _typed %}
 {% set _identity = review.identity or {} %}

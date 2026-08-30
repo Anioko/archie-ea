@@ -136,7 +136,9 @@
     </div>
 
     <div class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
-      <main class="space-y-6">
+      {# layouts/admin_base.html already renders the sole <main id="main-content">
+         landmark; a second <main> here gave the document two main landmarks. #}
+      <div class="space-y-6">
 
         {# ── participants ────────────────────────────────────────────────── #}
         <section class="rounded-xl border border-border bg-card p-5 sm:p-6" aria-labelledby="participants-title">
@@ -327,7 +329,7 @@
             {% endfor %}
           </div>
         </section>
-      </main>
+      </div>
 
       <aside class="space-y-6">
 

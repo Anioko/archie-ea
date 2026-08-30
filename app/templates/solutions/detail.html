@@ -1829,7 +1829,7 @@
           <div>
             <label class="block text-xs font-medium text-muted-foreground mb-1.5" x-text="field.label + (field.required ? ' *' : '')"></label>
             <template x-if="field.type === 'textarea'">
-              <textarea x-model="form[field.key]" rows="3"
+              <textarea :aria-label="field.label" x-model="form[field.key]" rows="3"
                         class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring resize-none"
                         :placeholder="'Enter ' + field.label.toLowerCase()"></textarea>
             </template>
@@ -1844,11 +1844,11 @@
               </select>
             </template>
             <template x-if="field.type === 'date'">
-              <input type="date" x-model="form[field.key]"
+              <input :aria-label="field.label" type="date" x-model="form[field.key]"
                      class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring">
             </template>
             <template x-if="!field.type || field.type === 'text'">
-              <input type="text" x-model="form[field.key]"
+              <input :aria-label="field.label" type="text" x-model="form[field.key]"
                      class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
                      :placeholder="'Enter ' + field.label.toLowerCase()"
                      :required="field.required">
@@ -2058,39 +2058,47 @@ function openSectionComments(section, label) {
             this.$nextTick(() => { const inp = this.$el.querySelector('input[type=search]'); if (inp) inp.focus(); });
         });
     },
-    async search() {
+    /* Promise chains, not async/await: Alpine attribute expressions on this page
+       are run by the CSP-safe interpreter (app/static/js/csp/csp-evaluator.js),
+       which cannot await and rejects `async`. */
+    search() {
+        const self = this;
         if (this.query.length < 2) { this.results = []; return; }
         if (this._timer) clearTimeout(this._timer);
-        this._timer = setTimeout(async () => {
-            this.loading = true;
-            this.error = '';
-            try {
-                const json = await Platform.fetch('/archimate/api/elements/search?q=' + encodeURIComponent(this.query) + '&limit=20', { silent: true });
-                this.results = json.data || json.results || [];
-            } catch (e) {
-                this.error = e.message || 'Search unavailable';
-                this.results = [];
-            }
-            this.loading = false;
+        this._timer = setTimeout(function () {
+            self.loading = true;
+            self.error = '';
+            Platform.fetch('/archimate/api/elements/search?q=' + encodeURIComponent(self.query) + '&limit=20', { silent: true })
+                .then(function (json) {
+                    self.results = json.data || json.results || [];
+                    self.loading = false;
+                })
+                .catch(function (e) {
+                    self.error = (e && e.message) || 'Search unavailable';
+                    self.results = [];
+                    self.loading = false;
+                });
         }, 300);
     },
-    async select(element) {
-        if (!this.linkEndpoint) { this.open = false; return; }
-        try {
-            await Platform.fetch.post(this.linkEndpoint,
+    select(element) {
+        const self = this;
+        if (!this.linkEndpoint) { this.open = false; return Promise.resolve(); }
+        return Platform.fetch.post(this.linkEndpoint,
                 { element_id: element.id, layer: element.layer || element.layer_name || '' },
-                { silent: true });
-            this.open = false;
-            window.location.reload();
-        } catch (e) {
-            if (e.status === 409) {
-                // 409 = already linked server-side; the desired end state either way.
-                this.open = false;
+                { silent: true })
+            .then(function () {
+                self.open = false;
                 window.location.reload();
-                return;
-            }
-            this.error = e.message || 'Failed to link element';
-        }
+            })
+            .catch(function (e) {
+                if (e && e.status === 409) {
+                    // 409 = already linked server-side; the desired end state either way.
+                    self.open = false;
+                    window.location.reload();
+                    return;
+                }
+                self.error = (e && e.message) || 'Failed to link element';
+            });
     }
 }"
     x-show="open" x-cloak

@@ -1,5 +1,6 @@
 """Rationalization, duplicate detection, element CRUD, and template API routes."""
 
+import json
 import logging
 from datetime import datetime
 
@@ -46,7 +47,15 @@ def _log_rationalization_audit(
             actor_type=actor_type,
             before_state=before_state,
             after_state=after_state,
-            details=details,
+            # details is a TEXT column. A caller passing a dict raised
+            # "can't adapt type 'dict'" at COMMIT -- outside the caller's own
+            # try/except, so the whole request 500ed rather than losing just
+            # the audit entry. Serialise here so no caller can reintroduce it.
+            details=(
+                details
+                if details is None or isinstance(details, str)
+                else json.dumps(details, default=str, sort_keys=True)
+            ),
         )
         db.session.add(entry)
     except Exception as exc:
@@ -94,7 +103,11 @@ def _auto_create_consolidation_for_app(app_id, score, actor_name):
             score_id=getattr(score, "id", None),
             action="auto_consolidation_created",
             actor=actor_name,
-            details={"disposition": disposition, "estimated_savings": savings},
+            after_state={"disposition": disposition, "estimated_savings": savings},
+            details=(
+                "Auto-created consolidation entry: %s (estimated annual savings %.2f)"
+                % (disposition, savings)
+            ),
         )
     except Exception as exc:
         logger.error("RATA-013 auto-consolidation failed for app %s: %s", app_id, exc)
@@ -2671,11 +2684,37 @@ def rationalization_decision_dossier(app_id):
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
+def _arb_gate_reason(score):
+    """Why this score may not advance to "approved" yet, or None if it may.
+
+    RAT-112 states the rule on the model -- governed dispositions (retire,
+    replace, consolidate) require an ARB approval before the review workflow
+    advances to "approved" -- and nothing enforced it. The single-application
+    ARB decision endpoint is the legitimate path to "approved" for these; the
+    bulk review endpoint reached the same state without consulting ARB at all.
+    """
+    if not getattr(score, "requires_arb", False):  # model-safety-ok
+        return None
+    if (getattr(score, "arb_decision", None) or "").lower() in {  # model-safety-ok
+        "approved",
+        "approved_with_conditions",
+    }:
+        return None
+    return (
+        "Disposition '%s' is ARB-governed and has no ARB approval; "
+        "submit it to ARB and record the decision first."
+        % (score.disposition_action or "")
+    )
+
+
 @unified_applications_bp.route("/rationalization/api/bulk-review", methods=["POST"])
 @login_required
 def rationalization_bulk_review():
     """RAT-121: Bulk review action for multiple applications."""
-    from app.models.application_rationalization import ApplicationRationalizationScore
+    from app.models.application_rationalization import (
+        ApplicationRationalizationScore,
+        DispositionAction,
+    )
 
     try:
         data = request.get_json(silent=True) or {}
@@ -2694,9 +2733,21 @@ def rationalization_bulk_review():
         if len(app_ids) > 50:
             return jsonify({"success": False, "error": "Maximum 50 applications per bulk action"}), 400
 
-        valid_actions = {"approve", "defer", "request_data"}
+        # "set_disposition" was implemented below but omitted from this set, so
+        # every request for it was rejected with 400 before reaching the branch.
+        # That is the portfolio_manager persona's core action -- recording a 7R
+        # disposition against a scored application -- and it was unreachable.
+        valid_actions = {"approve", "defer", "request_data", "set_disposition"}
         if action not in valid_actions:
             return jsonify({"success": False, "error": f"action must be one of: {sorted(valid_actions)}"}), 400
+
+        if action == "set_disposition":
+            allowed_dispositions = {d.value for d in DispositionAction}
+            if disposition_value not in allowed_dispositions:
+                return jsonify({
+                    "success": False,
+                    "error": "disposition must be one of: %s" % sorted(allowed_dispositions),
+                }), 400
 
         actor_name = getattr(current_user, "display_name", None) or getattr(current_user, "username", "system")  # model-safety-ok
 
@@ -2721,6 +2772,10 @@ def rationalization_bulk_review():
                 if "approved" not in transitions:
                     results["skipped"].append({"app_id": aid, "reason": f"Cannot approve from status: {current_status}"})
                     continue
+                blocked = _arb_gate_reason(score)
+                if blocked:
+                    results["skipped"].append({"app_id": aid, "reason": blocked})
+                    continue
                 score.review_status = "approved"
                 score.approved_by = actor_name
                 score.approved_at = datetime.utcnow()
@@ -2744,10 +2799,35 @@ def rationalization_bulk_review():
             elif action == "set_disposition":
                 score.disposition_action = disposition_value
                 score.disposition_confidence = "manual"
+                score.review_notes = (getattr(score, "review_notes", "") or "") + f"\n[Disposition set to {disposition_value} by {actor_name}] {notes}".rstrip()  # model-safety-ok
+
+                # RAT-112: retire/replace/consolidate are governed. Setting one
+                # does NOT approve it -- it flags the record as needing ARB and
+                # leaves the review status where it was. This branch previously
+                # set review_status="approved" unconditionally, which would have
+                # let a portfolio manager retire an application with no ARB
+                # decision at all, through the model's own governance rule.
+                if _arb_gate_reason(score):
+                    score.arb_required = True
+                    results["processed"].append({
+                        "app_id": aid,
+                        "new_status": score.review_status or "draft",
+                        "disposition": disposition_value,
+                        "arb_required": True,
+                    })
+                    continue
+
+                if "approved" not in transitions:
+                    results["processed"].append({
+                        "app_id": aid,
+                        "new_status": current_status,
+                        "disposition": disposition_value,
+                    })
+                    continue
+
                 score.review_status = "approved"
                 score.approved_by = actor_name
                 score.approved_at = datetime.utcnow()
-                score.review_notes = (getattr(score, "review_notes", "") or "") + f"\n[Disposition set to {disposition_value} by {actor_name}] {notes}".rstrip()  # model-safety-ok
                 results["processed"].append({"app_id": aid, "new_status": "approved", "disposition": disposition_value})
                 _auto_create_consolidation_for_app(aid, score, actor_name)
 
@@ -3615,6 +3695,19 @@ def _build_data_quality_report(total_apps: int) -> dict:
             if (a.technical_risk and a.technical_risk.strip())
             or (a.business_risk and a.business_risk.strip())
         )
+        # Vendor coverage was never computed here, and the template rendered
+        # `field_coverage.get('vendor', 0)` -- a hardcoded zero for a value
+        # nothing had measured. A portfolio with a vendor recorded against
+        # every application was shown a red "Vendor Coverage 0%" bar on the
+        # rationalization dashboard while the applications list, two clicks
+        # away, said "5 of 5 applications have a vendor recorded". Same
+        # definition as that list (app/modules/applications/routes/
+        # list_views.py) so the two can never disagree again.
+        vendor_count = sum(
+            1
+            for a in apps
+            if (a.vendor_name and a.vendor_name.strip()) or a.vendor_product_id
+        )
         # Capability coverage: apps with at least one mapped capability
         mapped_ids = set(
             r[0]
@@ -3636,6 +3729,7 @@ def _build_data_quality_report(total_apps: int) -> dict:
                 "lifecycle": round(lifecycle_count / count * 100, 1) if count else 0,
                 "cost": round(cost_count / count * 100, 1) if count else 0,
                 "risk": round(risk_count / count * 100, 1) if count else 0,
+                "vendor": round(vendor_count / count * 100, 1) if count else 0,
                 "capability": round(capability_count / count * 100, 1) if count else 0,
             },
         }

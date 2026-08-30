@@ -50,3 +50,58 @@
     </dl>
     {% endcall %}
 {% endcall %}
+
+{#
+  A decision recorded against a legacy row is a STORED fact (decision,
+  decision_rationale, decision_date, decided_by on arb_review_items), not a
+  derived posture, so rendering it does not breach this partial's rule about
+  unverifiable governance signal -- and withholding it was worse than silent:
+  a decided legacy review rendered identically to an undecided one, so nobody
+  reading the page could tell whether the board had ruled on it.
+
+  Only stored columns are shown. No score, no conditions tracker, no
+  implementation status.
+#}
+{% if _orm_review is defined and _orm_review and _orm_review.decision %}
+{% call card() %}
+    {% call card_header() %}
+        {% call card_title(class='text-lg') %}Decision on record{% endcall %}
+    {% endcall %}
+    {% call card_content() %}
+    <dl class="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-3">
+        <div class="min-w-0">
+            <dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Outcome</dt>
+            <dd class="break-words text-sm text-foreground">{{ _orm_review.decision | replace('_', ' ') | title }}</dd>
+        </div>
+        <div class="min-w-0">
+            <dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Decided by</dt>
+            <dd class="break-words text-sm text-foreground">
+                {{ dash(_orm_review.decided_by.email if _orm_review.decided_by else none) }}
+            </dd>
+        </div>
+        <div class="min-w-0">
+            <dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Decided on</dt>
+            <dd class="break-words text-sm text-foreground">
+                {{ dash(_orm_review.decision_date.strftime('%d %b %Y') if _orm_review.decision_date else none) }}
+            </dd>
+        </div>
+        <div class="min-w-0 sm:col-span-3">
+            <dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Rationale</dt>
+            <dd class="whitespace-pre-line break-words text-sm text-foreground">{{ dash(_orm_review.decision_rationale) }}</dd>
+        </div>
+        {% if _orm_review.conditions %}
+        <div class="min-w-0 sm:col-span-3">
+            <dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Conditions</dt>
+            <dd class="text-sm text-foreground">
+                <ul class="list-disc space-y-1 pl-5">
+                    {% for cond in _orm_review.conditions %}
+                    <li class="break-words">{{ cond.condition if cond is mapping else cond }}</li>
+                    {% endfor %}
+                </ul>
+            </dd>
+        </div>
+        {% endif %}
+    </dl>
+    {% endcall %}
+{% endcall %}
+{% endif %}

@@ -101,9 +101,31 @@ def make_user(db, org_id, label, enterprise_role, role_name="Administrator"):
 
 
 def login(client, user_id):
+    """Sign *client* in as *user_id*, defeating flask_login's ``g`` cache.
+
+    pytest-flask (active here -- pytest.ini sets ``base_url``) pushes a request
+    context that lives for the whole test, so ``g`` survives between test-client
+    requests. flask_login caches the resolved user on ``g._login_user`` and the
+    tenant middleware caches ``g.current_org_id``, so writing a new ``_user_id``
+    into the session cookie does NOT change who the next request runs as: a
+    second client keeps executing as the first client's user.
+
+    That reads as a cross-tenant leak, and it is not one -- it is the test
+    harness. This exact artifact previously produced four false leak reports
+    (see the note in tests/test_ba_tenant_and_authz.py::_login and the tenancy
+    section of CLAUDE.md). Clearing the caches here means a tenancy assertion in
+    a journey test measures the application, not the fixture.
+    """
+    from flask import g, has_app_context
+
     with client.session_transaction() as sess:
         sess["_user_id"] = str(user_id)
         sess["_fresh"] = True
+
+    if has_app_context():
+        for cached in ("_login_user", "_current_user", "current_org_id", "current_org"):
+            if hasattr(g, cached):
+                delattr(g, cached)
 
 
 def cleanup(db, model, ids):

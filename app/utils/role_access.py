@@ -197,6 +197,40 @@ def is_admin(user) -> bool:
     return get_user_role(user) == ROLE_PLATFORM_ADMIN
 
 
+# Roles whose job is to author the capability model. The capability pages used
+# to gate their create/edit controls on `role_archetype`, which is an optional
+# ONBOARDING answer and is NULL for every user who did not complete that flow --
+# so a business_architect, the persona that exists to own this model, saw a
+# read-only page and had no way to create a capability anywhere in the product.
+CAPABILITY_EDITOR_ROLES: Set[str] = {
+    ROLE_PLATFORM_ADMIN,
+    ROLE_ENTERPRISE_ARCHITECT,
+    ROLE_BUSINESS_ARCHITECT,
+    ROLE_SOLUTION_ARCHITECT,
+}
+
+
+def can_edit_capabilities(user) -> bool:
+    """True when the user's enterprise_role owns the capability model.
+
+    Kept tolerant of the legacy signals (is_admin(), role_archetype) so users
+    created before enterprise_role existed do not lose an ability they had.
+    """
+    if not user:
+        return False
+    if get_user_role(user) in CAPABILITY_EDITOR_ROLES:
+        return True
+    try:
+        if user.is_admin():
+            return True
+    except Exception:  # noqa: BLE001 - a template gate must not 500 a page
+        pass
+    try:
+        return (getattr(user, "role_archetype", None) or "") == "architect"
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def is_procurement(user) -> bool:
     """Check if user has procurement role."""
     return get_user_role(user) == ROLE_PROCUREMENT
@@ -437,6 +471,13 @@ _MY_WORK_LINKS = {
         # (TCO coverage, cost tiers, rationalization posture) that no persona's
         # sidebar linked to. Given to the two roles whose job it is.
         _link("Portfolio KPIs", "dashboard_pages.rationalization_scorecard", "gauge"),
+        # Level 10 walkthrough, 30 Aug 2026: the radar is the CTO's technology
+        # direction instrument, and /technology/radar/classify names "cto" in
+        # its own require_roles list -- so the persona was authorised to set
+        # adopt/trial/assess/hold and had no link to the page from anywhere in
+        # its sidebar. 28 nav links on the CTO dashboard, none of them this.
+        # Finding a page by grepping the source is not finding it.
+        _link("Tech Radar", "tech_radar.index", "radar"),
     ],
     ROLE_BUSINESS_ARCHITECT: [
         # BA-A1/A2. This persona had 4 links against a budget of 27 while
@@ -627,6 +668,7 @@ def role_access_context_processor():
     """
     return {
         "can_access_section": can_access_section,
+        "can_edit_capabilities": can_edit_capabilities,
         "get_visible_sections": get_visible_sections,
         "is_admin": is_admin,
         "is_procurement": is_procurement,

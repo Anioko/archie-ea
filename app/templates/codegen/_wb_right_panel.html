@@ -510,21 +510,30 @@
                                      x-data="{
                                          iacDeploying: false, iacDeployResult: null, iacDeployError: '',
                                          iacOwner: '', iacRepo: '', iacBaseBranch: 'main', iacShowForm: false,
-                                         async deployIac() {
-                                             if (!this.iacOwner || !this.iacRepo) { this.iacDeployError = 'Owner and repo are required'; return; }
+                                         /* Promise chain, not async/await: Alpine attribute expressions are
+                                            evaluated by the CSP-safe interpreter (app/static/js/csp/csp-evaluator.js),
+                                            which cannot parse `async` and throws on `await`. */
+                                         deployIac() {
+                                             const self = this;
+                                             if (!this.iacOwner || !this.iacRepo) { this.iacDeployError = 'Owner and repo are required'; return Promise.resolve(); }
                                              this.iacDeploying = true; this.iacDeployError = ''; this.iacDeployResult = null;
-                                             try {
-                                                 const data = await Platform.fetch.post(`/solutions/{{ solution.id }}/codegen/deploy-iac`, {
+                                             return Platform.fetch.post(`/solutions/{{ solution.id }}/codegen/deploy-iac`, {
                                                      owner: this.iacOwner,
                                                      repo: this.iacRepo,
                                                      base_branch: this.iacBaseBranch
+                                                 })
+                                                 .then(function (data) {
+                                                     if (data.success) { self.iacDeployResult = data; self.iacShowForm = false; }
+                                                     else { self.iacDeployResult = null; self.iacDeployError = data.error || 'Deployment failed'; }
+                                                     self.iacDeploying = false;
+                                                 })
+                                                 .catch(function (e) {
+                                                     self.iacDeployResult = null;
+                                                     self.iacDeployError = e.type === 'NetworkError'
+                                                         ? 'Network error: ' + ((e.originalError && e.originalError.message) || e.message)
+                                                         : (e.message || 'Deployment failed');
+                                                     self.iacDeploying = false;
                                                  });
-                                                 if (data.success) { this.iacDeployResult = data; this.iacShowForm = false; }
-                                                 else { this.iacDeployError = data.error || 'Deployment failed'; }
-                                             } catch(e) {
-                                                 this.iacDeployError = e.type === 'NetworkError' ? 'Network error: ' + (e.originalError?.message || e.message) : e.message;
-                                             }
-                                             this.iacDeploying = false;
                                          }
                                      }">
                                     <template x-if="!iacDeployResult">
@@ -1174,7 +1183,7 @@ eas build --platform android --profile preview</pre>
                                 <div class="p-3">
                                     <div class="flex items-start gap-2">
                                         <!-- Active indicator + select -->
-                                        <button type="button" @click="config.template_set_id = (config.template_set_id === tmpl.id ? null : tmpl.id)"
+                                        <button aria-label="Select template set" type="button" @click="config.template_set_id = (config.template_set_id === tmpl.id ? null : tmpl.id)"
                                                 class="shrink-0 mt-0.5 w-3.5 h-3.5 rounded-full border-2 transition-colors"
                                                 :class="config.template_set_id === tmpl.id ? 'border-primary bg-primary' : 'border-muted-foreground/40 hover:border-primary/60'">
                                         </button>
@@ -1199,7 +1208,7 @@ eas build --platform android --profile preview</pre>
                                                 Files
                                             </button>
                                             <!-- Delete -->
-                                            <button type="button" @click="deleteTemplateSet(tmpl.id)"
+                                            <button aria-label="Delete template set" type="button" @click="deleteTemplateSet(tmpl.id)"
                                                     class="h-5 w-5 rounded border border-border text-muted-foreground hover:text-destructive-emphasis hover:border-destructive/30 transition-colors flex items-center justify-center">
                                                 <svg class="w-2.5 h-2.5" viewBox="0 0 10 10" fill="currentColor"><path d="M3 1h4M1.5 2.5h7l-.75 6H2.25l-.75-6ZM4 4.5v2.5M6 4.5v2.5"/><path d="M1.5 2.5h7" stroke="currentColor" stroke-width=".5" fill="none"/></svg>
                                             </button>
@@ -1241,27 +1250,35 @@ eas build --platform android --profile preview</pre>
                          sbLaunching: false,
                          get hasFrontend() { return fileList.some(f => f.startsWith('frontend/')); },
                          get hasMobile()   { return fileList.some(f => f.startsWith('mobile/')); },
-                         async launchStackBlitz() {
+                         /* Promise chain, not async/await: Alpine attribute expressions are
+                            evaluated by the CSP-safe interpreter (app/static/js/csp/csp-evaluator.js),
+                            which cannot parse `async` and throws on `await`. */
+                         launchStackBlitz() {
+                             const self = this;
                              this.sbLaunching = true;
-                             try {
-                                 const d = await Platform.fetch.get('/solutions/' + solutionId + '/codegen/stackblitz-data');
-                                 if (d.error) { Platform.toast.error(d.error); return; }
-                                 const form = document.createElement('form');
-                                 form.method = 'POST';
-                                 form.action = 'https://stackblitz.com/run';
-                                 form.target = '_blank';
-                                 const f = (n, v) => { const i = document.createElement('input'); i.type='hidden'; i.name=n; i.value=v; form.appendChild(i); };
-                                 f('project[title]', d.title || 'Generated App');
-                                 f('project[description]', 'Generated by A.R.C.H.I.E.');
-                                 f('project[template]', 'nextjs');
-                                 for (const [path, content] of Object.entries(d.files || {})) {
-                                     f('project[files][' + path + ']', content);
-                                 }
-                                 document.body.appendChild(form);
-                                 form.submit();
-                                 document.body.removeChild(form);
-                             } catch(e) { Platform.toast.error('StackBlitz launch failed: ' + e.message); }
-                             finally { this.sbLaunching = false; }
+                             return Platform.fetch.get('/solutions/' + solutionId + '/codegen/stackblitz-data')
+                                 .then(function (d) {
+                                     if (d.error) { Platform.toast.error(d.error); self.sbLaunching = false; return; }
+                                     const form = document.createElement('form');
+                                     form.method = 'POST';
+                                     form.action = 'https://stackblitz.com/run';
+                                     form.target = '_blank';
+                                     const f = (n, v) => { const i = document.createElement('input'); i.type='hidden'; i.name=n; i.value=v; form.appendChild(i); };
+                                     f('project[title]', d.title || 'Generated App');
+                                     f('project[description]', 'Generated by A.R.C.H.I.E.');
+                                     f('project[template]', 'nextjs');
+                                     for (const [path, content] of Object.entries(d.files || {})) {
+                                         f('project[files][' + path + ']', content);
+                                     }
+                                     document.body.appendChild(form);
+                                     form.submit();
+                                     document.body.removeChild(form);
+                                     self.sbLaunching = false;
+                                 })
+                                 .catch(function (e) {
+                                     Platform.toast.error('StackBlitz launch failed: ' + e.message);
+                                     self.sbLaunching = false;
+                                 });
                          }
                      }"
                      @keydown.escape.window="previewModal = false">
@@ -1323,7 +1340,7 @@ eas build --platform android --profile preview</pre>
                             New tab
                         </a>
                         <!-- Close ✕ -->
-                        <button type="button" @click="previewModal = false"
+                        <button aria-label="Close preview" type="button" @click="previewModal = false"
                                 class="ml-1 h-7 w-7 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
                             <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>

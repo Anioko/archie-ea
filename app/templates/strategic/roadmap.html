@@ -11,7 +11,8 @@
 {{ breadcrumb_nav(items=[
     {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
     {'text': 'Strategy Layer', 'href': url_for('archimate_crud.dashboard') + '#strategy'},
-    {'text': 'Strategic Planning', 'current': true}
+    {'text': 'Strategic Planning', 'href': url_for('enterprise.strategic_planning_dashboard')},
+    {'text': 'Strategic Roadmap', 'current': true}
 ]) }}
 {% endblock %}
 
@@ -19,11 +20,7 @@
 <div class="space-y-6">
     {{ page_header(
         title='Strategic Roadmap',
-        description='Architecture transformation roadmap by swim lane',
-        breadcrumbs=[
-            {'label': 'Home', 'href': url_for('main.index')},
-            {'label': 'Strategic Roadmap'}
-        ]
+        description='Architecture transformation roadmap by swim lane'
     ) }}
 
     {# ── Filter Bar ──────────────────────────────────────────────────────── #}

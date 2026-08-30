@@ -225,11 +225,18 @@
                 </ul>
                 <div class="flex items-center justify-between pt-3 border-t border-input mt-auto">
                     <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-info/10 text-info-emphasis">Phase D</span>
-                    <a href="{{ '/ea-workflows/phase-d' if (phase_available|default({})).get('phase_d') else '#' }}"
+                    {# The phase blueprint is registered non-fatally; when it is
+                       absent there is no page to open, so no button is shown —
+                       the previous href="#" was a control that did nothing. #}
+                    {% if (phase_available|default({})).get('phase_d') %}
+                    <a href="/ea-workflows/phase-d"
                        class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-sm font-medium">
                         <i data-lucide="arrow-right" class="h-3.5 w-3.5" aria-hidden="true"></i>
                         Open
                     </a>
+                    {% else %}
+                    <span class="text-xs text-muted-foreground">Not available</span>
+                    {% endif %}
                 </div>
             </div>
             <!-- AG-004: Phase G Implementation Governance -->
@@ -262,11 +269,18 @@
                 </ul>
                 <div class="flex items-center justify-between pt-3 border-t border-input mt-auto">
                     <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-warning/10 text-warning-emphasis">Phase G</span>
-                    <a href="{{ '/ea-workflows/phase-g' if (phase_available|default({})).get('phase_g') else '#' }}"
+                    {# The phase blueprint is registered non-fatally; when it is
+                       absent there is no page to open, so no button is shown —
+                       the previous href="#" was a control that did nothing. #}
+                    {% if (phase_available|default({})).get('phase_g') %}
+                    <a href="/ea-workflows/phase-g"
                        class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-sm font-medium">
                         <i data-lucide="arrow-right" class="h-3.5 w-3.5" aria-hidden="true"></i>
                         Open
                     </a>
+                    {% else %}
+                    <span class="text-xs text-muted-foreground">Not available</span>
+                    {% endif %}
                 </div>
             </div>
             <!-- OA-004: Phase E Opportunities & Solutions -->
@@ -299,11 +313,18 @@
                 </ul>
                 <div class="flex items-center justify-between pt-3 border-t border-input mt-auto">
                     <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-success/10 text-success-emphasis">Phase E</span>
-                    <a href="{{ '/ea-workflows/phase-e' if (phase_available|default({})).get('phase_e') else '#' }}"
+                    {# The phase blueprint is registered non-fatally; when it is
+                       absent there is no page to open, so no button is shown —
+                       the previous href="#" was a control that did nothing. #}
+                    {% if (phase_available|default({})).get('phase_e') %}
+                    <a href="/ea-workflows/phase-e"
                        class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-sm font-medium">
                         <i data-lucide="arrow-right" class="h-3.5 w-3.5" aria-hidden="true"></i>
                         Open
                     </a>
+                    {% else %}
+                    <span class="text-xs text-muted-foreground">Not available</span>
+                    {% endif %}
                 </div>
             </div>
             <!-- MP-004: Phase F Migration Planning -->
@@ -336,11 +357,18 @@
                 </ul>
                 <div class="flex items-center justify-between pt-3 border-t border-input mt-auto">
                     <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-violet-100 text-violet-700">{# design-tokens-ok #}Phase F</span>
-                    <a href="{{ '/ea-workflows/phase-f' if (phase_available|default({})).get('phase_f') else '#' }}"
+                    {# The phase blueprint is registered non-fatally; when it is
+                       absent there is no page to open, so no button is shown —
+                       the previous href="#" was a control that did nothing. #}
+                    {% if (phase_available|default({})).get('phase_f') %}
+                    <a href="/ea-workflows/phase-f"
                        class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-sm font-medium">
                         <i data-lucide="arrow-right" class="h-3.5 w-3.5" aria-hidden="true"></i>
                         Open
                     </a>
+                    {% else %}
+                    <span class="text-xs text-muted-foreground">Not available</span>
+                    {% endif %}
                 </div>
             </div>
             <!-- CM-004: Phase H Architecture Change Management -->
@@ -373,11 +401,18 @@
                 </ul>
                 <div class="flex items-center justify-between pt-3 border-t border-input mt-auto">
                     <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-destructive/10 text-destructive-emphasis">Phase H</span>
-                    <a href="{{ '/ea-workflows/phase-h' if (phase_available|default({})).get('phase_h') else '#' }}"
+                    {# The phase blueprint is registered non-fatally; when it is
+                       absent there is no page to open, so no button is shown —
+                       the previous href="#" was a control that did nothing. #}
+                    {% if (phase_available|default({})).get('phase_h') %}
+                    <a href="/ea-workflows/phase-h"
                        class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-sm font-medium">
                         <i data-lucide="arrow-right" class="h-3.5 w-3.5" aria-hidden="true"></i>
                         Open
                     </a>
+                    {% else %}
+                    <span class="text-xs text-muted-foreground">Not available</span>
+                    {% endif %}
                 </div>
             </div>
         </div>
@@ -452,19 +487,26 @@
             journeys: [],
             loading: true,
             error: null,
-            async init() {
-                try {
-                    const data = await Platform.fetch('/ea-workflows/journeys', { silent: true });
-                    if (data.success) {
-                        this.journeys = data.journeys || [];
-                    } else {
-                        this.error = data.error || 'Failed to load journeys';
-                    }
-                } catch(e) {
-                    this.error = e.message || 'Network error loading journeys';
-                } finally {
-                    this.loading = false;
-                }
+            /* Promise chain, not async/await: Alpine attribute expressions are
+               evaluated by the CSP-safe interpreter (app/static/js/csp/csp-evaluator.js),
+               which cannot parse `async` and throws on `await`. */
+            init() {
+                const self = this;
+                return Platform.fetch('/ea-workflows/journeys', { silent: true })
+                    .then(function (data) {
+                        if (data.success) {
+                            self.journeys = data.journeys || [];
+                        } else {
+                            self.journeys = [];
+                            self.error = data.error || 'Failed to load journeys';
+                        }
+                        self.loading = false;
+                    })
+                    .catch(function (e) {
+                        self.journeys = [];
+                        self.error = e.message || 'Network error loading journeys';
+                        self.loading = false;
+                    });
             },
             phaseColor(status) {
                 const map = {

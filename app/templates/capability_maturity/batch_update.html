@@ -48,23 +48,31 @@
          x-data="{
              importing: false,
              result: null,
-             async importCsv(evt) {
+             /* Promise chain, not async/await: Alpine attribute expressions on this
+                page are run by the CSP-safe interpreter in
+                app/static/js/csp/csp-evaluator.js, which cannot await and rejects
+                `async`. See app/templates/sprints/charts.html for the agreed style. */
+             importCsv(evt) {
+                 const self = this;
                  var file = evt.target.files[0];
                  evt.target.value = '';
-                 if (!file) return;
+                 if (!file) return Promise.resolve();
                  this.importing = true;
                  this.result = null;
                  var fd = new FormData();
                  fd.append('file', file);
-                 try {
-                     this.result = await Platform.fetch.post('{{ url_for('maturity_management.import_maturity_csv') }}', fd, { silent: true });
-                 } catch(e) {
-                     this.result = { 
-                         success: false, 
-                         error: 'Import failed: ' + (e.message || 'Unknown error')
-                     };
-                 }
-                 this.importing = false;
+                 return Platform.fetch.post('{{ url_for('maturity_management.import_maturity_csv') }}', fd, { silent: true })
+                     .then(function (data) {
+                         self.result = data;
+                         self.importing = false;
+                     })
+                     .catch(function (e) {
+                         self.result = {
+                             success: false,
+                             error: 'Import failed: ' + (e.message || 'Unknown error')
+                         };
+                         self.importing = false;
+                     });
              }
          }">
         <div class="px-6 py-4 border-b border-border flex items-center justify-between">
@@ -122,7 +130,7 @@
         </div>
         <div class="p-6">
             <form method="POST" action="{{ url_for('maturity_management.batch_update_maturity') }}" class="space-y-6">
-                {{ csrf_token() }}
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <!-- Filter Configuration -->
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>

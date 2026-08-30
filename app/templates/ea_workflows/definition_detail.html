@@ -379,25 +379,37 @@
             set selectAll(v) { this.selected = v ? [...this.allIds] : []; },
             get cancelCount() { return this.selected.filter(id => this.cancelableIds.includes(id)).length; },
             get retryCount() { return this.selected.filter(id => this.retryableIds.includes(id)).length; },
-            async batchAction(action) {
+            /* Promise chain, not async/await: Alpine attribute expressions are
+               evaluated by the CSP-safe interpreter (app/static/js/csp/csp-evaluator.js),
+               which cannot parse `async` and throws on `await`. The per-id requests
+               stay strictly sequential, as the original for-await loop was. */
+            batchAction(action) {
+                const self = this;
                 const ids = this.selected.filter(id => action === 'cancel' ? this.cancelableIds.includes(id) : this.retryableIds.includes(id));
-                if (!ids.length) return;
+                if (!ids.length) return Promise.resolve();
                 const label = action === 'cancel' ? 'Cancel' : 'Retry';
-                if (!(await Platform.modal.confirm(label + ' ' + ids.length + ' workflow(s)?'))) return;
-                this.processing = true;
-                let ok = 0, fail = 0;
-                for (const id of ids) {
-                    try {
-                        const result = await Platform.fetch.post('/api/ea-workflows/instances/' + id + '/' + action, { reason: 'Batch ' + action }, { silent: true });
-                        result.success ? ok++ : fail++;
-                    } catch {
-                        fail++;
-                    }
-                }
-                this.processing = false;
-                this.selected = [];
-                Platform.toast.error(ok + ' succeeded, ' + fail + ' failed');
-                location.reload();
+                return Promise.resolve(Platform.modal.confirm(label + ' ' + ids.length + ' workflow(s)?'))
+                    .then(function (confirmed) {
+                        if (!confirmed) return null;
+                        self.processing = true;
+                        const counts = { ok: 0, fail: 0 };
+                        return ids.reduce(function (chain, id) {
+                            return chain.then(function () {
+                                return Platform.fetch.post('/api/ea-workflows/instances/' + id + '/' + action, { reason: 'Batch ' + action }, { silent: true })
+                                    .then(function (result) { result && result.success ? counts.ok++ : counts.fail++; })
+                                    .catch(function () { counts.fail++; });
+                            });
+                        }, Promise.resolve()).then(function () {
+                            self.processing = false;
+                            self.selected = [];
+                            Platform.toast.error(counts.ok + ' succeeded, ' + counts.fail + ' failed');
+                            location.reload();
+                        });
+                    })
+                    .catch(function (e) {
+                        self.processing = false;
+                        Platform.toast.error('Batch ' + action + ' failed: ' + (e && e.message ? e.message : 'unknown error'));
+                    });
             }
          }">
         <div class="flex items-center justify-between mb-4">
