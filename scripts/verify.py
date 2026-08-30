@@ -526,6 +526,26 @@ def gate_journey_coverage(baseline: int) -> Result:
     return Result("journey-coverage", PASS if count <= baseline else FAIL, detail, count, baseline)
 
 
+def gate_unreachable_actions(baseline: int) -> Result:
+    """No handler branch behind a whitelist that already rejected its value.
+
+    POST /applications/rationalization/api/bulk-review validated
+    valid_actions = {"approve", "defer", "request_data"} and then implemented
+    `elif action == "set_disposition":` -- the portfolio_manager persona's core
+    action, rejected with 400 before it could reach its own implementation.
+    The module compiles, ruff sees a reachable elif, and the endpoint returns a
+    well-formed 400, so nothing in levels 0-8 could see it; a journey test
+    could, and did.
+    """
+    proc = _run([sys.executable, "scripts/check_unreachable_actions.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("unreachable-actions", FAIL, f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    detail = "" if count <= baseline else "run scripts/check_unreachable_actions.py to list them"
+    return Result("unreachable-actions", PASS if count <= baseline else FAIL, detail, count, baseline)
+
+
 def gate_template_syntax() -> Result:
     """Every Jinja template parses. Gated at ZERO.
 
@@ -1559,6 +1579,12 @@ def build_gates(baseline: dict) -> list[Gate]:
                          "names (a same-named macro in another file is the usual "
                          "cause), or append 'macro-kwargs-ok: <reason>'",
              tags=["static", "ui"]),
+        Gate("unreachable-actions", "no handler branch its own validator rejects first",
+             "ratchet", lambda: gate_unreachable_actions(baseline["unreachable_actions"]),
+             remediation="either delete the branch (the product does not have that "
+                         "feature) or add the value to the whitelist; if it is "
+                         "unreachable on purpose append 'unreachable-action-ok: <reason>'",
+             tags=["static", "correctness"]),
         Gate("journey-coverage", "every persona has a journey proving they can do their job",
              "ratchet", lambda: gate_journey_coverage(baseline["journey_coverage"]),
              remediation="add a test under tests/journeys/ that signs in as the persona, "
@@ -1771,6 +1797,7 @@ DEFAULT_BASELINE = {
     "alpine_await": 0,
     "attr_quoting": 0,
     "journey_coverage": 0,
+    "unreachable_actions": 0,
 }
 
 

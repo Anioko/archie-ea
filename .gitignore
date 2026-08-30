@@ -319,3 +319,6 @@ audit_*.json
 production_readiness_report.json
 audit-server.log
 layout-probe-server.log
+
+# Output of scripts/walkthrough_archetypes.py -- one run against one server.
+walkthrough_report.json

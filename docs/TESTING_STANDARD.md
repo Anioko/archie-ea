@@ -105,3 +105,29 @@ a gate missing from the JSON passes locally and enforces nothing in CI.
 
 Note `.gitignore` blankets `scripts/check_*.py`; stage a new checker with
 `git add -f`.
+
+## Running levels 9 and 10
+
+Level 9 is a gate. `journey-coverage` reads the persona list out of
+`app/models/user.py`'s `VALID_ROLES`, so adding a persona to the product
+automatically demands a journey for it rather than silently passing:
+
+```bash
+python scripts/check_journey_coverage.py     # which personas are uncovered
+pytest -m journey                            # run the journeys themselves
+```
+
+Level 10 is not a gate — it needs a running server and a seeded tenant, and
+its output is a judgement per step, not a number. Run it against the
+deployment you are about to ship:
+
+```bash
+python scripts/walkthrough_archetypes.py                     # :5001 by default
+WALKTHROUGH_BASE_URL=https://... python scripts/walkthrough_archetypes.py
+```
+
+It drives real Chromium at a fixed 1440x900 viewport as a **non-admin** user
+per archetype, measures geometry rather than photographing it, fails a step on
+any console error, and — the part no gate covers — checks that the archetype
+could have **found** the page. On its first run every gate was green and the
+CTO still had no link to the technology radar they are authorised to set.
