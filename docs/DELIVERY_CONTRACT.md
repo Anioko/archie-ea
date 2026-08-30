@@ -1,0 +1,88 @@
+# Delivery contract
+
+Binding on every agent that works this repository — human or model. Two rules,
+both enforced by the `evidence-contract` gate, so neither depends on anyone
+remembering them.
+
+## Why this exists
+
+On 30 August 2026 the model running this repository announced three conclusions
+it had not measured: that the audit harness was broken (it had just measured
+1,700 page loads), that the Health Scorecard was hanging with a scalability
+defect (it answers in 0.04s), and that the product lacked personas it has. All
+three were corrected within minutes and none reached production — because the
+*artifacts* were measured even while the *narration* was not.
+
+That asymmetry is the design principle. An unverified sentence in a report
+costs an hour. An unverified change that ships costs production. This contract
+makes the measurement the deliverable, so the second cannot happen quietly.
+
+It follows the same logic as the rest of `verify.py`: assume the builder is
+unreliable and check the work, rather than asking the builder to be careful.
+
+## Rule 1 — a behavioural change carries its measurement
+
+A commit that changes behaviour under `app/` lands with **either**:
+
+- a test change in the same commit, **or**
+- an `Evidence:` trailer naming the command that was run and what it returned.
+
+```
+Evidence: pytest tests/journeys/test_journey_cto.py -q -> 4 passed
+Evidence: curl -o /dev/null -w '%{http_code} %{time_total}' /dashboard/health -> 200 in 0.45s
+```
+
+"I checked it" is not evidence. A command and its output is. Prefer the test:
+a trailer proves it worked once, a test proves it keeps working.
+
+Exempt, because they change nothing a user can observe: `docs/`, `tests/`,
+`scripts/`, `migrations/`, and `.md`/`.json`/`.css` files.
+
+## Rule 2 — a gate carries its proof
+
+`TESTING_STANDARD.md` rule 7 has always required that a new gate be proven
+against known-bad input: *reintroduce the defect, watch the gate go red,
+restore, watch it go green.* Nothing enforced it — which is exactly the hole an
+agent walks through by writing a checker that has never once gone red and
+reporting it as coverage.
+
+Every checker registered in `verify.py` must carry a `Proven-against:` line in
+its module docstring, naming the input it was observed to fail on:
+
+```
+Proven-against: the "CTO" entry removed from DEFAULT_GROUP_ROLE_MAP — red at 1
+naming 'cto' as unprovisionable, green at 0 when restored.
+```
+
+This is a ratchet, not a wall. The checkers that predate the rule are counted
+as debt and the number can only go down. Every **new** gate carries its proof
+on the day it lands.
+
+## Roles are gate families, not job titles
+
+A role nobody has built machinery for is a role being claimed rather than
+played. The current map:
+
+| Role | Gates |
+|---|---|
+| security architect | 8 |
+| software architect | 8 |
+| UX / frontend | 16 |
+| QA / test lead | 7 |
+| data honesty | 7 |
+| delivery lead | 5 |
+| data architect | 2 |
+| **ML / AI architect** | **0** — 154 `ai_chat` routes, unguarded |
+
+Re-run that map when adding a role or a gate. A zero in this table is a
+coverage hole, and it is worth more than any amount of deliberation about
+whether coverage is adequate.
+
+## Running it
+
+```bash
+python scripts/check_evidence_contract.py                  # HEAD
+python scripts/check_evidence_contract.py --staged         # pre-commit
+python scripts/check_evidence_contract.py --range A..B     # a range
+python scripts/check_evidence_contract.py --rule provenance
+```

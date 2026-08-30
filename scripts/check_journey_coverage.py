@@ -35,6 +35,9 @@ naming the persona, for one that genuinely cannot act (a read-only role).
 
     python scripts/check_journey_coverage.py            # list uncovered personas
     python scripts/check_journey_coverage.py --count    # trailing line = count
+
+Proven-against: tests/journeys/test_journey_cto.py moved aside -- red at 1
+('cto' uncovered), green at 0 when restored.
 """
 from __future__ import annotations
 

@@ -29,6 +29,14 @@
     "journey_coverage": 0,
     "unreachable_actions": 0,
     "inline_handlers": 0,
-    "persona_vocabularies": 0
+    "persona_vocabularies": 0,
+    "evidence_contract": 34,
+    "ai_evidence_rules": 0,
+    "ai_tool_guard": 0,
+    "ai_untrusted_content": 0,
+    "authz_widening": 0,
+    "nullable_columns": 1208,
+    "page_cost": 0,
+    "credential_autofill": 0
   }
 }

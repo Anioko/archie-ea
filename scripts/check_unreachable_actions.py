@@ -40,6 +40,10 @@ to log an explicit rejection, say).
 
     python scripts/check_unreachable_actions.py            # list them
     python scripts/check_unreachable_actions.py --count    # trailing line = count
+
+Proven-against: 'set_disposition' removed from valid_actions in
+rationalization_bulk_review -- red at 2, naming both branch lines; green at 0
+when restored.
 """
 from __future__ import annotations
 

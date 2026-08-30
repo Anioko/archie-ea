@@ -37,6 +37,9 @@ blueprint ships a Security Viewpoint.
 
     python scripts/check_persona_vocabularies.py            # list mismatches
     python scripts/check_persona_vocabularies.py --count    # trailing = count
+
+Proven-against: the "CTO" entry removed from DEFAULT_GROUP_ROLE_MAP -- red at 1
+naming 'cto' as unprovisionable, green at 0 when restored.
 """
 from __future__ import annotations
 

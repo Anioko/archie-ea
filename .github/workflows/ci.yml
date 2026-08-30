@@ -356,6 +356,72 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  walkthrough:
+    name: Level 10 archetype walkthrough
+    runs-on: ubuntu-latest
+    # docs/TESTING_STANDARD.md level 10: not "does it break?" but "can this
+    # archetype do their job, and could they have FOUND the page?". It runs as a
+    # non-admin per persona, measures geometry at a fixed viewport rather than
+    # photographing it, and fails on any console error.
+    #
+    # It exists as a CI job rather than a verify.py gate because it needs a live
+    # server and a seeded tenant. On its first run every static gate was green
+    # and it still found that the CTO had no link to the technology radar they
+    # are authorised to set -- no gate in levels 0-9 asks that question.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: archie_walkthrough
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 10s
+          --health-timeout 5s --health-retries 5
+    env:
+      TEST_DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/archie_walkthrough
+      DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/archie_walkthrough
+      FLASK_CONFIG: testing
+      SECRET_KEY: ci-only-not-secret-0123456789abcdef
+      WALKTHROUGH_BASE_URL: http://127.0.0.1:5001
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install playwright
+      - name: Install Chromium
+        run: python -m playwright install --with-deps chromium
+      - name: Create schema and seed the tenant
+        run: |
+          python -m flask --app manage init-db
+          python -m flask --app manage reconcile-schema
+          python scripts/seed_walkthrough_users.py
+      - name: Start the app
+        run: |
+          nohup python -m flask --app manage run --no-reload --port 5001 > /tmp/walkthrough-server.log 2>&1 &
+          for i in $(seq 1 60); do
+            curl -sf -o /dev/null http://127.0.0.1:5001/account/login && break
+            sleep 5
+          done
+      - name: Walk every archetype
+        run: python scripts/walkthrough_archetypes.py
+      - name: Upload the report
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: walkthrough-report
+          path: |
+            walkthrough_report.json
+            /tmp/walkthrough-server.log
+          if-no-files-found: ignore
+          retention-days: 7
+
   dependency-audit:
     name: Dependency CVEs (pip-audit)
     runs-on: ubuntu-latest

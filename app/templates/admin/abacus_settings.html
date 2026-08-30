@@ -264,7 +264,7 @@
                                            value="{{ form.client_secret.data or '' }}"
                                            placeholder="{% if abacus_config or env_config %}••••••••••••{% else %}your-client-secret{% endif %}"
                                            class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                                           {% if not abacus_config and not env_config %}required{% endif %}>
+                                           {% if not abacus_config and not env_config %}required{% endif %} autocomplete="new-password">
                                     <p class="text-xs text-muted-foreground mt-1">
                                         {% if env_config %}
                                             Using secret from .env file (leave blank to keep it)

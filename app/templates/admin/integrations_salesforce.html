@@ -48,13 +48,13 @@
             <div>
                 <label for="sf-client-id" class="block text-sm font-medium mb-1">Consumer Key (Client ID)</label>
                 <input type="text" id="sf-client-id" x-model="creds.client_id"
-                       class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+                       class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" autocomplete="off">
             </div>
             <div>
                 <label for="sf-client-secret" class="block text-sm font-medium mb-1">Consumer Secret</label>
                 <input type="password" id="sf-client-secret" x-model="creds.client_secret"
                        placeholder="{{ '••••••••  (saved)' if sf_config.configured else '' }}"
-                       class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+                       class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" autocomplete="new-password">
             </div>
         </div>
         <div class="px-6 pb-5 flex items-center gap-3">

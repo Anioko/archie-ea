@@ -9,7 +9,9 @@ from app.models import User
 
 class LoginForm(FlaskForm):
     email = EmailField("Email", validators=[InputRequired(), Length(1, 64), Email()])
-    password = PasswordField("Password", validators=[InputRequired()])
+    password = PasswordField("Password", validators=[InputRequired()],
+        render_kw={"autocomplete": "current-password"},
+    )
     remember_me = BooleanField("Keep me logged in")
     submit = SubmitField("Log in")
 
@@ -20,8 +22,12 @@ class RegistrationForm(FlaskForm):
     email = EmailField("Email", validators=[InputRequired(), Length(1, 64), Email()])
     password = PasswordField(
         "Password", validators=[InputRequired(), EqualTo("password2", "Passwords must match")]
+    ,
+        render_kw={"autocomplete": "new-password"},
     )
-    password2 = PasswordField("Confirm password", validators=[InputRequired()])
+    password2 = PasswordField("Confirm password", validators=[InputRequired()],
+        render_kw={"autocomplete": "new-password"},
+    )
     submit = SubmitField("Register")
 
     def validate_email(self, field):
@@ -45,8 +51,11 @@ class ResetPasswordForm(FlaskForm):
     new_password = PasswordField(
         "New password",
         validators=[InputRequired(), EqualTo("new_password2", "Passwords must match.")],
+        render_kw={"autocomplete": "new-password"},
     )
-    new_password2 = PasswordField("Confirm new password", validators=[InputRequired()])
+    new_password2 = PasswordField("Confirm new password", validators=[InputRequired()],
+        render_kw={"autocomplete": "new-password"},
+    )
     submit = SubmitField("Reset password")
 
     def validate_email(self, field):
@@ -57,24 +66,35 @@ class ResetPasswordForm(FlaskForm):
 class CreatePasswordForm(FlaskForm):
     password = PasswordField(
         "Password", validators=[InputRequired(), EqualTo("password2", "Passwords must match.")]
+    ,
+        render_kw={"autocomplete": "new-password"},
     )
-    password2 = PasswordField("Confirm new password", validators=[InputRequired()])
+    password2 = PasswordField("Confirm new password", validators=[InputRequired()],
+        render_kw={"autocomplete": "new-password"},
+    )
     submit = SubmitField("Set password")
 
 
 class ChangePasswordForm(FlaskForm):
-    old_password = PasswordField("Old password", validators=[InputRequired()])
+    old_password = PasswordField("Old password", validators=[InputRequired()],
+        render_kw={"autocomplete": "current-password"},
+    )
     new_password = PasswordField(
         "New password",
         validators=[InputRequired(), EqualTo("new_password2", "Passwords must match.")],
+        render_kw={"autocomplete": "new-password"},
     )
-    new_password2 = PasswordField("Confirm new password", validators=[InputRequired()])
+    new_password2 = PasswordField("Confirm new password", validators=[InputRequired()],
+        render_kw={"autocomplete": "new-password"},
+    )
     submit = SubmitField("Update password")
 
 
 class ChangeEmailForm(FlaskForm):
     email = EmailField("New email", validators=[InputRequired(), Length(1, 64), Email()])
-    password = PasswordField("Password", validators=[InputRequired()])
+    password = PasswordField("Password", validators=[InputRequired()],
+        render_kw={"autocomplete": "current-password"},
+    )
     submit = SubmitField("Update email")
 
     def validate_email(self, field):

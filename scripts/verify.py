@@ -585,6 +585,137 @@ def gate_persona_vocabularies(baseline: int) -> Result:
     return Result("persona-vocabularies", PASS if count <= baseline else FAIL, detail, count, baseline)
 
 
+def gate_evidence_contract(baseline: int) -> Result:
+    """No unevidenced claim ships, and no gate is trusted until it has failed.
+
+    Two rules, both binding on any agent working this repository:
+
+    A behavioural change under app/ must land with a test or an `Evidence:`
+    trailer naming the command and its result -- because on 30 Aug 2026 the
+    model running this repo announced three conclusions it had not measured
+    (a harness "broken" that had just measured 1,700 page loads; a page
+    "hanging" that answers in 0.04s). None reached production, because the
+    artifacts were measured even when the narration was not. This makes the
+    measurement the deliverable.
+
+    And every checker registered here must carry a `Proven-against:` line
+    naming the input it was watched to fail on. TESTING_STANDARD.md rule 7 has
+    always required it and nothing enforced it -- which is precisely the hole
+    an agent walks through by writing a checker that has never once gone red
+    and reporting it as coverage.
+    """
+    proc = _run([sys.executable, "scripts/check_evidence_contract.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("evidence-contract", FAIL, f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    detail = "" if count <= baseline else "run scripts/check_evidence_contract.py to list them"
+    return Result("evidence-contract", PASS if count <= baseline else FAIL, detail, count, baseline)
+
+
+def gate_ai_evidence_rules(baseline: int) -> Result:
+    """Every AI persona charter carries the no-fabrication rules.
+
+    A persona charter is a large f-string; adding one means copying one, and a copy that drops the rules block still produces a working, plausible, entirely ungoverned persona that may state numbers it was never given.
+    """
+    proc = _run([sys.executable, "scripts/check_ai_evidence_rules.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("ai-evidence-rules", FAIL, f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    detail = "" if count <= baseline else "run scripts/check_ai_evidence_rules.py to list them"
+    return Result("ai-evidence-rules", PASS if count <= baseline else FAIL, detail, count, baseline)
+
+
+def gate_ai_tool_guard(baseline: int) -> Result:
+    """The AI write path keeps its single permission choke point.
+
+    ToolExecutor.execute's docstring states there is no other path from a tool name to a handler. One direct call and 27 write tools lose their permission check with nothing going red -- the docstring would still say it.
+    """
+    proc = _run([sys.executable, "scripts/check_ai_tool_guard.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("ai-tool-guard", FAIL, f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    detail = "" if count <= baseline else "run scripts/check_ai_tool_guard.py to list them"
+    return Result("ai-tool-guard", PASS if count <= baseline else FAIL, detail, count, baseline)
+
+
+def gate_ai_untrusted_content(baseline: int) -> Result:
+    """Retrieved content enters the system prompt fenced, after the charter.
+
+    Organisation RAG chunks and vector hits were PREPENDED to the system prompt unfenced, so uploaded document text outranked the governance charter by position -- a planted instruction sat above the rules meant to govern it.
+    """
+    proc = _run([sys.executable, "scripts/check_ai_untrusted_content.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("ai-untrusted-content", FAIL, f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    detail = "" if count <= baseline else "run scripts/check_ai_untrusted_content.py to list them"
+    return Result("ai-untrusted-content", PASS if count <= baseline else FAIL, detail, count, baseline)
+
+
+def gate_authz_widening(baseline: int) -> Result:
+    """No role is granted from a field the user's own record carries.
+
+    A read-only Viewer could create and delete ArchiMate elements: require_roles credited any '*_architect' enterprise_role with the 'architect' tier without consulting what the account was permitted to do.
+    """
+    proc = _run([sys.executable, "scripts/check_authz_widening.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("authz-widening", FAIL, f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    detail = "" if count <= baseline else "run scripts/check_authz_widening.py to list them"
+    return Result("authz-widening", PASS if count <= baseline else FAIL, detail, count, baseline)
+
+
+def gate_nullable_columns(baseline: int) -> Result:
+    """A NOT NULL column carries a default reconcile-schema can apply.
+
+    Deploys do not run Alembic. reconcile-schema adds nullable columns only, so a new NOT NULL column without a default cannot be applied to a populated table -- and one missing column 500s every page via InFailedSqlTransaction.
+    """
+    proc = _run([sys.executable, "scripts/check_nullable_columns.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("nullable-columns", FAIL, f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    detail = "" if count <= baseline else "run scripts/check_nullable_columns.py to list them"
+    return Result("nullable-columns", PASS if count <= baseline else FAIL, detail, count, baseline)
+
+
+def gate_page_cost(baseline: int) -> Result:
+    """No query loads every row only to count them.
+
+    Nothing in 53 gates measured query cost, so an N+1 that only bites at 100,000 rows had no way of being caught before a customer found it.
+    """
+    proc = _run([sys.executable, "scripts/check_page_cost.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("page-cost", FAIL, f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    detail = "" if count <= baseline else "run scripts/check_page_cost.py to list them"
+    return Result("page-cost", PASS if count <= baseline else FAIL, detail, count, baseline)
+
+
+def gate_credential_autofill(baseline: int) -> Result:
+    """Every credential field declares an autocomplete value.
+
+    Chrome pattern-matches a text input followed by a password input as a login
+    form and offers a saved credential -- it does not care that the label says
+    "API Key". The 30 Aug 2026 QA audit watched it populate the Anthropic API
+    key and Salesforce Consumer Secret fields with a real saved email and
+    password. The audit reached two instances; a full-tree scan found five
+    unprotected password inputs and nineteen PasswordField definitions.
+    """
+    proc = _run([sys.executable, "scripts/check_credential_autofill.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("credential-autofill", FAIL, f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    detail = "" if count <= baseline else "run scripts/check_credential_autofill.py to list them"
+    return Result("credential-autofill", PASS if count <= baseline else FAIL, detail, count, baseline)
+
+
 def gate_template_syntax() -> Result:
     """Every Jinja template parses. Gated at ZERO.
 
@@ -1618,6 +1749,42 @@ def build_gates(baseline: dict) -> list[Gate]:
                          "names (a same-named macro in another file is the usual "
                          "cause), or append 'macro-kwargs-ok: <reason>'",
              tags=["static", "ui"]),
+        Gate("credential-autofill", "every credential field declares an autocomplete value",
+             "ratchet", lambda: gate_credential_autofill(baseline["credential_autofill"]),
+             remediation="autocomplete=\"current-password\" where the user's own password belongs, \"new-password\" on any third-party secret; or append 'autofill-ok: <reason>'",
+             tags=["static", "security"]),
+        Gate("ai-evidence-rules", "every AI persona charter carries the no-fabrication rules",
+             "ratchet", lambda k='ai_evidence_rules': gate_ai_evidence_rules(baseline[k]),
+             remediation="interpolate {_EVIDENCE_RULES} into the charter, or append 'evidence-rules-ok: <reason>'",
+             tags=["static", "ai"]),
+        Gate("ai-tool-guard", "the AI write path keeps its single permission choke point",
+             "ratchet", lambda k='ai_tool_guard': gate_ai_tool_guard(baseline[k]),
+             remediation="route the call through ToolExecutor.execute, declare the tool's \"mutates\" flag honestly, or append 'ai-tool-guard-ok: <reason>'",
+             tags=["static", "ai", "security"]),
+        Gate("ai-untrusted-content", "retrieved content enters the system prompt fenced, after the charter",
+             "ratchet", lambda k='ai_untrusted_content': gate_ai_untrusted_content(baseline[k]),
+             remediation="wrap it in fence_untrusted(\"<LABEL>\", value) and append it after the charter, or append 'untrusted-ok: <reason>'",
+             tags=["static", "ai", "security"]),
+        Gate("authz-widening", "no role is granted from a field the user's own record carries",
+             "ratchet", lambda k='authz_widening': gate_authz_widening(baseline[k]),
+             remediation="gate the contribution on user.can(Permission.GENERAL) / ADMINISTER, or append 'authz-widening-ok: <reason>'",
+             tags=["static", "security"]),
+        Gate("nullable-columns", "a NOT NULL column carries a default reconcile-schema can apply",
+             "ratchet", lambda k='nullable_columns': gate_nullable_columns(baseline[k]),
+             remediation="give the column a default= or server_default=, make it nullable, or append 'nullable-ok: <reason>'",
+             tags=["static", "schema"]),
+        Gate("page-cost", "no query loads every row only to count them",
+             "ratchet", lambda k='page_cost': gate_page_cost(baseline[k]),
+             remediation="replace len(q.all()) with q.count(), or append 'page-cost-ok: <reason>'",
+             tags=["static", "performance"]),
+        Gate("evidence-contract", "every behavioural change carries its measurement, "
+             "every gate carries its proof",
+             "ratchet", lambda: gate_evidence_contract(baseline["evidence_contract"]),
+             remediation="land the test with the change, or add an 'Evidence: <command> "
+                         "-> <result>' trailer to the commit; for a gate, add a "
+                         "'Proven-against:' line naming the input you watched it fail "
+                         "on (docs/DELIVERY_CONTRACT.md)",
+             tags=["static", "process"]),
         Gate("persona-vocabularies", "every persona list reconciles with VALID_ROLES",
              "ratchet", lambda: gate_persona_vocabularies(baseline["persona_vocabularies"]),
              remediation="add the role to app/auth/sso.py's DEFAULT_GROUP_ROLE_MAP so it "
@@ -1853,6 +2020,14 @@ DEFAULT_BASELINE = {
     "unreachable_actions": 0,
     "inline_handlers": 0,
     "persona_vocabularies": 0,
+    "evidence_contract": 34,
+    "ai_evidence_rules": 0,
+    "ai_tool_guard": 0,
+    "ai_untrusted_content": 0,
+    "authz_widening": 0,
+    "nullable_columns": 1208,
+    "page_cost": 0,
+    "credential_autofill": 0,
 }
 
 

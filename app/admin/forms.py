@@ -117,8 +117,12 @@ class InviteUserForm(FlaskForm):
 class NewUserForm(InviteUserForm):
     password = PasswordField(
         "Password", validators=[InputRequired(), EqualTo("password2", "Passwords must match.")]
+    ,
+        render_kw={"autocomplete": "new-password"},
     )
-    password2 = PasswordField("Confirm password", validators=[InputRequired()])
+    password2 = PasswordField("Confirm password", validators=[InputRequired()],
+        render_kw={"autocomplete": "new-password"},
+    )
 
     submit = SubmitField("Create")
 
@@ -146,6 +150,12 @@ class APISettingsForm(FlaskForm):
         "API Key",
         validators=[Optional(), Length(0, 500)],
         description="Your API key for this provider (required for new settings, optional when editing)",
+        # A third-party secret, not the user's password. Without this,
+        # Chrome pattern-matches the preceding text field plus this one as a
+        # login and offers a SAVED EMAIL AND PASSWORD -- an administrator who
+        # misses the autofill highlight submits their own credentials as an
+        # API key, which the backend then stores and uses. Seen live 30 Aug 2026.
+        render_kw={"autocomplete": "new-password"},
     )
 
     def validate_api_key(self, field):

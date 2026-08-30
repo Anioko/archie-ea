@@ -757,8 +757,11 @@ class ACMHybridManager:
                 }
 
             # Check for mappings
-            mappings_count = len(capability.applications.all()) + len(
-                capability.business_capabilities.all()
+            # Two aggregate counts rather than materialising both collections
+            # only to measure them.
+            mappings_count = (
+                capability.applications.count()
+                + capability.business_capabilities.count()
             )
             if mappings_count > 0:
                 return {

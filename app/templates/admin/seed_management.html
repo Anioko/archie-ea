@@ -153,6 +153,20 @@ function seedManager() {
         },
 
         async seedAll() {
+            /* Confirmation gate. The 30 Aug 2026 QA audit clicked this button once
+               and it completed a live seeding write against the environment before
+               anything could be reviewed or cancelled: seeded categories went from
+               6/11 to 10/11. It was the ONE consequential action on the platform
+               with no confirmation -- every delete on Applications, Vendors,
+               Contracts, Licences, Business Case, Business Model, Value Streams and
+               Admin > Users gates behind one correctly. Seeding writes real rows
+               into a live tenant; it belongs on the same footing. */
+            const proceed = await Platform.modal.confirm(
+                'Seed all reference data into this environment? This writes records ' +
+                'into the live tenant and cannot be undone from this screen.'
+            );
+            if (!proceed) return;
+
             this.seeding = true;
             this.message = null;
             try {

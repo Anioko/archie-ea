@@ -1417,7 +1417,14 @@ def abacus_settings():
     class AbacusSettingsForm(FlaskForm):
         base_url = StringField("Base URL", validators=[DataRequired(), URL()])
         client_id = StringField("Client ID", validators=[DataRequired()])
-        client_secret = PasswordField("Client Secret")
+        client_secret = PasswordField("Client Secret",
+        # A third-party secret, not the user's password. Without this,
+        # Chrome pattern-matches the preceding text field plus this one as a
+        # login and offers a SAVED EMAIL AND PASSWORD -- an administrator who
+        # misses the autofill highlight submits their own credentials as an
+        # API key, which the backend then stores and uses. Seen live 30 Aug 2026.
+        render_kw={"autocomplete": "new-password"},
+    )
         enabled = BooleanField("Enable Integration", default=False)
         sync_enabled = BooleanField("Enable Auto-Sync", default=False)
         sync_interval_minutes = IntegerField("Sync Interval (minutes)", default=1440)
@@ -2300,7 +2307,14 @@ def jira_settings():
     class JiraSettingsForm(FlaskForm):
         base_url = StringField("Jira Base URL", validators=[DataRequired()])
         username = StringField("Username / Email", validators=[DataRequired()])
-        api_token = PasswordField("API Token")
+        api_token = PasswordField("API Token",
+        # A third-party secret, not the user's password. Without this,
+        # Chrome pattern-matches the preceding text field plus this one as a
+        # login and offers a SAVED EMAIL AND PASSWORD -- an administrator who
+        # misses the autofill highlight submits their own credentials as an
+        # API key, which the backend then stores and uses. Seen live 30 Aug 2026.
+        render_kw={"autocomplete": "new-password"},
+    )
         project_key = StringField("Project Key", validators=[DataRequired()])
         issue_type = StringField("Issue Type", default="Task")
         filter_countries = StringField("Country Filter", default="United Kingdom")

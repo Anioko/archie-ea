@@ -632,7 +632,9 @@ class CapabilityGapAnalysisService:
         else:
             try:
                 if hasattr(compliance_rel, "all"):
-                    compliance_count = len(compliance_rel.all())
+                    # .count() aggregates in the database; len(.all()) built an
+                    # ORM object per row only to discard it.
+                    compliance_count = compliance_rel.count()
                 elif hasattr(compliance_rel, "count") and callable(
                     getattr(compliance_rel, "count")
                 ):

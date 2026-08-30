@@ -1075,21 +1075,33 @@ class MultiDomainChatService:
             # AIF-005: Inject organisation RAG context into every prompt
             _rag_ctx = self._get_rag_context(domain)
             if _rag_ctx:
-                domain_context.setdefault("system_prompt", "")
-                domain_context["system_prompt"] = (
-                    f"Organisation Context:\n{_rag_ctx}\n\n"
-                    + domain_context["system_prompt"]
+                from app.modules.ai_chat.services.architect_persona_charters import (
+                    fence_untrusted,
                 )
+
+                domain_context.setdefault("system_prompt", "")
+                # Fenced and APPENDED, not prepended. This is organisation-uploaded
+                # document text: it used to enter the system role above the charter
+                # with no boundary, so a planted instruction outranked the
+                # governance rules by position alone.
+                domain_context["system_prompt"] = domain_context[
+                    "system_prompt"
+                ] + fence_untrusted("ORGANISATION DOCUMENT CONTEXT", _rag_ctx)
 
             # RAG-003: Inject semantic search results from pgvector embeddings
             _semantic_ctx = self._get_semantic_context(message, domain)
             if _semantic_ctx:
                 domain_context["semantic_entities"] = _semantic_ctx
-                domain_context.setdefault("system_prompt", "")
-                domain_context["system_prompt"] = (
-                    f"Semantically Relevant Entities (from vector search):\n{_semantic_ctx}\n\n"
-                    + domain_context["system_prompt"]
+                from app.modules.ai_chat.services.architect_persona_charters import (
+                    fence_untrusted,
                 )
+
+                domain_context.setdefault("system_prompt", "")
+                # Same treatment: vector hits carry names and descriptions that
+                # users typed, so they are retrieved content, not platform truth.
+                domain_context["system_prompt"] = domain_context[
+                    "system_prompt"
+                ] + fence_untrusted("SEMANTIC SEARCH RESULTS", _semantic_ctx)
 
             # ENT-078: Context window management — count tokens and trim
             # chat history so downstream prompts stay within provider limits.

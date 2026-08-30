@@ -49,6 +49,11 @@ never served under the app's CSP (an emailed HTML body, a generated artefact).
 
     python scripts/check_inline_handlers.py            # list them
     python scripts/check_inline_handlers.py --count    # trailing line = count
+
+Proven-against: data-autosubmit reverted to onchange="this.form.submit()" in
+app/templates/admin/team.html -- red at 1 on that line, green at 0 when
+restored. Confirmed it does NOT match Alpine @click/@submit or a Jinja macro's
+onclick= keyword argument, against the five real instances of the latter.
 """
 from __future__ import annotations
 
