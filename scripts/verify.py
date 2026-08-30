@@ -734,6 +734,28 @@ def gate_nested_jinja(baseline: int) -> Result:
     return Result("nested-jinja", PASS if count <= baseline else FAIL, detail, count, baseline)
 
 
+def gate_cache_tenancy(baseline: int) -> Result:
+    """A module-level cache over tenant data must be keyed by the tenant.
+
+    Two were found unkeyed on 30 Aug 2026 and both were cross-tenant data leaks:
+    the capability health cache served one tenant's capability names and scores
+    to every other tenant for 60 seconds, and the AI's RAG context cache put one
+    tenant's prior ARB decision titles into another tenant's system prompt for
+    five minutes. Neither needed any action by the receiving user.
+
+    tenant-scoping and raw-sql-tenancy read QUERIES; these are dictionaries. And
+    do_orm_execute cannot help, because a cache hit emits no SQL to filter --
+    the same blind spot CLAUDE.md records for Query.get() on an identity-map hit.
+    """
+    proc = _run([sys.executable, "scripts/check_cache_tenancy.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("cache-tenancy", FAIL, f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    detail = "" if count <= baseline else "run scripts/check_cache_tenancy.py to list them"
+    return Result("cache-tenancy", PASS if count <= baseline else FAIL, detail, count, baseline)
+
+
 def gate_template_syntax() -> Result:
     """Every Jinja template parses. Gated at ZERO.
 
@@ -1788,6 +1810,13 @@ def build_gates(baseline: dict) -> list[Gate]:
              "ratchet", lambda k='ai_untrusted_content': gate_ai_untrusted_content(baseline[k]),
              remediation="wrap it in fence_untrusted(\"<LABEL>\", value) and append it after the charter, or append 'untrusted-ok: <reason>'",
              tags=["static", "ai", "security"]),
+        Gate("cache-tenancy", "a cache over tenant data is keyed by the tenant",
+             "ratchet", lambda: gate_cache_tenancy(baseline["cache_tenancy"]),
+             remediation="include g.current_org_id in the key, cache nothing without "
+                         "a tenant context, and bound the map; or append "
+                         "'cache-tenancy-ok: <reason>' saying why the contents are "
+                         "tenant-independent",
+             tags=["static", "security"]),
         Gate("authz-widening", "no role is granted from a field the user's own record carries",
              "ratchet", lambda k='authz_widening': gate_authz_widening(baseline[k]),
              remediation="gate the contribution on user.can(Permission.GENERAL) / ADMINISTER, or append 'authz-widening-ok: <reason>'",
@@ -2052,6 +2081,7 @@ DEFAULT_BASELINE = {
     "page_cost": 0,
     "credential_autofill": 0,
     "nested_jinja": 0,
+    "cache_tenancy": 0,
 }
 
 
