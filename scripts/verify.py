@@ -716,6 +716,24 @@ def gate_credential_autofill(baseline: int) -> Result:
     return Result("credential-autofill", PASS if count <= baseline else FAIL, detail, count, baseline)
 
 
+def gate_nested_jinja(baseline: int) -> Result:
+    """No Jinja expression opened inside another -- it renders as literal text.
+
+    `{{ page_header(title='{{ framework.industry_name }}') }}` put the inner
+    expression inside a string literal, so the Industry APQC framework page
+    rendered the seven words of the placeholder as its <h1> while the breadcrumb
+    one line above showed the resolved name. The template parses, the route
+    returns 200, and no other gate can see it.
+    """
+    proc = _run([sys.executable, "scripts/check_nested_jinja.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("nested-jinja", FAIL, f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    detail = "" if count <= baseline else "run scripts/check_nested_jinja.py to list them"
+    return Result("nested-jinja", PASS if count <= baseline else FAIL, detail, count, baseline)
+
+
 def gate_template_syntax() -> Result:
     """Every Jinja template parses. Gated at ZERO.
 
@@ -1749,6 +1767,11 @@ def build_gates(baseline: dict) -> list[Gate]:
                          "names (a same-named macro in another file is the usual "
                          "cause), or append 'macro-kwargs-ok: <reason>'",
              tags=["static", "ui"]),
+        Gate("nested-jinja", "no Jinja expression opens inside another",
+             "ratchet", lambda: gate_nested_jinja(baseline["nested_jinja"]),
+             remediation="pass the value itself instead of a quoted placeholder, "
+                         "or append 'nested-jinja-ok: <reason>'",
+             tags=["static", "ui"]),
         Gate("credential-autofill", "every credential field declares an autocomplete value",
              "ratchet", lambda: gate_credential_autofill(baseline["credential_autofill"]),
              remediation="autocomplete=\"current-password\" where the user's own password belongs, \"new-password\" on any third-party secret; or append 'autofill-ok: <reason>'",
@@ -2028,6 +2051,7 @@ DEFAULT_BASELINE = {
     "nullable_columns": 1208,
     "page_cost": 0,
     "credential_autofill": 0,
+    "nested_jinja": 0,
 }
 
 

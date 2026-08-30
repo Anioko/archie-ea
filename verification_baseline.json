@@ -37,6 +37,7 @@
     "authz_widening": 0,
     "nullable_columns": 1208,
     "page_cost": 0,
-    "credential_autofill": 0
+    "credential_autofill": 0,
+    "nested_jinja": 0
   }
 }
