@@ -727,8 +727,18 @@ function newImportForm() {
                 // Platform.fetch throws on non-ok responses, and an unchecked `data.success`
                 // left the picker empty -- a failure that read as "no applications".
                 const data = await Platform.fetch('/capability-map/api/applications?limit=100');
-                if (!data.success) throw new Error(data.message || data.error || 'request failed');
-                this.availableApplications = data.applications || [];
+                // This endpoint answers {"applications": [...]} and carries NO
+                // success key, so the `if (!data.success) throw` that used to be
+                // here fired on EVERY call -- including the healthy ones. The QA
+                // audit of 30 Aug 2026 measured it returning 200 with 109 records
+                // while the picker showed nothing and toasted "request failed".
+                // Unwrap defensively instead, per CLAUDE.md (`json.data ?? json`),
+                // and judge success by whether the payload has what we asked for.
+                const payload = (data && data.data) || data || {};
+                if (payload.error) {
+                    throw new Error(payload.error);
+                }
+                this.availableApplications = payload.applications || [];
             } catch (error) {
                 this.showToast('Failed to load applications — ' + (error && error.message ? error.message : 'request failed'), 'error');
             } finally {

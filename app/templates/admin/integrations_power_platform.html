@@ -202,9 +202,32 @@
     }
 
     function setLoading(btn, loading, label) {
+        // lucide.createIcons() REPLACES each <i data-lucide> with an <svg>, so
+        // after the first icon render there is no <i data-lucide> left to find.
+        // This function looked one up unconditionally and called setAttribute on
+        // null, so the FIRST click on Save, Test Connection or Discover threw
+        // "Cannot read properties of null (reading 'setAttribute')" before any
+        // request was issued -- and the .finally() call threw the same way, so
+        // the button was left disabled forever. The QA audit of 30 Aug 2026
+        // (High #17) recorded the whole integration as unusable because of it.
         btn.disabled = loading;
-        btn.querySelector('i[data-lucide]').setAttribute('data-lucide', loading ? 'loader-2' : label);
-        if (window.lucide) window.lucide.createIcons();
+        var icon = btn.querySelector('i[data-lucide]');
+        if (!icon) {
+            // Already swapped for an <svg>: put an <i> back so the spinner works.
+            var svg = btn.querySelector('svg');
+            if (svg) {
+                icon = document.createElement('i');
+                icon.className = svg.getAttribute('class') || 'w-4 h-4';
+                icon.setAttribute('aria-hidden', 'true');
+                svg.parentNode.replaceChild(icon, svg);
+            }
+        }
+        if (icon) {
+            icon.setAttribute('data-lucide', loading ? 'loader-2' : label);
+            if (window.lucide) window.lucide.createIcons();
+        }
+        // No icon at all is not a reason to leave the button dead: the disabled
+        // state above is what actually matters to the user.
     }
 
     function statusBadge(status) {
