@@ -1,5 +1,7 @@
 {% extends 'layouts/admin_base.html' %}
 {% from 'macros/page_shell.html' import page_shell %}
+{% from 'components/modal.html' import modal %}
+{% from 'components/status_badge.html' import status_badge_auto %}
 
 {% block title %}Risk Register{% endblock %}
 
@@ -13,16 +15,259 @@
 {% endblock %}
 
 {% block content %}
-<div class="p-6 space-y-6 mx-auto">
+{#
+  This page was a stub: an "Add Risk" button with no handler of any kind, and a
+  single placeholder line where the register should be. The QA audit of 30 Aug
+  2026 recorded it as "The entire Risk Register feature is unusable - no risks
+  can be created, viewed, filtered, or searched."
+
+  Nothing was missing underneath. The Risk model, RiskStatus, the computed
+  risk_score/risk_level, and GET/POST/PATCH /api/risks all existed, and this
+  page's own route already passed `risks`, `grid` and `total` into the template.
+  Only the UI was absent, so the whole feature read as unbuilt.
+#}
+<div class="p-6 space-y-6 mx-auto" x-data="riskRegister()" x-cloak>
     {% macro _ps_actions() %}
-<button type="button" class="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90">
+        <button type="button" @click="openCreate()"
+                class="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors">
             <i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i> Add Risk
         </button>
     {% endmacro %}
     {{ page_shell(title='Risk Register', subtitle='Enterprise architecture risk tracking and mitigation', actions_caller=_ps_actions) }}
-    
-    <div class="rounded-lg border bg-card p-6">
-        <p class="text-sm text-muted-foreground">Risk register and mitigation planning</p>
+
+    {% set _open = risks | selectattr('status.value', 'equalto', 'open') | list | length %}
+    {% set _crit = risks | selectattr('risk_level', 'equalto', 'critical') | list | length %}
+    {% set _mit = risks | selectattr('status.value', 'equalto', 'mitigated') | list | length %}
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div class="rounded-lg border border-border bg-card p-4">
+            <div class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Total</div>
+            <div class="mt-1 text-2xl font-semibold tabular-nums text-foreground">{{ total if total is not none else '&mdash;' }}</div>
+        </div>
+        <div class="rounded-lg border border-border bg-card p-4">
+            <div class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Open</div>
+            <div class="mt-1 text-2xl font-semibold tabular-nums text-foreground">{{ _open }}</div>
+        </div>
+        <div class="rounded-lg border border-border bg-card p-4">
+            <div class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Critical</div>
+            <div class="mt-1 text-2xl font-semibold tabular-nums text-destructive-emphasis">{{ _crit }}</div>
+        </div>
+        <div class="rounded-lg border border-border bg-card p-4">
+            <div class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Mitigated</div>
+            <div class="mt-1 text-2xl font-semibold tabular-nums text-success-emphasis">{{ _mit }}</div>
+        </div>
     </div>
+
+    <div class="rounded-lg border border-border bg-card">
+        <div class="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-border">
+            <h2 class="text-sm font-semibold text-foreground">Risks</h2>
+            <div class="flex items-center gap-2">
+                <label for="risk-search" class="sr-only">Search risks</label>
+                <input id="risk-search" type="text" x-model="query" placeholder="Search title or owner"
+                       class="h-8 w-56 rounded-md border border-input bg-background px-2.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring">
+                <label for="risk-status-filter" class="sr-only">Filter by status</label>
+                <select id="risk-status-filter" x-model="statusFilter"
+                        class="h-8 rounded-md border border-input bg-background px-2 text-xs text-foreground">
+                    <option value="">All statuses</option>
+                    <option value="open">Open</option>
+                    <option value="mitigated">Mitigated</option>
+                    <option value="accepted">Accepted</option>
+                    <option value="closed">Closed</option>
+                </select>
+            </div>
+        </div>
+
+        {% if risks %}
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <caption class="sr-only">Enterprise risk register</caption>
+                <thead>
+                    <tr class="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
+                        <th scope="col" class="px-4 py-2 font-medium">Title</th>
+                        <th scope="col" class="px-4 py-2 font-medium">Owner</th>
+                        <th scope="col" class="px-4 py-2 font-medium">Likelihood</th>
+                        <th scope="col" class="px-4 py-2 font-medium">Impact</th>
+                        <th scope="col" class="px-4 py-2 font-medium">Score</th>
+                        <th scope="col" class="px-4 py-2 font-medium">Level</th>
+                        <th scope="col" class="px-4 py-2 font-medium">Status</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-border">
+                    {% for risk in risks %}
+                    <tr class="hover:bg-accent/40 transition-colors"
+                        x-show='matches({{ risk.title | tojson }}, {{ (risk.owner or "") | tojson }}, {{ risk.status.value | tojson }})'>
+                        <td class="px-4 py-2">
+                            <div class="font-medium text-foreground">{{ risk.title }}</div>
+                            {% if risk.description %}
+                            <div class="text-xs text-muted-foreground">{{ risk.description | truncate(90) }}</div>
+                            {% endif %}
+                        </td>
+                        {# Em dash, never a blank: an unset owner is a fact worth showing. #}
+                        <td class="px-4 py-2 text-muted-foreground">{{ risk.owner or '&mdash;' }}</td>
+                        <td class="px-4 py-2 tabular-nums">{{ risk.likelihood }}</td>
+                        <td class="px-4 py-2 tabular-nums">{{ risk.impact }}</td>
+                        <td class="px-4 py-2 tabular-nums font-medium">{{ risk.risk_score }}</td>
+                        <td class="px-4 py-2">
+                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium
+                                {% if risk.risk_level == 'critical' %}bg-destructive/10 text-destructive-emphasis
+                                {% elif risk.risk_level == 'high' %}bg-warning/10 text-warning-emphasis
+                                {% elif risk.risk_level == 'medium' %}bg-info/10 text-info-emphasis
+                                {% else %}bg-muted text-muted-foreground{% endif %}">
+                                {{ risk.risk_level | title }}
+                            </span>
+                        </td>
+                        <td class="px-4 py-2">{{ status_badge_auto(risk.status.value) }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="px-4 py-10 text-center">
+            <p class="text-sm text-muted-foreground">No risks recorded yet.</p>
+            <p class="mt-1 text-xs text-muted-foreground">Use <span class="font-medium">Add Risk</span> to record the first one.</p>
+        </div>
+        {% endif %}
+    </div>
+
+    {% call modal(id='create-risk-modal', title='Add Risk', description='Record an enterprise architecture risk.', size='lg') %}
+    <div class="space-y-4">
+        <div>
+            <label for="risk-title" class="block text-sm font-medium mb-1">Title <span class="text-destructive-emphasis">*</span></label>
+            <input id="risk-title" type="text" x-model="form.title"
+                   class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                   placeholder="What could go wrong?">
+        </div>
+        <div>
+            <label for="risk-description" class="block text-sm font-medium mb-1">Description</label>
+            <textarea id="risk-description" rows="2" x-model="form.description"
+                      class="flex min-h-[64px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      placeholder="Context and consequence"></textarea>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+                <label for="risk-likelihood" class="block text-sm font-medium mb-1">Likelihood (1-5) <span class="text-destructive-emphasis">*</span></label>
+                <select id="risk-likelihood" x-model="form.likelihood"
+                        class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+                    <option value="1">1</option>
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                    <option value="4">4</option>
+                    <option value="5">5</option>
+                </select>
+            </div>
+            <div>
+                <label for="risk-impact" class="block text-sm font-medium mb-1">Impact (1-5) <span class="text-destructive-emphasis">*</span></label>
+                <select id="risk-impact" x-model="form.impact"
+                        class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+                    <option value="1">1</option>
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                    <option value="4">4</option>
+                    <option value="5">5</option>
+                </select>
+            </div>
+        </div>
+        <div>
+            <label for="risk-owner" class="block text-sm font-medium mb-1">Owner</label>
+            <input id="risk-owner" type="text" x-model="form.owner"
+                   class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                   placeholder="Who carries this risk?">
+        </div>
+        <div>
+            <label for="risk-mitigation" class="block text-sm font-medium mb-1">Mitigation plan</label>
+            <textarea id="risk-mitigation" rows="2" x-model="form.mitigation_plan"
+                      class="flex min-h-[64px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                      placeholder="What reduces it?"></textarea>
+        </div>
+        <div x-show="error" x-cloak role="alert"
+             class="rounded-md bg-destructive/10 border border-destructive/20 px-3 py-2 text-sm text-destructive-emphasis"
+             x-text="error"></div>
+    </div>
+    <div class="flex justify-end gap-3 mt-6 pt-4 border-t border-border">
+        <button type="button" data-modal-close="create-risk-modal"
+                class="inline-flex h-9 items-center justify-center rounded-md border border-input bg-background px-4 text-sm font-medium hover:bg-accent transition-colors">Cancel</button>
+        <button type="button" @click="submit()" :disabled="saving"
+                class="inline-flex h-9 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:pointer-events-none">
+            <span x-text="saving ? 'Saving' : 'Add Risk'"></span>
+        </button>
+    </div>
+    {% endcall %}
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function riskRegister() {
+    return {
+        query: '',
+        statusFilter: '',
+        saving: false,
+        error: '',
+        form: {
+            title: '', description: '', likelihood: '3', impact: '3',
+            owner: '', mitigation_plan: ''
+        },
+
+        matches(title, owner, status) {
+            if (this.statusFilter && status !== this.statusFilter) return false;
+            const q = this.query.trim().toLowerCase();
+            if (!q) return true;
+            return (title || '').toLowerCase().includes(q)
+                || (owner || '').toLowerCase().includes(q);
+        },
+
+        openCreate() {
+            this.form.title = '';
+            this.form.description = '';
+            this.form.likelihood = '3';
+            this.form.impact = '3';
+            this.form.owner = '';
+            this.form.mitigation_plan = '';
+            this.error = '';
+            this.saving = false;
+            Platform.modal.open('create-risk-modal');
+        },
+
+        submit() {
+            if (this.saving) return;
+            // The endpoint requires title, likelihood and impact. Checked here too so
+            // the message lands beside the field rather than after a round trip.
+            if (!String(this.form.title || '').trim()) {
+                this.error = 'Title is required.';
+                return;
+            }
+            this.saving = true;
+            this.error = '';
+            const self = this;
+            const payload = {
+                title: this.form.title,
+                description: this.form.description,
+                likelihood: Number(this.form.likelihood),
+                impact: Number(this.form.impact),
+                owner: this.form.owner,
+                mitigation_plan: this.form.mitigation_plan
+            };
+            // silent: this modal shows its own inline error, so a toast would duplicate it.
+            Platform.fetch.post('/api/risks', payload, { silent: true })
+                .then(function (data) {
+                    if (data && data.error) {
+                        self.error = data.error;
+                        return;
+                    }
+                    Platform.modal.close('create-risk-modal');
+                    Platform.toast.success('Risk recorded.');
+                    window.location.reload();
+                })
+                .catch(function (err) {
+                    self.error = 'Could not save the risk.';
+                    // Never swallow: the user sees the inline message, the console keeps the cause.
+                    throw err;
+                })
+                .finally(function () {
+                    self.saving = false;
+                });
+        }
+    };
+}
+</script>
 {% endblock %}
