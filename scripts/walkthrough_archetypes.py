@@ -71,7 +71,11 @@ def geometry(page):
 
 def check_page(page, persona, label, path, must_contain=()):
     errors = []
-    handler = lambda m: errors.append(m.text) if m.type == "error" else None
+
+    def handler(message):
+        if message.type == "error":
+            errors.append(message.text)
+
     page.on("console", handler)
     page.on("pageerror", lambda e: errors.append("pageerror: %s" % e))
     resp = page.goto(BASE + path, wait_until="networkidle")
@@ -107,6 +111,48 @@ def discoverable(page, persona, needle):
     return hit
 
 
+
+def cto_classifies_in_the_ui(page, persona):
+    """Do the CTO's actual job through the actual controls, not the endpoint.
+
+    A server-side journey test POSTs to /technology/radar/classify and asserts
+    the response. It therefore cannot see a control a CSP has made inert, a
+    form wired to the wrong action, or -- the defect this step found -- a
+    successful submit that navigates the user to a raw JSON body and leaves
+    them there with no way back but the browser's Back button.
+    """
+    page.goto(BASE + "/technology/radar/", wait_until="networkidle")
+    # Prefer an unclassified element; fall back to reclassifying one that is
+    # already on the radar. Both submit the same form to the same endpoint, and
+    # a step that only works on a freshly seeded database is a step that passes
+    # once and then reports a product problem that is really fixture exhaustion.
+    testid = "radar-classify-"
+    if page.locator("[data-testid^='radar-classify-']").count() == 0:
+        testid = "radar-reclassify-"
+    if page.locator("[data-testid^='%s']" % testid).count() == 0:
+        note(persona, "classify a technology", "WORKS BUT POOR",
+             "no technology-layer element on the radar to act on")
+        return
+    row = page.locator("form:has([data-testid^='%s'])" % testid).first
+    ring = row.locator("select[name='ring']")
+    if ring.count():
+        ring.select_option("trial")
+    row.locator("[data-testid^='%s']" % testid).click()
+    page.wait_for_load_state("networkidle")
+
+    landed = page.url.replace(BASE, "")
+    body = page.content()
+    on_the_radar = "/technology/radar/" in page.url and "<html" in body.lower()
+    is_raw_json = body.strip().startswith("<html><head><meta") and '"success"' in body
+
+    if not on_the_radar or is_raw_json:
+        note(persona, "classify a technology", "BROKEN",
+             "submit landed on %s, not back on the radar" % landed)
+        return
+    note(persona, "classify a technology", "WORKS WELL",
+         "submitted and returned to %s" % landed)
+
+
 with sync_playwright() as pw:
     browser = pw.chromium.launch()
     for persona, email, steps in [
@@ -128,6 +174,7 @@ with sync_playwright() as pw:
             discoverable(page, persona, "/technology/radar")
             check_page(page, persona, "technology radar", "/technology/radar/",
                        must_contain=("Kafka 3.x",))
+            cto_classifies_in_the_ui(page, persona)
         elif steps == "capabilities":
             discoverable(page, persona, "capability")
             check_page(page, persona, "capability map", "/capability-map/")

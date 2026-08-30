@@ -546,6 +546,26 @@ def gate_unreachable_actions(baseline: int) -> Result:
     return Result("unreachable-actions", PASS if count <= baseline else FAIL, detail, count, baseline)
 
 
+def gate_inline_handlers(baseline: int) -> Result:
+    """No inline event handler attribute -- this app's CSP refuses to run them.
+
+    script-src carries no 'unsafe-inline' and no 'unsafe-hashes', and a nonce
+    does not cover attributes, so onclick=/onchange=/onsubmit= render fine and
+    never fire. Sixteen were live when this gate was written, including six
+    destructive forms whose confirmation dialog never appeared -- Delete
+    submitted straight through -- and the admin role select, which silently
+    stopped changing anyone's role. Every template parsed, every route returned
+    200, and every gate was green.
+    """
+    proc = _run([sys.executable, "scripts/check_inline_handlers.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("inline-handlers", FAIL, f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    detail = "" if count <= baseline else "run scripts/check_inline_handlers.py to list them"
+    return Result("inline-handlers", PASS if count <= baseline else FAIL, detail, count, baseline)
+
+
 def gate_template_syntax() -> Result:
     """Every Jinja template parses. Gated at ZERO.
 
@@ -1579,6 +1599,13 @@ def build_gates(baseline: dict) -> list[Gate]:
                          "names (a same-named macro in another file is the usual "
                          "cause), or append 'macro-kwargs-ok: <reason>'",
              tags=["static", "ui"]),
+        Gate("inline-handlers", "no inline event handler the CSP refuses to run",
+             "ratchet", lambda: gate_inline_handlers(baseline["inline_handlers"]),
+             remediation="use data-confirm / data-autosubmit (wired in "
+                         "app/static/js/ui/modal.js), bind the listener in a "
+                         "nonce'd <script> block, or use Alpine's @click/@submit; "
+                         "or append 'inline-handler-ok: <reason>'",
+             tags=["static", "ui", "security"]),
         Gate("unreachable-actions", "no handler branch its own validator rejects first",
              "ratchet", lambda: gate_unreachable_actions(baseline["unreachable_actions"]),
              remediation="either delete the branch (the product does not have that "
@@ -1798,6 +1825,7 @@ DEFAULT_BASELINE = {
     "attr_quoting": 0,
     "journey_coverage": 0,
     "unreachable_actions": 0,
+    "inline_handlers": 0,
 }
 
 

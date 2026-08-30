@@ -42,7 +42,7 @@
                 </label>
                 <select id="protocol" name="protocol"
                         class="w-full rounded-md border border-border bg-background text-foreground px-3 py-2 text-sm focus:ring-2 focus:ring-primary/50"
-                        onchange="toggleProtocolFields(this.value)">
+                        data-protocol-toggle>
                     <option value="oidc" {% if not config or config.protocol == 'oidc' %}selected{% endif %}>
                         OIDC / OpenID Connect (recommended)
                     </option>
@@ -195,7 +195,19 @@ function toggleProtocolFields(protocol) {
         saml.classList.add('hidden');
     }
 }
-// Apply on page load
-toggleProtocolFields(document.getElementById('protocol').value);
+// The change handler is bound here, not with an inline onchange= attribute.
+// This app ships an enforcing CSP whose script-src has no 'unsafe-inline', and a
+// nonce does not cover event handler attributes -- so onchange= was refused by
+// the browser and switching between OIDC and SAML never revealed the right
+// fields. The <script> block itself is fine: template-authored script tags are
+// nonce'd at compile time (app/_bootstrap/security.py).
+var protocolSelect = document.getElementById('protocol');
+if (protocolSelect) {
+    protocolSelect.addEventListener('change', function () {
+        toggleProtocolFields(this.value);
+    });
+    // Apply on page load
+    toggleProtocolFields(protocolSelect.value);
+}
 </script>
 {% endblock %}

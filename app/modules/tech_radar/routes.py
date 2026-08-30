@@ -7,7 +7,15 @@ from __future__ import annotations
 
 import logging
 
-from flask import Blueprint, jsonify, render_template, request
+from flask import (
+    Blueprint,
+    flash,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    url_for,
+)
 from flask_login import current_user, login_required
 
 from app.decorators import require_roles
@@ -54,6 +62,23 @@ def api_state():
     })
 
 
+def _wants_json() -> bool:
+    """True when the caller is the fetch/XHR API rather than the radar's own form.
+
+    The radar page submits a plain HTML <form> to this endpoint. It used to
+    reply with jsonify() unconditionally, so a CTO who classified a technology
+    in the UI was navigated to /technology/radar/classify and left staring at
+    `{"success": true, "entry": {...}}` with no way back but the Back button --
+    the browser walkthrough found this; no server-side test could, because a
+    test client asserts on the JSON and never has to look at it.
+    """
+    if request.is_json:
+        return True
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return True
+    accept = request.accept_mimetypes
+    return accept["application/json"] > accept["text/html"]
+
 @tech_radar_bp.route("/classify", methods=["POST"])
 @login_required
 @require_roles("admin", "administrator", "architect", "enterprise_architect", "cto", "platform_admin")
@@ -65,15 +90,29 @@ def classify():
     ring = (request.form.get("ring") or "").strip().lower()
     rationale = request.form.get("rationale") or ""
 
+    def _fail(message, status):
+        if _wants_json():
+            return jsonify({"success": False, "error": message}), status
+        flash(message, "error")
+        return redirect(url_for("tech_radar.index")), status
+
     if not element_id or ring not in RADAR_RINGS:
-        return jsonify({"success": False, "error": "archimate_element_id and a valid ring are required"}), 400
+        return _fail("archimate_element_id and a valid ring are required", 400)
 
     try:
         entry = service.classify(element_id, ring, rationale, current_user.id)
     except ValueError as exc:
-        return jsonify({"success": False, "error": str(exc)}), 400
+        return _fail(str(exc), 400)
     except Exception:  # noqa: BLE001
         logger.exception("tech radar classify failed for element %s", element_id)
-        return jsonify({"success": False, "error": "Could not save classification"}), 500
+        return _fail("Could not save classification", 500)
 
-    return jsonify({"success": True, "entry": entry.to_dict()})
+    if _wants_json():
+        return jsonify({"success": True, "entry": entry.to_dict()})
+
+    flash(
+        "%s moved to %s." % (entry.element.name if entry.element else "Technology",
+                             RADAR_RING_LABELS.get(ring, ring)),
+        "success",
+    )
+    return redirect(url_for("tech_radar.index"))

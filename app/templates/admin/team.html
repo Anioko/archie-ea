@@ -85,7 +85,7 @@
                             {% set _role_from_member = member.role|default('') %}
                             {% set _raw_role = _role_from_map if _role_from_map else _role_from_member %}
                             {% set current_role = _raw_role if _raw_role in valid_roles else (valid_roles[0] if valid_roles else '') %}
-                            <select name="role" onchange="this.form.submit()"
+                            <select name="role" data-autosubmit
                                 class="rounded-md border-border shadow-sm focus:border-primary focus:ring-primary sm:text-sm" aria-label="Role">
                                 {% for r in valid_roles %}
                                     <option value="{{ r }}" {% if current_role == r %}selected{% endif %}>

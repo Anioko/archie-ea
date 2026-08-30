@@ -48,15 +48,30 @@
             <p class="text-sm font-medium truncate">{{ row.element.name or '—' }}</p>
             <p class="text-xs text-muted-foreground">{{ row.element.type or '—' }}{% if row.entry.rationale %} · {{ row.entry.rationale }}{% endif %}</p>
           </div>
-          <form method="POST" action="{{ url_for('tech_radar.classify') }}" class="shrink-0">
+          {#
+            An explicit submit button rather than an inline onchange handler.
+            The CSP this app ships (script-src 'self' 'nonce-...' 'strict-dynamic',
+            no 'unsafe-inline') refuses inline event handlers, so the onchange
+            never ran: the select moved, nothing submitted, and no error
+            reached the user. Once a technology had been classified its ring
+            could never be changed again. Found by driving the page in a real
+            browser -- a server-side test POSTs to the endpoint and never sees
+            the control at all. Matches the "Set" control on unclassified rows
+            below, and works with scripting off entirely.
+          #}
+          <form method="POST" action="{{ url_for('tech_radar.classify') }}" class="flex items-center gap-2 shrink-0">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="archimate_element_id" value="{{ row.element.id }}">
-            <select name="ring" onchange="this.form.submit()" aria-label="Reclassify {{ row.element.name }}"
+            <select name="ring" aria-label="Reclassify {{ row.element.name }}"
               class="h-8 rounded-md border border-input bg-transparent px-2 text-xs">
               {% for r in rings %}
               <option value="{{ r }}" {% if r == ring %}selected{% endif %}>{{ ring_labels[r] }}</option>
               {% endfor %}
             </select>
+            <button type="submit" data-testid="radar-reclassify-{{ row.element.id }}"
+              class="inline-flex items-center justify-center rounded-md text-xs font-medium border border-input bg-transparent hover:bg-accent hover:text-accent-foreground h-8 px-3">
+              Move
+            </button>
           </form>
         </li>
         {% endfor %}

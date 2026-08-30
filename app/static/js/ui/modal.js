@@ -828,6 +828,56 @@
         setTimeout(_initVisibilityObserver, 100);
     });
 
+    // ── CSP-safe declarative behaviours ──────────────────────────────────────
+    //
+    // This app ships an enforcing CSP with no 'unsafe-inline' in script-src, so
+    // an inline event handler attribute NEVER RUNS. The browser refuses it and
+    // logs "Refused to execute inline event handler", which nobody sees, and the
+    // control looks fine and does nothing.
+    //
+    // That was not theoretical. Six destructive forms carried
+    // onsubmit="return Platform.modal.confirmSubmit(...)" -- so the confirmation
+    // dialog never appeared and Delete submitted straight through, unconfirmed.
+    // Four selects carried onchange="this.form.submit()" and silently stopped
+    // filtering or, on the admin team page, stopped changing anyone's role.
+    //
+    // These two delegated listeners give the same behaviour declaratively, from
+    // a file loaded with <script src>, which the CSP allows:
+    //
+    //     <form data-confirm="Delete X? This cannot be undone.">   ...
+    //     <select data-autosubmit>                                 ...
+    //
+    // Delegation also means markup rendered after load is covered, which an
+    // attribute-by-attribute rewiring at DOMContentLoaded would miss.
+    global.document.addEventListener('submit', function (event) {
+        var form = event.target;
+        if (!form || form.tagName !== 'FORM') return;
+        var message = form.getAttribute('data-confirm');
+        if (!message) return;
+        if (form.dataset.confirmed === 'yes') {
+            delete form.dataset.confirmed;
+            return;
+        }
+        event.preventDefault();
+        confirmDialog(message).then(function (ok) {
+            if (!ok) return;
+            form.dataset.confirmed = 'yes';
+            // requestSubmit keeps validation and the submitter; form.submit()
+            // would skip both and would re-enter this listener.
+            if (typeof form.requestSubmit === 'function') form.requestSubmit();
+            else form.submit();
+        });
+    }, true);
+
+    global.document.addEventListener('change', function (event) {
+        var el = event.target;
+        if (!el || !el.hasAttribute || !el.hasAttribute('data-autosubmit')) return;
+        var form = el.closest ? el.closest('form') : null;
+        if (!form) return;
+        if (typeof form.requestSubmit === 'function') form.requestSubmit();
+        else form.submit();
+    });
+
     // ── Public API ───────────────────────────────────────────────────────────
     function confirmSubmit(event, message, options) {
         if (event && typeof event.preventDefault === 'function') event.preventDefault();

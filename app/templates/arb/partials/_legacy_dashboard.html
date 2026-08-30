@@ -175,7 +175,7 @@
             </div>
             <form method="GET" action="{{ url_for('arb.dashboard') }}" class="flex items-center gap-2">
                 <input type="hidden" name="search" value="{{ request.args.get('search', '') }}">
-                <select name="pending_status" class="rounded-md border border-input bg-background px-3 py-1.5 text-sm" onchange="this.form.submit()" aria-label="Filter by status">
+                <select name="pending_status" class="rounded-md border border-input bg-background px-3 py-1.5 text-sm" data-autosubmit aria-label="Filter by status">
                     <option value="all" {% if pending_status == 'all' %}selected{% endif %}>All Statuses</option>
                     <option value="draft" {% if pending_status == 'draft' %}selected{% endif %}>Draft</option>
                     <option value="submitted" {% if pending_status == 'submitted' %}selected{% endif %}>Submitted</option>

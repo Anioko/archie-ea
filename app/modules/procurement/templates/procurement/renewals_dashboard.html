@@ -65,7 +65,7 @@
     <div class="bg-card border border-border rounded-lg p-4">
         <form method="get" class="flex items-center gap-4">
             <label class="text-sm text-muted-foreground">Show contracts expiring within:</label>
-            <select name="days" onchange="this.form.submit()"
+            <select name="days" data-autosubmit
                     class="px-3 py-2 rounded-md border border-input bg-background text-sm" aria-label="Days">
                 <option value="30" {% if days_filter|int == 30 %}selected{% endif %}>30 days</option>
                 <option value="60" {% if days_filter|int == 60 %}selected{% endif %}>60 days</option>
