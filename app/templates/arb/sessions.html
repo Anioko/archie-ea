@@ -312,6 +312,19 @@
 <script>
   window.__ARB_CONFIG__ = window.__ARB_CONFIG__ || {};
   window.__ARB_CONFIG__.createSessionUrl = '{{ url_for("arb.create_session") }}';
+  {#
+    This template serves BOTH /arb/sessions and /arb/reviews, and it includes
+    arb/_create_review_modal.html and loads dashboard.js -- but it used to declare
+    only createSessionUrl. dashboard.js's loadFormData() reads
+    __ARB_CONFIG__.formDataUrl and returns immediately when it is absent, so on
+    these two pages the Review Type and Decision Type dropdowns were permanently
+    empty while formOptions.loadError stayed false: the app never knew it had
+    failed. The QA audit of 30 Aug 2026 (High #8) recorded it as "No user can
+    create a new ARB review through the UI ... blocking a core governance
+    workflow entirely." Both URLs the shared modal needs are declared here now.
+  #}
+  window.__ARB_CONFIG__.createReviewUrl = '{{ url_for("arb.create_review") }}';
+  window.__ARB_CONFIG__.formDataUrl = '{{ url_for("arb.api_form_data") }}';
 </script>
 <script src="{{ url_for('static', filename='js/arb/sessions.js') }}"></script>
 {# dashboard.js provides arbReviewCreateModal() for the shared Create Review modal #}

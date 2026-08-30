@@ -51,25 +51,44 @@ function arbReviewCreateModal() {
 
     loadFormData() {
       const url = window.__ARB_CONFIG__?.formDataUrl;
-      if (!url || this.formDataLoaded) return;
+      if (this.formDataLoaded) return;
+      // A missing URL used to be a SILENT return, so a page that included this
+      // modal without declaring formDataUrl rendered permanently empty Review
+      // Type and Decision Type dropdowns with loadError false -- the app could
+      // not tell it had failed, and neither could the user. That is how ARB
+      // review creation was blocked on /arb/reviews for as long as it was.
+      // Absent configuration is a failure, and it says so.
+      if (!url) {
+        this.formOptions.loadError = true;
+        this.errorMsg = 'This page did not provide the review form data URL, so the '
+          + 'review options could not be loaded. Please report this.';
+        return;
+      }
       // Platform.fetch throws on non-ok responses; we catch to paint inline error state
-      Platform.fetch.get(url, null, { silent: true })
+      Platform.fetch.get(url, { silent: true })
         .then(data => {
-          if (data.success) {
-            this.formOptions.solutions = data.solutions || [];
-            this.formOptions.review_types = data.review_types || [];
-            this.formOptions.adrs = data.adrs || [];
-            this.formOptions.architecture_models = data.architecture_models || [];
-            this.formOptions.capabilities = data.capabilities || [];
-            this.formOptions.applications = data.applications || [];
-            this.formOptions.decision_types = data.decision_types || [];
-            this.formOptions.impact_types = data.impact_types || [{ value: 'modifies', label: 'Modifies' }];
-            this.formOptions.capability_required_review_types = data.capability_required_review_types || [];
-            if (data.impact_types && data.impact_types.length > 0) {
-              this.formData.capability_impact_type = data.impact_types[0].value;
-            }
-            this.formDataLoaded = true;
+          // An envelope that is not success:true is a failure, not a no-op. This
+          // branch had no else, so an unexpected shape left every dropdown empty
+          // and loadError false.
+          if (!data || !data.success) {
+            this.formOptions.loadError = true;
+            this.errorMsg = (data && data.error)
+              || 'The review form options could not be loaded. Please refresh.';
+            return;
           }
+          this.formOptions.solutions = data.solutions || [];
+          this.formOptions.review_types = data.review_types || [];
+          this.formOptions.adrs = data.adrs || [];
+          this.formOptions.architecture_models = data.architecture_models || [];
+          this.formOptions.capabilities = data.capabilities || [];
+          this.formOptions.applications = data.applications || [];
+          this.formOptions.decision_types = data.decision_types || [];
+          this.formOptions.impact_types = data.impact_types || [{ value: 'modifies', label: 'Modifies' }];
+          this.formOptions.capability_required_review_types = data.capability_required_review_types || [];
+          if (data.impact_types && data.impact_types.length > 0) {
+            this.formData.capability_impact_type = data.impact_types[0].value;
+          }
+          this.formDataLoaded = true;
         })
         .catch(() => {
           this.formOptions.loadError = true;
