@@ -43,6 +43,27 @@
                     saveError:  '',
                     editSaving: false,
 
+                    // ── Create form state ─────────────────────────────
+                    // The create modal in enterprise/work_packages.html binds
+                    // createForm.*, createError and createSaving, and its Create
+                    // button calls submitCreateWorkPackage(). None of it existed on
+                    // this component, so every click threw
+                    // "submitCreateWorkPackage is not a function" from the Alpine
+                    // CSP adapter and no request was ever attempted -- silently:
+                    // no toast, no validation message, the modal simply did nothing.
+                    // The POST endpoint it needs has been there all along
+                    // (/enterprise/api/work-packages, PROD-008).
+                    createForm: {
+                        name:             '',
+                        summary:          '',
+                        status:           'Planned',
+                        priority:         'Normal',
+                        percent_complete: 0,
+                        target_date:      ''
+                    },
+                    createError:  '',
+                    createSaving: false,
+
                     // ── Bulk delete state ─────────────────────────────
                     bulkConfirmText:  '',
                     deleteInProgress: false,
@@ -68,6 +89,53 @@
                         this.saveError  = '';
                         this.editSaving = false;
                         Platform.modal.open('edit-work-package-modal');
+                    },
+
+                    openCreateModal: function () {
+                        this.createForm.name             = '';
+                        this.createForm.summary          = '';
+                        this.createForm.status           = 'Planned';
+                        this.createForm.priority         = 'Normal';
+                        this.createForm.percent_complete = 0;
+                        this.createForm.target_date      = '';
+                        this.createError  = '';
+                        this.createSaving = false;
+                        Platform.modal.open('create-work-package-modal');
+                    },
+
+                    submitCreateWorkPackage: function () {
+                        if (this.createSaving) return;
+                        // Name is required by the endpoint (MISSING_NAME). Check it
+                        // here too so the user gets the message beside the field
+                        // rather than a round trip.
+                        if (!String(this.createForm.name || '').trim()) {
+                            this.createError = 'Name is required.';
+                            return;
+                        }
+                        this.createSaving = true;
+                        this.createError  = '';
+                        const self = this;
+                        // silent: the modal paints its own inline createError, so a
+                        // global toast would duplicate it.
+                        Platform.fetch.post('/enterprise/api/work-packages', this.createForm, { silent: true })
+                            .then(function (data) {
+                                if (data && data.error) {
+                                    self.createError = data.error;
+                                    return;
+                                }
+                                Platform.modal.close('create-work-package-modal');
+                                self.refresh();
+                                Platform.toast.success('Work package created.');
+                            })
+                            .catch(function (err) {
+                                self.createError = 'Create failed.';
+                                // Never swallow: the caller sees the inline message,
+                                // the console keeps the cause.
+                                throw err;
+                            })
+                            .finally(function () {
+                                self.createSaving = false;
+                            });
                     },
 
                     saveWorkPackage: function () {

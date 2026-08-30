@@ -86,3 +86,27 @@ python scripts/check_evidence_contract.py --staged         # pre-commit
 python scripts/check_evidence_contract.py --range A..B     # a range
 python scripts/check_evidence_contract.py --rule provenance
 ```
+
+## A gate that was built and deliberately not shipped
+
+30 Aug 2026. The QA audit's High #1 was a click handler calling a method its
+component did not have (`submitCreateWorkPackage is not a function`) -- a
+complete create modal wired to nothing, failing silently. A static gate for that
+class was written, and then dropped.
+
+It reached 357 findings, and the sampled ones were false: it could not resolve
+methods across `dataTable.extend` mixins, bundled components, or factory bodies
+longer than its scan window, so it reported handlers as missing that were
+defined and working. The weaker, zero-false-positive variant -- flag a name
+that appears nowhere in any shipped JS -- would not have caught the motivating
+defect, because that method DID exist, in a different template's component.
+
+So the class is real and the static check is not honest enough to enforce it.
+It belongs to the runtime layers instead: the archetype walkthrough clicking
+the control, and `production_readiness_audit.py`'s console-error capture, which
+is how the audit found it in the first place.
+
+Recorded here rather than quietly abandoned, because "no gate" and "a gate we
+gave up on" are different facts, and the next person deserves the second one.
+A gate with false positives is worse than no gate -- that rule applies to gates
+written to satisfy a request, too.

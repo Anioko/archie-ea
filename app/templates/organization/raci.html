@@ -93,8 +93,14 @@
       </div>
     </div>
   </div>
-</div>
-
+  {#
+    Inside x-data="raciMatrix()", deliberately. This modal used to sit AFTER the
+    component's closing </div>, so everything it binds -- searchQuery,
+    searchResults, addStakeholder and runSearch -- resolved against no component
+    at all. Typing in the search box threw "runSearch is not a function" from the
+    CSP-safe Alpine evaluator on every keystroke, and no stakeholder could be
+    added. A modal is still a child of the scope whose data it uses.
+  #}
 {% call modal(id='org-raci-add-stakeholder', title='Add Stakeholder', description='Search Business Actors, Business Roles or Users.', size='default') %}
 <div class="space-y-4" data-testid="raci-add-stakeholder-form">
   <div>
@@ -124,6 +130,8 @@
   </div>
 </div>
 {% endcall %}
+</div>
+
 {% endblock %}
 
 {% block extra_js %}
