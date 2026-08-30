@@ -336,7 +336,13 @@
 
                 // Check if code has already been generated for this solution
                 // (enables skipping to Step 7 and showing deploy panel)
-                _fetch(API_BASE + '/' + self.solutionId + '/codegen/file-list')
+                // `silent: true` because 404 IS this endpoint's "nothing generated
+                // yet" answer, and Platform.fetch's default handler toasted a bare
+                // "NOT FOUND" at the user before the 404-tolerant .catch() below
+                // ever ran — so every freshly created solution opened its journey
+                // behind two error toasts describing a state that is not an error.
+                // The genuine failures are still reported, by the .catch().
+                _fetch(API_BASE + '/' + self.solutionId + '/codegen/file-list', { silent: true })
                     .then(function (data) {
                         if (data && data.files && data.files.length > 0) {
                             self.hasGeneratedFiles = true;
@@ -359,6 +365,59 @@
             },
 
             // ── Step navigation ─────────────────────────────────────────
+
+            /* Are the code-generation steps (7 Generate, 8 Load Data) open?
+             *
+             * journey_v3.html calls this in two places — the stepper's
+             * `locked_steps_expr` and the "Submit to ARB above to unlock code
+             * generation" hint — but nothing ever defined it, so every render of
+             * the journey threw `TypeError: codegenUnlocked is not a function`.
+             * The stepper then received no locked list at all, which is the
+             * opposite of the intended default: an ungoverned solution could walk
+             * straight into Generate.
+             *
+             * The gate is governance, matching the on-screen copy: a solution is
+             * unlocked once it has actually been put in front of the ARB. The
+             * statuses below are exactly those written after a submission
+             * (arb_submission_service, arb_routes, arb_workflow_routes,
+             * architecture_assistant_routes); `draft`/`proposed`/`in_progress`
+             * are the pre-submission states journey_v2_routes treats as active
+             * work. A live submission result in this session counts too, since
+             * the hidden governance-status input was rendered before it happened.
+             *
+             * Already-generated code also unlocks, so returning to a finished
+             * solution does not hide its own output behind a re-submission.
+             */
+            codegenUnlocked: function () {
+                if (this.arbSubmitResult) return true;
+                if (this.codegenResult) return true;
+                if (window.__codegenInit && window.__codegenInit.hasFiles) return true;
+                return [
+                    'arb_review', 'arb_submitted', 'under_review',
+                    'approved', 'conditionally_approved', 'rejected', 'withdrawn',
+                ].indexOf(this.governanceStatus) !== -1;
+            },
+
+            /* The decision points Step 4's card list can actually render.
+             *
+             * `decisionPoints` is written from two sources with two different
+             * shapes: the domain-mode `/reasoning/decisions` payload, whose items
+             * carry an `elements` array, and (in the autopilot chain) the
+             * `/reasoning/detect-gaps` payload, which is aliased straight onto the
+             * same variable and has no `elements` at all. The card template reads
+             * `dp.elements.length` and `dp.elements.map(...)`, so a gap-shaped item
+             * raised `TypeError: map is not a function` — an *uncaught* throw, which
+             * aborts Alpine's render of the whole subtree rather than degrading one
+             * card. Reasoning gaps have their own list higher up the page, so the
+             * honest answer here is to render the items this block is written for
+             * and count only those, never to coerce a missing array to [] and print
+             * a confident "0 elements" for a record that was never measured.
+             */
+            decisionPointCards: function () {
+                return (this.decisionPoints || []).filter(function (d) {
+                    return d && Array.isArray(d.elements);
+                });
+            },
 
             canProceed: function () {
                 // If code has already been generated, allow skipping to any step.

@@ -180,8 +180,9 @@
                             {% call tabs.tabs_content(value='paste') %}
                                 <div class="pt-4 space-y-4">
                                     <div>
-                                        <label class="text-sm font-medium">Paste CSV Data</label>
+                                        <label for="paste-csv-data" class="text-sm font-medium">Paste CSV Data</label>
                                         <textarea
+                                            id="paste-csv-data"
                                             x-model="form.paste_data"
                                             @input="form.source_type = 'paste'; parsePasteData()"
                                             placeholder="name,description,vendor,technology&#10;App1,Description of App1,Vendor A,Java&#10;App2,Description of App2,Vendor B,Python"

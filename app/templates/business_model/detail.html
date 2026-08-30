@@ -17,7 +17,7 @@
     {'key': 'revenue_streams', 'label': 'Revenue Streams', 'icon': 'trending-up', 'area': 'rev', 'class': 'bg-muted/20'},
 ] %}
 
-<div class="flex-1 overflow-auto" x-data="businessModelCanvas({
+<div class="flex-1 overflow-auto" x-data='businessModelCanvas({
     canvasId: {{ canvas.id }},
     blocks: {{ {
         'key_partners': canvas.key_partners or '',
@@ -34,7 +34,7 @@
     blockApiUrl: {{ url_for('business_model.save_block', canvas_id=canvas.id) | tojson }},
     updateApiUrl: {{ url_for('business_model.update_canvas', canvas_id=canvas.id) | tojson }},
     draftBlockApiUrl: {{ url_for('business_model.ai_draft_block', canvas_id=canvas.id) | tojson }}
-  })" x-cloak>
+  })' x-cloak>
 
   {{ page_header(
       title=canvas.name or 'Untitled Canvas',
@@ -58,7 +58,7 @@
         <span class="text-sm font-medium text-foreground">Operating Model Archetype</span>
         <span class="text-xs text-muted-foreground">(Ross/Weill)</span>
       </div>
-      <select x-model="operatingModelType" @change="saveOperatingModel()"
+      <select aria-label="Operating model archetype" x-model="operatingModelType" @change="saveOperatingModel()"
         data-testid="bmc-operating-model-select"
         class="flex h-9 w-full sm:w-64 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
         <option value="">Not set</option>

@@ -612,8 +612,20 @@ function applicationCreateForm() {
 
       const url = window.__APP_CONFIG__?.createApplicationUrl || '/applications/create';
 
+      // The create schema (ApplicationCreateSchema) names the field
+      // `criticality`, and rejects unknown keys outright, so posting the
+      // form's own `business_criticality` 400ed EVERY submission. It also
+      // validates each enum with OneOf, so an untouched "Select..." option
+      // ('') is not "no value" to it -- it is an invalid value. Send the
+      // schema's names, and omit anything the user left blank.
+      const payload = {};
+      for (const [key, value] of Object.entries(this.form)) {
+        if (value === '' || value === null || value === undefined) continue;
+        payload[key === 'business_criticality' ? 'criticality' : key] = value;
+      }
+
       try {
-        const data = await Platform.fetch.post(url, this.form, { silent: true });
+        const data = await Platform.fetch.post(url, payload, { silent: true });
 
         // Success: close modal and reload
         Platform.modal.close('modal-create');
@@ -633,7 +645,8 @@ function applicationCreateForm() {
           const flattened = {};
           for (const field of Object.keys(apiErrors)) {
             const msgs = apiErrors[field];
-            flattened[field] = Array.isArray(msgs) ? msgs[0] : msgs;
+            const formField = field === 'criticality' ? 'business_criticality' : field;
+            flattened[formField] = Array.isArray(msgs) ? msgs[0] : msgs;
           }
           this.fieldErrors = flattened;
           this.errorMsg = Object.entries(flattened).map(([f, m]) => `${f}: ${m}`).join('; ');

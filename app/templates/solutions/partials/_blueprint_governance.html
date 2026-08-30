@@ -1041,7 +1041,7 @@
                             <input type="text" x-model="mapping.idp_group" placeholder="IdP Group" class="flex-1 rounded-md border border-input bg-background px-2 py-1 text-2xs text-foreground focus:border-primary focus:ring-1 focus:ring-primary"  aria-label="Role Mapping"/>
                             <span class="text-xs text-muted-foreground">&#8594;</span>
                             <input type="text" x-model="mapping.app_role" placeholder="App Role" class="flex-1 rounded-md border border-input bg-background px-2 py-1 text-2xs text-foreground focus:border-primary focus:ring-1 focus:ring-primary"  aria-label="App Role"/>
-                            <button type="button" @click="roleMappings.splice(idx, 1)" class="text-muted-foreground hover:text-destructive-emphasis shrink-0">
+                            <button aria-label="Remove role mapping" type="button" @click="roleMappings.splice(idx, 1)" class="text-muted-foreground hover:text-destructive-emphasis shrink-0">
                                 <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
                             </button>
                         </div>

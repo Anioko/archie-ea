@@ -257,16 +257,16 @@
     </div>
 
     {# Decision point cards (domain mode — element property decisions) #}
-    <div x-show="decisionPoints && decisionPoints.length > 0" x-cloak class="space-y-4">
+    <div x-show="decisionPointCards().length > 0" x-cloak class="space-y-4">
         {# Summary #}
         <div class="rounded-md border border-border bg-background px-4 py-3">
             <div class="flex items-center gap-4 text-sm">
-                <span class="font-medium" x-text="decisionPoints.length + ' decision categories'"></span>
+                <span class="font-medium" x-text="decisionPointCards().length + ' decision categories'"></span>
                 <span class="text-muted-foreground" x-text="'across ' + (decisionsTotalElements || 0) + ' elements'"></span>
             </div>
         </div>
 
-        <template x-for="dp in decisionPoints" :key="dp.type">
+        <template x-for="dp in decisionPointCards()" :key="dp.type">
             <div class="rounded-md border border-border">
                 <div class="px-4 py-3 bg-muted/30 border-b border-border">
                     <div class="flex items-center justify-between">

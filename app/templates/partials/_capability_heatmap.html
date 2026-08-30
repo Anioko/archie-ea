@@ -30,7 +30,7 @@
       {% for cap in invest %}
       <div
         class="rounded border border-success/20 bg-success/5 p-3 cursor-pointer hover:bg-success/10 transition-colors"
-        @click="selected = selected && selected.capability_id === '{{ cap.capability_id }}' ? null : {{ cap | tojson }}"
+        @click='selected = selected && selected.capability_id === {{ cap.capability_id | tojson }} ? null : {{ cap | tojson }}'
         data-capability-id="{{ cap.capability_id }}"
       >
         <p class="text-xs font-medium text-success-emphasis truncate">{{ cap.capability_name }}</p>
@@ -52,7 +52,7 @@
       {% for cap in maintain %}
       <div
         class="rounded border border-primary/20 bg-primary/5 p-3 cursor-pointer hover:bg-primary/10 transition-colors"
-        @click="selected = selected && selected.capability_id === '{{ cap.capability_id }}' ? null : {{ cap | tojson }}"
+        @click='selected = selected && selected.capability_id === {{ cap.capability_id | tojson }} ? null : {{ cap | tojson }}'
         data-capability-id="{{ cap.capability_id }}"
       >
         <p class="text-xs font-medium text-info-emphasis truncate">{{ cap.capability_name }}</p>
@@ -74,7 +74,7 @@
       {% for cap in divest %}
       <div
         class="rounded border border-warning/30 bg-warning/10 p-3 cursor-pointer hover:bg-warning/20 transition-colors"
-        @click="selected = selected && selected.capability_id === '{{ cap.capability_id }}' ? null : {{ cap | tojson }}"
+        @click='selected = selected && selected.capability_id === {{ cap.capability_id | tojson }} ? null : {{ cap | tojson }}'
         data-capability-id="{{ cap.capability_id }}"
       >
         <p class="text-xs font-medium text-warning-emphasis truncate">{{ cap.capability_name }}</p>
@@ -96,7 +96,7 @@
       {% for cap in absent %}
       <div
         class="rounded border border-border bg-muted/30 p-3 cursor-pointer hover:bg-muted transition-colors"
-        @click="selected = selected && selected.capability_id === '{{ cap.capability_id }}' ? null : {{ cap | tojson }}"
+        @click='selected = selected && selected.capability_id === {{ cap.capability_id | tojson }} ? null : {{ cap | tojson }}'
         data-capability-id="{{ cap.capability_id }}"
       >
         <p class="text-xs font-medium text-foreground truncate">{{ cap.capability_name }}</p>

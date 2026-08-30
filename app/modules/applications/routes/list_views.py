@@ -387,7 +387,20 @@ def application_list():
 
         # ── 7. Stats (always against full portfolio) ──────────────────────────
         # APP-030: lifecycle-only card counts from Abacus lifecycle_status codes.
-        _decommissioned_vals = {"5. decommissioned"}
+        # lifecycle_status holds TWO vocabularies in practice: the Abacus codes
+        # ("3. sunset", "5. decommissioned") that the filter dropdown offers, and
+        # the plain words ("sunset", "deprecated", "retired") written by imports,
+        # seeds and the ArchiMate side. Counting only the coded form made the
+        # tiles contradict the table right underneath them -- the list showed a
+        # row whose Lifecycle Status column read "Sunset" while the
+        # "Sunset/Decom Pipeline" tile above it read 0. Recognise both spellings
+        # so the tile and the column can never disagree; a plausible-but-wrong
+        # count is worse than none because the reader cannot tell.
+        _decommissioned_vals = {
+            "5. decommissioned",
+            "decommissioned",
+            "retired",
+        }
         _sunset_pipeline_vals = {
             "3. sunset",
             "4.1 decom decided",
@@ -395,6 +408,11 @@ def application_list():
             "4.3 read-only",
             "4.3 read only",
             "4.4 stopped",
+            "sunset",
+            "deprecated",
+            "sunsetting",
+            "end_of_life",
+            "end-of-life",
         }
         _stats_base = ApplicationComponent.query.filter(
             ~ApplicationComponent.name.ilike("(Duplicate)%", escape="\\")

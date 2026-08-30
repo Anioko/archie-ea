@@ -20,6 +20,12 @@
         };
     }
 
+    // Registered on `alpine:init`, not at script-evaluation time: this file is
+    // loaded from the template body while Alpine itself is deferred, so a bare
+    // `Alpine.data(...)` threw `ReferenceError: Alpine is not defined` and the
+    // whole BIZBOK grid never registered -- x-data="bizbokGrid(...)" then failed
+    // with `bizbokGrid is not a function`, leaving the grid permanently blank.
+    function registerBizbokGrid() {
     Alpine.data('bizbokGrid', function (config) {
         config = config || {};
         return {
@@ -374,4 +380,11 @@
             }
         };
     });
+    }
+
+    if (window.Alpine) {
+        registerBizbokGrid();
+    } else {
+        document.addEventListener('alpine:init', registerBizbokGrid, { once: true });
+    }
 }());

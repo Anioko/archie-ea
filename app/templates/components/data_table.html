@@ -218,7 +218,7 @@ if (!window._dataTableEngine) {
                 <div x-show="open" x-cloak x-transition
                      class="absolute left-0 top-full mt-1 z-50 w-52 rounded-md border border-border bg-popover shadow-lg">
                     <div class="p-1.5">
-                        <input type="text" placeholder="{{ filter.label }}..."
+                        <input aria-label="{{ filter.label }}" type="text" placeholder="{{ filter.label }}..."
                                class="flex h-8 w-full rounded-md bg-transparent px-2 py-1 text-sm placeholder:text-muted-foreground outline-none">
                     </div>
                     <div class="border-t border-border max-h-48 overflow-y-auto p-1">

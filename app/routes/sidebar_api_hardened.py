@@ -575,10 +575,14 @@ def api_global_search():
         # source the sidebar and the /modules directory already use, so a
         # module only has to be added once to become searchable everywhere.
         try:
-            from app.modules.modules_directory.routes import all_module_links
+            # visible_module_links(), not all_module_links(): the directory
+            # unions every role's zones, so the unfiltered list includes the
+            # admin / procurement / my-applications surfaces that hard-403 for
+            # most personas. A search hit that 403s on click is a dead result.
+            from app.modules.modules_directory.routes import visible_module_links
 
             q_lower = q.lower()
-            for link in all_module_links():
+            for link in visible_module_links():
                 if q_lower not in link["label"].lower():
                     continue
                 if link["endpoint"] not in current_app.view_functions:

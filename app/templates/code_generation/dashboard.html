@@ -48,7 +48,11 @@
 <label for="currentMode">Field</label>
     <input type="hidden" id="currentMode" value="{{ mode }}">
 <label for="contextId">Field</label>
-    <input type="hidden" id="contextId" value="{{ app_id or view_id }}">
+    {# `or ''`: with no application/view selected both are Python None, and
+       Jinja renders that as the literal string "None" — which is truthy in JS,
+       so the page requested /code-generation/api/context/application/None and
+       got a 404 on every unfiltered visit. #}
+    <input type="hidden" id="contextId" value="{{ app_id or view_id or '' }}">
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
@@ -68,9 +72,14 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 
+function hasContextId(contextId) {
+    // Defensive against a server-side None/undefined ever reaching the field again.
+    return !!contextId && contextId !== 'None' && contextId !== 'undefined' && contextId !== 'null';
+}
+
 function initializeCodeGeneration(mode, contextId) {
-    // Load context if available
-    if (contextId) {
+    // Load context only when one is actually selected
+    if (hasContextId(contextId)) {
         loadContext(mode, contextId);
     }
 

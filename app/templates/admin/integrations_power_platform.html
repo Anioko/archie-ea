@@ -283,7 +283,7 @@
                 tr.className = 'hover:bg-muted/30 transition-colors';
                 tr.innerHTML =
                     '<td class="px-3 py-2.5 text-center">' +
-                    '  <input type="checkbox" class="app-chk rounded border-input" data-id="' + _escHtml(app.id) + '" />' +
+                    '  <input type="checkbox" aria-label="Select application" class="app-chk rounded border-input" data-id="' + _escHtml(app.id) + '" />' +
                     '</td>' +
                     '<td class="px-3 py-2.5 font-medium">' + _escHtml(app.display_name || app.name) + '</td>' +
                     '<td class="px-3 py-2.5 text-muted-foreground">' + _escHtml(app.owner_email || '—') + '</td>' +

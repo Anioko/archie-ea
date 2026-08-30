@@ -21,6 +21,44 @@ def unmapped_capabilities():
         org_filter = ""
         org_params = {}
 
+        # The rows the page exists to show. These were never queried: the name
+        # `unmapped_capabilities` below resolved to this view function itself, so
+        # `len()` raised TypeError, the except branch caught it, and the page has
+        # only ever rendered its "could not load" state. The template reads name,
+        # description, strategic_importance, status, domain_name and the two
+        # maturity levels, so all seven are selected here.
+        unmapped_capabilities = db.session.execute(
+            text(
+                f"""
+            SELECT
+                uc.id,
+                uc.name,
+                uc.description,
+                uc.strategic_importance,
+                uc.status,
+                uc.current_maturity_level,
+                uc.target_maturity_level,
+                bd.name AS domain_name
+            FROM unified_capabilities uc
+            LEFT JOIN unified_application_capability_mapping uacm
+                ON uc.id = uacm.unified_capability_id
+            LEFT JOIN business_domains bd ON bd.id = uc.domain_id
+            WHERE uacm.unified_capability_id IS NULL
+            {org_filter}
+            ORDER BY
+                CASE uc.strategic_importance
+                    WHEN 'critical' THEN 1
+                    WHEN 'high' THEN 2
+                    WHEN 'medium' THEN 3
+                    WHEN 'low' THEN 4
+                    ELSE 5
+                END,
+                uc.name
+        """
+            ),
+            org_params
+        ).fetchall()
+
         # Get summary statistics
         total_capabilities = db.session.execute(  # tenant-filtered
             text(f"SELECT COUNT(*) FROM unified_capabilities WHERE 1=1 {org_filter}"),

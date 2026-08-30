@@ -403,7 +403,7 @@
                     placeholder="Describe your problem, goals, constraints… or ask anything."
                     class="flex-1 text-xs rounded-lg border border-input bg-background px-3 py-2.5 resize-none focus:outline-none focus:ring-1 focus:ring-ring text-foreground placeholder:text-muted-foreground leading-relaxed"
                  aria-label="Describe your problem, goals, constraints… or ask anything."></textarea>
-                <button type="button" @click="sendMessage()"
+                <button aria-label="Send message" type="button" @click="sendMessage()"
                         :disabled="loading || !inputText.trim()"
                         class="p-2.5 rounded-lg bg-primary text-primary-foreground disabled:opacity-40 hover:bg-primary/90 transition-colors shrink-0">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>

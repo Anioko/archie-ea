@@ -337,8 +337,11 @@
     {% set owner_pct = (fc or {}).get('owner', 0)|default(0) %}
     {% set risk_pct = (fc or {}).get('risk', 0)|default(0) %}
     {% set lifecycle_pct = (fc or {}).get('lifecycle', 0)|default(0) %}
-    {# TODO: Backend needs to add 'vendor' to field_coverage in _build_data_quality_report #}
-    {% set vendor_pct = (fc or {}).get('vendor', 0)|default(0) %}
+    {# _build_data_quality_report supplies 'vendor'. It is deliberately NOT
+       defaulted to 0 here: a missing key means "not measured", and rendering
+       that as 0% drew a full-width red bar telling the user their vendor data
+       was absent when every application had a vendor. None -> em dash. #}
+    {% set vendor_pct = (fc or {}).get('vendor') %}
     <div class="rounded-xl border bg-card text-card-foreground shadow-sm p-6 mb-8" data-slot="card">
         <div class="flex items-start gap-3 mb-5">
             <div class="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
@@ -372,10 +375,12 @@
             <div class="flex items-center gap-3">
                 <span class="text-xs font-medium w-32 text-muted-foreground">Vendor Coverage</span>
                 <div class="flex-1 h-5 bg-muted rounded-full overflow-hidden">
+                    {% if vendor_pct is not none %}
                     <div class="h-full rounded-full transition-all duration-500 {{ 'bg-destructive' if vendor_pct < 25 else ('bg-warning' if vendor_pct <= 75 else 'bg-success') }}"
                          style="width: {{ vendor_pct }}%"></div>
+                    {% endif %}
                 </div>
-                <span class="text-xs font-semibold w-10 text-right">{{ vendor_pct }}%</span>
+                <span class="text-xs font-semibold w-10 text-right">{{ (vendor_pct ~ '%') if vendor_pct is not none else '—' }}</span>
             </div>
             {# Risk Coverage #}
             <div class="flex items-center gap-3">

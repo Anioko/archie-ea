@@ -1604,7 +1604,7 @@
     {% set _wft024_caps = instance.workflow_code == 'APP_ONBOARDING' and instance.pending_approval_step_id == 'link_capabilities' %}
     {% set _wft024_items = (instance.context or {}).get('apqc_suggestions', []) if _wft024_apqc else ((instance.context or {}).get('capability_links', []) if _wft024_caps else []) %}
     {% if (_wft024_apqc or _wft024_caps) and _wft024_items %}
-    <div class="rounded-xl border-2 border-warning/30 bg-warning/5 p-5" role="alert" x-data="appOnboardingReview({{ _wft024_items|tojson }}, '{{ 'apqc' if _wft024_apqc else 'capability' }}')">
+    <div class="rounded-xl border-2 border-warning/30 bg-warning/5 p-5" role="alert" x-data='appOnboardingReview({{ _wft024_items|tojson }}, {{ ("apqc" if _wft024_apqc else "capability") | tojson }})'>
         <div class="flex items-start gap-3">
             <i data-lucide="hand" class="h-5 w-5 text-warning shrink-0 mt-0.5" aria-hidden="true"></i>
             <div class="flex-1">

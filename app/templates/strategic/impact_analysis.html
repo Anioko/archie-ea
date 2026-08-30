@@ -13,7 +13,7 @@
 {% endblock %}
 
 {% block content %}
-<div class="flex flex-col space-y-8 animate-in fade-in duration-500" x-data="impactAnalysis">
+<div class="flex flex-col space-y-8 animate-in fade-in duration-500" x-data="impactAnalysis()">
     <!-- Header -->
     <div class="flex flex-col space-y-2">
         <div class="flex items-center justify-between">
@@ -294,17 +294,36 @@
 </div>
 
 <script>
-    document.addEventListener('alpine:init', () => {
-        /* Map dropdown value → ArchiMate CRUD layer for search API */
-        const LAYER_MAP = {
-            'Application': 'application',
-            'Business': 'business',
-            'Technology': 'technology',
-            'Strategy': 'strategy',
-            'Motivation': 'motivation'
-        };
+    /* Map dropdown value → ArchiMate CRUD layer for search API */
+    const LAYER_MAP = {
+        'Application': 'application',
+        'Business': 'business',
+        'Technology': 'technology',
+        'Strategy': 'strategy',
+        'Motivation': 'motivation'
+    };
 
-        Alpine.data('impactAnalysis', () => ({
+    /* Registered as a top-level (window) factory and referenced as
+       x-data of impactAnalysis() -- NOT via Alpine.data() with a bare
+       component name in the attribute.
+
+       The app evaluates every Alpine expression through the CSP-safe
+       interpreter in app/static/js/csp/csp-evaluator.js (so script-src can
+       drop 'unsafe-eval'). That interpreter resolves a bare identifier
+       against the component scope and then against `window`; it never
+       consults Alpine.data() registrations. The component therefore never
+       mounted: typing in "Search Element" fired no request and "Analyze
+       Impact" did nothing, so the enterprise architect's "if I retire this,
+       what breaks?" journey was inert. Worse, `history.length` in the
+       "Recent Analyses" badge fell through to window.history.length, and the
+       page displayed the browser's navigation count as if it were stored
+       analyses -- a fabricated number next to an empty table.
+
+       The x-data="factory()" + top-level function form is what the other 156
+       templates use and what the evaluator supports. scripts/check_alpine_data_binding.py
+       fails the build if the bare-name form comes back. */
+    function impactAnalysis() {
+        return {
             selectedType: 'Application',
             searchQuery: '',
             searchResults: [],
@@ -334,10 +353,21 @@
                 }
 
                 try {
+                    /* source=architecture is required, not a preference. The
+                       endpoint returns BOTH a "portfolio" row (id =
+                       application_components.id) and an "architecture" row
+                       (id = archimate_elements.id) for the same element, and
+                       /strategic/api/impact-analysis reads element_id as an
+                       archimate_elements id. Picking the portfolio row therefore
+                       addressed a DIFFERENT element -- in a shared database,
+                       usually another tenant's -- and the architect was shown a
+                       foreign dependency graph for their own application. It
+                       also removes the duplicate name in the picker. */
                     const layer = LAYER_MAP[this.selectedType] || 'application';
                     let data = await Platform.fetch.get(
                         '/architecture/api/layer/' + layer + '/elements?search=' +
-                        encodeURIComponent(this.searchQuery) + '&per_page=8'
+                        encodeURIComponent(this.searchQuery) +
+                        '&source=architecture&per_page=8'
                     );
                     this.searchResults = (data.elements || []).slice(0, 8);
                 } catch (e) {
@@ -472,8 +502,9 @@
 
                 Platform.toast.success('Scenario saved. Use Compare Scenarios to review.');
             }
-        }));
-    });
+        };
+    }
+    window.impactAnalysis = impactAnalysis;
 </script>
 
 <!-- LLM-Powered Recommendations -->

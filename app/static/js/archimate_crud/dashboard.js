@@ -520,42 +520,69 @@ document.addEventListener('alpine:init', function() {
                 let self = this;
                 let layerKeys = Object.keys(this.layerConfig);
                 let uncounted = [];
-                // Use the fast /count endpoint to avoid loading all rows into Python.
-                // Falls back to the elements endpoint if count endpoint is unavailable.
+                // One batched request instead of one per layer. The per-layer
+                // sweep issued 7-14 requests per page load, and the app rate-limits
+                // at 120/minute, so moving through a few architecture pages made the
+                // tab badges start failing with HTTP 429.
+                //
+                // The per-layer endpoints are kept as a fallback so behaviour degrades
+                // exactly as it did before: batched -> /count -> /elements -> em dash.
+                let countOneLayer = async function(layerKey) {
+                    let count = null;
+                    try {
+                        // raw-fetch-ok: raw status selects the legacy endpoint fallback
+                        let d = await Platform.fetch.get(
+                            '/architecture/api/layer/' + layerKey + '/count',
+                            null,
+                            { silent: true }
+                        );
+                        // Unwrap success_response wrapper if present (per CLAUDE.md convention)
+                        let payload = d.data || d;
+                        count = typeof payload.total === 'number' ? payload.total : null;
+                    } catch (countError) {
+                        // A failed count request is explicitly handled by the
+                        // compatible elements endpoint immediately below.
+                        count = null;
+                    }
+                    if (count === null) {
+                        let d2 = await Platform.fetch.get(
+                            '/architecture/api/layer/' + layerKey + '/elements',
+                            { per_page: 1 },
+                            { silent: true }
+                        );
+                        count = d2.pagination && typeof d2.pagination.total === 'number'
+                            ? d2.pagination.total
+                            : null;
+                    }
+                    if (count === null) throw new Error('Count response did not include a numeric total');
+                    return count;
+                };
+
+                let batched = {};
+                try {
+                    let data = await Platform.fetch.get(
+                        '/architecture/api/layer/counts',
+                        null,
+                        { silent: true }
+                    );
+                    let payload = data.data || data;
+                    batched = payload.counts || {};
+                } catch (batchError) {
+                    // Batched endpoint unavailable: every layer falls through below.
+                    batched = {};
+                }
+
                 for (let i = 0; i < layerKeys.length; i++) {
                     let layerKey = layerKeys[i];
-                    try {
-                        let count = null;
-                        try {
-                            // raw-fetch-ok: raw status selects the legacy endpoint fallback
-                            let data = await Platform.fetch.get(
-                                '/architecture/api/layer/' + layerKey + '/count',
-                                null,
-                                { silent: true }
-                            );
-                            // Unwrap success_response wrapper if present (per CLAUDE.md convention)
-                            let payload = data.data || data;
-                            count = typeof payload.total === 'number' ? payload.total : null;
-                        } catch (countError) {
-                            // A failed count request is explicitly handled by the
-                            // compatible elements endpoint immediately below.
-                            count = null;
-                        }
-                        if (count === null) {
-                            // Fallback: elements endpoint
-                            let d2 = await Platform.fetch.get(
-                                '/architecture/api/layer/' + layerKey + '/elements',
-                                { per_page: 1 },
-                                { silent: true }
-                            );
-                            count = d2.pagination && typeof d2.pagination.total === 'number'
-                                ? d2.pagination.total
-                                : null;
-                        }
-                        if (count === null) throw new Error('Count response did not include a numeric total');
+                    let count = batched[layerKey];
+                    if (typeof count === 'number') {
                         self.layerCounts[layerKey] = count;
-                        // totalCount is now a getter over layerCounts (see field
-                        // definition above) — nothing to assign here any more.
+                        // totalCount is a getter over layerCounts (see field
+                        // definition above) - nothing to assign here.
+                        continue;
+                    }
+                    try {
+                        self.layerCounts[layerKey] = await countOneLayer(layerKey);
                     } catch (e) {
                         // null, never 0: a fabricated zero is indistinguishable from
                         // a layer that really has no elements. The tab badge renders
@@ -564,6 +591,7 @@ document.addEventListener('alpine:init', function() {
                         uncounted.push(layerKey);
                     }
                 }
+
                 // One toast for the whole sweep — six per-layer toasts would be worse
                 // than the failure they report.
                 if (uncounted.length && window.Platform && Platform.toast) {

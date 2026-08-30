@@ -3,7 +3,7 @@
    Requires: solution.id, linked_apps (list of serialized app dicts) #}
 
 <div class="mt-6"
-     x-data="appPicker({{ solution.id }}, {{ linked_apps | default([]) | tojson }})"
+     x-data='appPicker({{ solution.id }}, {{ linked_apps | default([]) | tojson }})'
      x-init="init()">
 
     <div class="flex items-center justify-between mb-3">

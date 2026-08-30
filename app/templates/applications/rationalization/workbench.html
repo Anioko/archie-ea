@@ -106,7 +106,7 @@
                 Request Data
             </button>
             <div class="flex items-center gap-1.5 ml-2 pl-2 border-l border-border">
-                <select x-model="bulkDisposition"
+                <select aria-label="Bulk disposition" x-model="bulkDisposition"
                         class="px-2 py-1.5 text-xs font-medium rounded-md border border-border bg-background text-foreground">
                     <option value="">Disposition...</option>
                     <option value="retire">Retire</option>
@@ -163,7 +163,7 @@
                     <thead class="bg-muted/50">
                         <tr>
                             <th class="px-4 py-3 text-left w-8">
-                                <input type="checkbox" @change="toggleAll($event.target.checked)"
+                                <input aria-label="Select all applications" type="checkbox" @change="toggleAll($event.target.checked)"
                                        :checked="allSelected"
                                        class="rounded border-border">
                             </th>
@@ -182,7 +182,7 @@
                             <tr class="hover:bg-muted/30 cursor-pointer transition-colors"
                                 @click="if (!$event.target.closest('input')) goToPlanning(app.id)">
                                 <td class="px-4 py-3">
-                                    <input type="checkbox" :value="app.id"
+                                    <input aria-label="Select application" type="checkbox" :value="app.id"
                                            :checked="selectedIds[app.id]"
                                            @change="toggleSelect(app.id)"
                                            class="rounded border-border">

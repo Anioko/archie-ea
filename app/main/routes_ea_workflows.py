@@ -271,14 +271,23 @@ def register_ea_workflow_routes(main_blueprint):
                 if _group_defns:
                     workflow_groups.append({"label": _label, "description": _desc, "definitions": _group_defns})
 
-            bp = current_app.blueprints
-            phase_available = {
-                "phase_d": "phase_d" in bp,
-                "phase_e": "phase_e" in bp,
-                "phase_f": "phase_f" in bp,
-                "phase_g": "phase_g" in bp,
-                "phase_h": "phase_h" in bp,
-            }
+            # Resolve the real page URL per phase, or None.
+            #
+            # This used to test `"phase_d" in current_app.blueprints`, which is
+            # true whenever the blueprint loads -- but those blueprints register
+            # only JSON endpoints under /api/ea/phase-d/*. There is no page at
+            # /ea-workflows/phase-d, so the guard passed, the template rendered a
+            # hardcoded href, and the product linked to its own 404. Asking the
+            # url_map for a rule that actually serves the path cannot make that
+            # mistake, and a phase page added later lights up on its own.
+            phase_links = {}
+            for _letter in ("d", "e", "f", "g", "h"):
+                _path = f"/ea-workflows/phase-{_letter}"
+                _match = any(
+                    str(_rule) == _path and "GET" in (_rule.methods or set())
+                    for _rule in current_app.url_map.iter_rules()
+                )
+                phase_links[f"phase_{_letter}"] = _path if _match else None
 
             return render_template(
                 "ea_workflows/dashboard.html",
@@ -292,7 +301,7 @@ def register_ea_workflow_routes(main_blueprint):
                 compliance_posture=compliance_posture,
                 phase_counts=phase_counts,
                 togaf_phases=engine.TOGAF_PHASES,
-                phase_available=phase_available,
+                phase_links=phase_links,
             )
         except Exception as e:
             db.session.rollback()
@@ -310,7 +319,7 @@ def register_ea_workflow_routes(main_blueprint):
                 linkable_instances=[],
                 phase_counts=None,
                 togaf_phases=[],
-                phase_available={"phase_d": False, "phase_e": False, "phase_f": False, "phase_g": False, "phase_h": False},
+                phase_links={"phase_d": None, "phase_e": None, "phase_f": None, "phase_g": None, "phase_h": None},
                 error=str(e),
                 load_error="Workflow status counts could not be read.",
             )

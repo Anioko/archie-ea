@@ -393,9 +393,14 @@ def analyze_migration_options(app_id):
 def calculate_portfolio_scores():
     """Calculate rationalization scores for entire portfolio."""
     try:
-        force_recalc = (
-            request.json.get("force_recalculate", False) if request.json else False
-        )
+        # request.json raises UnsupportedMediaType (a plain Exception) when the
+        # caller sends no body/Content-Type — which is exactly what the scorecard
+        # pages do (Platform.fetch.post(url, null) omits both). The blanket
+        # `except Exception` below then turned that into a 500 and the page
+        # showed "Unhandled promise rejection: An internal error occurred".
+        # get_json(silent=True) returns None instead of raising.
+        payload = request.get_json(silent=True) or {}
+        force_recalc = bool(payload.get("force_recalculate", False))
         results = RationalizationScoringService.calculate_portfolio_scores(force_recalc)
         # Add flat keys expected by scorecard JS (updateMetrics function)
         avg = results.get("average_scores", {})

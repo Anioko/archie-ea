@@ -27,7 +27,10 @@ from sqlalchemy import or_, text
 
 from .. import db
 from ..models.application_portfolio import ApplicationComponent
-from ..models.business_capabilities import BusinessCapability
+from ..models.business_capabilities import (
+    ApplicationCapabilityCoverage,
+    BusinessCapability,
+)
 from ..models.models import ArchiMateElement, ArchiMateRelationship, ArchitectureModel
 from ..services.consolidation_service import ConsolidationService
 from ..services.policy_monitoring_service import PolicyMonitoringService
@@ -172,8 +175,12 @@ def capability_map_capabilities():
     """List capabilities for mapping"""
     try:
         capabilities = BusinessCapability.query.order_by(BusinessCapability.name).all()
+        # Parent names, so a sub-capability can say what it is a sub-capability OF.
+        parent_names = {c.id: c.name for c in capabilities}
         return render_template(
-            "capability_map/capabilities.html", capabilities=capabilities
+            "capability_map/capabilities.html",
+            capabilities=capabilities,
+            parent_names=parent_names,
         )
     except Exception as e:
         db.session.rollback()
@@ -182,6 +189,7 @@ def capability_map_capabilities():
         return render_template(
             "capability_map/capabilities.html",
             capabilities=[],
+            parent_names={},
             load_error="Capabilities could not be read.",
         )
 
@@ -218,10 +226,49 @@ def capability_map_mapping():
             ApplicationComponent.name
         ).all()
 
+        # The page called itself a Coverage Matrix and rendered no coverage at
+        # all -- the template carried a comment saying the join data "would be
+        # required from the route" and printed "N apps available" (the total
+        # application count, repeated on every row) in its place. Read the real
+        # mappings.
+        #
+        # ApplicationCapabilityCoverage has no TenantMixin, so it carries no
+        # organization_id and gets no automatic tenant predicate. Scope it by
+        # restricting to THIS organisation's capability ids, which are filtered.
+        mapped_apps = {c.id: [] for c in capabilities}
+        cap_ids = list(mapped_apps)
+        if cap_ids:
+            app_names = {a.id: a.name for a in applications}
+            rows = ApplicationCapabilityCoverage.query.filter(
+                ApplicationCapabilityCoverage.capability_id.in_(cap_ids)
+            ).all()
+            for row in rows:
+                name = app_names.get(row.application_component_id)
+                if name is None:
+                    continue  # an application outside this organisation
+                mapped_apps[row.capability_id].append(
+                    {
+                        "id": row.application_component_id,
+                        "name": name,
+                        "mapping_id": row.id,
+                        "support_level": row.support_level,
+                    }
+                )
+            for entries in mapped_apps.values():
+                entries.sort(key=lambda e: e["name"])
+
+        covered = sum(1 for c in capabilities if mapped_apps[c.id])
+        # None, not 0: with no capabilities at all there is nothing to be a
+        # percentage OF, and a rendered "0%" would read as a measured result.
+        coverage_pct = round(covered * 100 / len(capabilities)) if capabilities else None
+
         return render_template(
             "capability_map/mapping.html",
             capabilities=capabilities,
             applications=applications,
+            mapped_apps=mapped_apps,
+            covered_count=covered,
+            coverage_pct=coverage_pct,
         )
     except Exception as e:
         db.session.rollback()
@@ -231,6 +278,9 @@ def capability_map_mapping():
             "capability_map/mapping.html",
             capabilities=[],
             applications=[],
+            mapped_apps={},
+            covered_count=None,
+            coverage_pct=None,
             load_error="The capability mapping data could not be read.",
         )
 

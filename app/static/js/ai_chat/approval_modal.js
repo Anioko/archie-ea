@@ -213,7 +213,13 @@ function registerApprovalManager() {
     // and writes the same Alpine.store('approvals') instance above, so the
     // header badge trigger and the approvals modal share one copy of state
     // instead of each polling and tracking it independently.
-    window.Alpine.data("approvalManager", () => ({
+    // Exposed as a top-level window factory and used as
+    // x-data="approvalManager()". The CSP-safe Alpine evaluator
+    // (app/static/js/csp/csp-evaluator.js) resolves a bare x-data identifier
+    // against the component scope and then window -- it never consults
+    // Alpine.data() registrations -- so the bare-name form mounted an empty
+    // component. See scripts/check_alpine_data_binding.py.
+    window.approvalManager = () => ({
         get approvals() {
             return Alpine.store("approvals").approvals;
         },
@@ -265,7 +271,7 @@ function registerApprovalManager() {
         opColor(type) {
             return Alpine.store("approvals").opColor(type);
         },
-    }));
+    });
 }
 
 if (window.Alpine) {

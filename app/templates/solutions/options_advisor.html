@@ -5,7 +5,7 @@
 
 {% block content %}
 <div class="p-6 space-y-6 mx-auto max-w-5xl"
-     x-data="optionsAdvisor({{ solution.id }}, {{ (adr.id if adr else none) | tojson }})">
+     x-data='optionsAdvisor({{ solution.id }}, {{ (adr.id if adr else none) | tojson }})'>
     {{ page_header(
         title='Options & Decision',
         description='The AI Solution Architect evaluates 2-3 architecture options with trade-offs and proposes a decision record — grounded in this solution\'s drivers, constraints and requirements. You decide; the ARB disposes.',

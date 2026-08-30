@@ -2072,9 +2072,27 @@ def render_application_detail(id):
     # --- Metric cards ---
     metric_cards = [
         {
-            "label": "Lifecycle Stage",
-            "value": (app_obj.deployment_status or "unknown").replace("_", " ").title(),
-            "delta": f"Criticality: {app_obj.business_criticality or 'Not set'}",
+            # Labelled for the field it actually plots. It read "Lifecycle
+            # Stage" while showing deployment_status, directly above an
+            # "Application Identity / Lifecycle Status" row showing
+            # lifecycle_status -- so the same page answered "what stage is this
+            # application at?" twice, with two different values, and neither
+            # label said which field it came from.
+            #
+            # An unrecorded status is an em dash, not the word "unknown"
+            # (and previously not the ORM default "development", which read as
+            # a recorded answer).
+            "label": "Deployment Status",
+            "value": (
+                app_obj.deployment_status.replace("_", " ").title()
+                if app_obj.deployment_status
+                else "—"
+            ),
+            "delta": (
+                f"Criticality: {app_obj.business_criticality}"
+                if app_obj.business_criticality
+                else "Criticality not recorded"
+            ),
             "icon_svg": "",
         },
         {

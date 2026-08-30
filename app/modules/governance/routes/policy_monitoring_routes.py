@@ -56,7 +56,11 @@ def policy_status():
 
 @policy_monitoring_bp.route("/compliance")
 @login_required
-@require_roles("admin", "compliance_officer")
+# The dashboard page above is open to "architect" and already renders this
+# same report server-side, so gating the read endpoint that backs it more
+# tightly denied nothing and only broke the page (403 -> permanent error
+# banner for every enterprise architect). Read scope now matches the page.
+@require_roles("admin", "architect", "compliance_officer")
 def policy_compliance():
     """API endpoint for policy compliance report"""
     try:
@@ -68,7 +72,11 @@ def policy_compliance():
 
 @policy_monitoring_bp.route("/violations")
 @login_required
-@require_roles("admin", "compliance_officer")
+# The dashboard page above is open to "architect" and already renders this
+# same report server-side, so gating the read endpoint that backs it more
+# tightly denied nothing and only broke the page (403 -> permanent error
+# banner for every enterprise architect). Read scope now matches the page.
+@require_roles("admin", "architect", "compliance_officer")
 def policy_violations():
     """API endpoint for recent policy violations"""
     try:
@@ -194,7 +202,11 @@ def test_policy_violation():
 
 @policy_monitoring_bp.route("/alert")
 @login_required
-@require_roles("admin", "compliance_officer")
+# The dashboard page above is open to "architect" and already renders this
+# same report server-side, so gating the read endpoint that backs it more
+# tightly denied nothing and only broke the page (403 -> permanent error
+# banner for every enterprise architect). Read scope now matches the page.
+@require_roles("admin", "architect", "compliance_officer")
 def policy_alert():
     """Get current policy alert if any"""
     try:

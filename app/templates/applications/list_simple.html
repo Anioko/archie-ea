@@ -503,7 +503,7 @@
                 </div>
                 {% if current_user.is_admin() or current_user.role_archetype == 'architect' %}
                 <form method="POST" action="{{ url_for('unified_applications.application_delete', id=app.id) }}"
-                  @submit.prevent="Platform.modal.confirmSubmit($event, 'Delete ' + {{ app.name | tojson }} + '? This cannot be undone.')">
+                  @submit.prevent='Platform.modal.confirmSubmit($event, "Delete " + {{ app.name | tojson }} + "? This cannot be undone.")'>
                   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                   <button type="submit" data-testid="btn-delete-{{ app.id }}"
                     class="inline-flex items-center justify-center h-8 px-3 rounded-md text-sm font-medium text-destructive-emphasis hover:bg-destructive/10 transition-colors"
@@ -797,11 +797,17 @@
             <label for="ca-criticality" class="block text-sm font-medium mb-1">Business Criticality</label>
             <select id="ca-criticality" x-model="form.business_criticality"
               class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              {#- Values MUST stay inside VALID_CRITICALITY in
+                  app/schemas/api_schemas.py. They previously read
+                  mission_critical / business_critical / important / standard,
+                  none of which the create schema accepts, so four of the five
+                  choices 400ed with "Must be one of: critical, high, medium,
+                  low, unknown" and the only application a portfolio manager
+                  could actually register was a "Low" one. -#}
               <option value="">Select...</option>
-              <option value="mission_critical">Mission Critical</option>
-              <option value="business_critical">Business Critical</option>
-              <option value="important">Important</option>
-              <option value="standard">Standard</option>
+              <option value="critical">Critical</option>
+              <option value="high">High</option>
+              <option value="medium">Medium</option>
               <option value="low">Low</option>
             </select>
           </div>

@@ -187,7 +187,7 @@
                         Extracting from document(s)…
                     </span>
                 </div>
-                <textarea x-model="problemStatement" rows="5"
+                <textarea aria-label="Problem statement" x-model="problemStatement" rows="5"
                           :disabled="clarifyPhase === 'questions'"
                           @input="searchLandscape()"
                           placeholder="e.g., We need to consolidate our three CRM systems into a single platform to reduce licensing costs and improve customer visibility across sales and support teams."
@@ -331,7 +331,7 @@
                             <template x-if="q.type === 'entity_picker'">
                                 <div class="space-y-2">
                                     <div class="relative">
-                                        <input type="text"
+                                        <input aria-label="Search for an entity" type="text"
                                                x-model="pickerState[idx].query"
                                                @input="searchEntities(idx)"
                                                @keydown.enter.prevent="addFreeText(idx)"

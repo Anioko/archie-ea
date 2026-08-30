@@ -269,7 +269,20 @@ def test_enhanced_roadmap_renders_with_its_view_kwargs(app):
         "%s emitted its own tags as text - it is mis-encoded again"
         % _ROADMAP_TEMPLATE
     )
-    assert "roadmapApp()" in html, "%s content block did not render" % _ROADMAP_TEMPLATE
+    # The component is deliberately NOT called `roadmapApp`: alpine-architecture.js
+    # registers a generic Alpine.data('roadmapApp'), and an Alpine.data registration
+    # beats a page-local global of the same name. This page silently bound to that
+    # generic component, which has no formatStat and defaults apiBase to /api/roadmap
+    # - so the page 404'd and its statistic tiles sat on a fabricated 0. Asserting
+    # the distinct name here keeps the collision from being reintroduced.
+    assert "enhancedStrategicRoadmap()" in html, (
+        "%s content block did not render" % _ROADMAP_TEMPLATE
+    )
+    assert "roadmapApp()" not in html, (
+        "%s re-adopted the generic roadmapApp name that alpine-architecture.js "
+        "already registers; the page will bind to the wrong component"
+        % _ROADMAP_TEMPLATE
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────

@@ -290,7 +290,7 @@
             </template>
           </div>
           <p class="text-xs text-muted-foreground mt-1">Or type a name manually if not in the system</p>
-          <input x-show="!personSearchError && personSearch.length > 0 && personResults.length === 0" x-model="form.name" type="text"
+          <input aria-label="Person name" x-show="!personSearchError && personSearch.length > 0 && personResults.length === 0" x-model="form.name" type="text"
                  placeholder="Name not found — type manually" class="w-full border border-border rounded-lg px-3 py-2 text-sm mt-2 focus:ring-2 focus:ring-ring outline-none"/>
         </div>
       </template>

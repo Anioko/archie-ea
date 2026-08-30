@@ -57,7 +57,7 @@
       <template x-for="app in scope.linked_applications" :key="app.id">
         <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-medium bg-info/10 text-primary border border-info/30">
           <span x-text="app.name"></span>
-          <button @click="unlinkApplication(app.id)" type="button" class="hover:text-destructive-emphasis">
+          <button aria-label="Unlink application" @click="unlinkApplication(app.id)" type="button" class="hover:text-destructive-emphasis">
             <i data-lucide="x" class="h-3 w-3"></i>
           </button>
         </span>
@@ -298,14 +298,14 @@
           class="flex h-8 w-full rounded-md border border-input bg-transparent px-2 py-1 text-sm"
           placeholder="Element name" aria-label="Element name">
         <div class="grid grid-cols-2 gap-2">
-          <select x-model="newElement.layer" @change="onLayerChange()"
+          <select aria-label="Element layer" x-model="newElement.layer" @change="onLayerChange()"
             class="flex h-8 w-full rounded-md border border-input bg-transparent px-2 py-1 text-xs">
             <option value="">Layer...</option>
             <template x-for="layer in Object.keys(elementTypesByLayer)" :key="layer">
               <option :value="layer" x-text="layer.replace('_', ' & ')"></option>
             </template>
           </select>
-          <select x-model="newElement.type" :disabled="!newElement.layer"
+          <select aria-label="Element type" x-model="newElement.type" :disabled="!newElement.layer"
             class="flex h-8 w-full rounded-md border border-input bg-transparent px-2 py-1 text-xs">
             <option value="">Type...</option>
             <template x-for="t in newElementTypes" :key="t">
@@ -337,7 +337,7 @@
           }">
           <span x-text="el.name"></span>
           <span class="text-xs opacity-70" x-text="el.type"></span>
-          <button @click="unlinkArchimateElement(el.id)" type="button" class="hover:text-destructive-emphasis">
+          <button aria-label="Unlink ArchiMate element" @click="unlinkArchimateElement(el.id)" type="button" class="hover:text-destructive-emphasis">
             <i data-lucide="x" class="h-3 w-3"></i>
           </button>
         </span>

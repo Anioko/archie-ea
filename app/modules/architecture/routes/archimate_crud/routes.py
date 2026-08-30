@@ -531,21 +531,24 @@ def api_field_configs():
     return resp
 
 
-@archimate_crud.route("/api/layer/<layer>/count")
-@login_required
-def api_layer_count(layer):
-    """Return the total element count for a layer using SQL COUNT — fast path
-    used by the dashboard tab badges.  Avoids loading all rows into Python.
+def _count_layer_elements(layer):
+    """Total element count for one layer, or None if it could not be counted.
 
-    Counts from both dedicated per-type tables (portfolio source) and
-    archimate_elements (architecture source) to match the elements endpoint
-    behaviour.  Dedicated-table rows and archimate_elements rows for the same
-    logical element are counted once each (they have different numeric IDs in
-    different tables, so an exact dedup requires a full scan — we accept the
-    small over-count here in favour of O(1) SQL COUNT queries that never hang).
+    Shared by the per-layer and batched endpoints so the two can never drift.
+
+    Counts dedicated per-type tables (portfolio source) plus archimate_elements
+    (architecture source), excluding typed rows that are mirrored into
+    archimate_elements -- counting both sides reported every mirrored entity
+    twice, and a tenant with 71 elements was told it had 142.
+
+    Returns None, never a partial total, when any constituent count raises.
+    The previous behaviour logged the failure and carried on with the remaining
+    types, which produced an under-count that looked exactly like a real one:
+    the user could not tell a measured total from a broken one. Per CLAUDE.md a
+    value that was not measured must be None so the UI renders an em dash.
     """
     if layer not in LAYER_CONFIG:
-        return jsonify({"success": False, "error": f"Unknown layer: {layer}"}), 404
+        return None
 
     layer_types = LAYER_CONFIG[layer]["elements"]
     total = 0
@@ -564,7 +567,8 @@ def api_layer_count(layer):
                 q = q.filter(model_class.archimate_element_id.is_(None))
             total += q.count()
         except Exception as e:
-            current_app.logger.warning(f"api_layer_count: count failed for {etype}: {e}")
+            current_app.logger.warning(f"_count_layer_elements: count failed for {etype}: {e}")
+            return None
 
     # Count from archimate_elements for this layer.
     # 17 Aug 2026 (ARCH-010): matched on the LAYER_CONFIG key alone, so an
@@ -580,9 +584,45 @@ def api_layer_count(layer):
         ).count()
         total += ae_count
     except Exception as e:
-        current_app.logger.warning(f"api_layer_count: archimate_elements count failed for {layer}: {e}")
+        current_app.logger.warning(f"_count_layer_elements: archimate_elements count failed for {layer}: {e}")
+        return None
 
+    return total
+
+
+@archimate_crud.route("/api/layer/<layer>/count")
+@login_required
+def api_layer_count(layer):
+    """Return the total element count for a layer using SQL COUNT — fast path
+    used by the dashboard tab badges.  Avoids loading all rows into Python.
+
+    Counts from both dedicated per-type tables (portfolio source) and
+    archimate_elements (architecture source) to match the elements endpoint
+    behaviour.  Dedicated-table rows and archimate_elements rows for the same
+    logical element are counted once each (they have different numeric IDs in
+    different tables, so an exact dedup requires a full scan — we accept the
+    small over-count here in favour of O(1) SQL COUNT queries that never hang).
+    """
+    if layer not in LAYER_CONFIG:
+        return jsonify({"success": False, "error": f"Unknown layer: {layer}"}), 404
+
+    total = _count_layer_elements(layer)
+    if total is None:
+        # Counting failed; return null to indicate unknown count
+        return jsonify({"layer": layer, "total": None})
     return jsonify({"layer": layer, "total": total})
+
+
+@archimate_crud.route("/api/layer/counts")
+@login_required
+def api_layer_counts():
+    """Return counts for ALL layers in one response.
+    Used by the dashboard to avoid per-layer requests that trigger rate limits.
+    """
+    # A layer that could not be counted is null, never 0 -- the dashboard renders
+    # null as an em dash and falls back to the per-layer endpoint for it.
+    counts = {layer: _count_layer_elements(layer) for layer in LAYER_CONFIG}
+    return jsonify({"counts": counts})
 
 
 @archimate_crud.route("/api/layer/<layer>/elements")

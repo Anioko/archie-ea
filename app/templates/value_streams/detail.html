@@ -71,18 +71,18 @@
                                 <span class="inline-flex items-center justify-center h-6 w-6 rounded-full bg-primary/10 text-primary text-xs font-bold">{{ stage.stage_order }}</span>
                                 <div class="flex items-center gap-1">
                                     <button type="button" aria-label="Edit stage"
-                                            @click="openStageEditModal({ id: {{ stage.id }}, name: {{ stage.name|tojson }}, description: {{ (stage.description or '')|tojson }}, stage_type: {{ (stage.stage_type or '')|tojson }}, stage_order: {{ stage.stage_order }}, customer_facing: {{ 'true' if stage.customer_facing else 'false' }}, quality_gate: {{ 'true' if stage.quality_gate else 'false' }}, target_duration: {{ stage.target_duration if stage.target_duration is not none else 'null' }}, current_duration: {{ stage.current_duration if stage.current_duration is not none else 'null' }} })"
+                                            @click='openStageEditModal({ id: {{ stage.id }}, name: {{ stage.name|tojson }}, description: {{ (stage.description or '')|tojson }}, stage_type: {{ (stage.stage_type or '')|tojson }}, stage_order: {{ stage.stage_order }}, customer_facing: {{ 'true' if stage.customer_facing else 'false' }}, quality_gate: {{ 'true' if stage.quality_gate else 'false' }}, target_duration: {{ stage.target_duration if stage.target_duration is not none else 'null' }}, current_duration: {{ stage.current_duration if stage.current_duration is not none else 'null' }} })'
                                             class="inline-flex items-center justify-center rounded-md hover:bg-accent hover:text-accent-foreground h-6 w-6">
                                         <i data-lucide="pencil" class="h-3 w-3" aria-hidden="true"></i>
                                     </button>
                                     <button type="button" aria-label="Delete stage"
-                                            @click="openStageDeleteModal({ id: {{ stage.id }}, name: {{ stage.name|tojson }} })"
+                                            @click='openStageDeleteModal({ id: {{ stage.id }}, name: {{ stage.name|tojson }} })'
                                             class="inline-flex items-center justify-center rounded-md hover:bg-destructive/10 hover:text-destructive-emphasis h-6 w-6">
                                         <i data-lucide="trash-2" class="h-3 w-3" aria-hidden="true"></i>
                                     </button>
                                 </div>
                             </div>
-                            <h4 class="font-semibold text-sm text-foreground truncate" :title="{{ stage.name|tojson }}">{{ stage.name }}</h4>
+                            <h4 class="font-semibold text-sm text-foreground truncate" :title='{{ stage.name|tojson }}'>{{ stage.name }}</h4>
                             <p class="text-xs text-muted-foreground mt-1 line-clamp-2">{{ stage.description or '—' }}</p>
                             <div class="flex items-center gap-1.5 mt-3 flex-wrap">
                                 {% if stage.stage_type %}

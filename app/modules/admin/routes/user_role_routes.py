@@ -10,21 +10,17 @@ from flask_login import login_required
 
 from app.decorators import admin_required
 from app.extensions import db
-from app.models.user import User
+from app.models.user import VALID_ROLES, User
 
 # Use the existing admin blueprint - this will be imported by admin_routes
 user_role_bp = Blueprint("user_role", __name__)
 
-VALID_ENTERPRISE_ROLES = [
-    "solution_architect",
-    "enterprise_architect",
-    "arb_member",
-    "portfolio_manager",
-    "cto",
-    "application_manager",
-    "procurement",
-    "platform_admin",
-]
+# Derived from the model rather than restated. This list previously omitted
+# business_architect, which VALID_ROLES has always contained -- so the one role
+# the picker could not offer was one the product actively assigns, and an admin
+# had no way to grant it. Importing the source of truth means a role added to
+# the model is assignable immediately instead of silently missing here.
+VALID_ENTERPRISE_ROLES = list(VALID_ROLES)
 
 
 @user_role_bp.route("/user/<int:user_id>/role", methods=["GET"])

@@ -18,7 +18,7 @@
 {% set elem_name = element.name if element.name else (element.title if element.title else 'Unnamed') %}
 {% set layer_label = layer_config[layer].name if layer in layer_config else layer|title %}
 
-<div class="p-6 space-y-6 mx-auto" x-data="archimateDetail">
+<div class="p-6 space-y-6 mx-auto" x-data="archimateDetail()">
 
     <!-- Breadcrumb + Header -->
     {# The layer crumb is an Alpine tab-switch, not a link, so this nav is kept
@@ -291,8 +291,14 @@
 </div>
 
 <script>
-document.addEventListener('alpine:init', () => {
-    Alpine.data('archimateDetail', () => ({
+/* Top-level (window) factory used as x-data="archimateDetail()". The CSP-safe
+   Alpine evaluator (app/static/js/csp/csp-evaluator.js) resolves a bare x-data
+   identifier against the component scope and then window; it never consults
+   Alpine.data() registrations, so the bare-name form mounted an empty component
+   and the tab switcher and Delete button did nothing.
+   See scripts/check_alpine_data_binding.py. */
+function archimateDetail() {
+    return {
         activeTab: 'details',
 
         async deleteElement() {
@@ -326,8 +332,9 @@ document.addEventListener('alpine:init', () => {
             a.click();
             document.body.removeChild(a);
         }
-    }));
-});
+    };
+}
+window.archimateDetail = archimateDetail;
 </script>
 
 <script>

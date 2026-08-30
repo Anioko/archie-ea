@@ -130,7 +130,7 @@
                                 class="inline-flex items-center gap-1 rounded-md bg-primary text-primary-foreground px-3 py-1.5 text-sm font-medium disabled:opacity-50 hover:bg-primary/90 transition-colors">
                             Add
                         </button>
-                        <button type="button" @click="addSolutionOpen = null; addSolutionId = ''"
+                        <button aria-label="Cancel adding solution" type="button" @click="addSolutionOpen = null; addSolutionId = ''"
                                 class="text-muted-foreground hover:text-foreground transition-colors">
                             <i data-lucide="x" class="h-4 w-4"></i>
                         </button>
@@ -199,7 +199,7 @@
             <!-- Modal header -->
             <div class="flex items-center justify-between px-5 py-4 border-b border-border shrink-0">
                 <h2 class="text-base font-semibold text-foreground" x-text="artifactsBoundary ? artifactsBoundary.name + ' — Artifacts' : ''"></h2>
-                <button type="button" @click="artifactsBoundary = null" class="text-muted-foreground hover:text-foreground">
+                <button aria-label="Close artifacts panel" type="button" @click="artifactsBoundary = null" class="text-muted-foreground hover:text-foreground">
                     <i data-lucide="x" class="h-4 w-4"></i>
                 </button>
             </div>

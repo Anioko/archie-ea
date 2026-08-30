@@ -30,8 +30,10 @@
       if (typeof expression === 'function') {
         return function (receiver, extras) {
           extras = extras || {};
-          var result = expression.apply(scopeFor(el, extras.scope), extras.params || []);
-          runReceiver(receiver, result);
+          var scope = scopeFor(el, extras.scope);
+          var params = extras.params || [];
+          var result = expression.apply(scope, params);
+          runReceiver(receiver, result, scope, params);
         };
       }
       var expr = String(expression).trim();
@@ -42,8 +44,9 @@
         receiver = receiver || function () {};
         if (ast && ast.__err) throw ast.__err;
         var scope = scopeFor(el, extras.scope);
+        var params = extras.params || [];
         var result = global.CSPExpr.run(ast, scope);
-        runReceiver(receiver, result);
+        runReceiver(receiver, result, scope, params);
       };
     });
 
@@ -143,8 +146,39 @@
       return refs;
     }
 
-    function runReceiver(receiver, result) {
-      // Alpine unwraps a returned function by calling it (dontAutoEvaluate aside).
+    function runReceiver(receiver, result, scope, params) {
+      // Alpine's own evaluator does NOT hand a function straight to the receiver:
+      // `runIfTypeOfFunction` calls it with the element's scope and the directive's
+      // params, and awaits a promise before delivering the value. This adapter used
+      // to only *describe* that behaviour in a comment and then skip it, which broke
+      // every expression whose value is a function:
+      //
+      //   x-data="architectureJourneyHub"  -> Alpine.data() providers are injected as
+      //       getters returning a FACTORY; unevaluated it yields a function, so the
+      //       component initialised as {} and the whole Architecture Journey hub was
+      //       inert (title/intent/layers never bound, "Start architecture journey"
+      //       permanently disabled, "Start solution design" a no-op with no error).
+      //   @click="startSolution"           -> the method was returned, never invoked.
+      //
+      // A rejected promise is re-thrown on a macrotask so an async handler that fails
+      // surfaces in the console instead of vanishing (CLAUDE.md: no silent failure).
+      //
+      // Divergence, deliberate: Alpine's `dontAutoEvaluateFunctions` window is a
+      // module-local flag in alpine.min.js (3.14.3) with exactly one internal caller,
+      // `bound()`, so a custom evaluator cannot observe it. The cost is that an inline
+      // binding whose expression is itself a bare function name gets called; the
+      // alternative is the total breakage above.
+      if (typeof result === 'function') {
+        result = result.apply(scope, params || []);
+      }
+      if (result && typeof result.then === 'function') {
+        result.then(function (value) {
+          runReceiver(receiver, value, scope, params);
+        }, function (error) {
+          setTimeout(function () { throw error; }, 0);
+        });
+        return;
+      }
       receiver(result);
     }
   }

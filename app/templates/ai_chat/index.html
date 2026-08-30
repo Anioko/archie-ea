@@ -328,7 +328,7 @@
                                approve/reject state, both read and write the same copy. Open/close
                                is driven by data-modal-open/close (Platform.modal, ui/modal.js),
                                matching components/modal_standardized.html's pattern. #}
-                            <div x-data="approvalManager" x-cloak>
+                            <div x-data="approvalManager()" x-cloak>
                                 <button type="button" data-modal-open="ai-chat-approvals-modal" @click="menuOpen = false" role="menuitem"
                                     aria-label="Approvals for review" title="Approvals for review"
                                     class="flex w-full items-center justify-between gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent transition-colors">

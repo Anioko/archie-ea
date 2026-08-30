@@ -7,7 +7,7 @@
 <!-- modal-a11y-ok -->
 <div
     class="p-6 space-y-6 mx-auto max-w-6xl"
-    x-data="riskHeatMap({{ solution_id }}, {{ risks | tojson }})"
+    x-data='riskHeatMap({{ solution_id }}, {{ risks | tojson }})'
 >
     {{ page_header(
         title='Risk Heat Map',
@@ -76,7 +76,7 @@
                             <button
                                 type="button"
                                 class="w-full text-left mb-1 rounded px-1.5 py-0.5 text-xs font-medium bg-background/70 border border-border hover:bg-background truncate transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
-                                @click="openDetail({{ risk | tojson }})"
+                                @click='openDetail({{ risk | tojson }})'
                                 :aria-pressed="activeRisk && activeRisk.id === {{ risk.id }} ? 'true' : 'false'"
                                 aria-label="{{ risk.title | e }}"
                                 title="{{ risk.title | e }}"

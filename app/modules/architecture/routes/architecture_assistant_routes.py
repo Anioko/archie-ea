@@ -3882,25 +3882,45 @@ def _wizard_save_step_1(data, solution_id):
         if driver.get("id"):
             _link_existing_element(solution.id, driver["id"])
         else:
-            _sync_archimate_element(solution.id, "Driver", "Motivation", driver["name"])
+            _sync_archimate_element(
+                solution.id,
+                ae_type="Driver",
+                ae_layer="Motivation",
+                name=driver["name"],
+            )
 
     for goal in scope.get("goals", []):
         if goal.get("id"):
             _link_existing_element(solution.id, goal["id"])
         else:
-            _sync_archimate_element(solution.id, "Goal", "Motivation", goal["name"])
+            _sync_archimate_element(
+                solution.id,
+                ae_type="Goal",
+                ae_layer="Motivation",
+                name=goal["name"],
+            )
 
     for constraint in scope.get("constraints", []):
         if constraint.get("id"):
             _link_existing_element(solution.id, constraint["id"])
         else:
-            _sync_archimate_element(solution.id, "Constraint", "Motivation", constraint["name"])
+            _sync_archimate_element(
+                solution.id,
+                ae_type="Constraint",
+                ae_layer="Motivation",
+                name=constraint["name"],
+            )
 
     for stakeholder in scope.get("stakeholders", []):
         if stakeholder.get("id"):
             _link_existing_element(solution.id, stakeholder["id"])
         else:
-            _sync_archimate_element(solution.id, "Stakeholder", "Motivation", stakeholder["name"])
+            _sync_archimate_element(
+                solution.id,
+                ae_type="Stakeholder",
+                ae_layer="Motivation",
+                name=stakeholder["name"],
+            )
 
     # Link general ArchiMate elements (any layer) selected via the element search
     for ae in scope.get("archimate_elements", []):
@@ -3959,8 +3979,10 @@ def _wizard_save_step_3(data, solution_id):
         if gap.get("recommendation"):
             desc += f"\nRecommendation: {gap['recommendation']}"
         _sync_archimate_element(
-            solution.id, "Gap", "Implementation_and_Migration",
-            f"Gap: {gap.get('capability_name', 'Unknown')}",
+            solution.id,
+            ae_type="Gap",
+            ae_layer="Implementation_and_Migration",
+            name=f"Gap: {gap.get('capability_name', 'Unknown')}",
             description=desc,
         )
 
@@ -4027,14 +4049,18 @@ def _wizard_save_step_5(data, solution_id):
     roadmap = data.get("roadmap", {})
     for plateau in roadmap.get("plateaus", []):
         _sync_archimate_element(
-            solution.id, "Plateau", "Implementation_and_Migration",
-            plateau.get("name", "Unnamed Plateau"),
+            solution.id,
+            ae_type="Plateau",
+            ae_layer="Implementation_and_Migration",
+            name=plateau.get("name", "Unnamed Plateau"),
         )
 
     for wp in roadmap.get("workPackages", []):
         _sync_archimate_element(
-            solution.id, "WorkPackage", "Implementation_and_Migration",
-            wp.get("name", "Unnamed Work Package"),
+            solution.id,
+            ae_type="WorkPackage",
+            ae_layer="Implementation_and_Migration",
+            name=wp.get("name", "Unnamed Work Package"),
         )
 
     # Store structured roadmap in arb_snapshot for resume hydration

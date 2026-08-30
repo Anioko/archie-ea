@@ -1,5 +1,10 @@
-document.addEventListener('alpine:init', () => {
-  Alpine.data('architectureJourneyHub', () => ({
+// Top-level (window) factory used as x-data="architectureJourneyHub()".
+// The CSP-safe Alpine evaluator (app/static/js/csp/csp-evaluator.js) resolves a
+// bare x-data identifier against the component scope and then window; it never
+// consults Alpine.data() registrations, so the Alpine.data() + bare-name form
+// left this hub inert. See scripts/check_alpine_data_binding.py.
+function architectureJourneyHub() {
+  return {
     title: '',
     intent: document.body.dataset.requestedJourneyIntent || '',
     layers: [],
@@ -67,5 +72,6 @@ document.addEventListener('alpine:init', () => {
         this.startingSolution = false;
       }
     },
-  }));
-});
+  };
+}
+window.architectureJourneyHub = architectureJourneyHub;

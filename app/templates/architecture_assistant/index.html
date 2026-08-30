@@ -178,7 +178,7 @@
         }"
         class="flex items-center gap-2 rounded-md border px-4 py-3 text-sm shadow-lg max-w-sm">
         <span x-text="toast.message" class="flex-1"></span>
-        <button type="button" @click="removeToast(toast.id)" class="shrink-0 opacity-60 hover:opacity-100">
+        <button aria-label="Dismiss notification" type="button" @click="removeToast(toast.id)" class="shrink-0 opacity-60 hover:opacity-100">
           <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
         </button>
       </div>

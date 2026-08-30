@@ -89,7 +89,7 @@
                                     <span class="text-xs text-muted-foreground" x-text="app.disposition ? app.disposition.replace(/_/g, ' ') : '—'"></span>
                                 </td>
                                 <td class="px-4 py-3">
-                                    <input type="number" min="0" step="100" placeholder="0.00"
+                                    <input aria-label="Total cost of ownership" type="number" min="0" step="100" placeholder="0.00"
                                            class="w-full h-8 px-2 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-1 focus:ring-ring"
                                            :value="app.total_cost_of_ownership || ''"
                                            @input="app.total_cost_of_ownership = parseFloat($event.target.value) || 0; app._dirty = true; app._saved = false">
@@ -162,7 +162,11 @@ function enrichmentApp() {
         loading: false,
         error: false,
 
-        load: function() {
+        // `await` below requires this to be async. It was a plain function, which
+        // is a SyntaxError -- and a SyntaxError discards the whole <script>, so
+        // enrichmentApp() was never defined and Alpine reported "enrichmentApp is
+        // not a function". The entire page was inert, not just the load.
+        load: async function() {
             const self = this;
             self.loading = true;
             self.error = false;

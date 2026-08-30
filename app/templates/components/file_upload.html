@@ -144,7 +144,7 @@
         }"
         class="border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-all hover:border-primary hover:bg-accent/50"
     >
-        <input 
+        <input aria-label="{{ label or 'Choose a file' }}" 
             type="file"
             id="{{ id }}"
             name="{{ name }}"

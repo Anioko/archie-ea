@@ -97,7 +97,7 @@
             Paste an existing schema to set confirmed fields — prevents field invention during code generation.
           </p>
         </div>
-        <button type="button" @click="importOpen = false" class="text-muted-foreground hover:text-foreground transition-colors">
+        <button aria-label="Close import panel" type="button" @click="importOpen = false" class="text-muted-foreground hover:text-foreground transition-colors">
           <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
           </svg>
@@ -279,7 +279,7 @@
                         </select>
                       </td>
                       <td class="py-1 pr-2 text-center">
-                        <input type="checkbox" x-model="field.required"
+                        <input aria-label="Field is required" type="checkbox" x-model="field.required"
                                :disabled="el.fields_status === 'confirmed' && !el._editing"
                                class="w-3 h-3 rounded accent-primary disabled:cursor-default"/>
                       </td>
@@ -291,7 +291,7 @@
                                :class="el.fields_status !== 'confirmed' || el._editing ? 'border-b border-dashed border-border/60 focus:border-primary/50' : ''" aria-label="describe this field…"/>
                       </td>
                       <td class="py-1 text-center">
-                        <button type="button" x-show="el._editing || el.fields_status !== 'confirmed'"
+                        <button aria-label="Remove field" type="button" x-show="el._editing || el.fields_status !== 'confirmed'"
                                 @click="removeField(el, fi)"
                                 class="text-muted-foreground/40 hover:text-destructive-emphasis transition-colors">
                           <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">

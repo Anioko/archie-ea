@@ -471,10 +471,10 @@
                                 <p x-cloak x-show="r.mitigation" class="text-xs text-muted-foreground" x-text="'Mitigation: ' + r.mitigation"></p>
                               </div>
                               <div class="flex gap-1 flex-shrink-0">
-                                <button type="button" @click="submitAiSugFeedback('risks',idx,'accepted')"
+                                <button aria-label="Accept suggested risk" type="button" @click="submitAiSugFeedback('risks',idx,'accepted')"
                                   :class="aiSugFeedback['risks_'+idx]==='accepted' ? 'bg-success text-primary-foreground' : 'border border-border text-muted-foreground hover:text-success-emphasis'"
                                   class="p-1.5 rounded transition-colors"><i data-lucide="check" class="w-3 h-3"></i></button>
-                                <button type="button" @click="submitAiSugFeedback('risks',idx,'rejected')"
+                                <button aria-label="Reject suggested risk" type="button" @click="submitAiSugFeedback('risks',idx,'rejected')"
                                   :class="aiSugFeedback['risks_'+idx]==='rejected' ? 'bg-destructive text-primary-foreground' : 'border border-border text-muted-foreground hover:text-destructive-emphasis'"
                                   class="p-1.5 rounded transition-colors"><i data-lucide="x" class="w-3 h-3"></i></button>
                               </div>

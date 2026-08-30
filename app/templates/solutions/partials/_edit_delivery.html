@@ -459,7 +459,7 @@
                 <a :href="'/ea-workflows/instance/' + (wfStarted.instance_id || wfStarted.instance.id)"
                    class="text-xs text-primary hover:underline">View Instance &rarr;</a>
             </template>
-            <button type="button" @click="wfStarted = null" class="text-muted-foreground hover:text-foreground p-0.5">
+            <button aria-label="Dismiss workflow started message" type="button" @click="wfStarted = null" class="text-muted-foreground hover:text-foreground p-0.5">
                 <i data-lucide="x" class="h-3.5 w-3.5" aria-hidden="true"></i>
             </button>
         </div>
@@ -467,7 +467,7 @@
         <div x-show="wfStartError" x-cloak
              class="mb-3 rounded-lg border border-destructive/30 bg-destructive/5 p-3 flex items-center justify-between text-sm text-destructive-emphasis">
             <span x-text="wfStartError"></span>
-            <button type="button" @click="wfStartError = null" class="p-0.5 hover:opacity-70">
+            <button aria-label="Dismiss workflow error" type="button" @click="wfStartError = null" class="p-0.5 hover:opacity-70">
                 <i data-lucide="x" class="h-3.5 w-3.5" aria-hidden="true"></i>
             </button>
         </div>

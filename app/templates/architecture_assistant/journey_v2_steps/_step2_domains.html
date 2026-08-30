@@ -244,14 +244,14 @@
 
                                                 {# Boolean toggle #}
                                                 <template x-if="tmpl.property_type === 'boolean'">
-                                                    <input type="checkbox" class="rounded border-input"
+                                                    <input :aria-label="tmpl.property_key" type="checkbox" class="rounded border-input"
                                                            :checked="getPropertyValue(code, el.id, tmpl.property_key) === true || getPropertyValue(code, el.id, tmpl.property_key) === 'true'"
                                                            @change="setPropertyValue(code, el.id, tmpl.property_key, $event.target.checked)">
                                                 </template>
 
                                                 {# Text/number input #}
                                                 <template x-if="tmpl.property_type === 'text' || tmpl.property_type === 'number'">
-                                                    <input type="text" class="flex-1 text-xs border border-input rounded px-2 py-1 bg-background"
+                                                    <input :aria-label="tmpl.property_key" type="text" class="flex-1 text-xs border border-input rounded px-2 py-1 bg-background"
                                                            :value="getPropertyValue(code, el.id, tmpl.property_key)"
                                                            @blur="setPropertyValue(code, el.id, tmpl.property_key, $event.target.value)"
                                                            :placeholder="tmpl.help_text ? tmpl.help_text.substring(0, 40) : ''">
@@ -259,7 +259,7 @@
 
                                                 {# Multi-select as text for v1 #}
                                                 <template x-if="tmpl.property_type === 'multi-select'">
-                                                    <input type="text" class="flex-1 text-xs border border-input rounded px-2 py-1 bg-background"
+                                                    <input :aria-label="tmpl.property_key" type="text" class="flex-1 text-xs border border-input rounded px-2 py-1 bg-background"
                                                            :value="getPropertyValue(code, el.id, tmpl.property_key)"
                                                            @blur="setPropertyValue(code, el.id, tmpl.property_key, $event.target.value)"
                                                            :placeholder="(tmpl.enum_options || []).join(', ')">

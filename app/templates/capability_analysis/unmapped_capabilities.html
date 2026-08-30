@@ -71,7 +71,7 @@
                     {% endif %}">
                     {{ priority.count }}
                 </div>
-                <div class="text-sm text-muted-foreground capitalize">{{ priority.strategic_importance }}</div>
+                <div class="text-sm text-muted-foreground capitalize">{{ priority.strategic_importance|dash }}</div>
             </div>
             {% endfor %}
         </div>
@@ -89,7 +89,7 @@
             <div class="flex items-center justify-between p-3 border border-border rounded-lg">
                 <div class="flex-1">
                     <div class="flex items-center justify-between mb-2">
-                        <h4 class="font-medium text-foreground">{{ domain.domain_name }}</h4>
+                        <h4 class="font-medium text-foreground">{{ domain.domain_name|dash }}</h4>
                         <span class="text-sm text-muted-foreground">{{ domain.mapped_capabilities }}/{{ domain.total_capabilities }} mapped</span>
                     </div>
                     <div class="w-full bg-muted rounded-full h-2">
@@ -138,29 +138,30 @@
                 {% for capability in unmapped_capabilities %}
                 <div class="border border-border rounded-lg p-4 hover:shadow-md transition-shadow">
                     <div class="flex items-start justify-between mb-3">
-                        <h4 class="font-medium text-foreground">{{ capability.name }}</h4>
+                        <h4 class="font-medium text-foreground">{{ capability.name|dash }}</h4>
                         <span class="px-2 py-1 text-xs rounded-full
                             {% if capability.strategic_importance == 'critical' %}bg-destructive/10 text-destructive-emphasis
                             {% elif capability.strategic_importance == 'high' %}bg-warning/10 text-warning-emphasis
                             {% elif capability.strategic_importance == 'medium' %}bg-warning/10 text-warning-emphasis
                             {% else %}bg-muted text-foreground
                             {% endif %}">
-                            {{ capability.strategic_importance|title }}
+                            {{ capability.strategic_importance|dash|title }}
                         </span>
                     </div>
                     
                     <div class="space-y-2 text-sm">
                         <div class="flex justify-between">
                             <span class="text-muted-foreground">Domain:</span>
-                            <span class="font-medium">{{ capability.domain_name }}</span>
+                            <span class="font-medium">{{ capability.domain_name|dash }}</span>
                         </div>
                         <div class="flex justify-between">
                             <span class="text-muted-foreground">Maturity:</span>
-                            <span class="font-medium">L{{ capability.current_maturity_level }} → L{{ capability.target_maturity_level }}</span>
+                            <span class="font-medium">{% if capability.current_maturity_level is not none
+                                and capability.target_maturity_level is not none %}L{{ capability.current_maturity_level }} → L{{ capability.target_maturity_level }}{% else %}—{% endif %}</span>
                         </div>
                         <div class="flex justify-between">
                             <span class="text-muted-foreground">Status:</span>
-                            <span class="font-medium">{{ capability.status|title }}</span>
+                            <span class="font-medium">{{ capability.status|dash|title }}</span>
                         </div>
                     </div>
                     

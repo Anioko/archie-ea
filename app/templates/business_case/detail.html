@@ -28,7 +28,7 @@
 } %}
 
 {% block content %}
-<div class="flex-1 overflow-auto" x-data="businessCaseDetail({
+<div class="flex-1 overflow-auto" x-data='businessCaseDetail({
     businessCaseId: {{ business_case.id }},
     fields: {{ {
         'problem_statement': business_case.problem_statement or '',
@@ -51,7 +51,7 @@
     updateApiUrl: {{ url_for('business_case.update', business_case_id=business_case.id) | tojson }},
     pullFinancialsApiUrl: {{ url_for('business_case.pull_financials', business_case_id=business_case.id) | tojson }},
     draftSectionApiUrl: {{ url_for('business_case.ai_draft_section', business_case_id=business_case.id) | tojson }}
-  })" x-cloak>
+  })' x-cloak>
 
   {{ page_header(
       title=business_case.title or 'Untitled Business Case',

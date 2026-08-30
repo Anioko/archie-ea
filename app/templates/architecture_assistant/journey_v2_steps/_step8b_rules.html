@@ -65,7 +65,7 @@
             Custom Rule
         </h3>
         <p class="text-xs text-muted-foreground">Describe a rule in plain English:</p>
-        <textarea x-model="nlRuleInput" rows="3" placeholder="e.g., When a customer has more than 3 overdue orders, block new orders and notify the account manager"
+        <textarea aria-label="Custom rule in plain English" x-model="nlRuleInput" rows="3" placeholder="e.g., When a customer has more than 3 overdue orders, block new orders and notify the account manager"
                   class="w-full px-3 py-2 text-sm bg-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring"></textarea>
         <button type="button" @click="submitCustomRule()" :disabled="!nlRuleInput || nlRuleLoading"
                 class="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50">

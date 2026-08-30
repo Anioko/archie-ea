@@ -15,6 +15,7 @@ from flask_login import current_user, login_required
 from app import db
 from app.decorators import audit_log, require_roles
 from app.models.business_capabilities import BusinessCapability
+from app.datetime_helpers import utcnow
 from app.models.compliance_models import CompliancePolicy, ComplianceViolation
 from app.services.enterprise_validation_service import EnterpriseValidationService
 from app.services.enterprise_audit_log import EnterpriseAuditLog
@@ -138,6 +139,76 @@ def get_capability(capability_id):
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
+# --------------------------------------------------------------------------- optional fields
+
+def _apply_optional_capability_fields(capability, data):
+    """Apply hierarchy / maturity / ownership from a request body.
+
+    Returns a list of validation errors. These fields are what makes a
+    capability usable to a business architect -- a capability with no parent
+    cannot be placed in the hierarchy, and one with no owner cannot be
+    governed -- but the create endpoint silently dropped every one of them, so
+    anything the user typed into those boxes was lost without a word.
+
+    A maturity level is only ever written together with an assessment date:
+    a level with no date is indistinguishable from an inferred one, and the
+    heatmap deliberately renders unassessed capabilities as an em dash.
+    """
+    errors = []
+
+    if "parent_capability_id" in data:
+        raw = data.get("parent_capability_id")
+        if raw in (None, "", 0, "0"):
+            capability.parent_capability_id = None
+        else:
+            try:
+                parent_id = int(raw)
+            except (TypeError, ValueError):
+                errors.append("Parent capability id must be a number")
+                parent_id = None
+            if parent_id is not None:
+                parent = BusinessCapability.query.filter_by(id=parent_id).first()
+                if parent is None:
+                    errors.append("Parent capability not found")
+                elif capability.id is not None and parent.id == capability.id:
+                    errors.append("A capability cannot be its own parent")
+                else:
+                    capability.parent_capability_id = parent.id
+
+    for field in ("current_maturity_level", "target_maturity_level"):
+        if field not in data:
+            continue
+        raw = data.get(field)
+        if raw in (None, "", "0"):
+            setattr(capability, field, None)
+            continue
+        try:
+            value = int(raw)
+        except (TypeError, ValueError):
+            errors.append(f"{field.replace('_', ' ').capitalize()} must be a number")
+            continue
+        if not 1 <= value <= 5:
+            errors.append(f"{field.replace('_', ' ').capitalize()} must be between 1 and 5")
+            continue
+        setattr(capability, field, value)
+
+    if capability.current_maturity_level is not None:
+        capability.maturity_assessment_date = capability.maturity_assessment_date or utcnow()
+        if capability.target_maturity_level is not None:
+            capability.maturity_gap = (
+                capability.target_maturity_level - capability.current_maturity_level
+            )
+    else:
+        capability.maturity_gap = None
+
+    for field in ("business_owner", "it_owner", "business_domain"):
+        if field in data:
+            value = (data.get(field) or "").strip()
+            setattr(capability, field, value or None)
+
+    return errors
+
+
 @enterprise_crud_bp.route("/capabilities", methods=["POST"])
 @login_required
 @require_roles("admin", "architect")
@@ -170,6 +241,14 @@ def create_capability():
             description=data.get("description", ""),
             level=data.get("level", 1),
         )
+
+        extra_errors = _apply_optional_capability_fields(capability, data)
+        if extra_errors:
+            return (
+                jsonify({"success": False, "error": "Validation failed",
+                         "errors": {"capability": extra_errors}}),
+                400,
+            )
 
         db.session.add(capability)
         db.session.commit()
@@ -239,6 +318,15 @@ def update_capability(capability_id):
                 "to": data["level"],
             }
             capability.level = data["level"]
+
+        extra_errors = _apply_optional_capability_fields(capability, data)
+        if extra_errors:
+            db.session.rollback()
+            return (
+                jsonify({"success": False, "error": "Validation failed",
+                         "errors": {"capability": extra_errors}}),
+                400,
+            )
 
         db.session.commit()
 

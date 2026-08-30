@@ -17,6 +17,7 @@ function workflowDesigner() {
         selectedStep: null,
         paletteSearch: '',
         templates: [],
+        templatesError: null,
         compileResult: null,
 
         /* -- Palette ---------------------------------------------- */
@@ -196,30 +197,39 @@ function workflowDesigner() {
         },
 
         /* -- Templates -------------------------------------------- */
+        /* Platform.fetch (core/03-fetch.js) is this application's HTTP wrapper:
+           it returns the PARSED body, serialises a plain-object body, injects
+           CSRF, and rejects on a non-ok response. The previous code called
+           `ARCHIE.fetch`/`ARCHIE.toast` — no such global has ever existed in
+           this codebase — so every request and every toast on this page threw
+           "ARCHIE is not defined" and the designer could not load templates,
+           save, or compile. */
         _loadTemplates: function() {
             let self = this;
-            ARCHIE.fetch('/api/codegen/workflow-templates')
-                .then(function(r) { return r.json(); })
+            Platform.fetch('/api/codegen/workflow-templates', { silent: true })
                 .then(function(data) { self.templates = data.templates || []; })
-                .catch(function() { self.templates = []; });
+                .catch(function() {
+                    self.templates = [];
+                    self.templatesError = 'Workflow templates could not be loaded.';
+                    Platform.toast.error('Failed to load workflow templates');
+                });
         },
 
         loadTemplate: function(templateId) {
             let self = this;
-            ARCHIE.fetch('/api/codegen/workflow-templates/' + templateId + '/instantiate', {
+            Platform.fetch('/api/codegen/workflow-templates/' + templateId + '/instantiate', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({})
+                body: {}
             })
-            .then(function(r) { return r.json(); })
             .then(function(data) {
-                if (data.workflow_definition) {
-                    self.workflowName = data.workflow_definition.name || 'Template Workflow';
-                    WorkflowShapes.loadWorkflow(self.graph, data.workflow_definition);
-                    ARCHIE.toast('Template loaded', 'success');
+                if (!data || !data.workflow_definition) {
+                    throw new Error('Template returned no workflow definition');
                 }
+                self.workflowName = data.workflow_definition.name || 'Template Workflow';
+                WorkflowShapes.loadWorkflow(self.graph, data.workflow_definition);
+                Platform.toast.success('Template loaded');
             })
-            .catch(function() { ARCHIE.toast('Failed to load template', 'error'); });
+            .catch(function() { Platform.toast.error('Failed to load template'); });
         },
 
         /* -- Save / Load / Compile -------------------------------- */
@@ -237,23 +247,17 @@ function workflowDesigner() {
                 : '/api/codegen/workflow-designs';
             let method = self.workflowId ? 'PUT' : 'POST';
 
-            ARCHIE.fetch(url, {
-                method: method,
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            })
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-                if (data.id) self.workflowId = data.id;
-                ARCHIE.toast('Workflow saved', 'success');
-            })
-            .catch(function() { ARCHIE.toast('Save failed', 'error'); });
+            Platform.fetch(url, { method: method, body: payload })
+                .then(function(data) {
+                    if (data && data.id) self.workflowId = data.id;
+                    Platform.toast.success('Workflow saved');
+                })
+                .catch(function() { Platform.toast.error('Save failed'); });
         },
 
         _loadWorkflow: function(id) {
             let self = this;
-            ARCHIE.fetch('/api/codegen/workflow-designs/' + id)
-                .then(function(r) { return r.json(); })
+            Platform.fetch('/api/codegen/workflow-designs/' + id, { silent: true })
                 .then(function(data) {
                     self.workflowName = data.name || 'Workflow';
                     self.solutionId = data.solution_id;
@@ -261,7 +265,7 @@ function workflowDesigner() {
                         WorkflowShapes.loadWorkflow(self.graph, data.workflow_definition);
                     }
                 })
-                .catch(function() { ARCHIE.toast('Failed to load workflow', 'error'); });
+                .catch(function() { Platform.toast.error('Failed to load workflow'); });
         },
 
         compileWorkflow: function() {
@@ -269,17 +273,16 @@ function workflowDesigner() {
             let serialized = WorkflowShapes.serializeGraph(self.graph);
             let payload = Object.assign({ name: self.workflowName }, serialized);
 
-            ARCHIE.fetch('/api/codegen/workflow-designs/compile', {
+            Platform.fetch('/api/codegen/workflow-designs/compile', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
+                body: payload
             })
-            .then(function(r) { return r.json(); })
             .then(function(data) {
-                self.compileResult = data.n8n_workflow;
-                ARCHIE.toast('Compiled to n8n workflow (' + ((data.n8n_workflow && data.n8n_workflow.nodes) ? data.n8n_workflow.nodes.length : 0) + ' nodes)', 'success');
+                self.compileResult = (data && data.n8n_workflow) || null;
+                let nodes = (data && data.n8n_workflow && data.n8n_workflow.nodes) || [];
+                Platform.toast.success('Compiled to n8n workflow (' + nodes.length + ' nodes)');
             })
-            .catch(function() { ARCHIE.toast('Compilation failed', 'error'); });
+            .catch(function() { Platform.toast.error('Compilation failed'); });
         }
     };
 }

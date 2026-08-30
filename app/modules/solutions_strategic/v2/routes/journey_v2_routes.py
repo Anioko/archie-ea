@@ -3935,10 +3935,10 @@ def save_structured_intake(solution_id):
                 if not existing:
                     _jwire_tech_sync(
                         solution_id,
-                        ae_type,
-                        "Technology",
-                        tech_name,
-                        f"Technology constraint ({tc.get('type','constraint')}): {tech_name}",
+                        ae_type=ae_type,
+                        ae_layer="Technology",
+                        name=tech_name,
+                        description=f"Technology constraint ({tc.get('type','constraint')}): {tech_name}",
                     )
                     counts["archimate_elements"] = counts.get("archimate_elements", 0) + 1
         except Exception as _jwire3_err:
@@ -4060,32 +4060,52 @@ def save_structured_intake(solution_id):
             for s in (motivation.get("stakeholders") or []):
                 name = (s.get("name") or "").strip()
                 if name and not _has_ae(solution_id, "Stakeholder", name):
-                    _jwire_sync(solution_id, "Stakeholder", "Motivation", name,
-                                s.get("description") or f"Stakeholder: {name}")
+                    _jwire_sync(
+                        solution_id,
+                        ae_type="Stakeholder",
+                        ae_layer="Motivation",
+                        name=name,
+                        description=s.get("description") or f"Stakeholder: {name}",
+                    )
                     _ae_count += 1
 
             # BA-defined Drivers → ArchiMate Driver elements
             for d in (motivation.get("drivers") or []):
                 name = (d.get("name") or "").strip()
                 if name and not _has_ae(solution_id, "Driver", name):
-                    _jwire_sync(solution_id, "Driver", "Motivation", name,
-                                d.get("description") or f"Business driver: {name}")
+                    _jwire_sync(
+                        solution_id,
+                        ae_type="Driver",
+                        ae_layer="Motivation",
+                        name=name,
+                        description=d.get("description") or f"Business driver: {name}",
+                    )
                     _ae_count += 1
 
             # BA-defined Goals → ArchiMate Goal elements
             for g in (motivation.get("goals") or []):
                 name = (g.get("name") or "").strip()
                 if name and not _has_ae(solution_id, "Goal", name):
-                    _jwire_sync(solution_id, "Goal", "Motivation", name,
-                                g.get("description") or f"Goal: {name}")
+                    _jwire_sync(
+                        solution_id,
+                        ae_type="Goal",
+                        ae_layer="Motivation",
+                        name=name,
+                        description=g.get("description") or f"Goal: {name}",
+                    )
                     _ae_count += 1
 
             # BA-defined Constraints → ArchiMate Constraint elements
             for c in (motivation.get("constraints") or []):
                 name = (c.get("name") or "").strip()
                 if name and not _has_ae(solution_id, "Constraint", name):
-                    _jwire_sync(solution_id, "Constraint", "Motivation", name,
-                                c.get("source") or f"Constraint: {name}")
+                    _jwire_sync(
+                        solution_id,
+                        ae_type="Constraint",
+                        ae_layer="Motivation",
+                        name=name,
+                        description=c.get("source") or f"Constraint: {name}",
+                    )
                     _ae_count += 1
 
             # Fallback: if BA didn't define any motivation, infer one Stakeholder + one Goal
@@ -4104,8 +4124,13 @@ def save_structured_intake(solution_id):
                         " ".join(filter(None, [org_size, biz_domain, "Stakeholder"])).strip()
                         or "Organizational Stakeholder"
                     )
-                    _jwire_sync(solution_id, "Stakeholder", "Motivation", stakeholder_name,
-                                "Inferred stakeholder from business context")
+                    _jwire_sync(
+                        solution_id,
+                        ae_type="Stakeholder",
+                        ae_layer="Motivation",
+                        name=stakeholder_name,
+                        description="Inferred stakeholder from business context",
+                    )
                     _ae_count += 1
 
                 if not _has_ae_type(solution_id, "Goal"):
@@ -4115,8 +4140,13 @@ def save_structured_intake(solution_id):
                         goal_name = drivers_data[0].get("name", "Strategic Objective")[:80]
                     else:
                         goal_name = f"Strategic Goal for {solution.name or 'Solution'}"
-                    _jwire_sync(solution_id, "Goal", "Motivation", goal_name,
-                                "Inferred goal from problem statement")
+                    _jwire_sync(
+                        solution_id,
+                        ae_type="Goal",
+                        ae_layer="Motivation",
+                        name=goal_name,
+                        description="Inferred goal from problem statement",
+                    )
                     _ae_count += 1
 
             counts["archimate_elements"] = counts.get("archimate_elements", 0) + _ae_count
@@ -4191,7 +4221,16 @@ def save_structured_intake(solution_id):
                 logger.info("JWIRE-002: Created %d cross-layer motivation relationships", _rel_count)
 
         except Exception as _jwire_err:
-            logger.warning("JWIRE-001+ motivation element creation failed: %s", _jwire_err)
+            # logger.exception, not logger.warning: this block is the only thing that
+            # turns the Motivation tab's on-screen promise ("drivers, goals and
+            # constraints you define here become ArchiMate Motivation elements") into
+            # rows, and every call in it raised TypeError for as long as
+            # _sync_archimate_element has been keyword-only — the callers here were
+            # never updated. A one-line warning with no traceback is why that survived:
+            # the intake still returned 200 and the journey still advanced, so nothing
+            # visible said the architecture backbone had not been written.
+            logger.exception("JWIRE-001+ motivation element creation failed: %s", _jwire_err)
+            counts["archimate_elements_failed"] = True
 
         solution.section_scores = None  # invalidate blueprint score cache so vision_motivation reflects intake elements
         db.session.commit()

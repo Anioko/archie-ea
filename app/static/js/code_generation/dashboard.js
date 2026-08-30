@@ -17,9 +17,16 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 
+function hasContextId(contextId) {
+    // A Python None rendered into the hidden field arrives as the STRING "None",
+    // which is truthy — that is how this page ended up requesting
+    // /code-generation/api/context/application/None and 404-ing.
+    return !!contextId && contextId !== 'None' && contextId !== 'undefined' && contextId !== 'null';
+}
+
 function initializeCodeGeneration(mode, contextId) {
-    // Load context if available
-    if (contextId) {
+    // Load context only when one is actually selected
+    if (hasContextId(contextId)) {
         loadContext(mode, contextId);
     }
 

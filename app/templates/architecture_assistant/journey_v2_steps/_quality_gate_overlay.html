@@ -20,7 +20,7 @@
       <div class="flex items-center justify-between">
         <h3 class="text-lg font-semibold text-foreground">Step Quality Assessment</h3>
         <template x-if="!$store.qualityGate.isHardBlock">
-          <button type="button" @click="$store.qualityGate.dismiss()"
+          <button aria-label="Close quality gate" type="button" @click="$store.qualityGate.dismiss()"
                   class="text-muted-foreground hover:text-foreground transition-colors">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>

@@ -219,7 +219,7 @@
                                         <!-- Delete -->
                                         <form method="POST" action="{{ url_for('admin.sso_settings') }}" class="inline"
                                               x-data="{}"
-                                              @submit.prevent="Platform.modal.confirmSubmit($event, 'Delete mapping for ' + {{ mapping.sso_group_name | tojson }} + '? This cannot be undone.')">
+                                              @submit.prevent='Platform.modal.confirmSubmit($event, "Delete mapping for " + {{ mapping.sso_group_name | tojson }} + "? This cannot be undone.")'>
                                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                                             <input type="hidden" name="action" value="delete"/>
                                             <input type="hidden" name="mapping_id" value="{{ mapping.id }}"/>

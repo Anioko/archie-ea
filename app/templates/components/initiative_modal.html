@@ -116,7 +116,7 @@
                     {{ field.label }}
                     {% if field.required %}<span class="text-destructive-emphasis">*</span>{% endif %}
                 </label>
-                <textarea x-model="formData['{{ field.name }}']"
+                <textarea aria-label="{{ field.label }}" x-model="formData['{{ field.name }}']"
                           placeholder="{{ field.placeholder | default('') }}"
                           {% if field.required %}required{% endif %}
                           rows="3"
@@ -129,7 +129,7 @@
                     {{ field.label }}
                     {% if field.required %}<span class="text-destructive-emphasis">*</span>{% endif %}
                 </label>
-                <select x-model="formData['{{ field.name }}']"
+                <select aria-label="{{ field.label }}" x-model="formData['{{ field.name }}']"
                         {% if field.required %}required{% endif %}
                         class="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring">
                     <option value="">-- Select {{ field.label }} --</option>

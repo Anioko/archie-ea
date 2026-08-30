@@ -250,6 +250,22 @@ def require_roles(*allowed_roles):
                     if normalized:
                         user_roles.add(normalized)
 
+            # enterprise_role is the persona system the product actually gates
+            # navigation and dashboards on, but require_roles never looked at
+            # it -- so a business_architect was 403ed by @require_roles("admin",
+            # "architect") on the capability CRUD endpoints that exist for that
+            # persona. Contribute the role itself, plus the coarse name it
+            # stands for, so the two vocabularies agree.
+            enterprise_role = _normalize_role_name(
+                getattr(current_user, "enterprise_role", None)
+            )
+            if enterprise_role:
+                user_roles.add(enterprise_role)
+                if enterprise_role.endswith("_architect"):
+                    user_roles.add("architect")
+                elif enterprise_role == "platform_admin":
+                    user_roles.add("admin")
+
             if hasattr(current_user, "role_archetype") and current_user.role_archetype:
                 normalized_archetype = _normalize_role_name(current_user.role_archetype)
                 if normalized_archetype:

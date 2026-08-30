@@ -500,31 +500,31 @@
                                     <div>
                                         <label class="block text-xs font-medium text-muted-foreground mb-1" x-text="field.label"></label>
                                         <template x-if="field.type === 'currency'">
-                                            <input type="number" step="0.01" min="0"
+                                            <input :aria-label="field.label" type="number" step="0.01" min="0"
                                                    :data-field="field.key"
                                                    class="w-full h-8 px-2 py-1 text-sm border border-input rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-ring"
                                                    :placeholder="'0.00'" @click.stop>
                                         </template>
                                         <template x-if="field.type === 'date'">
-                                            <input type="date"
+                                            <input :aria-label="field.label" type="date"
                                                    :data-field="field.key"
                                                    class="w-full h-8 px-2 py-1 text-sm border border-input rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-ring"
                                                    @click.stop>
                                         </template>
                                         <template x-if="field.type === 'text'">
-                                            <input type="text"
+                                            <input :aria-label="field.label" type="text"
                                                    :data-field="field.key"
                                                    class="w-full h-8 px-2 py-1 text-sm border border-input rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-ring"
                                                    :placeholder="field.label" @click.stop>
                                         </template>
                                         <template x-if="field.type === 'textarea'">
-                                            <textarea rows="2"
+                                            <textarea :aria-label="field.label" rows="2"
                                                       :data-field="field.key"
                                                       class="w-full px-2 py-1 text-sm border border-input rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-ring resize-none"
                                                       :placeholder="field.label" @click.stop></textarea>
                                         </template>
                                         <template x-if="field.type === 'select'">
-                                            <select :data-field="field.key"
+                                            <select :aria-label="field.label" :data-field="field.key"
                                                     class="w-full h-8 px-2 py-1 text-sm border border-input rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-ring"
                                                     @click.stop>
                                                 <template x-for="opt in field.options" :key="opt.value">

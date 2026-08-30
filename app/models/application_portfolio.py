@@ -125,8 +125,16 @@ class ApplicationComponent(TenantMixin, db.Model, OptimisticLockMixin):
         db.String(50)
     )  # erp, crm, scm, hcm, bi, custom, legacy
     deployment_model = Column(db.String(30))  # on_premise, cloud, saas, hybrid, mobile
+    # No default. It used to default to "development", which meant every
+    # application whose deployment status had never been recorded was DISPLAYED
+    # as "Development" -- a warning badge and a "Lifecycle Stage: Development"
+    # tile on the detail page, sitting directly above an "Application Identity /
+    # Lifecycle Status: Production" row read from lifecycle_status. The user
+    # cannot tell that invented value from one somebody entered, which is
+    # exactly the failure CLAUDE.md's "never invent data" rule names. Unrecorded
+    # is NULL, and NULL renders as an em dash / no badge.
     deployment_status = Column(
-        db.String(50), default="development"
+        db.String(50)
     )  # development, testing, staging, production, done
     criticality = Column(
         db.String(20)

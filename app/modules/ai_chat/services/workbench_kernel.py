@@ -581,7 +581,11 @@ class WorkbenchKernel:
                         _sync_archimate_element,
                     )
                     _sync_archimate_element(
-                        solution_id, element_type, layer, element_name[:100], description,
+                        solution_id,
+                        ae_type=element_type,
+                        ae_layer=layer,
+                        name=element_name[:100],
+                        description=description,
                     )
                 except Exception as link_err:
                     logger.debug("_sync_archimate_element skipped: %s", link_err)
@@ -1411,9 +1415,19 @@ class GreenfieldWorkflow:
                 try:
                     from app.modules.solutions_strategic.v2.routes.solution_phase_routes import _sync_archimate_element
                     for d in scope.get("drivers", [])[:5]:
-                        _sync_archimate_element(solution_id, "Driver", "Motivation", d["name"][:200])
+                        _sync_archimate_element(
+                            solution_id,
+                            ae_type="Driver",
+                            ae_layer="Motivation",
+                            name=d["name"][:200],
+                        )
                     for g in scope.get("goals", [])[:5]:
-                        _sync_archimate_element(solution_id, "Goal", "Motivation", g["name"][:200])
+                        _sync_archimate_element(
+                            solution_id,
+                            ae_type="Goal",
+                            ae_layer="Motivation",
+                            name=g["name"][:200],
+                        )
                 except Exception as _ae:
                     logger.debug("AIC-313: ArchiMate sync skipped: %s", _ae)
 

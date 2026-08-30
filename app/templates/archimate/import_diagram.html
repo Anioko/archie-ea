@@ -190,7 +190,7 @@
                             <template x-for="(s, i) in report.suggestions.retype" :key="'rt'+i">
                                 <tr class="border-t border-border/60">
                                     <td class="px-2 py-1.5 w-8">
-                                        <input type="checkbox" x-model="s.accepted" class="rounded border-input">
+                                        <input aria-label="Accept retype suggestion" type="checkbox" x-model="s.accepted" class="rounded border-input">
                                     </td>
                                     <td class="px-2 py-1.5 text-foreground" x-text="s.name"></td>
                                     <td class="px-2 py-1.5 text-xs">
@@ -213,7 +213,7 @@
                             <template x-for="(s, i) in report.suggestions.relationships" :key="'rl'+i">
                                 <tr class="border-t border-border/60">
                                     <td class="px-2 py-1.5 w-8">
-                                        <input type="checkbox" x-model="s.accepted" class="rounded border-input">
+                                        <input aria-label="Accept relationship suggestion" type="checkbox" x-model="s.accepted" class="rounded border-input">
                                     </td>
                                     <td class="px-2 py-1.5 text-foreground" x-text="s.source_name"></td>
                                     <td class="px-2 py-1.5 text-xs text-muted-foreground">

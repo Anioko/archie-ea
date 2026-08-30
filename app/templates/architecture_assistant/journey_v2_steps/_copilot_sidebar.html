@@ -39,7 +39,7 @@
               x-text="$store.copilot.count + ' suggestions'"></span>
       </template>
     </div>
-    <button type="button" @click="$store.copilot.toggle()"
+    <button aria-label="Close copilot sidebar" type="button" @click="$store.copilot.toggle()"
             class="text-muted-foreground hover:text-foreground transition-colors">
       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
@@ -142,7 +142,7 @@
                 }
              "
              class="flex-1 rounded-md border border-input bg-background px-2.5 py-1.5 text-xs focus:ring-1 focus:ring-ring focus:outline-none placeholder:text-muted-foreground" aria-label="Ask about this step...">
-      <button type="button" @click="
+      <button aria-label="Send question to copilot" type="button" @click="
                 const q = $refs.copilotQuestion.value.trim();
                 if (q) {
                     $store.copilot.reviewField(solutionId, currentStep, '_question', q);

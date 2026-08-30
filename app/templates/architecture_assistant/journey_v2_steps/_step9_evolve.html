@@ -17,7 +17,7 @@
             Submit Change Request
         </h3>
         <p class="text-xs text-muted-foreground">Describe what you want to change in plain English:</p>
-        <textarea x-model="changeRequestText" rows="4"
+        <textarea aria-label="Change request" x-model="changeRequestText" rows="4"
                   placeholder="e.g., Add a Priority field to orders. High priority should skip approval for amounts under $10K."
                   class="w-full px-3 py-2 text-sm bg-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring"></textarea>
         <button type="button" @click="submitChangeRequest()" :disabled="!changeRequestText || changeRequestProcessing"

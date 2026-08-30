@@ -53,7 +53,7 @@
                         <span x-text="generatingNarrative ? 'Generating…' : 'Generate with AI'"></span>
                     </button>
                 </div>
-                <textarea x-model="narrative"
+                <textarea aria-label="Decision narrative" x-model="narrative"
                           @input.debounce.2000ms="autoSave($event.target.value)"
                           @blur="autoSave($event.target.value)"
                           @focus="narrativeSaving = narrativeSaving || 'idle'"

@@ -3,6 +3,12 @@ module.exports = {
   darkMode: ["class"],
   content: [
     './app/templates/**/*.html',
+    // Blueprint-local template folders (app/modules/<domain>/templates/...).
+    // Without this glob Tailwind never sees those files, so a utility used
+    // ONLY in a module template is silently absent from tailwind-output.css
+    // and the class does nothing at runtime. Found via /modules, whose
+    // `focus:ring-2 focus:ring-ring` and `-translate-y-1/2` were unbuilt.
+    './app/modules/**/templates/**/*.html',
     './app/static/js/**/*.js',
   ],
   theme: {

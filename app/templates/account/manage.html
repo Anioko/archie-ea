@@ -115,7 +115,7 @@
                         {% set is_enabled = user.get_notification_preference(pref_key) %}
                         <div class="flex items-start justify-between gap-4 py-3 {% if not loop.last %}border-b border-border{% endif %}">
                             <div class="flex-1 min-w-0">
-                                <label for="pref_{{ pref_key }}" class="text-sm font-medium cursor-pointer">{{ pref_label }}</label>
+                                <label id="pref_{{ pref_key }}_label" for="pref_{{ pref_key }}" class="text-sm font-medium cursor-pointer">{{ pref_label }}</label>
                                 <p class="text-xs text-muted-foreground mt-0.5">{{ pref_desc }}</p>
                             </div>
                             <div class="flex-shrink-0 pt-0.5">
@@ -123,7 +123,7 @@
                                         id="pref_{{ pref_key }}_btn"
                                         role="switch"
                                         aria-checked="{{ 'true' if is_enabled else 'false' }}"
-                                        aria-labelledby="pref_{{ pref_key }}"
+                                        aria-labelledby="pref_{{ pref_key }}_label"
                                         @click="
                                             const btn = $el;
                                             const checked = btn.getAttribute('aria-checked') === 'true';

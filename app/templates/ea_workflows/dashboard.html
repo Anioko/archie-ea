@@ -225,11 +225,12 @@
                 </ul>
                 <div class="flex items-center justify-between pt-3 border-t border-input mt-auto">
                     <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-info/10 text-info-emphasis">Phase D</span>
-                    {# The phase blueprint is registered non-fatally; when it is
-                       absent there is no page to open, so no button is shown —
-                       the previous href="#" was a control that did nothing. #}
-                    {% if (phase_available|default({})).get('phase_d') %}
-                    <a href="/ea-workflows/phase-d"
+                    {# phase_links holds a URL only when the url_map really serves
+                       that page. Testing the blueprint instead was not enough: those
+                       blueprints are API-only, so the button rendered and 404'd. #}
+                    {% set _phase_url = (phase_links|default({})).get('phase_d') %}
+                    {% if _phase_url %}
+                    <a href="{{ _phase_url }}"
                        class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-sm font-medium">
                         <i data-lucide="arrow-right" class="h-3.5 w-3.5" aria-hidden="true"></i>
                         Open
@@ -269,11 +270,12 @@
                 </ul>
                 <div class="flex items-center justify-between pt-3 border-t border-input mt-auto">
                     <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-warning/10 text-warning-emphasis">Phase G</span>
-                    {# The phase blueprint is registered non-fatally; when it is
-                       absent there is no page to open, so no button is shown —
-                       the previous href="#" was a control that did nothing. #}
-                    {% if (phase_available|default({})).get('phase_g') %}
-                    <a href="/ea-workflows/phase-g"
+                    {# phase_links holds a URL only when the url_map really serves
+                       that page. Testing the blueprint instead was not enough: those
+                       blueprints are API-only, so the button rendered and 404'd. #}
+                    {% set _phase_url = (phase_links|default({})).get('phase_g') %}
+                    {% if _phase_url %}
+                    <a href="{{ _phase_url }}"
                        class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-sm font-medium">
                         <i data-lucide="arrow-right" class="h-3.5 w-3.5" aria-hidden="true"></i>
                         Open
@@ -313,11 +315,12 @@
                 </ul>
                 <div class="flex items-center justify-between pt-3 border-t border-input mt-auto">
                     <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-success/10 text-success-emphasis">Phase E</span>
-                    {# The phase blueprint is registered non-fatally; when it is
-                       absent there is no page to open, so no button is shown —
-                       the previous href="#" was a control that did nothing. #}
-                    {% if (phase_available|default({})).get('phase_e') %}
-                    <a href="/ea-workflows/phase-e"
+                    {# phase_links holds a URL only when the url_map really serves
+                       that page. Testing the blueprint instead was not enough: those
+                       blueprints are API-only, so the button rendered and 404'd. #}
+                    {% set _phase_url = (phase_links|default({})).get('phase_e') %}
+                    {% if _phase_url %}
+                    <a href="{{ _phase_url }}"
                        class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-sm font-medium">
                         <i data-lucide="arrow-right" class="h-3.5 w-3.5" aria-hidden="true"></i>
                         Open
@@ -357,11 +360,12 @@
                 </ul>
                 <div class="flex items-center justify-between pt-3 border-t border-input mt-auto">
                     <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-violet-100 text-violet-700">{# design-tokens-ok #}Phase F</span>
-                    {# The phase blueprint is registered non-fatally; when it is
-                       absent there is no page to open, so no button is shown —
-                       the previous href="#" was a control that did nothing. #}
-                    {% if (phase_available|default({})).get('phase_f') %}
-                    <a href="/ea-workflows/phase-f"
+                    {# phase_links holds a URL only when the url_map really serves
+                       that page. Testing the blueprint instead was not enough: those
+                       blueprints are API-only, so the button rendered and 404'd. #}
+                    {% set _phase_url = (phase_links|default({})).get('phase_f') %}
+                    {% if _phase_url %}
+                    <a href="{{ _phase_url }}"
                        class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-sm font-medium">
                         <i data-lucide="arrow-right" class="h-3.5 w-3.5" aria-hidden="true"></i>
                         Open
@@ -401,11 +405,12 @@
                 </ul>
                 <div class="flex items-center justify-between pt-3 border-t border-input mt-auto">
                     <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-destructive/10 text-destructive-emphasis">Phase H</span>
-                    {# The phase blueprint is registered non-fatally; when it is
-                       absent there is no page to open, so no button is shown —
-                       the previous href="#" was a control that did nothing. #}
-                    {% if (phase_available|default({})).get('phase_h') %}
-                    <a href="/ea-workflows/phase-h"
+                    {# phase_links holds a URL only when the url_map really serves
+                       that page. Testing the blueprint instead was not enough: those
+                       blueprints are API-only, so the button rendered and 404'd. #}
+                    {% set _phase_url = (phase_links|default({})).get('phase_h') %}
+                    {% if _phase_url %}
+                    <a href="{{ _phase_url }}"
                        class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-sm font-medium">
                         <i data-lucide="arrow-right" class="h-3.5 w-3.5" aria-hidden="true"></i>
                         Open

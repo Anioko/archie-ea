@@ -310,3 +310,12 @@ recheck.py
 # reviewed in-session, not committed.
 docs/superpowers/evidence/
 route_verification.json
+
+# Output of scripts/production_readiness_audit.py. These are measurement
+# artefacts of one run against one database, not repository content: they name
+# local ports and seeded user emails, and they go stale the moment anything is
+# fixed. The harness that produces them is committed; its output is not.
+audit_*.json
+production_readiness_report.json
+audit-server.log
+layout-probe-server.log

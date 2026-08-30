@@ -122,7 +122,7 @@
                                    x-model="alt.name"
                                    :placeholder="'Option ' + (idx + 1) + ' name'"
                                    class="flex-1 rounded-md border border-input bg-background px-2 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring" aria-label="Name">
-                            <button type="button"
+                            <button aria-label="Remove alternative" type="button"
                                     @click="_s.removeAlternative(idx)"
                                     class="text-muted-foreground hover:text-destructive-emphasis transition-colors">
                                 <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>

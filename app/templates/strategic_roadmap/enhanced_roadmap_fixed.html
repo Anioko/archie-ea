@@ -4,7 +4,14 @@
 {% block title %}Strategic Roadmap{% endblock %}
 
 {% block content %}
-<div x-data="roadmapApp()">
+{# Named enhancedStrategicRoadmap, NOT roadmapApp: alpine-architecture.js
+   registers a GENERIC Alpine.data('roadmapApp') component, and an Alpine.data
+   registration wins over a page-local global of the same name. This page was
+   therefore bound to that generic component instead of the one defined below —
+   which is why "formatStat is not a function" was thrown for every statistics
+   tile and why the page fired GET /api/roadmap (the generic component's default
+   apiBase, and not a route this application serves) and got a 404. #}
+<div x-data="enhancedStrategicRoadmap()">
     <!-- Header -->
     {{ page_shell(title='Strategic Roadmap', subtitle='Strategic capability evolution and work package planning') }}
 
@@ -29,7 +36,7 @@
             <!-- Domain Filter -->
             <div>
                 <label class="block text-sm font-medium text-foreground/80 mb-2">Domain</label>
-                <select x-model="selectedDomain" class="w-full p-2 border border-border rounded-md">
+                <select aria-label="Domain" x-model="selectedDomain" class="w-full p-2 border border-border rounded-md">
                     <option value="">All Domains</option>
                     <template x-for="domain in availableDomains" :key="domain">
                         <option :value="domain" x-text="domain"></option>
@@ -40,7 +47,7 @@
             <!-- Strategic Importance Filter -->
             <div>
                 <label class="block text-sm font-medium text-foreground/80 mb-2">Strategic Importance</label>
-                <select x-model="selectedImportance" class="w-full p-2 border border-border rounded-md">
+                <select aria-label="Strategic importance" x-model="selectedImportance" class="w-full p-2 border border-border rounded-md">
                     <option value="">All Levels</option>
                     <option value="High">High</option>
                     <option value="Medium">Medium</option>
@@ -51,7 +58,7 @@
             <!-- Timeline View Mode -->
             <div>
                 <label class="block text-sm font-medium text-foreground/80 mb-2">Timeline View</label>
-                <select x-model="timelineMode" class="w-full p-2 border border-border rounded-md">
+                <select aria-label="Timeline view" x-model="timelineMode" class="w-full p-2 border border-border rounded-md">
                     <option value="quarters">Quarters</option>
                     <option value="years">Years</option>
                     <option value="compact">Compact</option>
@@ -170,7 +177,7 @@
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-foreground/80 mb-1">Capability</label>
-                            <select x-model="workPackageForm.capability_id" required
+                            <select aria-label="Capability" x-model="workPackageForm.capability_id" required
                                     class="w-full p-2 border border-border rounded-md">
                                 <option value="">Select Capability</option>
                                 <template x-for="capability in availableCapabilities" :key="capability.id">
@@ -190,7 +197,7 @@
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-foreground/80 mb-1">Status</label>
-                            <select x-model="workPackageForm.status" required
+                            <select aria-label="Status" x-model="workPackageForm.status" required
                                     class="w-full p-2 border border-border rounded-md">
                                 <option value="Planned">Planned</option>
                                 <option value="In Progress">In Progress</option>
@@ -206,7 +213,7 @@
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-foreground/80 mb-1">Assigned To</label>
-                            <select x-model="workPackageForm.assigned_to"
+                            <select aria-label="Assigned to" x-model="workPackageForm.assigned_to"
                                     class="w-full p-2 border border-border rounded-md">
                                 <option value="">Unassigned</option>
                                 <template x-for="user in availableUsers" :key="user.id">
@@ -216,7 +223,7 @@
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-foreground/80 mb-1">Strategic Importance</label>
-                            <select x-model="workPackageForm.strategic_importance"
+                            <select aria-label="Strategic importance" x-model="workPackageForm.strategic_importance"
                                     class="w-full p-2 border border-border rounded-md">
                                 <option value="">Not Set</option>
                                 <option value="High">High</option>
@@ -227,7 +234,7 @@
                     </div>
                     <div class="mt-4">
                         <label class="block text-sm font-medium text-foreground/80 mb-1">Description</label>
-                        <textarea x-model="workPackageForm.description" rows="3"
+                        <textarea aria-label="Description" x-model="workPackageForm.description" rows="3"
                                   class="w-full p-2 border border-border rounded-md"></textarea>
                     </div>
                     <div class="mt-6 flex justify-end space-x-4">
@@ -247,7 +254,7 @@
 </div>
 
 <script>
-function roadmapApp() {
+function enhancedStrategicRoadmap() {
     return {
         workPackages: [],
         capabilities: [],
@@ -283,27 +290,47 @@ function roadmapApp() {
             this.loadData();
         },
 
-        async loadData() {
-            try {
-                // Load work packages
-                this.workPackages = await Platform.fetch('/api/strategic-work-packages',
-                    { silent: true, errorMsg: 'Could not load work packages' });
-
-                // Load capabilities
-                this.capabilities = await Platform.fetch('/api/capabilities',
-                    { silent: true, errorMsg: 'Could not load capabilities' });
-
-                // Load users
-                this.users = await Platform.fetch('/api/users',
-                    { silent: true, errorMsg: 'Could not load users' });
-
-                this.updateStatistics();
-                this.renderTimeline();
-            } catch (error) {
-                Platform.toast.error('Unable to load the roadmap', {
-                    description: error.message || 'The roadmap data could not be retrieved. Please retry.'
+        /* NOTE ON STYLE: .then()/.catch(), NOT async/await. Alpine expressions
+           here are evaluated by the CSP-safe interpreter in
+           app/static/js/csp/csp-evaluator.js, which runs bodies synchronously
+           and treats `await` as a PASS-THROUGH (unary 'await' returns its
+           operand). An awaited call therefore assigns the Promise object, not
+           the resolved body — which left every statistic reading a fabricated
+           0. Promise chains resolve correctly. */
+        loadData() {
+            const self = this;
+            // These endpoints return an ENVELOPE, not a bare array:
+            // {work_packages: []}, {capabilities: [], …}, {users: [], …}.
+            return Platform.fetch('/api/strategic-work-packages',
+                    { silent: true, errorMsg: 'Could not load work packages' })
+                .then(function (wp) {
+                    self.workPackages = (wp && wp.work_packages) || [];
+                    return Platform.fetch('/api/capabilities',
+                        { silent: true, errorMsg: 'Could not load capabilities' });
+                })
+                .then(function (caps) {
+                    self.capabilities = (caps && caps.capabilities) || [];
+                    return Platform.fetch('/api/users',
+                        { silent: true, errorMsg: 'Could not load users' });
+                })
+                .then(function (users) {
+                    self.users = (users && users.users) || [];
+                    self.updateStatistics();
+                    self.renderTimeline();
+                })
+                .catch(function (error) {
+                    // Leave the statistics at null so they render as an em dash
+                    // rather than a measured-looking zero.
+                    self.statistics = {
+                        totalWorkPackages: null,
+                        activeInitiatives: null,
+                        totalInvestment: null,
+                        completionRate: null
+                    };
+                    Platform.toast.error('Unable to load the roadmap', {
+                        description: (error && error.message) || 'The roadmap data could not be retrieved. Please retry.'
+                    });
                 });
-            }
         },
 
         get availableLevels() {
@@ -536,69 +563,71 @@ function roadmapApp() {
             };
         },
 
-        async saveWorkPackage() {
-            try {
-                const url = this.editingWorkPackage ?
-                    `/api/strategic-work-packages/${this.workPackageForm.id}` :
-                    '/api/strategic-work-packages';
+        saveWorkPackage() {
+            const self = this;
+            const url = this.editingWorkPackage
+                ? '/api/strategic-work-packages/' + this.workPackageForm.id
+                : '/api/strategic-work-packages';
+            const method = this.editingWorkPackage ? 'PUT' : 'POST';
 
-                const method = this.editingWorkPackage ? 'PUT' : 'POST';
-
-                await Platform.fetch(url, {
-                    method: method,
-                    body: this.workPackageForm,
-                    silent: true
+            return Platform.fetch(url, { method: method, body: this.workPackageForm, silent: true })
+                .then(function () {
+                    self.closeWorkPackageModal();
+                    return self.loadData();
+                })
+                .catch(function (error) {
+                    Platform.toast.error('Could not save the work package', {
+                        description: (error && error.message) || 'The change was not saved. Please retry.'
+                    });
                 });
-                this.closeWorkPackageModal();
-                this.loadData();
-            } catch (error) {
-                Platform.toast.error('Could not save the work package', {
-                    description: error.message || 'The change was not saved. Please retry.'
-                });
-            }
         },
 
-        async deleteWorkPackage(id) {
-            if (!(await Platform.modal.confirm('Are you sure you want to delete this work package?'))) return;
-            try {
-                await Platform.fetch.delete(`/api/strategic-work-packages/${id}`, { silent: true });
-                this.loadData();
-            } catch (error) {
-                Platform.toast.error('Could not delete the work package', {
-                    description: error.message || 'The work package was not deleted. Please retry.'
+        deleteWorkPackage(id) {
+            const self = this;
+            return Platform.modal.confirm('Are you sure you want to delete this work package?')
+                .then(function (confirmed) {
+                    if (!confirmed) return null;
+                    return Platform.fetch.delete('/api/strategic-work-packages/' + id, { silent: true })
+                        .then(function () { return self.loadData(); });
+                })
+                .catch(function (error) {
+                    Platform.toast.error('Could not delete the work package', {
+                        description: (error && error.message) || 'The work package was not deleted. Please retry.'
+                    });
                 });
-            }
         },
 
-        async exportData(format) {
-            try {
-                // raw-fetch-ok: the CSV branch below needs the raw Response to call
-                // .blob() for the download; Platform.fetch returns a parsed body.
-                const response = await fetch(`/strategic/roadmap?format=${format}`); // raw-fetch-ok: .blob() needs the raw Response
-                if (!response.ok) {
-                    throw new Error('Export failed (HTTP ' + response.status + ')');
-                }
-
-                if (format === 'csv') {
-                    const blob = await response.blob();
+        exportData(format) {
+            if (format === 'png') {
+                return exportToPNG('roadmap-container', 'strategic-roadmap', { scale: 2 })
+                    .catch(function (error) { Platform.toast.error('Export Failed', {
+                        description: (error && error.message) || 'Unable to export. Please try again.' }); });
+            }
+            if (format === 'jpg') {
+                return exportToJPG('roadmap-container', 'strategic-roadmap', { scale: 2, quality: 0.95 })
+                    .catch(function (error) { Platform.toast.error('Export Failed', {
+                        description: (error && error.message) || 'Unable to export. Please try again.' }); });
+            }
+            // raw-fetch-ok: the CSV branch needs the raw Response to call .blob()
+            // for the download; Platform.fetch returns a parsed body.
+            return fetch('/strategic/roadmap?format=' + encodeURIComponent(format)) // raw-fetch-ok: .blob() needs the raw Response
+                .then(function (response) {
+                    if (!response.ok) throw new Error('Export failed (HTTP ' + response.status + ')');
+                    return response.blob();
+                })
+                .then(function (blob) {
                     const url = window.URL.createObjectURL(blob);
                     const a = document.createElement('a');
                     a.href = url;
                     a.download = 'strategic-roadmap.csv';
                     a.click();
                     window.URL.revokeObjectURL(url);
-                } else if (format === 'png') {
-                    // Export to PNG using export utility
-                    await exportToPNG('roadmap-container', 'strategic-roadmap', { scale: 2 });
-                } else if (format === 'jpg') {
-                    // Export to JPG using export utility
-                    await exportToJPG('roadmap-container', 'strategic-roadmap', { scale: 2, quality: 0.95 });
-                }
-            } catch (error) {
-                Platform.toast.error('Export Failed', {
-                    description: error.message || 'Unable to export. Please try again.'
+                })
+                .catch(function (error) {
+                    Platform.toast.error('Export Failed', {
+                        description: (error && error.message) || 'Unable to export. Please try again.'
+                    });
                 });
-            }
         }
     }
 }

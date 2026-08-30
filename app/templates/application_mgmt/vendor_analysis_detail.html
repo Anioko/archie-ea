@@ -7,7 +7,13 @@
 {% from "components/confirmation_dialog.html" import confirmation_dialog %}
 
 {% block content %}
-<div class="space-y-6" x-data="vendorAnalysisDetail" data-analysis-id="{{ analysis_id | tojson }}">
+{# Parentheses are required. Alpine's stock evaluator invokes a bare registered
+   component name for you; this application replaces that evaluator with the
+   CSP-safe interpreter in app/static/js/csp/, which evaluates `vendorAnalysisDetail`
+   to the FUNCTION rather than calling it. Alpine then warned "value cannot be
+   made reactive" and the component scope was empty — hence
+   "hasSelections is not a function". #}
+<div class="space-y-6" x-data="vendorAnalysisDetail()" data-analysis-id='{{ analysis_id | tojson }}'>
 
   <!-- Page Header -->
   <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -604,7 +610,7 @@
             <p class="text-sm text-muted-foreground mt-1">Adjust the weight of each scoring dimension. Weights must total 100%.</p>
           </div>
           <div class="flex items-center gap-2">
-            <select @change="applyWeightPreset($event.target.value); $event.target.value = ''" class="px-3 py-1.5 border border-border rounded-md bg-background text-foreground text-xs">
+            <select aria-label="Apply weighting preset" @change="applyWeightPreset($event.target.value); $event.target.value = ''" class="px-3 py-1.5 border border-border rounded-md bg-background text-foreground text-xs">
               <option value="">Apply Preset...</option>
               <option value="balanced">Balanced (Equal)</option>
               <option value="cost_focused">Cost-Focused</option>
@@ -1074,7 +1080,7 @@
                 <template x-for="key in ['cost', 'capability_coverage', 'risk', 'strategic_fit', 'implementation']" :key="key">
                   <div class="grid grid-cols-12 gap-3 items-center">
                     <span class="col-span-3 text-xs text-foreground capitalize" x-text="key.replace(/_/g, ' ')"></span>
-                    <input type="range" min="0" max="100" step="5" x-model="newScenarioWeights[key]" class="col-span-7 accent-primary">
+                    <input aria-label="Scenario weight" type="range" min="0" max="100" step="5" x-model="newScenarioWeights[key]" class="col-span-7 accent-primary">
                     <span class="col-span-2 text-xs font-mono text-right" x-text="newScenarioWeights[key] + '%'"></span>
                   </div>
                 </template>

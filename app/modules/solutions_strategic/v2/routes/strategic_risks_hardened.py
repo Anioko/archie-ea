@@ -51,6 +51,40 @@ audit_logger = logging.getLogger("audit")
 # AUTHORIZATION & ROLE-BASED ACCESS CONTROL
 # ============================================================================
 
+def _normalise_role_name(raw):
+    """Lower-case, underscore-separate and de-alias a role name."""
+    if raw is None:
+        return None
+    name = str(raw).strip().lower().replace(" ", "_").replace("-", "_")
+    if name == "administrator":
+        return "admin"
+    return name or None
+
+
+def _current_user_role_names():
+    """Every role name the signed-in user answers to, normalised.
+
+    `current_user.role` is a *Role relationship*, not a string. The previous
+    check compared that object against the allowed-role strings, so
+    `user_role not in allowed_roles` was true for every non-admin user and
+    EVERY route in this file returned 403 to legitimate architects (observed on
+    GET /strategic/api/risks/statuses). Read `.name` off the relationship, and
+    also honour the `enterprise_role` persona column, where an
+    "enterprise_architect"/"solution_architect" additionally satisfies the
+    generic "architect" the routes below ask for.
+    """
+    names = set()
+    role = getattr(current_user, "role", None)
+    names.add(_normalise_role_name(getattr(role, "name", None) if role is not None else None))
+    enterprise_role = _normalise_role_name(getattr(current_user, "enterprise_role", None))
+    if enterprise_role:
+        names.add(enterprise_role)
+        if enterprise_role.endswith("_architect"):
+            names.add("architect")
+    names.discard(None)
+    return names
+
+
 def require_roles(*allowed_roles):
     """
     Decorator to enforce role-based access control.
@@ -74,11 +108,13 @@ def require_roles(*allowed_roles):
             
             # Check user roles
             if allowed_roles:
-                user_role = getattr(current_user, 'role', None)
-                if user_role not in allowed_roles:
+                user_roles = _current_user_role_names()
+                if not user_roles.intersection(
+                    {_normalise_role_name(r) for r in allowed_roles}
+                ):
                     audit_logger.warning(
                         f"Unauthorized role access: user {current_user.id} "
-                        f"role {user_role} attempted {request.path}"
+                        f"roles {sorted(user_roles)} attempted {request.path}"
                     )
                     return jsonify({"error": "Insufficient permissions"}), 403
             
