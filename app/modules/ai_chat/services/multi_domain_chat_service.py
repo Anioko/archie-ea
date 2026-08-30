@@ -33,7 +33,21 @@ _SESSION_ELEMENT_CONTEXT: Dict[str, Dict] = {}
 
 # AIF-005: RAG context cache: keyed by domain, value: (context_str, timestamp)
 import time as _time
-_RAG_CONTEXT_CACHE: Dict[str, tuple] = {}
+# AIF-005: RAG context cache, keyed by (ORGANISATION, domain).
+#
+# It was keyed by domain alone. The cached value carries this organisation's
+# architecture principles, PRIOR ARB DECISION TITLES and reference architectures,
+# and it is injected into the AI's system prompt -- so for five minutes after any
+# tenant asked a question in a given business domain, every other tenant asking in
+# that same domain had that tenant's governance history put into their assistant's
+# context, to answer from and cite.
+#
+# Found 30 Aug 2026 by the sweep that followed the same defect in
+# capability_health_service: an unkeyed module-level cache in front of
+# tenant-scoped queries. The RAG query itself is correctly scoped; the cache
+# in front of it threw the scoping away.
+_RAG_CONTEXT_CACHE: Dict[tuple, tuple] = {}
+_RAG_CACHE_MAX_ENTRIES = 512
 _RAG_CACHE_TTL = 300  # 5 minutes
 
 from app import db
@@ -3280,11 +3294,21 @@ class MultiDomainChatService:
             return {}
 
     def _get_rag_context(self, domain: str) -> str:
-        """Get organisation context from RAG service, cached per domain for 300s."""
+        """Get organisation context from RAG service.
+
+        Cached for 300s per (organisation, domain) -- never per domain alone:
+        the cached text carries this organisation's principles and prior ARB
+        decision titles, and it goes into the AI system prompt.
+        """
         try:
             now = _time.time()
-            cache_key = domain
-            if cache_key in _RAG_CONTEXT_CACHE:
+            from flask import g, has_app_context
+
+            # No tenant means no cache entry: an entry with no owner is exactly
+            # what made this a leak. Outside a request (CLI, scheduler) recompute.
+            _tenant = getattr(g, "current_org_id", None) if has_app_context() else None
+            cache_key = None if _tenant is None else (_tenant, domain)
+            if cache_key is not None and cache_key in _RAG_CONTEXT_CACHE:
                 ctx_str, cached_at = _RAG_CONTEXT_CACHE[cache_key]
                 if now - cached_at < _RAG_CACHE_TTL:
                     return ctx_str
@@ -3305,7 +3329,12 @@ class MultiDomainChatService:
                     r.get("name", str(r)) for r in ctx["reference_architectures"][:3]
                 ))
             ctx_str = "\n".join(parts) if parts else ""
-            _RAG_CONTEXT_CACHE[cache_key] = (ctx_str, now)
+            if cache_key is not None:
+                if len(_RAG_CONTEXT_CACHE) >= _RAG_CACHE_MAX_ENTRIES:
+                    _oldest = min(_RAG_CONTEXT_CACHE,
+                                  key=lambda key: _RAG_CONTEXT_CACHE[key][1])
+                    _RAG_CONTEXT_CACHE.pop(_oldest, None)
+                _RAG_CONTEXT_CACHE[cache_key] = (ctx_str, now)
             return ctx_str
         except Exception as e:
             logger.warning(f"RAG context unavailable for domain {domain}: {e}")

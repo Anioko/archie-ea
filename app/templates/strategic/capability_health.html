@@ -25,11 +25,21 @@
 
     {# ── Metrics (v4 SectionCards) ────────────────────────────────────────── #}
     <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        {#
+          An em dash when nothing has been assessed, and a description that says
+          how many capabilities the average is actually over. The QA audit of
+          30 Aug 2026 (Medium #5) noted this page's claim of a "real-time
+          assessment based on maturity, coverage and technical risk" while every
+          domain read an identical 60% and 0 of 191 capabilities had any recorded
+          maturity assessment. Averaging unmeasured capabilities is what produced
+          that uniformity; they are now excluded and counted separately.
+        #}
         {{ metrics_card(
             title='Avg. Portfolio Health',
-            value=metrics.average_health|string + '%',
+            value=(metrics.average_health|string + '%') if metrics.average_health is not none else '&mdash;',
             icon='activity',
-            description='Across ' + metrics.total_capabilities|string + ' business capabilities'
+            description=('Across ' + metrics.assessed_capabilities|string + ' of ' + metrics.total_capabilities|string + ' capabilities with recorded data')
+                        if metrics.assessed_capabilities else 'No capability has recorded maturity, coverage or delivery data yet'
         ) }}
         {{ metrics_card(
             title='Critical Capabilities',
@@ -68,8 +78,8 @@
                                 <span class="mr-2">{{ domain.name }}</span>
                                 <span class="text-xs text-muted-foreground font-normal">({{ domain.count }} caps)</span>
                             </div>
-                            <span class="{% if domain.score < 60 %}text-destructive-emphasis{% elif domain.score < 80 %}text-warning-emphasis{% else %}text-success-emphasis{% endif %}">
-                                {{ domain.score }}%
+                            <span class="{% if domain.score is none %}text-muted-foreground{% elif domain.score < 60 %}text-destructive-emphasis{% elif domain.score < 80 %}text-warning-emphasis{% else %}text-success-emphasis{% endif %}">
+                                {{ (domain.score|string + '%') if domain.score is not none else '&mdash;' }}
                             </span>
                         </div>
                         <div class="h-2 w-full bg-secondary rounded-full overflow-hidden">
@@ -151,7 +161,8 @@
                                 <span class="text-xs text-muted-foreground">{{ item.compliance_score|round }}%</span>
                             </div>
                         </td>
-                        <td class="p-4 font-bold">{{ item.score }}%</td>
+                        {# "Not assessed" is a fact; 60% would be an invention. #}
+                        <td class="p-4 font-bold">{{ (item.score|string + '%') if item.score is not none else '&mdash;' }}</td>
                         <td class="p-4">
                             <div class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 border-transparent bg-destructive text-destructive-foreground hover:bg-destructive/80">
                                 {{ item.status }}
@@ -177,9 +188,13 @@
 document.addEventListener('DOMContentLoaded', function() {
     const healthData = {{ metrics.health_by_capability|tojson }};
     
-    const healthy = healthData.filter(h => h.score >= 80).length;
-    const warning = healthData.filter(h => h.score >= 60 && h.score < 80).length;
-    const critical = healthData.filter(h => h.score < 60).length;
+    // A null score is "not assessed", not a low score: `null >= 80` is false and
+    // `null < 60` is TRUE in JavaScript, so without this guard every unassessed
+    // capability would have been counted as critical.
+    const scored = healthData.filter(h => h.score !== null && h.score !== undefined);
+    const healthy = scored.filter(h => h.score >= 80).length;
+    const warning = scored.filter(h => h.score >= 60 && h.score < 80).length;
+    const critical = scored.filter(h => h.score < 60).length;
 
     document.getElementById('healthy-count').textContent = healthy;
     document.getElementById('warning-count').textContent = warning;

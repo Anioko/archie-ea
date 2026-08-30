@@ -18,7 +18,7 @@ PERFORMANCE OPTIMIZED VERSION:
 import logging
 import time
 from collections import defaultdict
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Tuple
 
 from app import db
 from app.models import BusinessCapability
@@ -31,9 +31,29 @@ from sqlalchemy import func
 
 logger = logging.getLogger(__name__)
 
-# Module-level result cache: (timestamp, result_dict)
-_health_metrics_cache: Tuple[float, Optional[Dict[str, Any]]] = (0.0, None)
+# Module-level result cache, keyed BY ORGANISATION: {org_id: (timestamp, result)}
+#
+# It used to be a single unkeyed tuple shared by the whole process, which made it
+# a cross-tenant data leak rather than a cache. The result dict carries
+# health_by_capability -- every capability's name, id, domain and score -- so for
+# 60 seconds after any tenant loaded /strategic/capability-health or
+# /api/capability-health, EVERY other tenant was served that tenant's capability
+# names and scores. No attacker action was required; one customer's portfolio
+# simply appeared on another customer's dashboard.
+#
+# Found 30 Aug 2026 by a test that was written for something else and could not
+# get a clean result between two organisations. Demonstrated: seed a capability
+# in org A, read the metrics as A, switch to org B, read again -- B is handed
+# A's capability by name.
+#
+# The tenant predicate itself was never the problem: _compute_health_metrics
+# queries TenantMixin models and is correctly scoped. The cache sat in front of
+# it and threw the scoping away.
+_health_metrics_cache: Dict[Any, Tuple[float, Dict[str, Any]]] = {}
 _CACHE_TTL_SECONDS = 60
+# Bound the map so a long-lived process serving many tenants cannot grow it
+# without limit; entries are cheap to recompute.
+_CACHE_MAX_TENANTS = 256
 
 
 class CapabilityHealthService:
@@ -48,18 +68,35 @@ class CapabilityHealthService:
         - Batches application queries
         - 60-second result cache to avoid redundant recomputation
         """
-        global _health_metrics_cache
-        cached_time, cached_result = _health_metrics_cache
-        if cached_result is not None and (time.time() - cached_time) < _CACHE_TTL_SECONDS:
-            logger.debug("Capability health metrics served from cache (age=%.1fs)", time.time() - cached_time)
-            return cached_result
+        from flask import g, has_app_context
+
+        # Outside a request there is no tenant, and a cache entry with no owner is
+        # exactly what caused the leak -- so do not cache at all there (CLI,
+        # scheduler, importers). Correctness first; those paths run rarely.
+        tenant = getattr(g, "current_org_id", None) if has_app_context() else None
+
+        if tenant is not None:
+            entry = _health_metrics_cache.get(tenant)
+            if entry is not None:
+                cached_time, cached_result = entry
+                if (time.time() - cached_time) < _CACHE_TTL_SECONDS:
+                    logger.debug(
+                        "Capability health metrics served from cache for org %s (age=%.1fs)",
+                        tenant, time.time() - cached_time,
+                    )
+                    return cached_result
 
         start = time.time()
         result = self._compute_health_metrics()
         elapsed = time.time() - start
         logger.info("Capability health metrics computed in %.2fs", elapsed)
 
-        _health_metrics_cache = (time.time(), result)
+        if tenant is not None:
+            if len(_health_metrics_cache) >= _CACHE_MAX_TENANTS:
+                # Drop the oldest rather than let the map grow unbounded.
+                oldest = min(_health_metrics_cache, key=lambda k: _health_metrics_cache[k][0])
+                _health_metrics_cache.pop(oldest, None)
+            _health_metrics_cache[tenant] = (time.time(), result)
         return result
 
     def _compute_health_metrics(self) -> Dict[str, Any]:
@@ -155,6 +192,8 @@ class CapabilityHealthService:
         domain_health = {}
 
         total_health_sum = 0
+        # Averages divide by what was MEASURED, not by how many rows exist.
+        assessed_count = 0
         critical_count = 0
         at_risk_count = 0
         # Inline gap summary counters (avoids calling analyze_capability_gaps which
@@ -184,6 +223,13 @@ class CapabilityHealthService:
                 planned_mapping_count=planned_mapping_count,
                 requirement_count=requirement_count,
             )
+            if not self._is_assessable(
+                cap, apps_for_cap, planned_solution_count,
+                planned_mapping_count, requirement_count,
+            ):
+                # Nothing to measure. Withhold the number rather than publish the
+                # formula's floor as if it were an assessment.
+                score = None
             maturity_gap = self._effective_maturity_gap(cap)
 
             # Compute inline gap counts using pre-loaded data
@@ -240,18 +286,22 @@ class CapabilityHealthService:
 
             health_scores.append(health_item)
 
-            # Aggregate by domain
-            d_name = health_item["domain"]
-            if d_name not in domain_health:
-                domain_health[d_name] = {"sum": 0, "count": 0}
-            domain_health[d_name]["sum"] += score
-            domain_health[d_name]["count"] += 1
+            # Aggregate by domain -- MEASURED capabilities only. Averaging an
+            # unmeasured 60 into a domain drags every domain towards 60 and
+            # manufactures the uniformity the audit reported.
+            if score is not None:
+                d_name = health_item["domain"]
+                if d_name not in domain_health:
+                    domain_health[d_name] = {"sum": 0, "count": 0}
+                domain_health[d_name]["sum"] += score
+                domain_health[d_name]["count"] += 1
 
-            total_health_sum += score
+                total_health_sum += score
+                assessed_count += 1
+                if score < 60:
+                    at_risk_count += 1
             if cap.strategic_importance == "critical":
                 critical_count += 1
-            if score < 60:
-                at_risk_count += 1
 
         # Finalize domain scores
         formatted_domains = []
@@ -264,18 +314,27 @@ class CapabilityHealthService:
                 }
             )
 
-        avg_health = round(total_health_sum / len(capabilities)) if capabilities else 0
+        # None, not 0: "no capability has been assessed" and "every capability
+        # scored zero" are different facts and must not render the same.
+        avg_health = round(total_health_sum / assessed_count) if assessed_count else None
 
-        # Sort health scores for "At Risk" list
-        at_risk_list = [h for h in health_scores if h["score"] < 70]
+        # Sort health scores for "At Risk" list. An unassessed capability is not
+        # at risk; it is unknown, which is a different queue.
+        at_risk_list = [
+            h for h in health_scores if h["score"] is not None and h["score"] < 70
+        ]
         at_risk_list.sort(key=lambda x: (x["strategic_importance"] != "critical", x["score"]))
 
         return {
             "average_health": avg_health,
+            # So a caller can say "60% across 12 of 191 assessed" rather than
+            # implying the whole portfolio was measured.
+            "assessed_capabilities": assessed_count,
+            "unassessed_capabilities": len(capabilities) - assessed_count,
             "total_capabilities": len(capabilities),
             "critical_capabilities": critical_count,
             "at_risk_capabilities": at_risk_count,
-            "health_by_capability": sorted(health_scores, key=lambda x: x["score"]),
+            "health_by_capability": sorted(health_scores, key=lambda x: (x["score"] is None, x["score"] or 0)),
             "health_by_domain": sorted(formatted_domains, key=lambda x: x["score"]),
             "at_risk_list": at_risk_list[:10],  # Top 10 risks
             "gaps_summary": {
@@ -388,6 +447,39 @@ class CapabilityHealthService:
         return current.name if current.id != capability.id else "Unknown Domain"
 
     @staticmethod
+    def _is_assessable(
+        capability: BusinessCapability,
+        apps,
+        planned_solution_count: int,
+        planned_mapping_count: int,
+        requirement_count: int,
+    ) -> bool:
+        """Is there ANY real input behind a score for this capability?
+
+        The formula starts at 100 and subtracts. A capability with no maturity
+        assessment (gap treated as 0, so no penalty) and no applications
+        (-40) and nothing planned lands on exactly 60 -- every time, for every
+        such capability. The 30 Aug 2026 QA audit saw "every domain ... shows an
+        identical 60% score, aligning with 0/191 capabilities having any
+        recorded maturity assessment" and reasonably read it as a hardcoded
+        fallback. It is not hardcoded; it is what the arithmetic produces when
+        every input is missing, which is worse: a number with no measurement
+        behind it, rendered identically to a measured one.
+
+        CLAUDE.md: "A 0 that means 'not computed' is indistinguishable from a
+        measured zero; use None -> em dash." The same applies to a 60.
+        """
+        if capability.maturity_gap is not None:
+            return True
+        if capability.current_maturity_level is not None:
+            return True
+        if capability.target_maturity_level is not None:
+            return True
+        if apps:
+            return True
+        return bool(planned_solution_count or planned_mapping_count or requirement_count)
+
+    @staticmethod
     def _effective_maturity_gap(capability: BusinessCapability) -> int:
         """Calculate maturity gap even when stored field is null."""
         if capability.maturity_gap is not None:
@@ -396,8 +488,10 @@ class CapabilityHealthService:
             return 0
         return max(capability.target_maturity_level - capability.current_maturity_level, 0)
 
-    def _get_status_from_score(self, score: int) -> str:
-        """Convert numeric score to status label."""
+    def _get_status_from_score(self, score) -> str:
+        """Convert numeric score to status label; None means nothing was measured."""
+        if score is None:
+            return "Not assessed"
         if score >= 80:
             return "Healthy"
         if score >= 60:
