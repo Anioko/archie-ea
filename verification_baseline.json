@@ -28,6 +28,7 @@
     "attr_quoting": 0,
     "journey_coverage": 0,
     "unreachable_actions": 0,
-    "inline_handlers": 0
+    "inline_handlers": 0,
+    "persona_vocabularies": 0
   }
 }

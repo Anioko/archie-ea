@@ -59,16 +59,47 @@ MOBILE = {"width": 390, "height": 844}
 # One user per enterprise_role the sidebar and dashboard branch on. A surface that
 # only ever gets audited as an admin is a surface whose permission handling is
 # untested.
-PERSONAS = [
-    "enterprise_architect",
-    "business_architect",
-    "solution_architect",
-    "data_architect",
-    "technology_architect",
-    "security_architect",
-    "portfolio_manager",
-    "product_owner",
-]
+def _valid_roles():
+    """The personas the PRODUCT defines, read from app/models/user.py.
+
+    This list used to be hardcoded, and it had drifted badly: it audited four
+    personas that do not exist in VALID_ROLES -- data_architect,
+    technology_architect, security_architect, product_owner -- and skipped five
+    that do, including arb_member, cto and platform_admin. So the audit spent a
+    third of its run on fictional users while never once loading a page as an
+    ARB member, and reported a coverage it did not have.
+
+    Parsed rather than imported, for the same reason the journey-coverage gate
+    parses it: an audit that needs the ORM to tell you which personas exist is
+    an audit that cannot run until the app boots. Adding a persona to the
+    product now adds it to this audit automatically.
+    """
+    import ast
+
+    path = os.path.join(str(REPO), "app", "models", "user.py")
+    with open(path, encoding="utf-8") as fh:
+        tree = ast.parse(fh.read())
+    constants, roles = {}, []
+    for node in tree.body:
+        if not isinstance(node, ast.Assign) or not node.targets:
+            continue
+        target = node.targets[0]
+        if not isinstance(target, ast.Name):
+            continue
+        if isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
+            constants[target.id] = node.value.value
+        elif target.id == "VALID_ROLES" and isinstance(node.value, ast.List):
+            for element in node.value.elts:
+                if isinstance(element, ast.Name) and element.id in constants:
+                    roles.append(constants[element.id])
+                elif isinstance(element, ast.Constant):
+                    roles.append(element.value)
+    if not roles:
+        raise RuntimeError("could not read VALID_ROLES from app/models/user.py")
+    return roles
+
+
+PERSONAS = _valid_roles()
 
 ALL_LEVELS = list(range(11))
 
@@ -89,6 +120,11 @@ SKIP_PREFIXES = (
 SKIP_SUBSTRINGS = (
     "/delete", "/remove", "/purge", "/reset", "/destroy",
     "/export", "/download", "/pdf",   # stream files, not pages
+    # Both were recorded as high-severity navigation failures and neither is a
+    # page: favicon.ico is an icon (the browser aborts the navigation), and an
+    # OpenAPI spec route answers with a file download, which Playwright reports
+    # as "Download is starting" rather than a load.
+    "/favicon", "/openapi",
 )
 
 
@@ -624,8 +660,23 @@ def run(args):
                         console_errors.clear()
                         failed_requests.clear()
                         try:
-                            resp = page.goto(base + path, wait_until="domcontentloaded",
-                                             timeout=45000)
+                            # Retried once, deliberately. The server is reachable
+                            # (boot() waited on /health) but the FIRST real page
+                            # load still pays the whole lazy-import cost, so a
+                            # cold start was being recorded as a high-severity
+                            # navigation failure against whichever route happened
+                            # to go first -- /dashboard/health, which loads in
+                            # 0.24s and reaches domcontentloaded fine on a second
+                            # attempt. An audit whose first three findings are
+                            # noise is an audit people learn to ignore
+                            # (TESTING_STANDARD.md, rule 8). A genuine hang fails
+                            # both times; a cold start does not.
+                            try:
+                                resp = page.goto(base + path, wait_until="domcontentloaded",
+                                                 timeout=45000)
+                            except Exception:
+                                resp = page.goto(base + path, wait_until="domcontentloaded",
+                                                 timeout=45000)
                             status = resp.status if resp else 0
                             ctype = ""
                             if resp:

@@ -2138,14 +2138,18 @@ def get_relationship_mappings():
 # SSO Group-to-Role Mapping (PLT-033)
 # ============================================================================
 
-_VALID_ROLES = [
-    "solution_architect",
-    "enterprise_architect",
-    "business_architect",
-    "arb_member",
-    "portfolio_manager",
-    "platform_admin",
-]
+# Derived, not restated. This list was hand-maintained and had drifted three
+# roles behind app.models.user.VALID_ROLES: cto, procurement and
+# application_manager were missing. It is the validator for the SSO
+# group-to-role screen (see the `role_name not in _VALID_ROLES` check below) AND
+# the dropdown it renders, so an administrator could not map an IdP group to a
+# CTO, a procurement user or an application manager AT ALL -- three of the nine
+# personas the product ships, each with its own sidebar, permissions and AI
+# charter, unprovisionable at an SSO-only customer.
+#
+# Deriving means adding a persona to the product adds it here, which is the
+# whole reason the drift happened: two lists, one source of truth, no gate.
+from app.models.user import VALID_ROLES as _VALID_ROLES  # noqa: E402
 
 
 @admin_bp_v2.route("/sso-settings", methods=["GET", "POST"])

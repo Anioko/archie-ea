@@ -56,6 +56,11 @@ DEFAULT_GROUP_ROLE_MAP = {
     "ARB-Members": "arb_member",
     "Portfolio-Managers": "portfolio_manager",
     "Platform-Admins": "platform_admin",
+    # These three shipped with sidebars, permissions and AI charters and no way
+    # to be provisioned: an SSO-only customer had no group that maps to them.
+    "CTO": "cto",
+    "Procurement": "procurement",
+    "Application-Managers": "application_manager",
 }
 
 

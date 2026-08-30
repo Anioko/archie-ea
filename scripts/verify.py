@@ -566,6 +566,25 @@ def gate_inline_handlers(baseline: int) -> Result:
     return Result("inline-handlers", PASS if count <= baseline else FAIL, detail, count, baseline)
 
 
+def gate_persona_vocabularies(baseline: int) -> Result:
+    """The product's four persona lists must reconcile with VALID_ROLES.
+
+    All four disagreed: the admin SSO screen's list is both its dropdown and
+    its validator, and it had drifted three roles behind -- so an administrator
+    at an SSO-only customer could not map an IdP group to a CTO, a procurement
+    user or an application manager at all. Three of nine shipped personas,
+    each with a sidebar zone, permissions and a governed AI charter,
+    unprovisionable. Every page returned 200 throughout.
+    """
+    proc = _run([sys.executable, "scripts/check_persona_vocabularies.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("persona-vocabularies", FAIL, f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    detail = "" if count <= baseline else "run scripts/check_persona_vocabularies.py to list them"
+    return Result("persona-vocabularies", PASS if count <= baseline else FAIL, detail, count, baseline)
+
+
 def gate_template_syntax() -> Result:
     """Every Jinja template parses. Gated at ZERO.
 
@@ -1599,6 +1618,13 @@ def build_gates(baseline: dict) -> list[Gate]:
                          "names (a same-named macro in another file is the usual "
                          "cause), or append 'macro-kwargs-ok: <reason>'",
              tags=["static", "ui"]),
+        Gate("persona-vocabularies", "every persona list reconciles with VALID_ROLES",
+             "ratchet", lambda: gate_persona_vocabularies(baseline["persona_vocabularies"]),
+             remediation="add the role to app/auth/sso.py's DEFAULT_GROUP_ROLE_MAP so it "
+                         "can be provisioned, or list the charter in ASPIRATIONAL in "
+                         "scripts/check_persona_vocabularies.py with the reason it has "
+                         "no role yet",
+             tags=["static", "correctness"]),
         Gate("inline-handlers", "no inline event handler the CSP refuses to run",
              "ratchet", lambda: gate_inline_handlers(baseline["inline_handlers"]),
              remediation="use data-confirm / data-autosubmit (wired in "
@@ -1826,6 +1852,7 @@ DEFAULT_BASELINE = {
     "journey_coverage": 0,
     "unreachable_actions": 0,
     "inline_handlers": 0,
+    "persona_vocabularies": 0,
 }
 
 
