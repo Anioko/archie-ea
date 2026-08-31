@@ -26,9 +26,18 @@ parallel. Each case asserts both directions: the bad tree is non-zero AND the
 clean tree is zero. Asserting only "red" would pass for a checker that returns a
 positive count for everything.
 
-One checker is deliberately absent: check_evidence_contract.py reads real git
-history and the verify.py registry, and has no --root, so a synthetic tree
-cannot drive it. Its rule-2 substance is covered directly instead, by
+Two checkers are deliberately absent from the --root convention, and naming
+them is the point -- a hollow case in THIS file would defeat the file.
+
+check_canonical_route.py reads a BOOTED url_map, because a static scan of
+@route decorators cannot see a blueprint's url_prefix, cannot see which side
+the USE_*_GUARDRAILS flags selected, and cannot see that init_blueprints
+logged an import failure and carried on. Its collision logic is therefore kept
+separate from the booting, and it IS pinned red-and-green below against a
+hand-built two-blueprint Flask app.
+
+check_evidence_contract.py reads real git history and the verify.py registry,
+and has no --root, so a synthetic tree cannot drive it. Its rule-2 substance is covered directly instead, by
 test_every_registered_checker_carries_its_proof below. Naming the exclusion is
 the point -- a hollow case in THIS file would defeat the file.
 """
@@ -458,3 +467,69 @@ def test_every_registered_checker_carries_its_proof():
         "these checkers carry no Proven-against: line, so nobody recorded "
         "watching them fail: %s" % ", ".join(missing)
     )
+
+
+def test_canonical_route_detects_a_shadowed_endpoint():
+    """Two endpoints on one (URL, method); the loser never runs.
+
+    This gate cannot be driven by a synthetic tree the way every other checker
+    here is: it reads a BOOTED url_map, because a static scan of @route
+    decorators cannot see a blueprint's url_prefix, cannot see which side the
+    USE_*_GUARDRAILS flags selected, and cannot see that init_blueprints logged
+    an import failure and carried on. That is the whole reason the gate exists
+    in this form.
+
+    So the collision logic is deliberately separated from the booting, and this
+    proof builds a two-blueprint Flask app instead of a fake package tree.
+    Asserted in BOTH directions -- a checker that returns a positive count for
+    everything would pass a red-only assertion.
+    """
+    import importlib.util
+    from flask import Blueprint, Flask
+
+    checker = os.path.join(REPO, "scripts", "check_canonical_route.py")
+    spec = importlib.util.spec_from_file_location("_canonical_route", checker)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    shadowed = Flask("shadowed")
+    page = Blueprint("alpha", __name__)
+    api = Blueprint("beta", __name__)
+    page.add_url_rule("/thing", "page", lambda: "", methods=["GET"])
+    api.add_url_rule("/thing", "api", lambda: "", methods=["GET"])
+    shadowed.register_blueprint(page)
+    shadowed.register_blueprint(api)
+    found = module.collisions(list(shadowed.url_map.iter_rules()))
+    assert len(found) == 1, (
+        "two endpoints claim GET /thing and the gate did not notice: %s" % found
+    )
+    assert "alpha.page" in found[0] and "beta.api" in found[0], (
+        "the finding must name BOTH endpoints, or nobody can tell which one is "
+        "dead: %s" % found[0]
+    )
+
+    clean = Flask("clean")
+    clean.add_url_rule("/thing", "only", lambda: "", methods=["GET"])
+    assert module.collisions(list(clean.url_map.iter_rules())) == []
+
+
+def test_canonical_route_ignores_the_methods_werkzeug_invents():
+    """HEAD and OPTIONS are synthesised, never authored.
+
+    Keying on the rule alone rather than on (rule, method) reported 287
+    collisions against 24 real ones when this gate was written. A gate that
+    cries wolf stops being read, and this repository has already carried two
+    that ratcheted phantom findings.
+    """
+    import importlib.util
+    from flask import Flask
+
+    checker = os.path.join(REPO, "scripts", "check_canonical_route.py")
+    spec = importlib.util.spec_from_file_location("_canonical_route2", checker)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    app = Flask("implicit")
+    # One endpoint, several methods. Werkzeug adds HEAD and OPTIONS on top.
+    app.add_url_rule("/thing", "only", lambda: "", methods=["GET", "POST"])
+    assert module.collisions(list(app.url_map.iter_rules())) == []

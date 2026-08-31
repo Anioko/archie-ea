@@ -1131,6 +1131,54 @@ def gate_silent_data() -> Result:
     return Result("silent-data", PASS if count == 0 else FAIL, detail, count, 0)
 
 
+def gate_store_agreement(baseline: int) -> Result:
+    """Two surfaces answering one question with different numbers.
+
+    The only gate here that compares ANSWERS rather than reading source. Every
+    other one passed "Total Capabilities 191" printed above a table reading
+    "Showing 1-10 of 0 results", because both halves are correct code reading
+    different stores. ADR 0008 states the rule; this measures it.
+
+    Boots the app and needs a seeded tenant, so it lives with boot-health and
+    broken-surfaces rather than in the static set.
+    """
+    proc = _run([sys.executable, "scripts/check_store_agreement.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("store-agreement", FAIL,
+                      f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    if count < 0:
+        return Result("store-agreement", FAIL,
+                      "the app could not be booted, so nothing was compared")
+    detail = "" if count <= baseline else "run scripts/check_store_agreement.py to list them"
+    return Result("store-agreement", PASS if count <= baseline else FAIL,
+                  detail, count, baseline)
+
+
+def gate_canonical_route(baseline: int) -> Result:
+    """Two endpoints claiming one (URL, method); the loser never runs.
+
+    Boots the app, like broken-surfaces, because a static scan of @route
+    decorators cannot see a blueprint's url_prefix, cannot see which side the
+    USE_*_GUARDRAILS flags selected, and cannot see that init_blueprints logged
+    an import failure and carried on. The checker prints -1 when it cannot
+    boot, so a boot failure can never be read as "no collisions".
+    """
+    proc = _run([sys.executable, "scripts/check_canonical_route.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("canonical-route", FAIL,
+                      f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    if count < 0:
+        return Result("canonical-route", FAIL,
+                      "the app could not be booted, so nothing was measured")
+    detail = "" if count <= baseline else "run scripts/check_canonical_route.py to list them"
+    return Result("canonical-route", PASS if count <= baseline else FAIL,
+                  detail, count, baseline)
+
+
 def gate_broken_surfaces(baseline: int) -> Result:
     """Front-end surfaces resolved against the real route table. RATCHET.
 
@@ -2197,6 +2245,22 @@ def build_gates(baseline: dict) -> list[Gate]:
                          "`function component()` assigned to window; Alpine.data() "
                          "plus a bare name mounts an empty component silently",
              tags=["static", "ui"]),
+        Gate("store-agreement", "every surface answers a question the same way", "ratchet",
+             lambda: gate_store_agreement(baseline.get("store_agreement", 1)),
+             remediation="pick the canonical store and repoint the other surface "
+                         "at it (ADR 0008); if the difference is real, declare a "
+                         "scope= filter or 'store-agreement-ok: <reason>'",
+             tags=["boot", "evidence"]),
+        Gate("canonical-route", "one endpoint per URL and method", "ratchet",
+             lambda: gate_canonical_route(baseline.get("canonical_route", 24)),
+             remediation="decide which endpoint is authoritative and remove or "
+                         "rename the other; if the shadowing is deliberate put "
+                         "'canonical-route-ok: <reason>' on the losing handler",
+             # NOT "static", for the same reason as broken-surfaces below: CI's
+             # static-gates job installs no database and does not boot the app,
+             # and a gate that crashes there reads as a gate failure rather
+             # than as "this gate cannot run here".
+             tags=["boot", "architecture"]),
         Gate("broken-surfaces", "front-end targets resolve to real routes", "ratchet",
              lambda: gate_broken_surfaces(baseline.get("broken_surfaces", 479)),
              remediation="run scripts/check_broken_surfaces.py; repoint the URL, "

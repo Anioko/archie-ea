@@ -156,9 +156,12 @@ Enforcement is the `store-agreement` gate: it boots the app, asks every surface
 that answers a given question, and fails when they disagree. It is the only
 check here that compares ANSWERS rather than reading source, which is why every
 other gate passed all four defects above — and did, while the owner found them
-by clicking. Built and reviewed 31 Aug 2026; it lands with the projection in the
-following wave, and until it is registered in `scripts/verify.py` this section
-is a rule with no ratchet behind it. Treat that as debt, not as enforcement.
+by clicking. Registered 31 Aug 2026 and ratcheted at **1** — deliberately not 0. That 1 is
+the live disagreement it found on the day it was written: `business_capability`
+and `/dashboard/api/capabilities` both answer 12 while `unified_capabilities`
+and `/api/v1/capabilities/` both answer 0, because the canonical store has no
+producer. Baselining it at 0 would have hidden the very defect the gate exists
+to surface. It closes when the projection lands.
 
 ## Done means deployed — standing instruction from the owner (14 Aug 2026)
 

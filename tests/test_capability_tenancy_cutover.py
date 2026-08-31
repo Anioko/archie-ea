@@ -252,6 +252,58 @@ def test_classifier_uses_only_audited_provenance_and_relationship_owners(capabil
     assert "application_components:303:organization_id=42" in ambiguous.evidence
 
 
+def test_projected_row_with_provenance_and_no_links_is_tenant(capability_schema):
+    """A projected row is owned by its source's organisation, not ambiguous.
+
+    `flask project-capabilities` writes rows that carry full provenance and no
+    downstream relationships yet. Before this branch existed every one of them
+    classified `ambiguous`, and `run_cutover` raises CutoverBlocked on any
+    ambiguous row -- so projecting before the cutover permanently blocked the
+    cutover. The owner here comes from a NOT NULL organization_id on the source
+    row, which is stronger evidence than inferring it from relationships.
+    """
+
+    connection = capability_schema
+    _capability(connection, 401, "PRJ-401", source_table="business_capability",
+                source_org_id=41)
+
+    projected = classify_capability(connection, 401)
+
+    assert (projected.scope, projected.organization_id) == ("tenant", 41)
+
+
+def test_provenance_never_overrides_a_contradicting_relationship(capability_schema):
+    """Corroboration may be absent; contradiction may not be ignored.
+
+    The new branch fires ONLY when no relationship names an owner. A link owned
+    by a different organisation than the provenance is real ambiguity and must
+    still block the cutover rather than be resolved in provenance's favour.
+    """
+
+    connection = capability_schema
+    _capability(connection, 402, "PRJ-402", source_table="business_capability",
+                source_org_id=41)
+    _application_link(connection, 204, 402, 304, 42)
+
+    contradicted = classify_capability(connection, 402)
+
+    assert contradicted.scope == "ambiguous"
+    assert contradicted.organization_id is None
+
+
+def test_provenance_without_an_owner_invents_none(capability_schema):
+    """No source_org_id means no owner. The classifier must not guess one."""
+
+    connection = capability_schema
+    _capability(connection, 403, "PRJ-403", source_table="business_capability",
+                source_org_id=None)
+
+    unowned = classify_capability(connection, 403)
+
+    assert unowned.scope in {"ambiguous", "reference"}
+    assert unowned.organization_id is None
+
+
 def test_dry_run_reports_stable_measurements_without_writing(capability_schema):
     """A dry run must catch an accidental UPDATE or constraint swap."""
 

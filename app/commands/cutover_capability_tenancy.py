@@ -24,6 +24,12 @@ from app import db
 
 ADVISORY_LOCK_ID = 1_684_220_026
 
+# `classify_capability` accepts audited tenant provenance on a row with no
+# relationships as evidence of tenant ownership. `flask project-capabilities`
+# reads this flag to decide whether projecting before the cutover would leave
+# every projected row 'ambiguous' and block `run_cutover` outright.
+CLASSIFIES_PROVENANCE_ONLY_TENANT = True
+
 
 class CutoverBlocked(RuntimeError):
     """Raised before an unsafe or unverifiable cutover can proceed."""
@@ -214,6 +220,22 @@ def classify_capability(connection, capability_id: int) -> CapabilityClassificat
         return CapabilityClassification(row["id"], "reference", None, evidence)
     if len(owners) == 1 and provenance.supports_tenant(owners[0]):
         return CapabilityClassification(row["id"], "tenant", owners[0], evidence)
+    # A row projected from a tenant-owned source has audited provenance but no
+    # downstream links yet. Its owner comes from a NOT NULL organization_id on
+    # the source row, which is STRONGER evidence than the branch above: that one
+    # infers ownership from relationships and then merely checks provenance
+    # agrees. What is dropped here is not evidence but corroboration -- and
+    # corroboration that cannot exist for a row nothing has linked to yet.
+    # Accepted only when nothing contradicts it: no relationship owner at all.
+    if (
+        not owners
+        and provenance.source_org_id is not None
+        and provenance.source_checksum
+        and provenance.source_id
+    ):
+        return CapabilityClassification(
+            row["id"], "tenant", provenance.source_org_id, evidence
+        )
     return CapabilityClassification(row["id"], "ambiguous", None, evidence)
 
 

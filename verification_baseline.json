@@ -55,6 +55,8 @@
     "shell_conformance": 3,
     "sidebar_links": 25,
     "tenant_scoping": 0,
-    "ui_contract": 0
+    "ui_contract": 0,
+    "canonical_route": 24,
+    "store_agreement": 1
   }
 }

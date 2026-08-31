@@ -2158,7 +2158,22 @@ def seed_unified_caps():
                 click.echo(f"  + Domain [{dom_data['code']}] {dom_data['name']}")
 
         def _seed_cap_set(cap_dict, spec_type, description_suffix="capabilities"):
-            """Generic helper to seed L1 + L2 + L3 UnifiedCapability records for a given specialization_type."""
+            """Seed L1 + L2 + L3 UnifiedCapability records for a specialization_type.
+
+            The existence lookups below are scoped to `organization_id=None`
+            deliberately, and it is not defensive noise. This seeder creates
+            SHARED REFERENCE capabilities, and UnifiedCapability does not use
+            TenantMixin -- its scoping lives in a do_orm_execute listener
+            (app/models/unified_capability.py:466) that returns early unless
+            has_request_context(). A CLI command has no request, so the query
+            is completely unfiltered here.
+
+            Unscoped, the first tenant to own a capability with a given code
+            would make this seeder "find" it and skip creating the reference
+            row -- silently, and differently depending on which tenants exist.
+            That is latent today only because unified_capabilities is empty in
+            production; the projection that fills it activates the bug.
+            """
             nonlocal created, skipped
             for domain_code, l1_list in cap_dict.items():
                 d_id = domain_map.get(domain_code)
@@ -2167,7 +2182,8 @@ def seed_unified_caps():
                     continue
 
                 for l1_data in l1_list:
-                    existing_l1 = UnifiedCapability.query.filter_by(code=l1_data["code"]).first()
+                    existing_l1 = UnifiedCapability.query.filter_by(
+                        code=l1_data["code"], organization_id=None).first()
                     if existing_l1:
                         skipped += 1
                         l1_id = existing_l1.id
@@ -2191,7 +2207,8 @@ def seed_unified_caps():
                         click.echo(f"  + [{spec_type}] [{l1_data['code']}] {l1_data['name']}")
 
                     for l2_data in l1_data.get("children", []):
-                        existing_l2 = UnifiedCapability.query.filter_by(code=l2_data["code"]).first()
+                        existing_l2 = UnifiedCapability.query.filter_by(
+                        code=l2_data["code"], organization_id=None).first()
                         if existing_l2:
                             skipped += 1
                             l2_id = existing_l2.id
@@ -2214,7 +2231,8 @@ def seed_unified_caps():
                             created += 1
 
                         for l3_data in l2_data.get("children", []):
-                            existing_l3 = UnifiedCapability.query.filter_by(code=l3_data["code"]).first()
+                            existing_l3 = UnifiedCapability.query.filter_by(
+                        code=l3_data["code"], organization_id=None).first()
                             if existing_l3:
                                 skipped += 1
                                 continue

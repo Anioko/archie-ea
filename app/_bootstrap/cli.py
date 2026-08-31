@@ -290,6 +290,13 @@ def init_cli(app):
     except Exception as e:
         app.logger.warning(f"Failed to register capability tenancy cutover CLI: {e}")
 
+    try:
+        from app.commands.project_capabilities import init_app as init_capability_projection
+        init_capability_projection(app)
+        app.logger.info("Capability projection CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"Failed to register capability projection CLI: {e}")
+
     # CMP-01: SavedDiagram gained TenantMixin (runs on boot after reconcile-schema)
     try:
         from app.commands.backfill_saved_diagram_tenancy import init_app as init_saved_diagram_tenancy

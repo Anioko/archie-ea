@@ -61,11 +61,25 @@ def _safe_send_email(app, subject, recipients, html_body):
         return False
 
 
-def _get_recipients_by_roles(role_list):
-    """Return list of email addresses for users with given enterprise_role values."""
+def _get_recipients_by_roles(role_list, organization_id):
+    """Email addresses for users in ONE organisation holding one of these roles.
+
+    `organization_id` is required, not defaulted. User is not a TenantMixin
+    model, so no listener will scope this query -- and these callers run in a
+    scheduler job with no request context, where nothing is scoped anyway. A
+    default would mean every user in every organisation, which is precisely the
+    defect this argument exists to close.
+    """
     from app.models import User
 
+    if organization_id is None:
+        raise ValueError(
+            "_get_recipients_by_roles requires an organization_id; a global "
+            "recipient list would address one tenant's digest to another's users"
+        )
+
     users = User.query.filter(
+        User.organization_id == organization_id,
         User.enterprise_role.in_(role_list),
         User.confirmed.is_(True),
     ).all()
@@ -208,23 +222,38 @@ def _render_maturity_digest_html(data):
 
 
 def send_data_maturity_digest(app):
-    """PLT-009: Compute and send the weekly data maturity digest."""
-    logger.info("PLT-009: Generating data maturity digest...")
-    data = _compute_maturity_data()
-    html = _render_maturity_digest_html(data)
-    recipients = _get_recipients_by_roles([
-        "enterprise_architect",
-        "portfolio_manager",
-        "platform_admin",
-    ])
-    _safe_send_email(app, "Weekly Data Maturity Digest", recipients, html)
-    logger.info(
-        "PLT-009: Digest complete — %d solutions, %d%% avg score, %d recipients.",
-        data["total"],
-        data["avg_score"],
-        len(recipients),
-    )
-    return data
+    """PLT-009: send ONE data maturity digest per organisation.
+
+    Previously one email was composed from every tenant's solutions and
+    addressed to every matching user in every tenant. The job runs under
+    app_context and not a request, so no tenant listener applied and nothing
+    was scoped. Now the harness runs the body once per organisation with
+    g.current_org_id set, which scopes the TenantMixin models the digest reads
+    (Solution, ARBReviewItem, SolutionRisk) -- and the recipient query is
+    scoped explicitly, because User is not a TenantMixin model.
+    """
+    from app.jobs.tenant_safe_job import run_for_each_tenant
+
+    def _digest_one_tenant(organization_id: int) -> dict:
+        data = _compute_maturity_data()
+        recipients = _get_recipients_by_roles(
+            ["enterprise_architect", "portfolio_manager", "platform_admin"],
+            organization_id,
+        )
+        if not recipients:
+            # No one in this tenant holds a recipient role. Say so; an empty
+            # send is not the same as a successful one.
+            logger.info("PLT-009: org %s has no digest recipients", organization_id)
+            return {"organization_id": organization_id, "recipients": 0}
+        html = _render_maturity_digest_html(data)
+        _safe_send_email(app, "Weekly Data Maturity Digest", recipients, html)
+        logger.info(
+            "PLT-009: org %s — %d solutions, %d%% avg score, %d recipients.",
+            organization_id, data["total"], data["avg_score"], len(recipients),
+        )
+        return {"organization_id": organization_id, "recipients": len(recipients)}
+
+    return run_for_each_tenant(app, "data-maturity-digest", _digest_one_tenant)
 
 
 # ---------------------------------------------------------------------------
@@ -434,17 +463,27 @@ def _render_executive_summary_html(data):
 
 
 def send_executive_summary(app):
-    """PLT-031: Compute and send the weekly executive summary."""
-    logger.info("PLT-031: Generating executive summary...")
-    data = _compute_executive_data()
-    html = _render_executive_summary_html(data)
-    recipients = _get_recipients_by_roles(["platform_admin"])
-    _safe_send_email(app, "Weekly Executive Architecture Summary", recipients, html)
-    logger.info(
-        "PLT-031: Summary complete — %d total solutions, %d new, %d ARB decisions, %d recipients.",
-        data["total_solutions"],
-        data["new_solutions_count"],
-        data["arb_decisions_count"],
-        len(recipients),
-    )
-    return data
+    """PLT-031: send ONE executive summary per organisation.
+
+    Same defect and same fix as the maturity digest above. platform_admin is a
+    per-organisation role, so a global summary told each tenant's admin about
+    every other tenant's portfolio.
+    """
+    from app.jobs.tenant_safe_job import run_for_each_tenant
+
+    def _summary_one_tenant(organization_id: int) -> dict:
+        data = _compute_executive_data()
+        recipients = _get_recipients_by_roles(["platform_admin"], organization_id)
+        if not recipients:
+            logger.info("PLT-031: org %s has no summary recipients", organization_id)
+            return {"organization_id": organization_id, "recipients": 0}
+        html = _render_executive_summary_html(data)
+        _safe_send_email(app, "Weekly Executive Architecture Summary", recipients, html)
+        logger.info(
+            "PLT-031: org %s — %d solutions, %d new, %d ARB decisions, %d recipients.",
+            organization_id, data["total_solutions"], data["new_solutions_count"],
+            data["arb_decisions_count"], len(recipients),
+        )
+        return {"organization_id": organization_id, "recipients": len(recipients)}
+
+    return run_for_each_tenant(app, "executive-summary", _summary_one_tenant)

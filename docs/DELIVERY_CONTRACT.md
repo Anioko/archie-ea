@@ -74,7 +74,7 @@ two roles is counted under both.
 |---|---|---|
 | UX / frontend architect (lint only — see note) | `ui`, `a11y` | 31 |
 | security architect | `security`, `airgap` | 14 |
-| software / technical architect | `architecture`, `correctness` | 7 |
+| software / technical architect | `architecture`, `correctness` | 8 |
 | QA / test lead | `qa`, `runtime` | 5 |
 | CTO / delivery lead | `process`, `deps` | 3 |
 | AI / ML architect | `ai` | 3 |
@@ -82,7 +82,7 @@ two roles is counted under both.
 | product architect | `product`, `journey` | 2 |
 | business architect | `business` | 1 |
 | service designer | `handoff` | 1 |
-| data / evidence analyst | `evidence` | 1 |
+| data / evidence analyst | `evidence` | 2 |
 | integration architect | `integration` | 1 |
 | UI / interaction architect | `rendered` | 0 |
 | information architect | `wayfinding` | 0 |
