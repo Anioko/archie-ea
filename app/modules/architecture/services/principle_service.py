@@ -15,6 +15,7 @@ ArchiMate 3.2 Compliance:
 - Principle can be assessed for compliance
 """
 
+from app.services.archimate_backbone import sync_archimate_element
 import json
 from datetime import datetime
 from typing import Dict, List, Optional
@@ -447,6 +448,7 @@ class PrincipleService:
             architecture_id=architecture_id,
         )
         db.session.add(requirement)
+        sync_archimate_element(requirement)
 
         # Create influence relationship (Principle influences Requirement)
         relationship = ArchiMateRelationship(

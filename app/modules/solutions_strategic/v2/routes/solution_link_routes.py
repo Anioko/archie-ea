@@ -1,3 +1,4 @@
+from app.services.archimate_backbone import sync_archimate_element
 import logging
 from flask import abort, g, jsonify, request, url_for
 from flask_login import current_user, login_required
@@ -1302,6 +1303,7 @@ def link_archimate_element(solution_id):
                     source="AI-generated from capability-driven design",
                 )
                 db.session.add(req)
+                sync_archimate_element(req)
                 auto_linked["requirement"] = {"name": element_name}
 
         db.session.commit()

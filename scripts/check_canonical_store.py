@@ -72,8 +72,32 @@ def _mapped_tables(root: str) -> dict:
             except (OSError, SyntaxError, UnicodeDecodeError):
                 continue
             lines = source.split("\n")
+            # A class defined inside an `if` whose other branch imports the same
+            # name is an ALTERNATIVE definition, not a second mapping. Five model
+            # modules use this shape:
+            #
+            #     if not _FAST_INIT:
+            #         from .models import TechnologyStack
+            #     else:
+            #         class TechnologyStack(db.Model): ...
+            #
+            # Exactly one is ever mapped. Counting both was a false positive that
+            # put phantom findings into this gate's baseline -- worse than no
+            # gate, because a number nobody can act on gets ratcheted then ignored.
+            conditional = set()
+            imported = set()
+            for _n in ast.walk(tree):
+                if isinstance(_n, ast.ImportFrom):
+                    imported.update(a.asname or a.name for a in _n.names)
+                elif isinstance(_n, ast.If):
+                    for _branch in (_n.body, _n.orelse):
+                        for _s in _branch:
+                            if isinstance(_s, ast.ClassDef):
+                                conditional.add(id(_s))
             for cls in ast.walk(tree):
                 if not isinstance(cls, ast.ClassDef):
+                    continue
+                if id(cls) in conditional and cls.name in imported:
                     continue
                 for node in cls.body:
                     if not isinstance(node, ast.Assign):

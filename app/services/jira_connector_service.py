@@ -9,6 +9,7 @@ All HTTP calls use timeout=10. Methods are no-ops when the connector config
 is absent, disabled, or missing instance_url.
 """
 
+from app.services.archimate_backbone import sync_archimate_element
 import base64
 import logging
 from typing import Any, Dict, List, Optional
@@ -258,6 +259,7 @@ class JiraConnectorService:
                 context="jira",
             )
             db.session.add(wp)
+            sync_archimate_element(wp)
             db.session.flush()
             imported.append({"jira_key": key, "work_package_id": wp.id, "created": True})
 

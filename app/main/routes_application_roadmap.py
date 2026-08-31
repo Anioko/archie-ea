@@ -1,5 +1,6 @@
 """Application-Specific Roadmap Routes - Application Transformation Roadmaps"""
 
+from app.services.archimate_backbone import sync_archimate_element
 from datetime import datetime
 
 from flask import flash, jsonify, redirect, render_template, request, url_for
@@ -208,6 +209,7 @@ def create_application_work_package(id):
         )
 
         db.session.add(new_wp)
+        sync_archimate_element(new_wp)
         db.session.commit()
 
         return jsonify(

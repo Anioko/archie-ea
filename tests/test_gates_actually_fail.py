@@ -40,6 +40,8 @@ import sys
 
 import pytest
 
+NEWLINE = chr(10)
+
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SCRIPTS = os.path.join(REPO, "scripts")
 
@@ -289,7 +291,90 @@ def _empty_state_cta(root, defective):
            "title='No applications found.'" + cta + ") }}\n")
 
 
+def _role_gate_coverage(root, defective):
+    """A role in the delivery contract whose tags match no gate in the registry."""
+    _write(root, "scripts/verify.py",
+           "def build_gates(baseline):\n"
+           "    return [\n"
+           "        Gate('ai-tool-guard', 'd', 'ratchet', f, tags=['static', 'ai']),\n"
+           "    ]\n")
+    tags_cell = "-" if defective else "`ai`"
+    _write(root, "docs/DELIVERY_CONTRACT.md",
+           "| Role | Gate tags | Gates |\n"
+           "|---|---|---|\n"
+           "| AI / ML architect | " + tags_cell + " | 1 |\n")
+
+
+CASES.append(("check_role_gate_coverage.py", _role_gate_coverage))
+
+
 CASES.append(("check_empty_state_cta.py", _empty_state_cta))
+
+
+def _business_layer_backbone(root, defective):
+    """A capability with no ArchiMate element is invisible to the lenses."""
+    sync = "" if defective else "    sync_archimate_element(cap)\n"
+    _write(root, "app/probe.py",
+           "def create():\n"
+           "    cap = BusinessCapability(name='Billing')\n"
+           "    db.session.add(cap)\n" + sync)
+
+
+def _api_envelope(root, defective):
+    """A handler that commits to no response shape forces callers to guess."""
+    ret = ("    return jsonify({'items': []})\n" if defective
+           else "    return success_response({'items': []})\n")
+    _write(root, "app/probe.py",
+           "@bp.route('/things')\n"
+           "def list_things():\n" + ret)
+
+
+CASES.append(("check_business_layer_backbone.py", _business_layer_backbone))
+CASES.append(("check_api_envelope.py", _api_envelope))
+
+
+def _collapsed_nav_affordance(root, defective):
+    """A collapsed rail with no tooltip is a row of unlabelled buttons."""
+    named = "" if defective else ' title="Dashboard"'
+    _write(root, "app/templates/components/admin_sidebar.html",
+           "<nav><a href='/x'" + named + ">"
+           "<i data-lucide='layout-dashboard'></i>"
+           "<span class='truncate'>Dashboard</span></a></nav>")
+
+
+def _nav_icon_ambiguity(root, defective):
+    """Two destinations behind one icon in one persona's own menu."""
+    second = "compass" if defective else "map"
+    rows = [
+        "ZONES = {",
+        "    ROLE_ENTERPRISE_ARCHITECT: [",
+        '        _link("Traceability", "trace.index", "compass"),',
+        '        _link("Impact", "impact.index", "' + second + '"),',
+        "    ],",
+        "}",
+    ]
+    _write(root, "app/utils/role_access.py", NEWLINE.join(rows) + NEWLINE)
+
+
+def _nav_label_clarity(root, defective):
+    """One label naming two different destinations."""
+    second = "Applications" if defective else "My Applications"
+    rows = [
+        "ZONES = {",
+        "    ROLE_PORTFOLIO_MANAGER: [",
+        '        _link("Applications", "apps.index", "list"),',
+        '        _link("' + second + '", "apps.mine", "user"),',
+        "    ],",
+        "}",
+    ]
+    _write(root, "app/utils/role_access.py", NEWLINE.join(rows) + NEWLINE)
+
+
+CASES += [
+    ("check_collapsed_nav_affordance.py", _collapsed_nav_affordance),
+    ("check_nav_icon_ambiguity.py", _nav_icon_ambiguity),
+    ("check_nav_label_clarity.py", _nav_label_clarity),
+]
 
 
 @pytest.mark.parametrize("script,builder", CASES, ids=[c[0] for c in CASES])

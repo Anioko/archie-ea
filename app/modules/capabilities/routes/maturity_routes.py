@@ -40,59 +40,51 @@ def search_capabilities():
     per_page = 20
 
     try:
-        # Build base query
-        base_query = """
-            SELECT id, name, business_domain, current_maturity_level, target_maturity_level,
-                   maturity_gap, strategic_importance, maturity_assessment_date,
-                   business_owner, description, category, capability_type
-            FROM business_capability
-            WHERE 1=1
-        """
+        # ORM, not raw SQL, and deliberately so. The raw version selected a
+        # column that does not exist (capability_type), which 500'd into the
+        # error banner below on every visit; and it carried a "# tenant-filtered"
+        # comment on statements that were not filtered at all -- raw SQL never
+        # reaches do_orm_execute, so the search read across every organisation.
+        # BusinessCapability is a TenantMixin model, so the org predicate is
+        # applied mechanically and the column list is checked by the mapper.
+        from app.models.business_capabilities import BusinessCapability
 
-        params = {}
-
-
+        search = BusinessCapability.query
         if query:
-            base_query += " AND (name ILIKE :query OR description ILIKE :query)"
-            params["query"] = f"%{query}%"
-
+            like = "%" + query + "%"
+            search = search.filter(
+                db.or_(
+                    BusinessCapability.name.ilike(like),
+                    BusinessCapability.description.ilike(like),
+                )
+            )
         if domain:
-            base_query += " AND business_domain = :domain"
-            params["domain"] = domain
-
+            search = search.filter(BusinessCapability.business_domain == domain)
         if strategic_importance:
-            base_query += " AND strategic_importance = :strategic_importance"
-            params["strategic_importance"] = strategic_importance
+            search = search.filter(
+                BusinessCapability.strategic_importance == strategic_importance
+            )
 
-        # Add ordering and pagination
-        base_query += " ORDER BY business_domain, name LIMIT :limit OFFSET :offset"
-        params["limit"] = per_page
-        params["offset"] = (page - 1) * per_page
+        # count() before the window, so the total describes the whole result set
+        # rather than the page. The previous str.replace() approach stopped
+        # matching when the SELECT list changed, and nothing noticed.
+        total_count = search.count()
 
-        result = db.session.execute(text(base_query), params)  # tenant-filtered
-        capabilities = result.fetchall()
-
-        # Get total count for pagination
-        count_query = base_query.replace(
-            "SELECT id, name, business_domain, current_maturity_level, target_maturity_level, maturity_gap, strategic_importance, maturity_assessment_date, business_owner, description",
-            "SELECT COUNT(*)",
-        )
-        count_query = count_query.replace(
-            "ORDER BY business_domain, name LIMIT :limit OFFSET :offset", ""
+        capabilities = (
+            search.order_by(
+                BusinessCapability.business_domain, BusinessCapability.name
+            )
+            .limit(per_page)
+            .offset((page - 1) * per_page)
+            .all()
         )
 
-        count_result = db.session.execute(text(count_query), params)  # tenant-filtered
-        total_count = count_result.scalar()
-
-        # Get available domains. The execute and the `domains` assignment were
-        # missing, leaving `domains` unbound in the render_template call below.
-        _domain_query = "SELECT DISTINCT business_domain FROM business_capability WHERE business_domain IS NOT NULL"
-        _domain_params = {}
         domains = [
-            row[0]
-            for row in db.session.execute(  # tenant-filtered
-                text(_domain_query), _domain_params
-            ).fetchall()
+            value
+            for (value,) in db.session.query(BusinessCapability.business_domain)
+            .filter(BusinessCapability.business_domain.isnot(None))
+            .distinct()
+            .all()
         ]
 
         return render_template(

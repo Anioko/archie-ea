@@ -12,6 +12,7 @@ Features:
 - Deliverable generation for gap resolution
 """
 
+from app.services.archimate_backbone import sync_archimate_element
 import json
 import logging
 from datetime import date, datetime  # dead-code-ok
@@ -85,6 +86,7 @@ class GapResolutionService:
                 context_id=gap.context_id,
             )
             db.session.add(work_package)
+            sync_archimate_element(work_package)
             db.session.flush()  # Get ID
 
             # Link WorkPackage to Gap via junction table

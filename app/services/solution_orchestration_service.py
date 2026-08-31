@@ -4,6 +4,7 @@ SolutionOrchestrationService -- Central glue layer for EA/SA platform wiring.
 Connects recommendations to solutions, AI suggestions to DB records,
 phase advancement to workflow triggers, and chat to solution state.
 """
+from app.services.archimate_backbone import sync_archimate_element
 import logging
 from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
@@ -122,6 +123,7 @@ class SolutionOrchestrationService:
                         created_by_id=user_id,
                     )
                     db.session.add(risk)
+                    sync_archimate_element(risk)
 
             db.session.commit()
 
@@ -219,6 +221,7 @@ class SolutionOrchestrationService:
                     ai_confidence=float(d.get("confidence", 0.7)),
                 )
                 db.session.add(driver)
+                sync_archimate_element(driver)
                 counts["drivers_created"] += 1
 
             for g in parsed.get("goals", []):
@@ -231,6 +234,7 @@ class SolutionOrchestrationService:
                     ai_confidence=float(g.get("confidence", 0.7)),
                 )
                 db.session.add(goal)
+                sync_archimate_element(goal)
                 counts["goals_created"] += 1
 
             for r in parsed.get("requirements", []):
@@ -249,6 +253,7 @@ class SolutionOrchestrationService:
                     ai_confidence=float(r.get("confidence", 0.7)),
                 )
                 db.session.add(req)
+                sync_archimate_element(req)
                 counts["requirements_created"] += 1
 
             for c in parsed.get("constraints", []):
@@ -265,6 +270,7 @@ class SolutionOrchestrationService:
                     ai_generated=True,
                 )
                 db.session.add(constraint)
+                sync_archimate_element(constraint)
                 counts["constraints_created"] += 1
 
             db.session.commit()
@@ -410,6 +416,7 @@ class SolutionOrchestrationService:
                     ai_confidence=float(r.get("confidence", 0.7)),
                 )
                 db.session.add(req)
+                sync_archimate_element(req)
                 created += 1
 
             db.session.commit()

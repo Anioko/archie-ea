@@ -23,6 +23,7 @@ Routes:
 - GET  /api/solutions - JSON API for solutions
 """
 
+from app.services.archimate_backbone import sync_archimate_element
 import json
 import logging
 import os
@@ -1630,6 +1631,7 @@ def create_from_wizard():
                 source="architecture_assistant",
             )
             db.session.add(driver)
+            sync_archimate_element(driver)
 
         # Goals from gap analysis
         gap_summary = gap_analysis.get("summary") or gap_analysis.get("gap_description") or ""
@@ -1640,6 +1642,7 @@ def create_from_wizard():
                 description=gap_summary,
             )
             db.session.add(goal)
+            sync_archimate_element(goal)
 
         # Constraints from scope
         constraints_text = scope.get("constraints") or ""
@@ -1652,6 +1655,7 @@ def create_from_wizard():
                 source="architecture_assistant",
             )
             db.session.add(constraint)
+            sync_archimate_element(constraint)
 
         # Principles from scope
         principles_data = scope.get("principles") or []

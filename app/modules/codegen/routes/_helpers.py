@@ -1,4 +1,5 @@
 """Shared helper functions for codegen route modules."""
+from app.services.archimate_backbone import sync_archimate_element
 import hashlib
 import json
 import logging
@@ -1914,6 +1915,7 @@ def _extract_business_rules_from_brief(solution_id: int) -> int:
                 compliance_tags=[rc["rule_type"]],
             )
             db.session.add(row)
+            sync_archimate_element(row)
 
         db.session.commit()
         logger.info(

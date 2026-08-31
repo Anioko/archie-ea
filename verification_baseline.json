@@ -41,8 +41,15 @@
     "nested_jinja": 0,
     "cache_tenancy": 0,
     "ai_approval_honoured": 0,
-    "canonical_store": 10,
+    "canonical_store": 0,
+    "raw_sql_columns": 0,
+    "collapsed_nav_affordance": 10,
+    "nav_icon_ambiguity": 1,
+    "nav_label_clarity": 0,
+    "business_layer_backbone": 18,
+    "api_envelope": 850,
+    "role_gate_coverage": 0,
     "empty_state_cta": 21,
-    "archimate_backbone": 53
+    "archimate_backbone": 0
   }
 }

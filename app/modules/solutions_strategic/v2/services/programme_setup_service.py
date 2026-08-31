@@ -3,6 +3,7 @@
 Provides wizard-driven programme creation, linking Solution records
 with ArchiMate motivational-layer elements (drivers, goals) and
 stakeholder mappings.  Brownfield mode leverages the ArchiMate OEF
+from app.services.archimate_backbone import sync_archimate_element
 import service from ENT-067.
 """
 
@@ -167,6 +168,7 @@ class ProgrammeSetupService:
                 source="wizard",
             )
             db.session.add(driver)
+            sync_archimate_element(driver)
 
         # 4. Goals ------------------------------------------------------------
         for goal_data in data.get("goals") or []:
@@ -180,6 +182,7 @@ class ProgrammeSetupService:
                 priority=goal_data.get("priority") or 3,
             )
             db.session.add(goal)
+            sync_archimate_element(goal)
 
         # 5. Solution ---------------------------------------------------------
         solution = Solution(

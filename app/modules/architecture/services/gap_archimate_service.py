@@ -13,6 +13,7 @@ ArchiMate 3.2 Implementation & Migration layer integration:
 - Plateau: Stable architectural state snapshots
 """
 
+from app.services.archimate_backbone import sync_archimate_element
 from datetime import date, timedelta
 from typing import Dict, List, Optional, Tuple
 
@@ -298,6 +299,7 @@ class GapArchiMateService:
         wp.gaps.append(gap)
 
         db.session.add(wp)
+        sync_archimate_element(wp)
         return wp
 
     def create_child_work_package(self, parent: WorkPackage, data: Dict) -> WorkPackage:
@@ -331,6 +333,7 @@ class GapArchiMateService:
             child.gaps.append(gap)
 
         db.session.add(child)
+        sync_archimate_element(child)
         return child
 
     def create_standard_work_breakdown(self, gap: Gap, template: str = "default") -> WorkPackage:

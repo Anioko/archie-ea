@@ -1,3 +1,4 @@
+from app.services.archimate_backbone import sync_archimate_element
 import json
 import logging
 from flask import jsonify, request
@@ -1408,6 +1409,7 @@ def accept_archimate_suggestion(solution_id: int):
                     status="open",
                 )
                 db.session.add(req)
+                sync_archimate_element(req)
                 db.session.flush()
                 auto_linked["requirement"] = {"id": req.id, "name": req.name}
             except Exception as req_err:

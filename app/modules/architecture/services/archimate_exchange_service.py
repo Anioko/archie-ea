@@ -19,6 +19,7 @@ Reference:
 - https://pubs.opengroup.org/architecture/archimate3 - doc/
 """
 
+from app.services.archimate_backbone import sync_archimate_element
 from app.utils import safe_xml  # untrusted XML: entity-expansion safe
 import logging
 import uuid
@@ -806,6 +807,7 @@ class ArchiMateExchangeService:
                     status="active",
                 )
                 db.session.add(driver)
+                sync_archimate_element(driver)
 
             elif elem_type == "Goal":
                 from app.models.motivation import Goal
@@ -818,6 +820,7 @@ class ArchiMateExchangeService:
                     status="active",
                 )
                 db.session.add(goal)
+                sync_archimate_element(goal)
 
             elif elem_type == "ApplicationComponent":
                 from app.models.application_portfolio import ApplicationComponent

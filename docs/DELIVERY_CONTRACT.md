@@ -61,22 +61,43 @@ on the day it lands.
 ## Roles are gate families, not job titles
 
 A role nobody has built machinery for is a role being claimed rather than
-played. The current map:
+played. A role is therefore defined here as a family of gates in
+`scripts/verify.py`, identified by the `tags=[...]` those gates carry — so
+"did we act as the security architect?" is a question with an answer, not an
+assertion in a report.
 
-| Role | Gates |
-|---|---|
-| security architect | 8 |
-| software architect | 8 |
-| UX / frontend | 16 |
-| QA / test lead | 7 |
-| data honesty | 7 |
-| delivery lead | 5 |
-| data architect | 2 |
-| **ML / AI architect** | **0** — 154 `ai_chat` routes, unguarded |
+Re-measured 31 Aug 2026 from `build_gates` in `scripts/verify.py` (67 gates).
+Counts are distinct gates matching any of the role's tags, so a gate serving
+two roles is counted under both.
 
-Re-run that map when adding a role or a gate. A zero in this table is a
-coverage hole, and it is worth more than any amount of deliberation about
-whether coverage is adequate.
+| Role | Gate tags | Gates |
+|---|---|---|
+| UX / frontend architect (lint only — see note) | `ui`, `a11y` | 31 |
+| security architect | `security`, `airgap` | 14 |
+| software / technical architect | `architecture`, `correctness` | 7 |
+| QA / test lead | `qa`, `runtime` | 5 |
+| CTO / delivery lead | `process`, `deps` | 3 |
+| AI / ML architect | `ai` | 3 |
+| data architect | `schema`, `db` | 3 |
+| product architect | `product`, `journey` | 2 |
+| business architect | `business` | 1 |
+| integration architect | `integration` | 1 |
+| UI / interaction architect | `rendered` | 0 |
+| information architect | `wayfinding` | 0 |
+| content designer | `content` | 0 |
+
+The "ML / AI architect | 0" this table carried until today was the entry that
+did the most work in it: it named 154 unguarded `ai_chat` routes as a hole, and
+the four `ai-*` gates (`ai-evidence-rules`, `ai-tool-guard`,
+`ai-untrusted-content`, `ai-approval-honoured`) exist because of it. The two
+remaining zeros are the same kind of claim, still outstanding.
+
+Re-run the map when adding a role or a gate. A zero here is a coverage hole,
+and it is worth more than any amount of deliberation about whether coverage is
+adequate. The `role-gate-coverage` gate
+(`scripts/check_role_gate_coverage.py`) ratchets the count of zero-gate roles,
+so a role added to this table without machinery fails the build; the per-row
+escape hatch is `role-gate-ok: <reason>`.
 
 ## Running it
 

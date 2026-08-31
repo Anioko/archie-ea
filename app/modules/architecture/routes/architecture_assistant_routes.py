@@ -18,6 +18,7 @@ Endpoints:
 - POST /api/architecture-assistant/analyze-gap - Analyze gap and suggest solutions
 """
 
+from app.services.archimate_backbone import sync_archimate_element
 import json
 import logging
 from collections import OrderedDict
@@ -3551,6 +3552,7 @@ def create_roadmap_elements():
                 summary=f"Weeks {sw}–{ew}",
             )
             db.session.add(wp)
+            sync_archimate_element(wp)
             db.session.flush()
 
             if i == 2 and gap_elements:

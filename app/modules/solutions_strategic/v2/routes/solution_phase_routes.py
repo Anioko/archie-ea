@@ -1,3 +1,4 @@
+from app.services.archimate_backbone import sync_archimate_element
 import csv
 import io
 import logging
@@ -231,6 +232,7 @@ def import_solution_risks(solution_id):
                 created_by_id=current_user.id,
             )
             db.session.add(risk)
+            sync_archimate_element(risk)
             db.session.flush()
             created += 1
         except Exception as e:
@@ -2031,6 +2033,7 @@ def phase_h_new_cycle(solution_id: int):
                     source="phase_h_review",
                 )
                 db.session.add(driver)
+                sync_archimate_element(driver)
 
         db.session.commit()
 
@@ -2177,6 +2180,7 @@ def link_archimate_driver(solution_id):
                 ai_generated=False,
             )
             db.session.add(driver)
+            sync_archimate_element(driver)
 
         db.session.commit()
         return jsonify({
@@ -2304,6 +2308,7 @@ def link_archimate_goal(solution_id):
                 ai_generated=False,
             )
             db.session.add(goal)
+            sync_archimate_element(goal)
 
         db.session.commit()
         return jsonify({

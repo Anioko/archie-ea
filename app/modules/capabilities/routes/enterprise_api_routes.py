@@ -17,6 +17,7 @@
 # Provides endpoints for fetching applications, systems, initiatives, projects
 # Used by ADM Kanban enterprise integration
 
+from app.services.archimate_backbone import sync_archimate_element
 import csv
 import io
 import logging
@@ -182,6 +183,7 @@ def populate_solution_from_template(solution_id):
                 created_by_id=current_user.id
             )
             db.session.add(req)
+            sync_archimate_element(req)
             created.append({
                 'name': tpl.name,
                 'layer': tpl.layer,
@@ -465,6 +467,7 @@ def create_requirement():
     if compliance_tags and isinstance(compliance_tags, list):
         req.compliance_tags = compliance_tags
     db.session.add(req)
+    sync_archimate_element(req)
     db.session.commit()
     return jsonify({"success": True, "requirement": {
         "id": req.id,

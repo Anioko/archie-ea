@@ -8,6 +8,7 @@ and links them via SolutionArchiMateElement junctions.
 Used by solution_design_routes.py after solution creation/edit.
 """
 
+from app.services.archimate_backbone import sync_archimate_element
 import logging
 
 from app import db
@@ -403,6 +404,7 @@ def sync_work_packages(solution_id):
                 context_id=solution_id,
             )
             db.session.add(wp)
+            sync_archimate_element(wp)
             db.session.flush()
 
             # Create ArchiMateElement if needed

@@ -15,6 +15,7 @@ Design principles:
 - Vendor products come from actual app-vendor relationships
 """
 
+from app.services.archimate_backbone import sync_archimate_element
 import logging
 from collections import defaultdict
 
@@ -612,6 +613,7 @@ def apply_smart_defaults(solution, defaults):
             ai_generated=False,
         )
         db.session.add(driver)
+        sync_archimate_element(driver)
         db.session.flush()
         created_ids["driver_ids"].append(driver.id)
 
@@ -648,6 +650,7 @@ def apply_smart_defaults(solution, defaults):
             ai_generated=False,
         )
         db.session.add(goal)
+        sync_archimate_element(goal)
         db.session.flush()
         created_ids["goal_ids"].append(goal.id)
 
@@ -684,6 +687,7 @@ def apply_smart_defaults(solution, defaults):
             ai_generated=False,
         )
         db.session.add(constraint)
+        sync_archimate_element(constraint)
         db.session.flush()
         created_ids["constraint_ids"].append(constraint.id)
 

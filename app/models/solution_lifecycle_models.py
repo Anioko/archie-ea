@@ -23,6 +23,16 @@ class SolutionRisk(TenantMixin, db.Model):
     id = Column(Integer, primary_key=True)
     solution_id = Column(Integer, ForeignKey("solutions.id", ondelete="CASCADE"), nullable=False, index=True)
     risk_name = Column(String(200), nullable=True)
+    # The ArchiMate mirror of this row. Added 31 Aug 2026: CLAUDE.md requires
+    # every motivation entity to have a matching ArchiMateElement, but this
+    # model had nowhere to record one, so its creation paths could never
+    # comply. Nullable and SET NULL so reconcile-schema can add it to
+    # existing databases; populated automatically by
+    # app/services/archimate_backbone.py.
+    archimate_element_id = Column(
+        Integer, ForeignKey("archimate_elements.id", ondelete="SET NULL"),
+        index=True, nullable=True,
+    )
     risk_description = Column(Text, nullable=False)
     impact = Column(String(20), nullable=False, default="medium")
     probability = Column(String(20), nullable=False, default="medium")

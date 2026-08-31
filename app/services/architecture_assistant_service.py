@@ -29,6 +29,7 @@ Usage:
     draft = service.generate_arb_draft(option_id=1)
 """
 
+from app.services.archimate_backbone import sync_archimate_element
 import hashlib
 import json
 import logging
@@ -1001,7 +1002,9 @@ class ArchitectureAssistantService:
                 description=f"Target coverage: {round(target_coverage, 1)}%",
             )
             db.session.add(baseline)
+            sync_archimate_element(baseline)
             db.session.add(target_p)
+            sync_archimate_element(target_p)
             db.session.flush()
 
             gap = Gap(

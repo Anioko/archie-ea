@@ -291,6 +291,16 @@ class SolutionDriver(TenantMixin, db.Model):
 
     id = Column(Integer, primary_key=True)
     problem_id = Column(Integer, ForeignKey("solution_problem_definitions.id"), nullable=False)
+    # The ArchiMate mirror of this row. Added 31 Aug 2026: CLAUDE.md requires
+    # every motivation entity to have a matching ArchiMateElement, but this
+    # model had nowhere to record one, so its creation paths could never
+    # comply. Nullable and SET NULL so reconcile-schema can add it to
+    # existing databases; populated automatically by
+    # app/services/archimate_backbone.py.
+    archimate_element_id = Column(
+        Integer, ForeignKey("archimate_elements.id", ondelete="SET NULL"),
+        index=True, nullable=True,
+    )
 
     # Driver details
     name = Column(String(200), nullable=False)
@@ -329,6 +339,16 @@ class SolutionGoal(TenantMixin, db.Model):
 
     id = Column(Integer, primary_key=True)
     problem_id = Column(Integer, ForeignKey("solution_problem_definitions.id"), nullable=False)
+    # The ArchiMate mirror of this row. Added 31 Aug 2026: CLAUDE.md requires
+    # every motivation entity to have a matching ArchiMateElement, but this
+    # model had nowhere to record one, so its creation paths could never
+    # comply. Nullable and SET NULL so reconcile-schema can add it to
+    # existing databases; populated automatically by
+    # app/services/archimate_backbone.py.
+    archimate_element_id = Column(
+        Integer, ForeignKey("archimate_elements.id", ondelete="SET NULL"),
+        index=True, nullable=True,
+    )
     driver_id = Column(Integer, ForeignKey("solution_drivers.id", ondelete="SET NULL"), nullable=True, index=True)  # migration-exempt: nullable column, safe via db.create_all()
 
     # Goal details
@@ -410,6 +430,13 @@ class SolutionRequirement(TenantMixin, db.Model):
     goal_id = Column(Integer, ForeignKey("goals.id", ondelete="SET NULL"), nullable=True, index=True)
     stakeholder_id = Column(Integer, ForeignKey("stakeholders.id", ondelete="SET NULL"), nullable=True, index=True)
     archimate_requirement_id = Column(Integer, ForeignKey("requirements.id", ondelete="SET NULL"), nullable=True)
+    # archimate_requirement_id above points at the ENTERPRISE Requirement row,
+    # not at an ArchiMate element. The backbone link is separate; see
+    # app/services/archimate_backbone.py.
+    archimate_element_id = Column(
+        Integer, ForeignKey("archimate_elements.id", ondelete="SET NULL"),
+        index=True, nullable=True,
+    )
     # migration-exempt: nullable column, safe via db.create_all()
     principle_id = Column(Integer, ForeignKey("solution_principles.id", ondelete="SET NULL"), nullable=True, index=True)
 
@@ -528,6 +555,16 @@ class SolutionConstraint(TenantMixin, db.Model):
 
     id = Column(Integer, primary_key=True)
     problem_id = Column(Integer, ForeignKey("solution_problem_definitions.id"), nullable=False)
+    # The ArchiMate mirror of this row. Added 31 Aug 2026: CLAUDE.md requires
+    # every motivation entity to have a matching ArchiMateElement, but this
+    # model had nowhere to record one, so its creation paths could never
+    # comply. Nullable and SET NULL so reconcile-schema can add it to
+    # existing databases; populated automatically by
+    # app/services/archimate_backbone.py.
+    archimate_element_id = Column(
+        Integer, ForeignKey("archimate_elements.id", ondelete="SET NULL"),
+        index=True, nullable=True,
+    )
 
     # Constraint details
     constraint_type = Column(Enum(ConstraintType), nullable=False)

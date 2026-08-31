@@ -8,6 +8,7 @@ Design decisions:
   - Exceptions roll back and surface as {"success": False, "error": "..."}.
 """
 
+from app.services.archimate_backbone import sync_archimate_element
 import hashlib
 import logging
 import re
@@ -815,6 +816,7 @@ class ToolExecutor:
             organization_id=self._get_organization_id(),
         )
         db.session.add(driver)
+        sync_archimate_element(driver)
         db.session.commit()
         logger.info("Agent created driver id=%s solution=%s", driver.id, args["solution_id"])
         return {
@@ -839,6 +841,7 @@ class ToolExecutor:
             organization_id=self._get_organization_id(),
         )
         db.session.add(goal)
+        sync_archimate_element(goal)
         db.session.commit()
         return {
             "success": True,
@@ -863,6 +866,7 @@ class ToolExecutor:
             organization_id=self._get_organization_id(),
         )
         db.session.add(constraint)
+        sync_archimate_element(constraint)
         db.session.commit()
         return {
             "success": True,
@@ -886,6 +890,7 @@ class ToolExecutor:
             organization_id=self._get_organization_id(),
         )
         db.session.add(req)
+        sync_archimate_element(req)
         db.session.commit()
         return {
             "success": True,
@@ -909,6 +914,7 @@ class ToolExecutor:
             created_by_id=self.user_id,
         )
         db.session.add(risk)
+        sync_archimate_element(risk)
         db.session.commit()
         return {
             "success": True,

@@ -29,6 +29,7 @@ Usage:
 """
 # mass-deletion-ok — cumulative DEMO-001 branch refactor; all deletions are restructured code replaced in-place
 
+from app.services.archimate_backbone import sync_archimate_element
 import logging
 import traceback
 import uuid
@@ -2618,6 +2619,7 @@ class EAWorkflowEngine:
                 context_id=instance.id,
             )
             db.session.add(wp)
+            sync_archimate_element(wp)
             db.session.flush()
             created_ids.append(wp.id)
 

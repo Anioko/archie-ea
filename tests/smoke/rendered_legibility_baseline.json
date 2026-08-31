@@ -1,0 +1,47 @@
+{
+  "application_manager": {
+    "ambiguous": 1,
+    "clipped": 0,
+    "unlabelled": 0
+  },
+  "arb_member": {
+    "ambiguous": 1,
+    "clipped": 0,
+    "unlabelled": 0
+  },
+  "business_architect": {
+    "ambiguous": 1,
+    "clipped": 0,
+    "unlabelled": 0
+  },
+  "cto": {
+    "ambiguous": 1,
+    "clipped": 0,
+    "unlabelled": 0
+  },
+  "enterprise_architect": {
+    "ambiguous": 4,
+    "clipped": 0,
+    "unlabelled": 0
+  },
+  "platform_admin": {
+    "ambiguous": 1,
+    "clipped": 1,
+    "unlabelled": 1
+  },
+  "portfolio_manager": {
+    "ambiguous": 1,
+    "clipped": 0,
+    "unlabelled": 0
+  },
+  "procurement": {
+    "ambiguous": 1,
+    "clipped": 0,
+    "unlabelled": 0
+  },
+  "solution_architect": {
+    "ambiguous": 1,
+    "clipped": 0,
+    "unlabelled": 0
+  }
+}

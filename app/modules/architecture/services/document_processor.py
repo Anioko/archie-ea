@@ -9,6 +9,7 @@ Orchestrates multi-stage document processing:
 5. Validation and merging
 """
 
+from app.services.archimate_backbone import sync_archimate_element
 import asyncio
 import inspect
 import json
@@ -906,6 +907,7 @@ Return the COMPLETE enhanced architecture in the same JSON format:
                 compliance_status="draft",
             )
             db.session.add(requirement)
+            sync_archimate_element(requirement)
             db.session.flush()  # Get requirement ID
 
             # Use AI to enrich the requirement with intelligent analysis

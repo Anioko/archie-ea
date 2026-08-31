@@ -17,6 +17,7 @@ URL Structure:
 # `application_metrics_snapshots` table on db.metadata. Removing it (as
 # `ruff --fix --select F401` did) silently drops the table from the ORM —
 # caught by comparing db.metadata.tables before and after.
+from app.services.archimate_backbone import sync_archimate_element
 from ..models.metrics import ApplicationMetricsSnapshot  # noqa: F401
 import logging
 
@@ -717,6 +718,7 @@ def api_create_work_package():
         color=data.get("color"),
     )
     db.session.add(wp)
+    sync_archimate_element(wp)
     db.session.commit()
     try:
         audit_logger.log_event(

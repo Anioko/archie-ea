@@ -17,6 +17,7 @@ ArchiMate 3.2 Compliance:
 - Can constrain Requirements
 """
 
+from app.services.archimate_backbone import sync_archimate_element
 import json
 import logging
 from datetime import date, datetime
@@ -426,6 +427,7 @@ class GoalService:
                 sequence_order=i + 1,
             )
             db.session.add(work_package)
+            sync_archimate_element(work_package)
             work_packages.append(work_package)
 
         db.session.commit()

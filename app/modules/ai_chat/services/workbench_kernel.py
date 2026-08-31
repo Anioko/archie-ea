@@ -17,6 +17,7 @@ All workspace state is persisted via SolutionAnalysisSession.custom_metadata
 and Flask session, so it survives page refreshes and session resumes.
 """
 
+from app.services.archimate_backbone import sync_archimate_element
 import enum
 import logging
 import re
@@ -1705,6 +1706,7 @@ class GreenfieldWorkflow:
                     owner_id=self.user_id,
                 )
                 db.session.add(wp)
+                sync_archimate_element(wp)
                 packages.append(wp)
 
             db.session.commit()
@@ -2215,6 +2217,7 @@ class BrownfieldWorkflow:
                     owner_id=self.user_id,
                 )
                 db.session.add(wp)
+                sync_archimate_element(wp)
                 packages.append(wp)
 
             db.session.commit()
@@ -2842,6 +2845,7 @@ class DeliveryPlanningService:
                     owner_id=self.user_id,
                 )
                 db.session.add(wp)
+                sync_archimate_element(wp)
                 db.session.flush()
                 created_packages.append({"id": wp.id, "name": name, "summary": summary})
 

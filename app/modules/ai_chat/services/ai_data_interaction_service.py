@@ -5,6 +5,7 @@ AI Data Interaction Service - Controlled Data Modifications
 Provides safe, validated data modification capabilities for AI Chat
 """
 
+from app.services.archimate_backbone import sync_archimate_element
 import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -680,6 +681,7 @@ class AIDataInteractionService:
                 owner_id=self.user_id,
             )
             db.session.add(wp)
+            sync_archimate_element(wp)
             db.session.flush()  # Get the ID
 
             # Link applications if provided
@@ -708,6 +710,7 @@ class AIDataInteractionService:
                             owner_id=self.user_id,
                         )
                         db.session.add(child)
+                        sync_archimate_element(child)
                         link_count += 1
 
             # Link capability if provided

@@ -838,8 +838,13 @@ triggering, flow, specialization, association.
             try:
                 row = db.session.execute(  # tenant-filtered: scoped via parent FK (id from search results)
                     db.text(
+                        # market_position is a vendor_products column and was
+                        # never on vendor_organizations, so this SELECT raised
+                        # UndefinedColumn and the bare except below dropped the
+                        # Gartner position and vendor type along with it -- the
+                        # model got no vendor positioning at all.
                         "SELECT gartner_magic_quadrant_position, "
-                        "market_position, vendor_type "
+                        "forrester_wave_position, vendor_type "
                         "FROM vendor_organizations WHERE id = :id"
                     ),
                     {"id": r["id"]},
@@ -848,11 +853,15 @@ triggering, flow, specialization, association.
                     v_data["metadata"] = {
                         **v_data.get("metadata", {}),
                         "gartner_quadrant": row[0] or "",
-                        "market_position": row[1] or "",
+                        # Named for what it actually is. Reporting a Forrester
+                        # Wave placement to the model as "market_position" would
+                        # be a label describing a different field than the one
+                        # read, which is the fabrication rule's core case.
+                        "forrester_wave": row[1] or "",
                         "vendor_type": row[2] or "",
                     }
             except Exception:
-                logger.debug("Failed to enrich vendor %s", r.get("id"))
+                logger.warning("Failed to enrich vendor %s", r.get("id"))
             enriched.append(v_data)
 
         return enriched[:10]

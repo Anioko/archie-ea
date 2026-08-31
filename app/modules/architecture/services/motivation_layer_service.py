@@ -20,6 +20,7 @@ The Motivation Layer in ArchiMate 3.2 includes:
 - Constraint: Restriction on implementation
 """
 
+from app.services.archimate_backbone import sync_archimate_element
 import json
 import logging
 from typing import Dict, List, Optional
@@ -271,6 +272,7 @@ Focus on QUALITY over quantity - each requirement should be specific, measurable
             stakeholder_id=stakeholder_ids[0] if stakeholder_ids else None,
         )
         db.session.add(requirement)
+        sync_archimate_element(requirement)
         db.session.flush()
 
         # 3. Create ArchiMate 3.2 relationships

@@ -1,4 +1,5 @@
 """Epic hierarchy service — CRUD and tree operations for Epic/Story/Sub-task."""
+from app.services.archimate_backbone import sync_archimate_element
 from app import db
 
 
@@ -116,6 +117,7 @@ def create_epic(title: str, description: str = "", solution_id: int = None) -> d
         requirement_type="epic",
     )
     db.session.add(epic)
+    sync_archimate_element(epic)
     db.session.commit()
     return {"id": epic.id, "title": epic.title, "type": "epic"}
 
@@ -131,6 +133,7 @@ def create_story(title: str, epic_id: int, story_points: int = 0) -> dict:
         dod_complete=False,
     )
     db.session.add(story)
+    sync_archimate_element(story)
     db.session.commit()
     return {
         "id": story.id,
@@ -153,6 +156,7 @@ def create_subtask(title: str, parent_story_id: int) -> dict:
         dod_complete=False,
     )
     db.session.add(subtask)
+    sync_archimate_element(subtask)
     db.session.commit()
     return {
         "id": subtask.id,

@@ -12,6 +12,7 @@ persisting them as SolutionRequirement rows with full traceability:
 Zero fabricated data — all context comes from live DB rows.
 """
 
+from app.services.archimate_backbone import sync_archimate_element
 import json
 import logging
 from typing import List, Dict, Any
@@ -319,6 +320,7 @@ class CapabilityRequirementGeneratorService:
                 ai_confidence=0.75,
             )
             db.session.add(req)
+            sync_archimate_element(req)
             created.append(req)
 
         db.session.commit()

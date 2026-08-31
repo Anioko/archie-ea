@@ -2,6 +2,7 @@
 ArchiMate Roadmap Generator Service - Phase 1
 
 Automatic generation of ArchiMate 3.2 Implementation & Migration roadmaps
+from app.services.archimate_backbone import sync_archimate_element
 from identified gaps. This service orchestrates gap analysis, work package
 generation, timeline creation, and plateau planning.
 
@@ -323,6 +324,7 @@ class RoadmapGenerator:
                 architecture_id=work_packages[0].architecture_id if work_packages else None,
             )
             db.session.add(plateau)
+            sync_archimate_element(plateau)
             db.session.flush()
 
             # Link work packages to plateau

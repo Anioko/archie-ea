@@ -775,6 +775,88 @@ def gate_ai_approval_honoured(baseline: int) -> Result:
     return Result("ai-approval-honoured", PASS if count <= baseline else FAIL, detail, count, baseline)
 
 
+def gate_business_layer_backbone(baseline: int) -> Result:
+    """The business architect's layer, which no gate read until now.
+
+    check_archimate_backbone covers motivation entities. Capabilities, value
+    streams and business processes -- the layer the product's headline feature
+    models -- had nothing. A BusinessCapability with no element is invisible to
+    every capability lens that walks the model rather than the table.
+    """
+    proc = _run([sys.executable, "scripts/check_business_layer_backbone.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("business-layer-backbone", FAIL, f"could not parse count: {proc.stdout!r}")
+    detail = "" if count <= baseline else "run scripts/check_business_layer_backbone.py to list them"
+    return Result("business-layer-backbone", PASS if count <= baseline else FAIL, detail, count, baseline)
+
+
+def gate_api_envelope(baseline: int) -> Result:
+    """One API, one response shape.
+
+    850 of 2,668 jsonify handlers commit to no envelope, so every caller carries
+    `json.data ?? json` -- which returns the wrong object whenever a bare
+    payload has its own data key. Ratcheted: choosing the canonical shape and
+    moving the callers in step is a migration, not a lint fix.
+    """
+    proc = _run([sys.executable, "scripts/check_api_envelope.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("api-envelope", FAIL, f"could not parse count: {proc.stdout!r}")
+    detail = "" if count <= baseline else "run scripts/check_api_envelope.py to list them"
+    return Result("api-envelope", PASS if count <= baseline else FAIL, detail, count, baseline)
+
+
+def _simple_ratchet(script: str, name: str, baseline: int) -> Result:
+    """Run a --count checker and compare against its baseline."""
+    proc = _run([sys.executable, script, "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result(name, FAIL, f"could not parse count: {proc.stdout!r}")
+    detail = "" if count <= baseline else f"run {script} to list them"
+    return Result(name, PASS if count <= baseline else FAIL, detail, count, baseline)
+
+
+def gate_collapsed_nav_affordance(baseline: int) -> Result:
+    """The collapsed rail must stay navigable.
+
+    Collapsing is a width change with no label hiding and no tooltips, so the
+    sidebar clips to "All mo..." beside icons that say nothing. Seventy gates
+    were green over it, because they all read source for structure.
+    """
+    return _simple_ratchet(
+        "scripts/check_collapsed_nav_affordance.py", "collapsed-nav-affordance", baseline)
+
+
+def gate_nav_icon_ambiguity(baseline: int) -> Result:
+    """Two destinations behind one icon in one persona's own sidebar."""
+    return _simple_ratchet(
+        "scripts/check_nav_icon_ambiguity.py", "nav-icon-ambiguity", baseline)
+
+
+def gate_nav_label_clarity(baseline: int) -> Result:
+    """One label naming two destinations, or a label too long to survive."""
+    return _simple_ratchet(
+        "scripts/check_nav_label_clarity.py", "nav-label-clarity", baseline)
+
+
+def gate_raw_sql_columns(baseline: int) -> Result:
+    """Raw SQL naming a column the table does not have.
+
+    reconcile-schema and the schema-drift gate compare ORM MODELS to the
+    database; raw SQL is invisible to both. Four statements were selecting
+    columns that do not exist -- including the solution narrative's risk
+    register, which meant every SAD rendered "no risks" regardless of the
+    register, and a vendor enrichment whose failure cost the AI its Gartner
+    position too. All four are fixed, so this is must-stay-clean at 0.
+    """
+    return _simple_ratchet(
+        "scripts/check_raw_sql_columns.py", "raw-sql-columns", baseline)
+
+
 def gate_canonical_store(baseline: int) -> Result:
     """One concept, one store.
 
@@ -791,6 +873,23 @@ def gate_canonical_store(baseline: int) -> Result:
         return Result("canonical-store", FAIL, f"could not parse count: {proc.stdout!r}")
     detail = "" if count <= baseline else "run scripts/check_canonical_store.py to list them"
     return Result("canonical-store", PASS if count <= baseline else FAIL, detail, count, baseline)
+
+
+def gate_role_gate_coverage(baseline: int) -> Result:
+    """A role declared in the delivery contract with no gate enforcing it.
+
+    CLAUDE.md tells every agent to act as CTO, architect and QA lead at once,
+    and agents act as developers only because nothing measures the difference.
+    docs/DELIVERY_CONTRACT.md defines a role as its family of gate tags; this
+    counts the roles whose tags resolve to nothing in the registry above.
+    """
+    proc = _run([sys.executable, "scripts/check_role_gate_coverage.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("role-gate-coverage", FAIL, f"could not parse count: {proc.stdout!r}")
+    detail = "" if count <= baseline else "run scripts/check_role_gate_coverage.py to list them"
+    return Result("role-gate-coverage", PASS if count <= baseline else FAIL, detail, count, baseline)
 
 
 def gate_empty_state_cta(baseline: int) -> Result:
@@ -1873,7 +1972,7 @@ def build_gates(baseline: dict) -> list[Gate]:
              tags=["static", "security"]),
         Gate("ai-approval-honoured", "the agent honours the operator's ai approval control",
              "ratchet", lambda k='ai_approval_honoured': gate_ai_approval_honoured(baseline[k]),
-             tags=["static", "architecture"]),
+             tags=["static", "architecture", "ai"]),
         Gate("archimate-backbone", "every motivation create syncs an ArchiMate element",
              "ratchet", lambda: gate_archimate_backbone(baseline["archimate_backbone"]),
              tags=["static", "architecture"]),
@@ -1881,6 +1980,36 @@ def build_gates(baseline: dict) -> list[Gate]:
              "ratchet", lambda k='empty_state_cta': gate_empty_state_cta(baseline[k]),
              remediation="give the empty state its cta_text/cta_label + cta_href, or append 'empty-state-ok: <reason>'",
              tags=["static", "product"]),
+        Gate("role-gate-coverage", "every role in the delivery contract has gates enforcing it",
+             "ratchet", lambda k='role_gate_coverage': gate_role_gate_coverage(baseline[k]),
+             remediation="build a gate for the role and tag it, or append "
+                         "'role-gate-ok: <reason>' to that row of "
+                         "docs/DELIVERY_CONTRACT.md's role table",
+             tags=["static", "governance"]),
+        Gate("business-layer-backbone", "capabilities and value streams are in the ArchiMate model",
+             "ratchet", lambda k='business_layer_backbone': gate_business_layer_backbone(baseline[k]),
+             remediation="call sync_archimate_element() after the create, or append 'business-backbone-ok: <reason>'",
+             tags=["static", "business", "architecture"]),
+        Gate("api-envelope", "one API, one response shape",
+             "ratchet", lambda k='api_envelope': gate_api_envelope(baseline[k]),
+             remediation="return through success_response()/error_response(), or append 'envelope-ok: <reason>'",
+             tags=["static", "integration"]),
+        Gate("collapsed-nav-affordance", "the collapsed sidebar is still navigable",
+             "ratchet", lambda k='collapsed_nav_affordance': gate_collapsed_nav_affordance(baseline[k]),
+             remediation="add a title naming the destination, or append 'collapsed-nav-ok: <reason>'",
+             tags=["static", "rendered", "ui"]),
+        Gate("nav-icon-ambiguity", "one icon, one destination within a persona's menu",
+             "ratchet", lambda k='nav_icon_ambiguity': gate_nav_icon_ambiguity(baseline[k]),
+             remediation="give each destination its own icon, or append 'nav-icon-ok: <reason>'",
+             tags=["static", "wayfinding", "ui"]),
+        Gate("nav-label-clarity", "one name, one destination, and it fits",
+             "ratchet", lambda k='nav_label_clarity': gate_nav_label_clarity(baseline[k]),
+             remediation="rename the destination or shorten the label, or append 'nav-label-ok: <reason>'",
+             tags=["static", "content", "ui"]),
+        Gate("raw-sql-columns", "raw SQL only names columns that exist",
+             "ratchet", lambda k='raw_sql_columns': gate_raw_sql_columns(baseline[k]),
+             remediation="fix the column name, or append 'raw-sql-columns-ok: <reason>'",
+             tags=["static", "schema", "db"]),
         Gate("canonical-store", "one concept, one store",
              "ratchet", lambda k='canonical_store': gate_canonical_store(baseline[k]),
              tags=["static", "architecture"]),
@@ -2169,9 +2298,16 @@ DEFAULT_BASELINE = {
     "nested_jinja": 0,
     "cache_tenancy": 0,
     "ai_approval_honoured": 0,
-    "canonical_store": 10,
+    "canonical_store": 0,
+    "raw_sql_columns": 0,
+    "collapsed_nav_affordance": 10,
+    "nav_icon_ambiguity": 1,
+    "nav_label_clarity": 0,
+    "business_layer_backbone": 18,
+    "api_envelope": 850,
+    "role_gate_coverage": 0,
     "empty_state_cta": 21,
-    "archimate_backbone": 53,
+    "archimate_backbone": 0,
 }
 
 

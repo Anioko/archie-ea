@@ -18,6 +18,7 @@ Deliverables:
   - Feasibility Review     (NEW — creates SolutionFeasibilityReview records)
   - Full Package           (orchestrates all of the above)
 """
+from app.services.archimate_backbone import sync_archimate_element
 import logging
 from datetime import datetime, date
 from decimal import Decimal
@@ -614,6 +615,7 @@ class StructuredDeliverableService:
                     moscow_priority=req_data.get("moscow_priority", "SHOULD"),
                 )
                 db.session.add(req)
+                sync_archimate_element(req)
                 created.append(req)
             db.session.commit()
 

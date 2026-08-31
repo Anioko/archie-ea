@@ -14,6 +14,7 @@ Routes (8):
     - api_delete_archimate_mapping(mapping_id)                    DELETE "/api/archimate-mappings/<int:mapping_id>"
 """
 
+from app.services.archimate_backbone import sync_archimate_element
 from flask import current_app, jsonify, request
 from flask_login import login_required
 from sqlalchemy.exc import SQLAlchemyError
@@ -194,6 +195,7 @@ def api_create_archimate_element():
             )
 
         db.session.add(element)
+        sync_archimate_element(element)
         db.session.commit()
 
         return jsonify(

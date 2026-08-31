@@ -1,4 +1,5 @@
 """Risk service for TPM-013 — risk heat map CRUD and grid data."""
+from app.services.archimate_backbone import sync_archimate_element
 from app import db
 from app.models.risk import Risk, RiskStatus
 
@@ -49,6 +50,7 @@ def create_risk(solution_id, title, description, likelihood, impact, owner, miti
         status=RiskStatus.OPEN,
     )
     db.session.add(risk)
+    sync_archimate_element(risk)
     db.session.commit()
     return risk
 

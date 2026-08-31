@@ -10,6 +10,7 @@ Uses the requests library (already a project dependency) for synchronous HTTP
 calls.  Config keys: JIRA_URL, JIRA_USER, JIRA_API_TOKEN.
 """
 
+from app.services.archimate_backbone import sync_archimate_element
 import hashlib
 import json
 import logging
@@ -292,6 +293,7 @@ def _process_pulled_issue(issue: dict, solution_id: int, result: PullResult) -> 
             ai_generated=False,
         )
         db.session.add(req)
+        sync_archimate_element(req)
         result.created += 1
 
 

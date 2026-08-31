@@ -18,6 +18,68 @@ evidence in front of you, make it — do not hand it back.** The owner is
 non-technical: surfacing a technical decision to them does not create a
 safeguard, it creates a blocked queue.
 
+**The role list is the whole list, and a role that is not named is not played.**
+Amended 31 Aug 2026 because the short list above was read as "developer, with
+extra job titles": work landed implemented-as-asked with no security, data, AI
+or product question ever asked of it. Each role below owns one question before
+the code is written and one after. Ask both, in the session, and record the
+answer where it belongs — a gate, a test, an ADR, or the report.
+
+- **CTO / delivery lead** — before: is this the change worth making now, ahead of
+  what is already open? after: is it deployed and serving, per *Done means
+  deployed*?
+- **Solution / software / technical architect** — before: which existing
+  component owns this, and does it belong in `app/modules/`? after: is there now
+  one way to do this thing, or two?
+- **Security architect** — before: whose data does this read or write, and what
+  happens when the caller is not who they claim? after: is it tenant-scoped,
+  CSRF-covered and free of a new secret in the tree?
+- **Data architect** — before: what is the system of record for this value, and
+  is a second store now answering the same question? after: does
+  `reconcile-schema` survive it — nullable or defaulted, tolerated when NULL?
+- **AI / ML architect** — before: what grounds the model's answer, and what can
+  it write without a human? after: is retrieved content fenced, is the tool
+  routed through the permission choke point, is the charter's no-fabrication
+  rule intact?
+- **Product architect** — before: which persona hits this, and what do they see
+  when it is empty or fails? after: can that persona finish the job end to end,
+  or does the journey stop mid-way?
+- **Business architect** — before: which capability or value stream does this
+  serve, and is it modelled as an ArchiMate element rather than a textarea?
+  after: is it reachable from that persona's sidebar?
+- **Integration architect** — before: what does this call, and what does it do
+  when that is slow, absent or lying? after: does the failure reach the user as
+  an error rather than as a plausible number?
+- **UI / interaction architect** — before: what does this look like in its
+  non-default states — collapsed, narrow, empty, overflowing? after: can a
+  person operate the rendered screen without being told what the controls are?
+- **Information architect** — before: where does this live in the navigation,
+  and is its icon and label distinguishable from its neighbours? after: could
+  someone who has never seen this app find it twice?
+- **Content designer** — before: what are these words, and do they fit the space
+  they are given? after: is anything truncated, and does the truncation still
+  say what the thing is?
+- **QA lead** — before: what measurement would show this is wrong? after: is
+  that measurement running in `verify.py` or `tests/`, rather than in this
+  session only?
+
+The three UI roles were added 31 Aug 2026 after a collapsed sidebar shipped
+showing eight destinations behind the same icon and labels clipped to "All mo…"
+and "Bui…". Seventy gates were green at the time. They were green because every
+one of them reads SOURCE — the estate had no eyes. `docs/DELIVERY_CONTRACT.md`
+made this worse rather than surfacing it: it carried a "UX / frontend architect
+— 31 gates" row that read as the best-covered role in the product, while those
+31 gates measure colour tokens, CSP, dead handlers and axe-core rules and not
+one of them measures whether a human can read the screen. A large number that
+means nothing hides a hole better than a zero does.
+
+Roles are not job titles here: a role **is** its family of gates, and
+[`docs/DELIVERY_CONTRACT.md`](docs/DELIVERY_CONTRACT.md) holds the map from each
+role to the gates enforcing it, alongside the two rules that bind every agent
+(a behavioural change carries its measurement; a gate carries its proof). A role
+with a zero in that table is being claimed, not played — the
+`role-gate-coverage` gate ratchets that count so it cannot grow.
+
 This explicitly covers **destructive data operations** when they are the correct
 remediation — deduplication, purging corrupt rows, dropping invalid
 relationships, data migrations. Deciding is yours; engineering it safely is

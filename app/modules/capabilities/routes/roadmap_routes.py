@@ -27,6 +27,7 @@ Helpers (3):
     - _get_gap_end_date(gap_types, apps, priority)
 """
 
+from app.services.archimate_backbone import sync_archimate_element
 from datetime import datetime
 
 from flask import current_app, jsonify, request
@@ -1438,6 +1439,7 @@ def api_roadmap_create_standalone_work_package():
             target_date=target_date,
         )
         db.session.add(wp)
+        sync_archimate_element(wp)
         db.session.flush()
 
         if gap:
@@ -1710,6 +1712,7 @@ def api_roadmap_create_plateau():
             target_date=target_date,
         )
         db.session.add(plateau)
+        sync_archimate_element(plateau)
         db.session.commit()
 
         return jsonify({

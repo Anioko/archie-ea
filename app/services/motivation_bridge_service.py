@@ -29,6 +29,7 @@ existing enterprise Driver/Goal/Outcome/Principle row that it matches by name
 (match-only, no overwrite) — strictly additive.
 """
 
+from app.services.archimate_backbone import sync_archimate_element
 import json
 import logging
 
@@ -103,6 +104,7 @@ def _find_or_create_driver(sd, name, org_id=None):
         status="active",
     )
     db.session.add(driver)
+    sync_archimate_element(driver)
     db.session.flush()
     return driver, True
 
@@ -141,6 +143,7 @@ def _find_or_create_goal(sg, name, org_id=None):
         status="active",
     )
     db.session.add(goal)
+    sync_archimate_element(goal)
     db.session.flush()
     return goal, True
 

@@ -58,7 +58,11 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ALLOW = re.compile(r"backbone-ok:[ \t]*\S")
-SYNC = "_sync_archimate_element"
+# The canonical helper is app/services/archimate_backbone.sync_archimate_element.
+# Matching without the leading underscore also matches the three legacy
+# _sync_archimate_element implementations it replaced, so this accepts both
+# rather than forcing a rename before a path can comply.
+SYNC = "sync_archimate_element"
 
 # The domain entities DESIGN.md maps onto ArchiMate motivation elements, plus the
 # Solution* variants the journey layer writes.

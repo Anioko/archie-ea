@@ -23,7 +23,12 @@ def _safe(fn, default=None):
     try:
         return fn()
     except Exception as exc:  # noqa: BLE001
-        logger.debug("SAD safe-query failed: %s", exc)
+        # WARNING, not DEBUG. This swallows a failed read and substitutes an
+        # empty result, so the only trace that a section is empty because the
+        # query broke -- rather than because there is nothing to show -- is
+        # this line. At DEBUG it was invisible in production for the entire
+        # life of the broken risk query.
+        logger.warning("SAD safe-query failed, section will render empty: %s", exc)
         try:
             db.session.rollback()
         except Exception:  # noqa: BLE001
@@ -308,7 +313,12 @@ def _query_risks(solution_id: int) -> list:
     """Return risk snapshots linked to the solution."""
     from sqlalchemy import text
     rows = _safe(lambda: db.session.execute(text(  # tenant-filtered: scoped via parent FK (solution_id)
-        "SELECT id, risk_name, risk_description, likelihood, impact, status "
+        # Column names checked against the live table, not guessed: this query
+        # asked for risk_description/likelihood/status, none of which exist here
+        # (they are notes/probability/mitigation_status). All three raised
+        # UndefinedColumn, _safe swallowed it, and every narrative rendered an
+        # empty risk register.
+        "SELECT id, risk_name, notes, probability, impact, mitigation_status "
         "FROM solution_risk_snapshots WHERE solution_id = :sid ORDER BY id LIMIT 100"
     ), {"sid": solution_id}).fetchall(), default=[])
     return [
