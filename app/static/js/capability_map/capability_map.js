@@ -121,7 +121,9 @@
 
                 return `
                     <div class="${colors.bg} ${colors.border} border-2 rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer"
-                         onclick="filterACMByDomain('${domain.domain}')">
+                         role="button" tabindex="0"
+                         data-cmx-action="filter-acm-domain" data-domain="${cmxEscapeAttr(domain.domain)}"
+                         aria-label="Filter capabilities to ${cmxEscapeAttr(domain.name)}">
                         <div class="flex items-start justify-between mb-3">
                             <div class="p-2 rounded-lg ${colors.bg}">
                                 <i data-lucide="${colors.icon}" class="w-6 h-6 ${colors.text}"></i>
@@ -190,7 +192,6 @@
                     ? '<span class="px-2 py-1 text-xs font-medium rounded-full bg-accent text-green-800">Mapped</span>'
                     : '<span class="px-2 py-1 text-xs font-medium rounded-full bg-destructive/10 text-red-800">Gap</span>';
 
-                const escapedName = (cap.name || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
 
                 const roadmapBadge = cap.on_roadmap
                     ? '<span class="px-1.5 py-0.5 text-xs rounded bg-accent text-purple-800 ml-1" title="On Roadmap"><i data-lucide="map" class="w-3 h-3 inline"></i></span>'
@@ -213,15 +214,15 @@
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap">
                             <div class="flex items-center gap-2">
-                                <button onclick="openACMMappingModal(${cap.id}, '${escapedName}', '${cap.acm_domain}', '${cap.level}')"
+                                <button type="button" data-cmx-action="open-acm-mapping" data-cap-id="${cmxEscapeAttr(cap.id)}" data-cap-name="${cmxEscapeAttr(cap.name || '')}" data-domain="${cmxEscapeAttr(cap.acm_domain)}" data-level="${cmxEscapeAttr(cap.level)}"
                                         class="text-cyan-600 hover:text-cyan-800 text-sm">
                                     Map
                                 </button>
-                                <button onclick="openACMCapabilityDetail(${cap.id}, '${escapedName}')"
+                                <button type="button" data-cmx-action="open-acm-detail" data-cap-id="${cmxEscapeAttr(cap.id)}" data-cap-name="${cmxEscapeAttr(cap.name || '')}"
                                         class="text-muted-foreground hover:text-foreground text-sm">
                                     View
                                 </button>
-                                <button onclick="addToRoadmap(${cap.id}, '${escapedName}', 'technical', ${cap.level_number || 1}, 'medium')"
+                                <button type="button" data-cmx-action="add-to-roadmap" data-cap-id="${cmxEscapeAttr(cap.id)}" data-cap-name="${cmxEscapeAttr(cap.name || '')}" data-cap-level="${cmxEscapeAttr(cap.level_number || 1)}"
                                         class="text-primary hover:text-purple-800 text-sm ${cap.on_roadmap ? 'opacity-50 cursor-not-allowed' : ''}"
                                         ${cap.on_roadmap ? 'disabled title="Already on roadmap"' : 'title="Add to roadmap"'}>
                                     <i data-lucide="map" class="w-4 h-4 inline"></i>
@@ -320,7 +321,7 @@
                 panel = document.createElement('div');
                 panel.id = 'capability-detail-panel';
                 panel.className = 'fixed inset-y-0 right-0 w-[420px] bg-card border-l border-border shadow-xl z-50 transform translate-x-full transition-transform duration-200 overflow-y-auto';
-                panel.innerHTML = '<div class="p-6"><div class="flex items-center justify-between mb-4"><h3 class="text-lg font-semibold" id="cap-detail-title"></h3><button onclick="closeCapabilityDetail()" class="text-muted-foreground hover:text-foreground p-1"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button></div><div id="cap-detail-content"><p class="text-sm text-muted-foreground">Loading...</p></div></div>';
+                panel.innerHTML = '<div class="p-6"><div class="flex items-center justify-between mb-4"><h3 class="text-lg font-semibold" id="cap-detail-title"></h3><button type="button" data-cmx-action="close-capability-detail" aria-label="Close capability detail" class="text-muted-foreground hover:text-foreground p-1"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button></div><div id="cap-detail-content"><p class="text-sm text-muted-foreground">Loading...</p></div></div>';
                 document.body.appendChild(panel);
             }
 
@@ -622,7 +623,10 @@
                             </div>
                             ${app.is_mapped && app.mapping_id ? `
                                 <button
-                                    onclick="deleteACMMapping('${app.mapping_id}', '${app.id}')"
+                                    type="button"
+                                    data-cmx-action="delete-acm-mapping"
+                                    data-mapping-id="${cmxEscapeAttr(app.mapping_id)}"
+                                    data-app-id="${cmxEscapeAttr(app.id)}"
                                     class="ml-2 px-3 py-1.5 text-xs bg-destructive text-primary-foreground rounded hover:bg-destructive transition-colors flex items-center space-x-1"
                                     title="Remove mapping"
                                 >
@@ -1223,7 +1227,9 @@
 
                 return `
                     <div class="${cs.bg} border-2 ${cs.border} rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer"
-                         onclick="document.getElementById('unified-domain-filter').value='${domain.code}'; filterTable('unified');">
+                         role="button" tabindex="0"
+                         data-cmx-action="filter-unified-domain" data-domain-code="${cmxEscapeAttr(domain.code)}"
+                         aria-label="Filter capabilities to domain ${cmxEscapeAttr(domain.code)}">
                         <div class="flex items-start justify-between mb-3">
                             <span class="text-xs font-bold ${cs.textBold} ${cs.badge} px-2 py-0.5 rounded">${domain.code}</span>
                             <div class="w-2 h-2 rounded-full ${statusColor}"></div>
@@ -1393,7 +1399,9 @@
 
                 return `
                     <div class="${colors.bg} rounded-lg p-3 text-center cursor-pointer hover:shadow-md transition-shadow"
-                         onclick="document.getElementById('acm-gap-domain-filter').value='${domain.domain}'; filterACMGapTable();">
+                         role="button" tabindex="0"
+                         data-cmx-action="filter-acm-gap-domain" data-domain="${cmxEscapeAttr(domain.domain)}"
+                         aria-label="Filter gaps to domain ${cmxEscapeAttr(domain.domain)}">
                         <div class="font-semibold ${colors.text} text-sm mb-1">${colors.short}</div>
                         <div class="${coverageColor} font-bold text-lg">${domain.coverage}%</div>
                         <div class="w-full bg-border rounded-full h-1 mt-2">
@@ -1504,3 +1512,72 @@
             renderACMGapTable(acmGapData);
             if (typeof lucide !== 'undefined') setTimeout(() => lucide.createIcons(), 100);
         }
+
+
+// ============================================================================
+// Delegated action dispatcher
+// ============================================================================
+//
+// The app ships script-src 'self' 'nonce-...' 'strict-dynamic' with neither
+// 'unsafe-inline' nor 'unsafe-hashes', so an on*= attribute never executes --
+// innerHTML-injected ones included. The controls above are now data-driven and
+// dispatched by one document-level listener; delegation is required because
+// these grids are re-rendered wholesale from fetched data.
+//
+// NOTE: this file is not referenced by any template -- `index.html` loads only
+// index.js and index_inline.js, and nothing else in the repo names it. It is a
+// dormant duplicate of index_inline.js's ACM functions. It is converted rather
+// than left as-is so that it is not a trap if it is ever wired up, but nothing
+// here runs today. The data-cmx-action namespace is distinct from index.js's
+// data-cm-action and index_inline.js's data-acm-action so that, if all three
+// ever load together, no dispatcher sees another's controls.
+
+function cmxEscapeAttr(value) {
+    if (value === null || value === undefined) return '';
+    return String(value)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function cmxSetFilterAndApply(selectId, value, apply) {
+    const select = document.getElementById(selectId);
+    if (!select) return;
+    select.value = value;
+    apply();
+}
+
+const CMX_ACTIONS = {
+    'filter-acm-domain':       (el) => filterACMByDomain(el.dataset.domain),
+    'open-acm-mapping':        (el) => openACMMappingModal(
+                                         el.dataset.capId, el.dataset.capName,
+                                         el.dataset.domain, el.dataset.level),
+    'open-acm-detail':         (el) => openACMCapabilityDetail(el.dataset.capId, el.dataset.capName),
+    'add-to-roadmap':          (el) => addToRoadmap(el.dataset.capId, el.dataset.capName,
+                                         'technical', parseInt(el.dataset.capLevel, 10) || 1, 'medium'),
+    'close-capability-detail': ()   => closeCapabilityDetail(),
+    'delete-acm-mapping':      (el) => deleteACMMapping(el.dataset.mappingId, el.dataset.appId),
+    'filter-unified-domain':   (el) => cmxSetFilterAndApply(
+                                         'unified-domain-filter', el.dataset.domainCode,
+                                         () => filterTable('unified')),
+    'filter-acm-gap-domain':   (el) => cmxSetFilterAndApply(
+                                         'acm-gap-domain-filter', el.dataset.domain,
+                                         filterACMGapTable),
+};
+
+function runCmxAction(event) {
+    const el = event.target.closest('[data-cmx-action]');
+    if (!el) return;
+    if (el.disabled) return;
+    const handler = CMX_ACTIONS[el.getAttribute('data-cmx-action')];
+    if (!handler) return;
+    handler(el, event);
+}
+
+document.addEventListener('click', runCmxAction);
+document.addEventListener('keydown', function(event) {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    const el = event.target.closest('[data-cmx-action][role="button"]');
+    if (!el) return;
+    event.preventDefault();
+    runCmxAction(event);
+});

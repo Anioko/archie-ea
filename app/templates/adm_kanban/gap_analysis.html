@@ -120,7 +120,14 @@
                 {% set closers = gap_closers.get(gap.id, []) %}
                 <tr class="hover:bg-muted/30 transition-colors">
                     <td class="px-4 py-3">
+                        {# A Gap is a KanbanCard. There is no per-card page; the board is
+                           where a card is opened, assigned and moved between phases. #}
+                        {% if 'adm_kanban_view.index' in flask.current_app.view_functions %}
+                        <a href="{{ url_for('adm_kanban_view.index') }}"
+                           class="font-medium text-primary hover:underline">{{ gap.title }}</a>
+                        {% else %}
                         <div class="font-medium text-foreground">{{ gap.title }}</div>
+                        {% endif %}
                         {% if gap.description %}
                         <div class="text-xs text-muted-foreground mt-0.5 line-clamp-1">{{ gap.description }}</div>
                         {% endif %}

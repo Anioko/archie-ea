@@ -371,6 +371,13 @@
             'dfn', 'div', 'dl', 'dt', 'em', 'figcaption', 'figure',
             'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'hr', 'i', 'img',
             'input', 'ins', 'kbd', 'label', 'li', 'mark', 'ol', 'p',
+            // option/optgroup: 'select' was allowed and its CHILDREN were not,
+            // so every dynamically-rendered dropdown kept its box and lost all
+            // of its choices. The owner reported two blank dropdowns in the
+            // capability mapping dialog on 31 Aug 2026; measured in-browser,
+            // all four settings selects rendered with zero options. A select
+            // with no options is not a degraded control, it is an unusable one.
+            'optgroup', 'option',
             'pre', 'q', 's', 'samp', 'section', 'select', 'small',
             'span', 'strong', 'sub', 'summary', 'sup', 'table',
             'tbody', 'td', 'textarea', 'tfoot', 'th', 'thead', 'time',
@@ -383,6 +390,13 @@
             'aria-*', 'class', 'data-*', 'disabled', 'for', 'href',
             'id', 'name', 'placeholder', 'readonly', 'role', 'src',
             'style', 'tabindex', 'target', 'title', 'type', 'value',
+            // Form state and constraints. Without 'checked'/'selected' a
+            // re-rendered checkbox or dropdown loses what the user chose, which
+            // reads as the app forgetting their input. All of these are inert
+            // -- no script vector -- unlike formaction/srcdoc, which stay out.
+            'checked', 'selected', 'multiple', 'required',
+            'min', 'max', 'step', 'maxlength', 'minlength', 'pattern',
+            'rows', 'cols', 'autocomplete',
             // SVG
             'd', 'fill', 'stroke', 'stroke-width', 'stroke-linecap',
             'stroke-linejoin', 'viewBox', 'xmlns', 'width', 'height',

@@ -618,7 +618,26 @@
         {% endfor %}
       </div>
       {% else %}
-      {{ empty_state(icon='layout-grid', title='No applications found.') }}
+      {% if filters.search or filters.type or filters.status or filters.domain or filters.capability_level %}
+      {{ empty_state(icon='search-x', title='No applications match your filters.',
+                     description='Nothing in the portfolio matches the current search and filters. Clear them to see every application again.',
+                     cta_text='Clear filters',
+                     cta_href=url_for('unified_applications.application_list'),
+                     cta_icon='x') }}
+      {% elif current_user.enterprise_role == 'platform_admin' or current_user.is_admin() %}
+      {{ empty_state(icon='layout-grid', title='No applications yet.',
+                     description='Your application portfolio is empty. Add your first application to start mapping it to capabilities, owners and cost.',
+                     cta_text='Add an application',
+                     cta_href=url_for('unified_applications.application_create'),
+                     cta_icon='plus') }}
+      {% else %}
+      {# Populating the portfolio is a platform-admin action — the desktop branch above
+         gates the same Import/Add buttons the same way. The way forward for everyone
+         else is to ask their admin, which the copy says.
+         empty-state-ok: role-scoped, non-admins cannot add applications #}
+      {{ empty_state(icon='layout-grid', title='No applications yet.',
+                     description='The portfolio has not been populated. Ask your platform admin to import or add applications.') }}
+      {% endif %}
       {% endif %}
     </div>
     {# ─ Pagination footer ─ #}

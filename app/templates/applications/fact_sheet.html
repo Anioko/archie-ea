@@ -165,7 +165,12 @@
         {% endfor %}
       </ul>
       {% else %}
-        {{ empty_state(icon='layers', title='No capabilities mapped', description='This application is not yet linked to any business capability.', padding='py-8') }}
+        {{ empty_state(icon='layers', title='No capabilities mapped',
+                       description='This application is not yet linked to any business capability. Map one so it appears in capability coverage, investment and rationalisation views.',
+                       cta_text='Map a business capability',
+                       cta_href=url_for('unified_applications.application_detail', id=app.id),
+                       cta_icon='plus',
+                       padding='py-8') }}
       {% endif %}
     {% endcall %}
   </div>
@@ -173,9 +178,19 @@
   {# ── Dependencies (the ArchiMate graph, blast-radius) ───────────────── #}
   {% call panel('Dependencies', 'git-fork') %}
     {% if not dependencies.linked %}
-      {{ empty_state(icon='unlink', title='Not linked to the ArchiMate model', description='Generate or link an ArchiMate element to see what this application depends on and what depends on it.', padding='py-8') }}
+      {{ empty_state(icon='unlink', title='Not linked to the ArchiMate model',
+                     description='Generate or link an ArchiMate element to see what this application depends on and what depends on it.',
+                     cta_text='Link an ArchiMate element',
+                     cta_href=url_for('unified_applications.application_detail', id=app.id),
+                     cta_icon='link',
+                     padding='py-8') }}
     {% elif not dependencies.upstream and not dependencies.downstream %}
-      {{ empty_state(icon='git-fork', title='No relationships recorded', description='This element has no incoming or outgoing ArchiMate relationships yet.', padding='py-8') }}
+      {{ empty_state(icon='git-fork', title='No relationships recorded',
+                     description='This element has no incoming or outgoing ArchiMate relationships yet. Draw them in the model composer to make the blast radius of a change visible.',
+                     cta_text='Open the model composer',
+                     cta_href=url_for('archimate.composer_page'),
+                     cta_icon='git-fork',
+                     padding='py-8') }}
     {% else %}
     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
       <div>
@@ -224,7 +239,12 @@
       {% endfor %}
     </div>
     {% else %}
-      {{ empty_state(icon='workflow', title='Not on any diagram', description='This application does not yet appear on a saved ArchiMate diagram.', padding='py-8') }}
+      {{ empty_state(icon='workflow', title='Not on any diagram',
+                     description='This application does not yet appear on a saved ArchiMate diagram. Place it on a viewpoint so reviewers can see it in context.',
+                     cta_text='Open the diagram composer',
+                     cta_href=url_for('archimate.composer_page'),
+                     cta_icon='workflow',
+                     padding='py-8') }}
     {% endif %}
   {% endcall %}
   </div>

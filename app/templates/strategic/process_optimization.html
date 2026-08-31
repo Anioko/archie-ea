@@ -14,6 +14,13 @@
 {% endblock %}
 
 {% block content %}
+{# Builds the href for a row's record, or an empty string when the blueprint that
+   owns the destination failed to register -- blueprints register non-fatally here,
+   so an unguarded url_for would raise BuildError and 500 every page rendering the
+   sidebar. Callers keep the <a> in the row itself so the link is visible both to a
+   reader and to scripts/check_actionable_rows.py. #}
+{% macro row_href(endpoint) %}{% if endpoint in flask.current_app.view_functions %}{{ url_for(endpoint, **kwargs) }}{% endif %}{% endmacro %}
+
 <div class="flex flex-col space-y-8 animate-in fade-in duration-500">
     {{ page_header(
         title='Process Optimization',
@@ -37,25 +44,29 @@
                     <thead>
                         <tr class="border-b">
                             <th class="text-left p-3 font-medium">Process</th>
-                            <th class="text-left p-3 font-medium">Efficiency</th>
-                            <th class="text-left p-3 font-medium">Priority</th>
-                            <th class="text-left p-3 font-medium">Optimization Status</th>
+                            <th class="text-left p-3 font-medium">Efficiency score</th>
+                            <th class="text-left p-3 font-medium">Optimization level</th>
+                            <th class="text-left p-3 font-medium">Priority score</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y">
                         {% for process in process_analyses|default([]) %}
                         <tr class="border-b hover:bg-muted/50">
-                            <td class="p-3">{{ process.process_name|default('N/A') }}</td>
-                            <td class="p-3">{{ process.efficiency_score|default(0) }}%</td>
+                            <td class="p-3">
+                                {% if process.process_id %}
+                                {% set _h = row_href('archimate_crud.detail_element', layer='business', element_type='BusinessProcess', element_id=process.process_id)|trim %}{% if _h %}<a href="{{ _h }}" class="font-medium text-primary hover:underline">{{ process.process_name|default('N/A') }}</a>{% else %}{{ process.process_name|default('N/A') }}{% endif %}
+                                {% else %}{{ process.process_name|default('N/A') }}{% endif %}
+                            </td>
+                            <td class="p-3">{{ process.efficiency_score if process.efficiency_score is not none else '&mdash;' }}</td>
                             <td class="p-3">
                                 <span class="px-2 py-1 text-xs rounded-full
-                                    {% if process.priority == 'Critical' %}bg-destructive/20 text-destructive-emphasis
-                                    {% elif process.priority == 'High' %}bg-warning/20 text-warning-emphasis
+                                    {% if process.optimization_level == 'CRITICAL' %}bg-destructive/20 text-destructive-emphasis
+                                    {% elif process.optimization_level == 'HIGH' %}bg-warning/20 text-warning-emphasis
                                     {% else %}bg-primary/20 text-primary{% endif %}">
-                                    {{ process.priority|default('Normal') }}
+                                    {{ process.optimization_level|default('&mdash;', true) }}
                                 </span>
                             </td>
-                            <td class="p-3 text-sm text-muted-foreground">{{ process.optimization_status|default('Pending') }}</td>
+                            <td class="p-3 text-sm text-muted-foreground">{{ process.optimization_priority_score if process.optimization_priority_score is not none else '&mdash;' }}</td>
                         </tr>
                         {% else %}
                         <tr>

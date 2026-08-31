@@ -55,11 +55,14 @@ def unlink_decision_capability(decision_id, capability_id):
 def capability_decisions(capability_id):
     """ARB-002: Get all decisions linked to a capability, grouped by horizon."""
     from app.models.architecture_decision import ArchitectureDecision, DecisionCapabilityLink
-    from app.models.business_capabilities import Capability
+    # BusinessCapability: the canonical store. `Capability` maps the
+    # `capabilities` table, which is empty in production, so guarding on it
+    # 404'd every capability a user actually has.
+    from app.models.business_capabilities import BusinessCapability
     from app.utils.route_guards import require_entity
 
     # No linked decisions for a nonexistent capability is fabricated data.
-    require_entity(Capability, capability_id, description="Capability not found")
+    require_entity(BusinessCapability, capability_id, description="Capability not found")
 
     links = DecisionCapabilityLink.query.filter_by(capability_id=capability_id).all()
     decision_ids = [item.decision_id for item in links]
@@ -89,10 +92,13 @@ def capability_governance_panel(capability_id):
     from app.models.architecture_decision import (
         ArchitectureDecision, DecisionCapabilityLink, ArchitectureChangeRequest, ChangeImpactAssessment
     )
-    from app.models.business_capabilities import Capability
+    # BusinessCapability: the canonical store. `Capability` maps the
+    # `capabilities` table, which is empty in production, so guarding on it
+    # 404'd every capability a user actually has.
+    from app.models.business_capabilities import BusinessCapability
     from app.utils.route_guards import require_entity
 
-    require_entity(Capability, capability_id, description="Capability not found")
+    require_entity(BusinessCapability, capability_id, description="Capability not found")
 
     # All decisions linked to this capability
     links = DecisionCapabilityLink.query.filter_by(capability_id=capability_id).all()

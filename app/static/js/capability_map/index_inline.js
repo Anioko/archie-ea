@@ -210,7 +210,9 @@ function renderACMDomains(data) {
         let statusColor = domain.status === 'covered' ? 'bg-emerald-500' : domain.status === 'partial' ? 'bg-amber-500' : 'bg-destructive';
 
         return '<div class="' + colors.bg + ' ' + colors.border + ' border-2 rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer"' +
-                     ' onclick="filterACMByDomain(\'' + domain.domain + '\')">' +
+                     ' role="button" tabindex="0" data-acm-action="filter-acm-domain"' +
+                     ' data-domain="' + acmEscapeAttr(domain.domain) + '"' +
+                     ' aria-label="Filter capabilities to ' + acmEscapeAttr(domain.name) + '">' +
                 '<div class="flex items-start justify-between mb-3">' +
                     '<div class="p-2 rounded-lg ' + colors.bg + '">' +
                         '<i data-lucide="' + colors.icon + '" class="w-6 h-6 ' + colors.text + '"></i>' +
@@ -277,7 +279,6 @@ function renderACMCapabilities(capabilities) {
             ? '<span class="px-2 py-1 text-xs font-medium rounded-full bg-emerald-500/10 text-green-800">Mapped</span>'
             : '<span class="px-2 py-1 text-xs font-medium rounded-full bg-destructive/10 text-red-800">Gap</span>';
 
-        let escapedName = escapeHtml((cap.name || '').replace(/'/g, "\\'"));
 
         let roadmapBadge = cap.on_roadmap
             ? '<span class="px-1.5 py-0.5 text-xs rounded bg-purple-100 text-purple-800 ml-1" title="On Roadmap"><i data-lucide="map" class="w-3 h-3 inline"></i></span>'
@@ -297,9 +298,9 @@ function renderACMCapabilities(capabilities) {
                 '</td>' +
                 '<td class="px-6 py-4 whitespace-nowrap">' +
                     '<div class="flex items-center gap-2">' +
-                        '<button onclick="openACMMappingModal(' + cap.id + ', \'' + escapedName + '\', \'' + cap.acm_domain + '\', \'' + cap.level + '\')" class="text-cyan-600 hover:text-cyan-800 text-sm">Map</button>' +
-                        '<button onclick="openACMCapabilityDetail(' + cap.id + ', \'' + escapedName + '\')" class="text-muted-foreground hover:text-foreground text-sm">View</button>' +
-                        '<button onclick="addToRoadmap(' + cap.id + ', \'' + escapedName + '\', \'technical\', ' + (cap.level_number || 1) + ', \'medium\')" class="text-primary hover:text-purple-800 text-sm ' + (cap.on_roadmap ? 'opacity-50 cursor-not-allowed' : '') + '"' +
+                        '<button type="button" data-acm-action="open-acm-mapping" data-cap-id="' + acmEscapeAttr(cap.id) + '" data-cap-name="' + acmEscapeAttr(cap.name || '') + '" data-domain="' + acmEscapeAttr(cap.acm_domain) + '" data-level="' + acmEscapeAttr(cap.level) + '" class="text-cyan-600 hover:text-cyan-800 text-sm">Map</button>' +
+                        '<button type="button" data-acm-action="open-acm-detail" data-cap-id="' + acmEscapeAttr(cap.id) + '" data-cap-name="' + acmEscapeAttr(cap.name || '') + '" class="text-muted-foreground hover:text-foreground text-sm">View</button>' +
+                        '<button type="button" data-acm-action="add-to-roadmap" data-cap-id="' + acmEscapeAttr(cap.id) + '" data-cap-name="' + acmEscapeAttr(cap.name || '') + '" data-cap-level="' + acmEscapeAttr(cap.level_number || 1) + '" class="text-primary hover:text-purple-800 text-sm ' + (cap.on_roadmap ? 'opacity-50 cursor-not-allowed' : '') + '"' +
                             (cap.on_roadmap ? ' disabled title="Already on roadmap"' : ' title="Add to roadmap"') + '>' +
                             '<i data-lucide="map" class="w-4 h-4 inline"></i>' +
                         '</button>' +
@@ -399,7 +400,7 @@ async function openCapabilityDetail(capabilityId, capabilityName) {
         panel = document.createElement('div');
         panel.id = 'capability-detail-panel';
         panel.className = 'fixed inset-y-0 right-0 w-[420px] bg-card border-l border-border shadow-xl z-50 transform translate-x-full transition-transform duration-200 overflow-y-auto';
-        panel.innerHTML = '<div class="p-6"><div class="flex items-center justify-between mb-4"><h3 class="text-lg font-semibold" id="cap-detail-title"></h3><button onclick="closeCapabilityDetail()" class="text-muted-foreground hover:text-foreground p-1"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button></div><div id="cap-detail-content"><p class="text-sm text-muted-foreground">Loading...</p></div></div>';
+        panel.innerHTML = '<div class="p-6"><div class="flex items-center justify-between mb-4"><h3 class="text-lg font-semibold" id="cap-detail-title"></h3><button type="button" data-acm-action="close-capability-detail" aria-label="Close capability detail" class="text-muted-foreground hover:text-foreground p-1"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button></div><div id="cap-detail-content"><p class="text-sm text-muted-foreground">Loading...</p></div></div>';
         document.body.appendChild(panel);
     }
     document.getElementById('cap-detail-title').textContent = capabilityName;
@@ -697,7 +698,9 @@ function renderACMApplicationsList() {
                         '</div>' +
                     '</div>' +
                     (app.is_mapped && app.mapping_id ?
-                        '<button onclick="deleteACMMapping(\'' + app.mapping_id + '\', \'' + app.id + '\')"' +
+                        '<button type="button" data-acm-action="delete-acm-mapping"' +
+                            ' data-mapping-id="' + acmEscapeAttr(app.mapping_id) + '"' +
+                            ' data-app-id="' + acmEscapeAttr(app.id) + '"' +
                             ' class="ml-2 px-3 py-1.5 text-xs bg-destructive text-primary-foreground rounded hover:bg-destructive transition-colors flex items-center space-x-1"' +
                             ' title="Remove mapping">' +
                             '<i data-lucide="trash-2" class="w-3 h-3"></i><span>Remove</span>' +
@@ -1315,7 +1318,9 @@ function renderBusinessDomainCards(domains) {
         let statusColor = domain.coverage >= 70 ? 'bg-green-400' : domain.coverage >= 40 ? 'bg-amber-400' : 'bg-red-400';
 
         return '<div class="' + cs.bg + ' border-2 ' + cs.border + ' rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer"' +
-                     ' onclick="document.getElementById(\'unified-domain-filter\').value=\'' + escapeHtml(domain.code) + '\'; filterTable(\'unified\');">' +
+                     ' role="button" tabindex="0" data-acm-action="filter-unified-domain"' +
+                     ' data-domain-code="' + acmEscapeAttr(domain.code) + '"' +
+                     ' aria-label="Filter capabilities to domain ' + acmEscapeAttr(domain.code) + '">' +
                 '<div class="flex items-start justify-between mb-3">' +
                     '<span class="text-xs font-bold ' + cs.textBold + ' ' + cs.badge + ' px-2 py-0.5 rounded">' + escapeHtml(domain.code) + '</span>' +
                     '<div class="w-2 h-2 rounded-full ' + statusColor + '"></div>' +
@@ -1481,7 +1486,9 @@ function renderACMGapDomainCoverage(domainStats) {
         let barColor = domain.coverage >= 70 ? 'bg-emerald-500' : domain.coverage >= 40 ? 'bg-amber-500' : 'bg-destructive';
 
         return '<div class="' + colors.bg + ' rounded-lg p-3 text-center cursor-pointer hover:shadow-md transition-shadow"' +
-                     ' onclick="document.getElementById(\'acm-gap-domain-filter\').value=\'' + domain.domain + '\'; filterACMGapTable();">' +
+                     ' role="button" tabindex="0" data-acm-action="filter-acm-gap-domain"' +
+                     ' data-domain="' + acmEscapeAttr(domain.domain) + '"' +
+                     ' aria-label="Filter gaps to domain ' + acmEscapeAttr(domain.domain) + '">' +
                 '<div class="font-semibold ' + colors.text + ' text-sm mb-1">' + colors.short + '</div>' +
                 '<div class="' + coverageColor + ' font-bold text-lg">' + domain.coverage + '%</div>' +
                 '<div class="w-full bg-border rounded-full h-1 mt-2">' +
@@ -1588,3 +1595,80 @@ function clearACMGapFilters() {
     renderACMGapTable(acmGapData);
     if (typeof lucide !== 'undefined') setTimeout(function() { lucide.createIcons(); }, 100);
 }
+
+
+// ============================================================================
+// Delegated action dispatcher
+// ============================================================================
+//
+// The app ships script-src 'self' 'nonce-...' 'strict-dynamic' with neither
+// 'unsafe-inline' nor 'unsafe-hashes', so an on*= attribute is refused no
+// matter how it reached the DOM -- innerHTML included. Every control rendered
+// by this file therefore did nothing at all for its entire life. (safeHTML's
+// DOMPurify config also lists onclick in FORBID_ATTR, so most were stripped
+// before the CSP even got a say.)
+//
+// The controls now carry data-acm-action plus data-* arguments and are
+// dispatched by a single document-level listener. Delegation, not per-node
+// binding: these grids are re-rendered wholesale from fetched data, and a
+// listener bound to a node dies with the next render.
+//
+// The attribute is deliberately NOT the data-cm-action used by index.js --
+// both files load on the same page, and separate namespaces keep each
+// dispatcher blind to the other's controls.
+
+// escapeHtml() round-trips through textContent/innerHTML, which escapes < > &
+// but NOT the double quote -- safe for a text node, unsafe for an attribute.
+function acmEscapeAttr(value) {
+    if (value === null || value === undefined) return '';
+    return String(value)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function acmSetFilterAndApply(selectId, value, apply) {
+    const select = document.getElementById(selectId);
+    if (!select) return;
+    select.value = value;
+    apply();
+}
+
+const ACM_ACTIONS = {
+    'filter-acm-domain':      (el) => filterACMByDomain(el.dataset.domain),
+    'open-acm-mapping':       (el) => openACMMappingModal(
+                                        el.dataset.capId, el.dataset.capName,
+                                        el.dataset.domain, el.dataset.level),
+    'open-acm-detail':        (el) => openACMCapabilityDetail(el.dataset.capId, el.dataset.capName),
+    // addToRoadmap is defined inside index.js's IIFE and exported onto window;
+    // resolved at click time, so load order does not matter.
+    'add-to-roadmap':         (el) => addToRoadmap(el.dataset.capId, el.dataset.capName,
+                                        'technical', parseInt(el.dataset.capLevel, 10) || 1, 'medium'),
+    'close-capability-detail':()   => closeCapabilityDetail(),
+    'delete-acm-mapping':     (el) => deleteACMMapping(el.dataset.mappingId, el.dataset.appId),
+    'filter-unified-domain':  (el) => acmSetFilterAndApply(
+                                        'unified-domain-filter', el.dataset.domainCode,
+                                        () => filterTable('unified')),
+    'filter-acm-gap-domain':  (el) => acmSetFilterAndApply(
+                                        'acm-gap-domain-filter', el.dataset.domain,
+                                        filterACMGapTable),
+};
+
+function runAcmAction(event) {
+    const el = event.target.closest('[data-acm-action]');
+    if (!el) return;
+    if (el.disabled) return;
+    const handler = ACM_ACTIONS[el.getAttribute('data-acm-action')];
+    if (!handler) return;
+    handler(el, event);
+}
+
+document.addEventListener('click', runAcmAction);
+// The domain cards are <div role="button"> (they are card layouts, not
+// buttons), so keyboard activation has to be wired explicitly.
+document.addEventListener('keydown', function(event) {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    const el = event.target.closest('[data-acm-action][role="button"]');
+    if (!el) return;
+    event.preventDefault();
+    runAcmAction(event);
+});

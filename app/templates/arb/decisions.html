@@ -99,7 +99,9 @@
                         <th class="px-4 py-3 text-left font-medium text-muted-foreground">Enterprise</th>
                     </tr>
                 </thead>
-                <tbody class="divide-y divide-border">
+                <tbody class="divide-y divide-border">{# actionable-rows-ok: arb_decision_routes exposes decisions as JSON only -- no per-decision HTML
+                     page exists, so a title link would go nowhere. Decisions are raised and
+                     changed on the change request that carries them. #}
                     {% for d in decisions %}
                     <tr data-row
                         x-show="
@@ -177,9 +179,22 @@
                     {% else %}
                     <tr>
                         <td colspan="7">
-                            {{ empty_state(icon='file-text', title='No decisions found',
-                                           description='Create your first architecture decision to get started.',
+                            {% if 'arch_decisions.create_decision' in flask.current_app.view_functions %}
+                            {{ empty_state(icon='file-text', title='No decisions recorded yet',
+                                           description='The register holds the architecture decisions your organisation has taken, with their status, horizon and authority level. Record the first one to start the trail.',
+                                           cta_text='Record a decision',
+                                           cta_href=url_for('arch_decisions.create_decision'),
+                                           cta_icon='plus',
                                            padding='py-8') }}
+                            {% else %}
+                            {# The decision-authoring blueprint failed to register on this boot, so
+                               there is no create route to link to; doing it anyway would BuildError
+                               and 500 every page that renders the sidebar.
+                               empty-state-ok: create route absent on this boot #}
+                            {{ empty_state(icon='file-text', title='No decisions recorded yet',
+                                           description='The decision register is empty and the decision-authoring module is unavailable on this deployment. Ask your platform admin to check the architecture-decisions blueprint.',
+                                           padding='py-8') }}
+                            {% endif %}
                         </td>
                     </tr>
                     {% endfor %}

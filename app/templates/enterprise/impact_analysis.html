@@ -14,6 +14,13 @@
 {% endblock %}
 
 {% block content %}
+{# Builds the href for a row's record, or an empty string when the blueprint that
+   owns the destination failed to register -- blueprints register non-fatally here,
+   so an unguarded url_for would raise BuildError and 500 every page rendering the
+   sidebar. Callers keep the <a> in the row itself so the link is visible both to a
+   reader and to scripts/check_actionable_rows.py. #}
+{% macro row_href(endpoint) %}{% if endpoint in flask.current_app.view_functions %}{{ url_for(endpoint, **kwargs) }}{% endif %}{% endmacro %}
+
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
     {{ page_header(
         title='Impact Analysis',
@@ -172,8 +179,14 @@
                             {% call badge('info') %}{{ analysis.analysis_type or 'unknown' }}{% endcall %}
                         </td>
                         <td class="px-6 py-4 text-sm text-foreground">
-                            <div class="text-xs text-muted-foreground">{{ analysis.trigger_element_type or '-' }}</div>
-                            <div>ID: {{ analysis.trigger_element_id or '-' }}</div>
+                            <div class="text-xs text-muted-foreground">{{ analysis.trigger_element_type or '&mdash;' }}</div>
+                            {# Every analysis for this element, which is the next thing you do
+                               with a row in a history table. #}
+                            {% if analysis.trigger_element_type and analysis.trigger_element_id %}
+                            {% set _h = row_href('enterprise.impact_analysis', element_type=analysis.trigger_element_type, element_id=analysis.trigger_element_id)|trim %}{% if _h %}<a href="{{ _h }}" class="font-medium text-primary hover:underline">{{ 'ID: ' ~ analysis.trigger_element_id }}</a>{% else %}{{ 'ID: ' ~ analysis.trigger_element_id }}{% endif %}
+                            {% else %}
+                            <div>ID: &mdash;</div>
+                            {% endif %}
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm">
                             {% if analysis.overall_severity == 'critical' %}

@@ -1,4 +1,5 @@
 {% extends "layouts/admin_base.html" %}
+{% from 'macros/page_shell.html' import page_shell %}
 
 {% block title %}{{ solution.name }} - Solution Details{% endblock %}
 
@@ -970,7 +971,12 @@
               {% set r_priority = (r.get('priority') or 'medium') | lower %}
               {% set r_status = (r.get('status') or 'open') | lower %}
               <tr class="hover:bg-muted/20">
-                <td class="px-5 py-2.5">{{ r.get('name') or r.get('title') or r.get('description', 'Untitled') }}</td>
+                <td class="px-5 py-2.5">
+                  {% if r.get('id') %}
+                  <button type="button" @click="openEdit('requirement', {{ loop.index0 }})"
+                          class="text-left text-primary hover:underline">{{ r.get('name') or r.get('title') or r.get('description', 'Untitled') }}</button>
+                  {% else %}{{ r.get('name') or r.get('title') or r.get('description', 'Untitled') }}{% endif %}
+                </td>
                 <td class="px-3 py-2.5"><span class="text-xs text-muted-foreground px-1.5 py-0.5 rounded bg-muted">{{ (r.get('requirement_type') or r.get('type') or 'Functional') | title }}</span></td>
                 <td class="px-3 py-2.5"><span class="text-xs {% if r_priority == 'critical' %}text-destructive-emphasis{% elif r_priority == 'high' %}text-warning-emphasis{% else %}text-muted-foreground{% endif %}">{{ r_priority | title }}</span></td>
                 <td class="px-3 py-2.5">
@@ -1097,7 +1103,11 @@
               {% for app in applications %}
               {% set lc = (app.lifecycle_status or '') | lower %}
               <tr class="hover:bg-muted/20">
-                <td class="px-5 py-2.5 font-medium">{{ app.name }}</td>
+                <td class="px-5 py-2.5 font-medium">
+                  {% if app.id and 'unified_applications.application_detail' in flask.current_app.view_functions %}
+                  <a href="{{ url_for('unified_applications.application_detail', id=app.id) }}" class="text-primary hover:underline">{{ app.name }}</a>
+                  {% else %}{{ app.name }}{% endif %}
+                </td>
                 <td class="px-3 py-2.5">
                   <span class="inline-flex items-center gap-1">
                     <span class="w-1.5 h-1.5 rounded-full {% if 'strategic' in lc %}bg-success{% elif 'transition' in lc or 'tolerate' in lc %}bg-warning{% elif 'decommission' in lc or 'retire' in lc %}bg-destructive{% else %}bg-muted-foreground{% endif %}"></span>
@@ -1135,7 +1145,11 @@
               {% for vp in vendor_products_json %}
               <tr class="hover:bg-muted/20">
                 <td class="px-5 py-2.5 font-medium">{{ vp.get('name') or vp.get('product_name') or 'Unnamed' }}</td>
-                <td class="px-3 py-2.5 text-xs text-muted-foreground">{{ vp.get('vendor_name') or '&mdash;' }}</td>
+                <td class="px-3 py-2.5 text-xs text-muted-foreground">
+                  {% if vp.get('vendor_id') and 'unified_applications.vendor_detail' in flask.current_app.view_functions %}
+                  <a href="{{ url_for('unified_applications.vendor_detail', vendor_id=vp.get('vendor_id')) }}" class="text-primary hover:underline">{{ vp.get('vendor_name') or 'View vendor' }}</a>
+                  {% else %}{{ vp.get('vendor_name') or '&mdash;' }}{% endif %}
+                </td>
                 <td class="px-3 py-2.5 text-xs text-muted-foreground">{{ vp.get('licensing_model') or '&mdash;' }}</td>
                 <td class="px-3 py-2.5">
                   {% if vp.get('implementation_type') %}
@@ -1335,7 +1349,10 @@
             <tbody class="divide-y divide-border">
               {% for flow in integration_flows %}
               <tr class="hover:bg-muted/20">
-                <td class="px-5 py-2.5 font-medium">{{ flow.get('name') or flow.get('flow_name') or 'Unnamed' }}</td>
+                <td class="px-5 py-2.5 font-medium">
+                  <a href="{{ url_for('solution_design.solution_integration_architecture', solution_id=solution.id) }}"
+                     class="text-primary hover:underline">{{ flow.get('name') or flow.get('flow_name') or 'Unnamed' }}</a>
+                </td>
                 <td class="px-3 py-2.5 text-xs text-muted-foreground">{{ flow.get('source_system') or flow.get('source') or '&mdash;' }}</td>
                 <td class="px-3 py-2.5 text-xs text-muted-foreground">{{ flow.get('target_system') or flow.get('target') or '&mdash;' }}</td>
                 <td class="px-3 py-2.5 text-xs text-muted-foreground">{{ flow.get('protocol') or flow.get('integration_type') or '&mdash;' }}</td>
@@ -1641,7 +1658,13 @@
               {% set sev = (risk.get('severity') or risk.get('impact') or 'medium') | lower %}
               {% set r_status = (risk.get('status') or risk.get('mitigation_status') or 'open') | lower %}
               <tr class="hover:bg-muted/20">
-                <td class="px-5 py-2.5">{{ risk.get('name') or risk.get('title') or risk.get('description', 'Untitled') }}</td>
+                <td class="px-5 py-2.5">
+                  {% set risk_label = risk.get('risk_name') or risk.get('name') or risk.get('title') or risk.get('risk_description') or risk.get('description') or 'Untitled' %}
+                  {% if risk.get('id') %}
+                  <button type="button" @click="openEdit('risk', {{ loop.index0 }})"
+                          class="text-left text-primary hover:underline">{{ risk_label }}</button>
+                  {% else %}{{ risk_label }}{% endif %}
+                </td>
                 <td class="px-3 py-2.5">
                   <span class="inline-flex items-center gap-1">
                     <span class="w-1.5 h-1.5 rounded-full {% if sev == 'high' or sev == 'critical' %}bg-destructive{% elif sev == 'medium' %}bg-warning{% else %}bg-muted-foreground{% endif %}"></span>
@@ -1682,7 +1705,11 @@
               {% for adr in adr_list %}
               <tr class="hover:bg-muted/20">
                 <td class="px-5 py-2.5 text-xs font-mono text-muted-foreground">{{ adr.adr_number or loop.index }}</td>
-                <td class="px-3 py-2.5 font-medium">{{ adr.title or 'Untitled' }}</td>
+                <td class="px-3 py-2.5 font-medium">
+                  {% if adr.id and 'adrs.view_adr' in flask.current_app.view_functions %}
+                  <a href="{{ url_for('adrs.view_adr', adr_id=adr.id) }}" class="text-primary hover:underline">{{ adr.title or 'Untitled' }}</a>
+                  {% else %}{{ adr.title or 'Untitled' }}{% endif %}
+                </td>
                 <td class="px-3 py-2.5">
                   {% set adr_status = (adr.status or 'draft') | lower %}
                   <span class="text-xs px-1.5 py-0.5 rounded {% if adr_status == 'accepted' or adr_status == 'approved' %}bg-success/10 text-success-emphasis{% elif adr_status == 'proposed' %}bg-warning/10 text-warning-emphasis{% elif adr_status == 'superseded' or adr_status == 'deprecated' %}bg-muted text-muted-foreground{% else %}bg-info/10 text-info{% endif %}">{{ adr_status | title }}</span>
@@ -1863,7 +1890,7 @@
         <button type="button" @click="saveEntity()"
                 :disabled="modal.saving"
                 class="px-3 py-1.5 text-xs font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors">
-          <span x-show="!modal.saving" x-text="'Add ' + modal.title.replace('Add ', '')"></span>
+          <span x-show="!modal.saving" x-text="modal.title"></span>
           <span x-show="modal.saving" x-cloak>Saving...</span>
         </button>
       </div>
@@ -2187,7 +2214,7 @@ function sadPage() {
     archimateElements: cfg.archimateElements || [],
 
     // Modal state
-    modal: { open: false, title: '', entity: '', fields: [], saving: false, error: '' },
+    modal: { open: false, title: '', entity: '', fields: [], saving: false, error: '', mode: 'add', id: null },
     form: {},
 
     // AI generation state
@@ -2213,7 +2240,51 @@ function sadPage() {
       if (!cfg) return;
       this.form = {};
       cfg.fields.forEach(f => { this.form[f.key] = ''; });
-      this.modal = { open: true, title: 'Add ' + cfg.label, entity: entityType, fields: cfg.fields, saving: false, error: '' };
+      this.modal = { open: true, title: 'Add ' + cfg.label, entity: entityType, fields: cfg.fields, saving: false, error: '', mode: 'add', id: null };
+    },
+
+    // Edit an existing lifecycle record from its table row. The field sets
+    // below mirror the keys each PUT endpoint actually accepts — the add-modal
+    // configs above do not (risk create/update use risk_name/risk_description).
+    editTypes: {
+      requirement: {
+        label: 'Requirement',
+        path: '/requirements',
+        source: 'requirements',
+        fields: [
+          {key:'name',label:'Name',required:true},
+          {key:'description',label:'Description',type:'textarea'},
+          {key:'requirement_type',label:'Type',type:'select',options:['functional','non_functional','compliance','security']},
+          {key:'priority',label:'Priority',type:'select',options:[{v:1,l:'Critical'},{v:2,l:'High'},{v:3,l:'Medium'},{v:4,l:'Low'}]},
+          {key:'status',label:'Status',type:'select',options:['open','in_progress','met','closed']},
+          {key:'owner',label:'Owner'},
+        ],
+      },
+      risk: {
+        label: 'Risk',
+        path: '/risks',
+        source: 'risks',
+        fields: [
+          {key:'risk_name',label:'Name',required:true},
+          {key:'risk_description',label:'Description',type:'textarea'},
+          {key:'impact',label:'Impact',type:'select',options:['low','medium','high','critical']},
+          {key:'probability',label:'Probability',type:'select',options:['low','medium','high']},
+          {key:'mitigation',label:'Mitigation',type:'textarea'},
+          {key:'status',label:'Status',type:'select',options:['open','mitigated','accepted','closed']},
+          {key:'owner',label:'Owner'},
+        ],
+      },
+    },
+
+    openEdit(entityType, index) {
+      const cfg = this.editTypes[entityType];
+      if (!cfg) return;
+      const rows = ((window.__SOLUTION_CONFIG__ || {}).initialData || {})[cfg.source] || [];
+      const item = rows[index];
+      if (!item || !item.id) return;
+      this.form = {};
+      cfg.fields.forEach(f => { this.form[f.key] = item[f.key] == null ? '' : item[f.key]; });
+      this.modal = { open: true, title: 'Edit ' + cfg.label, entity: entityType, fields: cfg.fields, saving: false, error: '', mode: 'edit', id: item.id };
     },
 
     async generateDraft() {
@@ -2262,16 +2333,20 @@ function sadPage() {
     },
 
     async saveEntity() {
-      const cfg = this.entityTypes[this.modal.entity];
+      const editing = this.modal.mode === 'edit';
+      const cfg = editing ? this.editTypes[this.modal.entity] : this.entityTypes[this.modal.entity];
       if (!cfg) return;
-      if (!this.form.name || !this.form.name.trim()) {
+      const nameKey = cfg.fields[0].key;
+      if (!this.form[nameKey] || !String(this.form[nameKey]).trim()) {
         this.modal.error = 'Name is required';
         return;
       }
       this.modal.saving = true;
       this.modal.error = '';
       try {
-        const d = await Platform.fetch.post(base + cfg.path, this.form);
+        const d = editing
+          ? await Platform.fetch.put(base + cfg.path + '/' + this.modal.id, this.form)
+          : await Platform.fetch.post(base + cfg.path, this.form);
         if (d.success === false) {
           this.modal.error = d.error || d.message || 'Save failed';
           return;

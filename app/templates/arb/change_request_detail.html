@@ -161,7 +161,12 @@
                         {% for ia in impacts %}
                         <tr class="hover:bg-muted/30">
                             <td class="px-4 py-3 text-muted-foreground">
-                                {% if ia.affected_capability_id %}Cap #{{ ia.affected_capability_id }}{% else %}—{% endif %}
+                                {% if ia.affected_capability_id %}
+                                  {% if 'business_capability_management.capability_detail' in flask.current_app.view_functions %}
+                                  <a href="{{ url_for('business_capability_management.capability_detail', capability_id=ia.affected_capability_id) }}"
+                                     class="text-primary hover:underline">Cap #{{ ia.affected_capability_id }}</a>
+                                  {% else %}Cap #{{ ia.affected_capability_id }}{% endif %}
+                                {% else %}—{% endif %}
                             </td>
                             <td class="px-4 py-3">
                                 {% if ia.affected_decision %}

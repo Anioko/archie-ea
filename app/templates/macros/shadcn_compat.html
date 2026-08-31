@@ -113,7 +113,8 @@
                 {% endfor %}
             </tr>
         </thead>
-        <tbody class="[&amp;_tr:last-child]:border-0">
+        <tbody class="[&amp;_tr:last-child]:border-0">{# actionable-rows-ok: a generic table macro. Cells are supplied by the caller, which is where any
+             link or control for the row belongs. #}
             {% for row in rows %}
             <tr class="border-b transition-colors hover:bg-muted/50 {% if striped and loop.index0 % 2 == 0 %}bg-muted/50{% endif %}">
                 {% for cell in row %}

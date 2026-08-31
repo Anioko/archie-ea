@@ -119,8 +119,9 @@ class ReviewQueueManager {
             <div class="review-item border rounded-lg p-4 mb-4 ${item.status === 'pending' ? 'border-yellow-300' : 'border-border'}" data-item-id="${item.id}">
                 <div class="flex items-start justify-between">
                     <div class="flex items-start space-x-3 flex-1">
-                        <input type="checkbox" class="item-checkbox mt-1" value="${item.id}"
-                               onchange="reviewQueueManager.toggleItem(${item.id})">
+                        <input type="checkbox" class="item-checkbox mt-1" value="${Number(item.id)}"
+                               data-rq-toggle="${Number(item.id)}"
+                               aria-label="Select review item ${Number(item.id)}">
                         <div class="flex-1">
                             <div class="flex items-center space-x-2 mb-2">
                                 <span class="confidence-badge ${this.getConfidenceClass(item.confidence_score)}">
@@ -140,15 +141,15 @@ class ReviewQueueManager {
                         </div>
                     </div>
                     <div class="flex space-x-2">
-                        <button onclick="reviewQueueManager.viewDetails(${item.id})"
+                        <button type="button" data-rq-action="details" data-rq-id="${Number(item.id)}"
                                 class="px-3 py-1 text-sm bg-primary text-primary-foreground rounded hover:bg-primary">
                             <i class="fas fa-eye"></i> Details
                         </button>
-                        <button onclick="reviewQueueManager.quickApprove(${item.id})"
+                        <button type="button" data-rq-action="quick-approve" data-rq-id="${Number(item.id)}"
                                 class="px-3 py-1 text-sm bg-emerald-500 text-primary-foreground rounded hover:bg-emerald-600">
                             <i class="fas fa-check"></i> Approve
                         </button>
-                        <button onclick="reviewQueueManager.quickReject(${item.id})"
+                        <button type="button" data-rq-action="quick-reject" data-rq-id="${Number(item.id)}"
                                 class="px-3 py-1 text-sm bg-destructive text-primary-foreground rounded hover:bg-destructive">
                             <i class="fas fa-times"></i> Reject
                         </button>
@@ -394,7 +395,8 @@ class ReviewQueueManager {
             <div class="bg-background rounded-lg p-6 max-w-2xl max-h-screen overflow-y-auto">
                 <div class="flex justify-between items-center mb-4">
                     <h3 class="text-lg font-bold">Review Item Details</h3>
-                    <button onclick="this.closest('.fixed').remove()" class="text-muted-foreground hover:text-foreground">
+                    <button type="button" data-rq-action="close-details" aria-label="Close details"
+                            class="text-muted-foreground hover:text-foreground">
                         <i class="fas fa-times"></i>
                     </button>
                 </div>
@@ -442,11 +444,11 @@ class ReviewQueueManager {
                     ` : ''}
                 </div>
                 <div class="flex space-x-3 mt-6">
-                    <button onclick="reviewQueueManager.approveItem(${item.id}); this.closest('.fixed').remove();"
+                    <button type="button" data-rq-action="approve" data-rq-id="${Number(item.id)}"
                             class="px-4 py-2 bg-emerald-500 text-primary-foreground rounded hover:bg-emerald-600">
                         <i class="fas fa-check"></i> Approve
                     </button>
-                    <button onclick="reviewQueueManager.rejectItem(${item.id}); this.closest('.fixed').remove();"
+                    <button type="button" data-rq-action="reject" data-rq-id="${Number(item.id)}"
                             class="px-4 py-2 bg-destructive text-primary-foreground rounded hover:bg-destructive">
                         <i class="fas fa-times"></i> Reject
                     </button>
@@ -617,6 +619,37 @@ class ReviewQueueManager {
         this.stopRealTimeUpdates();
     }
 }
+
+// Delegated listeners, because the app's CSP (script-src 'self' 'nonce-…'
+// 'strict-dynamic', no 'unsafe-inline'/'unsafe-hashes') refuses on*= attributes
+// however they reach the DOM -- innerHTML included. Every control in this file
+// used to carry one and therefore did nothing when pressed. Delegation is bound
+// once at document level so it survives renderReviewQueue() rebuilding the list
+// from fetched data, and the details modal being created on the fly.
+document.addEventListener('change', (event) => {
+    const box = event.target.closest('[data-rq-toggle]');
+    if (!box || !window.reviewQueueManager) return;
+    window.reviewQueueManager.toggleItem(Number(box.getAttribute('data-rq-toggle')));
+});
+
+document.addEventListener('click', (event) => {
+    const el = event.target.closest('[data-rq-action]');
+    if (!el) return;
+    const action = el.getAttribute('data-rq-action');
+    const dialog = el.closest('.fixed');
+    if (action === 'close-details') {
+        if (dialog) dialog.remove();
+        return;
+    }
+    const manager = window.reviewQueueManager;
+    if (!manager) return;
+    const itemId = Number(el.getAttribute('data-rq-id'));
+    if (action === 'details') manager.viewDetails(itemId);
+    else if (action === 'quick-approve') manager.quickApprove(itemId);
+    else if (action === 'quick-reject') manager.quickReject(itemId);
+    else if (action === 'approve') { manager.approveItem(itemId); if (dialog) dialog.remove(); }
+    else if (action === 'reject') { manager.rejectItem(itemId); if (dialog) dialog.remove(); }
+});
 
 // Initialize when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {

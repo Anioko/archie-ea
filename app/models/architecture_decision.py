@@ -132,7 +132,14 @@ class DecisionCapabilityLink(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     decision_id = db.Column(db.Integer, db.ForeignKey('architecture_decisions.id', ondelete='CASCADE'), nullable=False, index=True)
-    capability_id = db.Column(db.Integer, db.ForeignKey('capabilities.id', ondelete='CASCADE'), nullable=False, index=True)
+    # business_capability, not capabilities. Measured in production on 31 Aug
+    # 2026: business_capability held 461 rows and capabilities held ZERO, so
+    # this governance feature -- linking architecture decisions to the
+    # capabilities they affect -- pointed at a store nothing populates. The
+    # endpoint's existence guard was therefore correct and 404'd every real
+    # capability a user has. Repointed with 0 rows in this table, so nothing
+    # is migrated; see scripts/migrate_decision_capability_fk.sql.
+    capability_id = db.Column(db.Integer, db.ForeignKey('business_capability.id', ondelete='CASCADE'), nullable=False, index=True)
     link_type = db.Column(db.String(20), nullable=False, default='governs')  # governs/constrains/enables
     is_primary = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)

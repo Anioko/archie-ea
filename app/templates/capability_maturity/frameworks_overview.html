@@ -118,7 +118,10 @@
         {{ empty_state(
             icon='layers',
             title='No capabilities are mapped to a framework yet',
-            description='Frameworks group capabilities by business domain. Once capabilities carry a category, they appear here with their maturity coverage.'
+            description='Frameworks group capabilities by business domain. Give your capabilities a category and they appear here with their maturity coverage.',
+            cta_text='Categorise your capabilities',
+            cta_href=url_for('unified_low_priority.capability_map_capabilities'),
+            cta_icon='layers'
         ) }}
     </div>
     {% endif %}

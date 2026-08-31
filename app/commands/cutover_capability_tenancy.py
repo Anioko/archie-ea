@@ -12,6 +12,7 @@ import json
 import os
 from pathlib import Path
 import tempfile
+import time
 from typing import Literal, Sequence
 
 import click
@@ -808,6 +809,42 @@ def run_cutover(
     return report
 
 
+_REPLACE_ATTEMPTS = 6
+_REPLACE_BACKOFF_SECONDS = 0.05
+
+
+def _replace_with_retry(temporary: Path, destination: Path) -> None:
+    """os.replace, retried briefly because Windows lets a third party veto it.
+
+    The replace itself is atomic on every platform we run on. What is not
+    guaranteed on Windows is that it can *start*: a real-time virus scanner or
+    a search indexer opens a newly written file to inspect it, and while it
+    holds that handle the rename onto it fails with WinError 5 (access
+    denied). It is transient and it is not our bug, but it lands on the report
+    write, which is the one step whose whole purpose is to leave durable
+    evidence that the cutover happened.
+
+    Measured on Windows 11 with Defender active: writing this exact report /
+    marker / report sequence, roughly a third of the replaces failed, in no
+    stable pattern -- some rounds clean, some failing twice. On Linux the call
+    succeeds first time and this loop costs one comparison, because POSIX
+    permits renaming over an open file.
+
+    Deliberately NOT swallowing the error: after the last attempt it raises,
+    so a genuine permission problem still fails loudly instead of being
+    retried into silence.
+    """
+
+    for attempt in range(_REPLACE_ATTEMPTS):
+        try:
+            os.replace(temporary, destination)
+            return
+        except PermissionError:
+            if attempt == _REPLACE_ATTEMPTS - 1:
+                raise
+            time.sleep(_REPLACE_BACKOFF_SECONDS * (attempt + 1))
+
+
 def _write_report_atomic(report_path: str | Path, payload: dict[str, object]) -> None:
     """Durably replace the report without ever exposing partial JSON."""
 
@@ -825,7 +862,7 @@ def _write_report_atomic(report_path: str | Path, payload: dict[str, object]) ->
             handle.write("\n")
             handle.flush()
             os.fsync(handle.fileno())
-        os.replace(temporary, destination)
+        _replace_with_retry(temporary, destination)
     except BaseException:
         temporary.unlink(missing_ok=True)
         raise

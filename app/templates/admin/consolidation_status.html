@@ -61,7 +61,9 @@
                             <th class="h-10 px-4 text-left align-middle font-medium text-muted-foreground">Effort</th>
                         </tr>
                     </thead>
-                    <tbody class="divide-y">
+                    <tbody class="divide-y">{# actionable-rows-ok: a build-time inventory of the blueprint-consolidation programme, read from
+                           source rather than from a table. Nothing here is editable from the
+                           UI -- progress moves when the code is merged. #}
                         {% for target in targets %}
                         <tr class="hover:bg-muted/50 transition-colors {% if target.is_complete %}bg-success/5{% elif target.priority == 'HIGH' %}bg-warning/5{% endif %}">
                             <td class="p-4 font-medium">{{ target.name }}</td>
@@ -127,7 +129,8 @@
                             <th class="h-10 px-4 text-left align-middle font-medium text-muted-foreground">Notes</th>
                         </tr>
                     </thead>
-                    <tbody class="divide-y">
+                    <tbody class="divide-y">{# actionable-rows-ok: the registered Flask blueprints as they exist in the running process. A
+                           read-only engineering report; blueprints are added or retired in code. #}
                         {% for bp in blueprints %}
                         <tr class="hover:bg-muted/50 transition-colors {% if bp.is_active %}bg-success/5{% elif bp.is_deprecated %}bg-warning/5{% endif %}">
                             <td class="p-4 font-medium">{{ bp.name }}</td>

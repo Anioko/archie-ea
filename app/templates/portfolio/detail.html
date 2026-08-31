@@ -13,6 +13,13 @@
 {% endblock %}
 
 {% block content %}
+{# Builds the href for a row's record, or an empty string when the blueprint that
+   owns the destination failed to register -- blueprints register non-fatally here,
+   so an unguarded url_for would raise BuildError and 500 every page rendering the
+   sidebar. Callers keep the <a> in the row itself so the link is visible both to a
+   reader and to scripts/check_actionable_rows.py. #}
+{% macro row_href(endpoint) %}{% if endpoint in flask.current_app.view_functions %}{{ url_for(endpoint, **kwargs) }}{% endif %}{% endmacro %}
+
 <div class="p-6 space-y-6 mx-auto">
 
   {{ page_shell(title=(initiative.name), subtitle=(initiative.current_phase or 'Phase not set') ~ ' · Sponsor: ' ~ (initiative.executive_sponsor or '—') ~ ' · Programme manager: ' ~ (initiative.program_manager or '—')) }}
@@ -82,6 +89,7 @@
             <th class="px-4 py-3 font-medium text-right">Realised</th>
             <th class="px-4 py-3 font-medium">Owner</th>
             <th class="px-4 py-3 font-medium">Status</th>
+            <th class="px-4 py-3 font-medium">Action</th>
           </tr>
         </thead>
         <tbody>
@@ -106,6 +114,11 @@
             </td>
             <td class="px-4 py-3">{{ b.owner.email if b.owner else '—' }}</td>
             <td class="px-4 py-3">{{ b.status|replace('_',' ')|title }}</td>
+            {# The measurement form for this benefit is on the same page; the row
+               is the place a user looks for the way into it. #}
+            <td class="px-4 py-3">
+              <a href="#m-val-{{ b.id }}" class="font-medium text-primary hover:underline">Record actual</a>
+            </td>
           </tr>
           {% endfor %}
         </tbody>
@@ -243,6 +256,7 @@
             <th class="px-4 py-3 font-medium">Validate by</th>
             <th class="px-4 py-3 font-medium">Owner</th>
             <th class="px-4 py-3 font-medium">Status</th>
+            <th class="px-4 py-3 font-medium">Action</th>
           </tr>
         </thead>
         <tbody>
@@ -256,6 +270,13 @@
             </td>
             <td class="px-4 py-3">{{ a.owner.email if a.owner else '—' }}</td>
             <td class="px-4 py-3">{{ a.status|title }}</td>
+            {# An open assumption is resolved from the form below; a resolved one
+               is a closed record and has nothing left to do. #}
+            <td class="px-4 py-3">
+              {% if a.status == 'open' %}
+              <a href="#assumption-{{ a.id }}" class="font-medium text-primary hover:underline">Resolve</a>
+              {% else %}<span class="text-muted-foreground">&mdash;</span>{% endif %}
+            </td>
           </tr>
           {% endfor %}
         </tbody>
@@ -268,7 +289,7 @@
     {# Resolving keeps the record: an assumption that proved false is the most
        useful entry in the log, and the one that should have become a risk. #}
     {% for a in assumptions if a.status == 'open' %}
-    <form method="post" action="{{ url_for('portfolio.assumption_resolve', assumption_id=a.id) }}"
+    <form id="assumption-{{ a.id }}" method="post" action="{{ url_for('portfolio.assumption_resolve', assumption_id=a.id) }}"
           class="border-t px-6 py-3 flex flex-wrap items-center gap-2">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <span class="text-sm flex-1 min-w-[14rem] truncate" title="{{ a.statement }}">{{ a.statement }}</span>

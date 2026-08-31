@@ -523,13 +523,75 @@ class Plateau(TenantMixin, db.Model):
         return f"<Plateau {self.name} order={self.sequence_order}>"
 
 
+# Two different things have been called a "Gap" here, and the product showed
+# both numbers on different screens without distinguishing them: the Capability
+# Roadmap reported 173 gaps while Gap Analysis reported 0, and neither was
+# wrong. Measured 31 Aug 2026 -- of 33 columns on this table, NINE are Work
+# Package attributes (owner, estimated_effort_days, estimated_cost,
+# target_resolution_date, resolution_status, priority, business_value, colour,
+# estimated_start_date), and of 20 rows, ZERO had either plateau link set.
+#
+# So in practice every row is a capability shortfall with remediation planning
+# attached. ArchiMate calls that an Assessment. An ArchiMate Gap is the
+# difference between two Plateaus, and the product has never recorded one.
+#
+# `gap_kind` makes the distinction explicit rather than renaming a concept with
+# hundreds of references. It is nullable with a default, so reconcile-schema can
+# add it to an existing database (ADD-only, nullable-only -- see CLAUDE.md), and
+# every existing row is correctly a capability_shortfall.
+#
+# It matters beyond the contradiction: the assistant now generates roadmaps from
+# this table, and a roadmap made of capability shortfalls with no transition
+# states is not a migration plan.
+GAP_KIND_CAPABILITY_SHORTFALL = "capability_shortfall"
+GAP_KIND_PLATEAU_TRANSITION = "plateau_transition"
+
+
+def validate_gap_kind(gap) -> None:
+    """A plateau transition needs the two plateaus it sits between.
+
+    Enforced here rather than as a database constraint because deploys do not
+    run Alembic and reconcile-schema is ADD-COLUMN-nullable-only (ADR-0002), so
+    a CHECK constraint would exist on a fresh database and not on any existing
+    one -- an invariant that holds in some deployments and not others is worse
+    than one enforced in code everywhere.
+
+    Raises ValueError, which the caller surfaces. Refusing is deliberate: a
+    "plateau transition" with no plateaus is the ambiguity this field exists to
+    remove, and accepting one would recreate it under a new name.
+    """
+    if getattr(gap, "gap_kind", None) != GAP_KIND_PLATEAU_TRANSITION:
+        return
+    if not getattr(gap, "originating_plateau_id", None) or not getattr(
+        gap, "target_plateau_id", None
+    ):
+        raise ValueError(
+            "A plateau_transition gap is the difference between two plateaus, "
+            "so it needs both originating_plateau_id and target_plateau_id. "
+            "If you mean a capability that is weaker than it needs to be, that "
+            "is a capability_shortfall."
+        )
+
+
 class Gap(TenantMixin, db.Model):
-    """Difference between current and target states."""
+    """A capability shortfall, or a difference between two plateaus.
+
+    Which one is recorded in `gap_kind`. See the note above the class: these are
+    different concepts that shared a name, and reporting them as one number is
+    how two screens came to disagree.
+    """
 
     __tablename__ = "gaps"
     __table_args__ = {"extend_existing": True}
 
     id = db.Column(db.Integer, primary_key=True)
+    gap_kind = db.Column(
+        db.String(32),
+        nullable=True,
+        default=GAP_KIND_CAPABILITY_SHORTFALL,
+        server_default=GAP_KIND_CAPABILITY_SHORTFALL,
+        index=True,
+    )
     name = db.Column(db.String(255), nullable=False, index=True)
     description = db.Column(db.Text)
 

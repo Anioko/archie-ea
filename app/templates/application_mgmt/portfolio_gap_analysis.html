@@ -418,7 +418,9 @@
             <th>Recommendation</th>
           </tr>
         </thead>
-        <tbody class="divide-y">
+        <tbody class="divide-y">{# actionable-rows-ok: computed gaps -- each row is derived on the fly from capability-to-application
+           coverage and carries no stored id to link to. Act on one by mapping an
+           application to the capability named in the row, from that capability page. #}
           {% for gap in portfolio_gaps.unsupported_capabilities %}
           <tr>
             <td class="table-capability">{{ gap.capability_name }}</td>

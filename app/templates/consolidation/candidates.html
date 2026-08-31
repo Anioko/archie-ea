@@ -12,19 +12,35 @@
             <thead>
                 <tr class="border-b border-border">
                     <th class="px-6 py-3 text-left font-medium text-muted-foreground">Application</th>
-                    <th class="px-6 py-3 text-left font-medium text-muted-foreground">Reason</th>
-                    <th class="px-6 py-3 text-left font-medium text-muted-foreground">Score</th>
+                    <th class="px-6 py-3 text-left font-medium text-muted-foreground">Duplicate of</th>
+                    <th class="px-6 py-3 text-left font-medium text-muted-foreground">Status</th>
+                    <th class="px-6 py-3 text-left font-medium text-muted-foreground">Similarity</th>
                 </tr>
             </thead>
             <tbody class="divide-y divide-border">
                 {% for candidate in candidates %}
+                {# ConsolidationCandidate.to_dict() names the two applications it pairs.
+                   Both are real records, so both are the way into the decision. #}
                 <tr class="hover:bg-muted/30">
-                    <td class="px-6 py-3 font-medium text-foreground">{{ candidate.name|default(candidate.application_name|default('Unknown')) }}</td>
-                    <td class="px-6 py-3 text-muted-foreground">{{ candidate.reason|default('—') }}</td>
-                    <td class="px-6 py-3 text-muted-foreground">{{ candidate.score|default('—') }}</td>
+                    <td class="px-6 py-3 font-medium text-foreground">
+                        {% if candidate.duplicate_application_id and 'unified_applications.application_detail' in flask.current_app.view_functions %}
+                        <a href="{{ url_for('unified_applications.application_detail', id=candidate.duplicate_application_id) }}"
+                           class="text-primary hover:underline">{{ candidate.duplicate_application_name or 'Application #' ~ candidate.duplicate_application_id }}</a>
+                        {% else %}{{ candidate.duplicate_application_name or '—' }}{% endif %}
+                    </td>
+                    <td class="px-6 py-3 text-muted-foreground">
+                        {% if candidate.primary_application_id and 'unified_applications.application_detail' in flask.current_app.view_functions %}
+                        <a href="{{ url_for('unified_applications.application_detail', id=candidate.primary_application_id) }}"
+                           class="text-primary hover:underline">{{ candidate.primary_application_name or 'Application #' ~ candidate.primary_application_id }}</a>
+                        {% else %}{{ candidate.primary_application_name or '—' }}{% endif %}
+                    </td>
+                    <td class="px-6 py-3 text-muted-foreground">{{ candidate.status|default('—') }}</td>
+                    <td class="px-6 py-3 text-muted-foreground">
+                        {% if candidate.similarity_score is not none %}{{ candidate.similarity_score }}{% else %}—{% endif %}
+                    </td>
                 </tr>
                 {% else %}
-                <tr><td colspan="3" class="px-6 py-8 text-center text-muted-foreground">No consolidation candidates found.</td></tr>
+                <tr><td colspan="4" class="px-6 py-8 text-center text-muted-foreground">No consolidation candidates found.</td></tr>
                 {% endfor %}
             </tbody>
         </table>

@@ -30,6 +30,13 @@
 {% endmacro %}
 
 {% block content %}
+{# Builds the href for a row's record, or an empty string when the blueprint that
+   owns the destination failed to register -- blueprints register non-fatally here,
+   so an unguarded url_for would raise BuildError and 500 every page rendering the
+   sidebar. Callers keep the <a> in the row itself so the link is visible both to a
+   reader and to scripts/check_actionable_rows.py. #}
+{% macro row_href(endpoint) %}{% if endpoint in flask.current_app.view_functions %}{{ url_for(endpoint, **kwargs) }}{% endif %}{% endmacro %}
+
 <div class="space-y-6">
     {{ page_shell(
         title='EA Automated Workflows',
@@ -104,7 +111,13 @@
                                         <i data-lucide="{{ icon }}" class="h-4 w-4 text-primary-foreground" aria-hidden="true"></i>
                                     </div>
                                     <div>
-                                        <p class="font-medium text-foreground leading-tight">{{ name }}</p>
+                                        {# Only a seeded workflow has a definition to open; the
+                                           unseeded ones would 404. #}
+                                        <p class="font-medium text-foreground leading-tight">
+                                            {% if defn %}
+                                            {% set _h = row_href('main.ea_workflow_definition_detail', workflow_code=wf_code)|trim %}{% if _h %}<a href="{{ _h }}" class="font-medium text-primary hover:underline">{{ name }}</a>{% else %}{{ name }}{% endif %}
+                                            {% else %}{{ name }}{% endif %}
+                                        </p>
                                         <p class="text-xs text-muted-foreground mt-0.5 hidden sm:block">{{ summary }}</p>
                                     </div>
                                 </div>

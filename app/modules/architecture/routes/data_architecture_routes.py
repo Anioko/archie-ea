@@ -81,6 +81,12 @@ def data_architecture_dashboard():
                             "vendor": m.vendor_product.vendor.name
                             if m.vendor_product.vendor
                             else "Internal",
+                            # Carried so the dashboard row can link to the vendor
+                            # record; without it the row names a supplier the
+                            # user has no way to open.
+                            "vendor_id": m.vendor_product.vendor.id
+                            if m.vendor_product.vendor
+                            else None,
                             "maturity": m.maturity_level,
                             "fit": m.fit_score,
                         }

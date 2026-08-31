@@ -89,6 +89,7 @@
                         <th scope="col" class="px-4 py-2 font-medium">Score</th>
                         <th scope="col" class="px-4 py-2 font-medium">Level</th>
                         <th scope="col" class="px-4 py-2 font-medium">Status</th>
+                        <th scope="col" class="px-4 py-2 font-medium text-right">Action</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-border">
@@ -116,6 +117,29 @@
                             </span>
                         </td>
                         <td class="px-4 py-2">{{ status_badge_auto(risk.status.value) }}</td>
+                        {# A risk that can only be read is a risk nobody owns. PATCH
+                           /api/risks/<id> is the state change; these are its two next
+                           states, offered only when the risk is not already there. #}
+                        <td class="px-4 py-2 text-right whitespace-nowrap">
+                            {% if risk.status.value != 'mitigated' and risk.status.value != 'closed' %}
+                            <button type="button"
+                                    @click="setStatus({{ risk.id }}, 'mitigated')"
+                                    :disabled="updatingId === {{ risk.id }}"
+                                    class="inline-flex items-center rounded-md border border-input bg-background px-2 py-1 text-xs font-medium hover:bg-accent hover:text-accent-foreground disabled:opacity-50">
+                                Mark mitigated
+                            </button>
+                            {% endif %}
+                            {% if risk.status.value != 'closed' %}
+                            <button type="button"
+                                    @click="setStatus({{ risk.id }}, 'closed')"
+                                    :disabled="updatingId === {{ risk.id }}"
+                                    class="inline-flex items-center rounded-md border border-input bg-background px-2 py-1 text-xs font-medium hover:bg-accent hover:text-accent-foreground disabled:opacity-50">
+                                Close
+                            </button>
+                            {% else %}
+                            <span class="text-xs text-muted-foreground">Closed</span>
+                            {% endif %}
+                        </td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -214,6 +238,31 @@ function riskRegister() {
             if (!q) return true;
             return (title || '').toLowerCase().includes(q)
                 || (owner || '').toLowerCase().includes(q);
+        },
+
+        updatingId: null,
+
+        // PATCH /api/risks/<id> takes {status} and returns the updated risk.
+        setStatus(id, status) {
+            if (this.updatingId) return;
+            this.updatingId = id;
+            const self = this;
+            Platform.fetch('/api/risks/' + id, {
+                method: 'PATCH', body: { status: status }, silent: true
+            })
+                .then(function (data) {
+                    if (data && data.error) {
+                        Platform.toast.error(data.error);
+                        return;
+                    }
+                    Platform.toast.success('Risk marked ' + status + '.');
+                    window.location.reload();
+                })
+                .catch(function (err) {
+                    Platform.toast.error('Could not update this risk.');
+                    throw err;
+                })
+                .finally(function () { self.updatingId = null; });
         },
 
         openCreate() {

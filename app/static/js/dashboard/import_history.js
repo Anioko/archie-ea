@@ -28,7 +28,7 @@ function showImportHistoryError(message) {
         '<div class="rounded-lg border border-destructive/20 bg-destructive/5 p-4 text-sm text-destructive">' +
             '<p class="font-semibold">Unable to load import history.</p>' +
             '<p class="mt-1">' + message + '</p>' +
-            '<button onclick="refreshHistory()" class="mt-3 inline-flex items-center rounded bg-destructive px-3 py-1 text-xs font-medium text-primary-foreground hover:bg-red-700">' +
+            '<button type="button" data-import-history-retry class="mt-3 inline-flex items-center rounded bg-destructive px-3 py-1 text-xs font-medium text-primary-foreground hover:bg-red-700">' +
                 'Retry' +
             '</button>' +
         '</div>');
@@ -376,3 +376,12 @@ function refreshHistory() {
 function applyFilters() {
     loadImportHistory();
 }
+
+// Delegated, because the CSP refuses inline on*= attributes: the error state's
+// Retry button carried onclick="refreshHistory()" and never fired. refreshHistory()
+// exists (it calls loadImportHistory) so the control is wired to a live path.
+document.addEventListener('click', function (event) {
+    if (!event.target.closest('[data-import-history-retry]')) return;
+    event.preventDefault();
+    refreshHistory();
+});

@@ -171,8 +171,22 @@
                     {% else %}
                     <tr>
                         <td colspan="7">
+                            {% if date_from or date_to or user_email or action_filter or entity_type_filter or search_q %}
                             {{ empty_state(icon='file-search', title='No audit log entries found matching your filters.',
+                                           description='Widen the date range or drop a filter to see the entries that were recorded.',
+                                           cta_text='Clear filters',
+                                           cta_href=url_for('admin.audit_log_viewer'),
+                                           cta_icon='x',
                                            class='py-8') }}
+                            {% else %}
+                            {# The audit log is written by the system as people act on the platform,
+                               so there is nothing for the reader to create; an empty log on a new
+                               tenant is the correct reading, not a dead end.
+                               empty-state-ok: system-written record, no user create action exists #}
+                            {{ empty_state(icon='file-search', title='No audit log entries recorded yet.',
+                                           description='Entries are written automatically as people create, change and delete records. The first ones appear here as soon as that happens.',
+                                           class='py-8') }}
+                            {% endif %}
                         </td>
                     </tr>
                     {% endfor %}

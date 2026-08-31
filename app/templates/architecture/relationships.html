@@ -16,7 +16,12 @@
                     <th class="px-6 py-3 text-left font-medium text-muted-foreground">Target</th>
                 </tr>
             </thead>
-            <tbody class="divide-y divide-border">
+            <tbody class="divide-y divide-border">{# actionable-rows-ok: two different models render this template -- architecture_crud.list_relationships
+                 passes Relationship (ArchitectureElement ids) and
+                 unified_low_priority.architecture_relationships passes ArchiMateRelationship
+                 (ArchiMateElement ids). The same id means a different record in each, so a
+                 per-element link would resolve to the wrong record for one of them. Open an
+                 element from the ArchiMate element list or the Composer. #}
                 {% for rel in relationships %}
                 <tr class="hover:bg-muted/30">
                     <td class="px-6 py-3 text-foreground">{{ rel.source_element.name if rel.source_element else rel.source_id }}</td>

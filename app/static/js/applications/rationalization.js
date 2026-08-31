@@ -16,6 +16,16 @@ let selectedStrategy = 'hybrid';
 let thresholdSlider = null;
 let thresholdValue = null;
 
+// Attribute-value escaping. escapeHtml() (core/02-sanitize.js) escapes through
+// textContent -> innerHTML, which leaves " and ' untouched: correct for a text
+// node, unsafe inside an attribute. Anything interpolated into a data-* value
+// must go through this instead.
+function escapeAttr(value) {
+  return String(value == null ? '' : value)
+    .replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
+    .replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 // CSRF token helper (avoids 6 inline querySelector lookups)
 function getCSRFToken() {
   return document.querySelector('meta[name="csrf-token"]')?.content || '';
@@ -1947,7 +1957,7 @@ async function loadPortfolioDependencies(page) {
           '</td>' +
           '<td class="py-3 px-4">' + readinessBadgeHtml + '</td>' +
           '<td class="py-3 px-4 text-right">' +
-            '<button onclick="loadDependencyImpact(' + app.app_id + ', ' + JSON.stringify(escapeHtml(app.app_name)) + ')" ' +
+            '<button type="button" data-dep-action="impact" data-dep-app-id="' + Number(app.app_id) + '" data-dep-app-name="' + escapeAttr(app.app_name) + '" ' +
               'class="h-7 px-3 rounded-md text-xs font-semibold border border-input bg-background hover:bg-accent transition-colors" ' +
               'aria-label="View dependency detail for ' + escapeHtml(app.app_name) + '">' +
               'Detail' +
@@ -1964,9 +1974,9 @@ async function loadPortfolioDependencies(page) {
       let paginHtml = '<span>Showing ' + (((result.page - 1) * result.per_page) + 1) + '–' + Math.min(result.page * result.per_page, result.total) + ' of ' + result.total + '</span>';
       if (result.total_pages > 1) {
         paginHtml += '<div class="flex gap-1">' +
-          (result.page > 1 ? '<button onclick="loadPortfolioDependencies(' + (result.page - 1) + ')" class="h-7 px-3 rounded-md border border-input bg-background text-xs hover:bg-accent transition-colors" aria-label="Previous page">Prev</button>' : '') +
+          (result.page > 1 ? '<button type="button" data-dep-action="page" data-dep-page="' + (result.page - 1) + '" class="h-7 px-3 rounded-md border border-input bg-background text-xs hover:bg-accent transition-colors" aria-label="Previous page">Prev</button>' : '') +
           '<span class="h-7 px-3 flex items-center text-xs font-semibold">Page ' + result.page + ' / ' + result.total_pages + '</span>' +
-          (result.page < result.total_pages ? '<button onclick="loadPortfolioDependencies(' + (result.page + 1) + ')" class="h-7 px-3 rounded-md border border-input bg-background text-xs hover:bg-accent transition-colors" aria-label="Next page">Next</button>' : '') +
+          (result.page < result.total_pages ? '<button type="button" data-dep-action="page" data-dep-page="' + (result.page + 1) + '" class="h-7 px-3 rounded-md border border-input bg-background text-xs hover:bg-accent transition-colors" aria-label="Next page">Next</button>' : '') +
         '</div>';
       }
       safeHTML(pagination, paginHtml);
@@ -3017,3 +3027,21 @@ function workflowProgress() {
     }
   };
 }
+
+
+// Delegated, because the CSP refuses inline on*= attributes: the dependency-risk
+// table's per-row "Detail" button and the Prev/Next pagination buttons carried
+// onclick="loadDependencyImpact(...)" / onclick="loadPortfolioDependencies(...)"
+// and therefore never fired. Both target functions exist at file scope in this
+// module and hit live read-only endpoints; neither is destructive. Bound once at
+// document level so it survives the table being re-rendered from fetched data.
+document.addEventListener('click', function (event) {
+  var el = event.target.closest('[data-dep-action]');
+  if (!el) return;
+  event.preventDefault();
+  if (el.getAttribute('data-dep-action') === 'impact') {
+    loadDependencyImpact(Number(el.getAttribute('data-dep-app-id')), el.getAttribute('data-dep-app-name'));
+  } else if (el.getAttribute('data-dep-action') === 'page') {
+    loadPortfolioDependencies(Number(el.getAttribute('data-dep-page')));
+  }
+});

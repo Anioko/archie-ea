@@ -57,6 +57,10 @@
         {% endfor %}
     </ol>
     {% else %}
+    {# The audit history of one review cycle, written by the system as that cycle is
+       submitted, decided and conditioned. Nothing here is created by hand — the
+       actions that fill it are the review controls above this panel on the same page.
+       empty-state-ok: derived event history, filled by the controls above it #}
     {{ empty_state(
         icon='history',
         title='No recorded events yet.',

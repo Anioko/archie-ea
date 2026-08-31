@@ -14,6 +14,13 @@
 {% endblock %}
 
 {% block content %}
+{# Builds the href for a row's record, or an empty string when the blueprint that
+   owns the destination failed to register -- blueprints register non-fatally here,
+   so an unguarded url_for would raise BuildError and 500 every page rendering the
+   sidebar. Callers keep the <a> in the row itself so the link is visible both to a
+   reader and to scripts/check_actionable_rows.py. #}
+{% macro row_href(endpoint) %}{% if endpoint in flask.current_app.view_functions %}{{ url_for(endpoint, **kwargs) }}{% endif %}{% endmacro %}
+
 <div class="space-y-6">
     <!-- Page Header -->
     {{ page_header(
@@ -86,7 +93,11 @@
                         <td class="px-6 py-4">
                             <div class="flex flex-col">
                                 <span class="font-medium text-foreground">{{ item.product }}</span>
+                                {% if item.vendor_id %}
+                                <span class="text-xs italic">{% set _h = row_href('unified_vendors.vendor_detail', vendor_id=item.vendor_id)|trim %}{% if _h %}<a href="{{ _h }}" class="font-medium text-primary hover:underline">{{ item.vendor }}</a>{% else %}{{ item.vendor }}{% endif %}</span>
+                                {% else %}
                                 <span class="text-xs text-muted-foreground italic">{{ item.vendor }}</span>
+                                {% endif %}
                             </div>
                         </td>
                         <td class="px-6 py-4">

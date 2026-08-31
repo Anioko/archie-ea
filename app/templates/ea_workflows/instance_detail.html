@@ -25,6 +25,22 @@
 {% block title %}{{ instance.workflow_name or 'Workflow Instance' }}{% endblock %}
 
 {% block content %}
+{# The review tables list ArchiMate elements by id. `archimate_crud.detail_element`
+   is layer-scoped and its layer converter REJECTS an unknown value when the URL is
+   built, so an unmapped layer must fall back to plain text rather than raise a
+   BuildError that would 500 the whole page. `element_type` is deliberately not the
+   element's own type: a type that matches MODEL_REGISTRY would send the route to a
+   different table with the same integer id and show the wrong record. #}
+{% set _AM_LAYERS = {
+    'motivation': 'motivation', 'strategy': 'strategy', 'business': 'business',
+    'application': 'application', 'technology': 'technology', 'physical': 'physical',
+    'implementation': 'implementation',
+    'implementation & migration': 'implementation',
+    'implementation and migration': 'implementation',
+    'implementation_migration': 'implementation'
+} %}
+{% macro row_href(endpoint) %}{% if endpoint in flask.current_app.view_functions %}{{ url_for(endpoint, **kwargs) }}{% endif %}{% endmacro %}
+{% macro am_href(layer, element_id) %}{% set _l = _AM_LAYERS.get((layer or '')|lower) %}{% if _l and element_id and 'archimate_crud.detail_element' in flask.current_app.view_functions %}{{ url_for('archimate_crud.detail_element', layer=_l, element_type='ArchiMateElement', element_id=element_id) }}{% endif %}{% endmacro %}
 {% set outputs_map = {
     'APP_ONBOARDING': ['Application Portfolio Entry', 'APQC Process Mappings', 'ArchiMate Elements', 'Gap Analysis Report'],
     'GAP_REMEDIATION': ['Gap Analysis Report', 'Remediation Roadmap', 'Task Assignments'],
@@ -263,9 +279,9 @@
                             <tbody>
                             {% for v in rr.relationship_gaps.violations %}
                             <tr class="border-b border-input/30 bg-destructive/[0.03]">
-                                <td class="py-2 pr-3 font-medium">{{ v.source_name }}</td>
+                                <td class="py-2 pr-3 font-medium">{% set _h = am_href(v.source_layer, v.source_id)|trim %}{% if _h %}<a href="{{ _h }}" class="text-primary hover:underline">{{ v.source_name }}</a>{% else %}{{ v.source_name }}{% endif %}</td>
                                 <td class="py-2 pr-3"><span class="rounded px-1.5 py-0.5 bg-primary/10 text-primary font-medium">{{ v.relationship_type }}</span></td>
-                                <td class="py-2 pr-3 font-medium">{{ v.target_name }}</td>
+                                <td class="py-2 pr-3 font-medium">{% set _h = am_href(v.target_layer, v.target_id)|trim %}{% if _h %}<a href="{{ _h }}" class="text-primary hover:underline">{{ v.target_name }}</a>{% else %}{{ v.target_name }}{% endif %}</td>
                                 <td class="py-2 text-destructive-emphasis">{{ v.issue }}</td>
                             </tr>
                             {% endfor %}
@@ -358,7 +374,7 @@
                             <tbody>
                             {% for el in orphans %}
                             <tr class="border-b border-input/30">
-                                <td class="py-1.5 pr-3 font-medium">{{ el.name }}</td>
+                                <td class="py-1.5 pr-3 font-medium">{% set _h = am_href(el.layer, el.id)|trim %}{% if _h %}<a href="{{ _h }}" class="text-primary hover:underline">{{ el.name }}</a>{% else %}{{ el.name }}{% endif %}</td>
                                 <td class="py-1.5 pr-3">{{ el.layer }}</td>
                                 <td class="py-1.5 pr-3 text-muted-foreground">{{ el.element_type or '&mdash;' }}</td>
                                 <td class="py-1.5 text-muted-foreground">Add at least one serving or composition relationship</td>
@@ -381,7 +397,7 @@
                             <tbody>
                             {% for el in undocumented_els %}
                             <tr class="border-b border-input/30">
-                                <td class="py-1.5 pr-3 font-medium">{{ el.name }}</td>
+                                <td class="py-1.5 pr-3 font-medium">{% set _h = am_href(el.layer, el.id)|trim %}{% if _h %}<a href="{{ _h }}" class="text-primary hover:underline">{{ el.name }}</a>{% else %}{{ el.name }}{% endif %}</td>
                                 <td class="py-1.5 pr-3">{{ el.layer }}</td>
                                 <td class="py-1.5 pr-3 text-muted-foreground">{{ el.element_type or '&mdash;' }}</td>
                                 <td class="py-1.5 text-muted-foreground">Add a description explaining this element's purpose</td>
@@ -547,7 +563,7 @@
                             {% for el in attention_elements %}
                             <tr class="border-b border-input/30 bg-destructive/[0.03]">
                                 <td class="py-2 pr-2"><input type="checkbox" x-model="selected" value="{{ el.element_id }}" aria-label="Select {{ el.name }}" class="rounded"></td>
-                                <td class="py-2 pr-3 font-medium">{{ el.name }}</td>
+                                <td class="py-2 pr-3 font-medium">{% set _h = am_href(el.layer, el.element_id)|trim %}{% if _h %}<a href="{{ _h }}" class="text-primary hover:underline">{{ el.name }}</a>{% else %}{{ el.name }}{% endif %}</td>
                                 <td class="py-2 pr-3">{{ el.layer }}</td>
                                 <td class="py-2 pr-3 font-bold text-destructive-emphasis">{{ el.quality_score }}</td>
                                 {% for crit_key in ['has_description', 'connectivity', 'has_cross_layer_rel', 'naming_convention', 'proper_type', 'metamodel_conformant'] %}
@@ -590,7 +606,7 @@
                             <tbody>
                             {% for el in attention_elements %}
                             <tr class="border-b border-input/30 bg-destructive/[0.03]">
-                                <td class="py-2 pr-3 font-medium">{{ el.name }}</td>
+                                <td class="py-2 pr-3 font-medium">{% set _h = am_href(el.layer, el.element_id)|trim %}{% if _h %}<a href="{{ _h }}" class="text-primary hover:underline">{{ el.name }}</a>{% else %}{{ el.name }}{% endif %}</td>
                                 <td class="py-2 pr-3">{{ el.layer }}</td>
                                 <td class="py-2 pr-3 font-bold text-destructive-emphasis">{{ el.quality_score }}</td>
                                 {% for crit_key in ['has_description', 'connectivity', 'has_cross_layer_rel', 'naming_convention', 'proper_type', 'metamodel_conformant'] %}
@@ -675,6 +691,7 @@
                             <th class="py-2 pr-3 w-6"></th><th class="py-2 pr-3">Source</th><th class="py-2 pr-3">Relationship</th><th class="py-2 pr-3">Target</th><th class="py-2">Status</th>
                         </tr></thead>
                         <tbody>
+                        {# actionable-rows-ok: a receipt of relationships this workflow has already written -- nothing here is pending a decision. The elements themselves are linked from the completeness and quality tables above, and a relationship is changed in the ArchiMate composer, not here. #}
                         {% for c in rr.committed.committed %}
                         <tr class="border-b border-input/30">
                             <td class="py-2 pr-3"><i data-lucide="{% if c.action == 'created' %}plus-circle{% else %}check-circle-2{% endif %}" class="h-3.5 w-3.5 text-success" aria-hidden="true"></i></td>
@@ -1056,6 +1073,7 @@
                         </tr>
                     </thead>
                     <tbody>
+                    {# actionable-rows-ok: the stakeholder concerns as recorded in the approved Phase A vision. Editing them here would falsify a signed-off document; stakeholders are maintained as ArchiMate Stakeholder elements and a changed concern needs a new vision iteration. #}
                     {% for s in vision_doc.stakeholder_concerns %}
                         <tr class="border-b border-border last:border-0">
                             <td class="py-2 pr-4 font-medium">{{ s.get('name', '—') }}</td>
@@ -1143,7 +1161,13 @@
                     <tbody>
                     {% for entry in tco_list %}
                         <tr class="border-b border-border last:border-0">
-                            <td class="py-2 pr-4 font-medium">{{ entry.get('vendor_name', '—') }}</td>
+                            {# Linked when the shortlist name resolved to a vendor record;
+                               an unmatched name has nothing to open. #}
+                            <td class="py-2 pr-4 font-medium">
+                                {% set _h = row_href('unified_vendors.vendor_detail', vendor_id=entry.get('vendor_id'))|trim %}
+                                {% if entry.get('vendor_id') and _h %}<a href="{{ _h }}" class="font-medium text-primary hover:underline">{{ entry.get('vendor_name', '—') }}</a>
+                                {% else %}{{ entry.get('vendor_name', '—') }}{% endif %}
+                            </td>
                             <td class="py-2 pr-4 text-right">{{ '%.0f'|format(entry.get('suitability_score', 0) * 100) }}%</td>
                             <td class="py-2 pr-4 text-right">
                                 {% if entry.get('tco_3yr') %}
@@ -1226,7 +1250,13 @@
                 <tbody class="divide-y divide-border">
                     {% for d in disposition_record.dispositions %}
                     <tr class="hover:bg-muted/30">
-                        <td class="px-4 py-2 font-mono text-xs">{{ d.get('app_id','—') }}</td>
+                        {# The disposition is a decision about one application; the row is where
+                           you go to see the application it was decided about. #}
+                        <td class="px-4 py-2 font-mono text-xs">
+                            {% set _h = row_href('unified_applications.application_detail', id=d.get('app_id'))|trim %}
+                            {% if d.get('app_id') and _h %}<a href="{{ _h }}" class="font-medium text-primary hover:underline">{{ d.get('app_id') }}</a>
+                            {% else %}{{ d.get('app_id','—') }}{% endif %}
+                        </td>
                         <td class="px-4 py-2">
                             <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium
                                 {% if d.get('disposition') == 'retire' %}bg-destructive/10 text-destructive-emphasis
@@ -1350,6 +1380,7 @@
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-border">
+                    {# actionable-rows-ok: free-text risks captured in the migration-scope artefact, not Risk records -- they carry no identifier to link to. Raise the ones that survive scoping as ArchiMate Risk elements on the initiative. #}
                         {% for risk in migration_scope.risk_register %}
                         <tr class="hover:bg-muted/30">
                             <td class="px-3 py-2">{{ risk.get('risk','—') }}</td>
@@ -1475,7 +1506,11 @@
                     <tbody class="divide-y divide-border">
                         {% for gap in investment_plan.gaps[:10] %}
                         <tr class="hover:bg-muted/30">
-                            <td class="px-3 py-2">{{ gap.get('name','—') }}</td>
+                            <td class="px-3 py-2">
+                                {% set _h = row_href('archimate_crud.detail_element', layer='strategy', element_type='Capability', element_id=gap.get('capability_id'))|trim %}
+                                {% if gap.get('capability_id') and _h %}<a href="{{ _h }}" class="font-medium text-primary hover:underline">{{ gap.get('name','—') }}</a>
+                                {% else %}{{ gap.get('name','—') }}{% endif %}
+                            </td>
                             <td class="px-3 py-2 text-xs text-muted-foreground">{{ gap.get('domain','—') }}</td>
                             <td class="px-3 py-2">
                                 <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium
@@ -1547,7 +1582,11 @@
                     <tbody class="divide-y divide-border">
                         {% for item in impact_register.remediation_plan %}
                         <tr class="hover:bg-muted/30 {% if item.get('go_live_blocker') %}bg-destructive/5{% endif %}">
-                            <td class="px-3 py-2 font-mono text-xs">{{ item.get('app_id','—') }}</td>
+                            <td class="px-3 py-2 font-mono text-xs">
+                                {% set _h = row_href('unified_applications.application_detail', id=item.get('app_id'))|trim %}
+                                {% if item.get('app_id') and _h %}<a href="{{ _h }}" class="font-medium text-primary hover:underline">{{ item.get('app_id') }}</a>
+                                {% else %}{{ item.get('app_id','—') }}{% endif %}
+                            </td>
                             <td class="px-3 py-2 text-xs">{{ item.get('classification','—')|replace('_',' ')|title }}</td>
                             <td class="px-3 py-2 text-xs font-medium">{{ item.get('action','—')|replace('_',' ')|title }}</td>
                             <td class="px-3 py-2 text-xs">{{ item.get('effort_days',0)|int }}d</td>
@@ -1667,6 +1706,7 @@
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-input/50">
+                            {# actionable-rows-ok: scores from the shortlist step, keyed by vendor name only; no vendor record is resolved at this step. The TCO table above links the vendors whose names did resolve, and the selection decision is recorded on the vendor selection dashboard. #}
                                 {% for v in _vs_scored[:5] %}
                                 <tr>
                                     <td class="px-3 py-2 font-medium {% if v.vendor_name == _vs_rec %}text-primary{% endif %}">{{ v.vendor_name }}{% if v.vendor_name == _vs_rec %} <i data-lucide="star" class="inline h-3 w-3 text-primary" aria-hidden="true"></i>{% endif %}</td>

@@ -143,6 +143,10 @@ def test_solution_architect_my_work_membership():
         "Solutions",
         "AI Chat",
         "ADM Kanban",
+        # 31 Aug 2026: the ARB dashboard was reachable from no persona's
+        # sidebar, though the solution architect is the role that takes work
+        # TO the board. Adding it closed a handoff that stopped mid-journey.
+        "Review Board",
         "Programmes",
     ]
 
@@ -186,6 +190,10 @@ def test_enterprise_architect_my_work_membership():
 
 def test_cto_my_work_membership():
     assert _my_work_labels(ROLE_CTO) == [
+        # 31 Aug 2026: main.capability_roadmap is the CTO's own planning
+        # surface and was linked from nowhere. It belongs first -- it is the
+        # screen this persona opens to answer "what are we doing next".
+        "Roadmaps",
         "Transformation programmes",
         "Health Scorecard",
         "Rationalization",

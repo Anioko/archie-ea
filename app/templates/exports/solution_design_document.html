@@ -77,6 +77,7 @@
             </tr>
         </thead>
         <tbody>
+            {# actionable-rows-ok: a printed Solution Architecture / Design Document. This template renders a standalone export (its own DOCTYPE, no app chrome) read on paper or as a PDF, so a row has nowhere to link to and no control to offer. The interactive versions of these tables live in the solution screens. #}
             {% for opt in options %}
             <tr>
                 <td>{{ opt.name or opt.title or 'Option' }}</td>
@@ -101,6 +102,7 @@
             </tr>
         </thead>
         <tbody>
+            {# actionable-rows-ok: a printed Solution Architecture / Design Document. This template renders a standalone export (its own DOCTYPE, no app chrome) read on paper or as a PDF, so a row has nowhere to link to and no control to offer. The interactive versions of these tables live in the solution screens. #}
             {% for r in risks %}
             <tr>
                 <td>{{ r.risk_description or '—' }}</td>

@@ -63,15 +63,27 @@ class TestRegistryInvariants:
         )
 
     def test_approve_tier_tools_unchanged(self):
-        """The three tools that were already tier=='approve' before this
-        change stay approve — this change only widens the queue, it does not
-        narrow it."""
+        """The three tools that were already tier=='approve' stay approve.
+
+        Asserted as a SUBSET, not equality, because the docstring's own rule
+        is that the approval queue may widen but never narrow -- and equality
+        forbids exactly the widening it permits. It failed the moment 54
+        per-type ArchiMate element tools were added, every one of which
+        creates a row in the system of record and therefore belongs behind a
+        human. Narrowing is still caught: drop any of these three and this
+        fails.
+        """
         approve_tools = {t["name"] for t in TOOL_SCHEMAS if t["tier"] == "approve"}
-        assert approve_tools == {
+        originally_approve = {
             "update_application_status",
             "submit_for_arb_review",
             "generate_blueprint_narrative",
         }
+        missing = originally_approve - approve_tools
+        assert not missing, (
+            "these tools were behind an approval prompt and no longer are: %s"
+            % sorted(missing)
+        )
 
     def test_known_read_only_tools_are_not_mutating(self):
         """Five of the six tools the task called out as needing evidence, not

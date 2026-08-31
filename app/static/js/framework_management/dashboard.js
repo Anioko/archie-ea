@@ -40,7 +40,7 @@ function notifyFrameworkError(message) {
         '<div class="rounded-md border border-destructive/20 bg-destructive/5 p-3 text-sm text-destructive">' +
             '<p class="font-semibold">Unable to load framework dashboard data.</p>' +
             '<p class="mt-1">' + message + '</p>' +
-            '<button onclick="loadData()" class="mt-3 rounded bg-destructive px-3 py-1 text-xs font-medium text-primary-foreground hover:bg-red-700">Retry</button>' +
+            '<button type="button" data-framework-retry class="mt-3 rounded bg-destructive px-3 py-1 text-xs font-medium text-primary-foreground hover:bg-red-700">Retry</button>' +
         '</div>');
     if (typeof window.showToast === 'function') {
         window.showToast(message, 'error');
@@ -303,4 +303,13 @@ document.addEventListener('DOMContentLoaded', function() {
     if (typeof lucide !== 'undefined') {
         lucide.createIcons();
     }
+});
+
+// Delegated, because the CSP refuses inline on*= attributes: the error state's
+// Retry button carried onclick="loadData()" and never fired, so a failed load
+// was unrecoverable without a page refresh. loadData() exists at file scope.
+document.addEventListener('click', function(event) {
+    if (!event.target.closest('[data-framework-retry]')) return;
+    event.preventDefault();
+    loadData();
 });

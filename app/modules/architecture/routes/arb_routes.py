@@ -2126,6 +2126,21 @@ def api_update_checklist(id):
 def api_capability_reviews(capability_id):
     """API endpoint to get reviews affecting a capability."""
     try:
+        # A capability that does not exist must 404, not answer with an empty
+        # list. This was the last of 78 routes that returned 200 for id
+        # 999999999: {"success": true, "reviews": []} is indistinguishable from
+        # "this capability has no reviews", so a caller cannot tell a typo from
+        # a clean governance record -- the fabricated-data rule, arriving as an
+        # empty collection instead of a wrong number.
+        from app.models.business_capabilities import BusinessCapability
+        from app.utils.route_guards import require_entity_json
+
+        _capability, missing = require_entity_json(
+            BusinessCapability, capability_id, label="Capability"
+        )
+        if missing:
+            return missing
+
         reviews = arb_service.get_pending_reviews_by_capability(capability_id)
         return jsonify(
             {
@@ -2733,7 +2748,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-@arb_bp.route("/initialize_standards")
+@arb_bp.route("/initialize_standards", methods=["POST"])
 @login_required
 def initialize_standards():
     """Initialize default governance standards."""

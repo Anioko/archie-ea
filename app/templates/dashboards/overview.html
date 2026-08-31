@@ -394,13 +394,20 @@
                         {{ empty_state(
                             'workflow',
                             'Nothing past ' ~ phase_name ~ ' yet',
-                            'All ' ~ solution_pipeline_total ~ ' solution' ~ ('s' if solution_pipeline_total != 1 else '') ~ ' ' ~ ('are' if solution_pipeline_total != 1 else 'is') ~ ' in phase ' ~ phase_letter ~ ' — nothing further yet.'
+                            'All ' ~ solution_pipeline_total ~ ' solution' ~ ('s' if solution_pipeline_total != 1 else '') ~ ' ' ~ ('are' if solution_pipeline_total != 1 else 'is') ~ ' in phase ' ~ phase_letter ~ ' — nothing further yet.',
+                            cta_label='Open the pipeline',
+                            cta_href=url_for('solution_design.list_solutions')
                         ) }}
                         {% elif current_user.enterprise_role in ('solution_architect', 'enterprise_architect', 'platform_admin') %}
                         {# PLT-040: role-aware empty state #}
                         {{ empty_state('workflow', 'No solutions yet', 'Blueprint your first initiative to start tracking ADM phase progress.', cta_label='Create your first solution', cta_href='/solutions/') }}
                         {% else %}
-                        {{ empty_state('workflow', 'No solutions in pipeline yet', None) }}
+                        {# The branch immediately above gives solution/enterprise architects and
+                           platform admins the "Create your first solution" CTA (PLT-040); this
+                           branch is everyone else, who cannot start one. Pointing them at a
+                           route they are not the persona for is a dead end wearing a button.
+                           empty-state-ok: role-scoped, non-architects cannot create solutions #}
+                        {{ empty_state('workflow', 'No solutions in pipeline yet', 'Architects have not blueprinted any solutions yet. Phase progress will appear here once they do.') }}
                         {% endif %}
                     {% endcall %}
                 {% endcall %}

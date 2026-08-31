@@ -109,7 +109,8 @@
                     {% for item in framework_stats %}
                     <tr class="border-b hover:bg-muted/50">
                         <td class="py-3 px-4">
-                            <span class="font-medium">{{ item.framework.industry_name }}</span>
+                            <a href="{{ url_for('industry_apqc.industry_apqc_framework_detail', industry_code=item.framework.industry_code) }}"
+                               class="font-medium text-primary hover:underline">{{ item.framework.industry_name }}</a>
                             <span class="text-xs text-muted-foreground ml-2">({{ item.framework.industry_code }})</span>
                         </td>
                         <td class="text-center py-3 px-4">{{ item.stats.total_processes or 0 }}</td>

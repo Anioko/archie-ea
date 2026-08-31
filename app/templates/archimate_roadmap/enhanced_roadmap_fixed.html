@@ -225,7 +225,8 @@
                                 <th class="text-left py-2 pr-3 font-medium">Name</th>
                                 <th class="text-left py-2 pr-3 font-medium">Type</th>
                                 <th class="text-left py-2 pr-3 font-medium">Severity</th>
-                                <th class="text-left py-2 font-medium">Status</th>
+                                <th class="text-left py-2 pr-3 font-medium">Status</th>
+                                <th class="text-right py-2 font-medium">Action</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y">
@@ -242,7 +243,16 @@
                                         {{ gap.severity|capitalize }}
                                     </span>
                                 </td>
-                                <td class="py-2 text-muted-foreground">{{ gap.resolution_status|replace('_', ' ')|capitalize }}</td>
+                                <td class="py-2 pr-3 text-muted-foreground">{{ gap.resolution_status|replace('_', ' ')|capitalize }}</td>
+                                <td class="py-2 text-right">
+                                    <button type="button"
+                                            @click='planGap({{ gap.id }}, {{ gap.name|tojson }})'
+                                            :disabled="planningGapId === {{ gap.id }}"
+                                            class="inline-flex items-center px-2.5 py-1 rounded-md border border-input bg-background text-xs font-medium hover:bg-accent hover:text-accent-foreground disabled:opacity-50 disabled:cursor-not-allowed">
+                                        <span x-show="planningGapId !== {{ gap.id }}">Plan work package</span>
+                                        <span x-show="planningGapId === {{ gap.id }}" x-cloak>Planning&hellip;</span>
+                                    </button>
+                                </td>
                             </tr>
                             {% endfor %}
                         </tbody>
@@ -399,6 +409,7 @@ function archimateRoadmapApp() {
         selectedImportance: '',
         timelineMode: 'quarters',
         showWorkPackageModal: false,
+        planningGapId: null,
         editingWorkPackage: false,
         availableLevels: ['L1', 'L2', 'L3', 'L4', 'L5'],
         availableDomains: [],
@@ -638,6 +649,28 @@ function archimateRoadmapApp() {
             if (!dateString) return '';
             const date = new Date(dateString);
             return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+        },
+
+        // Turn a recorded gap into the work package that resolves it.
+        // POST /capability-map/api/roadmap/gaps/<id>/work-packages is the same
+        // endpoint capability_roadmap.html uses; the row is the handoff point.
+        async planGap(gapId, gapName) {
+            if (this.planningGapId) { return; }
+            const ok = await Platform.modal.confirm(
+                `Create a work package to resolve "${gapName}"?`);
+            if (!ok) { return; }
+            this.planningGapId = gapId;
+            try {
+                await Platform.fetch(
+                    `/capability-map/api/roadmap/gaps/${gapId}/work-packages`,
+                    { method: 'POST', body: { name: `Resolve: ${gapName}` }, silent: true });
+                Platform.toast.success('Work package created for this gap.');
+                this.loadData();
+            } catch (error) {
+                Platform.toast.error('Failed to plan this gap: ' + (error.message || 'request failed'));
+            } finally {
+                this.planningGapId = null;
+            }
         },
 
         openWorkPackageModal() {

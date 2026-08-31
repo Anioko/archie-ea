@@ -972,6 +972,69 @@ TOOL_SCHEMA_BY_NAME = {s["name"]: s for s in TOOL_SCHEMAS}
 # next-artifact suggestion, and the approval tiering that toggle_auto_execute
 # (chat_core.py) has been unable to enforce because `tier` conflates reads and
 # writes.
+# ---------------------------------------------------------------------------
+# One tool per ArchiMate element type, generated from its semantics.
+#
+# check_ai_layer_coverage.py measured 54 of the product's 58 declared element
+# types with no dedicated AI creation path: the assistant could reason about
+# motivation and design solutions, and could not model the business, technology,
+# strategy or migration layers.
+#
+# These are GENERATED rather than hand-written, for a reason that matters more
+# than the saving: every element then carries the same three pieces of guidance
+# — definition, when to use, and what it is confused with — so a new element
+# type cannot ship a tool whose description omits the distinction that stops it
+# being misused. A hand-written 58th entry would.
+#
+# They are not one generic create_archimate_element with a type parameter. That
+# tool exists and is deliberately not counted as coverage: it accepts whatever
+# type the model guesses, handing the modelling judgement back to a user who
+# does not have it. The point of the product is to remove that.
+def _archimate_element_schemas() -> list:
+    from .archimate_specs import ELEMENT_SPECS, tool_description
+
+    schemas = []
+    for element_type, spec in sorted(ELEMENT_SPECS.items()):
+        properties = {
+            "name": {
+                "type": "string",
+                "description": "Short, specific name for this %s"
+                               % element_type.replace("_", " "),
+            },
+            "description": {
+                "type": "string",
+                "description": "What it is, in the organisation's own words",
+            },
+        }
+        for extra in spec.get("properties", []):
+            if extra in properties:
+                continue
+            properties[extra] = {
+                "type": "string",
+                "description": "%s of this %s"
+                               % (extra.replace("_", " "), element_type.replace("_", " ")),
+            }
+        schemas.append({
+            "name": "create_%s" % element_type,
+            "mutates": True,
+            # 'approve', not 'auto'. These write typed elements into the model
+            # of record, and REQUIRE_AI_APPROVAL exists so an operator decides
+            # whether AI-proposed writes reach it unreviewed.
+            "tier": "approve",
+            "archimate_layer": spec["layer"],
+            "description": tool_description(element_type, spec),
+            "parameters": {
+                "type": "object",
+                "properties": properties,
+                "required": ["name"],
+            },
+        })
+    return schemas
+
+
+TOOL_SCHEMAS.extend(_archimate_element_schemas())
+
+
 def mutating_tool_names() -> set:
     """Names of every tool that writes to the repository."""
     return {t["name"] for t in TOOL_SCHEMAS if t.get("mutates")}

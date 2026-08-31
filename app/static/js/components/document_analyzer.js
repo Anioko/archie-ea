@@ -190,7 +190,11 @@ function documentAnalyzer(entityType, entityId) {
                         '<h4 class="font-semibold">Batch Analysis Complete</h4>' +
                     '</div>' +
                     '<p class="text-sm">' + successCount + ' file(s) analyzed successfully, ' + errorCount + ' file(s) failed.</p>' +
-                    '<button onclick="this.parentElement.remove()" class="mt-2 text-xs underline">Dismiss</button>');
+                    '<button type="button" data-analyzer-dismiss class="mt-2 text-xs underline">Dismiss</button>');
+                    // Bound directly rather than via onclick=, which the CSP refuses
+                    // to run -- this Dismiss never removed anything.
+                    let dismissBtn = errorDiv.querySelector('[data-analyzer-dismiss]');
+                    if (dismissBtn) dismissBtn.addEventListener('click', function() { errorDiv.remove(); });
                     document.body.appendChild(errorDiv);
                     setTimeout(function() { errorDiv.remove(); }, 10000);
                 }

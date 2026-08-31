@@ -102,7 +102,9 @@
                         <th class="text-center py-3 px-4 font-medium text-muted-foreground">Status</th>
                     </tr>
                 </thead>
-                <tbody class="divide-y">
+                <tbody class="divide-y">{# actionable-rows-ok: APQC reference processes shipped with the industry framework. Read-only
+                     source data -- adopt them into your own model with the import action
+                     above, which creates editable records. #}
                     {% for process in processes[:20] %}
                     <tr class="border-b hover:bg-muted/50">
                         <td class="py-3 px-4 font-mono text-sm">{{ process.industry_process_code }}</td>

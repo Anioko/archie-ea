@@ -23,7 +23,8 @@
                     <th class="px-6 py-3 text-left font-medium text-muted-foreground">Created</th>
                 </tr>
             </thead>
-            <tbody class="divide-y divide-border">
+            <tbody class="divide-y divide-border">{# actionable-rows-ok: FrameworkMigrationMapping has no detail page; a migration is defined and run
+                 from the Migration Wizard, and this table is its progress report. #}
                 {% for migration in migrations %}
                 <tr class="hover:bg-muted/30">
                     <td class="px-6 py-3">

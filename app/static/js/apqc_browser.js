@@ -3,6 +3,16 @@
  * Handles APQC hierarchy tree navigation and search functionality
  */
 
+// Attribute-value escaping: this file has no escapeHtml in scope, and the shared
+// one (core/02-sanitize.js) escapes via textContent -> innerHTML, which leaves "
+// and ' untouched -- safe for a text node, unsafe inside an attribute. Process
+// codes are data, so they go through this before landing in an aria-label.
+function escapeAttr(value) {
+    return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
+        .replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 class APQCBrowserManager {
     constructor() {
         this.apqcData = [];
@@ -157,10 +167,12 @@ class APQCBrowserManager {
         return nodes.map(node => `
             <div class="tree-node" data-level="${level}" data-id="${node.id}" data-code="${node.code}">
                 <div class="tree-node-content" style="padding-left: ${level * 20}px">
-                    <i class="fas fa-chevron-right tree-toggle ${this.expandedNodes.has(node.id) ? 'expanded' : ''}"
-                       onclick="apqcBrowser.toggleNode(${node.id})"></i>
+                    <button type="button" class="tree-toggle-btn" data-apqc-action="toggle" data-apqc-id="${Number(node.id)}"
+                            aria-label="Expand or collapse ${escapeAttr(node.code)}">
+                        <i class="fas fa-chevron-right tree-toggle ${this.expandedNodes.has(node.id) ? 'expanded' : ''}"></i>
+                    </button>
                     <i class="fas fa-${node.children && node.children.length > 0 ? 'folder' : 'file'} tree-icon"></i>
-                    <span class="tree-label" onclick="apqcBrowser.selectNode(${node.id}); return false;">${node.code} ${node.name}</span>
+                    <button type="button" class="tree-label" data-apqc-action="select" data-apqc-id="${Number(node.id)}">${node.code} ${node.name}</button>
                     <span class="tree-level">Level ${node.level || level + 1}</span>
                 </div>
                 <div class="tree-children ${this.expandedNodes.has(node.id) ? 'expanded' : 'hidden'}" id="children-${node.id}">
@@ -178,7 +190,8 @@ class APQCBrowserManager {
         }
 
         const childrenContainer = document.getElementById(`children-${nodeId}`);
-        const toggle = document.querySelector(`[onclick="apqcBrowser.toggleNode(${nodeId})"]`);
+        const toggleBtn = document.querySelector(`[data-apqc-action="toggle"][data-apqc-id="${nodeId}"]`);
+        const toggle = toggleBtn ? toggleBtn.querySelector('.tree-toggle') : null;
 
         if (childrenContainer) {
             childrenContainer.classList.toggle('hidden');
@@ -230,7 +243,7 @@ class APQCBrowserManager {
                         ${hierarchyPath.map((item, index) => `
                             <span class="breadcrumb-item">
                                 ${index > 0 ? '<i class="fas fa-chevron-right mx-2"></i>' : ''}
-                                <a href="javascript:void(0)" onclick="apqcBrowser.selectNode(${item.id})">${item.code} ${item.name}</a>
+                                <button type="button" class="breadcrumb-link" data-apqc-action="select" data-apqc-id="${Number(item.id)}">${item.code} ${item.name}</button>
                             </span>
                         `).join('')}
                     </div>
@@ -245,7 +258,8 @@ class APQCBrowserManager {
                             <div class="parent-item">
                                 <span class="parent-code">${parent.code}</span>
                                 <span class="parent-name">${parent.name}</span>
-                                <button onclick="apqcBrowser.autoLinkProcess(${parent.id})"
+                                <button type="button" data-apqc-action="auto-link" data-apqc-id="${Number(parent.id)}"
+                                        aria-label="Auto-link parent process ${escapeAttr(parent.code)}"
                                         class="px-2 py-1 text-sm bg-primary text-primary-foreground rounded hover:bg-primary">
                                     <i class="fas fa-link"></i> Link
                                 </button>
@@ -263,7 +277,8 @@ class APQCBrowserManager {
                             <div class="child-item">
                                 <span class="child-code">${child.code}</span>
                                 <span class="child-name">${child.name}</span>
-                                <button onclick="apqcBrowser.selectNode(${child.id}); return false;"
+                                <button type="button" data-apqc-action="select" data-apqc-id="${Number(child.id)}"
+                                        aria-label="View child process ${escapeAttr(child.code)}"
                                         class="px-2 py-1 text-sm bg-muted/50 text-primary-foreground rounded hover:bg-muted-foreground/20">
                                     <i class="fas fa-arrow-right"></i> View
                                 </button>
@@ -274,11 +289,11 @@ class APQCBrowserManager {
                 ` : ''}
 
                 <div class="process-actions">
-                    <button onclick="apqcBrowser.useProcessInMapping(${process.id})"
+                    <button type="button" data-apqc-action="use-in-mapping" data-apqc-id="${Number(process.id)}"
                             class="px-4 py-2 bg-emerald-500 text-primary-foreground rounded hover:bg-emerald-600">
                         <i class="fas fa-check"></i> Use in Mapping
                     </button>
-                    <button onclick="apqcBrowser.viewProcessDetails(${process.id})"
+                    <button type="button" data-apqc-action="view-details" data-apqc-id="${Number(process.id)}"
                             class="px-4 py-2 bg-primary text-primary-foreground rounded hover:bg-primary">
                         <i class="fas fa-info-circle"></i> Full Details
                     </button>
@@ -342,13 +357,13 @@ class APQCBrowserManager {
         safeHTML(resultsContainer, `
             <div class="search-results-header">
                 <h4>Search Results (${this.searchResults.length})</h4>
-                <button onclick="apqcBrowser.closeSearchResults()" class="text-muted-foreground hover:text-foreground">
+                <button type="button" data-apqc-action="close-search" aria-label="Close search results" class="text-muted-foreground hover:text-foreground">
                     <i class="fas fa-times"></i>
                 </button>
             </div>
             <div class="search-results-list">
                 ${this.searchResults.map(result => `
-                    <div class="search-result-item" onclick="apqcBrowser.selectNode(${result.id}); return false;">
+                    <div class="search-result-item" role="button" tabindex="0" data-apqc-action="select" data-apqc-id="${Number(result.id)}">
                         <div class="result-header">
                             <span class="result-code">${result.code}</span>
                             <span class="result-name">${result.name}</span>
@@ -505,6 +520,37 @@ class APQCBrowserManager {
         }, 5000);
     }
 }
+
+// Delegated, because the CSP refuses inline on*= attributes: every control in
+// the tree, the breadcrumb, the search results and the process detail pane used
+// to carry onclick="apqcBrowser.…" and therefore never fired. Bound once at
+// document level so it survives the tree being re-rendered from fetched data.
+function handleApqcAction(event) {
+    const el = event.target.closest('[data-apqc-action]');
+    if (!el) return;
+    const browser = window.apqcBrowser;
+    if (!browser) return;
+    const id = Number(el.getAttribute('data-apqc-id'));
+    switch (el.getAttribute('data-apqc-action')) {
+        case 'toggle':          browser.toggleNode(id); break;
+        case 'select':          browser.selectNode(id); break;
+        case 'auto-link':       browser.autoLinkProcess(id); break;
+        case 'use-in-mapping':  browser.useProcessInMapping(id); break;
+        case 'view-details':    browser.viewProcessDetails(id); break;
+        case 'close-search':    browser.closeSearchResults(); break;
+        default: return;
+    }
+    event.preventDefault();
+}
+
+document.addEventListener('click', handleApqcAction);
+// The search-result rows are divs with role="button"; keep them keyboard-usable.
+document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    const el = event.target.closest('[data-apqc-action]');
+    if (!el || el.tagName === 'BUTTON') return;
+    handleApqcAction(event);
+});
 
 // Initialize when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {

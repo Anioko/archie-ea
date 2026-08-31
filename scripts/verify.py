@@ -893,6 +893,35 @@ def gate_actionable_rows(baseline: int) -> Result:
         "scripts/check_actionable_rows.py", "actionable-rows", baseline)
 
 
+def gate_placeholder_copy(baseline: int) -> Result:
+    """Copy that satisfies every rule and tells the user nothing.
+
+    The owner found `<label for="application-search">Field</label>` in the
+    capability map's mapping dialog on the deployed site. 59 such labels exist.
+    axe passes them -- "Field" IS a valid accessible name, and axe checks that a
+    control HAS a label, never that the label means anything. Nothing else in
+    the estate opens a form and reads it. Gates check presence, not meaning.
+    """
+    return _simple_ratchet(
+        "scripts/check_placeholder_copy.py", "placeholder-copy", baseline)
+
+
+def gate_ai_layer_coverage(baseline: int) -> Result:
+    """How much of ArchiMate 3.2 the AI can model for someone who cannot hire
+    an architect.
+
+    54 of the 58 element types the product declares have no dedicated AI
+    creation path. The assistant can reason about motivation and design
+    solutions; it cannot model the business, technology, strategy or migration
+    layers. A generic create_archimate_element does not count -- emitting a
+    typed node hands the modelling judgement back to the user, which is the
+    thing this product exists to remove. Ratcheted so it falls as the gap
+    closes.
+    """
+    return _simple_ratchet(
+        "scripts/check_ai_layer_coverage.py", "ai-layer-coverage", baseline)
+
+
 def gate_canonical_store(baseline: int) -> Result:
     """One concept, one store.
 
@@ -2058,6 +2087,14 @@ def build_gates(baseline: dict) -> list[Gate]:
              "ratchet", lambda k='actionable_rows': gate_actionable_rows(baseline[k]),
              remediation="link the row to its record or give it the control that moves it on, or append 'actionable-rows-ok: <reason>'",
              tags=["static", "handoff", "rendered", "product"]),
+        Gate("placeholder-copy", "labels say what the thing is",
+             "ratchet", lambda k='placeholder_copy': gate_placeholder_copy(baseline[k]),
+             remediation="name the input, or append 'placeholder-copy-ok: <reason>' saying who supplies the word",
+             tags=["static", "content", "rendered"]),
+        Gate("ai-layer-coverage", "the AI can model ArchiMate, not just discuss it",
+             "ratchet", lambda k='ai_layer_coverage': gate_ai_layer_coverage(baseline[k]),
+             remediation="give the AI a tool that knows the element's semantics, or append 'ai-layer-ok: <reason>'",
+             tags=["static", "ai", "architecture"]),
         Gate("canonical-store", "one concept, one store",
              "ratchet", lambda k='canonical_store': gate_canonical_store(baseline[k]),
              tags=["static", "architecture"]),
@@ -2347,7 +2384,9 @@ DEFAULT_BASELINE = {
     "cache_tenancy": 0,
     "ai_approval_honoured": 0,
     "canonical_store": 0,
-    "actionable_rows": 112,
+    "ai_layer_coverage": 54,
+    "placeholder_copy": 59,
+    "actionable_rows": 0,
     "raw_sql_columns": 0,
     "handoff_continuity": 0,
     "metric_provenance": 0,
@@ -2357,7 +2396,7 @@ DEFAULT_BASELINE = {
     "business_layer_backbone": 18,
     "api_envelope": 850,
     "role_gate_coverage": 0,
-    "empty_state_cta": 21,
+    "empty_state_cta": 0,
     "archimate_backbone": 0,
 }
 

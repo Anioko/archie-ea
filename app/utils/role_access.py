@@ -411,6 +411,12 @@ _MY_WORK_LINKS = {
         _link("AI Chat", "unified_ai_chat.index", "message-square"),
         _link("ADM Kanban", "adm_kanban_view.index", "kanban"),
         # Fix round: Programmes was reachable from nowhere in the sidebar.
+        # A solution architect whose job is to take designs through
+        # governance had no route to the review board from their own
+        # sidebar. Found 31 Aug 2026 by the task-completion walkthrough:
+        # every endpoint worked and every journey test passed, because
+        # they address the ARB by URL. The persona could not find it.
+        _link("Review Board", "arb.dashboard", "gavel"),
         _link("Programmes", "solution_design.programmes_list", "git-merge"),
     ],
     ROLE_ENTERPRISE_ARCHITECT: [
@@ -467,6 +473,11 @@ _MY_WORK_LINKS = {
         _link("Tech Radar", "tech_radar.index", "radar"),
     ],
     ROLE_CTO: [
+        # A CTO with no route to a roadmap from their own sidebar. Found
+        # 31 Aug 2026 by the task-completion walkthrough: the page exists and
+        # every journey test passes, because those address it by URL. This
+        # persona could not find it from their landing page.
+        _link("Roadmaps", "main.capability_roadmap", "milestone"),
         _link("Transformation programmes", "solution_design.programmes_list", "waypoints"),
         _link("Health Scorecard", "dashboard.health_scorecard", "heart-pulse"),
         _link("Rationalization", "unified_applications.rationalization_dashboard", "git-merge"),

@@ -106,6 +106,60 @@ data, and product-direction questions with no technically-correct answer
 record?" is engineering). The test: would a competent CTO escalate this to a
 non-technical founder? Usually not.
 
+## One system of record per concept — [ADR 0008](docs/adr/0008-one-system-of-record.md)
+
+**Before you add a table, a route, or a macro, find out what already answers
+that question.** Adding a second authority is the most expensive mistake
+available in this codebase, and it is the one most frequently made here.
+
+What that mistake looks like once it has been made:
+
+- **six** stores answer "what capabilities exist" — `business_capability` (461
+  rows in production), `capabilities` (0), `unified_capabilities` (0),
+  `enterprise_capabilities`, `archimate_capabilities`, `technical_capabilities`
+- **three** route rules are registered at `/api/users`; which one serves it is
+  decided by blueprint registration order and `url_prefix`, neither visible to
+  a reader of either file
+- **two** `empty_state` macros exist with incompatible signatures, and Jinja
+  raises `TypeError` on an undeclared keyword — so importing the wrong one 500s
+  the page
+- `gaps` meant two different things in one table until `gap_kind` split them
+
+Every screen disagreement the owner has reported — *Total Capabilities 191*
+above *Showing 1-10 of 0 results*, a roadmap counting *173 gaps* beside a Gap
+Analysis reading *0*, `/api/v1/capabilities` returning nothing against 461 rows
+— is one of these, not four separate bugs.
+
+The rules:
+
+1. **Name the system of record before writing.** For capabilities it is
+   `unified_capabilities`: it is the only store that can express provenance
+   (`source_table`, `source_id`, `source_checksum`) and the shared-reference vs
+   tenant-owned distinction (`HybridCapabilityTenantMixin` —
+   `organization_id IS NULL` means shared).
+2. **A copy declares itself.** Any table holding derived rows carries
+   `source_table` / `source_id`, so "where did this row come from?" is answered
+   by query, not by reading code.
+3. **One accessor per concept.** Two routes on one URL, or two macros sharing a
+   name, is a defect even while it appears to work.
+4. **Retire, never accumulate.** A superseded store is linked and marked
+   (`retired_into_id`), not dropped.
+
+**A store with no producer is worse than no store.** `unified_capabilities` was
+designed correctly, wired into `/api/v1` and eight route files, and never given
+anything that writes to it — so those endpoints answer from an empty table in
+production. If you find a store like this, write the projection; do **not**
+repoint its readers at whatever table currently holds data. That trades a
+correct architecture for a working screen and leaves the duplicate in place.
+
+Enforcement is the `store-agreement` gate: it boots the app, asks every surface
+that answers a given question, and fails when they disagree. It is the only
+check here that compares ANSWERS rather than reading source, which is why every
+other gate passed all four defects above — and did, while the owner found them
+by clicking. Built and reviewed 31 Aug 2026; it lands with the projection in the
+following wave, and until it is registered in `scripts/verify.py` this section
+is a rule with no ratchet behind it. Treat that as debt, not as enforcement.
+
 ## Done means deployed — standing instruction from the owner (14 Aug 2026)
 
 The owner is non-technical and has delegated technical judgement entirely. **A wave of work is

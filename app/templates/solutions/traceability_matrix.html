@@ -107,7 +107,7 @@
                         <th scope="col" class="px-4 py-3 text-left font-semibold text-foreground">ArchiMate</th>
                     </tr>
                 </thead>
-                <tbody class="divide-y divide-border">
+                <tbody class="divide-y divide-border">{# actionable-rows-ok: coverage summary — the tick columns are computed roll-ups, and these capability ids are BusinessCapability rows for which the product has no detail page (the only per-capability page, /arb/capabilities/<id>/governance, is keyed to UnifiedCapability and would open the wrong record). The user acts by linking or unlinking capabilities on the solution detail page; the matrix below links the applications that cover them. #}
                     {% for row in matrix.rows %}
                     {% if row.capability %}
                     <tr class="hover:bg-muted/30 transition-colors">
@@ -234,7 +234,9 @@
                     <td class="px-4 py-3 align-top">
                         {% if row.application %}
                         <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-cyan-500/10 text-cyan-600 border border-cyan-500/30"> {# design-tokens-ok: categorical column legend, see Goal cell above #}
-                            {{ row.application.name }}
+                            {% if row.application.id and 'unified_applications.application_detail' in flask.current_app.view_functions %}
+                            <a href="{{ url_for('unified_applications.application_detail', id=row.application.id) }}" class="hover:underline">{{ row.application.name }}</a>
+                            {% else %}{{ row.application.name }}{% endif %}
                         </span>
                         {% else %}
                         <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-destructive/10 text-destructive-emphasis border border-destructive/30">

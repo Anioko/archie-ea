@@ -38,12 +38,16 @@ from pathlib import Path
 
 import pytest
 
+from app.modules.ai_chat.tools.archimate_specs import ELEMENT_SPECS
 from app.modules.ai_chat.tools.registry import TOOL_SCHEMAS
 
 ROOT = Path(__file__).resolve().parents[1]
 
 # Derived from the implementations, then pinned here.
-MUTATING = {
+#
+# HAND_WRITTEN is a literal on purpose: each of these was inspected and its
+# write path confirmed, and a new one must be added here deliberately.
+HAND_WRITTEN = {
     "create_archimate_element", "create_archimate_relationship", "create_constraint",
     "create_driver", "create_goal", "create_option", "create_requirement",
     "create_risk", "create_solution", "link_application_to_capability",
@@ -51,6 +55,19 @@ MUTATING = {
     "mark_option_recommended", "run_inference_engine", "submit_for_arb_review",
     "update_application_status", "update_solution_fields", "update_solution_phase",
 }
+
+# The per-ArchiMate-type element tools are GENERATED from ELEMENT_SPECS rather
+# than written out once each, so pinning them as a 54-name literal would create
+# a list nobody maintains -- and a stale pin is worse than none, because it
+# reads as a reviewed decision. The invariant worth asserting is the one that
+# actually protects the approval boundary: every generated element tool CREATES
+# an element, so every one of them mutates. If a generated tool ever stopped
+# being a write, the equality below would fail and someone would have to say so.
+GENERATED_ELEMENT_TOOLS = {
+    "create_%s" % element_type for element_type in ELEMENT_SPECS
+}
+
+MUTATING = HAND_WRITTEN | GENERATED_ELEMENT_TOOLS
 
 
 def test_every_tool_declares_whether_it_mutates():
@@ -74,7 +91,15 @@ def test_the_declaration_matches_the_implementation():
     wrong = []
     for tool in TOOL_SCHEMAS:
         name = tool["name"]
-        m = re.search(r"def _tool_%s\(self.*?(?=\n    def _tool_|\Z)" % name, ex, re.S)
+        # Bounded at the next def at ANY indentation, not just the next
+        # _tool_ method. Under the old lookahead the LAST tool method
+        # captured all the way to end-of-file and absorbed every
+        # module-level helper below it -- so search_archimate_elements, a
+        # pure query, reported as a writer the moment a helper containing
+        # db.session.add was appended to the module.
+        m = re.search(
+            r"def _tool_%s\(self.*?(?=\n    def |\ndef |\nclass |\Z)" % name,
+            ex, re.S)
         if not m:
             continue  # no implementation to compare against
         implementation_writes = bool(writes_re.search(m.group(0)))

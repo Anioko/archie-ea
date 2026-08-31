@@ -157,9 +157,9 @@
                     <template x-if="selectedStep.type === 'condition'">
                         <div class="space-y-2">
                             <div>
-                                <label class="text-xs text-muted-foreground">Field</label>
+                                <label class="text-xs text-muted-foreground">Condition field</label>
                                 <input type="text" x-model="selectedStep.field" @change="updateStepProperties()"
-                                       class="w-full mt-1 rounded-md border border-input bg-background px-2 py-1 text-xs" aria-label="Field">
+                                       class="w-full mt-1 rounded-md border border-input bg-background px-2 py-1 text-xs" aria-label="Condition field">
                             </div>
                             <div>
                                 <label class="text-xs text-muted-foreground">Operator</label>
@@ -173,9 +173,9 @@
                                 </select>
                             </div>
                             <div>
-                                <label class="text-xs text-muted-foreground">Value</label>
+                                <label class="text-xs text-muted-foreground">Comparison value</label>
                                 <input type="text" x-model="selectedStep.value" @change="updateStepProperties()"
-                                       class="w-full mt-1 rounded-md border border-input bg-background px-2 py-1 text-xs" aria-label="Value">
+                                       class="w-full mt-1 rounded-md border border-input bg-background px-2 py-1 text-xs" aria-label="Comparison value">
                             </div>
                         </div>
                     </template>

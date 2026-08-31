@@ -27,11 +27,10 @@
   <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-{{ [filters|length, 4]|min }} gap-4">
     {% for filter in filters %}
       <div>
-        <label class="block text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">{{ filter.label }}</label>
+        <label for="{{ filter.id }}" class="block text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">{{ filter.label }}</label>
         {% if filter.type == 'search' %}
         <div class="relative">
           <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none"></i>
-          <label for="{{ filter.id }}">Field</label>
     <input
             type="text"
             id="{{ filter.id }}"

@@ -88,8 +88,24 @@ TEMPLATE_DIRS = ("app/templates",)
 
 
 def template_files(root: str):
+    """Templates AND the JavaScript that writes markup into them.
+
+    Scanning only templates was this gate's blind spot, and it was a large one.
+    The capability map's Application Domain cards carried
+    `onclick="getEl('application-domain-filter')..."` built inside a JS template
+    literal: CSP-dead for their entire life, while wearing cursor-pointer and a
+    hover shadow so they looked interactive. The owner reported them as "what is
+    the purpose of these if I cannot click them". This gate said 0 throughout.
+
+    An `on*=` attribute does not execute under this app's CSP no matter how it
+    reached the DOM -- innerHTML included -- so where the string was authored is
+    irrelevant to whether the control works.
+    """
     seen = set()
     roots = [os.path.join(root, d) for d in TEMPLATE_DIRS]
+    static_js = os.path.join(root, "app", "static", "js")
+    if os.path.isdir(static_js):
+        roots.append(static_js)
     modules = os.path.join(root, "app", "modules")
     if os.path.isdir(modules):
         for name in sorted(os.listdir(modules)):
@@ -100,7 +116,11 @@ def template_files(root: str):
         for dirpath, dirnames, filenames in os.walk(base):
             dirnames[:] = [d for d in dirnames if d != "__pycache__"]
             for filename in sorted(filenames):
-                if not filename.endswith((".html", ".jinja", ".jinja2")):
+                if not filename.endswith((".html", ".jinja", ".jinja2", ".js")):
+                    continue
+                # Vendored and minified bundles are not ours to fix, and a
+                # minified file is one line so a finding names nothing useful.
+                if ".min." in filename or "/vendor/" in dirpath.replace(os.sep, "/"):
                     continue
                 path = os.path.join(dirpath, filename)
                 if path not in seen:

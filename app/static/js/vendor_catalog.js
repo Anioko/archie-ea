@@ -192,7 +192,7 @@ class VendorCatalogManager {
 
         safeHTML(container, this.vendors.map(vendor => `
             <div class="vendor-item ${this.selectedVendor?.id === vendor.id ? 'selected' : ''}"
-                 onclick="vendorCatalogManager.selectVendor(${vendor.id})">
+                 role="button" tabindex="0" data-catalog-action="selectVendor" data-catalog-id="${Number(vendor.id)}">
                 <div class="vendor-header">
                     <h4>${escapeHtml(vendor.name)}</h4>
                     <span class="tier-badge tier-${escapeHtml(vendor.tier)}">${escapeHtml(vendor.tier)}</span>
@@ -230,7 +230,7 @@ class VendorCatalogManager {
 
         safeHTML(container, this.productFamilies.map(family => `
             <div class="family-item ${this.selectedFamily?.id === family.id ? 'selected' : ''}"
-                 onclick="vendorCatalogManager.selectFamily(${family.id})">
+                 role="button" tabindex="0" data-catalog-action="selectFamily" data-catalog-id="${Number(family.id)}">
                 <div class="family-header">
                     <h4>${escapeHtml(family.name)}</h4>
                     <span class="product-count">${family.product_count || 0} products</span>
@@ -259,7 +259,7 @@ class VendorCatalogManager {
         }
 
         safeHTML(container, this.products.map(product => `
-            <div class="product-item" onclick="vendorCatalogManager.viewProductDetails(${product.id})">
+            <div class="product-item" role="button" tabindex="0" data-catalog-action="viewProductDetails" data-catalog-id="${Number(product.id)}">
                 <div class="product-header">
                     <h4>${escapeHtml(product.name)}</h4>
                     <span class="version">${escapeHtml(product.version) || 'N/A'}</span>
@@ -456,7 +456,7 @@ class VendorCatalogManager {
         const products = results.filter(r => r.type === 'product');
 
         safeHTML(vendorsContainer, vendors.map(vendor => `
-            <div class="vendor-item search-result" onclick="vendorCatalogManager.selectVendor(${vendor.id})">
+            <div class="vendor-item search-result" role="button" tabindex="0" data-catalog-action="selectVendor" data-catalog-id="${Number(vendor.id)}">
                 <div class="vendor-header">
                     <h4>${escapeHtml(vendor.name)}</h4>
                     <span class="tier-badge tier-${escapeHtml(vendor.tier)}">${escapeHtml(vendor.tier)}</span>
@@ -466,7 +466,7 @@ class VendorCatalogManager {
         `).join('') || '<div class="text-center py-4 text-muted-foreground">No vendors found</div>');
 
         safeHTML(familiesContainer, families.map(family => `
-            <div class="family-item search-result" onclick="vendorCatalogManager.selectFamily(${family.id})">
+            <div class="family-item search-result" role="button" tabindex="0" data-catalog-action="selectFamily" data-catalog-id="${Number(family.id)}">
                 <div class="family-header">
                     <h4>${escapeHtml(family.name)}</h4>
                     <span class="product-count">${family.product_count || 0} products</span>
@@ -476,7 +476,7 @@ class VendorCatalogManager {
         `).join('') || '<div class="text-center py-4 text-muted-foreground">No families found</div>');
 
         safeHTML(productsContainer, products.map(product => `
-            <div class="product-item search-result" onclick="vendorCatalogManager.viewProductDetails(${product.id})">
+            <div class="product-item search-result" role="button" tabindex="0" data-catalog-action="viewProductDetails" data-catalog-id="${Number(product.id)}">
                 <div class="product-header">
                     <h4>${escapeHtml(product.name)}</h4>
                     <span class="version">${escapeHtml(product.version) || 'N/A'}</span>
@@ -675,6 +675,30 @@ class VendorCatalogManager {
         }, 5000);
     }
 }
+
+// Delegated, because the CSP refuses inline on*= attributes: every vendor,
+// family and product row carried onclick="vendorCatalogManager.…" and so was
+// inert for its whole life while styled as clickable. Bound once at document
+// level so it survives the three lists being re-rendered from fetched data.
+// All three target methods (selectVendor, selectFamily, viewProductDetails)
+// exist on the manager and hit live endpoints; none of them is destructive.
+function handleVendorCatalogAction(event) {
+    const el = event.target.closest('[data-catalog-action]');
+    if (!el) return;
+    const manager = window.vendorCatalogManager;
+    if (!manager) return;
+    const action = el.getAttribute('data-catalog-action');
+    if (!['selectVendor', 'selectFamily', 'viewProductDetails'].includes(action)) return;
+    event.preventDefault();
+    manager[action](Number(el.getAttribute('data-catalog-id')));
+}
+
+document.addEventListener('click', handleVendorCatalogAction);
+document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    if (!event.target.closest('[data-catalog-action]')) return;
+    handleVendorCatalogAction(event);
+});
 
 // Initialize when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {

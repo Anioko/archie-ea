@@ -291,7 +291,7 @@ function updateProcessSummary() {
     listDiv.innerHTML = allProcesses.map(proc => `
       <div class="flex items-center justify-between p-2 bg-background rounded border border-border">
         <span class="text-sm text-foreground/80">${proc.name}</span>
-        <button onclick="removeProcess('${proc.id}')" class="text-destructive hover:text-red-800">
+        <button type="button" data-remove-process="${String(proc.id).replace(/"/g, '&quot;')}" aria-label="Remove selected process" class="text-destructive hover:text-red-800">
           <i data-lucide="x" class="w-3 h-3"></i>
         </button>
       </div>
@@ -398,3 +398,14 @@ function displayProcessVendors(vendors) {
     lucide.createIcons();
   }
 }
+
+// Delegated, because the CSP refuses inline on*= attributes: the per-process
+// remove button carried onclick="removeProcess('id')" and never fired.
+// removeProcess() is defined at the top of this file and only splices the
+// in-memory selectedL1..L5Processes arrays -- it deletes no server-side data.
+document.addEventListener('click', function (event) {
+  const el = event.target.closest('[data-remove-process]');
+  if (!el) return;
+  event.preventDefault();
+  removeProcess(el.getAttribute('data-remove-process'));
+});

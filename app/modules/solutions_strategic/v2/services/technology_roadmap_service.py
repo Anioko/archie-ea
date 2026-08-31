@@ -271,6 +271,12 @@ class TechnologyRoadmapService:
             "component_type": component["type"],
             "technology_category": component["technology_category"],
             "application_name": component.get("application_name", ""),
+            # Carried through so the roadmap row can link to the record a user
+            # can actually change. A technology here is a string on an
+            # application's stack or a platform configuration, and has no id of
+            # its own; without these the row is a dead end.
+            "application_id": component.get("application_id"),
+            "platform_id": component.get("platform_id"),
             "strategic_importance": component["strategic_importance"],
             "age_score": age_score,
             "obsolescence_score": obsolescence_score,

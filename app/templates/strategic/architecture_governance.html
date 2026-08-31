@@ -14,6 +14,12 @@
 {% endblock %}
 
 {% block content %}
+{# Builds the href for a row's record, or an empty string when the blueprint that
+   owns the destination failed to register -- blueprints register non-fatally here,
+   so an unguarded url_for would raise BuildError and 500 every page rendering the
+   sidebar. Callers keep the <a> in the row itself so the link is visible both to a
+   reader and to scripts/check_actionable_rows.py. #}
+{% macro row_href(endpoint) %}{% if endpoint in flask.current_app.view_functions %}{{ url_for(endpoint, **kwargs) }}{% endif %}{% endmacro %}
 <div class="flex flex-col space-y-8 animate-in fade-in duration-500">
     {{ page_header(
         title='Architecture Governance',
@@ -45,7 +51,15 @@
                     <tbody class="divide-y">
                         {% for item in governance_analyses|default([]) %}
                         <tr class="border-b hover:bg-muted/50">
-                            <td class="p-3">{{ item.element_name|default('N/A') }}</td>
+                            <td class="p-3">
+                                {% if item.element_id and item.element_type == 'ApplicationComponent' %}
+                                {% set _h = row_href('unified_applications.application_detail', id=item.element_id)|trim %}{% if _h %}<a href="{{ _h }}" class="font-medium text-primary hover:underline">{{ item.element_name|default('N/A') }}</a>{% else %}{{ item.element_name|default('N/A') }}{% endif %}
+                                {% elif item.element_id and item.element_type == 'BusinessCapability' %}
+                                {% set _h = row_href('archimate_crud.detail_element', layer='strategy', element_type='Capability', element_id=item.element_id)|trim %}{% if _h %}<a href="{{ _h }}" class="font-medium text-primary hover:underline">{{ item.element_name|default('N/A') }}</a>{% else %}{{ item.element_name|default('N/A') }}{% endif %}
+                                {% else %}
+                                {{ item.element_name|default('N/A') }}
+                                {% endif %}
+                            </td>
                             <td class="p-3">
                                 <span class="px-2 py-1 text-xs rounded-full
                                     {% if item.status == 'Critical' %}bg-destructive/20 text-destructive-emphasis

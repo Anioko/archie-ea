@@ -133,7 +133,10 @@
             {{ empty_state(
                 icon='pie-chart',
                 title='No review status data yet',
-                description='Status distribution will appear after the first governed subject is submitted.',
+                description='Status distribution will appear after the first governed subject is submitted to the board.',
+                cta_text='Submit something for review',
+                cta_href=url_for('arb.create_review'),
+                cta_icon='plus',
                 padding='py-6'
             ) }}
         </div>

@@ -172,7 +172,14 @@
                     <tbody class="divide-y">
                         {% for imp in analysis.direct_impacts %}
                         <tr class="hover:bg-muted/30">
-                            <td class="p-3 font-medium">{{ imp.name }}</td>
+                            {# An impacted element is itself a change to trace: the name
+                               opens the same analysis rooted on that element. #}
+                            <td class="p-3 font-medium">
+                                {% if imp.id and 'architect_ui.impact_analysis' in flask.current_app.view_functions %}
+                                <a href="{{ url_for('architect_ui.impact_analysis', element_id=imp.id) }}"
+                                   class="text-primary hover:underline">{{ imp.name }}</a>
+                                {% else %}{{ imp.name }}{% endif %}
+                            </td>
                             <td class="p-3">
                                 {% if imp.layer == 'Strategy' %}
                                     <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-primary/10 text-primary">{{ imp.layer }}</span>

@@ -3341,6 +3341,9 @@ provides foundation for subsequent architecture development phases.
 
             org = org_by_name.get(name.lower())
             if org:
+                # Carried so the TCO table can link the row to the vendor record
+                # it was priced from; the shortlist only carries a name.
+                entry["vendor_id"] = org.id
                 fam_list = families_by_vendor.get(org.id, [])
                 best_fam = next(
                     (f for f in fam_list if detail_by_family.get(f.id)), None
@@ -3863,9 +3866,14 @@ provides foundation for subsequent architecture development phases.
                             "source_id": src.id,
                             "source_name": src.name,
                             "source_type": src_type,
+                            # Layers are carried so the review report can link each
+                            # end of an invalid relationship to the element that
+                            # has to be fixed; the detail route is layer-scoped.
+                            "source_layer": getattr(src, "layer", None),
                             "target_id": tgt.id,
                             "target_name": tgt.name,
                             "target_type": tgt_type,
+                            "target_layer": getattr(tgt, "layer", None),
                             "relationship_type": rel_type,
                             "issue": (
                                 f"The ArchiMate 3.2 specification does not allow "

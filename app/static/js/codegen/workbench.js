@@ -3294,9 +3294,17 @@
                     '<div class="text-center max-w-md">' +
                     '<h2 class="text-xl font-bold text-slate-900 mb-2">Workbench failed to load</h2>' +
                     '<p class="text-slate-500 mb-4">' + e.message + '</p>' +
-                    '<button onclick="location.reload()" class="bg-primary text-primary-foreground px-4 py-2 rounded-lg font-medium">Reload Page</button>' +
+                    '<button type="button" data-workbench-reload class="bg-primary text-primary-foreground px-4 py-2 rounded-lg font-medium">Reload Page</button>' +
                     '</div></div>';
             }
+            // Delegated, because the CSP refuses inline on*= attributes: this
+            // Reload button carried onclick="location.reload()" and never fired,
+            // so the workbench's only escape from a boot failure was dead.
+            document.addEventListener('click', (ev) => {
+                if (!ev.target.closest('[data-workbench-reload]')) return;
+                ev.preventDefault();
+                location.reload();
+            });
         });
     }
     }

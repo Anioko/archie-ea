@@ -173,7 +173,12 @@
                                    class="rounded border-input" aria-label="Select {{ app.name }}">
                         </td>
                         <td class="px-4 py-3">
+                            {% if 'unified_applications.application_detail' in flask.current_app.view_functions %}
+                            <a href="{{ url_for('unified_applications.application_detail', id=app.id) }}"
+                               class="text-sm font-medium text-primary hover:underline">{{ app.name }}</a>
+                            {% else %}
                             <p class="text-sm font-medium text-foreground">{{ app.name }}</p>
+                            {% endif %}
                             {% if app.description %}
                             <p class="text-xs text-muted-foreground mt-0.5 truncate max-w-[300px]">{{ app.description }}</p>
                             {% endif %}

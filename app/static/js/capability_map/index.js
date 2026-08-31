@@ -20,6 +20,100 @@
     function invalidateEl(id) { _domCache.delete(id); }
 
 
+    // Attribute-safe escaping. The global escapeHtml() round-trips through
+    // textContent/innerHTML, which escapes < > & but NOT the double quote --
+    // fine for a text node, unsafe for an attribute value. Every data-* value
+    // written into a template literal below goes through this instead.
+    function escapeAttr(value) {
+        if (value === null || value === undefined) return '';
+        return String(value)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    // ---- Delegated action dispatcher ---------------------------------------
+    //
+    // The app ships script-src 'self' 'nonce-...' 'strict-dynamic' with no
+    // 'unsafe-inline' and no 'unsafe-hashes', so an on*= attribute NEVER runs
+    // -- innerHTML-injected ones included. (safeHTML's DOMPurify config also
+    // lists onclick in FORBID_ATTR, so these were stripped before the CSP even
+    // got a say.) Every control in this file therefore did nothing at all.
+    //
+    // Each is now `data-cm-action="<name>"` plus data-* arguments, dispatched
+    // by ONE document-level listener. Delegation is required, not stylistic:
+    // these grids are rebuilt wholesale from fetched data, so a listener bound
+    // to a node dies with the next render.
+    //
+    // closest() picks the INNERMOST matching element, which is what the old
+    // `event.stopPropagation()` calls were for (an icon button sitting inside
+    // a clickable bar). One listener + closest() gives that for free.
+    const CM_ACTIONS = {
+        'retry-load':            (el) => retryLoadData(el.dataset.tab),
+        'roadmap-retry':         ()   => { roadmapData.initialized = false; initRoadmapTab(); },
+        'process-gap-retry':     ()   => { processGapData.loaded = false; loadProcessGapData(); },
+        'expand-all-roadmap':    ()   => expandAllRoadmapRows(),
+        'collapse-all-roadmap':  ()   => collapseAllRoadmapRows(),
+        'toggle-row-expansion':  (el) => toggleRowExpansion(el.dataset.itemId),
+        'toggle-wp-expansion':   (el) => toggleWorkPackageExpansion(el.dataset.wpId),
+        'show-gap-details':      (el) => showGapDetails(el.dataset.itemId),
+        'show-comments':         (el) => showCommentsPanel(el.dataset.itemId, el.dataset.itemType),
+        'add-comment':           (el) => addComment(el.dataset.itemId, el.dataset.itemType),
+        'delete-confirm':        (el) => openDeleteConfirmModal(
+                                            el.dataset.itemId, el.dataset.itemType,
+                                            el.dataset.itemName, parseInt(el.dataset.childCount, 10) || 0),
+        'open-edit-wp':          (el) => openEditWPModal(el.dataset.wpId),
+        'set-roadmap-view':      (el) => setRoadmapView(el.dataset.view),
+        'open-convert-modal':    ()   => openConvertModal(),
+        'load-persisted-roadmap':()   => loadPersistedRoadmapData(),
+        'clear-filter':          (el) => clearFilter(el.dataset.field),
+        'bulk-status-update':    ()   => executeBulkStatusUpdate(),
+        'bulk-owner-update':     ()   => executeBulkOwnerUpdate(),
+        'bulk-delete':           ()   => executeBulkDelete(),
+        'save-dependency':       (el) => saveDependency(el.dataset.itemId),
+        'quick-add-roadmap':     (el) => quickAddToRoadmap(el.dataset.capId, el.dataset.capName,
+                                            'business', parseInt(el.dataset.capLevel, 10) || 1,
+                                            el.dataset.capPriority),
+        'add-to-roadmap':        (el) => addToRoadmap(el.dataset.capId, el.dataset.capName,
+                                            'business', parseInt(el.dataset.capLevel, 10) || 1,
+                                            el.dataset.capPriority),
+        'open-mapping-modal':    (el) => openMappingModal(el.dataset.capId, el.dataset.capName),
+        'toggle-row-selection':  (el) => {
+            const tab = el.dataset.tab;
+            const id = el.dataset.capId;
+            if (!tableData[tab]) return;
+            toggleRowSelection(id, tab, !tableData[tab].selected.has(id));
+        },
+        // openProcessMappingModal lives in index_inline.js, which loads after
+        // this file; the name is resolved at click time, so order is fine.
+        'open-process-mapping':  (el) => openProcessMappingModal(
+                                            el.dataset.processId, el.dataset.processName,
+                                            el.dataset.processCode, el.dataset.processType),
+        'delete-mapping':        (el) => deleteMapping(el.dataset.mappingId, el.dataset.appId),
+        'close-modal':           (el) => { const m = el.closest('.fixed'); if (m) m.remove(); },
+        'dismiss-parent':        (el) => { if (el.parentElement) el.parentElement.remove(); },
+    };
+
+    function runCmAction(event) {
+        const el = event.target.closest('[data-cm-action]');
+        if (!el) return;
+        const handler = CM_ACTIONS[el.getAttribute('data-cm-action')];
+        if (!handler) return;
+        handler(el, event);
+    }
+
+    document.addEventListener('click', runCmAction);
+    // Two of the controls are <div role="button"> -- absolutely positioned
+    // gradient roadmap bars, not buttons -- so keyboard activation has to be
+    // wired explicitly rather than inherited from the element.
+    document.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        const el = event.target.closest('[data-cm-action][role="button"]');
+        if (!el) return;
+        event.preventDefault();
+        runCmAction(event);
+    });
+
+
     // Dynamic Domain Colors using string hash
     function getDomainColor(domain) {
         if (!domain) return 'bg-muted text-foreground';
@@ -155,7 +249,7 @@
         if (!tableBody) return;
     
         const retryButton = showRetry ?
-            `<button onclick="retryLoadData('${tabType}')" class="mt-4 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors">
+            `<button type="button" data-cm-action="retry-load" data-tab="${escapeAttr(tabType)}" class="mt-4 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors">
                 <i data-lucide="refresh-cw" class="w-4 h-4 inline mr-2"></i>
                 Retry
             </button>` : '';
@@ -251,15 +345,51 @@
             // generateTableRow() below. This is a display-level fix only; the
             // option's value stays the raw code so filtering still matches
             // the underlying data.
-            const domains = [...new Set(data.map(item => item.domain?.code || item.domain?.name || 'Unassigned').filter(Boolean))];
+            // Key on the code only where there IS a real one. This used to be
+            // `code || name`, and the API returns the literal placeholder "UNK"
+            // as a code for every capability with no business domain set -- so
+            // the whole dropdown collapsed to a single "UNK" option while the
+            // domain cards above it, which key on the NAME in that case, showed
+            // Customer / Product / Operations / ... Clicking a card assigned
+            // `select.value = "Customer"` to a <select> whose only option was
+            // "UNK"; the browser silently resolves an unmatched assignment to
+            // "" and the filter did nothing. Both surfaces must agree on the key.
+            // filterTable() matches on `domain.code === v || domain.name === v`,
+            // so a name is a valid filter value.
+            const domainKey = (item) => {
+                const code = item.domain?.code;
+                if (code && code !== 'UNK' && code !== 'Unknown') return code;
+                return item.domain?.name && item.domain.name !== 'Unknown'
+                    ? item.domain.name : 'Unassigned';
+            };
+            const domains = [...new Set(data.map(domainKey).filter(Boolean))].sort();
             safeHTML(domainFilter, '<option value="">All Domains</option>');
             domains.forEach(domain => {
-                const label = (domain === 'UNK' || domain === 'Unknown') ? 'Unassigned' : domain;
-                domainFilter.innerHTML += `<option value="${escapeHtml(domain)}">${escapeHtml(label)}</option>`; // safe: escapeHtml applied
+                domainFilter.innerHTML += `<option value="${escapeHtml(domain)}">${escapeHtml(domain)}</option>`; // safe: escapeHtml applied
             });
         }
     }
     
+    // Delegated, because the CSP forbids inline handlers.
+    //
+    // These cards carried onclick="getEl('application-domain-filter')..." and
+    // therefore did NOTHING for their entire life -- while wearing
+    // cursor-pointer and a hover shadow, so they looked interactive. The owner
+    // reported it as "what is the purpose of these if I cannot click them".
+    //
+    // The inline-handlers gate reported 0 the whole time: it scans templates,
+    // and this handler is generated inside a JS template literal where it
+    // cannot see it. Delegation is bound once, at document level, and survives
+    // the grid being re-rendered.
+    document.addEventListener('click', (event) => {
+        const card = event.target.closest('[data-domain-filter]');
+        if (!card) return;
+        const select = getEl('application-domain-filter');
+        if (!select) return;
+        select.value = card.getAttribute('data-domain-filter');
+        filterTable('application');
+    });
+
     // Render Application Domain Cards from loaded data
     function renderApplicationDomainCards(data) {
         const grid = getEl('application-domains-grid');
@@ -291,7 +421,7 @@
             // it touches and then names the merge after an arbitrary member.
             const key = (code !== 'N/A') ? code : name;
             if (!domainMap[key]) {
-                domainMap[key] = { code, name, total: 0, mapped: 0 };
+                domainMap[key] = { key, code, name, total: 0, mapped: 0 };
             }
             domainMap[key].total++;
             if (item.is_mapped) domainMap[key].mapped++;
@@ -324,10 +454,14 @@
             const statusColor = coverage >= 70 ? 'bg-sky-400' : coverage >= 40 ? 'bg-amber-400' : 'bg-rose-400';
     
             return `
-                <div class="${cs.bg} border-2 ${cs.border} rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer"
-                     onclick="getEl('application-domain-filter').value='${escapeHtml(domain.code)}'; filterTable('application');">
+                <button type="button"
+                     class="${cs.bg} border-2 ${cs.border} rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer text-left w-full"
+                     data-domain-filter="${escapeAttr(domain.key)}"
+                     aria-label="Filter capabilities to ${escapeHtml(domain.name)}">
                     <div class="flex items-start justify-between mb-3">
-                        <span class="text-xs font-bold ${cs.textBold} ${cs.badge} px-2 py-0.5 rounded">${escapeHtml(domain.code)}</span>
+                        ${domain.code && domain.code !== 'N/A'
+                            ? `<span class="text-xs font-bold ${cs.textBold} ${cs.badge} px-2 py-0.5 rounded">${escapeHtml(domain.code)}</span>`
+                            : '<span></span>'}
                         <div class="w-2 h-2 rounded-full ${statusColor}"></div>
                     </div>
                     <h4 class="text-sm font-semibold ${cs.textHead} mb-1">${escapeHtml(domain.name)}</h4>
@@ -341,7 +475,7 @@
                     <div class="mt-2 text-xs text-muted-foreground">
                         ${domain.mapped} mapped | ${domain.total - domain.mapped} gaps
                     </div>
-                </div>
+                </button>
             `;
         }).join(''));
     }
@@ -734,8 +868,20 @@
     
     // Close export menu when clicking outside
     document.addEventListener('click', function(event) {
+        // getEl() returns null when the element is absent, and #export-menu is
+        // absent from capability_map/index.html -- so this threw an uncaught
+        // TypeError on EVERY click anywhere on the page. Harmless-looking
+        // (nothing depended on it) but it aborted the listener and filled the
+        // console with "Cannot read properties of null (reading 'classList')",
+        // which is exactly the noise that hides a real failure.
         const menu = getEl('export-menu');
+        if (!menu) return;
         const button = event.target.closest('button');
+        // NOTE: `button.onclick` is always null under the app's CSP -- an
+        // inline handler never becomes a property -- so this can no longer
+        // recognise the toggle button and the menu closes on any click. That
+        // is the existing behaviour and is left alone here; it only matters on
+        // a page that actually renders #export-menu.
         if (!button || !button.onclick || !button.onclick.toString().includes('toggleExportMenu')) {
             menu.classList.add('hidden');
         }
@@ -870,6 +1016,22 @@
     };
     
     // Initialize roadmap tab when clicked
+    // MEASURED, 31 Aug 2026: this whole roadmap renderer no longer reaches the
+    // screen on /capability-map/. The roadmap panel in
+    // templates/capability_map/index.html is now the `roadmap_widget`
+    // component with container_id='capability-roadmap', so its containers are
+    // id="roadmap-timeline-capability-roadmap" etc. The functions below still
+    // target the unsuffixed ids ("roadmap-labels", "roadmap-timeline") that no
+    // template defines any more, so loadRoadmapData() fetches
+    // /api/roadmap/gaps, hands the result to safeHTML(null, ...) and the
+    // Platform logs "sanitize.html: target is not a DOM element null".
+    //
+    // Consequence: the controls this file renders for the roadmap (expand /
+    // collapse all, gap-bar details, work-package edit and delete, convert,
+    // set-view, comments, dependencies) are unreachable -- they were converted
+    // off their dead onclick= attributes so they are correct if this renderer
+    // is ever re-pointed at the widget's ids, but nothing renders them today.
+    // Re-pointing them is a change to the widget contract, not to this file.
     function initRoadmapTab() {
         if (!roadmapData.initialized) {
             loadRoadmapData();
@@ -946,7 +1108,7 @@
                 renderRoadmapTimeline();
             }
         } catch (error) {
-            const retryButton = `<button onclick="roadmapData.initialized = false; initRoadmapTab();" class="mt-4 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors">
+            const retryButton = `<button type="button" data-cm-action="roadmap-retry" class="mt-4 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors">
                 <i data-lucide="refresh-cw" class="w-4 h-4 inline mr-2"></i>
                 Retry
             </button>`;
@@ -1457,8 +1619,8 @@
         const labelsContainer = getEl('roadmap-labels');
         safeHTML(labelsContainer, `
             <div class="h-12 px-4 flex items-center font-semibold text-muted-foreground border-b border-border">
-                <button onclick="expandAllRoadmapRows()" class="mr-2 text-xs text-primary hover:text-primary/90 font-semibold">Expand All</button>
-                <button onclick="collapseAllRoadmapRows()" class="mr-4 text-xs text-muted-foreground hover:text-foreground font-semibold">Collapse All</button>
+                <button type="button" data-cm-action="expand-all-roadmap" class="mr-2 text-xs text-primary hover:text-primary/90 font-semibold">Expand All</button>
+                <button type="button" data-cm-action="collapse-all-roadmap" class="mr-4 text-xs text-muted-foreground hover:text-foreground font-semibold">Collapse All</button>
                 Capability / Gap Type
             </div>
             ${roadmapData.filteredItems.map(item => renderRoadmapLabel(item, capTypeIcons)).join('')}
@@ -1521,7 +1683,7 @@
                 <div class="flex items-start gap-3 w-full pl-2">
                     <!-- Expand/Collapse Icon Button -->
                     ${hasWorkPackages ? `
-                        <button onclick="toggleRowExpansion('${item.id}')"
+                        <button type="button" data-cm-action="toggle-row-expansion" data-item-id="${escapeAttr(item.id)}"
                                 class="mt-0.5 flex-shrink-0 w-6 h-6 flex items-center justify-center rounded hover:bg-accent transition-colors"
                                 title="${isExpanded ? 'Collapse' : 'Expand'} work packages">
                             <i data-lucide="${isExpanded ? 'chevron-down' : 'chevron-right'}" class="w-4 h-4 text-muted-foreground"></i>
@@ -1633,7 +1795,7 @@
                     ` : ''}
                     <div class="flex items-center gap-2.5 w-full relative z-10">
                         ${hasChildren ? `
-                            <button onclick="toggleWorkPackageExpansion('${wp.id}')"
+                            <button type="button" data-cm-action="toggle-wp-expansion" data-wp-id="${escapeAttr(wp.id)}"
                                     class="flex-shrink-0 w-5 h-5 flex items-center justify-center rounded hover:bg-indigo-200 transition-colors"
                                     title="${isWpExpanded ? 'Collapse' : 'Expand'} sub-packages">
                                 <i data-lucide="${isWpExpanded ? 'chevron-down' : 'chevron-right'}" class="w-3.5 h-3.5 text-indigo-700"></i>
@@ -1691,9 +1853,9 @@
         const isPersistedGap = roadmapData.viewMode === 'persisted' && item.is_persisted;
         const commentCount = (commentsData.get(`gap-${item.id}`) || []).length;
         const actionIcons = isPersistedGap ? `
-            <i data-lucide="message-square" class="w-4 h-4 mr-1 opacity-0 group-hover:opacity-70 transition-opacity cursor-pointer" onclick="event.stopPropagation(); showCommentsPanel('${item.id}', 'gap')" title="Comments${commentCount > 0 ? ` (${commentCount})` : ''}"></i>
+            <button type="button" data-cm-action="show-comments" data-item-id="${escapeAttr(item.id)}" data-item-type="gap" class="mr-1 opacity-0 group-hover:opacity-70 transition-opacity" title="Comments${commentCount > 0 ? ` (${commentCount})` : ''}" aria-label="Comments on ${escapeAttr(item.name)}"><i data-lucide="message-square" class="w-4 h-4"></i></button>
             <i data-lucide="edit-2" class="w-4 h-4 mr-1 opacity-0 group-hover:opacity-70 transition-opacity"></i>
-            <i data-lucide="trash-2" class="w-4 h-4 mr-2 opacity-0 group-hover:opacity-70 hover:!opacity-100 hover:text-red-200 transition-opacity" onclick="event.stopPropagation(); openDeleteConfirmModal('${item.id}', 'gap', '${escapeHtml(item.name)}', ${item.work_package_count || 0})"></i>
+            <button type="button" data-cm-action="delete-confirm" data-item-id="${escapeAttr(item.id)}" data-item-type="gap" data-item-name="${escapeAttr(item.name)}" data-child-count="${item.work_package_count || 0}" class="mr-2 opacity-0 group-hover:opacity-70 hover:!opacity-100 hover:text-red-200 transition-opacity" aria-label="Delete ${escapeAttr(item.name)}"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
         ` : '';
     
         let html = `
@@ -1708,7 +1870,9 @@
                 <div class="absolute rounded-md flex items-center cursor-pointer hover:opacity-90 transition-opacity group"
                      style="left: ${barStyle.left}; width: ${barStyle.width}; top: 50%; transform: translateY(-50%); height: 44px; background: linear-gradient(135deg, ${barColor} 0%, ${darkerBarColor} 100%); box-shadow: 0 2px 4px rgba(0,0,0,0.15);"
                      title="${tooltip}${isPersistedGap ? '\n(Click to edit)' : ''}"
-                     onclick="showGapDetails('${item.id}')">
+                     role="button" tabindex="0"
+                     data-cm-action="show-gap-details" data-item-id="${escapeAttr(item.id)}"
+                     aria-label="Open details for ${escapeAttr(item.name)}">
                     <span style="color: white; font-size: 14px; font-weight: 600; padding: 0 12px; white-space: nowrap; text-shadow: 0 1px 2px rgba(0,0,0,0.3); overflow: hidden; text-overflow: ellipsis; flex: 1;">${escapeHtml(item.name)}</span>
                     ${item.work_package_count ? `<span class="text-primary-foreground text-xs bg-background/20 px-2 py-0.5 rounded mr-2">${item.work_package_count} WP</span>` : ''}
                     ${actionIcons}
@@ -1750,7 +1914,7 @@
     
             // Chevron for expandable work packages
             const chevron = hasChildren ? (isWpExpanded ? '▼' : '▶') : '';
-            const chevronHtml = chevron ? `<span class="text-muted-foreground mr-1 cursor-pointer" onclick="event.stopPropagation(); toggleWorkPackageExpansion('${wp.id}')">${chevron}</span>` : '';
+            const chevronHtml = chevron ? `<button type="button" class="text-muted-foreground mr-1 cursor-pointer" data-cm-action="toggle-wp-expansion" data-wp-id="${escapeAttr(wp.id)}" aria-label="Toggle sub-packages of ${escapeAttr(wp.name)}">${chevron}</button>` : '';
     
             // Level indicator (L1, L2, L3, etc.)
             const levelBadge = `<span class="text-primary-foreground text-xs bg-white/30 px-1.5 py-0.5 rounded mr-1 font-semibold">L${level}</span>`;
@@ -1770,13 +1934,15 @@
                     <div class="absolute rounded-md flex items-center cursor-pointer hover:opacity-90 transition-opacity group"
                          style="left: calc(${wpBarStyle.left} + ${indentPx}px); width: calc(${wpBarStyle.width} - ${indentPx}px); top: 50%; transform: translateY(-50%); height: ${barHeight}px; background: linear-gradient(135deg, ${wpColor} 0%, ${wpDarkerColor} 100%); box-shadow: 0 1px 3px rgba(0,0,0,0.1);"
                          title="Level ${level}: ${escapeHtml(wp.name)}\nStatus: ${escapeHtml(wp.status || 'Not Started')}\nProgress: ${wp.percent_complete || 0}%\nOwner: ${escapeHtml(wp.owner_name || 'Unassigned')}"
-                         onclick="openEditWPModal('${wp.id}')">
+                         role="button" tabindex="0"
+                         data-cm-action="open-edit-wp" data-wp-id="${escapeAttr(wp.id)}"
+                         aria-label="Edit work package ${escapeAttr(wp.name)}">
                         ${chevronHtml}
                         ${levelBadge}
                         <span style="color: white; font-size: ${fontSize}px; font-weight: 500; padding: 0 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1;">${escapeHtml(wp.name)}</span>
                         ${childBadge}
                         <span class="text-primary-foreground text-xs bg-background/20 px-1.5 py-0.5 rounded mr-1">${escapeHtml(wp.status || 'Not Started')}</span>
-                        <i data-lucide="trash-2" class="w-3.5 h-3.5 mr-1.5 opacity-0 group-hover:opacity-70 hover:!opacity-100 hover:text-red-200 transition-opacity" onclick="event.stopPropagation(); openDeleteConfirmModal('${wp.id}', 'work_package', '${escapeHtml(wp.name)}', ${hasChildren ? wp.children.length : 0})"></i>
+                        <button type="button" data-cm-action="delete-confirm" data-item-id="${escapeAttr(wp.id)}" data-item-type="work_package" data-item-name="${escapeAttr(wp.name)}" data-child-count="${hasChildren ? wp.children.length : 0}" class="mr-1.5 opacity-0 group-hover:opacity-70 hover:!opacity-100 hover:text-red-200 transition-opacity" aria-label="Delete ${escapeAttr(wp.name)}"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
                     </div>
                 </div>
             `;
@@ -1994,11 +2160,11 @@
                                 Start by analyzing auto-detected gaps and converting them to trackable roadmap items.
                             </p>
                             <div class="flex justify-center space-x-3">
-                                <button onclick="setRoadmapView('auto')" class="px-5 py-2.5 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 font-medium flex items-center">
+                                <button type="button" data-cm-action="set-roadmap-view" data-view="auto" class="px-5 py-2.5 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 font-medium flex items-center">
                                     <i data-lucide="eye" class="w-4 h-4 mr-2"></i>
                                     View Auto-Detected Gaps
                                 </button>
-                                <button onclick="openConvertModal()" class="px-5 py-2.5 bg-primary text-primary-foreground rounded-md hover:bg-purple-700 font-medium flex items-center">
+                                <button type="button" data-cm-action="open-convert-modal" class="px-5 py-2.5 bg-primary text-primary-foreground rounded-md hover:bg-purple-700 font-medium flex items-center">
                                     <i data-lucide="save" class="w-4 h-4 mr-2"></i>
                                     Convert Gaps
                                 </button>
@@ -2020,11 +2186,11 @@
                                 This could be due to a network issue or server problem. Please try again.
                             </p>
                             <div class="flex justify-center space-x-3">
-                                <button onclick="loadPersistedRoadmapData()" class="px-5 py-2.5 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 font-medium flex items-center">
+                                <button type="button" data-cm-action="load-persisted-roadmap" class="px-5 py-2.5 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 font-medium flex items-center">
                                     <i data-lucide="refresh-cw" class="w-4 h-4 mr-2"></i>
                                     Retry
                                 </button>
-                                <button onclick="setRoadmapView('auto')" class="px-5 py-2.5 bg-secondary text-secondary-foreground rounded-md hover:bg-secondary/80 font-medium flex items-center">
+                                <button type="button" data-cm-action="set-roadmap-view" data-view="auto" class="px-5 py-2.5 bg-secondary text-secondary-foreground rounded-md hover:bg-secondary/80 font-medium flex items-center">
                                     <i data-lucide="arrow-left" class="w-4 h-4 mr-2"></i>
                                     View Auto-Detected
                                 </button>
@@ -2266,7 +2432,7 @@
                         <i data-lucide="keyboard" class="w-5 h-5 mr-2 text-primary"></i>
                         Keyboard Shortcuts
                     </h3>
-                    <button onclick="this.closest('.fixed').remove()" class="text-muted-foreground hover:text-muted-foreground">
+                    <button type="button" data-cm-action="close-modal" aria-label="Close dialog" class="text-muted-foreground hover:text-muted-foreground">
                         <i data-lucide="x" class="w-5 h-5"></i>
                     </button>
                 </div>
@@ -2274,7 +2440,7 @@
                     ${shortcutsHtml}
                 </div>
                 <div class="mt-4 text-center">
-                    <button onclick="this.closest('.fixed').remove()" class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90">
+                    <button type="button" data-cm-action="close-modal" aria-label="Close dialog" class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90">
                         Got it!
                     </button>
                 </div>
@@ -2425,7 +2591,7 @@
             safeHTML(activeFiltersTags, filters.map(f => `
                 <span class="inline-flex items-center px-3 py-1 bg-primary/10 text-primary/90 rounded-full text-sm">
                     ${f.label}
-                    <button onclick="clearFilter('${f.field}')" class="ml-2 hover:text-blue-900">
+                    <button type="button" data-cm-action="clear-filter" data-field="${escapeAttr(f.field)}" aria-label="Clear filter" class="ml-2 hover:text-blue-900">
                         <i data-lucide="x" class="w-3 h-3"></i>
                     </button>
                 </span>
@@ -2661,7 +2827,7 @@
             <div class="bg-card rounded-lg shadow-xl max-w-md w-full p-6">
                 <div class="flex items-center justify-between mb-4">
                     <h3 class="text-lg font-semibold text-foreground">Update Status</h3>
-                    <button onclick="this.closest('.fixed').remove()" class="text-muted-foreground hover:text-muted-foreground">
+                    <button type="button" data-cm-action="close-modal" aria-label="Close dialog" class="text-muted-foreground hover:text-muted-foreground">
                         <i data-lucide="x" class="w-5 h-5"></i>
                     </button>
                 </div>
@@ -2672,10 +2838,10 @@
                     ${statuses.map(s => `<option value="${s.value}">${s.label}</option>`).join('')}
                 </select>
                 <div class="flex justify-end space-x-3">
-                    <button onclick="this.closest('.fixed').remove()" class="px-4 py-2 text-muted-foreground hover:bg-accent rounded-md">
+                    <button type="button" data-cm-action="close-modal" aria-label="Close dialog" class="px-4 py-2 text-muted-foreground hover:bg-accent rounded-md">
                         Cancel
                     </button>
-                    <button onclick="executeBulkStatusUpdate()" class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90">
+                    <button type="button" data-cm-action="bulk-status-update" class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90">
                         Update Status
                     </button>
                 </div>
@@ -2714,7 +2880,7 @@
             <div class="bg-card rounded-lg shadow-xl max-w-md w-full p-6">
                 <div class="flex items-center justify-between mb-4">
                     <h3 class="text-lg font-semibold text-foreground">Assign Owner</h3>
-                    <button onclick="this.closest('.fixed').remove()" class="text-muted-foreground hover:text-muted-foreground">
+                    <button type="button" data-cm-action="close-modal" aria-label="Close dialog" class="text-muted-foreground hover:text-muted-foreground">
                         <i data-lucide="x" class="w-5 h-5"></i>
                     </button>
                 </div>
@@ -2725,10 +2891,10 @@
         <input type="text" id="bulk-owner-input" placeholder="Enter owner name..."
                        class="w-full px-3 py-2 border border-input rounded-md mb-4">
                 <div class="flex justify-end space-x-3">
-                    <button onclick="this.closest('.fixed').remove()" class="px-4 py-2 text-muted-foreground hover:bg-accent rounded-md">
+                    <button type="button" data-cm-action="close-modal" aria-label="Close dialog" class="px-4 py-2 text-muted-foreground hover:bg-accent rounded-md">
                         Cancel
                     </button>
-                    <button onclick="executeBulkOwnerUpdate()" class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-purple-700">
+                    <button type="button" data-cm-action="bulk-owner-update" class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-purple-700">
                         Assign Owner
                     </button>
                 </div>
@@ -2767,7 +2933,7 @@
                         <i data-lucide="alert-triangle" class="w-5 h-5 inline mr-2"></i>
                         Confirm Bulk Delete
                     </h3>
-                    <button onclick="this.closest('.fixed').remove()" class="text-muted-foreground hover:text-muted-foreground">
+                    <button type="button" data-cm-action="close-modal" aria-label="Close dialog" class="text-muted-foreground hover:text-muted-foreground">
                         <i data-lucide="x" class="w-5 h-5"></i>
                     </button>
                 </div>
@@ -2778,10 +2944,10 @@
                     <strong>Warning:</strong> This action cannot be undone.
                 </p>
                 <div class="flex justify-end space-x-3">
-                    <button onclick="this.closest('.fixed').remove()" class="px-4 py-2 text-muted-foreground hover:bg-accent rounded-md">
+                    <button type="button" data-cm-action="close-modal" aria-label="Close dialog" class="px-4 py-2 text-muted-foreground hover:bg-accent rounded-md">
                         Cancel
                     </button>
-                    <button onclick="executeBulkDelete()" class="px-4 py-2 bg-destructive text-primary-foreground rounded-md hover:bg-red-700">
+                    <button type="button" data-cm-action="bulk-delete" class="px-4 py-2 bg-destructive text-primary-foreground rounded-md hover:bg-red-700">
                         Delete Items
                     </button>
                 </div>
@@ -2916,7 +3082,7 @@
                         </h3>
                         <p class="text-sm text-muted-foreground mt-1">${escapeHtml(item.name)}</p>
                     </div>
-                    <button onclick="this.closest('.fixed').remove()" class="text-muted-foreground hover:text-muted-foreground">
+                    <button type="button" data-cm-action="close-modal" aria-label="Close dialog" class="text-muted-foreground hover:text-muted-foreground">
                         <i data-lucide="x" class="w-5 h-5"></i>
                     </button>
                 </div>
@@ -2958,7 +3124,7 @@
                               rows="3"></textarea>
                     <div class="flex justify-between items-center mt-3">
                         <span class="text-xs text-muted-foreground">Tip: Use @username to mention team members</span>
-                        <button onclick="addComment('${itemId}', '${itemType}')"
+                        <button type="button" data-cm-action="add-comment" data-item-id="${escapeAttr(itemId)}" data-item-type="${escapeAttr(itemType)}"
                                 class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 flex items-center">
                             <i data-lucide="send" class="w-4 h-4 mr-2"></i>
                             Post Comment
@@ -3588,7 +3754,7 @@
                         <i data-lucide="git-branch" class="w-5 h-5 mr-2 text-primary"></i>
                         Manage Dependencies
                     </h3>
-                    <button onclick="this.closest('.fixed').remove()" class="text-muted-foreground hover:text-muted-foreground">
+                    <button type="button" data-cm-action="close-modal" aria-label="Close dialog" class="text-muted-foreground hover:text-muted-foreground">
                         <i data-lucide="x" class="w-5 h-5"></i>
                     </button>
                 </div>
@@ -3615,7 +3781,7 @@
                         </select>
                     </div>
     
-                    <button onclick="saveDependency('${itemId}')" class="w-full px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90">
+                    <button type="button" data-cm-action="save-dependency" data-item-id="${escapeAttr(itemId)}" class="w-full px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90">
                         Add Dependency
                     </button>
                 </div>
@@ -3714,7 +3880,7 @@
                             </div>
                             <div class="flex items-center space-x-2">
                                 <span class="text-xs text-muted-foreground">${wp.start_date || 'No date'} - ${wp.end_date || 'No date'}</span>
-                                <button onclick="openEditWPModal(${wp.id})" class="text-primary hover:text-primary/90">
+                                <button type="button" data-cm-action="open-edit-wp" data-wp-id="${escapeAttr(wp.id)}" aria-label="Edit work package ${escapeAttr(wp.name)}" class="text-primary hover:text-primary/90">
                                     <i data-lucide="edit-2" class="w-4 h-4"></i>
                                 </button>
                             </div>
@@ -4110,7 +4276,7 @@
                             <span class="px-3 py-1 rounded-full text-xs font-medium ${statusColor}">
                                 ${child.status || 'planned'}
                             </span>
-                            <button onclick="openEditWPModal(${child.id})" class="text-primary hover:text-primary/90 p-1">
+                            <button type="button" data-cm-action="open-edit-wp" data-wp-id="${escapeAttr(child.id)}" aria-label="Edit work package ${escapeAttr(child.name)}" class="text-primary hover:text-primary/90 p-1">
                                 <i data-lucide="edit-2" class="w-4 h-4"></i>
                             </button>
                         </div>
@@ -4462,7 +4628,7 @@
                             <span class="px-2 py-0.5 rounded bg-primary/10 text-primary text-xs">L${level}</span>
                         </div>
                     </div>
-                    <button onclick="quickAddToRoadmap('${capId}', '${escapeHtml(capName).replace(/'/g, "\\'")}', 'business', ${level}, '${escapeHtml(priority)}')"
+                    <button type="button" data-cm-action="quick-add-roadmap" data-cap-id="${escapeAttr(capId)}" data-cap-name="${escapeAttr(capName)}" data-cap-level="${escapeAttr(level)}" data-cap-priority="${escapeAttr(priority)}" aria-label="Add ${escapeAttr(capName)} to roadmap"
                             class="px-3 py-1.5 bg-primary text-primary-foreground text-sm rounded-md hover:bg-purple-700">
                         <i data-lucide="plus" class="w-4 h-4 inline mr-1"></i>
                         Add
@@ -4597,7 +4763,7 @@
             <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-card">
                 <div class="flex justify-between items-center mb-4 pb-3 border-b">
                     <h3 class="text-lg font-bold text-foreground">Keyboard Shortcuts</h3>
-                    <button onclick="this.closest('.fixed').remove()" class="text-muted-foreground hover:text-muted-foreground">
+                    <button type="button" data-cm-action="close-modal" aria-label="Close dialog" class="text-muted-foreground hover:text-muted-foreground">
                         <i data-lucide="x" class="w-6 h-6"></i>
                     </button>
                 </div>
@@ -4645,18 +4811,18 @@
         const priority = item?.strategic_importance || 'medium';
     
         safeHTML(menu, `
-            <button onclick="openMappingModal('${capabilityId}', '${capabilityName}')"
+            <button type="button" data-cm-action="open-mapping-modal" data-cap-id="${escapeAttr(capabilityId)}" data-cap-name="${escapeAttr(capabilityName)}"
                     class="w-full text-left px-4 py-2 hover:bg-accent flex items-center gap-2">
                 <i data-lucide="layout-grid" class="w-4 h-4 text-primary"></i>
                 <span>Map to Applications</span>
             </button>
-            <button onclick="addToRoadmap('${capabilityId}', '${capabilityName}', 'business', ${level}, '${priority}')"
+            <button type="button" data-cm-action="add-to-roadmap" data-cap-id="${escapeAttr(capabilityId)}" data-cap-name="${escapeAttr(capabilityName)}" data-cap-level="${escapeAttr(level)}" data-cap-priority="${escapeAttr(priority)}"
                     class="w-full text-left px-4 py-2 hover:bg-accent flex items-center gap-2">
                 <i data-lucide="map" class="w-4 h-4 text-primary"></i>
                 <span>Add to Roadmap</span>
             </button>
             <hr class="my-1">
-            <button onclick="toggleRowSelection('${capabilityId}', '${tabType}', !tableData['${tabType}'].selected.has('${capabilityId}'))"
+            <button type="button" data-cm-action="toggle-row-selection" data-cap-id="${escapeAttr(capabilityId)}" data-tab="${escapeAttr(tabType)}"
                     class="w-full text-left px-4 py-2 hover:bg-accent flex items-center gap-2">
                 <i data-lucide="check-square" class="w-4 h-4 text-muted-foreground"></i>
                 <span>${tableData[tabType].selected.has(capabilityId) ? 'Deselect' : 'Select'}</span>
@@ -4768,7 +4934,7 @@
             updateProcessGapTable();
     
         } catch (error) {
-            const retryButton = `<button onclick="processGapData.loaded = false; loadProcessGapData();" class="mt-4 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-purple-700 transition-colors">
+            const retryButton = `<button type="button" data-cm-action="process-gap-retry" class="mt-4 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-purple-700 transition-colors">
                 <i data-lucide="refresh-cw" class="w-4 h-4 inline mr-2"></i>
                 Retry
             </button>`;
@@ -4989,7 +5155,7 @@
                     </span>
                 </td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm">
-                    <button onclick="openProcessMappingModal(${item.id}, '${escapeHtml(item.name || 'Unknown')}', '${escapeHtml(item.process_code || '')}', '${escapeHtml(item.process_type || '')}')"
+                    <button type="button" data-cm-action="open-process-mapping" data-process-id="${escapeAttr(item.id)}" data-process-name="${escapeAttr(item.name || 'Unknown')}" data-process-code="${escapeAttr(item.process_code || '')}" data-process-type="${escapeAttr(item.process_type || '')}" aria-label="Map process ${escapeAttr(item.name || 'Unknown')}"
                             class="text-primary hover:text-primary/90 text-sm font-medium">
                         <i data-lucide="map" class="w-4 h-4 inline mr-1"></i>Map
                     </button>
@@ -5308,7 +5474,10 @@
                         </div>
                         ${app.is_mapped && app.mapping_id ? `
                             <button
-                                onclick="deleteMapping('${app.mapping_id}', '${app.id}')"
+                                type="button"
+                                data-cm-action="delete-mapping"
+                                data-mapping-id="${escapeAttr(app.mapping_id)}"
+                                data-app-id="${escapeAttr(app.id)}"
                                 class="ml-2 px-3 py-1.5 text-xs bg-destructive text-primary-foreground rounded hover:bg-destructive/90 transition-colors flex items-center space-x-1"
                                 title="Remove mapping"
                             >
@@ -5669,7 +5838,7 @@
         notification.className = `fixed top-4 right-4 ${bgColor} text-primary-foreground px-6 py-3 rounded-lg shadow-lg z-50 flex items-center space-x-2`;
         safeHTML(notification, `
             <span>${escapeHtml(message)}</span>
-            <button onclick="this.parentElement.remove()" class="ml-4 text-primary-foreground hover:text-foreground/80">×</button>
+            <button type="button" data-cm-action="dismiss-parent" aria-label="Dismiss notification" class="ml-4 text-primary-foreground hover:text-foreground/80">×</button>
         `);
     
         document.body.appendChild(notification);

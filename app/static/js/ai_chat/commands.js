@@ -149,7 +149,7 @@ ${lowConf.length > 0 ? lowConf.map(m => `- ❓ ${m.process_code}: ${m.process_na
             });
 
             if (data.success) {
-                appendSystemMessage(`✅ Applied ${data.mappings_applied} APQC mappings — <a href="/applications/${appId}" class="underline font-medium" onclick="window.location.href='/applications/${appId}';return false;"><!-- inline-event-ok -->View Application →</a>`, 'info');
+                appendSystemMessage(`✅ Applied ${data.mappings_applied} APQC mappings — <a href="/applications/${appId}" class="underline font-medium">View Application →</a>`, 'info');
             } else {
                 appendSystemMessage(`❌ ${data.error}`, 'error');
             }
@@ -212,7 +212,7 @@ ${data.applications?.slice(0, 5).map(app => `- ${app.application_name}: ${app.ca
 
 Use \`/bulk-process [number]\` to process more applications.`;
 
-                responseText += `\n\n<a href="/applications" onclick="window.location.href='/applications';return false;" class="inline-block mt-2 text-primary underline text-sm"><!-- inline-event-ok --><!-- token-migration-ok -->View Application Portfolio →</a>`;
+                responseText += `\n\n<a href="/applications" class="inline-block mt-2 text-primary underline text-sm"><!-- token-migration-ok -->View Application Portfolio →</a>`;
 
                 appendMessage('ai', responseText, { domain: 'general' });
             } else {
@@ -246,9 +246,9 @@ ${data.gaps.slice(0, 10).map(g => `
 - **${g.severity === 'high' ? '' : ''} ${g.name}**
   ${g.description}
   *Recommendation:* ${g.recommendation}
-  ${g.capability_id ? `<a href="/capability_map/capabilities?id=${g.capability_id}" onclick="window.location.href='/capability_map/capabilities?id=${g.capability_id}';return false;"><!-- inline-event-ok -->→ View Capability</a>` : ''}
-  ${g.process_id ? `<a href="/archimate/composer?process=${g.process_id}" onclick="window.location.href='/archimate/composer?process=${g.process_id}';return false;"><!-- inline-event-ok -->→ Open in Composer</a>` : ''}
-  ${g.vendor_name ? `<a href="/applications?filter_vendor=${encodeURIComponent(g.vendor_name)}" onclick="window.location.href=this.href;return false;"><!-- inline-event-ok -->→ Find Vendors</a>` : ''}
+  ${g.capability_id ? `<a href="/capability_map/capabilities?id=${g.capability_id}">→ View Capability</a>` : ''}
+  ${g.process_id ? `<a href="/archimate/composer?process=${g.process_id}">→ Open in Composer</a>` : ''}
+  ${g.vendor_name ? `<a href="/applications?filter_vendor=${encodeURIComponent(g.vendor_name)}">→ Find Vendors</a>` : ''}
 `).join('\n')}
 
 <div class="mt-4 flex gap-2 flex-wrap">
@@ -288,7 +288,7 @@ ${data.gaps.slice(0, 10).map(g => `
 **Vendors Found:** ${data.vendors_found}
 
 ${data.vendors.map((v, i) => `
-### ${i + 1}. <a href="/vendors/${v.vendor_id}" onclick="window.location.href='/vendors/${v.vendor_id}';return false;"><!-- inline-event-ok -->${v.vendor_name}</a> (${Math.round(v.capability_fit * 100)}% fit)
+### ${i + 1}. <a href="/vendors/${v.vendor_id}">${v.vendor_name}</a> (${Math.round(v.capability_fit * 100)}% fit)
 **Products:** ${v.products.map(p => p.product_name).join(', ')}
 ${v.tco_estimate ? `**3-Year TCO:** $${v.tco_estimate.three_year.toLocaleString()}` : ''}
 `).join('\n')}
@@ -402,7 +402,7 @@ ${v.tco_estimate ? `**3-Year TCO:** $${v.tco_estimate.three_year.toLocaleString(
                 data.viewpoints.forEach(vp => {
                     responseText += `### ${vp.name}\n**Elements:** ${vp.element_count}\n`;
                     if (vp.viewpoint_view_id) {
-                        responseText += `<a href="${vp.composer_url}" onclick="window.location.href='${vp.composer_url}';return false;" class="text-primary underline text-sm"><!-- inline-event-ok --><!-- token-migration-ok -->→ Open in Composer</a>\n\n`;
+                        responseText += `<a href="${vp.composer_url}" class="text-primary underline text-sm"><!-- token-migration-ok -->→ Open in Composer</a>\n\n`;
                     } else {
                         responseText += `*(No elements in this layer)*\n\n`;
                     }

@@ -181,6 +181,11 @@
         {% endfor %}
     </ol>
     {% else %}
+        {# A derived measurement, not a store: this panel lists interventions computed from
+           controls, reviews, risks and designs that already exist, so there is no
+           "intervention" record for the reader to create. When it is empty the way forward
+           is the evidence-coverage panel directly below, which the copy already names.
+           empty-state-ok: derived measurement over existing records, nothing to create #}
         {{ empty_state(
             icon='circle-check',
             title='No current interventions in the measured scope',

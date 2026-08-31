@@ -15,6 +15,13 @@
 {% endblock %}
 
 {% block content %}
+{# Builds the href for a row's record, or an empty string when the blueprint that
+   owns the destination failed to register -- blueprints register non-fatally here,
+   so an unguarded url_for would raise BuildError and 500 every page rendering the
+   sidebar. Callers keep the <a> in the row itself so the link is visible both to a
+   reader and to scripts/check_actionable_rows.py. #}
+{% macro row_href(endpoint) %}{% if endpoint in flask.current_app.view_functions %}{{ url_for(endpoint, **kwargs) }}{% endif %}{% endmacro %}
+
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
     {{ page_header(
         title='Process Optimization',
@@ -44,7 +51,7 @@
                     <div class="flex items-center gap-2 mb-2">
                         <h4 class="text-sm font-medium text-foreground truncate">{{ process.name }}</h4>
                         {% if process.status %}
-                            {{ badge(process.status, 'secondary') }}
+                            {% call badge('secondary') %}{{ process.status }}{% endcall %}
                         {% endif %}
                     </div>
                     {% if process.primary_capability %}
@@ -104,13 +111,17 @@
                     {% for rec in optimization_recommendations %}
                     <tr class="hover:bg-muted/30">
                         <td class="px-6 py-4">
-                            <div class="text-sm font-medium text-foreground">{{ rec.recommendation_title }}</div>
+                            {# There is no per-recommendation page; the industry APQC queue is
+                               where a recommendation is accepted or rejected. #}
+                            <div class="text-sm font-medium text-foreground">
+                                {% set _h = row_href('industry_apqc.industry_apqc_recommendations')|trim %}{% if _h %}<a href="{{ _h }}" class="font-medium text-primary hover:underline">{{ rec.recommendation_title }}</a>{% else %}{{ rec.recommendation_title }}{% endif %}
+                            </div>
                             {% if rec.recommendation_description %}
                             <div class="text-xs text-muted-foreground mt-1 line-clamp-2">{{ rec.recommendation_description }}</div>
                             {% endif %}
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm">
-                            {{ badge(rec.recommendation_type or 'general', 'info') }}
+                            {% call badge('info') %}{{ rec.recommendation_type or 'general' }}{% endcall %}
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap text-center">
                             <span class="inline-flex items-center justify-center w-8 h-8 rounded-full 
@@ -137,17 +148,17 @@
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm">
                             {% if rec.status == 'pending' %}
-                                {{ badge('pending', 'warning') }}
+                                {% call badge('warning') %}pending{% endcall %}
                             {% elif rec.status == 'accepted' %}
-                                {{ badge('accepted', 'success') }}
+                                {% call badge('success') %}accepted{% endcall %}
                             {% elif rec.status == 'in_progress' %}
-                                {{ badge('in progress', 'info') }}
+                                {% call badge('info') %}in progress{% endcall %}
                             {% elif rec.status == 'completed' %}
-                                {{ badge('completed', 'success') }}
+                                {% call badge('success') %}completed{% endcall %}
                             {% elif rec.status == 'rejected' %}
-                                {{ badge('rejected', 'danger') }}
+                                {% call badge('destructive') %}rejected{% endcall %}
                             {% else %}
-                                {{ badge(rec.status or 'unknown', 'secondary') }}
+                                {% call badge('secondary') %}{{ rec.status or 'unknown' }}{% endcall %}
                             {% endif %}
                         </td>
                     </tr>

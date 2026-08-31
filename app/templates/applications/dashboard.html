@@ -642,7 +642,9 @@
                   <th class="pb-2 text-left font-medium text-muted-foreground">Context</th>
                 </tr>
               </thead>
-              <tbody class="divide-y">
+              <tbody class="divide-y">{# actionable-rows-ok: rows are flattened relationship descriptions built for display by the dashboard
+                 config and carry no element id. The ArchiMate Direct Links table below is the
+                 editable view of the same relationships. #}
                 {% for row in rel_rows %}
                 <tr class="border-b last:border-0 hover:bg-muted/50">
                   <td class="py-2 pr-3 font-medium">{{ row.name }}</td>
@@ -999,7 +1001,8 @@
               <th class="pb-2 text-left font-medium text-muted-foreground">Daily Txns</th>
             </tr>
           </thead>
-          <tbody class="divide-y">
+          <tbody class="divide-y">{# actionable-rows-ok: process-support rows built for display by the dashboard config, with no process
+             id to link. Change a mapping from the business process itself. #}
             {% for row in proc_rows %}
             <tr class="border-b last:border-0 hover:bg-muted/50">
               <td class="py-2 pr-3">{% call badge(variant='outline') %}{{ row.code }}{% endcall %}</td>
@@ -1893,7 +1896,9 @@
                 <th class="pb-2 text-left font-medium text-muted-foreground">Criticality</th>
               </tr>
             </thead>
-            <tbody class="divide-y">
+            <tbody class="divide-y">{# actionable-rows-ok: the edge list behind the dependency graph drawn above -- a textual rendering of
+               the same picture, for reading and export. Dependencies are edited on the
+               application at either end. #}
               {% for edge in dependency_graph_data.edges %}
               <tr class="border-b last:border-0 hover:bg-muted/50">
                 <td class="py-2 pr-3 font-mono text-xs">{{ edge.from }}</td>

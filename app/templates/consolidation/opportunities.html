@@ -26,19 +26,28 @@
             <thead>
                 <tr class="border-b border-border">
                     <th class="px-6 py-3 text-left font-medium text-muted-foreground">Opportunity</th>
-                    <th class="px-6 py-3 text-left font-medium text-muted-foreground">Type</th>
+                    <th class="px-6 py-3 text-left font-medium text-muted-foreground">Consolidate into</th>
+                    <th class="px-6 py-3 text-left font-medium text-muted-foreground">Status</th>
                     <th class="px-6 py-3 text-left font-medium text-muted-foreground">Impact</th>
                 </tr>
             </thead>
             <tbody class="divide-y divide-border">
                 {% for opp in opportunities %}
+                {# The opportunity has no page of its own; the target application it
+                   consolidates into is the record the decision is made against. #}
                 <tr class="hover:bg-muted/30">
                     <td class="px-6 py-3 font-medium text-foreground">{{ opp.name|default(opp.title|default('Unnamed')) }}</td>
-                    <td class="px-6 py-3 text-muted-foreground">{{ opp.opportunity_type|default('—') }}</td>
-                    <td class="px-6 py-3 text-muted-foreground">{{ opp.impact|default('—') }}</td>
+                    <td class="px-6 py-3">
+                        {% if opp.target_application_id and 'unified_applications.application_detail' in flask.current_app.view_functions %}
+                        <a href="{{ url_for('unified_applications.application_detail', id=opp.target_application_id) }}"
+                           class="text-primary hover:underline">{{ opp.target_application_name or 'Application #' ~ opp.target_application_id }}</a>
+                        {% else %}<span class="text-muted-foreground">—</span>{% endif %}
+                    </td>
+                    <td class="px-6 py-3 text-muted-foreground">{{ opp.status|default('—') }}</td>
+                    <td class="px-6 py-3 text-muted-foreground">{{ opp.business_impact|default(opp.impact|default('—')) }}</td>
                 </tr>
                 {% else %}
-                <tr><td colspan="3" class="px-6 py-8 text-center text-muted-foreground">No opportunities identified yet.</td></tr>
+                <tr><td colspan="4" class="px-6 py-8 text-center text-muted-foreground">No opportunities identified yet.</td></tr>
                 {% endfor %}
             </tbody>
         </table>

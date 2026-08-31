@@ -218,7 +218,7 @@
         <thead>
             <tr><th>#</th><th>Application</th><th>Status</th><th>Criticality</th><th>Technology</th></tr>
         </thead>
-        <tbody>
+        <tbody>{# actionable-rows-ok: printed SAD export (GET /solutions/<id>/export/sad) — this page exists to be printed or saved as PDF, so rows carry no controls; edit these records on the solution detail page and re-export. #}
             {% for app in applications %}
             <tr>
                 <td>{{ loop.index }}</td>
@@ -240,7 +240,7 @@
     {% if drivers %}
     <table>
         <thead><tr><th>Driver</th><th>Type</th><th>Description</th></tr></thead>
-        <tbody>
+        <tbody>{# actionable-rows-ok: printed SAD export (GET /solutions/<id>/export/sad) — this page exists to be printed or saved as PDF, so rows carry no controls; edit these records on the solution detail page and re-export. #}
             {% for d in drivers %}
             <tr>
                 <td><strong>{{ d.name }}</strong></td>
@@ -260,7 +260,7 @@
     {% if goals %}
     <table>
         <thead><tr><th>Goal</th><th>Description</th></tr></thead>
-        <tbody>
+        <tbody>{# actionable-rows-ok: printed SAD export (GET /solutions/<id>/export/sad) — this page exists to be printed or saved as PDF, so rows carry no controls; edit these records on the solution detail page and re-export. #}
             {% for g in goals %}
             <tr><td><strong>{{ g.name }}</strong></td><td>{{ g.description or '—' }}</td></tr>
             {% endfor %}
@@ -276,7 +276,7 @@
     {% if requirements %}
     <table>
         <thead><tr><th>Requirement</th><th>Type</th><th>Priority</th><th>Description</th></tr></thead>
-        <tbody>
+        <tbody>{# actionable-rows-ok: printed SAD export (GET /solutions/<id>/export/sad) — this page exists to be printed or saved as PDF, so rows carry no controls; edit these records on the solution detail page and re-export. #}
             {% for r in requirements %}
             <tr>
                 <td><strong>{{ r.name }}</strong></td>
@@ -297,7 +297,7 @@
     {% if constraints %}
     <table>
         <thead><tr><th>Constraint</th><th>Type</th><th>Description</th></tr></thead>
-        <tbody>
+        <tbody>{# actionable-rows-ok: printed SAD export (GET /solutions/<id>/export/sad) — this page exists to be printed or saved as PDF, so rows carry no controls; edit these records on the solution detail page and re-export. #}
             {% for c in constraints %}
             <tr>
                 <td><strong>{{ c.name }}</strong></td>
@@ -317,7 +317,7 @@
     {% if archimate_elements %}
     <table>
         <thead><tr><th>Element</th><th>Type</th><th>Layer</th><th>Role</th></tr></thead>
-        <tbody>
+        <tbody>{# actionable-rows-ok: printed SAD export (GET /solutions/<id>/export/sad) — this page exists to be printed or saved as PDF, so rows carry no controls; edit these records on the solution detail page and re-export. #}
             {% for el in archimate_elements %}
             <tr>
                 <td><strong>{{ el.name }}</strong></td>
@@ -338,7 +338,7 @@
     <p>Cross-layer relationships showing how motivation drives architecture through to implementation.</p>
     <table>
         <thead><tr><th>Source</th><th>Type</th><th>Relationship</th><th>Target</th><th>Type</th></tr></thead>
-        <tbody>
+        <tbody>{# actionable-rows-ok: printed SAD export (GET /solutions/<id>/export/sad) — this page exists to be printed or saved as PDF, so rows carry no controls; edit these records on the solution detail page and re-export. #}
             {% for t in traceability_chain %}
             <tr>
                 <td><strong>{{ t.source_name }}</strong></td>
@@ -359,7 +359,7 @@
     {% if risks %}
     <table>
         <thead><tr><th>Risk</th><th>Impact</th><th>Likelihood</th><th>Status</th><th>Mitigation</th></tr></thead>
-        <tbody>
+        <tbody>{# actionable-rows-ok: printed SAD export (GET /solutions/<id>/export/sad) — this page exists to be printed or saved as PDF, so rows carry no controls; edit these records on the solution detail page and re-export. #}
             {% for r in risks %}
             <tr>
                 <td><strong>{{ r.risk_description or r.description or '—' }}</strong></td>
@@ -382,7 +382,7 @@
     <p><strong>Total Estimated Cost:</strong> {{ "{:,.0f}".format(total_cost) }}</p>
     <table>
         <thead><tr><th>Category</th><th>Year</th><th>Recurring</th><th>Amount</th></tr></thead>
-        <tbody>
+        <tbody>{# actionable-rows-ok: printed SAD export (GET /solutions/<id>/export/sad) — this page exists to be printed or saved as PDF, so rows carry no controls; edit these records on the solution detail page and re-export. #}
             {% for t in tco_items %}
             <tr>
                 <td>{{ t.cost_category or '—' }}</td>
@@ -402,7 +402,7 @@
     {% if metrics %}
     <table>
         <thead><tr><th>Metric</th><th>Baseline</th><th>Target</th></tr></thead>
-        <tbody>
+        <tbody>{# actionable-rows-ok: printed SAD export (GET /solutions/<id>/export/sad) — this page exists to be printed or saved as PDF, so rows carry no controls; edit these records on the solution detail page and re-export. #}
             {% for m in metrics %}
             <tr>
                 <td><strong>{{ m.name }}</strong></td>
@@ -421,7 +421,7 @@
     {% if arb_reviews %}
     <table>
         <thead><tr><th>Submitted</th><th>Reviewer</th><th>Decision</th><th>Notes</th></tr></thead>
-        <tbody>
+        <tbody>{# actionable-rows-ok: printed SAD export (GET /solutions/<id>/export/sad) — this page exists to be printed or saved as PDF, so rows carry no controls; edit these records on the solution detail page and re-export. #}
             {% for r in arb_reviews %}
             <tr>
                 <td>{{ r.created_at.strftime('%Y-%m-%d') if r.created_at else '—' }}</td>

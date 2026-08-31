@@ -149,7 +149,9 @@
               <th scope="col" class="px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wide">Assessed</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody>{# actionable-rows-ok: a published, public snapshot of a maturity assessment, shared with people who
+               have no account. Deliberately inert; the assessment is edited in Archie by
+               its owner. #}
             {% for cap in group.capabilities %}
             <tr class="border-b border-border last:border-0">
               <td class="px-4 py-2 text-foreground">{{ cap.name }}</td>

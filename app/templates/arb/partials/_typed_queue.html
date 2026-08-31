@@ -98,7 +98,10 @@
             {{ empty_state(
                 icon='clipboard-list',
                 title='No typed ARB reviews yet.',
-                description='Submissions begin from a Decision Brief, Solution, Architecture Model or ADR.'
+                description='Submissions begin from a Decision Brief, Solution, Architecture Model or ADR. Raise the first one to put something in front of the board.',
+                cta_text='Submit a review',
+                cta_href=url_for('arb.create_review'),
+                cta_icon='plus'
             ) }}
         {% endif %}
         {% endcall %}

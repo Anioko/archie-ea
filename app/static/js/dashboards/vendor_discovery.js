@@ -120,11 +120,11 @@ function updateRequirementDisplay() {
                     '<div>' +
                         '<label class="text-sm font-medium text-foreground">Min Coverage (%)</label>' +
                         '<input type="number" class="filter-input" value="' + req.min_coverage + '"' +
-                               ' min="0" max="100" onchange="updateRequirement(' + index + ', \'min_coverage\', this.value)">' +
+                               ' min="0" max="100" data-requirement-index="' + index + '" data-requirement-field="min_coverage">' +
                     '</div>' +
                     '<div>' +
                         '<label class="text-sm font-medium text-foreground">Importance</label>' +
-                        '<select class="filter-input" onchange="updateRequirement(' + index + ', \'importance\', this.value)">' +
+                        '<select class="filter-input" data-requirement-index="' + index + '" data-requirement-field="importance">' +
                             '<option value="low"' + (req.importance === 'low' ? ' selected' : '') + '>Low</option>' +
                             '<option value="medium"' + (req.importance === 'medium' ? ' selected' : '') + '>Medium</option>' +
                             '<option value="high"' + (req.importance === 'high' ? ' selected' : '') + '>High</option>' +
@@ -483,3 +483,15 @@ function exportResults() {
 function showError(message) {
     Platform.toast.error(message); // Simple error display - could be enhanced with proper toast notifications
 }
+
+// Delegated, because the CSP refuses inline on*= attributes: the Min Coverage
+// input and the Importance select carried onchange="updateRequirement(...)" and
+// therefore never wrote back, so every requirement kept its default no matter
+// what the user changed. updateRequirement() exists at file scope and only
+// mutates the in-memory capabilityRequirements array -- nothing destructive.
+document.addEventListener('change', function(event) {
+    const el = event.target.closest('[data-requirement-field]');
+    if (!el) return;
+    updateRequirement(Number(el.getAttribute('data-requirement-index')),
+                      el.getAttribute('data-requirement-field'), el.value);
+});

@@ -62,8 +62,65 @@ BUSINESS = {
 EXCLUDED = ("/models/", "archimate_backbone_audit")
 
 
+def _auto_synced_models(root: str) -> set:
+    """Models whose rows get an ArchiMateElement without anyone asking.
+
+    Five of the six business-layer types create their element in a SQLAlchemy
+    ``before_insert``/``after_insert`` mapper event -- see
+    app/models/business_capabilities.py:572. That fires on exactly the ORM path
+    this gate inspects, so the invariant IS held; it is simply held by a
+    mechanism the first version of this checker could not see. It reported 18
+    findings and every one was a false positive, while the remedy it prescribed
+    was a no-op: ELEMENT_TYPES in app/services/archimate_backbone.py contains no
+    business-layer type, so sync_archimate_element() returns None for all six.
+
+    Scoping a gate to a MECHANISM rather than to the CONDITION is the recurring
+    flaw in this estate; this function is the correction.
+    """
+    synced = set()
+    for dirpath, dirnames, filenames in os.walk(os.path.join(root, "app", "models")):
+        dirnames[:] = [d for d in dirnames if d != "__pycache__"]
+        for filename in sorted(filenames):
+            if not filename.endswith(".py"):
+                continue
+            try:
+                with open(os.path.join(dirpath, filename), encoding="utf-8") as fh:
+                    source = fh.read()
+                tree = ast.parse(source)
+            except (OSError, SyntaxError, UnicodeDecodeError):
+                continue
+            for func in ast.walk(tree):
+                if not isinstance(func, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    continue
+                body = ast.get_source_segment(source, func) or ""
+                if "ArchiMateElement" not in body:
+                    continue
+                for deco in func.decorator_list:
+                    if not isinstance(deco, ast.Call):
+                        continue
+                    fn = deco.func
+                    target = getattr(fn, "attr", None) or getattr(fn, "id", "")
+                    if target != "listens_for" or not deco.args:
+                        continue
+                    event_name = ""
+                    if len(deco.args) > 1 and isinstance(deco.args[1], ast.Constant):
+                        event_name = str(deco.args[1].value)
+                    if not event_name.endswith("_insert"):
+                        continue
+                    arg0 = deco.args[0]
+                    model = getattr(arg0, "id", None) or getattr(arg0, "attr", "")
+                    if model:
+                        synced.add(model)
+    return synced
+
+
 def scan(root: str) -> list:
     problems = []
+    auto_synced = _auto_synced_models(root)
+    # ast.walk visits nested defs too, and the outer function's source segment
+    # contains the inner one -- so both matched and the same path was counted
+    # twice. Track spans and keep only the outermost.
+    spans = []
     for dirpath, dirnames, filenames in os.walk(os.path.join(root, "app")):
         dirnames[:] = [d for d in dirnames if d != "__pycache__"]
         for filename in sorted(filenames):
@@ -97,11 +154,18 @@ def scan(root: str) -> list:
                 })
                 if not created:
                     continue
+                if all(name in auto_synced for name in created):
+                    continue
+                end = getattr(func, "end_lineno", func.lineno) or func.lineno
+                if any(f == rel and lo <= func.lineno and end <= hi
+                       for (f, lo, hi) in spans):
+                    continue
+                spans.append((rel, func.lineno, end))
                 problems.append(
-                    "%s:%d [business-layer-backbone] %s() creates %s and never "
-                    "calls %s -- the capability lenses read the model, so this "
-                    "row is invisible to them"
-                    % (rel, func.lineno, func.name, ", ".join(created), SYNC)
+                    "%s:%d [business-layer-backbone] %s() creates %s, which has "
+                    "no insert listener, so the row reaches the database with no "
+                    "ArchiMateElement and the capability lenses cannot see it"
+                    % (rel, func.lineno, func.name, ", ".join(created))
                 )
     return problems
 
@@ -119,9 +183,13 @@ def main() -> int:
         if problems:
             print()
             print(
-                "Call sync_archimate_element() after the create so the business\n"
-                "layer is in the model, or append 'business-backbone-ok: <reason>'\n"
-                "if the row is deliberately detached (an import buffer, a dry run)."
+                "Give the model a before_insert listener that creates its\n"
+                "ArchiMateElement, the way the other 61 models do -- see\n"
+                "app/models/business_capabilities.py:572. Calling\n"
+                "sync_archimate_element() will NOT work here: ELEMENT_TYPES in\n"
+                "app/services/archimate_backbone.py carries no business-layer\n"
+                "type, so it returns None. Or append 'business-backbone-ok:\n"
+                "<reason>' if the row is deliberately detached."
             )
     print(len(problems))
     return 0

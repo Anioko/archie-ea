@@ -45,9 +45,7 @@
 </div>
 
 <!-- Hidden data -->
-<label for="currentMode">Field</label>
-    <input type="hidden" id="currentMode" value="{{ mode }}">
-<label for="contextId">Field</label>
+<input type="hidden" id="currentMode" value="{{ mode }}">
     {# `or ''`: with no application/view selected both are Python None, and
        Jinja renders that as the literal string "None" — which is truthy in JS,
        so the page requested /code-generation/api/context/application/None and

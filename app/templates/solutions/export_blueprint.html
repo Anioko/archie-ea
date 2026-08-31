@@ -288,7 +288,7 @@
                         <th>Description</th>
                     </tr>
                 </thead>
-                <tbody>
+                <tbody>{# actionable-rows-ok: printed blueprint export (GET /solutions/<id>/export/blueprint) — this page exists to be printed or saved as PDF, so rows carry no controls; edit these records on the solution detail page and re-export. #}
                     {% for el in sec_elements %}
                     <tr>
                         <td><strong>{{ el.name or '—' }}</strong></td>
@@ -309,7 +309,7 @@
                 <h3>Integration Flows</h3>
                 <table>
                     <thead><tr><th>Name</th><th>Source</th><th>Target</th><th>Protocol</th></tr></thead>
-                    <tbody>
+                    <tbody>{# actionable-rows-ok: printed blueprint export (GET /solutions/<id>/export/blueprint) — this page exists to be printed or saved as PDF, so rows carry no controls; edit these records on the solution detail page and re-export. #}
                         {% for f in sad_data.integration_flows %}
                         <tr><td>{{ f.name or '—' }}</td><td>{{ f.source_system or '—' }}</td><td>{{ f.target_system or '—' }}</td><td>{{ f.protocol or '—' }}</td></tr>
                         {% endfor %}
@@ -323,7 +323,7 @@
                 <h3>Quality Attributes</h3>
                 <table>
                     <thead><tr><th>Attribute</th><th>Target</th><th>Priority</th></tr></thead>
-                    <tbody>
+                    <tbody>{# actionable-rows-ok: printed blueprint export (GET /solutions/<id>/export/blueprint) — this page exists to be printed or saved as PDF, so rows carry no controls; edit these records on the solution detail page and re-export. #}
                         {% for qa in sad_data.quality_attributes %}
                         <tr><td>{{ qa.name or '—' }}</td><td>{{ qa.target_value or '—' }}</td><td>{{ qa.priority or '—' }}</td></tr>
                         {% endfor %}
@@ -334,7 +334,7 @@
                 <h3>Service Level Agreements</h3>
                 <table>
                     <thead><tr><th>SLA</th><th>Target</th><th>Measurement</th></tr></thead>
-                    <tbody>
+                    <tbody>{# actionable-rows-ok: printed blueprint export (GET /solutions/<id>/export/blueprint) — this page exists to be printed or saved as PDF, so rows carry no controls; edit these records on the solution detail page and re-export. #}
                         {% for sla in sad_data.slas %}
                         <tr><td>{{ sla.name or '—' }}</td><td>{{ sla.target_value or '—' }}</td><td>{{ sla.measurement_method or '—' }}</td></tr>
                         {% endfor %}
@@ -348,7 +348,7 @@
                 <h3>Investment Phases</h3>
                 <table>
                     <thead><tr><th>#</th><th>Phase</th><th>Budget</th><th>Status</th></tr></thead>
-                    <tbody>
+                    <tbody>{# actionable-rows-ok: printed blueprint export (GET /solutions/<id>/export/blueprint) — this page exists to be printed or saved as PDF, so rows carry no controls; edit these records on the solution detail page and re-export. #}
                         {% for ip in sad_data.investment_phases %}
                         <tr><td>{{ ip.phase_number or '—' }}</td><td>{{ ip.name or '—' }}</td><td>{{ ip.budget or '—' }}</td><td>{{ ip.status or '—' }}</td></tr>
                         {% endfor %}
@@ -387,7 +387,7 @@
             <h3>ADM Phase Completion ({{ _pc|length }} phases)</h3>
             <table>
                 <thead><tr><th>Phase</th><th>Status</th></tr></thead>
-                <tbody>
+                <tbody>{# actionable-rows-ok: printed blueprint export (GET /solutions/<id>/export/blueprint) — this page exists to be printed or saved as PDF, so rows carry no controls; edit these records on the solution detail page and re-export. #}
                     {% for phase in (phase_checklist or arb_ready.get('phase_checklist', [])) %}
                     <tr>
                         <td>{{ phase.name }}</td>

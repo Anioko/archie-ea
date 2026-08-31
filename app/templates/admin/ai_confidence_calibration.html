@@ -21,7 +21,9 @@
                     <th class="px-4 py-3 text-right text-sm font-medium text-muted-foreground">Acceptance Rate</th>
                 </tr>
             </thead>
-            <tbody>
+            <tbody>{# actionable-rows-ok: one computed row per confidence tier, not a record -- these are aggregate
+                   counts of AI suggestion verdicts. The suggestions themselves are
+                   acted on where they are raised, on the entity screen showing them. #}
                 {% for tier in calibration_data %}
                 <tr class="border-b border-border last:border-0">
                     <td class="px-4 py-3 text-sm font-medium text-foreground">{{ tier.name }}</td>

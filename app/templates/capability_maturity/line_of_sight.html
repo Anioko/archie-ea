@@ -266,7 +266,12 @@
         <tbody>
           {% for app_row in applications %}
           <tr class="border-b border-border last:border-0">
-            <th scope="row" class="px-4 py-2 text-left font-medium text-foreground">{{ app_row.name }}</th>
+            <th scope="row" class="px-4 py-2 text-left font-medium text-foreground">
+              {% if 'unified_applications.application_detail' in flask.current_app.view_functions and app_row.id %}
+              <a href="{{ url_for('unified_applications.application_detail', id=app_row.id) }}"
+                 class="text-primary hover:underline">{{ app_row.name }}</a>
+              {% else %}{{ app_row.name }}{% endif %}
+            </th>
             <td class="px-4 py-2 text-muted-foreground">{{ app_row.support_level|title if app_row.support_level else '—' }}</td>
             <td class="px-4 py-2 text-muted-foreground">{% if app_row.coverage is not none %}{{ app_row.coverage }}%{% else %}—{% endif %}</td>
             <td class="px-4 py-2 text-muted-foreground">{{ app_row.lifecycle_status|title if app_row.lifecycle_status else '—' }}</td>

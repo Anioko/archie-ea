@@ -1155,15 +1155,89 @@ class ToolExecutor:
             return self._clarify("source ArchiMate element", src_r)
         if not tgt_r["resolved"]:
             return self._clarify("target ArchiMate element", tgt_r)
+        # Validate against the ArchiMate 3.2 metamodel BEFORE writing.
+        #
+        # app/config/archimate_relationship_matrix.py has carried the full
+        # specification matrix all along -- "the authoritative source for
+        # validating ArchiMate relationships" -- and this path never called it.
+        # The capability was built and never wired, the same way AI auto-mapping
+        # was built and offered on one screen out of twenty-five.
+        #
+        # It matters more now than it did: the assistant can create all 54
+        # element types, so without this it can wire a Node to a Goal by
+        # realization and produce a model that renders correctly and is
+        # nonsense. A wrong model that validates is worse than an incomplete
+        # one -- the user this product exists for cannot tell the difference.
+        #
+        # On refusal we return what WOULD be valid rather than a bare error, so
+        # the model corrects itself on the next turn instead of guessing again.
+        try:
+            from app.config.archimate_relationship_matrix import (
+                get_valid_relationships,
+                is_valid_relationship,
+            )
+
+            def _pascal(value: str) -> str:
+                """snake_case or kebab-case to PascalCase, leaving PascalCase alone.
+
+                str.capitalize() LOWERCASES the remainder, so a value already
+                stored as "ApplicationComponent" became "Applicationcomponent"
+                and matched nothing in the matrix. That refused
+                ApplicationComponent -realization-> ApplicationService, which is
+                legal -- a validator that blocks correct modelling is worse than
+                no validator, because it teaches the assistant that the
+                metamodel forbids things it permits.
+                """
+                text = str(value or "").replace("-", "_")
+                if "_" not in text and text[:1].isupper():
+                    return text  # already PascalCase
+                return "".join(part[:1].upper() + part[1:] for part in text.split("_") if part)
+
+            source_type = _pascal(src_r.get("type") or src_r.get("element_type"))
+            target_type = _pascal(tgt_r.get("type") or tgt_r.get("element_type"))
+            wanted = args["relationship_type"]
+            if source_type and target_type and not is_valid_relationship(
+                source_type, target_type, wanted
+            ):
+                allowed = get_valid_relationships(source_type, target_type)
+                return {
+                    "success": False,
+                    "error": (
+                        "ArchiMate 3.2 does not permit a %s relationship from a "
+                        "%s to a %s." % (wanted, source_type, target_type)
+                    ),
+                    "valid_relationship_types": allowed,
+                    "message": (
+                        "Refused: %s -%s-> %s is not legal in ArchiMate 3.2. %s"
+                        % (
+                            src_r["name"], wanted, tgt_r["name"],
+                            ("Valid here: %s." % ", ".join(allowed)) if allowed
+                            else "No relationship is permitted between these two "
+                                 "element types; the model may need an "
+                                 "intermediate element.",
+                        )
+                    ),
+                }
+        except ImportError:
+            logger.warning("relationship matrix unavailable; creating unvalidated")
+
         from app.modules.architecture.services.inference_engine_service import ArchiMateInferenceEngine
         engine = ArchiMateInferenceEngine(architecture_id=0)
         try:
+            # rel_type / metadata, which is what the facade actually takes.
+            #
+            # This called get_or_create_relationship(relationship_type=...,
+            # provenance=..., confidence=...) -- none of which are parameters.
+            # Every invocation raised TypeError and was swallowed into
+            # {"success": False}, so the assistant has NEVER once created a
+            # relationship. It could produce elements and never connect them,
+            # which is a bag of nodes rather than an architecture. Found by
+            # calling the tool rather than by reading it.
             engine.graph.get_or_create_relationship(
                 source_id=src_r["id"],
                 target_id=tgt_r["id"],
-                relationship_type=args["relationship_type"],
-                provenance="agent",
-                confidence=0.9,
+                rel_type=args["relationship_type"],
+                metadata={"provenance": "agent", "confidence": 0.9},
             )
             db.session.commit()
             return {
@@ -1802,3 +1876,82 @@ def ApplicationCapabilityMapping_count(capability_id: int) -> int:
         ).count()
     except Exception:
         return 0
+
+
+# ---------------------------------------------------------------------------
+# One creation path for every ArchiMate element type, installed per type.
+#
+# The dispatcher in execute() resolves a tool by getattr(self, "_tool_" + name),
+# so each element type needs a real attribute. They are installed here rather
+# than written out 58 times: the behaviour is identical, and the thing that
+# differs per type — what the element MEANS and what it is confused with — lives
+# in archimate_specs.py where it can be reviewed as domain content instead of
+# being buried in near-duplicate code.
+#
+# This is still a DEDICATED path per type, not a generic create_archimate_element
+# with a type argument. The difference is the one the coverage gate exists to
+# enforce: the model chooses `create_business_process` because its description
+# told it when a process differs from a function, rather than guessing a string.
+def _install_archimate_element_tools() -> int:
+    from .archimate_specs import ELEMENT_SPECS
+
+    def _make(element_type: str, spec: dict):
+        def _create(self, args: dict) -> dict:
+            from app.models.archimate_core import ArchiMateElement
+
+            name = (args.get("name") or "").strip()
+            if not name:
+                return {
+                    "success": False,
+                    "error": "A %s needs a name." % element_type.replace("_", " "),
+                }
+
+            # Everything beyond name/description is kept as custom_properties
+            # rather than silently dropped: an assistant that quietly discards
+            # what a user told it is worse than one that refuses.
+            extras = {
+                key: value
+                for key, value in args.items()
+                if key not in ("name", "description", "solution_id") and value
+            }
+            element = ArchiMateElement(
+                organization_id=self._get_organization_id(),
+                name=name[:100],
+                type=element_type,
+                layer=spec["layer"],
+                description=args.get("description") or "",
+                scope="enterprise",
+                custom_properties={"ai_generated": True, **extras},
+            )
+            db.session.add(element)
+            db.session.commit()
+            logger.info(
+                "Agent created %s id=%s layer=%s", element_type, element.id, spec["layer"]
+            )
+            return {
+                "success": True,
+                "result": {
+                    "id": element.id,
+                    "name": element.name,
+                    "entity_type": element_type,
+                    "layer": spec["layer"],
+                },
+                "message": "Added %s '%s' to the %s layer."
+                           % (element_type.replace("_", " "), element.name, spec["layer"]),
+            }
+
+        _create.__name__ = "_tool_create_%s" % element_type
+        _create.__doc__ = spec["definition"]
+        return _create
+
+    installed = 0
+    for element_type, spec in ELEMENT_SPECS.items():
+        attribute = "_tool_create_%s" % element_type
+        if hasattr(ToolExecutor, attribute):
+            continue  # a hand-written tool for this type wins
+        setattr(ToolExecutor, attribute, _make(element_type, spec))
+        installed += 1
+    return installed
+
+
+_ARCHIMATE_TOOLS_INSTALLED = _install_archimate_element_tools()

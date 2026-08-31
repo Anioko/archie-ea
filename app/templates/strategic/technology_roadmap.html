@@ -14,6 +14,13 @@
 {% endblock %}
 
 {% block content %}
+{# Builds the href for a row's record, or an empty string when the blueprint that
+   owns the destination failed to register -- blueprints register non-fatally here,
+   so an unguarded url_for would raise BuildError and 500 every page rendering the
+   sidebar. Callers keep the <a> in the row itself so the link is visible both to a
+   reader and to scripts/check_actionable_rows.py. #}
+{% macro row_href(endpoint) %}{% if endpoint in flask.current_app.view_functions %}{{ url_for(endpoint, **kwargs) }}{% endif %}{% endmacro %}
+
 <div class="flex flex-col space-y-8 animate-in fade-in duration-500">
     {{ page_header(
         title='Technology Roadmap',
@@ -65,25 +72,36 @@
                     <thead>
                         <tr class="border-b">
                             <th class="text-left p-3 font-medium">Technology</th>
-                            <th class="text-left p-3 font-medium">Status</th>
-                            <th class="text-left p-3 font-medium">Priority</th>
-                            <th class="text-left p-3 font-medium">Adoption</th>
+                            <th class="text-left p-3 font-medium">Used by</th>
+                            <th class="text-left p-3 font-medium">Modernization level</th>
+                            <th class="text-left p-3 font-medium">Priority score</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y">
                         {% for tech in technology_analyses|default([]) %}
                         <tr class="border-b hover:bg-muted/50">
-                            <td class="p-3">{{ tech.technology_name|default('N/A') }}</td>
+                            <td class="p-3 font-medium">{{ tech.component_name|default('&mdash;', true) }}</td>
+                            {# A technology here is a string on an application's stack or a platform
+                               configuration, not a record of its own -- so the row is linked to the
+                               thing you can actually change. #}
+                            <td class="p-3">
+                                {% if tech.application_id %}
+                                {% set _h = row_href('unified_applications.application_detail', id=tech.application_id)|trim %}{% if _h %}<a href="{{ _h }}" class="font-medium text-primary hover:underline">{{ tech.application_name|default('Application', true) }}</a>{% else %}{{ tech.application_name|default('Application', true) }}{% endif %}
+                                {% elif tech.platform_id %}
+                                {% set _h = row_href('unified_vendors.technical_dashboard')|trim %}{% if _h %}<a href="{{ _h }}" class="font-medium text-primary hover:underline">{{ tech.component_name|default('Platform', true) }}</a>{% else %}{{ tech.component_name|default('Platform', true) }}{% endif %}
+                                {% else %}
+                                <span class="text-muted-foreground">&mdash;</span>
+                                {% endif %}
+                            </td>
                             <td class="p-3">
                                 <span class="px-2 py-1 text-xs rounded-full
-                                    {% if tech.status == 'Sunset' %}bg-destructive/20 text-destructive-emphasis
-                                    {% elif tech.status == 'Invest' %}bg-success/20 text-success-emphasis
+                                    {% if tech.modernization_level == 'CRITICAL' %}bg-destructive/20 text-destructive-emphasis
+                                    {% elif tech.modernization_level == 'HIGH' %}bg-warning/20 text-warning-emphasis
                                     {% else %}bg-primary/20 text-primary{% endif %}">
-                                    {{ tech.status|default('Maintain') }}
+                                    {{ tech.modernization_level|default('&mdash;', true) }}
                                 </span>
                             </td>
-                            <td class="p-3">{{ tech.priority|default('Normal') }}</td>
-                            <td class="p-3">{{ tech.adoption_rate|default(0) }}%</td>
+                            <td class="p-3">{{ tech.modernization_priority_score if tech.modernization_priority_score is not none else '&mdash;' }}</td>
                         </tr>
                         {% else %}
                         <tr>

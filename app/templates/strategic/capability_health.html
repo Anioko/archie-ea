@@ -14,6 +14,13 @@
 {% endblock %}
 
 {% block content %}
+{# Builds the href for a row's record, or an empty string when the blueprint that
+   owns the destination failed to register -- blueprints register non-fatally here,
+   so an unguarded url_for would raise BuildError and 500 every page rendering the
+   sidebar. Callers keep the <a> in the row itself so the link is visible both to a
+   reader and to scripts/check_actionable_rows.py. #}
+{% macro row_href(endpoint) %}{% if endpoint in flask.current_app.view_functions %}{{ url_for(endpoint, **kwargs) }}{% endif %}{% endmacro %}
+
 <div class="flex flex-col space-y-8 animate-in fade-in duration-500">
     {{ page_header(
         title='Capability Health Dashboard',
@@ -142,7 +149,11 @@
                     {% for item in metrics.at_risk_list %}
                     <tr class="hover:bg-muted/50 transition-colors">
                         <td class="p-4 font-medium">
-                            <div>{{ item.name }}</div>
+                            <div>
+                                {% if item.id %}
+                                {% set _h = row_href('archimate_crud.detail_element', layer='strategy', element_type='Capability', element_id=item.id)|trim %}{% if _h %}<a href="{{ _h }}" class="font-medium text-primary hover:underline">{{ item.name }}</a>{% else %}{{ item.name }}{% endif %}
+                                {% else %}{{ item.name }}{% endif %}
+                            </div>
                             <div class="mt-1 text-xs text-muted-foreground">
                                 {{ item.application_count }} apps · {{ item.planned_solution_count }} solutions · {{ item.requirement_count }} reqs
                             </div>

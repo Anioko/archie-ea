@@ -226,7 +226,8 @@
 
                 if (data.results && data.results.length > 0) {
                     // Entity names/descriptions are user-editable free text: they must be
-                    // escaped, or an application named <img onerror=...> executes here.
+                    // escaped, or an application named with an <img> error-handler payload
+                    // executes script here.
                     const esc = window.Platform.sanitize.escape;
                     resultsList.innerHTML = data.results.map(item => `
                         <div class="p-2 border rounded-lg hover:bg-accent/50 cursor-pointer" data-action="show-entity" data-entity-type="${esc(item.entity_type)}" data-entity-id="${esc(String(item.id))}" data-entity-name="${esc(item.name)}">

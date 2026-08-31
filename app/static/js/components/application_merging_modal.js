@@ -52,7 +52,11 @@ function showMergeToast(message, type) {
   toast.setAttribute('role', 'alert');
   safeHTML(toast, '<div class="flex items-start gap-3"><p class="text-sm font-medium">' +
     escapeHtml(String(message)) + '</p>' +
-    '<button onclick="this.closest(\'[role=alert]\').remove()" class="ml-auto flex-shrink-0 text-current opacity-70 hover:opacity-100">&times;</button></div>');
+    '<button type="button" data-toast-dismiss aria-label="Dismiss notification" class="ml-auto flex-shrink-0 text-current opacity-70 hover:opacity-100">&times;</button></div>');
+  // Bound directly rather than via onclick=, which the CSP refuses to run --
+  // the dismiss cross on this toast never worked.
+  let dismissBtn = toast.querySelector('[data-toast-dismiss]');
+  if (dismissBtn) dismissBtn.addEventListener('click', function() { toast.remove(); });
   document.body.appendChild(toast);
   setTimeout(function() {
     toast.style.opacity = '0';

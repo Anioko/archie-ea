@@ -46,7 +46,10 @@
       {{ empty_state(
           icon='network',
           title='No Business Actors yet',
-          description='Model departments, teams and business units as Business Actors to see the enterprise org chart here.',
+          description='Model departments, teams and business units as Business Actors, then link them with Composition or Aggregation relationships, and the org chart draws itself from the model.',
+          cta_text='Add a Business Actor',
+          cta_href=url_for('archimate_layers.business_actors'),
+          cta_icon='plus',
       ) }}
     </div>
 

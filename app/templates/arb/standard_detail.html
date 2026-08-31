@@ -148,7 +148,9 @@
                         <th class="text-center py-2 w-24 text-xs font-medium text-muted-foreground uppercase tracking-wide">Required</th>
                     </tr>
                 </thead>
-                <tbody class="divide-y">
+                <tbody class="divide-y">{# actionable-rows-ok: checklist items are a JSON list held on this standard, not records of their
+                       own. Edit them with Edit Standard above; reviewers tick them on the
+                       review they belong to. #}
                     {% for item in standard.checklist_items %}
                     {% set is_required = item.required if item is mapping else false %}
                     {% set item_text = item.item if item is mapping else item %}

@@ -27,6 +27,7 @@
     cta_text=None,
     cta_onclick=None,
     cta_href=None,
+    cta_method='get',
     cta_icon=None,
     class='',
     padding='py-12'
@@ -52,7 +53,21 @@
     <!-- CTA Button -->
     {% if cta_text %}
     <div class="mt-6">
-        {% if cta_href %}
+        {% if cta_href and cta_method|lower == 'post' %}
+        {# A CTA that CHANGES something must not be an anchor: a link is
+           followed by prefetchers and scanners, and GET carries no CSRF
+           token. #}
+        <form method="post" action="{{ cta_href }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit"
+                    class="inline-flex items-center px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-ring transition-colors">
+                {% if cta_icon %}
+                <i data-lucide="{{ cta_icon }}" class="w-4 h-4 mr-2" aria-hidden="true"></i>
+                {% endif %}
+                {{ cta_text }}
+            </button>
+        </form>
+        {% elif cta_href %}
         <a href="{{ cta_href }}"
            class="inline-flex items-center px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-ring transition-colors">
             {% if cta_icon %}

@@ -39,7 +39,9 @@
                             <th class="px-6 py-3 font-medium">Requirement</th>
                         </tr>
                     </thead>
-                    <tbody>
+                    <tbody>{# actionable-rows-ok: vendor template definitions -- the elements a vendor integration is expected
+                    to produce. Reference material, applied by running the vendor import,
+                    not edited row by row. #}
                         {% for t in rows %}
                         <tr class="border-b border-border/60 last:border-0 hover:bg-muted/40">
                             <td class="px-6 py-3 font-medium text-foreground">{{ t.element_name }}</td>

@@ -1534,7 +1534,7 @@ nav[aria-label="Composer toolbar"] { margin-bottom: 0 !important; }
                                 <input type="text" x-model="selectedNode.label"
                                        @blur="updateSelectedNodeName()"
                                        @keydown.enter="$event.target.blur()"
-                                       class="w-full text-sm font-semibold bg-transparent border-b border-transparent hover:border-border focus:border-primary outline-none py-0.5 text-foreground transition-colors" aria-label="Label">
+                                       class="w-full text-sm font-semibold bg-transparent border-b border-transparent hover:border-border focus:border-primary outline-none py-0.5 text-foreground transition-colors" aria-label="Element name">
                             </dd>
                         </div>
                         <div class="flex items-center gap-2">
@@ -1831,7 +1831,7 @@ nav[aria-label="Composer toolbar"] { margin-bottom: 0 !important; }
                                        class="w-1/2 text-2xs bg-muted/30 border border-border rounded px-1.5 py-1 focus:border-primary outline-none transition-colors text-foreground" aria-label="Key">
                                 <input type="text" x-model="_customPropNewVal" placeholder="Value"
                                        @keydown.enter="addCustomProp()"
-                                       class="w-1/2 text-2xs bg-muted/30 border border-border rounded px-1.5 py-1 focus:border-primary outline-none transition-colors text-foreground" aria-label="Value">
+                                       class="w-1/2 text-2xs bg-muted/30 border border-border rounded px-1.5 py-1 focus:border-primary outline-none transition-colors text-foreground" aria-label="Property value">
                             </div>
                             <button type="button" @click="addCustomProp()" x-show="_customPropNewKey.trim()" x-cloak
                                     class="w-full text-2xs py-1 rounded border border-dashed border-primary/40 text-primary hover:bg-primary/5 transition-colors">
