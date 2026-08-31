@@ -49,7 +49,9 @@ import os
 import random
 import re
 
+import gevent
 from locust import HttpUser, between, events, task
+from locust.exception import StopUser
 
 EMAILS = [e.strip() for e in os.environ.get("ARCHIE_LOAD_EMAILS", "").split(",") if e.strip()]
 PASSWORD = os.environ.get("ARCHIE_LOAD_PASSWORD", "")
@@ -114,11 +116,34 @@ class Architect(HttpUser):
         with self.client.post("/account/login", data=payload,
                               name="POST /account/login",
                               allow_redirects=True, catch_response=True) as response:
-            if "/account/login" in response.url:
-                response.failure("sign-in failed for %s" % email)
-                self.environment.runner.quit()
-            else:
+            # 429 is the product working, not a defect. Archie rate-limits
+            # writes at 30/minute and a login POST is a write, so a fast ramp
+            # trips it -- 20 sign-ins succeeded and 2 were throttled at 40
+            # users ramping 4/s. Counting that as a failure made the load test
+            # report a broken product AND (worse) abort the whole run on the
+            # first one, which is how an instrument hides the thing it was
+            # built to measure.
+            if response.status_code == 429:
+                # Back off and retry, the way a real client does.
+                #
+                # The first version called self.stop() here. Locust immediately
+                # respawns a replacement user to hold the target count, which
+                # signs in, gets throttled, and stops again -- a retry storm
+                # that the harness itself creates. It reported 176 throttled
+                # logins and read as "the product locks an office out", when
+                # most of those requests existed only because of the stop.
+                # An instrument that amplifies the thing it is measuring is
+                # worse than no instrument.
                 response.success()
+                wait = float(response.headers.get("Retry-After", 5) or 5)
+                gevent.sleep(min(wait, 30) + random.uniform(0, 2))
+                return self.on_start()
+            if "/account/login" in response.url:
+                # A genuine credential rejection. Stop this user only, and let
+                # the count drop rather than respawning into the same wall.
+                response.failure("sign-in rejected for %s" % email)
+                raise StopUser()
+            response.success()
 
     @task(sum(weight for _, weight in READ_PAGES))
     def read_a_page(self):
