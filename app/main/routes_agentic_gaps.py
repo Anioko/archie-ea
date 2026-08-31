@@ -10,6 +10,7 @@ import logging
 from datetime import datetime, timedelta
 
 from flask import jsonify, render_template, request
+from werkzeug.exceptions import HTTPException
 from flask_login import current_user, login_required
 
 from app import db
@@ -20,6 +21,7 @@ from app.services.archimate.agentic_gap_implementation_service import (
 
 # Import main blueprint - use relative import to avoid circular dependency
 from .views import main
+from app.utils.pagination import safe_int_arg
 
 logger = logging.getLogger(__name__)
 
@@ -247,7 +249,7 @@ def get_execution_history():
     try:
         architecture_id = request.args.get("architecture_id", type=int)
         agent_name = request.args.get("agent_name")
-        limit = request.args.get("limit", 50, type=int)
+        limit = safe_int_arg('limit', 50, minimum=1, maximum=500)
 
         service = AgenticGapImplementationService(
             user_id=current_user.id if current_user.is_authenticated else None
@@ -966,6 +968,17 @@ def get_audit_trail(execution_id):
         - Error details if any
     """
     try:
+        from app.models.agentic_gaps import AgentExecutionHistory
+        from app.utils.route_guards import require_entity_json
+
+        # No such execution -> 404, rather than a 200 carrying an empty trail.
+        # The `main` blueprint renders an HTML 404 page, so return JSON directly.
+        _execution, missing = require_entity_json(
+            AgentExecutionHistory, execution_id, label="Execution"
+        )
+        if missing:
+            return missing
+
         service = AgenticGapImplementationService(
             user_id=current_user.id if current_user.is_authenticated else None
         )
@@ -974,6 +987,8 @@ def get_audit_trail(execution_id):
 
         return jsonify(result)
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to get audit trail for execution {execution_id}: {e}")
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
@@ -1000,7 +1015,7 @@ def get_decision_logs():
         from app.services.llm_service import LLMService
 
         decision_type = request.args.get("decision_type")
-        limit = request.args.get("limit", 100, type=int)
+        limit = safe_int_arg('limit', 100, minimum=1, maximum=500)
         days = request.args.get("days", type=int)
 
         since = None

@@ -6,6 +6,8 @@ import hashlib
 import os
 
 from flask import current_app, has_app_context
+import logging
+
 from sqlalchemy import event
 
 from app.models.transformation_execution import (
@@ -3670,15 +3672,10 @@ def _guard_schema(connection) -> tuple[str, str]:
     return schema, connection.dialect.identifier_preparer.quote(schema)
 
 
-def _render_guard_sql(connection, create_sql: str, quoted_schema: str) -> str:
-    rendered = create_sql.replace("public.", f"{quoted_schema}.").replace(
-        "SET search_path = pg_catalog, public",
-        f"SET search_path = pg_catalog, {quoted_schema}",
-    )
-    if "__ARCHIE_GEN_RANDOM_UUID__" not in rendered:
-        return rendered
-    uuid_schema = connection.exec_driver_sql(
-        """
+logger = logging.getLogger(__name__)
+
+
+_GEN_RANDOM_UUID_LOOKUP_SQL = """
         SELECT namespace.nspname
         FROM pg_proc proc
         JOIN pg_namespace namespace ON namespace.oid = proc.pronamespace
@@ -3696,9 +3693,48 @@ def _render_guard_sql(connection, create_sql: str, quoted_schema: str) -> str:
                  namespace.nspname
         LIMIT 1
         """
+
+
+def _render_guard_sql(connection, create_sql: str, quoted_schema: str) -> str:
+    rendered = create_sql.replace("public.", f"{quoted_schema}.").replace(
+        "SET search_path = pg_catalog, public",
+        f"SET search_path = pg_catalog, {quoted_schema}",
+    )
+    if "__ARCHIE_GEN_RANDOM_UUID__" not in rendered:
+        return rendered
+    uuid_schema = connection.exec_driver_sql(
+        _GEN_RANDOM_UUID_LOOKUP_SQL
     ).scalar_one_or_none()
     if uuid_schema is None:
-        raise RuntimeError("PostgreSQL gen_random_uuid() is required")
+        # Try to provide it before giving up. gen_random_uuid() is built into
+        # PostgreSQL 13+; on 12 and earlier it comes from pgcrypto.
+        #
+        # Until 31 Aug 2026 this raised immediately, so `flask init-db` on a
+        # FRESH database died after creating one table, with an error that did
+        # not say what to do about it. That is the exact command CONTRIBUTING.md
+        # tells a new contributor to run, which makes it a first-five-minutes
+        # wall for anyone cloning the project. The maintainer never saw it
+        # because pgcrypto was already present in their template1.
+        try:
+            connection.exec_driver_sql("CREATE EXTENSION IF NOT EXISTS pgcrypto")
+            logger.info("installed the pgcrypto extension for gen_random_uuid()")
+            uuid_schema = connection.exec_driver_sql(
+                _GEN_RANDOM_UUID_LOOKUP_SQL
+            ).scalar_one_or_none()
+        except Exception as exc:  # no permission to CREATE EXTENSION, usually
+            logger.warning("could not install pgcrypto automatically: %s", exc)
+
+    if uuid_schema is None:
+        raise RuntimeError(
+            "PostgreSQL gen_random_uuid() is required and is not available." "\n"
+            "  * PostgreSQL 13 or newer provides it natively -- check the "
+            "server version with: SELECT version();" "\n"
+            "  * On PostgreSQL 12 or older, or wherever it is missing, run "
+            "this once as a superuser against the target database:" "\n"
+            "        CREATE EXTENSION IF NOT EXISTS pgcrypto;" "\n"
+            "Archie tried to create the extension itself and could not, "
+            "which usually means the connecting role lacks permission."
+        )
     preparer = connection.dialect.identifier_preparer
     qualified_uuid = (
         f"{preparer.quote(uuid_schema)}.{preparer.quote('gen_random_uuid')}"

@@ -144,6 +144,14 @@ def get_results(analysis_id):
 def export_analysis(analysis_id, format_type):
     """Export analysis results."""
     try:
+        from app.models.vendor_analysis import OptionsAnalysis
+        from app.utils.route_guards import require_entity_json
+
+        # Existence guard: an empty export for a nonexistent analysis is fabricated data.
+        _analysis, missing = require_entity_json(OptionsAnalysis, analysis_id, label="Analysis")
+        if missing:
+            return missing
+
         data = export_service.export_analysis(analysis_id, format_type)
         return jsonify({"data": data})
     except Exception as e:

@@ -41,6 +41,7 @@ from app import db
 from app.decorators import audit_log
 from app.models import BusinessCapability
 from app.models.models import RiskAssessment
+from app.utils.pagination import safe_int_arg
 
 
 strategic_risks_bp = Blueprint("strategic_risks_hardened", __name__, url_prefix="/strategic/api")
@@ -557,8 +558,8 @@ def list_risks():
     - Rate limited
     """
     try:
-        page = request.args.get("page", 1, type=int)
-        page_size = request.args.get("page_size", 25, type=int)
+        page = safe_int_arg('page', 1, minimum=1)
+        page_size = safe_int_arg('page_size', 25, minimum=1, maximum=500)
         
         # Validate pagination
         if page < 1:

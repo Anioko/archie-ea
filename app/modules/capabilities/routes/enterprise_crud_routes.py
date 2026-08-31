@@ -20,6 +20,7 @@ from app.models.compliance_models import CompliancePolicy, ComplianceViolation
 from app.services.enterprise_validation_service import EnterpriseValidationService
 from app.services.enterprise_audit_log import EnterpriseAuditLog
 from app.services.enterprise_search_service import EnterpriseSearchService
+from app.utils.pagination import safe_int_arg
 
 logger = logging.getLogger(__name__)
 
@@ -36,8 +37,8 @@ enterprise_crud_bp = Blueprint("enterprise_crud", __name__, url_prefix="/enterpr
 def list_capabilities():
     """List all capabilities with pagination and filtering."""
     try:
-        page = request.args.get("page", 1, type=int)
-        per_page = request.args.get("per_page", 20, type=int)
+        page = safe_int_arg('page', 1, minimum=1)
+        per_page = safe_int_arg('per_page', 20, minimum=1, maximum=500)
         search = request.args.get("search", "", type=str)
         filter_type = request.args.get("type", "", type=str)
         request.args.get("health", "", type=str)
@@ -406,8 +407,8 @@ def compliance_dashboard():
 def list_compliance_policies():
     """List all compliance policies."""
     try:
-        page = request.args.get("page", 1, type=int)
-        per_page = request.args.get("per_page", 20, type=int)
+        page = safe_int_arg('page', 1, minimum=1)
+        per_page = safe_int_arg('per_page', 20, minimum=1, maximum=500)
         filter_type = request.args.get("type", "", type=str)
 
         query = CompliancePolicy.query
@@ -489,8 +490,8 @@ def create_compliance_policy():
 def list_compliance_violations():
     """List all compliance violations."""
     try:
-        page = request.args.get("page", 1, type=int)
-        per_page = request.args.get("per_page", 20, type=int)
+        page = safe_int_arg('page', 1, minimum=1)
+        per_page = safe_int_arg('per_page', 20, minimum=1, maximum=500)
         filter_severity = request.args.get("severity", "", type=str)
         filter_status = request.args.get("status", "", type=str)
 
@@ -662,8 +663,8 @@ def enterprise_search():
     try:
         query = request.args.get("q", "", type=str)
         entity_type = request.args.get("type", "all", type=str)  # all, capability, compliance
-        page = request.args.get("page", 1, type=int)
-        per_page = request.args.get("per_page", 20, type=int)
+        page = safe_int_arg('page', 1, minimum=1)
+        per_page = safe_int_arg('per_page', 20, minimum=1, maximum=500)
 
         if not query or len(query) < 2:
             return (

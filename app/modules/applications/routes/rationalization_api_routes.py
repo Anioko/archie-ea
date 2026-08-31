@@ -13,6 +13,8 @@ from app.models.application_portfolio import ApplicationComponent
 from app.services.rate_limiter import rate_limit
 
 from . import unified_applications_bp
+from app.utils.pagination import safe_int_arg
+from app.utils.route_guards import require_entity
 
 logger = logging.getLogger(__name__)
 
@@ -701,7 +703,7 @@ def api_list_templates():
         layer = request.args.get("layer")
         element_type = request.args.get("element_type")
         search = request.args.get("search")
-        limit = request.args.get("limit", 200, type=int)
+        limit = safe_int_arg('limit', 200, minimum=1, maximum=500)
 
         if framework:
             query = query.filter(ElementTemplate.framework == framework)
@@ -776,16 +778,12 @@ def api_template_element_types():
 @login_required
 def api_template_recommendations(app_id):
     """Get recommended templates for an application."""
+    app = require_entity(ApplicationComponent, app_id, description="Application not found")
     try:
-        from app.models.application_portfolio import ApplicationComponent
         from app.models.element_templates import (
             ElementTemplate,
             ElementTemplateRecommendation,
         )
-
-        app = ApplicationComponent.query.get(app_id)
-        if not app:
-            return jsonify([])
 
         # Find recommendations based on application type and other triggers
         triggers = []
@@ -1071,8 +1069,8 @@ def rationalization_portfolio_dependencies():
     from app.models.application_rationalization import ApplicationDependency
 
     try:
-        page = max(request.args.get("page", 1, type=int), 1)
-        per_page = min(request.args.get("per_page", 25, type=int), 100)
+        page = max(safe_int_arg('page', 1, minimum=1), 1)
+        per_page = min(safe_int_arg('per_page', 25, minimum=1, maximum=500), 100)
         risk_filter = request.args.get("risk_level", "").strip().lower()
 
         # Subquery: count of upstream blockers per target app (apps that depend ON this app)
@@ -1312,8 +1310,8 @@ def rationalization_portfolio_readiness():
     from app.models.application_portfolio import ApplicationComponent
 
     try:
-        page = max(request.args.get("page", 1, type=int), 1)
-        per_page = min(request.args.get("per_page", 25, type=int), 100)
+        page = max(safe_int_arg('page', 1, minimum=1), 1)
+        per_page = min(safe_int_arg('per_page', 25, minimum=1, maximum=500), 100)
         ready_filter = request.args.get("ready", "").strip().lower()
 
         query = (
@@ -1764,8 +1762,8 @@ def rationalization_review_queue():
             ), 400
 
         try:
-            page = max(1, int(request.args.get("page", 1)))
-            per_page = min(200, max(1, int(request.args.get("per_page", 50))))
+            page = max(1, safe_int_arg('page', 1, minimum=1))
+            per_page = min(200, max(1, safe_int_arg('per_page', 50, minimum=1, maximum=500)))
         except (TypeError, ValueError):
             return jsonify({"success": False, "error": "page and per_page must be integers"}), 400
 
@@ -1868,8 +1866,8 @@ def rationalization_portfolio_workbench():
         include_unscored = request.args.get("include_unscored", "false").strip().lower() == "true"
 
         try:
-            page = max(1, int(request.args.get("page", 1)))
-            per_page = min(1000, max(1, int(request.args.get("per_page", 200))))
+            page = max(1, safe_int_arg('page', 1, minimum=1))
+            per_page = min(1000, max(1, safe_int_arg('per_page', 200, minimum=1, maximum=500)))
         except (TypeError, ValueError):
             return jsonify({"success": False, "error": "page/per_page must be integers"}), 400
 
@@ -2505,10 +2503,12 @@ def rationalization_audit_trail(app_id):
     """
     from app.models.application_rationalization import RationalizationAuditEntry
 
+    require_entity(ApplicationComponent, app_id, description="Application not found")
+
     try:
         try:
-            page = max(1, int(request.args.get("page", 1)))
-            per_page = min(100, max(1, int(request.args.get("per_page", 25))))
+            page = max(1, safe_int_arg('page', 1, minimum=1))
+            per_page = min(100, max(1, safe_int_arg('per_page', 25, minimum=1, maximum=500)))
         except (TypeError, ValueError):
             return jsonify({"success": False, "error": "page/per_page must be integers"}), 400
 
@@ -2927,6 +2927,8 @@ def rationalization_roadmap_status(app_id):
     from app.models.consolidation_list import ConsolidationListEntry
     from app.models.application_rationalization import ApplicationRationalizationScore
 
+    require_entity(ApplicationComponent, app_id, description="Application not found")
+
     try:
         score = ApplicationRationalizationScore.query.filter_by(
             application_component_id=app_id
@@ -2954,6 +2956,8 @@ def rationalization_roadmap_status(app_id):
 def rationalization_get_decommission_plan(app_id):
     """RAT-116: Get decommission plan for an application."""
     from app.models.application_rationalization import DecommissionPlan, ApplicationRationalizationScore
+
+    require_entity(ApplicationComponent, app_id, description="Application not found")
 
     try:
         plan = DecommissionPlan.query.filter_by(application_id=app_id).first()
@@ -3101,6 +3105,8 @@ def rationalization_workflow_status(app_id):
     from app.models.application_rationalization import ApplicationRationalizationScore
     from app.models.consolidation_list import ConsolidationListEntry
 
+    require_entity(ApplicationComponent, app_id, description="Application not found")
+
     try:
         score = ApplicationRationalizationScore.query.filter_by(
             application_component_id=app_id
@@ -3159,6 +3165,8 @@ def _determine_current_phase(steps):
 def rationalization_get_benefits(app_id):
     """RAT-117: Get benefits tracking for an application."""
     from app.models.application_rationalization import RationalizationBenefitsTracker
+
+    require_entity(ApplicationComponent, app_id, description="Application not found")
 
     try:
         tracker = RationalizationBenefitsTracker.query.filter_by(
@@ -4010,6 +4018,8 @@ def rationalization_import_dependencies():
 @login_required
 def api_check_duplicate_element(app_id):
     """Check if an element with the given name exists for this application."""
+    require_entity(ApplicationComponent, app_id, description="Application not found")
+
     try:
         from app.models.models import ArchiMateElement
 
@@ -4053,7 +4063,7 @@ def rationalization_enrich_candidates():
     from app.models.application_rationalization import ApplicationRationalizationScore
 
     try:
-        limit = min(request.args.get("limit", 50, type=int), 200)
+        limit = min(safe_int_arg('limit', 50, minimum=1, maximum=500), 200)
 
         # Left-join scores so we include apps with no score at all
         query = (

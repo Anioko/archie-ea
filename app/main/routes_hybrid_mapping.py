@@ -496,12 +496,15 @@ def get_unmapped_vendor_products():
             SELECT
                 vp.id,
                 vp.name,
-                vpf.family_name as product_family,
+                -- vendor_products carries the family as a plain varchar column
+                -- (product_family); it has no family_id FK to
+                -- vendor_product_families, so the old LEFT JOIN on vp.family_id
+                -- raised UndefinedColumn and this list was always empty.
+                vp.product_family as product_family,
                 vo.name as vendor_name,
                 vp.archimate_product_element_id
             FROM vendor_products vp
             JOIN vendor_organizations vo ON vp.vendor_organization_id = vo.id
-            LEFT JOIN vendor_product_families vpf ON vp.family_id = vpf.id
             WHERE vp.id NOT IN (
                 SELECT DISTINCT vendor_product_id FROM capability_vendor_product_mapping
             )

@@ -24,6 +24,7 @@ from app.models import (
     LogicalDataModel,
     PhysicalDataModel,
 )
+from app.utils.pagination import safe_int_arg
 
 logger = logging.getLogger(__name__)
 
@@ -606,7 +607,7 @@ def api_data_entities():
     from app.models.process_data import DataEntity
 
     search = request.args.get("search", "").strip()
-    limit = request.args.get("limit", 50, type=int)
+    limit = safe_int_arg('limit', 50, minimum=1, maximum=500)
 
     query = DataEntity.query
     if search:

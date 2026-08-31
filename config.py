@@ -321,6 +321,25 @@ class Config:
     # ai-approval-honoured gate keeps them there.
     REQUIRE_AI_APPROVAL = os.environ.get("REQUIRE_AI_APPROVAL", "true").lower() == "true"
 
+    # Outbound calls to third-party APIs (GitHub, Crunchbase, G2) from
+    # app/services/api_clients/. Default FALSE, which is the air-gapped posture
+    # ADR-0005 commits this product to.
+    #
+    # Nothing enforced this until 31 Aug 2026: the air-gap gate checks that UI
+    # assets are not fetched from a CDN and says nothing about the server making
+    # its own calls. An adversarial sweep found /api/pipeline/market-analysis/
+    # <category> reaching https://api.github.com inside a logged-in request and
+    # echoing third-party repository text back as this product's "market
+    # analysis" -- including, for a nonsense category, the description of a
+    # credential-phishing script, returned with success:true.
+    #
+    # Set ALLOW_EXTERNAL_API_CALLS=true only where egress is understood and
+    # permitted. With it false the clients return an honest failure rather than
+    # fabricated analysis.
+    ALLOW_EXTERNAL_API_CALLS = (
+        os.environ.get("ALLOW_EXTERNAL_API_CALLS", "false").lower() == "true"
+    )
+
     # North Star Navigation (NORTH-STAR-001)
     # Enterprise-grade navigation for Fortune 500 TOGAF/ArchiMate practitioners.
     # When enabled: renamed navigation items, persona-based filtering, hidden admin items.

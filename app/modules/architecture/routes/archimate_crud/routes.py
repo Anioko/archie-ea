@@ -105,6 +105,7 @@ from app.models.technology_layer import (
 )
 from app.models.unified_capability import ValueStream
 import logging
+from app.utils.pagination import safe_int_arg
 
 logger = logging.getLogger(__name__)
 
@@ -640,8 +641,8 @@ def api_layer_elements(layer):
     search = request.args.get("search", "").strip()
     type_filter = request.args.get("element_type", "").strip()
     source_filter = request.args.get("source", "").strip()  # "portfolio", "architecture", or ""
-    page = request.args.get("page", 1, type=int)
-    per_page = request.args.get("per_page", 25, type=int)
+    page = safe_int_arg('page', 1, minimum=1)
+    per_page = safe_int_arg('per_page', 25, minimum=1, maximum=500)
     sort_by = request.args.get("sort_by", "name")
     sort_order = request.args.get("sort_order", "asc")
 
@@ -785,8 +786,8 @@ def list_elements(layer, element_type):
 
     # Get search/filter parameters
     search = request.args.get("search", "").strip()
-    page = request.args.get("page", 1, type=int)
-    per_page = request.args.get("per_page", 20, type=int)
+    page = safe_int_arg('page', 1, minimum=1)
+    per_page = safe_int_arg('per_page', 20, minimum=1, maximum=500)
     view_mode = request.args.get("view", "table", type=str)  # table or card
 
     # Build query

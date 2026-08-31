@@ -543,7 +543,12 @@ class RoadmapDataSync:
             orphaned_wps = db.session.execute(  # tenant-filtered: scoped via parent FK (source_id → unified_capabilities)
                 text(
                     """
-                SELECT wp.id FROM implementation_work_packages wp
+                -- ImplementationWorkPackage is an alias for RoadmapWorkPackage
+                -- (table roadmap_work_packages), which is where source_type /
+                -- source_id live. implementation_work_packages is a different
+                -- table and has neither column, so this SELECT raised
+                -- UndefinedColumn and nothing was ever archived.
+                SELECT wp.id FROM roadmap_work_packages wp
                 LEFT JOIN unified_capabilities uc ON wp.source_id = uc.id
                 WHERE wp.source_type = 'capability'
                 AND wp.source_id IS NOT NULL
@@ -759,22 +764,17 @@ class RoadmapDataSync:
 
     def _update_capability_sync_status(self, work_package_id: int):
         """Update capability sync status when work package is deleted"""
-        # Mark related capabilities as needing sync
-        db.session.execute(  # tenant-filtered: scoped via parent FK (work_package_id → work_package_capabilities)
-            text(
-                """
-            UPDATE unified_capabilities
-            SET last_sync_at = NULL, sync_status = 'pending'
-            WHERE id IN (
-                SELECT capability_id FROM work_package_capabilities
-                WHERE work_package_id = :wp_id
-            )
-        """
-            ),
-            {"wp_id": work_package_id},
+        # No-op by schema: unified_capabilities has no last_sync_at or
+        # sync_status column (sync state lives on roadmap_work_packages), so the
+        # UPDATE that used to be here raised UndefinedColumn on every call and
+        # marked nothing. There is no capability-level sync flag to set, and
+        # inventing one would mean adding a column, so the dead statement is
+        # removed rather than retargeted.
+        logger.debug(
+            "No capability sync flag to clear for work package %s: "
+            "unified_capabilities has no sync-state columns",
+            work_package_id,
         )
-
-        db.session.commit()
 
     def _log_audit_entry(self, entity_type: str, entity_id: int, action: str, details: Dict):
         """Log audit entry for synchronization"""
@@ -818,8 +818,11 @@ class RoadmapDataSync:
         result = db.session.execute(  # tenant-filtered: scoped via parent FK (application_id)
             text(
                 """
+            -- application_capability_mapping names its capability FK
+            -- business_capability_id; there is no capability_id column on that
+            -- table, so this join raised UndefinedColumn.
             SELECT uc.name FROM unified_capabilities uc
-            JOIN application_capability_mapping acm ON uc.id = acm.capability_id
+            JOIN application_capability_mapping acm ON uc.id = acm.business_capability_id
             WHERE acm.application_id = :app_id
             LIMIT 1
         """

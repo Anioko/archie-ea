@@ -14,7 +14,13 @@ completeness_bp = Blueprint("completeness", __name__)
 @login_required
 def api_completeness(solution_id: int):
     """Return JSON completeness report for a solution."""
+    from app.models.solution_models import Solution
     from app.services.solution_completeness_service import check_completeness
+    from app.utils.route_guards import require_entity
+
+    # A score for a solution that does not exist is fabricated data: 0/100 is
+    # indistinguishable from a measured zero. 404 instead.
+    require_entity(Solution, solution_id, description="Solution not found")
     report = check_completeness(solution_id)
     return jsonify(report)
 
@@ -23,10 +29,17 @@ def api_completeness(solution_id: int):
 @login_required
 def completeness_page(solution_id: int):
     """Render the completeness dashboard page."""
+    from app.models.solution_models import Solution
     from app.services.solution_completeness_service import check_completeness
+    from app.utils.route_guards import require_entity
+
+    solution = require_entity(
+        Solution, solution_id, description="Solution not found"
+    )
     report = check_completeness(solution_id)
     return render_template(
         "solutions/completeness.html",
         report=report,
         solution_id=solution_id,
+        solution=solution,
     )

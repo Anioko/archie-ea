@@ -19,6 +19,7 @@ from app.services.batch_approval_service import BatchApprovalService
 from app.services.batch_import_service import BatchImportService
 from app.template_helpers import safe_url_for_with_fallback
 from app.security.import_decorators import with_import_security
+from app.utils.pagination import safe_int_arg
 
 logger = logging.getLogger(__name__)
 
@@ -46,8 +47,8 @@ def dashboard():
     try:
         # Get filter parameters
         status_filter = request.args.get("status")
-        page = request.args.get("page", 1, type=int)
-        per_page = request.args.get("per_page", 20, type=int)
+        page = safe_int_arg('page', 1, minimum=1)
+        per_page = safe_int_arg('per_page', 20, minimum=1, maximum=500)
 
         # Ensure reasonable limits
         per_page = min(per_page, 100)
@@ -310,8 +311,8 @@ def batch_review(batch_id: int):
         summary = approval_service.get_batch_summary(batch_id)
 
         # Get elements with filtering and pagination
-        page = request.args.get("page", 1, type=int)
-        per_page = request.args.get("per_page", 50, type=int)
+        page = safe_int_arg('page', 1, minimum=1)
+        per_page = safe_int_arg('per_page', 50, minimum=1, maximum=500)
         status_filter = request.args.get("status")
         layer_filter = request.args.get("layer")
 

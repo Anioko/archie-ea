@@ -44,6 +44,13 @@ answer where it belongs — a gate, a test, an ADR, or the report.
 - **Product architect** — before: which persona hits this, and what do they see
   when it is empty or fails? after: can that persona finish the job end to end,
   or does the journey stop mid-way?
+- **Service designer** — before: which persona hands this to which, and where
+  does the receiving one find it? after: does the work reach the next actor, or
+  does it change state into a queue nobody can open?
+- **Data / evidence analyst** — before: what query produces this number, and
+  which store does it count? after: does every surface answering that question
+  return the same answer, and can each figure be traced to a query rather than
+  to a literal?
 - **Business architect** — before: which capability or value stream does this
   serve, and is it modelled as an ArchiMate element rather than a textarea?
   after: is it reachable from that persona's sidebar?

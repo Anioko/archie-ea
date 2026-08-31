@@ -15,6 +15,7 @@ from flask import Blueprint, jsonify, request
 from flask_login import current_user, login_required
 
 from app.modules.vendors.services.vendor_mdm import VendorMDMService
+from app.utils.pagination import safe_int_arg
 
 logger = logging.getLogger(__name__)
 
@@ -97,7 +98,7 @@ def get_reconciliation_candidates():
     try:
         name_type = request.args.get("type", "vendor")
         min_confidence = float(request.args.get("min_confidence", 0.7))
-        limit = int(request.args.get("limit", 50))
+        limit = safe_int_arg('limit', 50, minimum=1, maximum=500)
 
         if name_type not in ["vendor", "product"]:
             return jsonify({"error": "Type must be 'vendor' or 'product'"}), 400
@@ -244,7 +245,7 @@ def get_mappings():
     try:
         name_type = request.args.get("type")
         validated = request.args.get("validated", "all")
-        limit = int(request.args.get("limit", 100))
+        limit = safe_int_arg('limit', 100, minimum=1, maximum=500)
 
         from app.models.vendor_taxonomy import TaxonomyMapping
 

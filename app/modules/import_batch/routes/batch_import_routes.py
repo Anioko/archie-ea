@@ -27,6 +27,7 @@ from app.services.import_audit_service import log_batch_approval  # dead-code-ok
 from app.services.batch_processor_service import BatchProcessorService
 from app.utils.error_sanitizer import ErrorSanitizer, handle_import_error
 from app.utils.file_validation import validate_mime_type, InvalidFileTypeError, get_allowed_extensions_display
+from app.utils.pagination import safe_int_arg
 
 logger = logging.getLogger(__name__)
 
@@ -285,8 +286,8 @@ def list_jobs():
         from app import db
 
         status = request.args.get("status")
-        limit = request.args.get("limit", 50, type=int)
-        offset = request.args.get("offset", 0, type=int)
+        limit = safe_int_arg('limit', 50, minimum=1, maximum=500)
+        offset = safe_int_arg('offset', 0, minimum=0)
 
         jobs, total = import_service.get_user_jobs(
             user_id=current_user.id,
@@ -567,6 +568,11 @@ def stream_job_progress(job_id):
         BatchJobStatus,
         BatchStatus,
     )
+    from app.utils.route_guards import require_entity
+
+    # Refuse before the stream opens: a 200 text/event-stream for a job that does
+    # not exist is a stream of invented progress.
+    require_entity(BatchImportJob, job_id, description="Job not found")
 
     def generate():
         """Generator function for SSE events."""
@@ -733,7 +739,6 @@ def stream_job_progress(job_id):
         mimetype="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
             "X-Accel-Buffering": "no",  # Disable nginx buffering
         },
     )
@@ -1276,8 +1281,8 @@ def get_batch_elements(batch_id):
 
         status = request.args.get("status")
         layer = request.args.get("layer")
-        limit = request.args.get("limit", 100, type=int)
-        offset = request.args.get("offset", 0, type=int)
+        limit = safe_int_arg('limit', 100, minimum=1, maximum=500)
+        offset = safe_int_arg('offset', 0, minimum=0)
 
         elements, total = approval_service.get_batch_elements(
             batch_id=batch_id,

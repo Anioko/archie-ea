@@ -442,38 +442,183 @@ class ArchiMateRulesEngine:
             "relationships_created": len(relationships_created),
         }
 
-    def commit_elements_to_database(self) -> Dict[str, Any]:
+    # A single generation run that legitimately covers the whole vendor
+    # catalogue creates ~435 elements. This cap is not a throttle on that; it
+    # is the ceiling above which a request has stopped being a modelling action
+    # and become a bulk load that should be scoped. Exceeding it aborts the
+    # write entirely rather than truncating it — a half-written model is worse
+    # than no model, because nothing in the UI says which half is missing.
+    MAX_ELEMENTS_PER_COMMIT = 2000
+
+    def register_element(self, element: ArchiMateElement) -> ArchiMateElement:
+        """Queue an element built outside the rules (e.g. by the LLM path).
+
+        Everything that will be written goes through the same choke point, so
+        deduplication, the dry-run preview and the cap apply to it too. Adding
+        such an element straight to the session bypassed all three.
+        """
+        self.element_counter += 1
+        self.generated_elements[f"{element.type}_{self.element_counter}"] = element
+        return element
+
+    @staticmethod
+    def _dedupe_key(element) -> tuple:
+        """Identity of an element for duplicate purposes: type + folded name.
+
+        Two elements of the same type with the same name in one tenant are the
+        same element. That is the definition the product's own duplicate
+        detection already uses, so generation must not manufacture rows it will
+        then flag.
+        """
+        name = " ".join((element.name or "").split()).casefold()
+        return ((element.type or ""), name)
+
+    def commit_elements_to_database(self, dry_run: bool = False) -> Dict[str, Any]:
         """
         Commit all generated elements and relationships to the database.
 
-        This should be called after all generation is complete.
-        """
-        logger.info("Committing ArchiMate elements and relationships to database")
+        Idempotent since 31 Aug 2026. Before this, POSTing an empty body to
+        /api/archimate/generate/from-vendors created 435 business actors from
+        the global vendor catalogue and a repeat created 435 more — verified
+        435 -> 870 -> 1306 rows in one tenant, with no dedup by name, so the
+        duplicates then fed the product's own duplicate-detection module.
 
-        elements_committed = 0
-        relationships_committed = 0
+        Elements whose (type, folded name) already exists in the tenant are
+        skipped, and any relationship pointing at a skipped element is
+        repointed at the row that already exists. So a repeat run is a no-op
+        rather than a second copy of the model.
+
+        Args:
+            dry_run: compute what WOULD be written and return the counts
+                without adding anything to the session.
+        """
+        logger.info(
+            "Committing ArchiMate elements and relationships to database (dry_run=%s)",
+            dry_run,
+        )
+
+        # Resolve every generated element to either "new" or "the row that
+        # already carries this identity".
+        candidate_names = {
+            e.name for e in self.generated_elements.values() if e.name
+        }
+        existing_by_key: Dict[tuple, ArchiMateElement] = {}
+
+        # Outside a request there is no g.current_org_id, so do_orm_execute
+        # injects nothing and this lookup would span EVERY tenant — it would
+        # then "skip as already existing" an element that belongs to somebody
+        # else, leaving this tenant's model silently short of a row. So the
+        # cross-run dedupe only applies where the tenant is known; a CLI or
+        # scheduler run still dedupes within its own batch.
+        from flask import g, has_request_context
+
+        tenant_known = has_request_context() and getattr(g, "current_org_id", None)
+        if candidate_names and tenant_known:
+            # ArchiMateElement inherits TenantMixin, so do_orm_execute injects
+            # the organisation predicate — adding one here would double-filter.
+            for row in ArchiMateElement.query.filter(
+                ArchiMateElement.name.in_(candidate_names)
+            ).all():
+                existing_by_key.setdefault(self._dedupe_key(row), row)
+        elif candidate_names:
+            logger.info(
+                "No tenant context: deduplicating within this batch only, "
+                "not against rows already in the database."
+            )
+
+        resolved: Dict[int, ArchiMateElement] = {}  # id(generated) -> row to use
+        to_insert: List[ArchiMateElement] = []
+        skipped = 0
+        for element in self.generated_elements.values():
+            key = self._dedupe_key(element)
+            existing = existing_by_key.get(key)
+            if existing is not None:
+                resolved[id(element)] = existing
+                skipped += 1
+                continue
+            # First occurrence of this identity in THIS batch becomes the row;
+            # later ones resolve to it rather than inserting a second copy.
+            existing_by_key[key] = element
+            resolved[id(element)] = element
+            to_insert.append(element)
+
+        if len(to_insert) > self.MAX_ELEMENTS_PER_COMMIT:
+            logger.warning(
+                "Refusing generation: %d new elements exceeds the %d cap",
+                len(to_insert),
+                self.MAX_ELEMENTS_PER_COMMIT,
+            )
+            return {
+                "elements_committed": 0,
+                "relationships_committed": 0,
+                "elements_skipped_existing": skipped,
+                "elements_would_create": len(to_insert),
+                "success": False,
+                "capped": True,
+                "cap": self.MAX_ELEMENTS_PER_COMMIT,
+                "error": (
+                    f"This would create {len(to_insert)} new elements, above the "
+                    f"{self.MAX_ELEMENTS_PER_COMMIT} limit for a single generation. "
+                    "Scope the request to specific ids and run it again."
+                ),
+            }
+
+        resolved_elements = [
+            resolved[id(e)] for e in self.generated_elements.values()
+        ]
+
+        if dry_run:
+            return {
+                "dry_run": True,
+                "resolved_elements": resolved_elements,
+                "elements_committed": 0,
+                "relationships_committed": 0,
+                "elements_would_create": len(to_insert),
+                "elements_skipped_existing": skipped,
+                "relationships_would_create": len(self.generated_relationships),
+                "success": True,
+            }
 
         try:
-            # Commit elements
-            for element_id, element in self.generated_elements.items():
+            for element in to_insert:
                 db.session.add(element)
-                elements_committed += 1
 
-            # Commit relationships
+            # Endpoints are read below. Without this flush the new rows have no
+            # id yet and every relationship was written with source_id=NULL /
+            # target_id=NULL — a relationship joining nothing, in a system of
+            # record.
+            db.session.flush()
+
+            relationships_committed = 0
             for rel_spec in self.generated_relationships:
-                relationship = ArchiMateRelationship(
-                    source_id=rel_spec.source_element.id,
-                    target_id=rel_spec.target_element.id,
-                    type=rel_spec.relationship_type,
+                source = resolved.get(
+                    id(rel_spec.source_element), rel_spec.source_element
                 )
-                db.session.add(relationship)
+                target = resolved.get(
+                    id(rel_spec.target_element), rel_spec.target_element
+                )
+                if source.id is None or target.id is None:
+                    logger.warning(
+                        "Skipping relationship %s: endpoint has no id",
+                        rel_spec.relationship_type,
+                    )
+                    continue
+                db.session.add(
+                    ArchiMateRelationship(
+                        source_id=source.id,
+                        target_id=target.id,
+                        type=rel_spec.relationship_type,
+                    )
+                )
                 relationships_committed += 1
 
             db.session.commit()
 
             return {
-                "elements_committed": elements_committed,
+                "elements_committed": len(to_insert),
                 "relationships_committed": relationships_committed,
+                "elements_skipped_existing": skipped,
+                "resolved_elements": resolved_elements,
                 "success": True,
             }
 
@@ -483,6 +628,7 @@ class ArchiMateRulesEngine:
             return {
                 "elements_committed": 0,
                 "relationships_committed": 0,
+                "elements_skipped_existing": skipped,
                 "success": False,
                 "error": str(e),
             }

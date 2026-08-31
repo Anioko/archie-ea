@@ -212,8 +212,14 @@ def generate_phase(solution_id):
                 "preview": [] if dry_run else None,
                 "created_count": 0,
                 "linked_count": 0,
-                "completeness_before": 1.0,
-                "completeness_after": 1.0,
+                # None, not 1.0. This branch is the "nothing to score" path --
+                # source_elements is 0 and the message says so -- and reporting
+                # 1.0 told the caller the solution was 100% complete precisely
+                # when nothing had been measured. CLAUDE.md: a value that means
+                # "not computed" must not be indistinguishable from a measured
+                # one; use None so the UI renders an em dash.
+                "completeness_before": None,
+                "completeness_after": None,
                 "errors": [],
             }), 200
 

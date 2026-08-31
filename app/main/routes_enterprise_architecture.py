@@ -156,9 +156,12 @@ def synchronize_timelines():
         # Get current timeline bounds
         timeline_query = text(
             """
-            SELECT MIN(start_date) as min_start, MAX(end_date) as max_end
+            -- enterprise_initiatives names its planned dates planned_start_date /
+            -- planned_end_date; there are no start_date / end_date columns, so the
+            -- previous form raised UndefinedColumn on every call.
+            SELECT MIN(planned_start_date) as min_start, MAX(planned_end_date) as max_end
             FROM enterprise_initiatives
-            WHERE start_date IS NOT NULL AND end_date IS NOT NULL
+            WHERE planned_start_date IS NOT NULL AND planned_end_date IS NOT NULL
         """
         )
         result = db.session.execute(timeline_query)  # tenant-exempt
@@ -174,9 +177,11 @@ def synchronize_timelines():
         # Update all roadmap systems with synchronized timeline
         update_query = text(
             """
+            -- planned_start_date / planned_end_date are the real column names;
+            -- start_date / end_date do not exist on this table.
             UPDATE enterprise_initiatives
             SET updated_at = :now
-            WHERE start_date >= :start_date AND end_date <= :end_date
+            WHERE planned_start_date >= :start_date AND planned_end_date <= :end_date
         """
         )
         db.session.execute(  # tenant-exempt
@@ -215,9 +220,12 @@ def manage_dependencies():
             # Get all dependencies with initiative details
             query = text(
                 """
+                -- program_type ('strategic' | 'operational' | 'compliance' |
+                -- 'innovation') is the initiative's portfolio classification;
+                -- there is no portfolio_type column on enterprise_initiatives.
                 SELECT id.*,
-                       source.name as source_name, source.portfolio_type as source_type,
-                       target.name as target_name, target.portfolio_type as target_type
+                       source.name as source_name, source.program_type as source_type,
+                       target.name as target_name, target.program_type as target_type
                 FROM initiative_dependencies id
                 JOIN enterprise_initiatives source ON id.source_id = source.id
                 JOIN enterprise_initiatives target ON id.target_id = target.id
@@ -269,13 +277,19 @@ def get_analytics():
         # Portfolio analytics
         portfolio_query = text(
             """
-            SELECT portfolio_type,
+            -- Real column names on enterprise_initiatives: the portfolio
+            -- classification is program_type (aliased so the API key is
+            -- unchanged), the budget figure is approved_budget, and progress is
+            -- completion_percentage. portfolio_type / total_investment /
+            -- progress_percentage do not exist. There is no ROI column at all,
+            -- so total_roi is dropped rather than substituted with a different
+            -- measure (see CLAUDE.md: never invent data).
+            SELECT program_type as portfolio_type,
                    COUNT(*) as count,
-                   SUM(total_investment) as total_investment,
-                   AVG(progress_percentage) as avg_progress,
-                   SUM(expected_roi) as total_roi
+                   SUM(approved_budget) as total_investment,
+                   AVG(completion_percentage) as avg_progress
             FROM enterprise_initiatives
-            GROUP BY portfolio_type
+            GROUP BY program_type
         """
         )
         portfolio_result = db.session.execute(portfolio_query)
@@ -300,7 +314,8 @@ def get_analytics():
         # Risk assessment
         risk_query = text(
             """
-            SELECT risk_level, COUNT(*) as count, SUM(total_investment) as investment_at_risk
+            -- approved_budget is the investment column; total_investment does not exist.
+            SELECT risk_level, COUNT(*) as count, SUM(approved_budget) as investment_at_risk
             FROM enterprise_initiatives
             WHERE risk_level IS NOT NULL
             GROUP BY risk_level
@@ -321,12 +336,14 @@ def get_analytics():
         timeline_query = text(
             """
             SELECT
-                DATE(start_date, 'start of month') as month,
+                -- planned_start_date / approved_budget are the real columns;
+                -- start_date / total_investment do not exist on this table.
+                DATE(planned_start_date, 'start of month') as month,
                 COUNT(*) as initiatives_starting,
-                SUM(total_investment) as monthly_investment
+                SUM(approved_budget) as monthly_investment
             FROM enterprise_initiatives
-            WHERE start_date IS NOT NULL
-            GROUP BY DATE(start_date, 'start of month')
+            WHERE planned_start_date IS NOT NULL
+            GROUP BY DATE(planned_start_date, 'start of month')
             ORDER BY month
         """
         )

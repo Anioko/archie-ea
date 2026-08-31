@@ -28,6 +28,7 @@ from app.services.framework_configuration_service import (
     FrameworkExtensionService,
     FrameworkValidationService,
 )
+from app.utils.pagination import safe_int_arg
 
 framework_config_ui_bp = Blueprint(
     "framework_config_ui", __name__, url_prefix="/framework-config"
@@ -417,8 +418,8 @@ def help():
 @login_required
 def api_list_framework_instances():
     """List framework instances with pagination, search and sort."""
-    page = request.args.get("page", 1, type=int)
-    per_page = min(request.args.get("per_page", 25, type=int), 100)
+    page = safe_int_arg('page', 1, minimum=1)
+    per_page = min(safe_int_arg('per_page', 25, minimum=1, maximum=500), 100)
     search = request.args.get("q") or request.args.get("search", "")
     sort_by = request.args.get("sort", "instance_name")
     sort_dir = request.args.get("dir", "asc")

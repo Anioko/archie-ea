@@ -15,6 +15,7 @@ from app.services.rate_limiter import rate_limit
 
 from . import unified_applications_bp
 from ._constants import DEFAULT_TOKEN_RATE_DIVISOR
+from app.utils.route_guards import require_entity_json
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +27,10 @@ def semantic_link_preview(id):
     Generate semantic linking proposals for an application.
     Returns JSON for the UI to display in a modal.
     """
+    _app, missing = require_entity_json(ApplicationComponent, id, label="Application")
+    if missing:
+        return missing
+
     try:
         from app.services.semantic_linking_service import SemanticLinkingService
 
@@ -873,7 +878,6 @@ def comprehensive_auto_map_stream():
         headers={
             "Cache-Control": "no-cache",
             "X-Accel-Buffering": "no",
-            "Connection": "keep-alive",
         },
     )
 

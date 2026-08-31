@@ -13,7 +13,11 @@ from flask_login import current_user, login_required
 
 from app.decorators import audit_log
 
+from app.models.application_portfolio import ApplicationComponent
+from app.models.technical_capability import TechnicalCapability
 from app.services.acm_technical_capability_service import ACMTechnicalCapabilityService
+from app.utils.pagination import safe_int_arg
+from app.utils.route_guards import require_entity
 
 acm_bp = Blueprint("acm", __name__, url_prefix="/api/acm")
 
@@ -42,8 +46,8 @@ def get_capabilities():
     domain = request.args.get("domain")
     level = request.args.get("level")
     search = request.args.get("search")
-    page = request.args.get("page", 1, type=int)
-    per_page = request.args.get("per_page", 50, type=int)
+    page = safe_int_arg('page', 1, minimum=1)
+    per_page = safe_int_arg('per_page', 50, minimum=1, maximum=500)
 
     capabilities, total = ACMTechnicalCapabilityService.get_all_capabilities(
         domain=domain,
@@ -131,6 +135,7 @@ def seed_capabilities():
 @login_required
 def get_business_mappings(capability_id):
     """Get business capabilities mapped to a technical capability."""
+    require_entity(TechnicalCapability, capability_id, description="Technical capability not found")
     mappings = ACMTechnicalCapabilityService.get_business_capability_mappings(capability_id)
     return jsonify(
         {
@@ -169,6 +174,7 @@ def create_business_mapping(capability_id):
 @login_required
 def get_application_mappings(capability_id):
     """Get applications mapped to a technical capability."""
+    require_entity(TechnicalCapability, capability_id, description="Technical capability not found")
     mappings = ACMTechnicalCapabilityService.get_application_mappings(capability_id)
     return jsonify(
         {
@@ -207,6 +213,7 @@ def create_application_mapping(capability_id):
 @login_required
 def get_application_capabilities(application_id):
     """Get all technical capabilities for an application."""
+    require_entity(ApplicationComponent, application_id, description="Application not found")
     capabilities = ACMTechnicalCapabilityService.get_capabilities_for_application(application_id)
     return jsonify(
         {
@@ -300,6 +307,7 @@ def auto_map_application(application_id):
 @login_required
 def get_apqc_mappings(capability_id):
     """Get APQC processes mapped to a technical capability."""
+    require_entity(TechnicalCapability, capability_id, description="Technical capability not found")
     mappings = ACMTechnicalCapabilityService.get_apqc_mappings(capability_id)
     return jsonify(
         {
@@ -337,6 +345,7 @@ def create_apqc_mapping(capability_id):
 @login_required
 def get_vendor_mappings(capability_id):
     """Get vendor products mapped to a technical capability."""
+    require_entity(TechnicalCapability, capability_id, description="Technical capability not found")
     mappings = ACMTechnicalCapabilityService.get_vendor_mappings(capability_id)
     return jsonify(
         {

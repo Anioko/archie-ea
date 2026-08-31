@@ -12,6 +12,7 @@ from flask_login import current_user, login_required
 from app.decorators import audit_log
 from app.services.confidence_review_service import ConfidenceReviewService
 from app.services.rate_limiter import rate_limit
+from app.utils.pagination import safe_int_arg
 
 logger = logging.getLogger(__name__)
 
@@ -27,8 +28,8 @@ def get_review_queue():
         service = ConfidenceReviewService()
 
         # Get pagination parameters
-        page = request.args.get("page", 1, type=int)
-        per_page = request.args.get("per_page", 50, type=int)
+        page = safe_int_arg('page', 1, minimum=1)
+        per_page = safe_int_arg('per_page', 50, minimum=1, maximum=500)
         status = request.args.get("status", "pending")
 
         # Get pending review items

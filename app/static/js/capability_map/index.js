@@ -276,11 +276,25 @@
             let name = item.domain?.name || 'Unassigned';
             if (code === 'UNK') code = 'N/A';
             if (name === 'Unknown') name = 'Unassigned';
-            if (!domainMap[code]) {
-                domainMap[code] = { code, name, total: 0, mapped: 0 };
+
+            // Group by code where there IS one, otherwise by NAME.
+            //
+            // This used to key on `code` alone. Most capabilities carry a
+            // business_domain name and no domain code, so every one of them
+            // landed in the single 'N/A' bucket -- six distinct domains
+            // (Customer, Product, Operations, Finance, Technology, People)
+            // rendered as ONE card, labelled with whichever member happened to
+            // arrive first. The screen said "Product: 30 capabilities" for an
+            // estate that had six domains and five capabilities in Product.
+            //
+            // A constant fallback is never a grouping key: it merges everything
+            // it touches and then names the merge after an arbitrary member.
+            const key = (code !== 'N/A') ? code : name;
+            if (!domainMap[key]) {
+                domainMap[key] = { code, name, total: 0, mapped: 0 };
             }
-            domainMap[code].total++;
-            if (item.is_mapped) domainMap[code].mapped++;
+            domainMap[key].total++;
+            if (item.is_mapped) domainMap[key].mapped++;
         });
     
         const domains = Object.values(domainMap).sort((a, b) => b.total - a.total);

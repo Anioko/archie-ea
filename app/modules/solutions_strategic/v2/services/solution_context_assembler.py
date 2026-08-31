@@ -151,7 +151,10 @@ class SolutionContextAssembler:
     def _get_linked_capabilities(self, solution_id: int) -> List[Dict]:
         """Get capability dicts linked via solution_capability_mappings."""
         rows = db.session.execute(db.text(  # tenant-filtered: scoped via solution_id FK
-            "SELECT bcm.business_capability_id "
+            # solution_capability_mappings names its FK capability_id; it has
+            # no business_capability_id column (that spelling belongs to
+            # application_capability_mapping), so this raised UndefinedColumn.
+            "SELECT bcm.capability_id "
             "FROM solution_capability_mappings bcm "
             "WHERE bcm.solution_id = :sid"
         ), {"sid": solution_id}).fetchall()

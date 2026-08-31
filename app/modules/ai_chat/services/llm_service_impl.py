@@ -353,6 +353,86 @@ class LLMService:
             )
 
     @staticmethod
+    def configuration_status() -> Dict[str, Any]:
+        """One answer to "is an LLM configured?", for every surface that asks.
+
+        Added 31 Aug 2026 because two surfaces in the SAME process disagreed:
+        ``GET /health`` reported ``llm_providers: {enabled_providers: 0, "No LLM
+        providers enabled"}`` while ``GET /ai-chat/token-usage`` reported
+        ``{"configured": true, "provider": "openrouter"}``. token-usage was
+        right. /health counted rows in ``api_settings`` only, and a provider
+        configured by environment variable (the documented bootstrap path,
+        Step 4 of ``_get_configured_provider``) has no such row — so /health
+        told an operator the AI was dead while it was serving. Worse, that
+        count is tenant-filtered inside a request and unfiltered outside one,
+        so it was not even a stable number.
+
+        The verdict here comes from the resolver that actually chooses the
+        provider, so a surface cannot disagree with what the product will do.
+        The row count is kept alongside it as detail, clearly labelled, rather
+        than as the verdict.
+
+        Never raises: this runs inside a health probe.
+        """
+        from app.models.models import APISettings
+
+        # Kept for the five existing callers that read `ready` / `providers`.
+        # It is a *list of candidates*, not the verdict — the verdict below
+        # comes from the resolver, which is the only thing that knows whether a
+        # call will actually be made.
+        try:
+            _, candidate_providers = LLMService._validate_database_configuration()
+        except Exception:  # noqa: BLE001 - a health probe must not 500
+            candidate_providers = []
+
+        db_enabled = None
+        try:
+            db_enabled = APISettings.query.filter_by(enabled=True).count()
+        except Exception as exc:  # noqa: BLE001 - a health probe must not 500
+            logger.debug("configuration_status: API settings count failed: %s", exc)
+
+        try:
+            provider, model = LLMService._get_configured_provider()
+            return {
+                "configured": True,
+                "ready": True,
+                "providers": candidate_providers,
+                "provider": provider,
+                "model": model,
+                "db_enabled_providers": db_enabled,
+                "source": "database" if db_enabled else "environment",
+            }
+        except ValueError as exc:
+            return {
+                "configured": False,
+                "ready": False,
+                "providers": candidate_providers,
+                "provider": None,
+                "model": None,
+                "db_enabled_providers": db_enabled,
+                "source": None,
+                "reason": str(exc),
+            }
+        except Exception as exc:  # noqa: BLE001 - a health probe must not 500
+            logger.warning("configuration_status: resolver failed: %s", exc)
+            # Unknown is not the same as "not configured". Saying "no providers"
+            # here would be the exact fabrication this method exists to remove.
+            return {
+                "configured": None,
+                # `ready` must not become True on an unknown: a caller that
+                # gates a write on it would proceed into a call that cannot be
+                # made. Unknown degrades to not-ready, and `configured: None`
+                # says which of the two it is.
+                "ready": False,
+                "providers": candidate_providers,
+                "provider": None,
+                "model": None,
+                "db_enabled_providers": db_enabled,
+                "source": None,
+                "reason": "Could not determine LLM configuration.",
+            }
+
+    @staticmethod
     def is_available() -> bool:
         """
         Check if LLM service is available (at least one provider configured).
@@ -502,15 +582,6 @@ class LLMService:
                     valid_providers.append(provider)
 
         return len(valid_providers) > 0, valid_providers
-
-    @staticmethod
-    def configuration_status() -> Dict[str, object]:
-        """Return a JSON-serialisable status payload for UI surfaces."""
-        ready, providers = LLMService._validate_database_configuration()
-        return {
-            "ready": ready,
-            "providers": providers,
-        }
 
     @staticmethod
     def generate_architecture_from_jira(jira_issue, pipeline_stage_id: Optional[int] = None) -> str:

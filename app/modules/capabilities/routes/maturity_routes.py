@@ -19,6 +19,7 @@ from sqlalchemy import text
 
 from app import db
 from app.utils.framework_classifier import FrameworkClassifier
+from app.utils.pagination import safe_int_arg
 
 # Create blueprint
 maturity_management = Blueprint("maturity_management", __name__)
@@ -36,7 +37,7 @@ def search_capabilities():
     query = request.args.get("q", "")
     domain = request.args.get("domain", "")
     strategic_importance = request.args.get("strategic_importance", "")
-    page = int(request.args.get("page", 1))
+    page = safe_int_arg('page', 1, minimum=1)
     per_page = 20
 
     try:

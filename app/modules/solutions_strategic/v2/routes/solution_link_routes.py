@@ -15,6 +15,7 @@ from .solution_design_routes import (
     _get_solution_requirements,
     solution_design_bp,
 )
+from app.utils.pagination import safe_int_arg
 
 logger = logging.getLogger(__name__)
 
@@ -118,7 +119,7 @@ def _create_notification(user_id, notification_type, message, solution_id=None):
 @login_required
 def list_solution_notifications():
     """List notifications for the current user. Returns unread_count for badge."""
-    limit = min(request.args.get("limit", 50, type=int), 100)
+    limit = min(safe_int_arg('limit', 50, minimum=1, maximum=500), 100)
     unread_only = request.args.get("unread_only", "false").lower() == "true"
     q = SolutionNotification.query.filter_by(user_id=current_user.id).order_by(
         SolutionNotification.created_at.desc()
@@ -199,7 +200,7 @@ def api_solution_activity(solution_id: int):
     solution = Solution.query.get_or_404(solution_id)
     if solution.created_by_id != current_user.id and not current_user.is_admin:
         abort(403)
-    limit = min(request.args.get("limit", 50, type=int), 100)
+    limit = min(safe_int_arg('limit', 50, minimum=1, maximum=500), 100)
     activities = []
     comments = SolutionComment.query.filter_by(solution_id=solution_id).order_by(
         SolutionComment.created_at.desc()
@@ -1651,7 +1652,7 @@ def list_integration_patterns():
     q = request.args.get("q", "").strip()
     vendor_key = request.args.get("vendor_key", "").strip()
     approval_status = request.args.get("approval_status", "").strip()
-    limit = min(int(request.args.get("limit", 50)), 100)
+    limit = min(safe_int_arg('limit', 50, minimum=1, maximum=500), 100)
 
     try:
         query = IntegrationPattern.query

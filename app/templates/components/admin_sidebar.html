@@ -69,9 +69,14 @@ DEPENDENCIES:
 >
     <!-- Sidebar Header -->
     <div class="flex items-center justify-between h-16 px-4 border-b border-border flex-shrink-0">
-        <a href="{{ url_for('admin.index') }}" class="flex items-center space-x-2">
+        {# title: the app-name span beside this icon carries sidebar-app-name,
+           which the collapse CSS hides, so collapsed this is a bare glyph. #}
+        <a href="{{ url_for('admin.index') }}" title="{{ config.APP_NAME }} home"
+           class="flex items-center space-x-2">
             <div class="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                <i data-lucide="layout-dashboard" class="w-5 h-5 text-primary-foreground"></i>
+                <!-- hexagon, not layout-dashboard: the brand mark shared a glyph with the
+                     Dashboard Overview link, so collapsed they were the same button. -->
+                <i data-lucide="hexagon" class="w-5 h-5 text-primary-foreground"></i>
             </div>
             <span class="text-lg font-semibold sidebar-app-name">{{ config.APP_NAME }}</span>
         </a>
@@ -151,7 +156,11 @@ DEPENDENCIES:
             <div class="space-y-1">
                 {% for link in visible_links %}
                 {% if link.endpoint == 'modules_directory.index' %}{% set ns.has_all_modules = true %}{% endif %}
+                {# title, not just the label span: collapsed, the span is
+                   display:none and the icon is the only thing left, so the
+                   tooltip is the only way to learn what this link is. #}
                 <a href="{{ url_for(link.endpoint) }}"
+                   title="{{ link.label }}"
                    class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint == link.endpoint %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}" {%- if request.endpoint == link.endpoint -%} aria-current="page"{%- endif -%}>
                     <i data-lucide="{{ link.icon }}" class="h-4 w-4 flex-shrink-0"></i>
                     <span class="flex-1 truncate">{{ link.label }}</span>
@@ -172,9 +181,14 @@ DEPENDENCIES:
     {% if not ns.has_all_modules and 'modules_directory.index' in flask.current_app.view_functions %}
     <div class="px-4 py-2 border-t border-border">
         <a href="{{ url_for('modules_directory.index') }}"
+           title="All modules"
            class="w-full flex items-center gap-2 rounded-md px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors {% if request.endpoint == 'modules_directory.index' %}text-foreground font-medium{% endif %}">
             <i data-lucide="grid-3x3" class="h-3.5 w-3.5 flex-shrink-0"></i>
-            <span>All modules</span>
+            {# sidebar-footer-text, because this link sits OUTSIDE <nav> and the
+               collapse rule is scoped to `.sidebar-collapsed nav span`. Without
+               it the label was not hidden but CLIPPED, rendering as "All mo..."
+               in the 4rem rail. #}
+            <span class="sidebar-footer-text">All modules</span>
         </a>
     </div>
     {% endif %}
@@ -218,7 +232,7 @@ DEPENDENCIES:
         </div>
         {% endif %}
         {% if build_id %}
-        <p class="mt-2 text-xs text-muted-foreground truncate" title="Build identifier (ARCH-062)">Build {{ build_id }}</p>
+        <p class="mt-2 text-xs text-muted-foreground truncate sidebar-footer-text" title="Build identifier (ARCH-062)">Build {{ build_id }}</p>
         {% endif %}
     </div>
 </aside>

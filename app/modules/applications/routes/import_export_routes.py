@@ -206,7 +206,6 @@ def analyze_import_stream():
         headers={
             "Cache-Control": "no-cache",
             "X-Accel-Buffering": "no",
-            "Connection": "keep-alive",
         },
         # Set a longer timeout for streaming responses (10 minutes)
         direct_passthrough=True,

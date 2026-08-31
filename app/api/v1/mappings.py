@@ -26,6 +26,7 @@ from app.models.capability_to_vendor_mapping import (
 )
 from app.models.technical_capability import TechnicalCapability
 from app.utils.api_response import error_response, not_found_response, success_response
+from app.utils.pagination import safe_int_arg
 
 mappings_bp = Blueprint("mappings_v1", __name__, url_prefix="/api/v1/mappings")
 
@@ -107,8 +108,8 @@ def get_technical_to_vendor_mappings():
     }
     """
     try:
-        page = request.args.get("page", 1, type=int)
-        per_page = request.args.get("per_page", 50, type=int)
+        page = safe_int_arg('page', 1, minimum=1)
+        per_page = safe_int_arg('per_page', 50, minimum=1, maximum=500)
 
         # Build query
         query = db.session.query(TechnicalCapabilityVendorMapping)
@@ -367,8 +368,8 @@ def get_unified_to_application_mappings():
     - per_page: Items per page
     """
     try:
-        page = request.args.get("page", 1, type=int)
-        per_page = request.args.get("per_page", 50, type=int)
+        page = safe_int_arg('page', 1, minimum=1)
+        per_page = safe_int_arg('per_page', 50, minimum=1, maximum=500)
 
         query = db.session.query(UnifiedCapabilityApplicationMapping)
 
@@ -572,8 +573,8 @@ def get_unified_to_vendor_org_mappings():
     - page: Page number
     """
     try:
-        page = request.args.get("page", 1, type=int)
-        per_page = request.args.get("per_page", 50, type=int)
+        page = safe_int_arg('page', 1, minimum=1)
+        per_page = safe_int_arg('per_page', 50, minimum=1, maximum=500)
 
         query = db.session.query(UnifiedCapabilityVendorOrganizationMapping)
 
@@ -786,8 +787,8 @@ def get_application_to_vendor_mappings():
     - per_page: Items per page
     """
     try:
-        page = request.args.get("page", 1, type=int)
-        per_page = request.args.get("per_page", 50, type=int)
+        page = safe_int_arg('page', 1, minimum=1)
+        per_page = safe_int_arg('per_page', 50, minimum=1, maximum=500)
 
         query = db.session.query(ApplicationVendorProductMapping)
 

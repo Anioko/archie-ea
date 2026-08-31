@@ -12,6 +12,7 @@ from app import db
 from app.decorators import audit_log
 from app.models.technical_capability import ACMDomain
 from app.services.acm_hybrid_manager import ACMHybridManager
+from app.utils.pagination import safe_int_arg
 
 # Create blueprint
 acm_hybrid_bp = Blueprint("acm_hybrid", __name__, url_prefix="/api/acm-hybrid")
@@ -181,8 +182,8 @@ def get_capabilities():
         level = request.args.get("level")
         platform_specific = request.args.get("platform_specific")
         search = request.args.get("search")
-        page = int(request.args.get("page", 1))
-        per_page = min(int(request.args.get("per_page", 50)), 100)  # Max 100 per page
+        page = safe_int_arg('page', 1, minimum=1)
+        per_page = min(safe_int_arg('per_page', 50, minimum=1, maximum=500), 100)  # Max 100 per page
 
         # Build query
         query = TechnicalCapability.query

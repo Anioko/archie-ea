@@ -843,6 +843,30 @@ def gate_nav_label_clarity(baseline: int) -> Result:
         "scripts/check_nav_label_clarity.py", "nav-label-clarity", baseline)
 
 
+def gate_handoff_continuity(baseline: int) -> Result:
+    """Work moved into a state no reachable persona surface reads back.
+
+    The service designer's gate. Archie is a governance workflow product, so
+    the handoff between personas IS the product -- and a state written into a
+    queue nobody can open fails silently on both sides: the sender believes it
+    was sent, the reviewer never sees it. Must stay clean at 0.
+    """
+    return _simple_ratchet(
+        "scripts/check_handoff_continuity.py", "handoff-continuity", baseline)
+
+
+def gate_metric_provenance(baseline: int) -> Result:
+    """A proportion shown to the user that is a literal, not a measurement.
+
+    The data / evidence analyst's gate. "Total Capabilities 191" above a table
+    reading "Showing 1-10 of 0 results" is the class; the tractable half is a
+    percentage or score written in the source, which no user can distinguish
+    from a real reading.
+    """
+    return _simple_ratchet(
+        "scripts/check_metric_provenance.py", "metric-provenance", baseline)
+
+
 def gate_raw_sql_columns(baseline: int) -> Result:
     """Raw SQL naming a column the table does not have.
 
@@ -855,6 +879,18 @@ def gate_raw_sql_columns(baseline: int) -> Result:
     """
     return _simple_ratchet(
         "scripts/check_raw_sql_columns.py", "raw-sql-columns", baseline)
+
+
+def gate_actionable_rows(baseline: int) -> Result:
+    """A row you cannot act on is a report, and this is not a report.
+
+    /archimate-roadmap listed three gaps -- name, type, severity, status -- with
+    no link, no button and no route to the work package they should become. 112
+    of 158 record tables are the same shape. Ratcheted, because a status
+    breakdown is legitimately read-only and each exemption must say why.
+    """
+    return _simple_ratchet(
+        "scripts/check_actionable_rows.py", "actionable-rows", baseline)
 
 
 def gate_canonical_store(baseline: int) -> Result:
@@ -2006,10 +2042,22 @@ def build_gates(baseline: dict) -> list[Gate]:
              "ratchet", lambda k='nav_label_clarity': gate_nav_label_clarity(baseline[k]),
              remediation="rename the destination or shorten the label, or append 'nav-label-ok: <reason>'",
              tags=["static", "content", "ui"]),
+        Gate("handoff-continuity", "every handoff reaches a reachable next actor",
+             "ratchet", lambda k='handoff_continuity': gate_handoff_continuity(baseline[k]),
+             remediation="surface the state on a screen a persona can reach, or append 'handoff-ok: <reason>'",
+             tags=["static", "handoff", "journey"]),
+        Gate("metric-provenance", "every number shown came from a query",
+             "ratchet", lambda k='metric_provenance': gate_metric_provenance(baseline[k]),
+             remediation="compute it or send None, or append 'metric-provenance-ok: <reason>'",
+             tags=["static", "evidence", "correctness"]),
         Gate("raw-sql-columns", "raw SQL only names columns that exist",
              "ratchet", lambda k='raw_sql_columns': gate_raw_sql_columns(baseline[k]),
              remediation="fix the column name, or append 'raw-sql-columns-ok: <reason>'",
              tags=["static", "schema", "db"]),
+        Gate("actionable-rows", "a table of records offers a way to act on them",
+             "ratchet", lambda k='actionable_rows': gate_actionable_rows(baseline[k]),
+             remediation="link the row to its record or give it the control that moves it on, or append 'actionable-rows-ok: <reason>'",
+             tags=["static", "handoff", "rendered", "product"]),
         Gate("canonical-store", "one concept, one store",
              "ratchet", lambda k='canonical_store': gate_canonical_store(baseline[k]),
              tags=["static", "architecture"]),
@@ -2299,9 +2347,12 @@ DEFAULT_BASELINE = {
     "cache_tenancy": 0,
     "ai_approval_honoured": 0,
     "canonical_store": 0,
+    "actionable_rows": 112,
     "raw_sql_columns": 0,
-    "collapsed_nav_affordance": 10,
-    "nav_icon_ambiguity": 1,
+    "handoff_continuity": 0,
+    "metric_provenance": 0,
+    "collapsed_nav_affordance": 0,
+    "nav_icon_ambiguity": 0,
     "nav_label_clarity": 0,
     "business_layer_backbone": 18,
     "api_envelope": 850,

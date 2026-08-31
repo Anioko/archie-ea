@@ -21,6 +21,7 @@ from app.modules.solutions_strategic.v2.services.solution_backtesting_service im
     SolutionBacktestingService,
     get_accuracy_report
 )
+from app.utils.pagination import safe_int_arg
 
 logger = logging.getLogger(__name__)
 
@@ -129,7 +130,7 @@ def get_solution_backtesting(solution_id, solution):
     """
     try:
         rec_type = request.args.get('rec_type', None)
-        limit = request.args.get('limit', 50, type=int)
+        limit = safe_int_arg('limit', 50, minimum=1, maximum=500)
         
         # Query backtesting results
         query = SolutionAIBacktesting.query.filter_by(solution_id=solution_id)

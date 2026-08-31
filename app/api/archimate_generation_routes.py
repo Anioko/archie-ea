@@ -8,7 +8,7 @@ Provides comprehensive API for enterprise architecture modeling from vendor and 
 import logging
 from datetime import datetime
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, g, jsonify, request
 from flask_login import login_required
 
 from app import db
@@ -17,38 +17,90 @@ from app.models.archimate import ElementType, Layer, RelationshipType
 from app.models.solution_archimate_element import SolutionArchiMateElement
 from app.models.solution_models import Solution
 from app.modules.architecture.services.archimate_core_service import ArchiMateService
+from app.utils.rbac import require_role
 
 logger = logging.getLogger(__name__)
 
 # Create blueprint
 archimate_generation_bp = Blueprint('archimate_generation', __name__, url_prefix='/api/archimate')
 
-# Initialize service
-archimate_service = ArchiMateService()
+# NOT a module-level singleton. It was one until 31 Aug 2026, and because
+# ArchiMateService holds an ArchiMateRulesEngine whose `generated_elements`
+# accumulates for the life of the worker process, its generation_stats spanned
+# both requests AND TENANTS.
+#
+# Demonstrated: org A ran generate/from-vendors three times (435 elements each);
+# a brand-new tenant with zero elements then called generate/from-capabilities
+# and was told its generation produced 1,305 elements. Those 1,305 were org A's.
+# That is simultaneously a cross-tenant information leak and a fabricated
+# number -- plausible, wrong, and unattributable by the user.
+#
+# Scoped to the request via `g` rather than constructed per call, so a route
+# that generates and then reads stats still sees its own work, while nothing
+# survives into the next request. The constructor is trivial, so this costs
+# nothing.
+def _archimate_service():
+    """The request's own ArchiMateService. Never shared across requests."""
+    if not hasattr(g, "_archimate_service"):
+        g._archimate_service = ArchiMateService()
+    return g._archimate_service
 
 
 # =============================================================================
 # Architecture Generation Endpoints
 # =============================================================================
 
+# Mass generation is a modelling action, not a read. Until 31 Aug 2026 ANY
+# logged-in user — a viewer included — could POST an empty body here and write
+# 435 business actors into their tenant's model, repeatably. Architect and above
+# now, matching who owns the enterprise model everywhere else in the product.
+_GENERATION_ROLES = ("architect", "org_admin", "super_admin")
+
+
 @archimate_generation_bp.route('/generate/from-vendors', methods=['POST'])
 @login_required
+@require_role(*_GENERATION_ROLES)
 def generate_from_vendors():
     """
     Generate ArchiMate architecture from vendor data.
 
     POST /api/archimate/generate/from-vendors
     Body: {"vendor_ids": [1, 2, 3]} or {} for all vendors
+          {"dry_run": true} to preview without writing
+
+    Idempotent: an element whose (type, name) already exists in the tenant is
+    skipped, so a repeat run creates nothing. Aborts with 413 rather than
+    writing when a single run would create more than the engine's cap.
     """
     try:
-        data = request.get_json() or {}
+        data = request.get_json(silent=True) or {}
         vendor_ids = data.get('vendor_ids')
+        dry_run = bool(data.get('dry_run'))
 
-        result = archimate_service.generate_architecture_from_vendors(vendor_ids)
+        result = _archimate_service().generate_architecture_from_vendors(
+            vendor_ids, dry_run=dry_run
+        )
 
+        if result.get("capped"):
+            return jsonify({
+                "success": False,
+                "error": result.get("error"),
+                "data": result,
+            }), 413
+
+        verb = "Would generate" if dry_run else "Generated"
+        count = (
+            result.get("elements_would_create")
+            if dry_run
+            else result.get("elements_created")
+        )
         return jsonify({
             "success": True,
-            "message": f"Generated ArchiMate architecture from {result['vendors_processed']} vendors",
+            "message": (
+                f"{verb} {count} ArchiMate elements from "
+                f"{result['vendors_processed']} vendors "
+                f"({result.get('elements_skipped_existing', 0)} already existed)"
+            ),
             "data": result
         }), 200
 
@@ -62,20 +114,26 @@ def generate_from_vendors():
 
 @archimate_generation_bp.route('/generate/from-capabilities', methods=['POST'])
 @login_required
+@require_role(*_GENERATION_ROLES)
 def generate_from_capabilities():
     """
     Generate ArchiMate elements from business capabilities.
 
     POST /api/archimate/generate/from-capabilities
-    Body: {"capability_ids": [1, 2, 3], "solution_id": 5}
+    Body: {"capability_ids": [1, 2, 3], "solution_id": 5, "dry_run": false}
     - capability_ids: optional list of IDs, or omit for all capabilities
-    - solution_id: optional — if provided, generated elements are linked to the solution
-      via the solution_archimate_elements junction table with deduplication
+    - solution_id: optional — if provided, generated elements are linked to the
+      solution via the solution_archimate_elements junction table with dedup
+    - dry_run: optional — report what would be created and write nothing
+
+    Same idempotency, cap and permission as /generate/from-vendors: this route
+    has the identical shape and had the identical defect.
     """
     try:
-        data = request.get_json() or {}
+        data = request.get_json(silent=True) or {}
         capability_ids = data.get('capability_ids')
         solution_id = data.get('solution_id')
+        dry_run = bool(data.get('dry_run'))
 
         # Validate solution_id if provided
         if solution_id is not None:
@@ -86,11 +144,20 @@ def generate_from_capabilities():
                     "error": f"Solution with id {solution_id} not found"
                 }), 404
 
-        result = archimate_service.generate_architecture_from_capabilities(capability_ids)
+        result = _archimate_service().generate_architecture_from_capabilities(
+            capability_ids, dry_run=dry_run
+        )
+
+        if result.get("capped"):
+            return jsonify({
+                "success": False,
+                "error": result.get("error"),
+                "data": {k: v for k, v in result.items() if k != 'created_elements'},
+            }), 413
 
         # Link generated elements to solution if solution_id was provided
         linked_count = 0
-        if solution_id is not None and result.get('commit_success'):
+        if solution_id is not None and not dry_run and result.get('commit_success'):
             linked_count = _link_elements_to_solution(
                 solution_id, result.get('created_elements', [])
             )
@@ -99,9 +166,19 @@ def generate_from_capabilities():
         response_data = {k: v for k, v in result.items() if k != 'created_elements'}
         response_data['linked_to_solution'] = linked_count
 
+        verb = "Would generate" if dry_run else "Generated"
+        count = (
+            result.get("elements_would_create")
+            if dry_run
+            else result.get("elements_created")
+        )
         return jsonify({
             "success": True,
-            "message": f"Generated ArchiMate elements from {result['capabilities_processed']} capabilities",
+            "message": (
+                f"{verb} {count} ArchiMate elements from "
+                f"{result['capabilities_processed']} capabilities "
+                f"({result.get('elements_skipped_existing', 0)} already existed)"
+            ),
             "data": response_data
         }), 200
 
@@ -169,6 +246,7 @@ def _link_elements_to_solution(solution_id, elements):
 
 @archimate_generation_bp.route('/generate/relationships', methods=['POST'])
 @login_required
+@require_role(*_GENERATION_ROLES)
 def generate_relationships():
     """
     Create ArchiMate relationships from capability-to-vendor mappings.
@@ -185,7 +263,7 @@ def generate_relationships():
                 "error": "Request body must be a list of mapping objects"
             }), 400
 
-        result = archimate_service.create_relationships_from_mappings(mappings)
+        result = _archimate_service().create_relationships_from_mappings(mappings)
 
         return jsonify({
             "success": True,
@@ -253,7 +331,7 @@ def get_elements():
                         "error": f"Invalid layer: {layer}"
                     }), 400
 
-            elements = archimate_service.get_elements_by_type(element_type_enum, layer_enum)
+            elements = _archimate_service().get_elements_by_type(element_type_enum, layer_enum)
         else:
             # No filter — cap to avoid returning all 3k+ elements
             elements = ArchiMateElement.query.order_by(ArchiMateElement.name).limit(limit).all()
@@ -308,7 +386,7 @@ def get_element(element_id):
             }), 404
 
         # Get relationships for this element
-        relationships = archimate_service.get_element_relationships(element_id)
+        relationships = _archimate_service().get_element_relationships(element_id)
         relationship_data = []
 
         # Resolve related element names in one bulk query (no ORM relationship exists).
@@ -470,6 +548,7 @@ def get_models():
 
 @archimate_generation_bp.route('/models', methods=['POST'])
 @login_required
+@require_role(*_GENERATION_ROLES)
 def create_model():
     """
     Create a new architecture model.
@@ -486,7 +565,7 @@ def create_model():
                 "error": "Model name is required"
             }), 400
 
-        model = archimate_service.create_architecture_model(
+        model = _archimate_service().create_architecture_model(
             name=data['name'],
             description=data.get('description'),
             model_type=data.get('model_type', 'enterprise')
@@ -525,7 +604,7 @@ def validate_compliance():
     GET /api/archimate/validate
     """
     try:
-        result = archimate_service.validate_archimate_compliance()
+        result = _archimate_service().validate_archimate_compliance()
 
         return jsonify({
             "success": True,
@@ -549,7 +628,7 @@ def get_statistics():
     GET /api/archimate/statistics
     """
     try:
-        stats = archimate_service.get_architecture_statistics()
+        stats = _archimate_service().get_architecture_statistics()
 
         return jsonify({
             "success": True,

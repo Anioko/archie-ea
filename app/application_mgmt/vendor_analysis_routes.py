@@ -9,11 +9,12 @@ import io
 import json
 from datetime import datetime
 
-from flask import current_app, jsonify, render_template, request, send_file
+from flask import abort, current_app, jsonify, render_template, request, send_file
 from flask_login import current_user, login_required
 
 from .. import db
 from . import application_mgmt
+from app.utils.pagination import safe_int_arg
 
 
 VALID_WEIGHT_KEYS = frozenset(
@@ -123,6 +124,19 @@ def vendor_analysis_new():
 @login_required
 def vendor_analysis_detail(analysis_id):
     """Vendor analysis detail / comparison workbench page."""
+    from app.models.vendor_analysis import OptionsAnalysis
+    from app.utils.route_guards import load_entity
+
+    # The page used to render for any id, so a nonexistent analysis produced a
+    # workbench titled with an id that is not a record. Match the JSON detail
+    # endpoint's contract: 404 when absent, 403 when it is someone else's.
+    analysis = load_entity(OptionsAnalysis, analysis_id)
+    if analysis is None:
+        abort(404, description="Analysis not found")
+    if analysis.created_by_id != current_user.id and not (
+        hasattr(current_user, "is_admin") and current_user.is_admin()
+    ):
+        abort(403)
     return render_template(
         "application_mgmt/vendor_analysis_detail.html", analysis_id=analysis_id
     )
@@ -138,8 +152,8 @@ def api_list_vendor_analyses():
     try:
         from app.models.vendor_analysis import OptionsAnalysis
 
-        page = request.args.get("page", 1, type=int)
-        per_page = min(max(request.args.get("per_page", 20, type=int), 1), 100)
+        page = safe_int_arg('page', 1, minimum=1)
+        per_page = min(max(safe_int_arg('per_page', 20, minimum=1, maximum=500), 1), 100)
         status_filter = request.args.get("status")
         search = request.args.get("search", "").strip()
         sort_by = request.args.get("sort_by", "created_at")
@@ -1389,6 +1403,12 @@ def api_export_vendor_analysis(analysis_id):
 def api_get_export_history(analysis_id):
     """Get export history for an analysis."""
     try:
+        from app.models.vendor_analysis import OptionsAnalysis
+        from app.utils.route_guards import load_entity
+
+        denied = _check_analysis_access(load_entity(OptionsAnalysis, analysis_id))
+        if denied:
+            return denied
         # For now, return empty array (can be enhanced with export tracking table)
         return jsonify([])
     except HTTPException:

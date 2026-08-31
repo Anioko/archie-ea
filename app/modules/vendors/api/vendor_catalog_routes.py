@@ -21,6 +21,8 @@ from app.models.vendor.vendor_organization import (
     VendorProductCapability,
 )
 from app.modules.vendors.services.vendor_product_service import VendorProductService
+from app.utils.pagination import safe_int_arg
+from app.utils.route_guards import require_entity
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +62,9 @@ def get_vendors():
 def get_vendor_hierarchy(vendor_id):
     """Get complete vendor product hierarchy."""
     try:
+        # Existence guard: an empty hierarchy for a nonexistent vendor is fabricated data.
+        require_entity(VendorOrganization, vendor_id, description=f"Vendor {vendor_id} not found")
+
         service = VendorProductService()
         hierarchy = service.get_vendor_hierarchy(vendor_id)
 
@@ -68,6 +73,8 @@ def get_vendor_hierarchy(vendor_id):
 
         return jsonify({"success": True, "hierarchy": hierarchy, "vendor_id": vendor_id})
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error getting vendor hierarchy for {vendor_id}: {e}")
         return (
@@ -85,7 +92,7 @@ def search_vendor_products():
         vendor_id = request.args.get("vendor_id", type=int)
         category = request.args.get("category")
         tier = request.args.get("tier")
-        limit = request.args.get("limit", 50, type=int)
+        limit = safe_int_arg('limit', 50, minimum=1, maximum=500)
 
         if not query:
             return jsonify({"success": False, "error": "Search query is required"}), 400

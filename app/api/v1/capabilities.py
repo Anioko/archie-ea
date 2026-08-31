@@ -16,6 +16,7 @@ from app.utils.api_response import (
     not_found_response,
     success_response,
 )
+from app.utils.pagination import safe_int_arg
 
 capabilities_bp = Blueprint("capabilities_v1", __name__)
 
@@ -58,8 +59,8 @@ def get_capabilities():
         description: List of capabilities
     """
     try:
-        page = request.args.get("page", 1, type=int)
-        per_page = min(request.args.get("per_page", 50, type=int), 100)
+        page = safe_int_arg('page', 1, minimum=1)
+        per_page = min(safe_int_arg('per_page', 50, minimum=1, maximum=500), 100)
         search = request.args.get("search", "", type=str)
         domain = request.args.get("domain", "", type=str)
         level = request.args.get("level", "", type=str)
@@ -224,8 +225,8 @@ def get_manufacturing_capabilities():
         description: List of manufacturing capabilities
     """
     try:
-        page = request.args.get("page", 1, type=int)
-        per_page = min(request.args.get("per_page", 50, type=int), 100)
+        page = safe_int_arg('page', 1, minimum=1)
+        per_page = min(safe_int_arg('per_page', 50, minimum=1, maximum=500), 100)
 
         # Build query
         query = ManufacturingCapability.query

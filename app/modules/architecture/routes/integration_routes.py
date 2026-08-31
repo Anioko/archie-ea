@@ -24,10 +24,12 @@ from flask import (
     url_for,
 )
 from flask_login import current_user, login_required
+from werkzeug.exceptions import HTTPException
 
 from app import db
 from app.decorators import audit_log
 from app.services.ea_workflow_engine import EAWorkflowEngine
+from app.utils.pagination import safe_int_arg
 
 integration_bp = Blueprint("integration", __name__, url_prefix="/integration")
 
@@ -401,7 +403,7 @@ def api_list_instances():
         from app.models.workflow_models import EAWorkflowInstance
 
         status = request.args.get("status")
-        limit = request.args.get("limit", 50, type=int)
+        limit = safe_int_arg('limit', 50, minimum=1, maximum=500)
 
         query = EAWorkflowInstance.query
         if status:
@@ -440,11 +442,18 @@ def api_list_instances():
 @login_required
 def api_instance_status(instance_id):
     """API: Get detailed status of a workflow instance."""
+    from app.models.workflow_models import EAWorkflowInstance
+    from app.utils.route_guards import require_entity
+
+    require_entity(EAWorkflowInstance, instance_id, description="Workflow instance not found")
+
     try:
         engine = EAWorkflowEngine()
         status = engine.get_instance_status(instance_id)
 
         return jsonify({"success": True, "status": status})
+    except HTTPException:
+        raise
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 

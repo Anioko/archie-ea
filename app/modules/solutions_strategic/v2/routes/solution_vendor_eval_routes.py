@@ -19,6 +19,7 @@ from app.modules.solutions_strategic.v2.services.solution_vendor_eval_service im
 )
 
 from .solution_design_routes import solution_design_bp
+from app.utils.pagination import safe_int_arg
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +75,7 @@ def search_vendor_products():
     """Search vendor products by name and optional category filter."""
     query = request.args.get("q", "").strip()
     category = request.args.get("category", "").strip() or None
-    limit = request.args.get("limit", 20, type=int)
+    limit = safe_int_arg('limit', 20, minimum=1, maximum=500)
 
     results = _svc.search_vendor_products(query=query, category=category, limit=limit)
     return jsonify({"success": True, "results": results, "count": len(results)})

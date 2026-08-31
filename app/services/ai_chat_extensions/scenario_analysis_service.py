@@ -837,7 +837,10 @@ class ScenarioAnalysisService:
             from app import db
             from sqlalchemy import text
             rows = db.session.execute(text(  # tenant-filtered: scoped via vendor_products (tenant-scoped table)
-                "SELECT id, name, product_type, version FROM vendor_products WHERE vendor_id = :vid"
+                # vendor_products's FK to the vendor is vendor_organization_id;
+                # there is no vendor_id column on that table.
+                "SELECT id, name, product_type, version FROM vendor_products "
+                "WHERE vendor_organization_id = :vid"
             ), {"vid": vendor_id}).fetchall()
             return [{"id": r[0], "name": r[1], "type": r[2] or "", "version": r[3] or ""} for r in rows]
         except Exception as e:

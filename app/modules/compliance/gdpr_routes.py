@@ -2,6 +2,8 @@ from flask import Blueprint, jsonify
 from flask_login import current_user, login_required
 from app.services.gdpr_service import GDPRService
 from app.models.gdpr_request import GDPRRequest
+from app.models.user import User
+from app.utils.route_guards import require_entity
 from app.extensions import db
 from app.middleware.tenant_decorators import platform_admin_required
 from datetime import datetime
@@ -69,5 +71,9 @@ def gdpr_status(user_id):
     denied = _forbid_unless_self_or_platform_admin(user_id)
     if denied:
         return denied
+    # Existence is probed only AFTER authorisation, so this discloses nothing a
+    # caller could not already read: a nonexistent subject must 404 rather than
+    # return an empty status that reads as "no GDPR requests on file".
+    require_entity(User, user_id, description="User not found")
     status = GDPRService.get_request_status(user_id)
     return jsonify(status)

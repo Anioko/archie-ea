@@ -62,6 +62,13 @@ def update_criterion(check_id: int):
 @login_required
 def can_mark_done(req_id: int):
     """GET /api/dod/checks/<req_id>/can-done — gate check before marking story done."""
+    from app.models.requirements import Requirement
+    from app.utils.route_guards import require_entity
+
+    # "No DoD check exists for this requirement" must not be the answer for a
+    # requirement that does not exist at all.
+    require_entity(Requirement, req_id, description="Requirement not found")
+
     result = dod_service.can_mark_done(req_id)
     return jsonify(result), 200
 

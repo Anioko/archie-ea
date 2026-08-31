@@ -18,6 +18,7 @@ Features:
 import logging
 
 from flask import Blueprint, jsonify, render_template, request
+from app.utils.pagination import safe_int_arg
 
 logger = logging.getLogger(__name__)
 from flask_login import login_required
@@ -72,7 +73,7 @@ def index():
 def get_candidates():
     """Get duplicate merge candidates as JSON."""
     threshold = int(request.args.get("threshold", 80))
-    limit = int(request.args.get("limit", 100))
+    limit = safe_int_arg('limit', 100, minimum=1, maximum=500)
 
     candidates = find_duplicate_candidates(similarity_threshold=threshold, limit=limit)
 

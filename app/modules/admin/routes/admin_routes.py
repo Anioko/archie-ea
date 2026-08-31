@@ -30,6 +30,7 @@ from flask import (
 )
 from flask_login import current_user, login_required
 from sqlalchemy.orm import aliased, joinedload
+from app.utils.pagination import safe_int_arg
 
 try:
     from flask_rq import get_queue
@@ -82,8 +83,8 @@ def index():
 @admin_required
 def dashboard_test():
     """Admin dashboard test page for dropdown testing."""
-    page = request.args.get("page", 1, type=int)
-    per_page = request.args.get("per_page", 10, type=int)
+    page = safe_int_arg('page', 1, minimum=1)
+    per_page = safe_int_arg('per_page', 10, minimum=1, maximum=500)
     search_query = request.args.get("search", "")
 
     pagination = _svc.get_paginated_users(page, per_page, search_query)
@@ -104,8 +105,8 @@ def dashboard_test():
 @admin_required
 def dashboard():
     """Admin dashboard with stats and overview."""
-    page = request.args.get("page", 1, type=int)
-    per_page = request.args.get("per_page", 10, type=int)
+    page = safe_int_arg('page', 1, minimum=1)
+    per_page = safe_int_arg('per_page', 10, minimum=1, maximum=500)
     search_query = request.args.get("search", "")
 
     pagination = _svc.get_paginated_users(page, per_page, search_query)
@@ -810,8 +811,8 @@ def consolidation_status():
 @admin_required
 def feature_flags():
     """Feature flags management page with pagination."""
-    page = request.args.get("page", 1, type=int)
-    per_page = request.args.get("per_page", 50, type=int)
+    page = safe_int_arg('page', 1, minimum=1)
+    per_page = safe_int_arg('per_page', 50, minimum=1, maximum=500)
     search = request.args.get("search", "")
     filter_type = request.args.get("type", "")
     filter_state = request.args.get("state", "")
@@ -2170,8 +2171,8 @@ def _auto_discover_features(app):
 @admin_required
 def api_list_users():
     """Paginated user list API for data table."""
-    page = request.args.get("page", 1, type=int)
-    per_page = min(request.args.get("per_page", 25, type=int), 100)
+    page = safe_int_arg('page', 1, minimum=1)
+    per_page = min(safe_int_arg('per_page', 25, minimum=1, maximum=500), 100)
     search = request.args.get("q") or request.args.get("search", "")
     role_filter = request.args.get("role", "")
     sort_by = request.args.get("sort", "id")

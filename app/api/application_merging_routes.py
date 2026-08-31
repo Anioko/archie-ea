@@ -23,6 +23,7 @@ from app.services.application_merging_service import (
     ApplicationMergeService,
     MergeConfig,
 )
+from app.utils.pagination import safe_int_arg
 
 logger = logging.getLogger(__name__)
 
@@ -62,9 +63,9 @@ def get_merge_candidates():
     """
     try:
         threshold = float(request.args.get("threshold", 0.7))
-        limit = int(request.args.get("limit", 50))
+        limit = safe_int_arg('limit', 50, minimum=1, maximum=500)
         mode = request.args.get("mode", "balanced")
-        offset = max(0, int(request.args.get("offset", 0)))
+        offset = max(0, safe_int_arg('offset', 0, minimum=0))
 
         # Adjust threshold based on merge mode
         mode_multipliers = {

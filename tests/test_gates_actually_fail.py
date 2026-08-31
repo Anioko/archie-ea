@@ -336,10 +336,14 @@ CASES.append(("check_api_envelope.py", _api_envelope))
 def _collapsed_nav_affordance(root, defective):
     """A collapsed rail with no tooltip is a row of unlabelled buttons."""
     named = "" if defective else ' title="Dashboard"'
+    # The template must reference the collapse mechanism, because the gate
+    # scopes itself to templates that actually collapse -- breadcrumbs and the
+    # public navbar are icon-bearing nav that never does.
     _write(root, "app/templates/components/admin_sidebar.html",
+           "<aside :style=\"{ width: $store.sidebar.collapsed ? '4rem' : '16rem' }\">"
            "<nav><a href='/x'" + named + ">"
            "<i data-lucide='layout-dashboard'></i>"
-           "<span class='truncate'>Dashboard</span></a></nav>")
+           "<span class='truncate'>Dashboard</span></a></nav></aside>")
 
 
 def _nav_icon_ambiguity(root, defective):
@@ -370,10 +374,45 @@ def _nav_label_clarity(root, defective):
     _write(root, "app/utils/role_access.py", NEWLINE.join(rows) + NEWLINE)
 
 
+def _handoff_continuity(root, defective):
+    """Work moved to a handoff state that no reachable surface reads back."""
+    _write(root, "app/utils/role_access.py",
+           "ZONES = {" + NEWLINE +
+           "    ROLE_ARB_MEMBER: [" + NEWLINE +
+           '        _link("ARB Dashboard", "arb.dashboard", "shield-check"),' + NEWLINE +
+           "    ]," + NEWLINE +
+           "}" + NEWLINE)
+    _write(root, "app/modules/journey/routes/submit_routes.py",
+           'journey_bp = Blueprint("journey", __name__)' + NEWLINE +
+           "def submit(solution):" + NEWLINE +
+           '    solution.governance_status = "pending_approval"' + NEWLINE)
+    # The reachable ARB queue reads the state back only in the clean tree.
+    reads = "" if defective else (
+        '    return Review.query.filter_by(status="pending_approval").all()' + NEWLINE)
+    _write(root, "app/modules/architecture/routes/arb_routes.py",
+           'arb_bp = Blueprint("arb", __name__)' + NEWLINE +
+           "def queue():" + NEWLINE +
+           reads +
+           "    return []" + NEWLINE)
+
+
+def _metric_provenance(root, defective):
+    """A proportion shown to the user that is written in the source."""
+    value = "87" if defective else "_measured_coverage()"
+    _write(root, "app/modules/reports/routes/coverage_routes.py",
+           'reports_bp = Blueprint("reports", __name__)' + NEWLINE +
+           "def _measured_coverage():" + NEWLINE +
+           "    return Capability.query.filter_by(mapped=True).count()" + NEWLINE +
+           "def coverage():" + NEWLINE +
+           '    return jsonify({"coverage_percent": ' + value + "})" + NEWLINE)
+
+
 CASES += [
     ("check_collapsed_nav_affordance.py", _collapsed_nav_affordance),
     ("check_nav_icon_ambiguity.py", _nav_icon_ambiguity),
     ("check_nav_label_clarity.py", _nav_label_clarity),
+    ("check_handoff_continuity.py", _handoff_continuity),
+    ("check_metric_provenance.py", _metric_provenance),
 ]
 
 

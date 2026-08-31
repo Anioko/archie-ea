@@ -30,7 +30,9 @@ from app.utils.duplicate_guard import (
     duplicate_conflict_response,
     find_duplicate_by_name,
     find_similar_entities,
+    lock_name_for_write,
 )
+from app.utils.pagination import safe_int_arg
 
 applications_bp = Blueprint("applications_v1", __name__)
 
@@ -93,8 +95,8 @@ def get_applications():
                       type: integer
     """
     try:
-        page = request.args.get("page", 1, type=int)
-        per_page = min(request.args.get("per_page", 50, type=int), 100)
+        page = safe_int_arg('page', 1, minimum=1)
+        per_page = min(safe_int_arg('per_page', 50, minimum=1, maximum=500), 100)
         search = request.args.get("search", "", type=str)
         status = request.args.get("status", "", type=str)
 
@@ -306,6 +308,9 @@ def create_application():
         # ApplicationComponent inherits TenantMixin, so the organisation
         # predicate is injected; do not add one here.
         if not allow_duplicate_requested(data):
+            # Serialise the check-then-insert against a concurrent identical
+            # request (see lock_name_for_write).
+            lock_name_for_write(ApplicationComponent, data["name"])
             existing = find_duplicate_by_name(ApplicationComponent, data["name"])
             if existing is not None:
                 return duplicate_conflict_response("An application", existing)

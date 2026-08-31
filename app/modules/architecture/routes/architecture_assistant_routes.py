@@ -46,6 +46,7 @@ from app.services.rate_limiter import rate_limit
 from app.utils.validators import validate_integer, validate_string, validation_error_response
 
 from app import db
+from app.utils.pagination import safe_int_arg
 
 logger = logging.getLogger(__name__)
 
@@ -340,8 +341,8 @@ def capability_sets():
         user_id = current_user.id
         if request.method == "GET":
             # ENH-011: Optional pagination via page & per_page query params
-            page = request.args.get("page", type=int)
-            per_page = request.args.get("per_page", 50, type=int)
+            page = safe_int_arg('page', None, minimum=1)
+            per_page = safe_int_arg('per_page', 50, minimum=1, maximum=500)
             per_page = min(per_page, 200)  # cap
 
             query = CapabilitySet.query.filter(
@@ -3334,8 +3335,8 @@ def motivation_elements_typeahead():
         query = query.filter(db.func.lower(ArchiMateElement.layer) == layer.lower())
 
     # ENH-011: Optional page/per_page for pagination; default still limited to 15
-    page = request.args.get("page", type=int)
-    per_page = min(request.args.get("per_page", 15, type=int), 100)
+    page = safe_int_arg('page', None, minimum=1)
+    per_page = min(safe_int_arg('per_page', 15, minimum=1, maximum=500), 100)
 
     # ENH-010: Cache typeahead results by query params for 5 minutes
     cache_key = f"motivation_typeahead:{q}:{type_}:{layer}:{page}:{per_page}"
@@ -4391,6 +4392,12 @@ def get_ai_reasoning(solution_id):
     model_name, and approval_status for each AI invocation on this solution.
     """
     from app.models.ai_audit_log import AIAuditLog
+    from app.models.solution_models import Solution
+    from app.utils.route_guards import require_entity
+
+    # Zero audit entries for a solution that does not exist would read as
+    # "this solution had no AI involvement".
+    require_entity(Solution, solution_id, description="Solution not found")
 
     logs = AIAuditLog.query.filter_by(solution_id=solution_id).order_by(
         AIAuditLog.created_at.desc()
@@ -4460,8 +4467,8 @@ def paginated_capabilities():
     """
     from app.models.unified_capability import UnifiedCapability
 
-    page = max(1, request.args.get("page", 1, type=int))
-    per_page = min(200, max(1, request.args.get("per_page", 50, type=int)))
+    page = max(1, safe_int_arg('page', 1, minimum=1))
+    per_page = min(200, max(1, safe_int_arg('per_page', 50, minimum=1, maximum=500)))
     search = request.args.get("search", "").strip()
 
     cache_key = f"aa_capabilities:p{page}:pp{per_page}:s{search}"

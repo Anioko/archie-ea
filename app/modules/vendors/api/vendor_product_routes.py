@@ -14,6 +14,7 @@ from flask_login import current_user, login_required
 from app.decorators import audit_log
 from app.extensions import db
 from app.modules.vendors.services.vendor_product_service import VendorProductService
+from app.utils.pagination import safe_int_arg
 
 logger = logging.getLogger(__name__)
 
@@ -183,7 +184,7 @@ def search_vendor_products():
 
         vendor_id = request.args.get("vendor_id", type=int)
         category = request.args.get("category")
-        limit = min(request.args.get("limit", 50, type=int), 100)
+        limit = min(safe_int_arg('limit', 50, minimum=1, maximum=500), 100)
 
         products = vendor_service.search_vendor_products(
             query, vendor_id, category, limit
@@ -241,7 +242,7 @@ def list_vendors():
     try:
         from app.models.vendor.vendor_organization import VendorOrganization
 
-        limit = min(request.args.get("limit", 50, type=int), 100)
+        limit = min(safe_int_arg('limit', 50, minimum=1, maximum=500), 100)
         strategic_tier = request.args.get("strategic_tier")
 
         query = VendorOrganization.query

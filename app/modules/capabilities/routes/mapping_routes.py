@@ -45,6 +45,7 @@ from app.exceptions import (
 from . import capability_map
 from .map_views import build_nodes_edges
 import logging
+from app.utils.pagination import safe_int_arg
 logger = logging.getLogger(__name__)
 
 
@@ -2146,7 +2147,7 @@ def api_abacus_pending_suggestions():
     )
 
     threshold = request.args.get("threshold", 0.3, type=float)
-    limit = request.args.get("limit", 50, type=int)
+    limit = safe_int_arg('limit', 50, minimum=1, maximum=500)
 
     try:
         # Subquery: app IDs that already have at least one coverage mapping

@@ -17,6 +17,7 @@ from app.models.application_import_history import ApplicationImportHistory
 from app.models.batch_processing import BatchJob
 from app.services.batch_processing_service import BatchProcessingService
 from app.services.rate_limiter import rate_limit
+from app.utils.pagination import safe_int_arg
 
 logger = logging.getLogger(__name__)
 
@@ -30,8 +31,8 @@ def get_import_history():
     """Get user's import history with batch job details."""
     try:
         # Get pagination parameters
-        page = request.args.get("page", 1, type=int)
-        per_page = request.args.get("per_page", 20, type=int)
+        page = safe_int_arg('page', 1, minimum=1)
+        per_page = safe_int_arg('per_page', 20, minimum=1, maximum=500)
         status = request.args.get("status")
         request.args.get("date_from")
         request.args.get("date_to")

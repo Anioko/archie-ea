@@ -32,6 +32,7 @@ from app.modules.solutions_strategic.v2.services.roadmap_sync import RoadmapData
 from app.modules.solutions_strategic.v2.services.roadmap_validator import (
     RoadmapValidator,
 )
+from app.utils.pagination import safe_int_arg
 
 logger = logging.getLogger(__name__)
 
@@ -116,8 +117,8 @@ def get_work_packages():
     """
     try:
         # Query parameters
-        page = request.args.get("page", 1, type=int)
-        per_page = min(request.args.get("per_page", 50, type=int), 100)
+        page = safe_int_arg('page', 1, minimum=1)
+        per_page = min(safe_int_arg('per_page', 50, minimum=1, maximum=500), 100)
         status = request.args.get("status")
         business_capability = request.args.get("business_capability")
         assigned_to = request.args.get("assigned_to")

@@ -20,14 +20,14 @@
     "unlabelled": 0
   },
   "enterprise_architect": {
-    "ambiguous": 4,
+    "ambiguous": 3,
     "clipped": 0,
     "unlabelled": 0
   },
   "platform_admin": {
     "ambiguous": 1,
-    "clipped": 1,
-    "unlabelled": 1
+    "clipped": 0,
+    "unlabelled": 0
   },
   "portfolio_manager": {
     "ambiguous": 1,

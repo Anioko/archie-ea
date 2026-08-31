@@ -14,6 +14,7 @@ from flask import current_app, jsonify, render_template, request
 from flask_login import current_user, login_required
 
 from app import db
+from app.utils.pagination import safe_int_arg
 
 
 def _sort_iteration_keys(keys):
@@ -1333,8 +1334,8 @@ def register_ea_workflow_routes(main_blueprint):
             workflow_code = request.args.get("workflow_code")
             application_id = request.args.get("application_id", type=int)
             q = request.args.get("q", "").strip()
-            page = request.args.get("page", 1, type=int)
-            per_page = min(request.args.get("per_page", 20, type=int), 100)
+            page = safe_int_arg('page', 1, minimum=1)
+            per_page = min(safe_int_arg('per_page', 20, minimum=1, maximum=500), 100)
             sort_by = request.args.get("sort_by", "created_at")
             sort_order = request.args.get("sort_order", "desc")
 

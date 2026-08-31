@@ -53,6 +53,49 @@ class SelfApprovalError(ARBDecisionError):
     """The submitter attempted to decide their own review (M-05)."""
 
 
+class InvalidDecisionError(ARBDecisionError):
+    """The decision value is not one the ARB can record."""
+
+
+class InvalidStateTransitionError(ARBDecisionError):
+    """The item is not in a state where a decision can be recorded."""
+
+
+# The only outcomes an ARB can record. Anything else is refused rather than
+# stored: an unrecognised value used to be written straight through, leaving the
+# row with a decision its status did not reflect, and the UI rendering
+# "Outcome: Banana".
+VALID_DECISIONS = frozenset({
+    "approved",
+    "approved_with_conditions",
+    "rejected",
+    "deferred",
+})
+
+# States from which a decision may be recorded.
+#
+# `deferred` is deliberately included: deferral means "decide later", so a
+# deferred item MUST be able to come back for a decision. The terminal outcomes
+# are not here, which is what makes a decision final.
+#
+# `draft` is deliberately excluded: an item that was never submitted has not
+# been through review, and approving one bypasses the entire governance
+# workflow. That was possible until 31 Aug 2026.
+DECIDABLE_STATUSES = frozenset({"submitted", "under_review", "deferred"})
+
+# Once an item reaches one of these, the decision stands. Re-deciding is not a
+# correction mechanism -- it silently rewrites the record of truth, and the
+# audit log then holds two contradictory entries with no indication which is
+# authoritative. Reopening is a separate, deliberate action that must leave its
+# own trail.
+TERMINAL_STATUSES = frozenset({
+    "approved",
+    "approved_with_conditions",
+    "rejected",
+    "completed",
+})
+
+
 class ARBGovernanceService:
     """
     Service for managing Architecture Review Board governance processes.
@@ -397,6 +440,51 @@ class ARBGovernanceService:
         item = db.session.get(ARBReviewItem, review_item_id)
         if not item:
             raise ValueError(f"Review item {review_item_id} not found")
+
+        # The decision must be one the ARB can actually record. Until 31 Aug
+        # 2026 any string was written straight through, so `decision=banana`
+        # persisted and the review page rendered "Outcome: Banana" over a status
+        # that had not moved.
+        if decision not in VALID_DECISIONS:
+            self._audit_decision_refusal(
+                item,
+                event="decision_refused",
+                reason=f"unrecognised decision {decision!r}",
+                actor_id=decided_by_id,
+            )
+            raise InvalidDecisionError(
+                "%r is not a decision the ARB can record. Valid outcomes: %s"
+                % (decision, ", ".join(sorted(VALID_DECISIONS)))
+            )
+
+        # The item must be in a state where a decision is meaningful. Two
+        # distinct failures, reported distinctly because they mean different
+        # things to whoever hit them.
+        if item.status in TERMINAL_STATUSES:
+            self._audit_decision_refusal(
+                item,
+                event="decision_refused",
+                reason=f"already decided ({item.status})",
+                actor_id=decided_by_id,
+            )
+            raise InvalidStateTransitionError(
+                "This review is already %s. A recorded decision is final; "
+                "reopen the review if it genuinely needs to change."
+                % item.status
+            )
+
+        if item.status not in DECIDABLE_STATUSES:
+            self._audit_decision_refusal(
+                item,
+                event="decision_refused",
+                reason=f"not submitted for review (status {item.status})",
+                actor_id=decided_by_id,
+            )
+            raise InvalidStateTransitionError(
+                "This review is %s and has not been submitted, so there is "
+                "nothing to decide. Submit it for review first."
+                % (item.status or "in no state")
+            )
 
         # M-06 (S1): the schema has no decided_by field with no enforcement.
         # decided_by_id stays NULLABLE in the database on purpose — deploys do

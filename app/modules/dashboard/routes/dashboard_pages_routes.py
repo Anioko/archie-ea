@@ -68,6 +68,7 @@ from app.services.application_consolidation_service import (
 from app.services.capability_heatmap_service import CapabilityHeatmapService
 # GovernanceService import removed — governance routes deleted
 from app.services.rationalization_scoring_service import RationalizationScoringService
+from app.utils.pagination import safe_int_arg
 
 logger = logging.getLogger(__name__)
 
@@ -476,7 +477,7 @@ def calculate_portfolio_scores():
 def get_elimination_candidates():
     """Get top candidates for elimination."""
     try:
-        limit = request.args.get("limit", 20, type=int)
+        limit = safe_int_arg('limit', 20, minimum=1, maximum=500)
         candidates = RationalizationScoringService.get_elimination_candidates(
             limit=limit
         )
@@ -575,7 +576,7 @@ def get_consolidation_opportunities():
     """Get top consolidation opportunities."""
     try:
         service = ApplicationConsolidationService()
-        limit = request.args.get("limit", 10, type=int)
+        limit = safe_int_arg('limit', 10, minimum=1, maximum=500)
         opportunities = service.get_consolidation_opportunities(limit)
         return jsonify({"success": True, "data": opportunities})
     except Exception as e:

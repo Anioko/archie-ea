@@ -22,6 +22,7 @@ from flask import Blueprint, Response, current_app, flash, jsonify, redirect, re
 from flask_login import current_user, login_required
 
 from app import db
+from app.utils.pagination import safe_int_arg
 # ArchiMateHealthService import removed — architecture_health route deleted
 
 architect_ui_bp = Blueprint("architect_ui", __name__)
@@ -219,6 +220,12 @@ def architecture_assistant_solution(solution_id):
     AI Architecture Assistant page pre-loaded with an existing solution context.
     Allows continuing design or regenerating ARB for the given solution.
     """
+    from app.models.solution_models import Solution
+    from app.utils.route_guards import require_entity
+
+    # Pre-loading "an existing solution context" that does not exist gives the
+    # assistant an id to reason about that is not a record.
+    require_entity(Solution, solution_id, description="Solution not found")
     return render_template(
         "architecture_assistant/index.html",
         solution_id=solution_id,
@@ -459,7 +466,7 @@ def traceability_matrix():
     scope = request.args.get('scope', '').strip() or None
     page_size = 50
     try:
-        page = max(1, int(request.args.get('page', 1)))
+        page = max(1, safe_int_arg('page', 1, minimum=1))
     except (ValueError, TypeError):
         page = 1
     offset = (page - 1) * page_size
@@ -570,7 +577,11 @@ def element_traceability(element_id):
 @login_required
 def api_element_traceability(element_id):
     """JSON traceability chain for a single element."""
+    from app.models.archimate_core import ArchiMateElement
     from app.services.archimate_traceability_service import ArchiMateTraceabilityService
+    from app.utils.route_guards import require_entity
+
+    require_entity(ArchiMateElement, element_id, description="ArchiMate element not found")
 
     service = ArchiMateTraceabilityService()
     chain = service.get_element_chain(element_id)
@@ -605,7 +616,11 @@ def impact_analysis(element_id):
 @login_required
 def api_impact_analysis(element_id):
     """JSON impact analysis for an ArchiMate element."""
+    from app.models.archimate_core import ArchiMateElement
     from app.services.archimate_impact_service import ArchiMateImpactService
+    from app.utils.route_guards import require_entity
+
+    require_entity(ArchiMateElement, element_id, description="ArchiMate element not found")
 
     service = ArchiMateImpactService()
     return jsonify(service.analyze_impact(element_id))
@@ -691,7 +706,7 @@ def viewpoint_diagram_data(viewpoint_key):
 
     allowed_types = vp_def.get("element_types")
     allowed_rel_types = vp_def.get("relationship_types")
-    max_elements = min(int(request.args.get("limit", 30)), 100)
+    max_elements = min(safe_int_arg('limit', 30, minimum=1, maximum=500), 100)
     extra_layer = request.args.get("layer")
 
     query = ArchiMateElement.query

@@ -14,6 +14,7 @@ from sqlalchemy import text
 
 from app import db
 from app.utils.business_capability_classifier import BusinessCapabilityClassifier
+from app.utils.pagination import safe_int_arg
 
 # Create blueprint
 business_capability_management = Blueprint("business_capability_management", __name__)
@@ -287,7 +288,7 @@ def search_capabilities():
     grouping = request.args.get("grouping", "")
     capability_type = request.args.get("type", "")
     strategic_importance = request.args.get("strategic_importance", "")
-    page = int(request.args.get("page", 1))
+    page = safe_int_arg('page', 1, minimum=1)
     per_page = 20
 
     try:

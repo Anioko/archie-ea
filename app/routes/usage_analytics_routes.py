@@ -8,6 +8,7 @@ Generates baseline reports for Phase 0 triage decision-making.
 from flask import Blueprint, jsonify, redirect, render_template, request, url_for
 from flask_login import login_required
 from app.models.usage_analytics import UsageAnalytics
+from app.utils.pagination import safe_int_arg
 
 usage_analytics_bp = Blueprint('usage_analytics', __name__, url_prefix='/usage-analytics')
 
@@ -55,7 +56,7 @@ def api_usage_events():
     """API endpoint for usage events data."""
     feature_name = request.args.get('feature')
     event_type = request.args.get('event_type')
-    limit = int(request.args.get('limit', 100))
+    limit = safe_int_arg('limit', 100, minimum=1, maximum=500)
 
     query = UsageAnalytics.query.order_by(UsageAnalytics.timestamp.desc())
 

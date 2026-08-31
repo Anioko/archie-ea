@@ -89,3 +89,56 @@ repos:
         entry: bash -c 'if grep -nE "session\.execute\(\s*[\x27\"]" "$@" /dev/null; then echo "Wrap in db.text(...) — see CLAUDE.md"; exit 1; fi' --
         language: system
         files: ^app/.*\.py$
+
+      # The UI-role gates, added 31 Aug 2026 with the three roles they enforce.
+      # Sub-second each, and they catch the class that shipped a collapsed
+      # sidebar showing several destinations behind one icon with the labels
+      # clipped to "All mo..." -- which seventy source-reading gates were green
+      # over, because none of them looks at what a person ends up seeing.
+      # Entry is verify.py --gate, not the checker: the checkers always exit 0
+      # (the count is the signal) and two of these carry a non-zero baseline,
+      # so calling them directly would either never block or block every
+      # commit. verify.py compares against verification_baseline.json and
+      # exits non-zero only on a REGRESSION, which is the contract here.
+      - id: nav-icon-ambiguity
+        name: one icon, one destination within a persona's menu
+        entry: python scripts/verify.py --gate nav-icon-ambiguity
+        language: system
+        files: ^app/utils/role_access\.py$
+        pass_filenames: false
+
+      - id: nav-label-clarity
+        name: one name, one destination, and it fits the rail
+        entry: python scripts/verify.py --gate nav-label-clarity
+        language: system
+        files: ^app/utils/role_access\.py$
+        pass_filenames: false
+
+      - id: collapsed-nav-affordance
+        name: the collapsed sidebar is still navigable
+        entry: python scripts/verify.py --gate collapsed-nav-affordance
+        language: system
+        files: ^app/templates/.*\.html$
+        pass_filenames: false
+
+      # A role with no gate is a role being recited rather than played. This is
+      # the cheapest check in the repo and the one that keeps the other twelve
+      # honest, so it runs whenever the contract or the registry moves.
+      - id: role-gate-coverage
+        name: every declared role has a gate enforcing it
+        entry: python scripts/verify.py --gate role-gate-coverage
+        language: system
+        files: ^(docs/DELIVERY_CONTRACT\.md|scripts/verify\.py)$
+        pass_filenames: false
+
+      # Raw SQL naming a column that does not exist. reconcile-schema and the
+      # schema-drift gate compare ORM MODELS to the database and cannot see raw
+      # SQL, which is how a page shipped that returned HTTP 200 and told the
+      # user "This page could not load its data". Skips cleanly with no
+      # database, so it never blocks a commit merely because Postgres is down.
+      - id: raw-sql-columns
+        name: raw SQL only names columns that exist
+        entry: python scripts/verify.py --gate raw-sql-columns
+        language: system
+        files: ^app/.*\.py$
+        pass_filenames: false

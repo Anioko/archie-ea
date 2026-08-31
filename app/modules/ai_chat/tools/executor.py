@@ -15,7 +15,11 @@ import re
 from dataclasses import dataclass
 
 from app import db
-from app.utils.duplicate_guard import find_duplicate_by_name, find_similar_entities
+from app.utils.duplicate_guard import (
+    find_duplicate_by_name,
+    find_similar_entities,
+    lock_name_for_write,
+)
 
 from .registry import TOOL_SCHEMA_BY_NAME
 from .resolver import EntityResolver
@@ -369,6 +373,9 @@ class ToolExecutor:
 
         org_id = self._get_organization_id()
         if not args.get("allow_duplicate"):
+            # Serialise the check-then-insert against a concurrent identical
+            # request (see lock_name_for_write).
+            lock_name_for_write(Solution, args["name"], organization_id=org_id)
             existing = find_duplicate_by_name(
                 Solution, args["name"], organization_id=org_id
             )
@@ -521,6 +528,11 @@ class ToolExecutor:
 
         org_id = self._get_organization_id()
         if not args.get("allow_duplicate"):
+            # Serialise the check-then-insert against a concurrent identical
+            # request (see lock_name_for_write).
+            lock_name_for_write(
+                ArchiMateElement, args["name"], organization_id=org_id
+            )
             existing = find_duplicate_by_name(
                 ArchiMateElement,
                 args["name"],

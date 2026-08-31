@@ -29,6 +29,7 @@ from app.modules.architecture.routes.lucidchart_import_routes import (
 )
 from app.modules.architecture.services.archimate_xml_export_service import export_to_xml
 from app.utils.response_helpers import api_error, api_success
+from app.utils.pagination import MAX_PAGE_SIZE, safe_int_arg
 
 archimate_bp = Blueprint("archimate", __name__, url_prefix="/archimate")
 register_lucidchart_import_routes(archimate_bp)
@@ -1283,8 +1284,8 @@ def api_list_relationships():
     target_element_id = request.args.get("target_element_id", type=int)
     relationship_type = request.args.get("relationship_type")
     include_enterprise = request.args.get("include_enterprise", "true").lower() != "false"
-    page = request.args.get("page", 1, type=int)
-    per_page = min(request.args.get("per_page", 50, type=int), 200)
+    page = safe_int_arg('page', 1, minimum=1)
+    per_page = min(safe_int_arg('per_page', 50, minimum=1, maximum=500), 200)
 
     query = ArchiMateRelationship.query
 
@@ -2300,7 +2301,7 @@ def api_elements_search():
 
     _default_limit = 200 if (has_desc or has_rels in ("yes", "no") or has_solutions in ("yes", "no")) else 30
     try:
-        limit = min(int(request.args.get("limit", _default_limit)), 200)
+        limit = min(safe_int_arg("limit", _default_limit, minimum=1, maximum=MAX_PAGE_SIZE), 200)
     except (ValueError, TypeError):
         limit = _default_limit
 
@@ -2755,7 +2756,13 @@ def api_create_snapshot(vp_id):
 @login_required
 def api_list_snapshots(vp_id):
     """List all snapshots for a saved viewpoint, newest first."""
+    from app.models.archimate_core import SavedDiagram
     from app.models.archimate_viewpoint import ArchimateViewpointSnapshot
+    from app.utils.route_guards import require_entity
+
+    # An empty snapshot list for a viewpoint that does not exist is
+    # indistinguishable from a real viewpoint with no snapshots.
+    require_entity(SavedDiagram, vp_id, description="Saved viewpoint not found")
 
     snapshots = (
         ArchimateViewpointSnapshot.query
@@ -5357,6 +5364,12 @@ def _infer_relationships(elements, sentences):
 @login_required
 def api_list_element_comments(element_id):
     """List comments for an ArchiMate element, ordered by created_at."""
+    from app.models.archimate_core import ArchiMateElement
+    from app.utils.route_guards import require_entity
+
+    # No comments for a nonexistent element must not read as "no comments yet".
+    require_entity(ArchiMateElement, element_id, description="ArchiMate element not found")
+
     try:
         from app.models.archimate_viewpoint import ArchimateElementComment
     except ImportError:
@@ -5836,6 +5849,12 @@ _EDITOR_TIMEOUT_SECS = 30    # user considered gone after 30s without ping
 @login_required
 def api_diagram_active_editors(diagram_id):
     """Return list of users currently editing this diagram (heartbeat within 30s)."""
+    from app.models.archimate_core import SavedDiagram
+    from app.utils.route_guards import require_entity
+
+    # An empty editor list for a diagram that does not exist is fabricated data.
+    require_entity(SavedDiagram, diagram_id, description="Diagram not found")
+
     now = _time.time()
     key = str(diagram_id)
     with _active_editors_lock:
@@ -6995,7 +7014,7 @@ def api_shared_elements():
     min_solutions = request.args.get("min_solutions", 2, type=int)
     if min_solutions < 2:
         min_solutions = 2
-    limit = min(request.args.get("limit", 20, type=int), 100)
+    limit = min(safe_int_arg('limit', 20, minimum=1, maximum=500), 100)
 
     # Subquery: element_id → distinct solution count
     shared_q = (

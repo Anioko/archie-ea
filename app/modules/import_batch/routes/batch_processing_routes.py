@@ -13,9 +13,11 @@ from datetime import datetime
 import logging
 
 from flask import Blueprint, jsonify, request
+from werkzeug.exceptions import HTTPException
 from flask_login import login_required
 
 from app.services.batch_processing_service import BatchJobConfig, BatchProcessingService
+from app.utils.pagination import safe_int_arg
 
 logger = logging.getLogger(__name__)
 
@@ -300,7 +302,7 @@ def list_batch_jobs():
         job_type = request.args.get("job_type")
         status = request.args.get("status")
         user_id = request.args.get("user_id", type=int)
-        limit = min(request.args.get("limit", 50, type=int), 100)
+        limit = min(safe_int_arg('limit', 50, minimum=1, maximum=500), 100)
 
         query = BatchJob.query
 
@@ -419,7 +421,10 @@ def get_job_checkpoints(job_id: int):
         JSON with checkpoints
     """
     try:
-        from app.models.batch_processing import BatchJobCheckpoint
+        from app.models.batch_processing import BatchJob, BatchJobCheckpoint
+        from app.utils.route_guards import require_entity
+
+        require_entity(BatchJob, job_id, description="Batch job not found")
 
         checkpoints = (
             BatchJobCheckpoint.query.filter_by(batch_job_id=job_id)
@@ -435,6 +440,8 @@ def get_job_checkpoints(job_id: int):
             }
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error getting job checkpoints {job_id}: {e}")
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
@@ -457,7 +464,10 @@ def get_job_errors(job_id: int):
         JSON with errors
     """
     try:
-        from app.models.batch_processing import BatchJobError
+        from app.models.batch_processing import BatchJob, BatchJobError
+        from app.utils.route_guards import require_entity
+
+        require_entity(BatchJob, job_id, description="Batch job not found")
 
         severity = request.args.get("severity")
         category = request.args.get("category")
@@ -480,6 +490,8 @@ def get_job_errors(job_id: int):
             }
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error getting job errors {job_id}: {e}")
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
@@ -502,10 +514,13 @@ def get_job_items(job_id: int):
         JSON with job items
     """
     try:
-        from app.models.batch_processing import BatchJobItem
+        from app.models.batch_processing import BatchJob, BatchJobItem
+        from app.utils.route_guards import require_entity
+
+        require_entity(BatchJob, job_id, description="Batch job not found")
 
         status = request.args.get("status")
-        limit = min(request.args.get("limit", 100, type=int), 500)
+        limit = min(safe_int_arg('limit', 100, minimum=1, maximum=500), 500)
 
         query = BatchJobItem.query.filter_by(batch_job_id=job_id)
 
@@ -522,6 +537,8 @@ def get_job_items(job_id: int):
             }
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error getting job items {job_id}: {e}")
         return jsonify({"success": False, "error": "An internal error occurred"}), 500

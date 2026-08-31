@@ -264,3 +264,167 @@ class TestPreExistingRowWithNoDecidedBy:
 
         refreshed = db_session.get(ARBReviewItem, item.id)
         assert refreshed.decided_by_id is None
+
+
+class TestDecisionVocabulary:
+    """An ARB can only record outcomes it recognises.
+
+    Until 31 Aug 2026 record_decision() never validated `decision`, so any
+    string was written straight through. An adversarial sweep sent
+    `decision=banana`: it persisted, the status did not move, and the review
+    page rendered "Outcome: Banana" over a row whose status contradicted it.
+    The audit log then held an immutable entry reading "Decision recorded:
+    banana", so the record of truth attested to it.
+    """
+
+    def test_an_unrecognised_decision_is_refused(self, app, db_session, make_org):
+        from app.services.arb_governance_service import (
+            ARBGovernanceService,
+            InvalidDecisionError,
+        )
+
+        with app.app_context():
+            org = make_org("arb-vocab")
+            submitter = _make_user(db_session, org)
+            decider = _make_user(db_session, org)
+            item = _make_review_item(db_session, org, submitter)
+
+            with pytest.raises(InvalidDecisionError):
+                ARBGovernanceService().record_decision(
+                    review_item_id=item.id,
+                    decision="banana",
+                    rationale="nonsense",
+                    decided_by_id=decider.id,
+                )
+
+            db_session.refresh(item)
+            assert item.decision != "banana", "the garbage value was persisted"
+            assert item.status == "submitted", "status moved on a refused decision"
+
+    @pytest.mark.parametrize(
+        "decision",
+        ["approved", "approved_with_conditions", "rejected", "deferred"],
+    )
+    def test_every_real_outcome_is_still_accepted(
+        self, app, db_session, make_org, decision
+    ):
+        """The guard must not have narrowed the product's actual vocabulary."""
+        from app.services.arb_governance_service import ARBGovernanceService
+
+        with app.app_context():
+            org = make_org("arb-vocab-ok")
+            submitter = _make_user(db_session, org)
+            decider = _make_user(db_session, org)
+            item = _make_review_item(db_session, org, submitter)
+
+            ARBGovernanceService().record_decision(
+                review_item_id=item.id,
+                decision=decision,
+                rationale="A real outcome.",
+                decided_by_id=decider.id,
+            )
+            db_session.refresh(item)
+            assert item.decision == decision
+
+
+class TestDecisionStateMachine:
+    """A decision needs something to decide, and once made it stands."""
+
+    def test_an_unsubmitted_review_cannot_be_decided(self, app, db_session, make_org):
+        """Approving a draft bypasses the entire governance workflow."""
+        from app.services.arb_governance_service import (
+            ARBGovernanceService,
+            InvalidStateTransitionError,
+        )
+
+        with app.app_context():
+            org = make_org("arb-draft")
+            submitter = _make_user(db_session, org)
+            decider = _make_user(db_session, org)
+            item = _make_review_item(db_session, org, submitter)
+            item.status = "draft"
+            db_session.flush()
+
+            with pytest.raises(InvalidStateTransitionError):
+                ARBGovernanceService().record_decision(
+                    review_item_id=item.id,
+                    decision="approved",
+                    rationale="never submitted",
+                    decided_by_id=decider.id,
+                )
+
+            db_session.refresh(item)
+            assert item.status == "draft", "a draft was moved to a decided state"
+
+    def test_a_decided_review_cannot_be_silently_redecided(
+        self, app, db_session, make_org
+    ):
+        """Re-deciding rewrites the record of truth with no indication which
+        entry is authoritative."""
+        from app.services.arb_governance_service import (
+            ARBGovernanceService,
+            InvalidStateTransitionError,
+        )
+
+        with app.app_context():
+            org = make_org("arb-final")
+            submitter = _make_user(db_session, org)
+            decider = _make_user(db_session, org)
+            item = _make_review_item(db_session, org, submitter)
+
+            service = ARBGovernanceService()
+            service.record_decision(
+                review_item_id=item.id,
+                decision="approved",
+                rationale="Approved on the evidence.",
+                decided_by_id=decider.id,
+            )
+            db_session.refresh(item)
+            assert item.status == "approved"
+
+            with pytest.raises(InvalidStateTransitionError):
+                service.record_decision(
+                    review_item_id=item.id,
+                    decision="rejected",
+                    rationale="changed my mind",
+                    decided_by_id=decider.id,
+                )
+
+            db_session.refresh(item)
+            assert item.status == "approved", "an approved review was overturned"
+            assert item.decision == "approved"
+
+    def test_a_deferred_review_can_come_back_for_a_decision(
+        self, app, db_session, make_org
+    ):
+        """Deferral means "decide later", so it must not be terminal.
+
+        This is the case the finality rule must NOT break, and the reason
+        DECIDABLE_STATUSES includes deferred.
+        """
+        from app.services.arb_governance_service import ARBGovernanceService
+
+        with app.app_context():
+            org = make_org("arb-deferred")
+            submitter = _make_user(db_session, org)
+            decider = _make_user(db_session, org)
+            item = _make_review_item(db_session, org, submitter)
+
+            service = ARBGovernanceService()
+            service.record_decision(
+                review_item_id=item.id,
+                decision="deferred",
+                rationale="Needs the cost model first.",
+                decided_by_id=decider.id,
+            )
+            db_session.refresh(item)
+            assert item.status == "deferred"
+
+            service.record_decision(
+                review_item_id=item.id,
+                decision="approved",
+                rationale="Cost model supplied.",
+                decided_by_id=decider.id,
+            )
+            db_session.refresh(item)
+            assert item.status == "approved"

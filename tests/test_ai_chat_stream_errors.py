@@ -112,7 +112,14 @@ def test_stream_carries_error_when_agent_raises(
     events = _post_stream(client, monkeypatch, ExplodingRunner)
     done = [e for e in events if e.get("type") == "done"]
     assert done, f"no done event in stream: {events}"
-    assert "provider connection refused" in (done[0].get("error") or "")
+    # The done event must NAME a failure — but not by echoing the raw upstream
+    # string. That string is the provider's error body, which for OpenRouter's
+    # 402 carries the provider account's user_id; it was reaching every chat
+    # user's browser. Since 31 Aug 2026 the client gets a category (see
+    # agent_runner.sanitize_agent_error) and the full reason stays in the log.
+    error = done[0].get("error") or ""
+    assert error, f"no error on the done event: {done[0]}"
+    assert "provider connection refused" not in error
 
 
 def test_stream_carries_error_and_message_from_agent_fallback(
@@ -142,5 +149,9 @@ def test_stream_carries_error_and_message_from_agent_fallback(
     events = _post_stream(client, monkeypatch, FallbackRunner)
     done = [e for e in events if e.get("type") == "done"]
     assert done, f"no done event in stream: {events}"
-    assert done[0].get("error") == "401 invalid api key"
+    # Sanitised, not echoed — see the note in the test above.
+    error = done[0].get("error") or ""
+    assert "credentials" in error
+    assert "401" in error
+    assert "invalid api key" not in error
     assert done[0].get("response") == persisted

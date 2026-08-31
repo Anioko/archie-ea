@@ -15,6 +15,7 @@ from app import db
 from app.decorators import audit_log
 from app.models.vendor.vendor_organization import TCOCalculation, VendorProduct
 from app.services.advanced_tco_engine import AdvancedTCOEngine
+from app.utils.pagination import safe_int_arg
 
 logger = logging.getLogger(__name__)
 
@@ -380,8 +381,8 @@ def get_tco_history():
     try:
         # Get query parameters
         vendor_product_id = request.args.get("vendor_product_id", type=int)
-        limit = request.args.get("limit", 50, type=int)
-        offset = request.args.get("offset", 0, type=int)
+        limit = safe_int_arg('limit', 50, minimum=1, maximum=500)
+        offset = safe_int_arg('offset', 0, minimum=0)
 
         # Build query
         query = db.session.query(

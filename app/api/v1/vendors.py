@@ -18,6 +18,7 @@ from app.utils.duplicate_guard import (
     duplicate_conflict_response,
     find_duplicate_by_name,
     find_similar_entities,
+    lock_name_for_write,
 )
 from app.utils.api_response import (
     error_response,
@@ -25,6 +26,7 @@ from app.utils.api_response import (
     success_response,
     validation_error_response,
 )
+from app.utils.pagination import safe_int_arg
 
 vendors_bp = Blueprint("vendors_v1", __name__)
 
@@ -63,8 +65,8 @@ def get_vendors():
         description: List of vendors
     """
     try:
-        page = request.args.get("page", 1, type=int)
-        per_page = min(request.args.get("per_page", 50, type=int), 100)
+        page = safe_int_arg('page', 1, minimum=1)
+        per_page = min(safe_int_arg('per_page', 50, minimum=1, maximum=500), 100)
         search = request.args.get("search", "", type=str)
         vendor_type = request.args.get("vendor_type", "", type=str)
 
@@ -248,6 +250,8 @@ def create_vendor():
         # hatch here: the database UNIQUE on ``name`` would reject it anyway,
         # and this check exists to turn that IntegrityError into a 409 that
         # names the existing vendor.
+        # Serialise the check-then-insert (see lock_name_for_write).
+        lock_name_for_write(VendorOrganization, data["name"])
         existing = find_duplicate_by_name(VendorOrganization, data["name"])
         if existing is not None:
             return duplicate_conflict_response("A vendor", existing)

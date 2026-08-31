@@ -36,6 +36,8 @@ from app.models.project_models import Project
 from app.models.solution_architect_models import SolutionRequirement
 from app.models.system_architecture import SystemBoundary
 from app.models.vendor.vendor_organization import EnterpriseInitiative
+from app.utils.pagination import safe_int_arg
+from app.utils.route_guards import require_entity
 
 # Module-level logger. Nine call sites in this file referenced `logger` — all inside
 # `except` blocks — but it was never bound at module scope: the only
@@ -233,7 +235,7 @@ def get_applications():
     """Get applications for mapping modal"""
     try:
         search = request.args.get("search", "").strip()
-        limit = int(request.args.get("limit", 100))
+        limit = safe_int_arg('limit', 100, minimum=1, maximum=500)
 
         query = ApplicationComponent.query
 
@@ -278,7 +280,7 @@ def get_systems():
     """Get systems for mapping modal"""
     try:
         search = request.args.get("search", "").strip()
-        limit = int(request.args.get("limit", 100))
+        limit = safe_int_arg('limit', 100, minimum=1, maximum=500)
 
         query = SystemBoundary.query
 
@@ -319,7 +321,7 @@ def get_initiatives():
     """Get initiatives for mapping modal"""
     try:
         search = request.args.get("search", "").strip()
-        limit = int(request.args.get("limit", 100))
+        limit = safe_int_arg('limit', 100, minimum=1, maximum=500)
 
         query = EnterpriseInitiative.query
 
@@ -360,7 +362,7 @@ def get_projects():
     """Get projects for mapping modal"""
     try:
         search = request.args.get("search", "").strip()
-        limit = int(request.args.get("limit", 100))
+        limit = safe_int_arg('limit', 100, minimum=1, maximum=500)
 
         query = Project.query
 
@@ -748,7 +750,7 @@ def get_all_entities():
         entity_type = request.args.get(
             "type"
         )  # application, system, initiative, project
-        limit = int(request.args.get("limit", 50))
+        limit = safe_int_arg('limit', 50, minimum=1, maximum=500)
 
         result = {}
 
@@ -1240,7 +1242,10 @@ def export_requirements():
 @login_required
 def get_requirement_count(solution_id):
     """Return count of live (non-deleted) requirements for a solution."""
+    from app.models.solution_models import Solution
     from app.models.solution_architect_models import SolutionRequirement
+
+    require_entity(Solution, solution_id, description="Solution not found")
 
     count = SolutionRequirement.query.filter(
         SolutionRequirement.solution_id == solution_id,
@@ -1453,7 +1458,10 @@ _COMPLIANCE_FRAMEWORKS = ['GDPR', 'SOX', 'HIPAA', 'ISO27001', 'PCI-DSS', 'NIST',
 @login_required
 def compliance_summary(solution_id):
     """PRQ-008: Return compliance tagging summary for a solution."""
+    from app.models.solution_models import Solution
     from app.models.solution_architect_models import SolutionRequirement
+
+    require_entity(Solution, solution_id, description="Solution not found")
     reqs = SolutionRequirement.query.filter_by(solution_id=solution_id).all()
     reqs = [r for r in reqs if r.deleted_at is None]
     tag_counts = {}
@@ -2273,6 +2281,9 @@ def solution_traceability_chain(solution_id):
 @login_required
 def list_epics(solution_id):
     """Return top-level epics (epic_parent_id IS NULL) with their child requirements."""
+    from app.models.solution_models import Solution
+
+    require_entity(Solution, solution_id, description="Solution not found")
     epics = SolutionRequirement.query.filter_by(
         solution_id=solution_id,
         epic_parent_id=None,
@@ -3078,7 +3089,10 @@ def score_requirement_ac(req_id):
 @login_required
 def ac_quality_summary(solution_id):
     """PRQ-007: Return aggregate AC quality scores for all requirements in a solution."""
+    from app.models.solution_models import Solution
     from app.models.solution_architect_models import SolutionRequirement
+
+    require_entity(Solution, solution_id, description="Solution not found")
     reqs = SolutionRequirement.query.filter_by(solution_id=solution_id).all()
     reqs = [r for r in reqs if r.deleted_at is None]
     results = []

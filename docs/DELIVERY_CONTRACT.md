@@ -81,6 +81,8 @@ two roles is counted under both.
 | data architect | `schema`, `db` | 3 |
 | product architect | `product`, `journey` | 2 |
 | business architect | `business` | 1 |
+| service designer | `handoff` | 1 |
+| data / evidence analyst | `evidence` | 1 |
 | integration architect | `integration` | 1 |
 | UI / interaction architect | `rendered` | 0 |
 | information architect | `wayfinding` | 0 |

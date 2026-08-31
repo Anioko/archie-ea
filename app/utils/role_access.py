@@ -361,7 +361,7 @@ _ALL_MODULES_LINK = _link("All modules", "modules_directory.index", "grid-3x3")
 _LIBRARY_LINKS_WITH_DIRECTORY = _LIBRARY_LINKS + [_ALL_MODULES_LINK]
 
 _GOVERNANCE_LINKS = [
-    _link("ARB Dashboard", "arb.dashboard", "layout-dashboard"),
+    _link("ARB Dashboard", "arb.dashboard", "gavel"),
     _link("Reviews", "arb.reviews", "shield-check"),
     _link("Sessions", "arb.sessions", "calendar"),
     # S-11: architecture decisions were reachable from nowhere in the sidebar.
@@ -427,7 +427,7 @@ _MY_WORK_LINKS = {
         # for any user who never picked one — does carry the link. Give EA this
         # link only in the same change that retires one of its existing 12
         # My-work links.
-        _link("Portfolio", "portfolio.index", "layout-dashboard"),
+        _link("Portfolio", "portfolio.index", "briefcase"),
         # NAV-1 (27 Aug 2026): "Capability Map" was removed from this zone. It
         # pointed at `capability_map.index` — the exact endpoint Library already
         # carries as "Capabilities" for every role — so this persona rendered the
@@ -436,7 +436,7 @@ _MY_WORK_LINKS = {
         # click away in Library. Removing it took the rendered total 26 -> 25 and
         # is what paid for the nav-coverage links added below without any persona
         # losing a feature.
-        _link("Roadmaps", "main.capability_roadmap", "map"),
+        _link("Roadmaps", "main.capability_roadmap", "milestone"),
         # Fix round: both were reachable from nowhere in the sidebar.
         _link("ArchiMate Composer", "archimate.composer_page", "pen-tool"),
         _link("Traceability Matrix", "architect_ui.traceability_matrix", "git-branch"),
@@ -451,8 +451,11 @@ _MY_WORK_LINKS = {
         # S-11 remainder (18 Aug 2026, QA Update 6/8): these three were
         # directory-only — reachable from /modules/ but from no sidebar zone
         # of any role. All three are EA-shaped working pages.
-        _link("Impact Analysis", "strategic.impact_analysis", "git-branch"),
-        _link("Capability Health", "strategic.capability_health", "heart-pulse"),
+        # crosshair, not git-branch: Traceability Matrix in this same zone
+        # already uses git-branch, and collapsed to a 4rem rail two entries
+        # behind one glyph are the same button.
+        _link("Impact Analysis", "strategic.impact_analysis", "crosshair"),
+        _link("Capability Health", "strategic.capability_health", "activity"),
         _link("Duplicate Detection", "unified_duplicate.simple_dashboard", "copy"),
         # ARCH-123 / ARCH-124 (QA register closure, 18 Aug 2026): the Data
         # Architect and Technical Architect personas the register flagged as
@@ -540,7 +543,7 @@ _MY_WORK_LINKS = {
         # the one whose whole job it is — had no sidebar link to. It is
         # already in the enterprise_architect / arb_member / platform_admin
         # zones; this is the missing one.
-        _link("Portfolio", "portfolio.index", "layout-dashboard"),
+        _link("Portfolio", "portfolio.index", "briefcase"),
         _link("Rationalization", "unified_applications.rationalization_dashboard", "git-merge"),
         _link("Vendors", "unified_applications.vendors", "building"),
         _link("Applications", "unified_applications.application_list", "list"),
@@ -576,7 +579,7 @@ _MY_WORK_LINKS = {
     # its existing legacy ROLE_SECTION_ACCESS scope (solutions, portfolio).
     ROLE_ARB_MEMBER: [
         _link("Solutions", "solution_design.list_solutions", "wrench"),
-        _link("Portfolio", "portfolio.index", "layout-dashboard"),
+        _link("Portfolio", "portfolio.index", "briefcase"),
     ],
     # Also not enumerated in the spec; platform_admin gets a working set that
     # mirrors its legacy full-access scope, distinct from the Admin zone below.
@@ -589,7 +592,7 @@ _MY_WORK_LINKS = {
     # to relabel it as.
     ROLE_PLATFORM_ADMIN: [
         _link("Solutions", "solution_design.list_solutions", "wrench"),
-        _link("Portfolio", "portfolio.index", "layout-dashboard"),
+        _link("Portfolio", "portfolio.index", "briefcase"),
         # BA-A3. platform_admin is the default enterprise_role for every user
         # who has not picked one during onboarding (see the column comment in
         # app/models/user.py), so a page that exists only for the two architect

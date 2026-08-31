@@ -59,6 +59,7 @@ from ..models.archimate_core import ArchiMateElement
 from ..models.implementation_migration import Gap
 from ..models.implementation_migration import Plateau
 from ..models.implementation_migration import WorkPackage
+from app.utils.pagination import safe_int_arg
 
 logger = logging.getLogger(__name__)
 
@@ -442,8 +443,8 @@ def strategic_planning_dashboard():
 def capability_health():
     """Capability Health Assessment — paginated to keep response times under 3 s."""
     try:
-        page = request.args.get("page", 1, type=int)
-        per_page = request.args.get("per_page", 50, type=int)
+        page = safe_int_arg('page', 1, minimum=1)
+        per_page = safe_int_arg('per_page', 50, minimum=1, maximum=500)
         # Guard against absurdly large page sizes
         per_page = min(per_page, 200)
 
@@ -543,8 +544,8 @@ def work_packages():
 @login_required
 def api_list_work_packages():
     """Paginated work packages API."""
-    page = request.args.get("page", 1, type=int)
-    per_page = min(request.args.get("per_page", 25, type=int), 100)
+    page = safe_int_arg('page', 1, minimum=1)
+    per_page = min(safe_int_arg('per_page', 25, minimum=1, maximum=500), 100)
     search = request.args.get("q") or request.args.get("search", "")
     status_filter = request.args.get("status", "")
     sort_by = request.args.get("sort", "created_at")

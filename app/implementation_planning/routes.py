@@ -32,6 +32,7 @@ from ..models.implementation_migration import (
 from ..models.unified_capability import UnifiedCapability
 from ..services.gap_discovery_service import GapDiscoveryService
 from . import implementation_planning
+from app.utils.pagination import safe_int_arg
 
 
 def _to_iso(value):
@@ -157,7 +158,7 @@ def work_packages_list():
     """
     try:
         # Get query parameters
-        page = request.args.get("page", 1, type=int)
+        page = safe_int_arg('page', 1, minimum=1)
         search = request.args.get("search", "")
         status = request.args.get("status", "")
         priority = request.args.get("priority", "")
@@ -457,7 +458,7 @@ def api_work_packages():
         if hasattr(ImplementationWorkPackage, sort_field):
             col = getattr(ImplementationWorkPackage, sort_field)
             query = query.order_by(col.desc() if order == "desc" else col.asc())
-        limit = request.args.get("limit", type=int)
+        limit = safe_int_arg('limit', None, minimum=1, maximum=500)
         if limit:
             query = query.limit(limit)
         work_packages = query.all()
@@ -631,7 +632,7 @@ def gaps_list():
     """
     try:
         # Get query parameters
-        page = request.args.get("page", 1, type=int)
+        page = safe_int_arg('page', 1, minimum=1)
         search = request.args.get("search", "")
         gap_type = request.args.get("gap_type", "")
         priority = request.args.get("priority", "")
@@ -767,7 +768,7 @@ def api_gaps():
         if priority:
             query = query.filter_by(priority=priority)
         query = query.order_by(ImplementationGap.created_at.desc())
-        limit = request.args.get("limit", type=int)
+        limit = safe_int_arg('limit', None, minimum=1, maximum=500)
         if limit:
             query = query.limit(limit)
         gaps = query.all()
@@ -811,7 +812,7 @@ def deliverables_list():
     """
     try:
         # Get query parameters
-        page = request.args.get("page", 1, type=int)
+        page = safe_int_arg('page', 1, minimum=1)
         search = request.args.get("search", "")
         status = request.args.get("status", "")
         work_package_id = request.args.get("work_package_id", type=int)

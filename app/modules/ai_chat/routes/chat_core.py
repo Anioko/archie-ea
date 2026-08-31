@@ -609,7 +609,10 @@ def send_message():
 
         # Run AgentRunner (ReAct loop with tool use).
         # Falls back to text-only mode automatically for unsupported providers.
-        from app.modules.ai_chat.services.agent_runner import AgentRunner
+        from app.modules.ai_chat.services.agent_runner import (
+            AgentRunner,
+            sanitize_agent_error,
+        )
 
         if trusted_workspace_id is not None:
             context_data["workspace_id"] = trusted_workspace_id
@@ -663,9 +666,19 @@ def send_message():
         except Exception:
             logger.warning("send_message persist_turn failed", exc_info=True)
 
+        # A failed LLM call is not a success. This used to return
+        # "success": true alongside agent_error, so any client reading the
+        # envelope — and any log or metric counting 2xx+success — recorded a
+        # failure as a working answer. The HTTP status stays 200 and `response`
+        # still carries the honest "couldn't be completed" copy, because the
+        # user does have something to read; it is the envelope that was lying.
+        agent_failure = agent_result.get("error")
+        if agent_failure:
+            logger.warning("send_message agent failure: %s", agent_failure)
+
         return jsonify(
             {
-                "success": True,
+                "success": not agent_failure,
                 "response": agent_result.get("response", ""),
                 "domain": domain,
                 "actions_taken": agent_result.get("actions_taken", []),
@@ -677,11 +690,15 @@ def send_message():
                 "sources": agent_result.get("sources", []),
                 # AgentRunner._fallback() persists a friendly "couldn't be
                 # completed" response AND keeps the raw failure reason on the
-                # same dict; this endpoint always reports success:True for
-                # that case (there is an answer to show), so without this
-                # field the UI could not tell an ordinary answer from one
-                # that only exists because the LLM call failed.
-                "agent_error": agent_result.get("error"),
+                # same dict; without this field the UI could not tell an
+                # ordinary answer from one that only exists because the LLM
+                # call failed.
+                #
+                # Sanitised: the raw reason is the provider's error body, which
+                # for OpenRouter's 402 contains the provider account's user_id.
+                # That was reaching the browser verbatim. The full reason is in
+                # the server log line above.
+                "agent_error": sanitize_agent_error(agent_failure),
                 # Was hardcoded True on every response regardless of whether any
                 # context was built - _build_system_prompt swallows a context
                 # failure into an empty string, so the API asserted grounding
@@ -936,7 +953,10 @@ def send_message_stream():
                 # paths inside run().
                 g.current_org_id = org_id_for_thread
 
-                from app.modules.ai_chat.services.agent_runner import AgentRunner
+                from app.modules.ai_chat.services.agent_runner import (
+                    AgentRunner,
+                    sanitize_agent_error,
+                )
                 runner = AgentRunner(
                     user_id=user_id_for_thread,
                     yield_event=emit,
@@ -970,13 +990,22 @@ def send_message_stream():
                     )
                 except Exception:
                     logger.warning("stream persist_turn failed", exc_info=True)
+                # Same leak as the non-streaming path: result["error"] is the
+                # provider's raw error body (OpenRouter's 402 carries the
+                # provider account's user_id). Log it, send a category.
+                if result.get("error"):
+                    logger.warning("stream agent failure: %s", result["error"])
+                    result["error"] = sanitize_agent_error(result["error"])
                 event_queue.put({"type": "done", **result})
         except Exception as exc:
             logger.exception("send_message_stream: agent error")
+            from app.modules.ai_chat.services.agent_runner import (
+                sanitize_agent_error as _sanitize,
+            )
             event_queue.put({
                 "type": "done",
                 "response": "",
-                "error": str(exc),
+                "error": _sanitize(str(exc)),
                 "actions_taken": [],
                 "pending_approvals": [],
             })
@@ -1006,7 +1035,6 @@ def send_message_stream():
         headers={
             "Cache-Control": "no-cache",
             "X-Accel-Buffering": "no",
-            "Connection": "keep-alive",
         },
     )
 

@@ -1,0 +1,54 @@
+name: Production watch
+
+# Nothing in this repository has ever run against production. Every gate is
+# pre-merge; scripts/deploy.sh verifies that /health returns 200 and stops
+# there. On 31 Aug 2026 the owner opened a page on the deployed site that
+# rendered correctly, returned HTTP 200, and said "This page could not load its
+# data" -- and the container had been logging the traceback for hours where
+# nobody was reading it.
+#
+# A page that tells the user it is broken IS a 200, so a status-code check can
+# never see it. This runs the same check the deploy now runs, on a schedule, so
+# a regression that reaches production is found by a machine rather than by the
+# owner opening the page.
+
+on:
+  schedule:
+    # 07:00 UTC daily -- before the working day, so a failure is waiting rather
+    # than discovered mid-use. Deliberately once a day: this hits the live site,
+    # and a tighter loop buys little for a product with one deploy a day.
+    - cron: "0 7 * * *"
+  workflow_dispatch:          # so it can be run on demand after a deploy
+
+concurrency:
+  group: production-watch
+  cancel-in-progress: true
+
+jobs:
+  watch:
+    name: Is production actually working?
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      # No dependencies: post_deploy_verify.py uses only the standard library,
+      # precisely so this job cannot fail for a reason unrelated to production.
+      - name: Check public surfaces for error banners
+        run: python scripts/post_deploy_verify.py --json
+
+      # The log scan needs ssh to the droplet and is skipped when the secret is
+      # absent, so a fork without access still gets the page checks rather than
+      # a permanently red job that everyone learns to ignore.
+      - name: Check container logs for errors
+        if: ${{ secrets.DROPLET_SSH_KEY != '' }}
+        env:
+          DROPLET_SSH_KEY: ${{ secrets.DROPLET_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$DROPLET_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          python scripts/post_deploy_verify.py --logs --minutes 1440

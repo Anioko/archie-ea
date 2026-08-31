@@ -40,6 +40,8 @@ DROPLET="${DROPLET:-root@134.122.105.56}"                # ssh target
 APP_DIR="${APP_DIR:-/root/archie-ea}"                    # app dir on droplet
 HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:5000/health}" # health endpoint (on box)
 PUBLIC_HEALTH="${PUBLIC_HEALTH:-https://165-22-125-156.sslip.io/health}"
+# The same host without the /health path, for the post-deploy page sweep.
+PUBLIC_HEALTH_BASE="${PUBLIC_HEALTH%/health}"
 POLL_SECONDS="${POLL_SECONDS:-1800}"                     # 30 min bound.
 # Was 900. A boot that was progressing normally through the backfill chain
 # exceeded 15 min on the 2-vCPU droplet, so a healthy deploy was rolled back as
@@ -136,6 +138,40 @@ done
 if [ "$served" -eq 1 ]; then
   pub="$(ssh $SSH_OPTS "$DROPLET" "curl -s -o /dev/null -w '%{http_code}' --max-time 20 '$PUBLIC_HEALTH'" 2>/dev/null || echo '???')"
   log "✅ SERVING. local=200 public=$pub  deployed $SHA ($DEPLOY_BRANCH)."
+
+  # Post-deploy verification. /health returning 200 is NOT evidence the product
+  # works: on 31 Aug 2026 the owner opened a page on this deployed site that
+  # rendered correctly, returned 200, and said "This page could not load its
+  # data". /health was green throughout, and the container had been logging the
+  # traceback where nobody was reading it.
+  #
+  # This checks what a status code cannot see -- a page telling the user it is
+  # broken, and errors accumulating in the log.
+  #
+  # BLOCKING: a deploy that serves /health while the product reports errors is a
+  # failed deploy, and recording it as a success is exactly how the broken page
+  # stayed live. It does NOT auto-roll-back, deliberately -- the site IS
+  # serving, and reverting a working deployment because a log scan found
+  # something is a bigger risk than the failure being reported. It exits
+  # non-zero so the deploy is recorded as failed and a human decides.
+  if [ -f scripts/post_deploy_verify.py ]; then
+    log "post-deploy verification (pages + container errors)…"
+    # Not piped into sed: a pipeline's status is its LAST command, so
+    # `if python ... | sed ...` would test sed and the failure branch below
+    # could never fire. Capture output, then test the real exit code.
+    pdv_out="$(python scripts/post_deploy_verify.py --base "$PUBLIC_HEALTH_BASE" --droplet "$DROPLET" --app-dir "$APP_DIR" --logs --minutes 15 2>&1)"
+    pdv_rc=$?
+    echo "$pdv_out" | sed 's/^/  /'
+    if [ "$pdv_rc" -eq 0 ]; then
+      log "post-deploy verification clean."
+    else
+      err "POST-DEPLOY VERIFICATION FAILED — the site serves but is reporting errors."
+      err "The code is live and /health is green; this is NOT an automatic rollback."
+      err "Decide: fix forward, or roll back with"
+      err "  ssh $DROPLET \"cd $APP_DIR && git checkout $PREV_BRANCH && docker compose up -d --force-recreate server\""
+      exit 1
+    fi
+  fi
   log "rollback if needed: ssh $DROPLET \"cd $APP_DIR && git checkout $PREV_BRANCH && docker compose up -d --force-recreate server\""
   exit 0
 fi

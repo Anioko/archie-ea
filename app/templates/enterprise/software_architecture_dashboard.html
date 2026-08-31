@@ -62,7 +62,12 @@
                 <i data-lucide="cpu" class="w-5 h-5 text-muted-foreground" aria-hidden="true"></i>
                 <span class="text-sm font-medium">Technology Architecture</span>
             </a>
-            <a href="{{ url_for('implementation_planning.implementation_dashboard') }}"
+            {# implementation_planning is deprecated and its before_request aborts 404
+               unless a feature-flag row exists, which it never does on a fresh database,
+               so this tile offered a destination the app always refuses. The live
+               Enterprise Roadmap is main.capability_roadmap — the same target
+               architect_ui.roadmap_builder already redirects to. #}
+            <a href="{{ url_for('main.capability_roadmap') }}"
                class="flex items-center gap-3 p-4 rounded-lg border-2 border-input bg-background hover:border-primary/50 hover:shadow-sm transition-all duration-200">
                 <i data-lucide="milestone" class="w-5 h-5 text-muted-foreground" aria-hidden="true"></i>
                 <span class="text-sm font-medium">Implementation Roadmap</span>

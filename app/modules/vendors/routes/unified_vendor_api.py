@@ -23,6 +23,9 @@ from app.services.rate_limiter import rate_limit
 from app.extensions import db
 from app.models.vendor_organization import VendorOrganization, VendorProduct
 import logging
+from app.utils.pagination import safe_int_arg
+from app.utils.route_guards import require_entity
+from app.models.vendor_analysis import OptionsAnalysis
 logger = logging.getLogger(__name__)
 
 # Blueprint defined here (was in app/unified_vendors/__init__.py)
@@ -68,8 +71,8 @@ MAX_WEBSITE_LENGTH = 500
 @login_required
 def list_vendors():
     """List vendors with pagination and filtering."""
-    page = request.args.get("page", 1, type=int)
-    per_page = min(request.args.get("per_page", 25, type=int), 100)
+    page = safe_int_arg('page', 1, minimum=1)
+    per_page = min(safe_int_arg('per_page', 25, minimum=1, maximum=500), 100)
     search = request.args.get("q") or request.args.get("search", "")
     vendor_type = request.args.get("vendor_type", "")
     sort_by = request.args.get("sort") or request.args.get("sort_by", "name")
@@ -180,13 +183,13 @@ def search_vendors():
     # truncation. It is now a COUNT over the filtered query, independent of paging.
     # ``per_page`` was also silently ignored (only ``limit`` was read), so an
     # explicit page-size request was answered with the default 10.
-    page_size = request.args.get("per_page", type=int)
+    page_size = safe_int_arg('per_page', None, minimum=1, maximum=500)
     if page_size is None:
-        page_size = request.args.get("limit", type=int)
+        page_size = safe_int_arg('limit', None, minimum=1, maximum=500)
     if page_size is None:
         page_size = 10
     page_size = max(1, min(page_size, MAX_PER_PAGE))
-    page = max(1, request.args.get("page", 1, type=int) or 1)
+    page = max(1, safe_int_arg('page', 1, minimum=1) or 1)
 
     query = VendorOrganization.query
     if search:
@@ -762,6 +765,8 @@ def list_analyses():
 @login_required
 def get_analysis(analysis_id):
     """Get analysis results."""
+    # Existence guard: a zeroed payload for a nonexistent analysis is fabricated data.
+    require_entity(OptionsAnalysis, analysis_id, description=f"Analysis {analysis_id} not found")
     return jsonify(
         {
             "success": True,
@@ -778,6 +783,8 @@ def get_analysis(analysis_id):
 @login_required
 def get_comparison(analysis_id):
     """Get vendor comparison matrix data."""
+    # Existence guard: a zeroed payload for a nonexistent analysis is fabricated data.
+    require_entity(OptionsAnalysis, analysis_id, description=f"Analysis {analysis_id} not found")
     return jsonify(
         {
             "success": True,
@@ -791,6 +798,8 @@ def get_comparison(analysis_id):
 @login_required
 def get_comparison_matrix(analysis_id):
     """Get vendor comparison matrix."""
+    # Existence guard: a zeroed payload for a nonexistent analysis is fabricated data.
+    require_entity(OptionsAnalysis, analysis_id, description=f"Analysis {analysis_id} not found")
     include_gaps = request.args.get("include_gaps", "true").lower() == "true"
     include_recommendations = (
         request.args.get("include_recommendations", "true").lower() == "true"
@@ -845,6 +854,8 @@ def compare_scenarios(analysis_id):
 @login_required
 def run_sensitivity_analysis(analysis_id):
     """Run sensitivity analysis on criteria weights."""
+    # Existence guard: a zeroed payload for a nonexistent analysis is fabricated data.
+    require_entity(OptionsAnalysis, analysis_id, description=f"Analysis {analysis_id} not found")
     criteria = request.args.get("criteria", "cost")
     variation_range = float(request.args.get("variation_range", 0.1))
 
@@ -907,6 +918,8 @@ def export_analysis(analysis_id, format_type):
 @login_required
 def get_provenance(analysis_id):
     """Get analysis provenance data."""
+    # Existence guard: a zeroed payload for a nonexistent analysis is fabricated data.
+    require_entity(OptionsAnalysis, analysis_id, description=f"Analysis {analysis_id} not found")
     from datetime import datetime
 
     provenance = {
@@ -1025,6 +1038,8 @@ def get_data_quality():
 @login_required
 def get_vendor_quality(vendor_id):
     """Get data quality score for specific vendor."""
+    # Existence guard: a zero quality score for a nonexistent vendor is fabricated data.
+    require_entity(VendorOrganization, vendor_id, description=f"Vendor {vendor_id} not found")
     return jsonify(
         {"success": True, "vendor_id": vendor_id, "quality_score": 0, "issues": []}
     )

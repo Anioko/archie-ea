@@ -73,17 +73,25 @@ def _build_inference_sql(source_type, target_type, solution_id=None):
     return sql
 
 
-def _check_duplicate_sql(db, source_id, target_id, rel_type, solution_id):
-    """Return True if a relationship already exists for this tuple."""
+def _check_duplicate_sql(db, source_id, target_id, rel_type):
+    """Return True if a relationship already exists for this tuple.
+
+    archimate_relationships has no solution_id column — a relationship is
+    associated with a solution only indirectly, through its endpoint elements'
+    rows in solution_archimate_elements. Every statement in this command used to
+    name solution_id, so the duplicate checks raised UndefinedColumn and the
+    INSERTs failed outright: this backfill has never successfully run. The
+    identity of a relationship is therefore (source, target, type) alone.
+    """
     # tenancy-ok: CLI backfill, deliberately global across organisations; no
-    # request context exists. Keyed on a (source, target, solution) triple that
-    # came from one solution's own junction rows.
+    # request context exists. Keyed on a (source, target, type) triple that came
+    # from one solution's own junction rows.
     row = db.session.execute(db.text(
         "SELECT 1 FROM archimate_relationships "
         "WHERE source_id = :s AND target_id = :t "
-        "AND type = :r AND solution_id = :sol "
+        "AND type = :r "
         "LIMIT 1"
-    ), {"s": source_id, "t": target_id, "r": rel_type, "sol": solution_id}).fetchone()
+    ), {"s": source_id, "t": target_id, "r": rel_type}).fetchone()
     return row is not None
 
 
@@ -117,7 +125,10 @@ def _check_duplicate_enterprise_sql(db, source_id, target_id, rel_type):
     row = db.session.execute(db.text(
         "SELECT 1 FROM archimate_relationships "
         "WHERE source_id = :s AND target_id = :t "
-        "AND type = :r AND solution_id IS NULL "
+        # No solution_id column exists on archimate_relationships, so the
+        # former "AND solution_id IS NULL" predicate is dropped; (source,
+        # target, type) is the whole key.
+        "AND type = :r "
         "LIMIT 1"
     ), {"s": source_id, "t": target_id, "r": rel_type}).fetchone()
     return row is not None
@@ -221,10 +232,11 @@ def _run_transitive_closure(db, dry_run, max_depth=2):
                         # stamp it and the row would otherwise be untenanted and
                         # invisible to every organisation's ORM queries.
                         db.session.execute(db.text(
+                            # no solution_id column on archimate_relationships
                             "INSERT INTO archimate_relationships "
-                            "(source_id, target_id, type, solution_id, "
+                            "(source_id, target_id, type, "
                             " organization_id, created_at) "
-                            "SELECT :s, :t, :r, NULL, e.organization_id, "
+                            "SELECT :s, :t, :r, e.organization_id, "
                             "       CURRENT_TIMESTAMP "
                             "FROM archimate_elements e WHERE e.id = :s"
                         ), {"s": src, "t": tgt, "r": rel_type})
@@ -291,7 +303,7 @@ def backfill_archimate_relationships_command(dry_run, solution_id, enterprise,
             tgt = row.target_id
             sol = row.solution_id
 
-            if _check_duplicate_sql(db, src, tgt, rel_type, sol):
+            if _check_duplicate_sql(db, src, tgt, rel_type):
                 skipped += 1
                 continue
 
@@ -300,10 +312,13 @@ def backfill_archimate_relationships_command(dry_run, solution_id, enterprise,
                     # organization_id inherited from the owning solution — see
                     # the note on the transitive INSERT below.
                     db.session.execute(db.text(
+                        # solution_id is not a column on
+                        # archimate_relationships; the solution is still used to
+                        # derive organization_id, but cannot be stored on the edge.
                         "INSERT INTO archimate_relationships "
-                        "(source_id, target_id, type, solution_id, "
+                        "(source_id, target_id, type, "
                         " organization_id, created_at) "
-                        "SELECT :s, :t, :r, :sol, sol.organization_id, "
+                        "SELECT :s, :t, :r, sol.organization_id, "
                         "       CURRENT_TIMESTAMP "
                         "FROM solutions sol WHERE sol.id = :sol"
                     ), {"s": src, "t": tgt, "r": rel_type, "sol": sol})
@@ -362,9 +377,10 @@ def backfill_archimate_relationships_command(dry_run, solution_id, enterprise,
                             # and target share it.
                             db.session.execute(db.text(
                                 "INSERT INTO archimate_relationships "
-                                "(source_id, target_id, type, solution_id, "
+                                # no solution_id column on archimate_relationships
+                                "(source_id, target_id, type, "
                                 " organization_id, created_at) "
-                                "SELECT :s, :t, :r, NULL, e.organization_id, "
+                                "SELECT :s, :t, :r, e.organization_id, "
                                 "       CURRENT_TIMESTAMP "
                                 "FROM archimate_elements e WHERE e.id = :s"
                             ), {"s": src, "t": tgt, "r": rel_type})

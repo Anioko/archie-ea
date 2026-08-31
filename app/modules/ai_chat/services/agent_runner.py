@@ -70,6 +70,51 @@ LIVE ARCHITECTURE CONTEXT:
 """
 
 
+def sanitize_agent_error(reason) -> "Optional[str]":
+    """Turn an upstream failure string into something safe to send to a browser.
+
+    The raw reason is the provider's own error body. OpenRouter's 402 includes
+    the *provider account's* ``user_id``; others echo request ids, key
+    fragments, org names and internal URLs. That string was being returned
+    verbatim as ``agent_error`` on POST /ai-chat/message, so provider internals
+    reached every chat user.
+
+    The categories are the same ones ``AgentRunner._fallback`` already
+    distinguishes to choose its user-facing copy, so the client learns exactly
+    as much as the copy already tells it — and nothing more. An HTTP status is
+    included when one is present because it is the operator's handle on the
+    failure and carries no account detail. The full reason stays in the server
+    log.
+    """
+    import re as _re
+
+    if not reason:
+        return None
+    text = str(reason)
+    lowered = text.lower()
+
+    status = ""
+    m = _re.search(r"\b(4\d\d|5\d\d)\b", text)
+    if m:
+        status = f" (provider HTTP {m.group(1)})"
+
+    if any(t in lowered for t in ("no api key", "not configured", "no provider", "no keys")):
+        return "No LLM provider is configured."
+    if any(
+        t in lowered
+        for t in (
+            "quota", "insufficient", "rate limit", "429", "billing",
+            "exceeded", "credit", "402",
+        )
+    ):
+        return f"The LLM provider rejected the request: rate limit or quota{status}."
+    if any(t in lowered for t in ("timeout", "timed out")):
+        return f"The LLM provider did not respond in time{status}."
+    if any(t in lowered for t in ("unauthorized", "401", "invalid api key", "forbidden", "403")):
+        return f"The LLM provider rejected the credentials{status}."
+    return f"The LLM request failed{status}."
+
+
 class AgentRunner:
     """
     Orchestrates the LLM tool-use loop for a single user turn.

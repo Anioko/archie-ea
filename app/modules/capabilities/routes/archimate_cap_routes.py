@@ -23,6 +23,7 @@ from app import db
 from app.decorators import audit_log
 
 from . import capability_map
+from app.utils.pagination import safe_int_arg
 
 
 # ============================================================================
@@ -286,6 +287,11 @@ def api_application_archimate_summary(app_id):
             "implementation_layer": {"work_packages": 15, "events": 8}
         }
     """
+    from app.models.application_portfolio import ApplicationComponent
+    from app.utils.route_guards import require_entity
+
+    require_entity(ApplicationComponent, app_id, description="Application not found")
+
     try:
         from app.models.application_layer import ApplicationEvent, ApplicationInterface
         from app.models.business_layer import BusinessActor, BusinessRole, BusinessService
@@ -773,7 +779,7 @@ def api_relationship_suggestions():
 
         status = request.args.get("status", "pending")
         min_confidence = float(request.args.get("min_confidence", 0.3))
-        limit = min(int(request.args.get("limit", 50)), 100)
+        limit = min(safe_int_arg('limit', 50, minimum=1, maximum=500), 100)
 
         query = RelationshipSuggestion.query.filter_by(status=status)
         if status == "pending":

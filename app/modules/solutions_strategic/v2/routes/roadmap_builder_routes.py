@@ -38,6 +38,7 @@ from flask_login import current_user, login_required
 from app.decorators import audit_log
 
 from ..services.roadmap_builder_service import RoadmapBuilderService
+from app.utils.pagination import safe_int_arg
 
 roadmap_builder_bp = Blueprint("roadmap_builder", __name__, url_prefix="/api/roadmap-builder")
 
@@ -69,8 +70,8 @@ def list_work_packages():
     """
     status_filter = request.args.get("status")
     priority_filter = request.args.get("priority")
-    limit = request.args.get("limit", 100, type=int)
-    offset = request.args.get("offset", 0, type=int)
+    limit = safe_int_arg('limit', 100, minimum=1, maximum=500)
+    offset = safe_int_arg('offset', 0, minimum=0)
 
     service = _get_service()
     result = service.list_work_packages(

@@ -19,6 +19,7 @@ from app.models.vendor.vendor_organization import VendorProduct
 from app.services.interactive_coverage_matrix import (
     InteractiveCoverageMatrix,
 )
+from app.utils.pagination import safe_int_arg
 
 logger = logging.getLogger(__name__)
 
@@ -291,8 +292,8 @@ def get_capabilities():
         # Get query parameters
         domain = request.args.get("domain")
         level = request.args.get("level", type=int)
-        limit = request.args.get("limit", 100, type=int)
-        offset = request.args.get("offset", 0, type=int)
+        limit = safe_int_arg('limit', 100, minimum=1, maximum=500)
+        offset = safe_int_arg('offset', 0, minimum=0)
 
         # Build query
         query = BusinessCapability.query
@@ -378,8 +379,8 @@ def get_vendors():
         # Get query parameters
         category = request.args.get("category")
         strategic_tier = request.args.get("strategic_tier")
-        limit = request.args.get("limit", 50, type=int)
-        offset = request.args.get("offset", 0, type=int)
+        limit = safe_int_arg('limit', 50, minimum=1, maximum=500)
+        offset = safe_int_arg('offset', 0, minimum=0)
 
         # Build query
         query = (

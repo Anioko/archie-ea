@@ -168,9 +168,14 @@ class TestStreamCarriesTheFailureMessage:
         assert len(done_events) == 1, f"expected exactly one done event, got {events!r}"
         done = done_events[0]
 
-        # The raw failure reason must be present...
+        # A failure reason must be present...
         assert done.get("error"), "done event lost the LLM failure reason"
-        assert "simulated LLM provider outage" in done["error"]
+        # ...but NOT the raw one. Since 31 Aug 2026 the reason is sanitised
+        # before it leaves the process (agent_runner.sanitize_agent_error):
+        # the raw string is the provider's error body, and OpenRouter's 402
+        # carries the provider account's user_id, which was reaching every
+        # chat user's browser. The full reason stays in the server log.
+        assert "simulated LLM provider outage" not in done["error"]
 
         # ...ALONGSIDE a real, human-readable message - not empty, not the
         # exception text itself, and not silently dropped. This is exactly

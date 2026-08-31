@@ -47,6 +47,8 @@ from ..services.unified_duplicate_detection_service import (
     UnifiedDuplicateDetectionService,
 )
 from ..services.unified_duplicate_service import UnifiedDuplicateService
+from app.utils.api_response import error_response
+from app.utils.pagination import safe_int_arg
 logger = logging.getLogger(__name__)
 
 # Create unified blueprint
@@ -262,7 +264,7 @@ def get_simple_groups():
 def get_simple_runs():
     """Get simple detection runs with full details for dashboard display."""
     try:
-        limit = min(request.args.get("limit", 10, type=int), 100)
+        limit = min(safe_int_arg('limit', 10, minimum=1, maximum=500), 100)
         runs = (
             UnifiedDetectionRun.query.order_by(UnifiedDetectionRun.created_at.desc())
             .limit(limit)
@@ -1338,6 +1340,18 @@ def api_ai_detect():
             strategy=strategy, threshold=threshold, config=config
         )
 
+        if not result.get("success"):
+            # A failed run is not a 200. The service has already logged the
+            # internal detail; the client gets a product-level message only.
+            current_app.logger.error(
+                "AI duplicate detection reported failure: %s", result.get("error")
+            )
+            return error_response(
+                "Duplicate detection could not be completed.",
+                code="DUPLICATE_DETECTION_FAILED",
+                status_code=502,
+            )
+
         return jsonify(result)
 
     except ValueError as e:
@@ -1471,7 +1485,7 @@ def api_compare_strategies():
                     strategy=strategy, threshold=threshold
                 )
 
-                if result["success"]:
+                if result.get("success"):
                     comparison_results[strategy] = {
                         "duplicates_found": result["statistics"]["total_duplicates"],
                         "high_confidence": result["statistics"]["high_confidence"],
@@ -1485,7 +1499,12 @@ def api_compare_strategies():
                         "quality_score": result["ai_insights"]["quality_score"],
                     }
                 else:
-                    comparison_results[strategy] = {"error": result["error"]}
+                    current_app.logger.error(
+                        "Strategy %s failed: %s", strategy, result.get("error")
+                    )
+                    comparison_results[strategy] = {
+                        "error": "Strategy could not be evaluated."
+                    }
 
             except HTTPException:
 
@@ -1494,6 +1513,16 @@ def api_compare_strategies():
             except Exception as e:
                 current_app.logger.error(f"Strategy {strategy} comparison failed: {e}")
                 comparison_results[strategy] = {"error": "Strategy comparison failed"}
+
+        if comparison_results and all(
+            "error" in r for r in comparison_results.values()
+        ):
+            # Every strategy failed - that is a server-side failure, not a 200.
+            return error_response(
+                "Strategy comparison could not be completed.",
+                code="STRATEGY_COMPARISON_FAILED",
+                status_code=502,
+            )
 
         return jsonify(
             {"success": True, "threshold": threshold, "comparison": comparison_results}
@@ -2105,8 +2134,8 @@ def api_statistics_summary():
 def api_duplicate_groups():
     """Paginated duplicate groups for the enterprise dashboard."""
     try:
-        page = request.args.get("page", 1, type=int)
-        per_page = request.args.get("per_page", 10, type=int)
+        page = safe_int_arg('page', 1, minimum=1)
+        per_page = safe_int_arg('per_page', 10, minimum=1, maximum=500)
         priority = request.args.get("priority", "")
         min_similarity = request.args.get("min_similarity", 0.0, type=float)
 

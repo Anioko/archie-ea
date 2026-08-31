@@ -23,6 +23,11 @@ from its clipped text. dead-interactions passes, because the link works.
 design-tokens passes, because the colours are right. The screen is still
 unusable, and nothing in the estate had eyes.
 
+Scope: only templates that reference the collapse mechanism itself
+(`$store.sidebar` or `sidebar-collapsed`). Breadcrumbs and the public
+navbar are icon-bearing nav but never collapse, so flagging them would
+be asserting a consequence that cannot happen to them.
+
 Detection: an anchor in a sidebar/nav template that contains an icon
 (data-lucide) and carries neither title= nor aria-label= on the anchor itself.
 Those two are what survive the visible label being hidden or clipped.
@@ -59,6 +64,19 @@ def scan(root: str) -> list:
     ]
     paths = sorted({p for pattern in patterns for p in glob.glob(pattern, recursive=True)})
     for path in paths:
+        # Only templates that actually PARTICIPATE in the collapsible rail.
+        # The first scan globbed every *nav* and *sidebar* template and flagged
+        # breadcrumbs and the public navbar, neither of which ever collapses --
+        # so the finding's own reason ("once the rail collapses to 4rem") was
+        # untrue of 7 of its 8 results. A gate that cries wolf gets ignored,
+        # and that has already happened once in this repo today.
+        try:
+            with open(path, encoding="utf-8") as probe:
+                head = probe.read()
+        except (OSError, UnicodeDecodeError):
+            continue
+        if "store.sidebar" not in head and "sidebar-collapsed" not in head:
+            continue
         rel = os.path.relpath(path, root).replace(os.sep, "/")
         try:
             with open(path, encoding="utf-8") as fh:

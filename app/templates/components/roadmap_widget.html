@@ -5,7 +5,7 @@ Extracted from capability-map/index.html for use across the application
 Usage:
   {% from 'components/roadmap_widget.html' import roadmap_widget with context %}
   {{ roadmap_widget(
-      data_endpoint=url_for('implementation_planning.api_roadmap_data'),
+      data_endpoint=url_for('capability_map.api_roadmap_gaps'),
       title='Implementation Roadmap',
       subtitle='Enterprise Architecture Migration Timeline',
       show_gap_types=true,
@@ -13,6 +13,11 @@ Usage:
       show_convert_button=true,
       show_gap_legend=true
   ) }}
+
+NOTE: do not point data_endpoint at implementation_planning.api_roadmap_data.
+That blueprint is deprecated and its before_request aborts 404 unless a feature-flag
+row exists, which it never does on a fresh database, so the widget renders a lens
+that can only ever fail.
 
 Parameters:
 - data_endpoint: URL for fetching roadmap data (required)

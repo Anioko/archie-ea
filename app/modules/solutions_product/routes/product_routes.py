@@ -12,6 +12,7 @@ from flask import Blueprint, jsonify, request, send_file
 from flask_login import login_required
 
 from app import db
+from app.utils.pagination import safe_int_arg
 
 logger = logging.getLogger(__name__)
 
@@ -737,8 +738,12 @@ def compliance_history(solution_id):
     GET /api/solutions/<id>/compliance/history
     """
     from app.models.compliance_check import RuntimeComplianceCheck as ComplianceCheck
+    from app.models.solution_models import Solution
+    from app.utils.route_guards import require_entity
 
-    limit = request.args.get("limit", 20, type=int)
+    require_entity(Solution, solution_id, description="Solution not found")
+
+    limit = safe_int_arg('limit', 20, minimum=1, maximum=500)
     limit = min(limit, 100)  # Cap at 100
 
     checks = (
@@ -765,6 +770,10 @@ def compliance_latest(solution_id):
     GET /api/solutions/<id>/compliance/latest
     """
     from app.models.compliance_check import RuntimeComplianceCheck as ComplianceCheck
+    from app.models.solution_models import Solution
+    from app.utils.route_guards import require_entity
+
+    require_entity(Solution, solution_id, description="Solution not found")
 
     check = (
         ComplianceCheck.query
@@ -963,7 +972,11 @@ def list_webhooks(solution_id):
 
     GET /api/solutions/<id>/webhooks
     """
+    from app.models.solution_models import Solution
     from app.models.spec_webhook import SpecWebhook
+    from app.utils.route_guards import require_entity
+
+    require_entity(Solution, solution_id, description="Solution not found")
 
     webhooks = SpecWebhook.query.filter_by(solution_id=solution_id).all()
     return jsonify({

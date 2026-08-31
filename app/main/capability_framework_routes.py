@@ -9,6 +9,7 @@ from app import db
 from app.models import ApplicationComponent
 from app.models.unified_application_capability_mapping import UnifiedApplicationCapabilityMapping
 from app.models.unified_capability import BusinessDomain, UnifiedCapability
+from app.utils.route_guards import require_entity_json
 from flask_login import login_required
 
 capability_framework_bp = Blueprint(
@@ -101,6 +102,14 @@ def get_capabilities():
 @login_required
 def get_capability_applications(capability_id):
     """Get applications mapped to a specific capability"""
+    # Unknown capability -> 404, not an empty application list. The `main`
+    # blueprint renders an HTML 404 page, so return the JSON tuple explicitly.
+    _capability, missing = require_entity_json(
+        UnifiedCapability, capability_id, label="Capability"
+    )
+    if missing:
+        return missing
+
     mappings = (
         db.session.query(
             UnifiedApplicationCapabilityMapping,

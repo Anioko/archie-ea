@@ -21,6 +21,7 @@ from sqlalchemy import func
 from app.decorators import audit_log, require_roles  # dead-code-ok
 from app.extensions import db
 from app.models.vendor_organization import VendorOrganization
+from app.utils.pagination import safe_int_arg
 
 # Allowlist for vendor updates (security: prevent mass assignment)
 VENDOR_UPDATE_ALLOWLIST = ["name", "vendor_type", "country", "description", "website"]
@@ -347,8 +348,8 @@ def import_vendors():
 @login_required
 def api_list_vendors():
     """API: List all vendors (paginated)."""
-    page = request.args.get("page", 1, type=int)
-    per_page = request.args.get("per_page", 20, type=int)
+    page = safe_int_arg('page', 1, minimum=1)
+    per_page = safe_int_arg('per_page', 20, minimum=1, maximum=500)
 
     paginated = VendorOrganization.query.paginate(page=page, per_page=per_page)
 

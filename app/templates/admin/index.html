@@ -143,6 +143,10 @@
                     <div class="flex-1 h-px bg-border/50"></div>
                 </div>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {# Feature flags are guarded by @platform_admin_required. Navigation must not
+                       offer a destination the guard will refuse, so the tile renders on the same
+                       predicate the route enforces rather than for every admin. #}
+                    {% if current_user.is_platform_admin %}
                     <a href="{{ url_for('admin.feature_flags') }}" class="block group">
                         <div class="rounded-xl border border-border/50 bg-card hover:bg-accent/5 hover:border-primary/30 transition-all p-5 flex items-start gap-4">
                             <div class="p-2.5 rounded-lg bg-info/10 group-hover:bg-info/15 transition-colors">
@@ -154,6 +158,10 @@
                             </div>
                         </div>
                     </a>
+                    {% endif %}
+                    {# API settings hold LLM provider credentials and are guarded by
+                       @org_admin_required. Same rule: render on the guard's own predicate. #}
+                    {% if current_user.is_org_admin %}
                     <a href="{{ url_for('admin.api_settings') }}" class="block group">
                         <div class="rounded-xl border border-border/50 bg-card hover:bg-accent/5 hover:border-primary/30 transition-all p-5 flex items-start gap-4">
                             <div class="p-2.5 rounded-lg bg-warning/10 group-hover:bg-warning/15 transition-colors">
@@ -165,6 +173,7 @@
                             </div>
                         </div>
                     </a>
+                    {% endif %}
                     <a href="{{ url_for('admin.abacus_settings') }}" class="block group">
                         <div class="rounded-xl border border-border/50 bg-card hover:bg-accent/5 hover:border-primary/30 transition-all p-5 flex items-start gap-4">
                             <div class="p-2.5 rounded-lg bg-info/10 group-hover:bg-info/15 transition-colors">
@@ -278,7 +287,7 @@
                                 <p class="text-2xs text-muted-foreground">Integration status</p>
                             </div>
                         </div>
-                        <a href="{{ url_for('admin.api_settings') }}" class="text-xs font-medium text-primary hover:text-primary/80 transition-colors">Configure →</a>
+                        {% if current_user.is_org_admin %}<a href="{{ url_for('admin.api_settings') }}" class="text-xs font-medium text-primary hover:text-primary/80 transition-colors">Configure →</a>{% endif %}
                     </div>
                 </div>
                 <div class="divide-y divide-border/50">

@@ -14,6 +14,7 @@ SECURITY:
 """
 
 from flask import current_app, flash, jsonify, redirect, request, url_for
+from werkzeug.exceptions import HTTPException
 from flask_login import current_user, login_required
 from marshmallow import ValidationError
 from sqlalchemy import func
@@ -38,6 +39,7 @@ from app.services.archimate_validation_service import ArchiMateValidationService
 from app.services.rate_limiter import RateLimitExceeded, rate_limit
 from app.services.template_instantiation_service import TemplateInstantiationService
 from app.services.template_performance_optimizer import template_optimizer
+from app.utils.pagination import safe_int_arg
 
 # ============================================================================
 # SECURITY CONFIGURATION
@@ -338,7 +340,7 @@ def get_template_recommendations(app_id):
     Returns:
         JSON array of recommended template objects
     """
-    limit = int(request.args.get("limit", 20))
+    limit = safe_int_arg('limit', 20, minimum=1, maximum=500)
 
     # Instantiate service with dependencies
     template_repo = ElementTemplateRepository()
@@ -1139,7 +1141,7 @@ def get_session_history(app_id):
     """
     from app.services.session_rollback_service import SessionRollbackService
 
-    limit = int(request.args.get("limit", 10))
+    limit = safe_int_arg('limit', 10, minimum=1, maximum=500)
     include_rolled_back = request.args.get("include_rolled_back", "true").lower() == "true"
 
     service = SessionRollbackService()
@@ -1230,13 +1232,20 @@ def check_can_rollback(session_id):
     Returns:
         JSON with can_rollback flag and reason
     """
+    from app.models.architecture_session import ArchitectureSession
     from app.services.session_rollback_service import SessionRollbackService
+    from app.utils.route_guards import require_entity
+
+    # A rollback verdict for a session that does not exist is invented data.
+    require_entity(ArchitectureSession, session_id, description="Session not found")
 
     service = SessionRollbackService()
 
     try:
         result = service.can_rollback_session(session_id)
         return jsonify(result)
+    except HTTPException:
+        raise
     except Exception as e:
         current_app.logger.error(f"Error checking rollback capability: {str(e)}")
         return jsonify({"error": "Failed to check rollback capability"}), 500
@@ -1893,8 +1902,8 @@ def get_templates_by_level():
         query = query.filter(ElementTemplate.element_type == element_type)
 
     # Pagination
-    limit = min(int(request.args.get("limit", 100)), 500)
-    offset = int(request.args.get("offset", 0))
+    limit = min(safe_int_arg('limit', 100, minimum=1, maximum=500), 500)
+    offset = safe_int_arg('offset', 0, minimum=0)
 
     total = query.count()
     templates = (

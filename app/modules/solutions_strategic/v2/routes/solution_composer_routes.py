@@ -34,6 +34,7 @@ from flask_login import current_user, login_required
 
 from app.decorators import audit_log
 from app.modules.solutions_strategic.v2.services.solution_composer_service import SolutionComposerService
+from app.utils.pagination import safe_int_arg
 
 logger = logging.getLogger(__name__)
 
@@ -107,8 +108,8 @@ def list_canvases():
     Returns:
         JSON list of canvases
     """
-    limit = min(max(request.args.get("limit", 50, type=int), 1), 200)
-    offset = max(request.args.get("offset", 0, type=int), 0)
+    limit = min(max(safe_int_arg('limit', 50, minimum=1, maximum=500), 1), 200)
+    offset = max(safe_int_arg('offset', 0, minimum=0), 0)
 
     service = _get_service()
     result = service.list_canvases(limit=limit, offset=offset)
@@ -741,7 +742,7 @@ def search_palette():
     categories = (
         request.args.get("categories", "").split(",") if request.args.get("categories") else None
     )
-    limit = min(request.args.get("limit", 30, type=int), 200)
+    limit = min(safe_int_arg('limit', 30, minimum=1, maximum=500), 200)
 
     service = _get_service()
     result = service.search_palette(query=query, categories=categories, limit=limit)

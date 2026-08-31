@@ -11,6 +11,7 @@ from . import application_mgmt
 from app import db
 from datetime import datetime
 import os
+from app.utils.pagination import safe_int_arg
 
 
 # Legacy redirect — /dashboard/vendors → canonical vendor catalogue
@@ -35,8 +36,8 @@ def vendors_dashboard():
     vendor_type_filter = request.args.get('vendor_type', 'all')
     search_query = request.args.get('search', '')
     contract_filter = request.args.get('contract_status', 'all')
-    page = max(1, request.args.get('page', 1, type=int))
-    per_page = min(max(1, request.args.get('per_page', 20, type=int)), 100)
+    page = max(1, safe_int_arg('page', 1, minimum=1))
+    per_page = min(max(1, safe_int_arg('per_page', 20, minimum=1, maximum=500)), 100)
 
     # Build query with eager loading
     query = VendorOrganization.query.options(

@@ -19,6 +19,7 @@ from app import db
 from app.decorators import audit_log
 from app.utils.duplicate_guard import find_similar_entities
 from . import unified_ai_chat_bp
+from app.utils.pagination import MAX_PAGE_SIZE, safe_int_arg
 
 logger = logging.getLogger(__name__)
 
@@ -865,13 +866,13 @@ def get_document_history():
         MAX_LIMIT = 1000  # Maximum records per request
         DEFAULT_LIMIT = 50
         try:
-            limit = int(request.args.get("limit", DEFAULT_LIMIT))
+            limit = safe_int_arg("limit", DEFAULT_LIMIT, minimum=1, maximum=MAX_PAGE_SIZE)
             limit = min(max(limit, 1), MAX_LIMIT)  # Clamp between 1 and MAX_LIMIT
         except (ValueError, TypeError):
             limit = DEFAULT_LIMIT
 
         try:
-            offset = int(request.args.get("offset", 0))
+            offset = safe_int_arg('offset', 0, minimum=0)
             offset = max(offset, 0)  # Ensure non-negative
         except (ValueError, TypeError):
             offset = 0

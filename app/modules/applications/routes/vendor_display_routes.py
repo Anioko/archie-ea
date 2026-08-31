@@ -20,6 +20,7 @@ from app.decorators import audit_log
 
 from ._helpers import _vendors_impl
 from . import unified_applications_bp
+from app.utils.pagination import safe_int_arg
 
 logger = logging.getLogger(__name__)
 
@@ -47,8 +48,8 @@ def vendors():
     domain_filter = request.args.get("domain", "all")
     contract_status_filter = request.args.get("contract_status", "all")
     search_query = request.args.get("search", "")
-    page = request.args.get("page", 1, type=int)
-    per_page = min(request.args.get("per_page", 10, type=int), 200)
+    page = safe_int_arg('page', 1, minimum=1)
+    per_page = min(safe_int_arg('per_page', 10, minimum=1, maximum=500), 200)
 
     try:
         return _vendors_impl(

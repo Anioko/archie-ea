@@ -3,9 +3,9 @@
 Provides wizard-driven programme creation, linking Solution records
 with ArchiMate motivational-layer elements (drivers, goals) and
 stakeholder mappings.  Brownfield mode leverages the ArchiMate OEF
-from app.services.archimate_backbone import sync_archimate_element
 import service from ENT-067.
 """
+from app.services.archimate_backbone import sync_archimate_element
 
 import logging
 

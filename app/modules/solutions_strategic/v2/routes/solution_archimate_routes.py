@@ -18,6 +18,9 @@ from flask import Blueprint, jsonify, request
 from flask_login import current_user, login_required
 
 from app import db
+from app.models.solution_models import Solution
+from app.utils.pagination import safe_int_arg
+from app.utils.route_guards import require_entity
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +49,8 @@ def get_solution_archimate_elements(solution_id):
           "total_count": 3
         }
     """
+    require_entity(Solution, solution_id, description="Solution not found")
+
     from app.services.solution_archimate_service import SolutionArchiMateService
 
     svc = SolutionArchiMateService()
@@ -409,6 +414,8 @@ def save_capability_blueprint(solution_id):
 @login_required
 def load_capability_blueprint(solution_id):
     """Load the persisted TCM + ACM capability blueprint."""
+    require_entity(Solution, solution_id, description="Solution not found")
+
     from app.models.solution_reasoning import SolutionAIReasoningState
 
     state = SolutionAIReasoningState.query.filter_by(
@@ -547,7 +554,7 @@ def search_archimate_elements():
 
     q = request.args.get("q", "").strip()
     types_param = request.args.get("types", "").strip()
-    limit = min(int(request.args.get("limit", 25)), 100)
+    limit = min(safe_int_arg('limit', 25, minimum=1, maximum=500), 100)
 
     query = ArchiMateElement.query
     if q:
@@ -845,6 +852,8 @@ def create_snapshot(solution_id):
 @login_required
 def list_snapshots(solution_id):
     """List all snapshots for a solution."""
+    require_entity(Solution, solution_id, description="Solution not found")
+
     from app.models.solution_governance import SolutionVersion
 
     rows = (

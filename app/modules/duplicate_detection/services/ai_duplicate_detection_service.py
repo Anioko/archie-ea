@@ -315,6 +315,10 @@ class AIDuplicateDetectionService:
         start_time = datetime.utcnow()
 
         try:
+            # The engines are created lazily; without this the semantic engine is
+            # still None and every call raises AttributeError.
+            self._ensure_engines()
+
             # Get all applications
             applications = self._get_applications_data()
 
@@ -358,11 +362,12 @@ class AIDuplicateDetectionService:
                 "ai_insights": self._generate_global_insights(enhanced_duplicates),
             }
 
-        except Exception as e:
-            logger.error(f"AI duplicate detection failed: {e}")
+        except Exception:
+            # Log the internal detail server-side; never return it to the client.
+            logger.error("AI duplicate detection failed", exc_info=True)
             return {
                 "success": False,
-                "error": str(e),
+                "error": "Duplicate detection could not be completed.",
                 "processing_time": (datetime.utcnow() - start_time).total_seconds(),
             }
 
@@ -881,6 +886,7 @@ class AIDuplicateDetectionService:
             "timestamp": datetime.utcnow(),
         }
 
+        self._ensure_engines()
         self.learning_engine.process_feedback(feedback_data, user_action, confidence)
 
     def get_performance_metrics(self) -> Dict[str, Any]:

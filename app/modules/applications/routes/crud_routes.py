@@ -62,6 +62,7 @@ from app.utils.duplicate_guard import (
     allow_duplicate_requested,
     duplicate_conflict_response,
     find_duplicate_by_name,
+    lock_name_for_write,
 )
 
 from . import unified_applications_bp
@@ -217,6 +218,13 @@ def application_create():
     # ApplicationComponent inherits TenantMixin, so the organisation predicate is
     # injected by do_orm_execute — adding one here would double-filter.
     if not allow_duplicate_requested(data):
+        # The check below is check-then-insert, which races: five simultaneous
+        # identical posts produced five rows. The advisory lock serialises the
+        # check and the insert per (table, tenant, folded name) for the rest of
+        # this transaction, so the second concurrent request sees the first
+        # one's row. See lock_name_for_write for why this rather than a UNIQUE
+        # index.
+        lock_name_for_write(ApplicationComponent, name)
         existing = find_duplicate_by_name(ApplicationComponent, name)
         if existing is not None:
             if is_json:

@@ -799,8 +799,11 @@ class RoadmapAutomationEngine:
         result = db.session.execute(  # tenant-filtered: scoped via application_id FK
             text(
                 """
+            -- application_capability_mapping names its capability FK
+            -- business_capability_id; there is no capability_id column on that
+            -- table, so this join raised UndefinedColumn.
             SELECT uc.name FROM unified_capabilities uc
-            JOIN application_capability_mapping acm ON uc.id = acm.capability_id
+            JOIN application_capability_mapping acm ON uc.id = acm.business_capability_id
             WHERE acm.application_id = :app_id
             LIMIT 1
         """

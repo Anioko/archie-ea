@@ -26,6 +26,7 @@ from ..models.consolidation_list import (
     ConsolidationListEntry,
     CONSOLIDATION_STATUS_MAP,
 )
+from app.utils.pagination import safe_int_arg
 
 logger = logging.getLogger(__name__)
 
@@ -67,8 +68,8 @@ def get_entries():
         search_query = (request.args.get("search") or "").strip()
         wave_filter = request.args.get("wave", type=int)
         missing_filter = (request.args.get("missing") or "").strip()
-        page = max(request.args.get("page", 1, type=int) or 1, 1)
-        per_page = request.args.get("per_page", 25, type=int) or 25
+        page = max(safe_int_arg('page', 1, minimum=1) or 1, 1)
+        per_page = safe_int_arg('per_page', 25, minimum=1, maximum=500) or 25
         per_page = max(10, min(per_page, 100))
 
         filtered_query = ConsolidationListEntry.query.join(

@@ -31,6 +31,7 @@ from flask import (
 )
 from flask_login import current_user, login_required
 from sqlalchemy.orm import aliased
+from app.utils.pagination import safe_int_arg
 
 try:
     from flask_rq import get_queue
@@ -321,8 +322,8 @@ def index():
 @admin_required
 def dashboard():
     """Admin dashboard with stats and overview."""
-    page = request.args.get("page", 1, type=int)
-    per_page = request.args.get("per_page", 10, type=int)
+    page = safe_int_arg('page', 1, minimum=1)
+    per_page = safe_int_arg('per_page', 10, minimum=1, maximum=500)
     search_query = request.args.get("search", "")
 
     pagination = _svc.get_paginated_users(page, per_page, search_query)
@@ -1025,8 +1026,8 @@ def consolidation_status():
 @admin_required
 def feature_flags():
     """Feature flags management page with pagination."""
-    page = request.args.get("page", 1, type=int)
-    per_page = request.args.get("per_page", 50, type=int)
+    page = safe_int_arg('page', 1, minimum=1)
+    per_page = safe_int_arg('per_page', 50, minimum=1, maximum=500)
     search = request.args.get("search", "")
     filter_type = request.args.get("type", "")
     filter_state = request.args.get("state", "")
@@ -3126,8 +3127,8 @@ def api_list_users():
     """Paginated user list API for canonical data table."""
     from sqlalchemy.orm import joinedload
 
-    page = request.args.get("page", 1, type=int)
-    per_page = min(request.args.get("per_page", 25, type=int), 100)
+    page = safe_int_arg('page', 1, minimum=1)
+    per_page = min(safe_int_arg('per_page', 25, minimum=1, maximum=500), 100)
     search = request.args.get("q") or request.args.get("search", "")
     role_filter = request.args.get("role", "")
     sort_by = request.args.get("sort", "id")
@@ -3387,8 +3388,8 @@ def audit_log_viewer():
 
     logger = logging.getLogger(__name__)
 
-    page = request.args.get("page", 1, type=int)
-    per_page = min(request.args.get("per_page", 50, type=int), 200)
+    page = safe_int_arg('page', 1, minimum=1)
+    per_page = min(safe_int_arg('per_page', 50, minimum=1, maximum=500), 200)
     date_from = request.args.get("date_from", "")
     date_to = request.args.get("date_to", "")
     user_email = request.args.get("user_email", "").strip()
@@ -3539,8 +3540,8 @@ def report_builder():
 
     logger = logging.getLogger(__name__)
 
-    page = request.args.get("page", 1, type=int)
-    per_page = min(request.args.get("per_page", 50, type=int), 200)
+    page = safe_int_arg('page', 1, minimum=1)
+    per_page = min(safe_int_arg('per_page', 50, minimum=1, maximum=500), 200)
     lifecycle = request.args.get("lifecycle", "").strip()
     vendor_filter = request.args.get("vendor", "").strip()
     search_q = request.args.get("q", "").strip()
@@ -3801,8 +3802,8 @@ def connection_gaps():
     from flask import Response
     from app.models.solution_models import Solution
 
-    page = request.args.get("page", 1, type=int)
-    per_page = min(request.args.get("per_page", 50, type=int), 200)
+    page = safe_int_arg('page', 1, minimum=1)
+    per_page = min(safe_int_arg('per_page', 50, minimum=1, maximum=500), 200)
     domain_filter = request.args.get("domain", "").strip()
     type_filter = request.args.get("type", "").strip()
     score_min = request.args.get("score_min", None, type=int)
@@ -5857,7 +5858,14 @@ def sap_clean_core_dashboard():
 @admin_required
 def sap_clean_core_solution(solution_id):
     """GET /admin/sap-clean-core/<id> — validate a single solution."""
+    from app.models.solution_models import Solution
     from app.services.sap_clean_core_service import SAPCleanCoreService
+    from app.utils.route_guards import require_entity
+
+    # The service already reports "not found" in the body, but returning it with
+    # a 200 tells every caller that checks status only — including fetch(), which
+    # does not reject on 404 — that the validation succeeded.
+    require_entity(Solution, solution_id, description="Solution not found")
     result = SAPCleanCoreService.validate_solution(solution_id)
     return jsonify(result)
 

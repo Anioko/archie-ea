@@ -27,6 +27,7 @@ from app.models.application_capability import ApplicationCapabilityMapping
 from app.models.application_portfolio import ApplicationComponent
 from app.models.unified_capability import UnifiedCapability
 from app.security.import_decorators import with_import_security
+from app.utils.pagination import safe_int_arg
 
 # Import performance utilities (conditionally available)  # dead-code-ok
 try:
@@ -172,8 +173,8 @@ def application_list():
         process_level_filter = request.args.get("process_level", "").strip()
         capability_level_filter = request.args.get("capability_level", "").strip()
         domain_filter = request.args.get("domain", "").strip()
-        page = max(1, request.args.get("page", 1, type=int))
-        page_size = min(max(1, request.args.get("page_size", 25, type=int)), 100)
+        page = max(1, safe_int_arg('page', 1, minimum=1))
+        page_size = min(max(1, safe_int_arg('page_size', 25, minimum=1, maximum=500)), 100)
 
         # APP-100: sortable headers — allow-listed column + direction only,
         # so an arbitrary ?sort= value can never reach ORDER BY.
@@ -550,8 +551,8 @@ def api_list():
         # BUG-B3 FIX: Apply a hard limit so this endpoint never returns the full
         # portfolio in one response. Callers (e.g. auto-map app selector in list.js)
         # can paginate using ?page=N&per_page=N. Default 200, max 500.
-        page = request.args.get("page", 1, type=int)
-        per_page = min(request.args.get("per_page", 200, type=int), 500)
+        page = safe_int_arg('page', 1, minimum=1)
+        per_page = min(safe_int_arg('per_page', 200, minimum=1, maximum=500), 500)
         search = request.args.get("search", "").strip()
         sort_by = request.args.get("sort", "name").strip()
         status_filter = request.args.get("status", "").strip()
@@ -658,8 +659,8 @@ def api_table_data():
             )
 
         # Get pagination parameters
-        page = request.args.get("page", 1, type=int)
-        per_page = min(request.args.get("per_page", 50, type=int), 200)
+        page = safe_int_arg('page', 1, minimum=1)
+        per_page = min(safe_int_arg('per_page', 50, minimum=1, maximum=500), 200)
         search = request.args.get("search", "").strip()
         type_filter = request.args.get("type", "").strip()
         status_filter = request.args.get("status", "").strip()

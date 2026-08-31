@@ -16,6 +16,7 @@ from flask_login import current_user
 from app import csrf
 from app.decorators import audit_log, require_auth
 from app.services.webhook_service import WebhookService
+from app.utils.pagination import safe_int_arg
 webhook_bp = Blueprint("webhook", __name__, url_prefix="/api/webhooks")
 
 
@@ -256,8 +257,8 @@ def list_events():
             return jsonify({"success": False, "error": "Admin access required"}), 403
 
         events = service.get_events(
-            limit=request.args.get("limit", 50, type=int),
-            offset=request.args.get("offset", 0, type=int),
+            limit=safe_int_arg('limit', 50, minimum=1, maximum=500),
+            offset=safe_int_arg('offset', 0, minimum=0),
         )
 
         return jsonify({"success": True, "data": [event.to_dict() for event in events]})

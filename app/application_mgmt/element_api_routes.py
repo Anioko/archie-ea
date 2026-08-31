@@ -18,7 +18,9 @@ from app.utils.duplicate_guard import (
     duplicate_conflict_response,
     find_duplicate_by_name,
     find_similar_entities,
+    lock_name_for_write,
 )
+from app.utils.pagination import safe_int_arg
 
 @application_mgmt.route("/api/applications/<string:app_id>", methods=["GET"])
 @login_required
@@ -126,8 +128,8 @@ def get_application_elements(app_id):
     total = query.count()
 
     # Apply pagination
-    limit = min(int(request.args.get("limit", 100)), 500)
-    offset = int(request.args.get("offset", 0))
+    limit = min(safe_int_arg('limit', 100, minimum=1, maximum=500), 500)
+    offset = safe_int_arg('offset', 0, minimum=0)
     elements = query.order_by(ArchiMateElement.name).offset(offset).limit(limit).all()
 
     return jsonify(
@@ -329,6 +331,8 @@ def create_application_element(app_id):
     # organisation. ArchiMateElement inherits TenantMixin at runtime, so the
     # organisation predicate is injected — do not add one here.
     if not allow_duplicate_requested(data):
+        # Serialise the check-then-insert (see lock_name_for_write).
+        lock_name_for_write(ArchiMateElement, data["name"])
         existing = find_duplicate_by_name(
             ArchiMateElement,
             data["name"],

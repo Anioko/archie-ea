@@ -15,6 +15,7 @@ from app.services.connector_framework import (
     SyncLog,
 )
 from flask_login import login_required
+from app.utils.pagination import safe_int_arg
 
 connector_bp = Blueprint("connectors", __name__, url_prefix="/integrations")
 
@@ -126,8 +127,8 @@ def api_get_sync_logs(connector_id):
     """Get sync history for a connector."""
     try:
         # Pagination
-        page = request.args.get("page", 1, type=int)
-        per_page = request.args.get("per_page", 20, type=int)
+        page = safe_int_arg('page', 1, minimum=1)
+        per_page = safe_int_arg('per_page', 20, minimum=1, maximum=500)
 
         # Date range filter
         days = request.args.get("days", 30, type=int)

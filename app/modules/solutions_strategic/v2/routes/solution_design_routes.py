@@ -55,7 +55,9 @@ from app.models.apqc_process import APQCProcess, ProcessApplicationMapping
 from app.models.solution_sad_models import SolutionADRDirect, SolutionAPQCProcess
 from app.models.solution_governance import SolutionNotification
 from app.models.solution_models import Solution
+from app.utils.route_guards import require_entity
 from app.services.feature_flag_service import FeatureFlagService
+from app.utils.pagination import safe_int_arg
 
 logger = logging.getLogger(__name__)
 
@@ -1019,8 +1021,8 @@ def list_solutions():
         type_filter = request.args.get("type", "").strip()
         created_after = request.args.get("created_after", "").strip()
         created_before = request.args.get("created_before", "").strip()
-        page = request.args.get("page", 1, type=int)
-        per_page = min(request.args.get("per_page", 20, type=int), 200)
+        page = safe_int_arg('page', 1, minimum=1)
+        per_page = min(safe_int_arg('per_page', 20, minimum=1, maximum=500), 200)
 
         # Worklist bucket filter (?status=needs_setup/in_design/…) — these are
         # computed classifications, NOT stored DB statuses, so we handle them
@@ -3661,8 +3663,8 @@ def api_registry_list_specs():
 
     status_filter = request.args.get("status", "published")
     type_filter = request.args.get("type")
-    page = request.args.get("page", 1, type=int)
-    per_page = min(request.args.get("per_page", 50, type=int), 200)
+    page = safe_int_arg('page', 1, minimum=1)
+    per_page = min(safe_int_arg('per_page', 50, minimum=1, maximum=500), 200)
 
     query = (
         db.session.query(PublishedAPISpec, Solution.name)
@@ -6850,7 +6852,7 @@ def search_business_capabilities():
         q = request.args.get("q", "").strip()
         domain = request.args.get("domain", "").strip()
         level = request.args.get("level", type=int)
-        limit = min(request.args.get("limit", 20, type=int), 50)
+        limit = min(safe_int_arg('limit', 20, minimum=1, maximum=500), 50)
 
         if cap_type == "technical":
             from app.models.technical_capability import TechnicalCapability
@@ -7225,7 +7227,7 @@ def search_archimate_elements():
         query = query.filter(ArchiMateElement.name.ilike(f"%{search_q}%"))
 
     try:
-        limit = min(int(request.args.get("limit", 30)), 200)
+        limit = min(safe_int_arg('limit', 30, minimum=1, maximum=500), 200)
     except (ValueError, TypeError):
         limit = 30
 
@@ -11573,10 +11575,13 @@ def list_identity_provider_presets():
 @login_required
 def api_raci_matrix(solution_id):
     """FRAG-030: Get RACI matrix for a solution."""
+    require_entity(Solution, solution_id, description="Solution not found")
     try:
         from app.services.raci_service import get_raci_matrix
         matrix = get_raci_matrix(solution_id)
         return jsonify({"success": True, "matrix": matrix})
+    except HTTPException:
+        raise
     except Exception as e:
         current_app.logger.error(f"RACI matrix error: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
@@ -11602,21 +11607,17 @@ def api_set_raci(solution_id):
 @login_required
 def api_gantt_export(solution_id):
     """FRAG-031: Export Gantt chart."""
+    require_entity(Solution, solution_id, description="Solution not found")
     try:
         from app.services.gantt_export_service import GanttExportService
         fmt = request.args.get("format", "csv")
         service = GanttExportService()
         # Export solution phases as work packages
-        from app.models.solution_models import Solution
-        sol = Solution.query.get(solution_id)
-        wp_dicts = []
-        if sol:
-            phases = ['Phase A: Vision', 'Phase B: Business', 'Phase C: Info Systems',
-                      'Phase D: Technology', 'Phase E: Opportunities', 'Phase F: Migration',
-                      'Phase G: Governance', 'Phase H: Change Mgmt']
-            for p in phases:
-                wp_dicts.append({"name": p, "start_date": "", "end_date": "",
-                                 "status": "planned", "progress": 0})
+        phases = ['Phase A: Vision', 'Phase B: Business', 'Phase C: Info Systems',
+                  'Phase D: Technology', 'Phase E: Opportunities', 'Phase F: Migration',
+                  'Phase G: Governance', 'Phase H: Change Mgmt']
+        wp_dicts = [{"name": p, "start_date": "", "end_date": "",
+                     "status": "planned", "progress": 0} for p in phases]
         if fmt == "csv":
             output = service.export_to_csv(wp_dicts)
             resp = make_response(output)
@@ -11637,6 +11638,8 @@ def api_gantt_export(solution_id):
             return resp
         else:
             return jsonify({"error": f"Unknown format: {fmt}"}), 400
+    except HTTPException:
+        raise
     except Exception as e:
         current_app.logger.error(f"Gantt export error: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
@@ -11646,11 +11649,14 @@ def api_gantt_export(solution_id):
 @login_required
 def api_outcomes(solution_id):
     """FRAG-032: Get outcome tracking summary."""
+    require_entity(Solution, solution_id, description="Solution not found")
     try:
         from app.services.outcome_tracking_service import OutcomeTrackingService
         service = OutcomeTrackingService()
         summary = service.get_solution_realization_summary(solution_id)
         return jsonify({"success": True, "data": summary})
+    except HTTPException:
+        raise
     except Exception as e:
         current_app.logger.error(f"Outcomes error: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
@@ -11690,12 +11696,15 @@ def api_create_from_template():
 @login_required
 def api_market_intelligence(solution_id):
     """FRAG-039: Get market intelligence for a solution."""
+    require_entity(Solution, solution_id, description="Solution not found")
     try:
         from app.modules.solutions_strategic.v2.services.market_intelligence_service import MarketIntelligenceService
         service = MarketIntelligenceService()
         trends = service.get_industry_trends("technology", limit=5)
         landscape = service.get_competitive_landscape(solution_id)
         return jsonify({"success": True, "trends": trends, "landscape": landscape})
+    except HTTPException:
+        raise
     except Exception as e:
         current_app.logger.error(f"Market intelligence error: {e}")
         return jsonify({"success": False, "error": str(e)}), 500

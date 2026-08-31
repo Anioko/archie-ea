@@ -51,10 +51,15 @@ def init_inline_routes(app: Flask, config_name: str):
 # ---------------------------------------------------------------------------
 
 
+# Cache for health check results — avoids repeated slow probes within 30s.
+# Module-level rather than a closure local so a test can assert a FRESH probe
+# instead of silently asserting against a 30-second-old answer, which is the
+# one thing a health-check test must not do.
+_health_cache = {"result": None, "timestamp": 0.0}
+_CACHE_TTL_SECONDS = 30
+
+
 def _register_health_check(app, config_name, csrf, db):
-    # Cache for health check results — avoids repeated slow probes within 30s
-    _health_cache = {"result": None, "timestamp": 0.0}
-    _CACHE_TTL_SECONDS = 30
 
     def _probe_with_timeout(fn, timeout_seconds=1.0):
         """Run a probe function with a thread-based timeout.
@@ -240,15 +245,42 @@ def _register_health_check(app, config_name, csrf, db):
         try:
             def _llm_probe():
                 with app.app_context():
-                    from app.models.models import APISettings
+                    # Same source of truth as /ai-chat/token-usage and every
+                    # AI call: the resolver that actually picks the provider.
+                    # This used to count enabled api_settings rows, which
+                    # reported "No LLM providers enabled" on a process that was
+                    # serving AI requests from an environment-configured
+                    # provider — see LLMService.configuration_status.
+                    from app.modules.ai_chat.services.llm_service_impl import (
+                        LLMService,
+                    )
 
-                    api_count = APISettings.query.filter_by(enabled=True).count()
+                    status = LLMService.configuration_status()
+                    configured = status.get("configured")
+                    if configured is None:
+                        message = status.get(
+                            "reason", "Could not determine LLM configuration."
+                        )
+                        health = "unknown"
+                    elif configured:
+                        message = (
+                            f"LLM provider configured: {status['provider']} "
+                            f"(source: {status['source']})"
+                        )
+                        health = "healthy"
+                    else:
+                        message = "No LLM provider is configured"
+                        health = "warning"
                     return {
-                        "status": "healthy" if api_count > 0 else "warning",
-                        "enabled_providers": api_count,
-                        "message": "LLM providers configured"
-                        if api_count > 0
-                        else "No LLM providers enabled",
+                        "status": health,
+                        "configured": configured,
+                        "provider": status.get("provider"),
+                        # The count of enabled api_settings rows. NOT the
+                        # verdict: a provider configured by environment
+                        # variable has no row, so this can legitimately be 0
+                        # while the AI works.
+                        "db_enabled_providers": status.get("db_enabled_providers"),
+                        "message": message,
                     }
 
             health_status["checks"]["llm_providers"] = _probe_with_timeout(_llm_probe, timeout_seconds=1.0)

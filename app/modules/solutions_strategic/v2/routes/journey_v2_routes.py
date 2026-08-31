@@ -25,6 +25,7 @@ from app.models.solution_archimate_element import SolutionArchiMateElement
 from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship
 from app.models.architecture_inference_relationship import ArchitectureInferenceRelationship
 from app.modules.codegen.models import CodegenGeneration
+from app.utils.pagination import safe_int_arg
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +33,9 @@ architecture_journey_bp = Blueprint("architecture_journey", __name__, url_prefix
 
 # Legacy alias — keeps imports in __init__.py working during rename
 journey_v2_bp = architecture_journey_bp
+
+from app.models.solution_models import Solution as _GuardSolution  # noqa: E402
+from app.utils.route_guards import require_entity_json  # noqa: E402
 
 JOURNEY_INTENT_OPTIONS = (
     ("business_transformation", "Transform how the business works", "Redesign capabilities, value streams, organisation and outcomes."),
@@ -320,7 +324,7 @@ def index():
         return api_error("Unknown journey status filter", 400)
 
     try:
-        page = max(1, int(request.args.get("page", 1)))
+        page = max(1, safe_int_arg('page', 1, minimum=1))
     except (TypeError, ValueError):
         page = 1
     page_size = 9
@@ -4809,6 +4813,10 @@ def traceability_flow(solution_id):
     """Return D3 Sankey data: ArchiMate layers → code. Nodes annotated with layer/column/has_spec/has_code.
     Links filtered to left-to-right cross-layer only (Sankey DAG constraint).
     """
+    _sol, _missing = require_entity_json(_GuardSolution, solution_id, label="Solution")
+    if _missing:
+        return _missing
+
     LAYER_COLUMN = {
         "motivation": 0,
         "strategy": 1,
@@ -5054,6 +5062,10 @@ def layer_flow(solution_id, layer):
     Nodes are elements in that layer; columns are Active/Behavioral/Passive aspects.
     Links are intra-layer relationships only (both endpoints in this layer).
     """
+    _sol, _missing = require_entity_json(_GuardSolution, solution_id, label="Solution")
+    if _missing:
+        return _missing
+
     layer = layer.lower()
     type_col = _INTRA_LAYER_TYPE_COL.get(layer, {})
     col_labels = _INTRA_LAYER_COL_LABELS.get(layer, [{"name": "Active"}, {"name": "Behavioral"}, {"name": "Passive"}])
@@ -5194,6 +5206,10 @@ def architecture_accuracy(solution_id):
 
     No LLM calls — fully deterministic. Safe to call on every page load.
     """
+    _sol, _missing = require_entity_json(_GuardSolution, solution_id, label="Solution")
+    if _missing:
+        return _missing
+
     saes = SolutionArchiMateElement.query.filter_by(solution_id=solution_id).all()
     if not saes:
         return jsonify({"solution_id": solution_id, "total_elements": 0,
@@ -5490,6 +5506,10 @@ def get_element_fields(solution_id):
     Only returns elements whose type can carry a field schema (DataObject, ApplicationComponent, etc.).
     Summary counts: total / confirmed / ai_inferred / pending.
     """
+    _sol, _missing = require_entity_json(_GuardSolution, solution_id, label="Solution")
+    if _missing:
+        return _missing
+
     from app.models.archimate_core import ArchiMateElement
 
     links = SolutionArchiMateElement.query.filter_by(solution_id=solution_id).all()

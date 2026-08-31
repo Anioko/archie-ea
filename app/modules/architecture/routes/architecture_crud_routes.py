@@ -31,6 +31,7 @@ from app.services.architecture_search_service import ArchitectureSearchService
 from app.services.architecture_import_export_service import (
     ArchitectureImportExportService,
 )
+from app.utils.pagination import safe_int_arg
 
 architecture_crud_bp = Blueprint(
     "architecture_crud",
@@ -275,7 +276,7 @@ def delete_element(element_id):
 @login_required
 def list_relationships():
     """List all relationships."""
-    page = request.args.get("page", 1, type=int)
+    page = safe_int_arg('page', 1, minimum=1)
     per_page = 20
 
     relationships = Relationship.query.paginate(page=page, per_page=per_page)
@@ -376,7 +377,7 @@ def search_elements():
     query = request.args.get("q", "")
     element_type = request.args.get("type")
     layer = request.args.get("layer")
-    page = request.args.get("page", 1, type=int)
+    page = safe_int_arg('page', 1, minimum=1)
 
     results, total = search_service.search(
         query=query,

@@ -33,6 +33,7 @@ from flask import jsonify
 __all__ = [
     "normalize_name",
     "find_duplicate_by_name",
+    "lock_name_for_write",
     "duplicate_conflict_response",
     "allow_duplicate_requested",
     "bulk_partition_new_vs_duplicate",
@@ -99,6 +100,80 @@ def find_duplicate_by_name(
         query = query.filter(criterion)
 
     return query.first()
+
+
+
+def lock_name_for_write(model, name: Any, *, organization_id: int | None = None) -> bool:
+    """Serialise concurrent creates of the same name in the same tenant.
+
+    ``find_duplicate_by_name`` is a check, and a check followed by an insert is
+    a TOCTOU race. Verified on ``POST /applications/create``: sequential repeats
+    correctly redirected to the first row, but five *simultaneous* identical
+    posts created five rows and four created three — a double-clicked Save
+    duplicating an application in a system of record.
+
+    Why a lock and not a UNIQUE index. A unique index is the stronger
+    guarantee and would be the first choice on a greenfield schema, but this
+    schema cannot get one safely: ``flask reconcile-schema`` is ADD-COLUMN-only
+    and deploys do not run ``flask db upgrade`` (CLAUDE.md, "Schema
+    management"), so the index would have to be created out of band; and it
+    would fail to build wherever duplicate rows already exist — which they do,
+    and which the product deliberately permits via ``allow_duplicate``. An
+    index cannot express "unique unless the caller opted in", so adopting one
+    would silently delete that feature. A transaction-scoped advisory lock
+    closes the race without a schema change, without a build that can fail on
+    live data, and without removing the opt-out.
+
+    Taken immediately BEFORE the duplicate check and held to the end of the
+    transaction by Postgres, so the whole check-then-insert is serialised per
+    (table, tenant, folded name). It blocks only writers of the identical name;
+    unrelated creates are unaffected.
+
+    Returns True when the lock was taken, False when the backend does not
+    support advisory locks (non-PostgreSQL). Never raises: failing to lock must
+    not turn a working create into a 500 — it degrades to the pre-existing
+    application-level check.
+    """
+    from hashlib import blake2b
+
+    from app import db
+
+    normalized = normalize_name(name)
+    if not normalized:
+        return False
+
+    if organization_id is None:
+        try:
+            from flask import g, has_request_context
+
+            if has_request_context():
+                organization_id = getattr(g, "current_org_id", None)
+        except Exception:  # noqa: BLE001 - locking is best-effort
+            organization_id = None
+
+    table = getattr(model, "__tablename__", model.__name__)
+    digest = blake2b(
+        f"{table}:{organization_id}:{normalized}".encode("utf-8"), digest_size=8
+    ).digest()
+    # pg_advisory_xact_lock takes a signed bigint.
+    key = int.from_bytes(digest, "big", signed=True)
+
+    try:
+        if db.session.bind is not None and db.session.bind.dialect.name != "postgresql":
+            return False
+        db.session.execute(db.text("SELECT pg_advisory_xact_lock(:k)"), {"k": key})
+        return True
+    except Exception:  # noqa: BLE001 - see docstring
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "Advisory lock for %s/%s unavailable; falling back to the "
+            "application-level duplicate check alone",
+            table,
+            normalized,
+            exc_info=True,
+        )
+        return False
 
 
 def duplicate_conflict_response(entity_label: str, existing, name_field: str = "name"):

@@ -65,6 +65,7 @@ from app.models.strategic import CapabilityHealthOverride
 from app import db
 from app.decorators import audit_log
 from datetime import datetime
+from app.utils.pagination import safe_int_arg
 
 strategic_bp = Blueprint("strategic", __name__, url_prefix="/strategic")
 
@@ -1179,7 +1180,7 @@ def api_get_recommendations(dashboard):
     try:
         # Parse query params
         capability_id = request.args.get("capability_id", type=int)
-        limit = request.args.get("limit", default=10, type=int)
+        limit = safe_int_arg('limit', 10, minimum=1, maximum=500)
         include_rated = request.args.get("include_rated", default="true").lower() == "true"
         
         # Fetch recommendations

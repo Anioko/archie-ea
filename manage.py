@@ -1507,7 +1507,48 @@ def register_cli_commands(app):
         if not dry_run:
             db.session.commit()
             print(f"\nCapabilities: {caps_created} created, {caps_skipped} skipped")
-            print(f"\n✅ Seeding complete! Total capabilities: {UnifiedCapability.query.count()}")
+            # Also seed the BUSINESS capability store, because that is the one
+            # the product actually reads.
+            #
+            # This command shadows the richer `seed-capabilities` group in
+            # app/commands/seed_capabilities.py -- same name, registered later --
+            # and it only ever wrote UnifiedCapability + BusinessDomain. But
+            # /capability-map counts BusinessCapability through
+            # capability_count_service.count_business_capabilities(), so the
+            # documented command reported "60 capabilities seeded" on a fresh
+            # install and left the flagship screen showing zero. That is the
+            # five-capability-stores problem costing an evaluator their first hour.
+            from flask import g as _g
+
+            from app.commands.seed_capabilities import seed_business_caps
+            from app.models.organization import Organization
+
+            # An explicit tenant, because TenantMixin fills organization_id
+            # from g.current_org_id on flush and a CLI has no request. Without
+            # this the seed died on a NOT NULL violation, which is why this
+            # store was never populated by the documented command.
+            _org = Organization.query.order_by(Organization.id).first()
+            if _org is None:
+                print(
+                    "[skip] No organisation exists yet, so business "
+                    "capabilities have no tenant to belong to. Create one "
+                    "(python create_admin.py) and re-run."
+                )
+                _business = {"created": 0}
+            else:
+                _previous = getattr(_g, "current_org_id", None)
+                _g.current_org_id = _org.id
+                try:
+                    _business = seed_business_caps()
+                finally:
+                    _g.current_org_id = _previous
+                print(f"    seeded into organisation {_org.id} ({_org.name})")
+
+            print(
+                "\n[OK] Seeding complete! Unified capabilities: "
+                f"{UnifiedCapability.query.count()}, business capabilities: "
+                f"{_business.get('created', 0)} created"
+            )
         else:
             print(
                 f"\nCapabilities: {caps_created} would be created, {caps_skipped} would be skipped"

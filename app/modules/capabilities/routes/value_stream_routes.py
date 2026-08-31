@@ -36,6 +36,9 @@ from app.decorators import require_roles
 from app import db
 
 from app.modules.capabilities.services import value_stream_service as vs_service
+from app.utils.pagination import safe_int_arg
+from app.utils.route_guards import require_entity
+from app.models.unified_capability import ValueStream
 
 logger = logging.getLogger(__name__)
 
@@ -186,8 +189,9 @@ def api_grid(value_stream_id):
 @login_required
 def api_unmapped_capabilities(value_stream_id):
     """Capability search results for adding a new row to the grid."""
+    require_entity(ValueStream, value_stream_id, description="Value stream not found")
     search = request.args.get("q", "").strip()
-    limit = request.args.get("limit", 25, type=int)
+    limit = safe_int_arg('limit', 25, minimum=1, maximum=500)
     try:
         capabilities = vs_service.list_unmapped_capabilities(
             value_stream_id, search=search, limit=limit

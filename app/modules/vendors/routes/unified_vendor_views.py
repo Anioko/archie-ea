@@ -221,12 +221,14 @@ def _get_vendor_apps(vendor_id):
 @login_required
 def vendor_analytics(vendor_id):
     """Vendor analytics - renders vendor applications portfolio."""
-    try:
-        vendor = VendorOrganization.query.get(vendor_id)
-    except Exception:
-        vendor = None
-    if vendor is None:
-        vendor = type("Vendor", (), {"id": vendor_id, "name": f"Vendor #{vendor_id}"})()
+    # A synthesised "Vendor #<id>" placeholder with "Total Applications: 0" is
+    # fabricated data — the user cannot tell it from a real vendor with no
+    # applications. A vendor that does not exist is a 404.
+    from app.utils.route_guards import require_entity
+
+    vendor = require_entity(
+        VendorOrganization, vendor_id, description="Vendor not found"
+    )
     applications, stats = _get_vendor_apps(vendor_id)
     return render_template(
         "vendors/vendor_applications_portfolio.html",
@@ -240,12 +242,14 @@ def vendor_analytics(vendor_id):
 @login_required
 def vendor_applications_portfolio(vendor_id):
     """Vendor applications portfolio view -- linked from vendor detail page."""
-    try:
-        vendor = VendorOrganization.query.get(vendor_id)
-    except Exception:
-        vendor = None
-    if vendor is None:
-        vendor = type("Vendor", (), {"id": vendor_id, "name": f"Vendor #{vendor_id}"})()
+    # A synthesised "Vendor #<id>" placeholder with "Total Applications: 0" is
+    # fabricated data — the user cannot tell it from a real vendor with no
+    # applications. A vendor that does not exist is a 404.
+    from app.utils.route_guards import require_entity
+
+    vendor = require_entity(
+        VendorOrganization, vendor_id, description="Vendor not found"
+    )
     applications, stats = _get_vendor_apps(vendor_id)
     return render_template(
         "vendors/vendor_applications_portfolio.html",
@@ -742,6 +746,12 @@ def vendor_concentration_risk(vendor_id):
     """
     try:
         from app.models.vendor.vendor_organization import VendorProduct, VendorProductCapability
+        from app.utils.route_guards import require_entity_json
+
+        # Existence guard: an empty risk list for a nonexistent vendor is fabricated data.
+        _vendor, missing = require_entity_json(VendorOrganization, vendor_id, label="Vendor")
+        if missing:
+            return missing
         from app.models.business_capabilities import BusinessCapability
         from sqlalchemy import func
 

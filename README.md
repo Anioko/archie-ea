@@ -22,6 +22,20 @@ journey, and govern designs through an **Architecture Review Board (ARB)**.
 
 ---
 
+## What it looks like
+
+<!-- Regenerate with scripts/capture_screenshots.py against a seeded demo
+     database. These are real screenshots of the running application, not
+     mock-ups, so they drift when the UI does -- which is the point. -->
+
+| | |
+|---|---|
+| **Dashboard** — architecture health, portfolio insight and the work waiting on you, with a lens per persona (CTO, CFO, Architect, Business). <br><br> ![Dashboard](docs/screenshots/dashboard.png) | **Capability map** — business capabilities across domains and architecture layers, with application coverage and gap lenses. <br><br> ![Capability map](docs/screenshots/capability-map.png) |
+| **Application portfolio** — lifecycle, criticality, cost and ownership for every application in the estate. <br><br> ![Application portfolio](docs/screenshots/applications.png) | **Architecture Review Board** — submissions, review queue and recorded decisions, with separation of duties enforced server-side. <br><br> ![ARB](docs/screenshots/arb.png) |
+| **Value streams** — the business flows your capabilities serve. <br><br> ![Value streams](docs/screenshots/value-streams.png) | **ArchiMate model** — the 3.2 element and relationship model that everything else is derived from. <br><br> ![ArchiMate](docs/screenshots/archimate.png) |
+
+---
+
 ## Why Archie
 
 The open-source EA landscape has one well-known tool — Archi — and it's a desktop

@@ -1141,7 +1141,11 @@ def get_product_mappings():
                 uc.strategic_importance,
                 vp.id as product_id,
                 vp.name as product_name,
-                vp.product_category,
+                -- product_type ('suite' | 'platform' | 'application' | 'service')
+                -- is the product's category; vendor_products has no
+                -- product_category column, so this query raised UndefinedColumn
+                -- and the endpoint returned []. Aliased to keep the JSON key.
+                vp.product_type as product_category,
                 vo.name as vendor_name,
                 bd.name as domain_name,
                 cvpm.mapping_confidence,
@@ -1240,7 +1244,9 @@ def get_unmapped_vendor_products():
             SELECT
                 vp.id,
                 vp.name,
-                vp.product_category,
+                -- product_type is the real category column on vendor_products;
+                -- product_category does not exist. Aliased to keep the JSON key.
+                vp.product_type as product_category,
                 vp.description,
                 vo.name as vendor_name
             FROM vendor_products vp

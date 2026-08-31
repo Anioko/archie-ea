@@ -35,6 +35,9 @@ from app.models.unified_duplicate_detection import (
     unified_group_members,
 )
 from app.modules.duplicate_detection.services.unified_duplicate_detection_service import UnifiedDuplicateDetectionService
+from app.utils.pagination import safe_int_arg
+from app.models.application_portfolio import ApplicationComponent
+from app.utils.route_guards import require_entity_json
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +81,10 @@ def run_enterprise_detection():
 @login_required
 def get_enterprise_analysis(application_id):
     """Get enterprise duplicate analysis for application"""
+    _app, missing = require_entity_json(ApplicationComponent, application_id, label="Application")
+    if missing:
+        return missing
+
     try:
         result = unified_service.get_duplicate_analysis_for_application(application_id)
         if result["success"]:
@@ -190,7 +197,7 @@ def get_simple_groups():
 def get_simple_runs():
     """Get simple detection runs with full details for dashboard display."""
     try:
-        limit = min(request.args.get("limit", 10, type=int), 100)
+        limit = min(safe_int_arg('limit', 10, minimum=1, maximum=500), 100)
         runs = (
             UnifiedDetectionRun.query.order_by(UnifiedDetectionRun.created_at.desc())
             .limit(limit)
@@ -1017,8 +1024,8 @@ def api_statistics_summary():
 def api_duplicate_groups():
     """Paginated duplicate groups for the enterprise dashboard."""
     try:
-        page = request.args.get("page", 1, type=int)
-        per_page = request.args.get("per_page", 10, type=int)
+        page = safe_int_arg('page', 1, minimum=1)
+        per_page = safe_int_arg('per_page', 10, minimum=1, maximum=500)
         priority = request.args.get("priority", "")
         min_similarity = request.args.get("min_similarity", 0.0, type=float)
 

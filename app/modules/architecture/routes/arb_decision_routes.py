@@ -6,6 +6,7 @@ from sqlalchemy import or_
 
 from app.modules.architecture.routes.arb_routes import arb_bp
 from app.extensions import db
+from app.utils.pagination import safe_int_arg
 
 
 @arb_bp.route('/api/decisions/<int:decision_id>/link-capability', methods=['POST'])
@@ -54,6 +55,12 @@ def unlink_decision_capability(decision_id, capability_id):
 def capability_decisions(capability_id):
     """ARB-002: Get all decisions linked to a capability, grouped by horizon."""
     from app.models.architecture_decision import ArchitectureDecision, DecisionCapabilityLink
+    from app.models.business_capabilities import Capability
+    from app.utils.route_guards import require_entity
+
+    # No linked decisions for a nonexistent capability is fabricated data.
+    require_entity(Capability, capability_id, description="Capability not found")
+
     links = DecisionCapabilityLink.query.filter_by(capability_id=capability_id).all()
     decision_ids = [item.decision_id for item in links]
     decisions = ArchitectureDecision.query.filter(
@@ -82,6 +89,10 @@ def capability_governance_panel(capability_id):
     from app.models.architecture_decision import (
         ArchitectureDecision, DecisionCapabilityLink, ArchitectureChangeRequest, ChangeImpactAssessment
     )
+    from app.models.business_capabilities import Capability
+    from app.utils.route_guards import require_entity
+
+    require_entity(Capability, capability_id, description="Capability not found")
 
     # All decisions linked to this capability
     links = DecisionCapabilityLink.query.filter_by(capability_id=capability_id).all()
@@ -142,8 +153,8 @@ def capability_governance_panel(capability_id):
 def list_decisions():
     """ARB-005: Filterable, paginated decision register."""
     from app.models.architecture_decision import ArchitectureDecision
-    page = request.args.get('page', 1, type=int)
-    per_page = min(request.args.get('per_page', 25, type=int), 100)
+    page = safe_int_arg('page', 1, minimum=1)
+    per_page = min(safe_int_arg('per_page', 25, minimum=1, maximum=500), 100)
     search = request.args.get('q') or request.args.get('search', '')
     status = request.args.get('status')
     sort_by = request.args.get('sort', 'created_at')

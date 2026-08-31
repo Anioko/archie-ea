@@ -36,6 +36,7 @@ from app.decorators import audit_log, require_roles
 from app.models.application_portfolio import ApplicationComponent
 from app.utils.api_helpers import api_error
 from app.services.rate_limiter import rate_limit
+from app.utils.pagination import safe_int_arg
 
 logger = logging.getLogger(__name__)
 
@@ -129,8 +130,8 @@ def api_applications_table():
     """
     try:
         # Get query parameters
-        page = max(request.args.get("page", 1, type=int), 1)
-        per_page = min(max(request.args.get("per_page", 10, type=int), 1), 100)
+        page = max(safe_int_arg('page', 1, minimum=1), 1)
+        per_page = min(max(safe_int_arg('per_page', 10, minimum=1, maximum=500), 1), 100)
         search = request.args.get("search", "")
         sort_column = request.args.get("sort_column", "name")
         sort_direction = request.args.get("sort_direction", "asc")

@@ -14,6 +14,7 @@ from app.modules.solutions_strategic.v2.services.vendor_capability_aggregator im
 from functools import wraps
 import logging
 from flask_login import login_required
+from app.utils.pagination import safe_int_arg
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +42,7 @@ def require_solution(f):
 def get_process_recommendations(solution_id, solution):
     """Recommend APQC business processes to enhance"""
     try:
-        limit = request.args.get('limit', 10, type=int)
+        limit = safe_int_arg('limit', 10, minimum=1, maximum=500)
         
         recommender = APQCProcessRecommender()
         processes = recommender.recommend_processes(solution, limit=limit)
@@ -66,7 +67,7 @@ def get_process_recommendations(solution_id, solution):
 def get_vendor_recommendations(solution_id, solution):
     """Recommend vendors that match solution requirements"""
     try:
-        limit = request.args.get('limit', 5, type=int)
+        limit = safe_int_arg('limit', 5, minimum=1, maximum=500)
         cost_limit = request.args.get('cost_limit', None, type=int)
         
         aggregator = VendorCapabilityAggregator()

@@ -206,6 +206,21 @@ class BaseAPIClient(ABC):
             for key in oldest_keys:
                 del self.cache[key]
 
+    @staticmethod
+    def _external_calls_allowed() -> bool:
+        """Whether this deployment permits outbound calls to third parties.
+
+        Fails CLOSED: outside an application context, or with the key absent,
+        the answer is no. An air-gap control that defaults open is not a
+        control.
+        """
+        try:
+            from flask import current_app
+
+            return bool(current_app.config.get("ALLOW_EXTERNAL_API_CALLS", False))
+        except Exception:
+            return False
+
     def _make_request(
         self,
         method: str,
@@ -231,6 +246,30 @@ class BaseAPIClient(ABC):
         Returns:
             APIResponse object
         """
+        # Egress guard. ADR-0005 commits this product to an air-gapped posture,
+        # and until 31 Aug 2026 nothing enforced it on the SERVER side: the
+        # air-gap gate checks that UI assets are not loaded from a CDN, and says
+        # nothing about Python making outbound calls.
+        #
+        # An adversarial sweep found GET /api/pipeline/market-analysis/<category>
+        # calling https://api.github.com live, inside a logged-in request, with
+        # the URL path segment as a search term -- and echoing ~776KB of
+        # third-party repository descriptions back as this product's "market
+        # analysis". For a category that does not exist it still returned
+        # success:true, including the description of a credential-phishing
+        # script, presented to the user as analysis.
+        #
+        # Default CLOSED. An enterprise deploying this behind a firewall should
+        # not discover its EA tool talks to the public internet; a deployment
+        # that wants the enrichment opts in explicitly.
+        if not self._external_calls_allowed():
+            message = (
+                "External API calls are disabled (ALLOW_EXTERNAL_API_CALLS). "
+                "No data was retrieved from %s." % self.base_url
+            )
+            logger.info("egress refused: %s %s/%s", method, self.base_url, endpoint)
+            return APIResponse(success=False, error=message)
+
         url = f"{self.base_url}/{endpoint.lstrip('/')}"
 
         # Check cache for GET requests

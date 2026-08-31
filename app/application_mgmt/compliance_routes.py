@@ -7,6 +7,7 @@ from app import db
 from app.application_mgmt import application_mgmt
 from app.models.application_compliance import ApplicationComplianceControl
 from app.models.compliance_models import ComplianceControl, RegulatoryFramework
+from app.utils.route_guards import require_entity
 
 
 @application_mgmt.route("/api/compliance/frameworks", methods=["GET"])
@@ -34,6 +35,10 @@ def get_compliance_frameworks():
 @login_required
 def get_framework_controls(framework_id):
     """Get all controls for a framework."""
+    # An unknown framework must 404: an empty control list is otherwise
+    # indistinguishable from a framework that has no controls.
+    require_entity(RegulatoryFramework, framework_id, description="Framework not found")
+
     category = request.args.get("category")
 
     query = ComplianceControl.query.filter_by(framework_id=framework_id)

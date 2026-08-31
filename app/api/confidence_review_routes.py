@@ -18,6 +18,9 @@ from app.services.confidence_review_service import (
     ReviewQueueItemData,
 )
 from flask_login import login_required
+from werkzeug.exceptions import HTTPException
+
+from app.utils.pagination import safe_int_arg
 
 logger = logging.getLogger(__name__)
 
@@ -252,7 +255,7 @@ def get_review_queue():
         status = request.args.get("status")
         item_type = request.args.get("item_type")
         assigned_to_id = request.args.get("assigned_to_id", type=int)
-        limit = min(request.args.get("limit", 50, type=int), 100)
+        limit = min(safe_int_arg('limit', 50, minimum=1, maximum=500), 100)
 
         result = confidence_service.get_review_queue(status, item_type, assigned_to_id, limit)
 
@@ -538,7 +541,12 @@ def get_review_item_decisions(review_item_id: int):
         JSON with review decisions
     """
     try:
-        from app.models.confidence_review import ReviewDecision
+        from app.models.confidence_review import ReviewDecision, ReviewQueueItem
+        from app.utils.route_guards import require_entity
+
+        # A nonexistent review item must 404, not return an empty decision list:
+        # "no decisions" and "no such item" are otherwise indistinguishable.
+        require_entity(ReviewQueueItem, review_item_id, description="Review item not found")
 
         decisions = (
             ReviewDecision.query.filter_by(review_item_id=review_item_id)
@@ -554,6 +562,8 @@ def get_review_item_decisions(review_item_id: int):
             }
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error getting review item decisions {review_item_id}: {e}")
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
