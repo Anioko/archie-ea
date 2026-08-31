@@ -176,6 +176,34 @@ def _get_configured_chat_models():
     return models
 
 
+def _agent_auto_execute_allowed():
+    """Whether the agent may execute a mutating tool without a confirmation.
+
+    The session flag is a USER PREFERENCE. REQUIRE_AI_APPROVAL is an OPERATOR
+    CONTROL. A preference must never defeat a control, and until 31 Aug 2026 it
+    did: the agent loop read the session flag alone and never consulted the
+    config at all, while config.py stated the flag gated "the LLM-agent
+    mutating-tool queue" and that setting it false "restores the pre-Aug-2026
+    direct-write behaviour for the LLM-agent paths".
+
+    Both statements were false for the agent path. An operator who set
+    REQUIRE_AI_APPROVAL=true believed AI-proposed writes went to a human queue;
+    any authenticated user could POST /session/toggle-auto-execute once and
+    every tier:"auto" mutating tool -- create_solution, create_archimate_element,
+    create_driver/goal/constraint/requirement/risk, the link_* family -- then
+    executed immediately with no approval row. Found 31 Aug 2026 by an AI
+    architecture audit; the /ai-chat/data/* routes were correctly gated the
+    whole time, which is why it was invisible.
+
+    Fails CLOSED: an unreadable config is treated as "approval required".
+    """
+    if current_app.config.get("REQUIRE_AI_APPROVAL", True):
+        return False
+    from flask import session as flask_session
+
+    return bool(flask_session.get("agent_auto_execute", False))
+
+
 @unified_ai_chat_bp.route("/persona-context/<persona>", methods=["GET"])
 @login_required
 def get_persona_context(persona):
@@ -582,7 +610,6 @@ def send_message():
         # Run AgentRunner (ReAct loop with tool use).
         # Falls back to text-only mode automatically for unsupported providers.
         from app.modules.ai_chat.services.agent_runner import AgentRunner
-        from flask import session as flask_session
 
         if trusted_workspace_id is not None:
             context_data["workspace_id"] = trusted_workspace_id
@@ -590,7 +617,7 @@ def send_message():
 
         runner = AgentRunner(
             user_id=current_user.id,
-            auto_execute=flask_session.get("agent_auto_execute", False),
+            auto_execute=_agent_auto_execute_allowed(),
             # ARCH-020: prefer the real thread id when the client sent one;
             # otherwise fall back to the same per-user stable id
             # MultiDomainChatService uses (self._stable_session_id there), so
@@ -884,9 +911,8 @@ def send_message_stream():
     # lives in flask.session, which the background thread below does not have
     # (only an app context is re-established there, not a request context).
     # Read it here, on the request thread, and pass the plain bool down.
-    from flask import session as flask_session
 
-    auto_execute_for_thread = flask_session.get("agent_auto_execute", False)
+    auto_execute_for_thread = _agent_auto_execute_allowed()
     if trusted_workspace_id is not None:
         context_data["workspace_id"] = trusted_workspace_id
         context_data["_trusted_workspace_id"] = trusted_workspace_id
@@ -1598,6 +1624,12 @@ def get_auto_execute():
 @login_required
 def toggle_auto_execute():
     """Toggle the session's auto-execute preference and return the new state.
+
+    This is a PREFERENCE, and it cannot defeat the operator control: when
+    REQUIRE_AI_APPROVAL is true, _agent_auto_execute_allowed() returns False
+    whatever this flag says, and every mutating tool is queued. Until 31 Aug
+    2026 the agent path read this flag alone, so any authenticated user could
+    turn off a governance control the operator had set.
 
     ENFORCED. Each of the 37 tools in tools/registry.py carries an explicit
     `mutates` flag, read alongside `tier` (registry.py's own docstring). Both

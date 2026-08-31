@@ -310,6 +310,15 @@ class Config:
     # message, not proposed by the LLM, so they execute directly regardless of this
     # flag — see the comments at their write sites. Set REQUIRE_AI_APPROVAL=false to
     # restore the pre-Aug-2026 direct-write behaviour for the LLM-agent paths.
+    #
+    # This comment described the intent, not the behaviour, until 31 Aug 2026:
+    # the agent tool loop never read this key. Its queue decision came from the
+    # per-session `agent_auto_execute` preference alone, which any authenticated
+    # user could flip via POST /session/toggle-auto-execute — so an operator who
+    # set this true still had every tier:"auto" mutating tool executing without
+    # an approval row. Both agent call sites now resolve through
+    # chat_core._agent_auto_execute_allowed(), which fails closed, and the
+    # ai-approval-honoured gate keeps them there.
     REQUIRE_AI_APPROVAL = os.environ.get("REQUIRE_AI_APPROVAL", "true").lower() == "true"
 
     # North Star Navigation (NORTH-STAR-001)

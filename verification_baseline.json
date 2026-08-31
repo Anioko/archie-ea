@@ -39,6 +39,10 @@
     "page_cost": 0,
     "credential_autofill": 0,
     "nested_jinja": 0,
-    "cache_tenancy": 0
+    "cache_tenancy": 0,
+    "ai_approval_honoured": 0,
+    "canonical_store": 10,
+    "empty_state_cta": 21,
+    "archimate_backbone": 53
   }
 }

@@ -756,6 +756,79 @@ def gate_cache_tenancy(baseline: int) -> Result:
     return Result("cache-tenancy", PASS if count <= baseline else FAIL, detail, count, baseline)
 
 
+def gate_ai_approval_honoured(baseline: int) -> Result:
+    """The agent honours the operator's AI approval control.
+
+    config.py said REQUIRE_AI_APPROVAL gated the LLM-agent mutating-tool queue.
+    The agent loop never read it: the decision came from a per-session user
+    preference any authenticated account could flip in one request, after which
+    every tier auto mutating tool wrote to the system of record with no approval
+    row. The /ai-chat/data/* routes were gated correctly throughout, which is
+    why it went unnoticed.
+    """
+    proc = _run([sys.executable, "scripts/check_ai_approval_honoured.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("ai-approval-honoured", FAIL, f"could not parse count: {proc.stdout!r}")
+    detail = "" if count <= baseline else "run scripts/check_ai_approval_honoured.py to list them"
+    return Result("ai-approval-honoured", PASS if count <= baseline else FAIL, detail, count, baseline)
+
+
+def gate_canonical_store(baseline: int) -> Result:
+    """One concept, one store.
+
+    Ten tables are mapped by two model classes each. They select different columns,
+    apply different defaults and feed different screens the same record -- which
+    is how /capability-map/ shows 'Total Capabilities 191' above a table reading
+    'Showing 1-10 of 0 results'. A ratchet cannot pay the debt down; it stops it
+    growing while that migration is outstanding.
+    """
+    proc = _run([sys.executable, "scripts/check_canonical_store.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("canonical-store", FAIL, f"could not parse count: {proc.stdout!r}")
+    detail = "" if count <= baseline else "run scripts/check_canonical_store.py to list them"
+    return Result("canonical-store", PASS if count <= baseline else FAIL, detail, count, baseline)
+
+
+def gate_empty_state_cta(baseline: int) -> Result:
+    """A new tenant's first hour is empty states. They must offer a way forward.
+
+    21 of 40 tell the user there is nothing here and stop -- including the
+    applications list, whose entire purpose is getting applications into it.
+    The macro already supports a CTA in both variants, so each of these is a
+    call-site omission. A ratchet: writing 21 pieces of product copy is a
+    per-screen product decision, but the number must not grow meanwhile.
+    """
+    proc = _run([sys.executable, "scripts/check_empty_state_cta.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("empty-state-cta", FAIL, f"could not parse count: {proc.stdout!r}")
+    detail = "" if count <= baseline else "run scripts/check_empty_state_cta.py to list them"
+    return Result("empty-state-cta", PASS if count <= baseline else FAIL, detail, count, baseline)
+
+
+def gate_archimate_backbone(baseline: int) -> Result:
+    """Every motivation create syncs an archimate element.
+
+    CLAUDE.md calls ArchiMate the backbone, not a view: the field IS the element.
+    53 creation paths never call the sync, including four of the AI agent's own
+    write tools -- so entities a human approved have been landing outside the
+    model every capability lens reads from. The runtime audit finds the
+    consequence; this finds the cause, before the rows exist.
+    """
+    proc = _run([sys.executable, "scripts/check_archimate_backbone.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("archimate-backbone", FAIL, f"could not parse count: {proc.stdout!r}")
+    detail = "" if count <= baseline else "run scripts/check_archimate_backbone.py to list them"
+    return Result("archimate-backbone", PASS if count <= baseline else FAIL, detail, count, baseline)
+
+
 def gate_template_syntax() -> Result:
     """Every Jinja template parses. Gated at ZERO.
 
@@ -1798,6 +1871,19 @@ def build_gates(baseline: dict) -> list[Gate]:
              "ratchet", lambda: gate_credential_autofill(baseline["credential_autofill"]),
              remediation="autocomplete=\"current-password\" where the user's own password belongs, \"new-password\" on any third-party secret; or append 'autofill-ok: <reason>'",
              tags=["static", "security"]),
+        Gate("ai-approval-honoured", "the agent honours the operator's ai approval control",
+             "ratchet", lambda k='ai_approval_honoured': gate_ai_approval_honoured(baseline[k]),
+             tags=["static", "architecture"]),
+        Gate("archimate-backbone", "every motivation create syncs an ArchiMate element",
+             "ratchet", lambda: gate_archimate_backbone(baseline["archimate_backbone"]),
+             tags=["static", "architecture"]),
+        Gate("empty-state-cta", "an empty state offers the user a way forward",
+             "ratchet", lambda k='empty_state_cta': gate_empty_state_cta(baseline[k]),
+             remediation="give the empty state its cta_text/cta_label + cta_href, or append 'empty-state-ok: <reason>'",
+             tags=["static", "product"]),
+        Gate("canonical-store", "one concept, one store",
+             "ratchet", lambda k='canonical_store': gate_canonical_store(baseline[k]),
+             tags=["static", "architecture"]),
         Gate("ai-evidence-rules", "every AI persona charter carries the no-fabrication rules",
              "ratchet", lambda k='ai_evidence_rules': gate_ai_evidence_rules(baseline[k]),
              remediation="interpolate {_EVIDENCE_RULES} into the charter, or append 'evidence-rules-ok: <reason>'",
@@ -2082,6 +2168,10 @@ DEFAULT_BASELINE = {
     "credential_autofill": 0,
     "nested_jinja": 0,
     "cache_tenancy": 0,
+    "ai_approval_honoured": 0,
+    "canonical_store": 10,
+    "empty_state_cta": 21,
+    "archimate_backbone": 53,
 }
 
 
