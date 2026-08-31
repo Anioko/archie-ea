@@ -180,6 +180,37 @@ PERSONA_CONFIGS = {
             "Identify capabilities with lowest automation levels",
         ],
     },
+    # Promoted from charter-only on 31 Aug 2026 alongside data_architect. The
+    # solution blueprint scores a Security Viewpoint as one of its fifteen
+    # sections and no persona owned it. Without an entry here the role resolved
+    # to a default that the picker could not offer -- caught by
+    # test_every_supported_role_has_a_selectable_governed_chat_default.
+    "security_architect": {
+        "name": "Security Architect",
+        "icon": "shield-alert",
+        "color": "violet",
+        "description": "Security posture, controls, and architectural risk",
+        "expertise": [
+            "Threat Modelling",
+            "Security Controls",
+            "Identity and Access",
+            "Regulatory Compliance",
+        ],
+        "focus_areas": [
+            "Security viewpoint",
+            "Control coverage",
+            "Risk register",
+            "Policy conformance",
+        ],
+        "default_domain": "compliance",
+        "context_priority": ["risks", "compliance", "architecture_principles"],
+        "sample_prompts": [
+            "Which applications handle personal data without an owning control?",
+            "Review the security viewpoint of this solution and name the gaps.",
+            "What are the highest-rated open risks in the register right now?",
+            "Which policies are being violated across the current estate?",
+        ],
+    },
     "data_architect": {
         "name": "Data Architect",
         "icon": "database",
@@ -615,6 +646,7 @@ class MultiDomainChatService:
                     "systems_architect",
                     "business_architect",
                     "data_architect",
+                    "security_architect",
                     "technology_architect",
                     "capability_architect",
                 ],

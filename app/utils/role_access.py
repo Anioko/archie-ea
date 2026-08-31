@@ -602,7 +602,11 @@ _MY_WORK_LINKS = {
     # here is a page that already ships, previously reachable only from another
     # persona's zone or from the module catalogue.
     ROLE_SECURITY_ARCHITECT: [
-        _link("Policy Monitoring", "policy_monitoring.dashboard", "shield-alert"),
+        # The policy_monitoring blueprint is only registered under governance v2,
+        # which is not active; the live endpoint is the unified one, and
+        # navigation_registry.py already records exactly this alias.
+        _link("Policy Monitoring",
+              "unified_low_priority.policy_monitoring_dashboard", "shield-alert"),
         _link("Governance Gates", "admin.governance_gates", "shield-check"),
         _link("Risk Register", "risk.risk_register", "alert-triangle"),
         _link("Compliance", "procurement.compliance_dashboard", "clipboard-check"),

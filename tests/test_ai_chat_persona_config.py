@@ -26,6 +26,11 @@ ROLE_DEFAULT_PERSONAS = {
     "procurement": "procurement",
     "application_manager": "application_manager",
     "platform_admin": "enterprise_architect",
+    # Promoted from charter-only on 31 Aug 2026; each gets its own charter
+    # rather than falling back to the enterprise_architect generalist,
+    # which is the whole argument for promoting them.
+    "security_architect": "security_architect",
+    "data_architect": "data_architect",
 }
 
 
