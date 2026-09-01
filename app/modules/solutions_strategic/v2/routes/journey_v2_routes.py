@@ -245,6 +245,22 @@ def _require_solution_owner(f):
     return decorated
 
 
+def _require_solution_org_view(f):
+    """Guard for READ routes: any authenticated user in the solution's ORG may
+    view it — architects govern and review solutions they do not own, so an
+    owner-only gate on a GET produced a 403 (and a broken, console-erroring data
+    fetch) whenever a non-owner opened a solution page. Solution is TenantMixin,
+    so Solution.query.get_or_404 is org-scoped and a foreign-org solution 404s;
+    this simply drops the owner restriction for reads while tenant isolation is
+    preserved by the mixin. WRITES keep the stricter _require_solution_owner.
+    """
+    @wraps(f)
+    def decorated(solution_id, *args, **kwargs):
+        Solution.query.get_or_404(solution_id)  # tenant-scoped: same-org or 404
+        return f(solution_id, *args, **kwargs)
+    return decorated
+
+
 # ---------------------------------------------------------------------------
 # Journey state machine helper — advances state through intermediate steps
 # ---------------------------------------------------------------------------
@@ -1241,9 +1257,9 @@ def upload_documents(solution_id):
 
 @journey_v2_bp.route("/<int:solution_id>/proposals", methods=["GET"])
 @login_required
-@_require_solution_owner
+@_require_solution_org_view
 def list_proposals(solution_id):
-    """List blueprint proposals."""
+    """List blueprint proposals (readable by any member of the solution's org)."""
     try:
         from app.modules.architecture_assistant.journey_orchestrator import JourneyOrchestrator
         status = request.args.get("status")
