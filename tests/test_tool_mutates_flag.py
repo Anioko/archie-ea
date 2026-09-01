@@ -55,6 +55,7 @@ HAND_WRITTEN = {
     "link_application_to_solution", "link_capability_to_solution", "link_vendor_product",
     "mark_option_recommended", "run_inference_engine", "submit_for_arb_review",
     "update_application_status", "update_solution_fields", "update_solution_phase",
+    "record_capability_maturity", "score_rationalization",
 }
 
 # The per-ArchiMate-type element tools are GENERATED from ELEMENT_SPECS rather

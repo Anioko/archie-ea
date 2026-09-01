@@ -956,45 +956,45 @@ TOOL_SCHEMAS = [
         },
         "tier": "auto",
     },
-    {
-        # ADR 0009 / 0010 — genome-as-substrate. The copilot proposes a
-        # schema-validated, provenance-bearing PATCH to the enterprise genome
-        # instead of doing direct CRUD. Proposing only QUEUES the patch for
-        # approval (mutates=False w.r.t. the model); the real write happens in
-        # the un-registered `apply_genome_patch` handler once a human approves.
-        "name": "propose_genome_patch",
-        "mutates": False,
-        "description": (
-            "Propose a change to the enterprise genome (the ArchiMate model) as a "
-            "structured, provenance-bearing PATCH. Use when the user asks to propose "
-            "a missing capability, a control, a driver, a requirement, or any "
-            "motivation/architecture element. Do NOT create elements directly — emit "
-            "a patch object and this tool validates it and queues it for human "
-            "approval. The patch MUST include target.organization_id, target.domain, "
-            "operation (add|modify), element (archimate_type, layer, name), and "
-            "provenance (proposed_by, rationale, archimate_anchor)."
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "request": {
-                    "type": "string",
-                    "description": "What the user asked for, in one line.",
-                },
-                "patch": {
-                    "type": "object",
-                    "description": (
-                        "The genome patch object conforming to GENOME_PATCH_SCHEMA: "
-                        "{target:{organization_id,domain}, operation, "
-                        "element:{archimate_type,layer,name,description?}, "
-                        "provenance:{proposed_by,rationale,archimate_anchor}}."
-                    ),
-                },
-            },
-            "required": ["patch"],
-        },
-        "tier": "auto",
-    },
+    {
+        # ADR 0009 / 0010 — genome-as-substrate. The copilot proposes a
+        # schema-validated, provenance-bearing PATCH to the enterprise genome
+        # instead of doing direct CRUD. Proposing only QUEUES the patch for
+        # approval (mutates=False w.r.t. the model); the real write happens in
+        # the un-registered `apply_genome_patch` handler once a human approves.
+        "name": "propose_genome_patch",
+        "mutates": False,
+        "description": (
+            "Propose a change to the enterprise genome (the ArchiMate model) as a "
+            "structured, provenance-bearing PATCH. Use when the user asks to propose "
+            "a missing capability, a control, a driver, a requirement, or any "
+            "motivation/architecture element. Do NOT create elements directly — emit "
+            "a patch object and this tool validates it and queues it for human "
+            "approval. The patch MUST include target.organization_id, target.domain, "
+            "operation (add|modify), element (archimate_type, layer, name), and "
+            "provenance (proposed_by, rationale, archimate_anchor)."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "request": {
+                    "type": "string",
+                    "description": "What the user asked for, in one line.",
+                },
+                "patch": {
+                    "type": "object",
+                    "description": (
+                        "The genome patch object conforming to GENOME_PATCH_SCHEMA: "
+                        "{target:{organization_id,domain}, operation, "
+                        "element:{archimate_type,layer,name,description?}, "
+                        "provenance:{proposed_by,rationale,archimate_anchor}}."
+                    ),
+                },
+            },
+            "required": ["patch"],
+        },
+        "tier": "auto",
+    },
     # ------------------------------------------------------------------ #
     # Governance / executive tools (Capability-Gap Register G1 + G2)      #
     # Three reads that bind existing services the copilot could not reach, #
@@ -1111,6 +1111,76 @@ TOOL_SCHEMAS = [
                 },
             },
             "required": ["solution_id", "title", "context", "decision", "rationale"],
+        },
+        "tier": "approve",
+    },
+    # ------------------------------------------------------------------ #
+    # Governed ACTION/UPDATE tools (Capability-Gap Register G2)           #
+    # Turn the copilot from a reader/proposer into a governed actor:      #
+    # record a maturity assessment, and persist a TIME rationalization    #
+    # score. Both mutates=True / tier 'approve' — they flow through the   #
+    # existing confirmation gate.                                         #
+    # ------------------------------------------------------------------ #
+    {
+        "name": "record_capability_maturity",
+        "mutates": True,
+        "description": (
+            "Record a maturity assessment against a business capability: set its "
+            "current maturity (1-5) and, optionally, its target maturity (1-5). "
+            "This is the EA/business-architect headline write — the copilot can "
+            "read capability gaps but, until now, could not record the assessment "
+            "that closes them. Writes current_maturity_level / target_maturity_level "
+            "(and the derived maturity_gap) on the business capability, stamping the "
+            "assessment date so the estate can tell an assessed capability from an "
+            "unassessed one. REQUIRES USER CONFIRMATION before executing."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "capability_id": {
+                    "type": "integer",
+                    "description": "ID of the business capability to assess",
+                },
+                "current_maturity": {
+                    "type": "integer",
+                    "description": "Current maturity level, 1 (Initial) to 5 (Optimising)",
+                    "minimum": 1,
+                    "maximum": 5,
+                },
+                "target_maturity": {
+                    "type": "integer",
+                    "description": "Optional target maturity level, 1 to 5",
+                    "minimum": 1,
+                    "maximum": 5,
+                },
+            },
+            "required": ["capability_id", "current_maturity"],
+        },
+        "tier": "approve",
+    },
+    {
+        "name": "score_rationalization",
+        "mutates": True,
+        "description": (
+            "Compute and PERSIST an application's TIME (Tolerate/Invest/Migrate/"
+            "Eliminate) rationalization score and disposition. This is the EA/"
+            "portfolio-manager headline write — propose_rationalization only reads; "
+            "this tool runs the scoring service, writes the "
+            "ApplicationRationalizationScore record (dimension scores, overall "
+            "health, TIME action, 7R disposition and readiness gate) and creates "
+            "the benefits-tracker row. "
+            "USE when the user asks to score, re-score, or record a disposition for "
+            "a specific application. REQUIRES USER CONFIRMATION before executing."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "app_id": {
+                    "type": "integer",
+                    "description": "ID of the application component to score",
+                },
+            },
+            "required": ["app_id"],
         },
         "tier": "approve",
     },

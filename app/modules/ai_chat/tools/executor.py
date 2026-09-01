@@ -2119,6 +2119,179 @@ class ToolExecutor:
             "message": f"Created ADR {adr.id} '{adr.title}' (status={adr.status}).",
         }
 
+    # ------------------------------------------------------------------ #
+    # Tool: record_capability_maturity (WRITE — G2)                       #
+    # ------------------------------------------------------------------ #
+    def _tool_record_capability_maturity(self, args: dict) -> dict:
+        """Record a maturity assessment on a business capability — EA/BA headline.
+
+        Mirrors the write path in
+        app/modules/capabilities/routes/maturity_routes.py::batch_update_maturity:
+        it writes current_maturity_level / target_maturity_level, recomputes
+        maturity_gap, and stamps maturity_assessment_date. mutates=True / tier
+        'approve', so it flows through the confirmation gate.
+
+        DEVIATION from the task brief: the brief cited current_maturity /
+        target_maturity on app/models/capabilities.py. Those columns live on
+        ArchiMateCapability (table archimate_capabilities). The canonical
+        BusinessCapability (app/models/business_capabilities.py, table
+        business_capability) — the one the maturity routes and the heatmap read
+        and write — uses current_maturity_level / target_maturity_level, so this
+        tool writes those. BusinessCapability is a TenantMixin model, so the ORM
+        tenant filter scopes the lookup: a capability in another org is invisible
+        and reads back as not-found, never cross-written.
+        """
+        from datetime import datetime
+
+        from app.models.business_capabilities import BusinessCapability
+
+        capability_id = args.get("capability_id")
+        current = args.get("current_maturity")
+        target = args.get("target_maturity")
+
+        if capability_id is None or current is None:
+            return {
+                "success": False,
+                "error": "capability_id and current_maturity are required.",
+            }
+
+        # Validate the 1-5 range; reject out-of-range rather than clamp.
+        def _valid(v):
+            return isinstance(v, int) and not isinstance(v, bool) and 1 <= v <= 5
+
+        if not _valid(current):
+            return {
+                "success": False,
+                "error": "current_maturity must be an integer between 1 and 5.",
+            }
+        if target is not None and not _valid(target):
+            return {
+                "success": False,
+                "error": "target_maturity must be an integer between 1 and 5.",
+            }
+
+        # Tenant filter is applied by the ORM (TenantMixin) — do not hand-write an
+        # organization_id predicate (would double-filter). .filter_by().first()
+        # rather than .get(), which is scoped only on an identity-map miss.
+        cap = BusinessCapability.query.filter_by(id=capability_id).first()
+        if cap is None:
+            return {
+                "success": False,
+                "error": f"Business capability {capability_id} not found.",
+            }
+
+        cap.current_maturity_level = current
+        if target is not None:
+            cap.target_maturity_level = target
+        # Recompute the gap only when both ends are real; never substitute 0.
+        if cap.current_maturity_level is not None and cap.target_maturity_level is not None:
+            cap.maturity_gap = cap.target_maturity_level - cap.current_maturity_level
+        cap.maturity_assessment_date = datetime.utcnow()
+        cap.updated_at = datetime.utcnow()
+        db.session.commit()
+
+        logger.info(
+            "Agent recorded maturity for capability id=%s current=%s target=%s user=%s",
+            cap.id, cap.current_maturity_level, cap.target_maturity_level, self.user_id,
+        )
+        return {
+            "success": True,
+            "result": {
+                "id": cap.id,
+                "name": cap.name,
+                "current_maturity_level": cap.current_maturity_level,
+                "target_maturity_level": cap.target_maturity_level,
+                "maturity_gap": cap.maturity_gap,
+            },
+            "message": (
+                f"Recorded maturity for '{cap.name}': "
+                f"current={cap.current_maturity_level}"
+                + (f", target={cap.target_maturity_level}" if cap.target_maturity_level is not None else "")
+                + "."
+            ),
+        }
+
+    # ------------------------------------------------------------------ #
+    # Tool: score_rationalization (WRITE — G2)                            #
+    # ------------------------------------------------------------------ #
+    def _tool_score_rationalization(self, args: dict) -> dict:
+        """Compute + persist an app's TIME rationalization score — EA/portfolio.
+
+        Wraps RationalizationScoringService.calculate_app_score(app_id, app=...)
+        (app/services/rationalization_scoring_service.py:516), which creates or
+        updates the ApplicationRationalizationScore row and flushes. Follows the
+        persist pattern of the rationalization_score_app route
+        (app/modules/applications/routes/rationalization_api_routes.py:3453),
+        including the RationalizationBenefitsTracker auto-create.
+
+        ApplicationComponent is a TenantMixin model, so the lookup is tenant-
+        scoped by the ORM: an app in another org reads back as not-found and is
+        never scored/written cross-org. If the service returns None (scoring
+        failed / not decision-ready to a degree it could not score), that is
+        surfaced honestly — no invented score.
+        """
+        from app.models.application_portfolio import ApplicationComponent
+        from app.models.application_rationalization import (
+            RationalizationBenefitsTracker,
+        )
+        from app.services.rationalization_scoring_service import (
+            RationalizationScoringService,
+        )
+
+        app_id = args.get("app_id")
+        if app_id is None:
+            return {"success": False, "error": "app_id is required."}
+
+        # Tenant filter via the ORM (TenantMixin) — .filter_by().first(), not .get().
+        app_obj = ApplicationComponent.query.filter_by(id=app_id).first()
+        if app_obj is None:
+            return {"success": False, "error": f"Application {app_id} not found."}
+
+        score = RationalizationScoringService.calculate_app_score(app_id, app=app_obj)
+        if not score:
+            # The service returned nothing — surface it honestly, do not fabricate.
+            return {
+                "success": False,
+                "error": (
+                    f"Scoring did not produce a result for application {app_id}. "
+                    "This usually means the app lacks the data the scoring model needs."
+                ),
+            }
+
+        # Auto-create the benefits tracker (mirrors the route).
+        existing_tracker = RationalizationBenefitsTracker.query.filter_by(
+            application_id=app_id, score_id=score.id
+        ).first()
+        if not existing_tracker:
+            tracker = RationalizationBenefitsTracker(
+                application_id=app_id,
+                score_id=score.id,
+                projected_annual_savings=score.estimated_annual_savings or 0,
+            )
+            db.session.add(tracker)
+        db.session.commit()
+
+        logger.info(
+            "Agent scored rationalization app id=%s overall=%s action=%s user=%s",
+            app_id, score.overall_health_score, score.rationalization_action, self.user_id,
+        )
+        return {
+            "success": True,
+            "result": {
+                "score_id": score.id,
+                "app_id": app_id,
+                "app_name": app_obj.name,
+                "overall_health_score": score.overall_health_score,
+                "rationalization_action": score.rationalization_action,
+                "disposition_action": score.disposition_action,
+                "disposition_confidence": score.disposition_confidence,
+            },
+            "message": (
+                f"Scored '{app_obj.name}': overall={score.overall_health_score}, "
+                f"TIME={score.rationalization_action}, disposition={score.disposition_action}."
+            ),
+        }
+
 
 # ------------------------------------------------------------------ #
 # Lightweight helper (avoids importing ApplicationCapabilityMapping   #
