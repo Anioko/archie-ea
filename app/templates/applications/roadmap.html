@@ -278,10 +278,10 @@
     }));
 
     return {
-      items: initialItems,
+      items: Array.isArray(initialItems) ? initialItems : [],
       plateaus: [],
       capabilities: [],
-      archiElements: archiElementsInit,
+      archiElements: Array.isArray(archiElementsInit) ? archiElementsInit : [],
       statusFilter: '',
       isModalOpen: false,
       isEditing: false,
