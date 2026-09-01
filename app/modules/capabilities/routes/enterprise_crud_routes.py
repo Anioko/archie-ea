@@ -207,6 +207,35 @@ def _apply_optional_capability_fields(capability, data):
             value = (data.get(field) or "").strip()
             setattr(capability, field, value or None)
 
+    # Strategic importance and business value answer "why does this capability
+    # matter?" — the columns existed (business_capabilities.py:73-74) but no
+    # endpoint wrote them and no form exposed them, so an architect could model a
+    # capability yet never record its criticality. Without these, rationalization
+    # and investment-priority screens have nothing real to sort on.
+    if "strategic_importance" in data:
+        raw = (data.get("strategic_importance") or "").strip().lower()
+        if raw in ("", "none"):
+            capability.strategic_importance = None
+        elif raw in ("critical", "high", "medium", "low"):
+            capability.strategic_importance = raw
+        else:
+            errors.append("Strategic importance must be critical, high, medium or low")
+
+    if "business_value" in data:
+        raw = data.get("business_value")
+        if raw in (None, "", "0"):
+            capability.business_value = None
+        else:
+            try:
+                value = int(raw)
+            except (TypeError, ValueError):
+                errors.append("Business value must be a number")
+            else:
+                if 1 <= value <= 10:
+                    capability.business_value = value
+                else:
+                    errors.append("Business value must be between 1 and 10")
+
     return errors
 
 

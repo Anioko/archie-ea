@@ -58,7 +58,9 @@
              data-cap-parent="{{ cap.parent_capability_id or '' }}"
              data-cap-maturity="{{ cap.current_maturity_level or '' }}"
              data-cap-target-maturity="{{ cap.target_maturity_level or '' }}"
-             data-cap-owner="{{ cap.business_owner|default('', true)|e }}">
+             data-cap-owner="{{ cap.business_owner|default('', true)|e }}"
+             data-cap-importance="{{ cap.strategic_importance|default('', true)|e }}"
+             data-cap-value="{{ cap.business_value or '' }}">
             <div class="flex justify-between items-start mb-2">
                 <h3 class="font-medium text-foreground leading-snug">{{ cap.name }}</h3>
                 <div class="flex items-center gap-1 shrink-0 ml-2">
@@ -184,6 +186,24 @@
         <input id="cap-owner" type="text" class="w-full h-9 px-3 rounded-md border border-border bg-background text-sm"
                placeholder="Name of the accountable owner">
       </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-sm font-medium mb-1" for="cap-importance">Strategic importance</label>
+          <select id="cap-importance" class="w-full h-9 px-2 rounded-md border border-border bg-background text-sm">
+            <option value="">—</option>
+            <option value="critical">Critical</option>
+            <option value="high">High</option>
+            <option value="medium">Medium</option>
+            <option value="low">Low</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1" for="cap-value">Business value (1–10)</label>
+          <input id="cap-value" type="number" min="1" max="10" step="1"
+                 class="w-full h-9 px-3 rounded-md border border-border bg-background text-sm"
+                 placeholder="—">
+        </div>
+      </div>
       <div>
         <label class="block text-sm font-medium mb-1" for="cap-desc">Description</label>
         <textarea id="cap-desc" rows="3" class="w-full px-3 py-2 rounded-md border border-border bg-background text-sm"></textarea>
@@ -244,6 +264,8 @@ function openCapCreate() {
     capField('cap-maturity').value = '';
     capField('cap-target-maturity').value = '';
     capField('cap-owner').value = '';
+    capField('cap-importance').value = '';
+    capField('cap-value').value = '';
     capField('cap-dialog').showModal();
 }
 
@@ -258,6 +280,8 @@ function openCapEdit(card) {
     capField('cap-maturity').value = card.dataset.capMaturity || '';
     capField('cap-target-maturity').value = card.dataset.capTargetMaturity || '';
     capField('cap-owner').value = card.dataset.capOwner || '';
+    capField('cap-importance').value = card.dataset.capImportance || '';
+    capField('cap-value').value = card.dataset.capValue || '';
     // A capability cannot be its own parent; the server rejects it, but the
     // option should not be offered either.
     [...capField('cap-parent').options].forEach(function (o) {
@@ -282,7 +306,9 @@ async function submitCap() {
         parent_capability_id: capField('cap-parent').value || null,
         current_maturity_level: capField('cap-maturity').value || null,
         target_maturity_level: capField('cap-target-maturity').value || null,
-        business_owner: capField('cap-owner').value.trim()
+        business_owner: capField('cap-owner').value.trim(),
+        strategic_importance: capField('cap-importance').value || null,
+        business_value: capField('cap-value').value || null
     };
     if (!payload.name) { capToast('Name is required', true); return; }
     const btn = capField('cap-save'); btn.disabled = true;
