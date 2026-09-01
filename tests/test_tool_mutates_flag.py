@@ -57,6 +57,7 @@ HAND_WRITTEN = {
     "update_application_status", "update_solution_fields", "update_solution_phase",
     "record_capability_maturity", "score_rationalization",
     "create_vendor", "merge_capabilities",
+    "bulk_update_application_status", "create_contract", "upsert_license",
 }
 
 # The per-ArchiMate-type element tools are GENERATED from ELEMENT_SPECS rather

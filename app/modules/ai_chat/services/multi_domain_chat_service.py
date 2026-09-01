@@ -404,6 +404,21 @@ PERSONA_CONFIGS = {
             "What modernization action should I take next?",
         ],
     },
+    "platform_admin": {
+        "name": "AI Platform Administrator",
+        "icon": "settings",
+        "color": "slate",  # token-migration-ok: PERSONA_CONFIGS colour label, not a CSS class
+        "description": "Operational stewardship: users, access, integrations, imports",
+        "expertise": ["User & Role Provisioning", "Tenant Config", "Integrations", "Data Import"],
+        "focus_areas": ["Access", "Configuration", "Import health", "Audit"],
+        "default_domain": "general",
+        "context_priority": ["users", "integrations", "imports", "audit"],
+        "sample_prompts": [
+            "How many users are provisioned and how many are still unconfirmed?",
+            "What is the status of our most recent data import?",
+            "Summarize the current role distribution across the tenant.",
+        ],
+    },
 }
 
 
@@ -658,6 +673,7 @@ class MultiDomainChatService:
                     "procurement",
                     "application_manager",
                 ],
+                "operations": ["platform_admin"],
             },
         }
 

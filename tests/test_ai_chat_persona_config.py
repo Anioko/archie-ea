@@ -25,7 +25,7 @@ ROLE_DEFAULT_PERSONAS = {
     "cto": "cio",
     "procurement": "procurement",
     "application_manager": "application_manager",
-    "platform_admin": "enterprise_architect",
+    "platform_admin": "platform_admin",
     # Promoted from charter-only on 31 Aug 2026; each gets its own charter
     # rather than falling back to the enterprise_architect generalist,
     # which is the whole argument for promoting them.

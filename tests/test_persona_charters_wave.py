@@ -47,11 +47,20 @@ def test_cio_alias_resolves_to_cto(app):
         assert "HARD RULES" in prompt
 
 
-def test_every_enterprise_role_except_platform_admin_has_a_charter(app):
+def test_every_enterprise_role_has_a_charter(app):
+    # platform_admin gained its OWN operational charter (G7); every persisted
+    # enterprise role now resolves to a charter, none falls back.
     with app.app_context():
         for role in VALID_ROLES:
             prompt = build_architect_prompt(role)
-            if role == "platform_admin":
-                assert prompt is None, "platform_admin is intentionally charter-less"
-            else:
-                assert prompt is not None, f"{role} should resolve to a charter"
+            assert prompt is not None, f"{role} should resolve to a charter"
+
+
+def test_platform_admin_has_its_own_operational_charter_not_ea(app):
+    with app.app_context():
+        pa = build_architect_prompt("platform_admin")
+        ea = build_architect_prompt("enterprise_architect")
+        assert pa is not None
+        assert "Platform Administrator" in pa
+        assert "OPERATIONAL" in pa or "operations steward" in pa
+        assert pa != ea, "platform_admin must not fall back to the EA charter"

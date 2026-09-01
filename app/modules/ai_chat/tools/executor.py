@@ -2613,6 +2613,348 @@ class ToolExecutor:
             ),
         }
 
+    # ------------------------------------------------------------------ #
+    # Tool: bulk_update_application_status (WRITE — G4)                    #
+    # ------------------------------------------------------------------ #
+    def _tool_bulk_update_application_status(self, args: dict) -> dict:
+        """Set lifecycle_status on a SET of applications in one governed call.
+
+        The portfolio/application-manager headline write. update_application_status
+        is one app per call; this applies one lifecycle stage to many, under a
+        single approval.
+
+        DEVIATION from the task brief, made as data architect: the brief cited
+        "the ApplicationComponent.lifecycle_status write update_application_status
+        does". Those are two DIFFERENT columns. update_application_status
+        (_tool_update_application_status) writes DEPLOYMENT_status; the canonical
+        bulk lifecycle write is the PLT-020 route
+        app/modules/applications/routes/list_views.py::api_bulk_lifecycle, which
+        writes LIFECYCLE_status validated against APPLICATION_LIFECYCLE_STAGES
+        (NOT app.models.constants.LifecycleStatus — a different vocabulary the UI
+        never sends, which rejected every real click). This tool mirrors
+        api_bulk_lifecycle: it writes lifecycle_status and validates against
+        APPLICATION_LIFECYCLE_STAGES, exactly as the brief's own "validate against
+        the real lifecycle enum" requires. ApplicationComponent is a TenantMixin
+        model, so both the id/filter SELECT and the write carry the org predicate
+        mechanically — apps in another org are invisible and read back as
+        not-found, never cross-written.
+        """
+        from app.models.application_portfolio import (
+            APPLICATION_LIFECYCLE_STAGES,
+            ApplicationComponent,
+        )
+
+        new_status = (args.get("new_status") or "").strip().lower()
+        if not new_status:
+            return {"success": False, "error": "new_status is required."}
+        if new_status not in APPLICATION_LIFECYCLE_STAGES:
+            return {
+                "success": False,
+                "error": (
+                    "new_status %r is not a valid lifecycle stage. Must be one of: %s"
+                    % (new_status, ", ".join(APPLICATION_LIFECYCLE_STAGES))
+                ),
+            }
+
+        app_ids = args.get("app_ids")
+        filt = args.get("filter") or {}
+        MAX_BATCH = 200
+
+        # Resolve the target SET. Explicit ids win; otherwise a filter selects it.
+        # The ORM tenant event scopes every SELECT below to the acting org.
+        if app_ids:
+            if not isinstance(app_ids, list):
+                return {"success": False, "error": "app_ids must be a list of integers."}
+            try:
+                ids = [int(x) for x in app_ids]
+            except (TypeError, ValueError):
+                return {"success": False, "error": "app_ids must be a list of integers."}
+            query = ApplicationComponent.query.filter(ApplicationComponent.id.in_(ids))
+            requested_ids = ids
+        elif filt:
+            query = ApplicationComponent.query
+            if filt.get("current_status"):
+                query = query.filter(
+                    ApplicationComponent.lifecycle_status == filt["current_status"]
+                )
+            if filt.get("component_type"):
+                query = query.filter(
+                    ApplicationComponent.component_type == filt["component_type"]
+                )
+            requested_ids = None
+        else:
+            return {
+                "success": False,
+                "error": "Provide either app_ids (list) or a filter to select applications.",
+            }
+
+        matched = query.order_by(ApplicationComponent.id).all()
+
+        # Cap the batch — LOG the truncation in the result, never silently drop.
+        truncated = False
+        capped_note = None
+        if len(matched) > MAX_BATCH:
+            truncated = True
+            capped_note = (
+                "Batch capped at %d of %d matched applications; %d were NOT updated. "
+                "Narrow the selection and run again for the rest."
+                % (MAX_BATCH, len(matched), len(matched) - MAX_BATCH)
+            )
+            matched = matched[:MAX_BATCH]
+
+        matched_by_id = {a.id: a for a in matched}
+        results = []
+        updated_count = 0
+
+        # Per-app results: report every requested id, updated or skipped-with-reason.
+        iter_ids = requested_ids if requested_ids is not None else [a.id for a in matched]
+        for app_id in iter_ids:
+            app_obj = matched_by_id.get(app_id)
+            if not app_obj:
+                results.append({
+                    "id": app_id,
+                    "updated": False,
+                    "reason": "not found in your organization",
+                })
+                continue
+            old_status = app_obj.lifecycle_status
+            if old_status == new_status:
+                results.append({
+                    "id": app_id,
+                    "name": app_obj.name,
+                    "updated": False,
+                    "reason": "already at '%s'" % new_status,
+                })
+                continue
+            app_obj.lifecycle_status = new_status
+            updated_count += 1
+            results.append({
+                "id": app_id,
+                "name": app_obj.name,
+                "updated": True,
+                "old_status": old_status,
+                "new_status": new_status,
+            })
+
+        if updated_count > 0:
+            db.session.commit()
+        else:
+            db.session.rollback()
+
+        logger.info(
+            "Agent bulk lifecycle: %d updated → %r (user=%s, requested=%s, truncated=%s, rationale=%r)",
+            updated_count, new_status, self.user_id,
+            len(iter_ids), truncated, args.get("rationale"),
+        )
+
+        message = "Updated %d application(s) to lifecycle stage '%s'." % (
+            updated_count, new_status,
+        )
+        if capped_note:
+            message += " " + capped_note
+
+        return {
+            "success": updated_count > 0,
+            "result": {
+                "new_status": new_status,
+                "updated_count": updated_count,
+                "requested_count": len(iter_ids),
+                "truncated": truncated,
+                "cap_note": capped_note,
+                "apps": results,
+            },
+            "message": message,
+        }
+
+    # ------------------------------------------------------------------ #
+    # Tool: create_contract (WRITE — G8, procurement)                     #
+    # ------------------------------------------------------------------ #
+    def _tool_create_contract(self, args: dict) -> dict:
+        """Create a procurement (commercial) vendor contract.
+
+        Wraps the pure form-application helper behind the procurement route
+        app/modules/procurement/crud_routes.py::contract_create — namely
+        _apply_contract_form, which validates the vocabularies
+        (CONTRACT_TYPES/CATEGORIES/STATUSES), enforces contract_name, defaults a
+        missing start_date to today, and rejects an end/renewal date before the
+        start. VendorContract is a TenantMixin model
+        (app/models/application_portfolio.py:756); organization_id is set
+        explicitly (defence-in-depth) to the acting org, so the contract is
+        tenant-private.
+
+        This is the PROCUREMENT/commercial contract (VendorContract family), NOT
+        the API-interface contract in solutions_strategic.
+
+        The route helper reads a Werkzeug form (form.get); the tool builds an
+        equivalent plain dict from its args and reuses the SAME validation, so
+        the AI path can never be more permissive than the HTTP form.
+        """
+        from app.models.application_portfolio import VendorContract
+        from app.modules.procurement.crud_routes import _apply_contract_form
+
+        vendor_id = args.get("vendor_id")
+        form = {
+            "contract_name": args.get("name") or args.get("contract_name") or "",
+            "contract_number": args.get("contract_number") or "",
+            "contract_description": args.get("description") or "",
+            "vendor_id": str(vendor_id) if vendor_id not in (None, "") else "",
+            "contract_type": args.get("contract_type") or "",
+            "contract_category": args.get("contract_category") or "",
+            "status": args.get("status") or "",
+            "contract_value": args.get("value") if args.get("value") is not None
+            else args.get("contract_value"),
+            "annual_cost": args.get("annual_cost"),
+            "currency": args.get("currency") or "USD",
+            "start_date": args.get("start_date") or "",
+            "end_date": args.get("end_date") or "",
+            "renewal_date": args.get("renewal_date") or "",
+            "auto_renewal": "on" if args.get("auto_renewal") else "",
+            "contract_owner": args.get("contract_owner") or "",
+        }
+
+        contract = VendorContract(organization_id=self._get_organization_id())
+        try:
+            _apply_contract_form(contract, form)
+            db.session.add(contract)
+            db.session.commit()
+        except ValueError as exc:
+            # Honest validation failure — never a fabricated success.
+            db.session.rollback()
+            return {"success": False, "error": str(exc)}
+        except Exception as exc:  # e.g. duplicate contract_number (unique)
+            db.session.rollback()
+            return {"success": False, "error": str(exc)}
+
+        logger.info(
+            "Agent created contract id=%s name=%r vendor_id=%s user=%s",
+            contract.id, contract.contract_name, contract.vendor_id, self.user_id,
+        )
+        return {
+            "success": True,
+            "result": {
+                "id": contract.id,
+                "contract_name": contract.contract_name,
+                "vendor_id": contract.vendor_id,
+                "status": contract.status,
+                "start_date": str(contract.start_date) if contract.start_date else None,
+                "end_date": str(contract.end_date) if contract.end_date else None,
+            },
+            "message": "Created contract '%s' (id=%s)." % (contract.contract_name, contract.id),
+        }
+
+    # ------------------------------------------------------------------ #
+    # Tool: upsert_license (WRITE — G8, procurement)                      #
+    # ------------------------------------------------------------------ #
+    def _tool_upsert_license(self, args: dict) -> dict:
+        """Create or update a licence entitlement under a contract.
+
+        Wraps the pure helpers behind
+        app/modules/procurement/crud_routes.py::license_create / license_edit —
+        _apply_license_form (product/type/metric + entitled/deployed/used counts
+        and unit cost) and _recompute_compliance (compliance derived from the
+        quantities, never trusted from the caller). LicenseEntitlement is a
+        TenantMixin model (app/models/license_entitlement.py:18) and MUST belong
+        to a contract; the contract_id is re-read through the org predicate so a
+        licence cannot be hung off another organisation's contract. If a
+        license_id is supplied it updates that entitlement (org-scoped lookup);
+        otherwise it creates one.
+        """
+        from app.models.application_portfolio import VendorContract
+        from app.models.license_entitlement import LicenseEntitlement
+        from app.modules.procurement.crud_routes import (
+            _apply_license_form,
+        )
+
+        org_id = self._get_organization_id()
+        license_id = args.get("license_id")
+        contract_id = args.get("contract_id")
+
+        form = {
+            "product_name": args.get("product") or args.get("product_name") or "",
+            "license_type": args.get("license_type") or "named_user",
+            "license_metric": args.get("license_metric") or "",
+            "quantity_entitled": args.get("entitled") if args.get("entitled") is not None
+            else args.get("quantity_entitled"),
+            "quantity_deployed": args.get("deployed") if args.get("deployed") is not None
+            else args.get("quantity_deployed"),
+            "quantity_used": args.get("used") if args.get("used") is not None
+            else args.get("quantity_used"),
+            "unit_cost": args.get("unit_cost"),
+        }
+        # Normalise Nones to "" so _apply_license_form's int(...) sees empties as 0.
+        form = {k: ("" if v is None else v) for k, v in form.items()}
+
+        if license_id is not None:
+            entitlement = LicenseEntitlement.query.filter_by(
+                id=license_id, organization_id=org_id
+            ).first()
+            if not entitlement:
+                return {
+                    "success": False,
+                    "error": "Licence %s not found in your organization." % license_id,
+                }
+            if contract_id is not None:
+                owned = VendorContract.query.filter_by(
+                    id=int(contract_id), organization_id=org_id
+                ).first()
+                if not owned:
+                    return {
+                        "success": False,
+                        "error": "Contract %s not found in your organization." % contract_id,
+                    }
+                entitlement.contract_id = int(contract_id)
+            created = False
+        else:
+            if contract_id is None:
+                return {"success": False, "error": "A licence must belong to a contract (contract_id)."}
+            owned = VendorContract.query.filter_by(
+                id=int(contract_id), organization_id=org_id
+            ).first()
+            if not owned:
+                return {
+                    "success": False,
+                    "error": "Contract %s not found in your organization." % contract_id,
+                }
+            entitlement = LicenseEntitlement(
+                organization_id=org_id, contract_id=int(contract_id)
+            )
+            created = True
+
+        try:
+            _apply_license_form(entitlement, form)
+            if created:
+                db.session.add(entitlement)
+            db.session.commit()
+        except (ValueError, TypeError) as exc:
+            db.session.rollback()
+            return {"success": False, "error": "Quantities must be whole numbers and unit cost numeric: %s" % exc}
+        except Exception as exc:
+            db.session.rollback()
+            return {"success": False, "error": str(exc)}
+
+        logger.info(
+            "Agent %s licence id=%s contract_id=%s user=%s",
+            "updated" if not created else "created",
+            entitlement.id, entitlement.contract_id, self.user_id,
+        )
+        return {
+            "success": True,
+            "result": {
+                "id": entitlement.id,
+                "contract_id": entitlement.contract_id,
+                "product_name": entitlement.product_name,
+                "quantity_entitled": entitlement.quantity_entitled,
+                "quantity_deployed": entitlement.quantity_deployed,
+                "quantity_used": entitlement.quantity_used,
+                "compliance_status": entitlement.compliance_status,
+                "created": created,
+            },
+            "message": "%s licence entitlement id=%s (compliance: %s)." % (
+                "Created" if created else "Updated",
+                entitlement.id, entitlement.compliance_status,
+            ),
+        }
+
 
 # ------------------------------------------------------------------ #
 # Lightweight helper (avoids importing ApplicationCapabilityMapping   #

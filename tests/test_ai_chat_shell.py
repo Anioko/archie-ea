@@ -81,7 +81,7 @@ def _get_chat_html(app, db_session, make_org, enterprise_role="enterprise_archit
         ("cto", "cio"),
         ("procurement", "procurement"),
         ("application_manager", "application_manager"),
-        ("platform_admin", "enterprise_architect"),
+        ("platform_admin", "platform_admin"),
     ],
 )
 def test_chat_bootstrap_selects_the_signed_in_roles_default_persona(

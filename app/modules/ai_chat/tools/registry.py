@@ -1295,6 +1295,168 @@ TOOL_SCHEMAS = [
         },
         "tier": "auto",
     },
+    # ------------------------------------------------------------------ #
+    # Governed WRITE tools (Capability-Gap Register G4, G8)               #
+    # A bulk portfolio lifecycle write and the two procurement commercial #
+    # writes. All mutates=True / tier 'approve' — through the gate.       #
+    # ------------------------------------------------------------------ #
+    {
+        "name": "bulk_update_application_status",
+        "mutates": True,
+        "description": (
+            "Set the lifecycle stage of a SET of applications in one governed "
+            "action — the portfolio / application-manager bulk write. "
+            "update_application_status changes one app at a time; this applies one "
+            "lifecycle stage to many under a single confirmation. Select the set "
+            "EITHER by app_ids (explicit list) OR by a filter "
+            "(current_status / component_type). The stage is validated against the "
+            "TOGAF-decommission lifecycle vocabulary the portfolio actually uses "
+            "(e.g. '2.1 strategic', '3. sunset', '4.2 decom planned', "
+            "'5. decommissioned'); an invalid stage is rejected. Returns a per-app "
+            "result (updated, or skipped with a reason) — it never reports a "
+            "fabricated success — and, if a large selection is capped, says so "
+            "explicitly rather than dropping applications silently. Scoped to your "
+            "organisation. REQUIRES USER CONFIRMATION before executing."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "app_ids": {
+                    "type": "array",
+                    "items": {"type": "integer"},
+                    "description": "Explicit list of application component IDs to update",
+                },
+                "filter": {
+                    "type": "object",
+                    "description": "Alternative to app_ids: select by current_status and/or component_type",
+                    "properties": {
+                        "current_status": {
+                            "type": "string",
+                            "description": "Only apps currently at this lifecycle stage",
+                        },
+                        "component_type": {
+                            "type": "string",
+                            "description": "Only apps of this component_type",
+                        },
+                    },
+                },
+                "new_status": {
+                    "type": "string",
+                    "description": (
+                        "Target lifecycle stage. One of: '1. undetermined', "
+                        "'2.1 strategic', '2.2 tactical', '3. sunset', "
+                        "'4.1 decom decided', '4.2 decom planned', '4.3 read-only', "
+                        "'4.4 stopped', '5. decommissioned'"
+                    ),
+                },
+                "rationale": {
+                    "type": "string",
+                    "description": "Why the batch change is being made (recorded in the log)",
+                },
+            },
+            "required": ["new_status"],
+        },
+        "tier": "approve",
+    },
+    {
+        "name": "create_contract",
+        "mutates": True,
+        "description": (
+            "Create a PROCUREMENT (commercial) vendor contract — the "
+            "vendor-management / procurement headline write. Captures the "
+            "commercial agreement with a vendor: name, optional number, type "
+            "(license/subscription/maintenance/support/custom_development), "
+            "category (software/hardware/service/consulting), status, value, "
+            "currency and start/end/renewal dates. This is NOT an API-interface "
+            "contract — it is the commercial VendorContract. An end or renewal "
+            "date before the start date is rejected; an invalid type/category/"
+            "status is rejected; a missing start date defaults to today. "
+            "Tenant-scoped to your organisation. REQUIRES USER CONFIRMATION "
+            "before executing."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "vendor_id": {
+                    "type": "integer",
+                    "description": "ID of the VendorOrganization this contract is with",
+                },
+                "name": {
+                    "type": "string",
+                    "description": "Contract name, e.g. 'Snowflake Enterprise Subscription 2026'",
+                },
+                "contract_number": {"type": "string", "description": "Optional reference number (globally unique)"},
+                "description": {"type": "string", "description": "What the contract covers"},
+                "contract_type": {
+                    "type": "string",
+                    "enum": ["license", "subscription", "maintenance", "support", "custom_development"],
+                    "description": "Type of contract",
+                },
+                "contract_category": {
+                    "type": "string",
+                    "enum": ["software", "hardware", "service", "consulting"],
+                    "description": "Category of contract",
+                },
+                "status": {
+                    "type": "string",
+                    "enum": ["active", "expired", "terminated", "pending", "under_negotiation"],
+                    "description": "Contract status",
+                },
+                "value": {"type": "number", "description": "Total contract value"},
+                "annual_cost": {"type": "number", "description": "Annual cost"},
+                "currency": {"type": "string", "description": "Currency code (default USD)"},
+                "start_date": {"type": "string", "description": "Start date YYYY-MM-DD (defaults to today if omitted)"},
+                "end_date": {"type": "string", "description": "End date YYYY-MM-DD (must be on/after start)"},
+                "renewal_date": {"type": "string", "description": "Renewal date YYYY-MM-DD (must be on/after start)"},
+                "auto_renewal": {"type": "boolean", "description": "Whether the contract auto-renews"},
+                "contract_owner": {"type": "string", "description": "Internal owner of the contract"},
+            },
+            "required": ["name"],
+        },
+        "tier": "approve",
+    },
+    {
+        "name": "upsert_license",
+        "mutates": True,
+        "description": (
+            "Create or update a licence entitlement under a procurement contract "
+            "— the software-asset-management write. Records the product, licence "
+            "type (named_user/concurrent/device/core/site) and metric, and the "
+            "entitled / deployed / used quantities; compliance status "
+            "(compliant / over_deployed / under_utilized) is DERIVED from the "
+            "quantities, never taken on trust. A licence MUST belong to a "
+            "contract (contract_id), re-read through your organisation's predicate "
+            "so it cannot be hung off another org's contract. Supply license_id to "
+            "update an existing entitlement; omit it to create one. Tenant-scoped. "
+            "REQUIRES USER CONFIRMATION before executing."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "license_id": {
+                    "type": "integer",
+                    "description": "ID of an existing entitlement to UPDATE; omit to create a new one",
+                },
+                "contract_id": {
+                    "type": "integer",
+                    "description": "ID of the VendorContract this licence belongs to (required to create)",
+                },
+                "product": {"type": "string", "description": "Product name the licence covers"},
+                "license_type": {
+                    "type": "string",
+                    "enum": ["named_user", "concurrent", "device", "core", "site"],
+                    "description": "Licensing model (default named_user)",
+                },
+                "license_metric": {"type": "string", "description": "Optional metric label, e.g. 'per seat'"},
+                "entitled": {"type": "integer", "description": "Quantity entitled (purchased)"},
+                "deployed": {"type": "integer", "description": "Quantity deployed (installed)"},
+                "used": {"type": "integer", "description": "Quantity actually used"},
+                "unit_cost": {"type": "number", "description": "Cost per unit"},
+            },
+            "required": ["contract_id"],
+        },
+        "tier": "approve",
+    },
 ]
 
 # Index by name for O(1) lookup

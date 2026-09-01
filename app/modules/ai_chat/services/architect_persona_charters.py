@@ -18,9 +18,12 @@ Upgrades chat personas from thin role labels to governed AI architects:
   business_analyst       — requirements & process-capability steward
   product_analyst        — product-capability alignment steward
 
-``platform_admin`` (see VALID_ROLES in app/models/user.py) is intentionally
-charter-less: it is an operational role, not an architecture persona, so
-build_architect_prompt("platform_admin") returns None by design.
+``platform_admin`` (see VALID_ROLES in app/models/user.py) has an OPERATIONAL
+charter (G7), not an architecture one: its remit is user/role provisioning,
+tenant/org configuration, integrations, data-import health and audit. It used
+to fall back to enterprise_architect, which handed a platform admin an
+architecture voice and architecture live-data it had no use for;
+build_architect_prompt("platform_admin") now returns its own charter.
 
 PERSONA_ALIASES resolves enterprise_role spellings that differ from the
 persona keys used here (e.g. "solution_architect" -> "solutions_architect",
@@ -65,6 +68,7 @@ ARCHITECT_PERSONAS = (
     "systems_architect",
     "business_analyst",
     "product_analyst",
+    "platform_admin",
 )
 
 # Some callers (e.g. the enterprise_role stored on User) use a spelling that
@@ -84,8 +88,10 @@ PERSONA_ALIASES: Dict[str, str] = {
 
 # The database-backed enterprise role selects the initial chat persona. Keep
 # persisted role spellings unchanged; aliases above bridge legacy vocabulary.
-# platform_admin deliberately uses the general Enterprise Architect fallback
-# rather than gaining an operational-admin charter.
+# platform_admin now has its OWN operational charter (G7): the enterprise_architect
+# fallback gave a platform admin an architecture voice and architecture data —
+# the wrong tool for user/role provisioning, tenant config, integrations and
+# data-import health. It selects platform_admin below.
 ROLE_DEFAULT_PERSONAS: Dict[str, str] = {
     "solution_architect": "solutions_architect",
     "enterprise_architect": "enterprise_architect",
@@ -95,7 +101,7 @@ ROLE_DEFAULT_PERSONAS: Dict[str, str] = {
     "cto": "cio",
     "procurement": "procurement",
     "application_manager": "application_manager",
-    "platform_admin": "enterprise_architect",
+    "platform_admin": "platform_admin",
     # Promoted to assignable roles 31 Aug 2026. data_architect already had a
     # charter written ahead of the role; security_architect gets its own rather
     # than the enterprise_architect fallback, because the whole argument for
@@ -541,6 +547,43 @@ SCOPE OF DUTY:
 HOW YOU ANSWER: capability-and-feature-first — name the capability or
 journey step, the gap, and ONE recommended next action (usually a roadmap or
 capability-map page).
+{_EVIDENCE_RULES}""",
+
+    "platform_admin": f"""You are ARCHIE's AI Platform Administrator — the operations steward.
+
+MISSION: keep the ARCHIE tenant itself healthy and correctly configured —
+the people, access, integrations and data that the architecture work runs
+on. You are OPERATIONAL, not architectural: you do not design landscapes,
+score rationalization, or opine on ArchiMate. If a question is about
+enterprise architecture, hand it to the architect personas rather than
+answering it yourself.
+
+SCOPE OF DUTY:
+- User & role provisioning: who has access, in which enterprise_role, and
+  which accounts are still unconfirmed (invited but not yet activated).
+- Org / tenant configuration: organisation settings, SSO group-to-role
+  mapping, feature flags — the tenant's own setup, not any customer estate.
+- Integrations: connectors and their health; a failed or unconfigured
+  integration is an operational finding.
+- Data import & quality: the state of the most recent imports (completed /
+  failed / rolled_back), and data-quality issues that need an administrator
+  rather than an architect.
+- Audit: who did what — provisioning and configuration changes are
+  auditable events, not silent ones.
+
+HOW YOU ANSWER: operational voice — state the current configuration or
+counts from Live Platform Data, name the specific admin page to act on
+(e.g. /admin/users, /admin/integrations, /admin/import), and be precise
+about access implications.
+
+OPERATIONAL HARD RULES (in addition to the shared rules below):
+- PROPOSE, DON'T DISPOSE for destructive admin actions — deleting users,
+  revoking access, purging data, resetting an integration. Describe the
+  action and its blast radius; the administrator executes it. Never claim
+  you have provisioned, deleted, or reconfigured anything.
+- NEVER fabricate counts — user totals, pending invites, import outcomes.
+  If a figure is not in Live Platform Data, say you do not have it loaded
+  and name the admin page where it can be read.
 {_EVIDENCE_RULES}""",
 }
 
@@ -1258,6 +1301,78 @@ def _product_analyst_context() -> str:
     return "\n".join(lines)
 
 
+def _platform_admin_context() -> str:
+    """Operational live data for the platform_admin persona.
+
+    Reads REAL rows only. Every section is _safe()-wrapped, so a missing table
+    or empty estate degrades to an honest "unavailable"/"none" line rather than
+    a fabricated figure. User counts are scoped to the acting organisation when
+    a tenant context is present (User is not a TenantMixin model, so the org
+    predicate is applied explicitly here); import history is not org-partitioned
+    in the schema, so it is reported as the platform-wide latest, labelled as
+    such.
+    """
+    lines = []
+
+    def _org_scope(query):
+        from flask import g
+        from app.models.user import User
+        org_id = getattr(g, "current_org_id", None)
+        if org_id is not None:
+            return query.filter(User.organization_id == org_id)
+        return query
+
+    def user_counts():
+        from app.models.user import User
+        total = _org_scope(db.session.query(func.count(User.id))).scalar() or 0
+        return f"- Users provisioned: {total}"
+
+    def pending_invites():
+        # No persistent Invitation model exists in the schema; the honest proxy
+        # for "invited but not yet activated" is an unconfirmed account.
+        from app.models.user import User
+        pending = _org_scope(
+            db.session.query(func.count(User.id)).filter(User.confirmed.is_(False))
+        ).scalar() or 0
+        return f"- Accounts pending activation (unconfirmed): {pending}"
+
+    def role_mix():
+        from app.models.user import User
+        rows = dict(
+            _org_scope(
+                db.session.query(User.enterprise_role, func.count())
+            ).group_by(User.enterprise_role).all()
+        )
+        if not rows:
+            return "- Role distribution: no users"
+        mix = ", ".join(
+            f"{k or 'unset'}: {v}" for k, v in sorted(rows.items(), key=lambda x: -x[1])
+        )
+        return f"- Role distribution: {mix}"
+
+    def last_import():
+        from app.models.import_history import ImportHistory
+        row = (
+            ImportHistory.query
+            .order_by(ImportHistory.created_at.desc())
+            .first()
+        )
+        if not row:
+            return "- Last data import: none recorded"
+        when = row.created_at.date().isoformat() if row.created_at else "unknown date"
+        return (
+            f"- Last data import (platform-wide): {row.filename} — {row.status} "
+            f"on {when} ({row.records_imported or 0} imported, "
+            f"{row.records_failed or 0} failed)"
+        )
+
+    lines.append(_safe("user_counts", user_counts))
+    lines.append(_safe("pending_invites", pending_invites))
+    lines.append(_safe("role_mix", role_mix))
+    lines.append(_safe("last_import", last_import))
+    return "\n".join(lines)
+
+
 _CONTEXT_BUILDERS: Dict[str, Callable[[], str]] = {
     "enterprise_architect": _ea_context,
     "solutions_architect": _sa_context,
@@ -1274,6 +1389,7 @@ _CONTEXT_BUILDERS: Dict[str, Callable[[], str]] = {
     "systems_architect": _systems_architect_context,
     "business_analyst": _business_analyst_context,
     "product_analyst": _product_analyst_context,
+    "platform_admin": _platform_admin_context,
 }
 
 
