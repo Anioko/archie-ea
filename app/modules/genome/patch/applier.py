@@ -80,6 +80,7 @@ def apply_genome_patch(patch: Dict[str, Any], user_id: int) -> Dict[str, Any]:
                 organization_id=org_id,
                 acm_source=GENOME_PATCH_SOURCE,
             )
+            _apply_state(element, element_spec)
             _write_provenance(element, provenance)
             db.session.add(element)
             db.session.commit()
@@ -110,6 +111,7 @@ def apply_genome_patch(patch: Dict[str, Any], user_id: int) -> Dict[str, Any]:
             element.layer = element_spec["layer"]
             if element_spec.get("description"):
                 element.description = element_spec["description"]
+            _apply_state(element, element_spec)
             _write_provenance(element, provenance)
             db.session.commit()
             logger.info(
@@ -142,6 +144,21 @@ def apply_genome_patch(patch: Dict[str, Any], user_id: int) -> Dict[str, Any]:
             f"from an approved genome patch."
         ),
     }
+
+
+_ARCHITECTURE_STATES = ("Baseline", "Target", "Transition")
+
+
+def _apply_state(element, element_spec: Dict[str, Any]) -> None:
+    """Set the as-is/to-be state (togaf_plateau) from the patch, if present.
+
+    Lets an approved genome patch place its element on the Baseline (as-is),
+    Target (to-be) or Transition plateau — the runtime model maps `plateau`
+    itself as a relationship, so the String column is `togaf_plateau`. Ignored
+    when absent or not a recognised state (never clears)."""
+    state = element_spec.get("architecture_state")
+    if state in _ARCHITECTURE_STATES:
+        element.togaf_plateau = state
 
 
 def _write_provenance(element, provenance: Dict[str, Any]) -> None:

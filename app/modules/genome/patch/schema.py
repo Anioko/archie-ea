@@ -142,6 +142,14 @@ GENOME_PATCH_SCHEMA = {
                 # (a conditional the JSON-Schema subset can't express, enforced
                 # in validator.validate_genome_patch).
                 "element_id": {"type": "integer"},
+                # Optional as-is / to-be state, so the AI copilot can propose a
+                # TARGET (to-be) architecture, not just untagged elements — the
+                # applier maps it to ArchiMateElement.togaf_plateau. Baseline =
+                # As-Is, Target = To-Be, Transition = interim plateau.
+                "architecture_state": {
+                    "type": "string",
+                    "enum": ["Baseline", "Target", "Transition"],
+                },
                 # Optional free-form fields the applier maps onto the element.
                 "fields": {"type": "object", "additionalProperties": True},
             },

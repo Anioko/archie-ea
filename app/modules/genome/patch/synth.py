@@ -79,7 +79,8 @@ The JSON object MUST have this shape:
     "archimate_type": <one of {types}>,
     "layer": <one of {layers}>,
     "name": <short non-empty name>,
-    "description": <optional one-sentence description>
+    "description": <optional one-sentence description>,
+    "architecture_state": <optional "Baseline" (as-is), "Target" (to-be) or "Transition">
   }},
   "provenance": {{
     "proposed_by": "{proposed_by}",
@@ -94,6 +95,9 @@ Rules:
 and include "element_id" (integer) inside "element".
 - organization_id MUST be {organization_id}. domain, operation, archimate_type and \
 layer MUST be chosen from the allowed values above — never invent a value.
+- Set architecture_state to "Target" when the request describes a future/to-be \
+element, "Baseline" for a current/as-is element, "Transition" for an interim \
+plateau; omit it when the request does not say. Never guess a state.
 - rationale and archimate_anchor must be real and non-empty. Do not fabricate a \
 placeholder; if you cannot justify the element, that is fine — still return your \
 best honest rationale.
