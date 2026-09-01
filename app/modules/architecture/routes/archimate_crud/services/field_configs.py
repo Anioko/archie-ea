@@ -39,23 +39,43 @@ class ElementTypeConfig:
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert configuration to dictionary for template rendering."""
+        fields = [
+            {
+                'name': f.name,
+                'label': f.label,
+                'type': f.field_type,
+                'required': f.required,
+                'placeholder': f.placeholder,
+                'options': [{'value': opt.value, 'label': opt.label} for opt in f.options],
+                'grid_column': f.grid_column
+            }
+            for f in self.fields
+        ]
+        # Architecture state (as-is / to-be) is shared by EVERY element type — it
+        # is what lets a transformation programme keep a baseline and a target
+        # architecture as distinct states of the model. Appended here once rather
+        # than declared on 30+ type configs; the handler maps it to
+        # ArchiMateElement.plateau. Baseline = As-Is, Target = To-Be.
+        fields.append({
+            'name': 'architecture_state',
+            'label': 'Architecture state',
+            'type': 'select',
+            'required': False,
+            'placeholder': '',
+            'options': [
+                {'value': '', 'label': 'Unspecified'},
+                {'value': 'Baseline', 'label': 'As-Is (baseline)'},
+                {'value': 'Target', 'label': 'To-Be (target)'},
+                {'value': 'Transition', 'label': 'Transition'},
+            ],
+            'grid_column': 1,
+        })
         return {
             'element_type': self.element_type,
             'layer': self.layer,
             'display_name': self.display_name,
             'description': self.description,
-            'fields': [
-                {
-                    'name': f.name,
-                    'label': f.label,
-                    'type': f.field_type,
-                    'required': f.required,
-                    'placeholder': f.placeholder,
-                    'options': [{'value': opt.value, 'label': opt.label} for opt in f.options],
-                    'grid_column': f.grid_column
-                }
-                for f in self.fields
-            ]
+            'fields': fields,
         }
 
 

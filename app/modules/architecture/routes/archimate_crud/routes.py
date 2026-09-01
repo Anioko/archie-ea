@@ -932,6 +932,9 @@ def create_element(layer, element_type):
                 db.session.flush()
                 element.archimate_element_id = archimate_element.id
 
+            # As-is / to-be state (ArchiMateElement.plateau), if the form set it.
+            _apply_architecture_state(element, data)
+
             db.session.add(element)
             db.session.commit()
 
@@ -1086,6 +1089,10 @@ def update_element(layer, element_type, element_id):
                         archimate_element.description = getattr(
                             element, "description", ""
                         )  # model-safety-ok: polymorphic ArchiMate elements
+
+            # As-is / to-be state (ArchiMateElement.plateau), if the form set it.
+            # Works for a native ArchiMateElement (element itself) and a linked one.
+            _apply_architecture_state(element, data)
 
             db.session.commit()
 
@@ -1464,6 +1471,36 @@ def api_element_patch(element_id):
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+
+
+_ARCHITECTURE_STATES = ("Baseline", "Target", "Transition")
+
+
+def _apply_architecture_state(element, data):
+    """Set an element's as-is/to-be state (ArchiMateElement.plateau) from the form.
+
+    Baseline = As-Is, Target = To-Be, Transition = interim. This is what lets a
+    transformation programme hold a baseline architecture and a target
+    architecture as distinct states of the model — before this, the plateau
+    column existed but no create/edit path ever wrote it.
+
+    Set-only: an empty or unrecognised value is ignored, never a clear. The edit
+    modal does not pre-load the current state, so treating blank as "clear" would
+    silently wipe an element's state on any unrelated edit — set-only makes that
+    impossible. Applies to a native ArchiMateElement directly, or to the element
+    linked from a domain model.
+    """
+    raw = (data.get("architecture_state") or "").strip()
+    if raw not in _ARCHITECTURE_STATES:
+        return
+    if isinstance(element, ArchiMateElement):
+        element.togaf_plateau = raw
+        return
+    ae_id = getattr(element, "archimate_element_id", None)
+    if ae_id:
+        ae = ArchiMateElement.query.get(ae_id)
+        if ae is not None:
+            ae.togaf_plateau = raw
 
 
 def _set_model_fields(element, data, model_class, element_type=None):
