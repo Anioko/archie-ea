@@ -11,7 +11,7 @@
      x-cloak>
 
     {{ page_header(
-        title='Sprint Analytics: ' ~ sprint.name,
+        title='Sprint Analytics: ', breadcrumbs=[{'label': 'Home', 'href': '/'}, {'label': 'Sprint Analytics: '}] ~ sprint.name,
         description='Throughput, cycle time, and cumulative flow diagram for this sprint.'
     ) }}
 

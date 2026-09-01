@@ -17,7 +17,7 @@
             Dashboard
         </a>
     {% endmacro %}
-    {{ page_shell(title='My Application Portfolio', subtitle='Applications you own and manage (' ~ (total) ~ ' total)', actions_caller=_ps_actions) }}
+    {{ page_shell(title='My Application Portfolio', breadcrumb=[('Home', '/'), ('My Application Portfolio', none)], subtitle='Applications you own and manage (' ~ (total) ~ ' total)', actions_caller=_ps_actions) }}
 
     <!-- Ownership Summary -->
     <div class="flex flex-wrap gap-2 mb-6">

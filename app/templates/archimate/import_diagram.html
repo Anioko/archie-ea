@@ -17,7 +17,7 @@
 {% block content %}
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8" x-data="diagramImport()" x-cloak>
 
-    {{ page_header(title='Import a diagram', description='Load a Lucidchart or Visio export into the ArchiMate repository') }}
+    {{ page_header(title='Import a diagram', breadcrumbs=[{'label': 'Home', 'href': '/'}, {'label': 'Import a diagram'}], description='Load a Lucidchart or Visio export into the ArchiMate repository') }}
 
     <div class="rounded-lg border border-border bg-muted/30 p-4 mb-6 text-sm text-muted-foreground">
         Export from Lucidchart with <strong class="text-foreground">File → Export → JSON</strong>,

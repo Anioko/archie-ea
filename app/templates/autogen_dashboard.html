@@ -3,7 +3,7 @@
 {% block title %}Auto-Generation Dashboard{% endblock %}
 {% block content %}
 <div class="p-6 space-y-6">
-  {{ page_shell(title='Auto-Generation Dashboard') }}
+  {{ page_shell(title='Auto-Generation Dashboard', breadcrumb=[('Home', '/'), ('Auto-Generation Dashboard', none)]) }}
   <div class="max-w-2xl mx-auto py-12 text-center">
   <p class="text-muted-foreground mb-6">This feature is being built. Check back soon.</p>
   <a href="{{ url_for('dashboard.overview') }}"

@@ -15,7 +15,7 @@
                     Back to Applications
                 </a>
             {% endmacro %}
-            {{ page_shell(title='Custom Field Management', subtitle='Manage custom fields for applications', actions_caller=_ps_actions) }}
+            {{ page_shell(title='Custom Field Management', breadcrumb=[('Home', '/'), ('Custom Field Management', none)], subtitle='Manage custom fields for applications', actions_caller=_ps_actions) }}
         </div>
 
         <!-- Custom Field Form -->

@@ -12,7 +12,7 @@
 {% block content %}
 <div class="space-y-6" x-data="consolidationTable()" x-cloak>
     {{ page_header(
-        title='Consolidation List',
+        title='Consolidation List', breadcrumbs=[{'label': 'Home', 'href': '/'}, {'label': 'Consolidation List'}],
         description='Plan and manage application consolidation, decommissioning, and retirement',
         actions=[
             {'text': 'Candidates', 'icon': 'users', 'href': url_for('unified_low_priority.consolidation_candidates'), 'variant': 'outline'},

@@ -17,7 +17,7 @@
     <!-- Page Header -->
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
         <div>
-            {{ page_header(title=framework.industry_name) }}
+            {{ page_header(title=framework.industry_name, breadcrumbs=[{'label': 'Home', 'href': '/'}, {'label': framework.industry_name}]) }}
             <p class="text-muted-foreground mt-2">{{ framework.description or 'Industry-specific APQC process framework' }}</p>
         </div>
     </div>

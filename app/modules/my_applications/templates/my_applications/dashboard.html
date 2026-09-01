@@ -17,7 +17,7 @@
             View All
         </a>
     {% endmacro %}
-    {{ page_shell(title='My Applications Dashboard', subtitle='Overview of applications you own and manage', actions_caller=_ps_actions) }}
+    {{ page_shell(title='My Applications Dashboard', breadcrumb=[('Home', '/'), ('My Applications Dashboard', none)], subtitle='Overview of applications you own and manage', actions_caller=_ps_actions) }}
 
     <!-- Summary Cards -->
     <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">

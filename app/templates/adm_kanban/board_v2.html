@@ -90,7 +90,7 @@
             </a>
         </div>
     {% endmacro %}
-    {{ page_shell(title='ADM Kanban', subtitle='Architecture work across all TOGAF ADM phases', actions_caller=_ps_actions) }}
+    {{ page_shell(title='ADM Kanban', breadcrumb=[('Home', '/'), ('ADM Kanban', none)], subtitle='Architecture work across all TOGAF ADM phases', actions_caller=_ps_actions) }}
 
     {# -- Phase Tabs (flat mode only) ------------------------------------ #}
     <div x-show="viewMode === 'flat'" x-cloak class="flex flex-wrap gap-1 border-b border-border pb-2">

@@ -185,7 +185,7 @@ document.addEventListener('alpine:init', () => {
 <div x-data="vendorCapabilityMatrix()" class="space-y-6">
 
     {{ page_header(
-        title='Vendor Capability Matrix',
+        title='Vendor Capability Matrix', breadcrumbs=[{'label': 'Home', 'href': '/'}, {'label': 'Vendor Capability Matrix'}],
         description='Heatmap of vendor product coverage across enterprise capabilities — click any cell to drill into gaps and strengths',
         actions=[
             {'text': 'Refresh', 'icon': 'refresh-cw', 'onclick': 'loadData()', 'variant': 'outline'},

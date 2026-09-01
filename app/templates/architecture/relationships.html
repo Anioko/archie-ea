@@ -5,7 +5,7 @@
 
 {% block content %}
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-    {{ page_header(title='Architecture Relationships', description='Connections between architecture elements') }}
+    {{ page_header(title='Architecture Relationships', breadcrumbs=[{'label': 'Home', 'href': '/'}, {'label': 'Architecture Relationships'}], description='Connections between architecture elements') }}
 
     <div data-slot="card" class="rounded-xl border bg-card shadow-sm">
         <table class="w-full text-sm">

@@ -761,6 +761,19 @@ def gate_stale_models() -> Result:
     return Result("stale-models", PASS if count == 0 else FAIL, detail, count, 0)
 
 
+def gate_breadcrumb_coverage() -> Result:
+    """Every routed page with a header must carry a breadcrumb (Fortune-500 UI
+    baseline). Partials are excluded; escape hatch is 'breadcrumb-ok:'."""
+    proc = _run([sys.executable, "scripts/check_breadcrumb_coverage.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("breadcrumb-coverage", FAIL,
+                      f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    detail = "" if count == 0 else "run scripts/check_breadcrumb_coverage.py to list them"
+    return Result("breadcrumb-coverage", PASS if count == 0 else FAIL, detail, count, 0)
+
+
 def gate_sri() -> Result:
     """Every same-origin integrity= hash matches the file it guards. Gated at ZERO.
 
@@ -1381,6 +1394,12 @@ def build_gates(baseline: dict) -> list[Gate]:
              gate_fabricated_data,
              remediation="render an explicit empty/error state instead of inventing data; "
                          "if genuinely fine, append 'fabricated-ok: <reason>'",
+             tags=["static", "ui"]),
+        Gate("breadcrumb-coverage", "every routed page with a header carries a breadcrumb", "zero",
+             gate_breadcrumb_coverage,
+             remediation="add breadcrumb=[('Home','/'), (<title>, none)] to page_shell "
+                         "(or breadcrumbs=[{'label':'Home','href':'/'}, {'label': <title>}] "
+                         "for page_header); partials are exempt; else mark 'breadcrumb-ok:'",
              tags=["static", "ui"]),
         Gate("stale-models", "no retired LLM model id (404s in prod) in shipped code", "zero",
              gate_stale_models,

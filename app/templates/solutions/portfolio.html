@@ -13,7 +13,7 @@
       + New Solution
     </a>
   {% endmacro %}
-  {{ page_shell(title='Solution Portfolio', subtitle=(total_count) ~ ' solution(s) across ' ~ (domains|length) ~ ' domain(s)', actions_caller=_ps_actions) }}
+  {{ page_shell(title='Solution Portfolio', breadcrumb=[('Home', '/'), ('Solution Portfolio', none)], subtitle=(total_count) ~ ' solution(s) across ' ~ (domains|length) ~ ' domain(s)', actions_caller=_ps_actions) }}
 
   <!-- ENH-022: Filters with group-by toggle -->
   <div class="flex flex-wrap gap-3 mb-6">

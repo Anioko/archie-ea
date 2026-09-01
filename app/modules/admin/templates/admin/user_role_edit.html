@@ -15,7 +15,7 @@
             <div class="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center">
                 <span class="text-2xl font-bold text-primary">{{ user.first_name[0] if user.first_name else '?' }}{{ user.last_name[0] if user.last_name else '' }}</span>
             </div>
-            {{ page_shell(title=(user.full_name()), subtitle=(user.email)) }}
+            {{ page_shell(title=(user.full_name()), subtitle=(user.email), breadcrumb=[('Home', '/'), (user.full_name(), none)]) }}
         </div>
 
         <form method="POST" action="{{ url_for('admin.update_user_role', user_id=user.id) }}">

@@ -21,7 +21,7 @@
       </select>
     </div>
   {% endmacro %}
-  {{ page_shell(title='AI Chat Analytics', subtitle='Feedback, usage and provider metrics', actions_caller=_ps_actions) }}
+  {{ page_shell(title='AI Chat Analytics', breadcrumb=[('Home', '/'), ('AI Chat Analytics', none)], subtitle='Feedback, usage and provider metrics', actions_caller=_ps_actions) }}
 
   <!-- Loading state -->
   <template x-if="loading">

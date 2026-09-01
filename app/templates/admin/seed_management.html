@@ -16,7 +16,7 @@
     <!-- Header -->
     <div class="flex items-center justify-between mb-6">
         {{ page_header(
-        title='Seed Management',
+        title='Seed Management', breadcrumbs=[{'label': 'Home', 'href': '/'}, {'label': 'Seed Management'}],
         description='View seed data status and trigger seeding operations'
     ) }}
         <button type="button" @click="seedAll()"

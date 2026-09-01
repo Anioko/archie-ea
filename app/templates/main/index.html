@@ -27,7 +27,7 @@
       <!-- Main Heading -->
       {% if current_user.is_authenticated %}
       {{ page_header(
-          title='Enterprise Architecture Platform',
+          title='Enterprise Architecture Platform', breadcrumbs=[{'label': 'Home', 'href': '/'}, {'label': 'Enterprise Architecture Platform'}],
           description='Transform your organization with industry-leading architecture management. Model, visualize, and optimize your enterprise with intelligent capability mapping and comprehensive vendor analysis.',
           actions=[
               {'text': 'Go to Dashboard', 'icon': 'arrow-right', 'href': url_for('admin.index'), 'variant': 'default'}

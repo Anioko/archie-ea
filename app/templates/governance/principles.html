@@ -4,7 +4,7 @@
 {% block title %}Architecture Principles{% endblock %}
 {% block content %}
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-  {{ page_header(title='Architecture Principles', description='Guiding principles that steer architecture decisions') }}
+  {{ page_header(title='Architecture Principles', breadcrumbs=[{'label': 'Home', 'href': '/'}, {'label': 'Architecture Principles'}], description='Guiding principles that steer architecture decisions') }}
   <div id="gov-list" class="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
     {{ skeleton_card() }}
     {{ skeleton_card() }}

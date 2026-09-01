@@ -162,7 +162,7 @@
 {% block content %}
     <div class="max-w-7xl mx-auto">
         {{ page_header(
-        title='Account Settings',
+        title='Account Settings', breadcrumbs=[{'label': 'Home', 'href': '/'}, {'label': 'Account Settings'}],
         description='Manage your account settings and change your login information.'
     ) }}
         <div class="grid grid-cols-1 md:grid-cols-4 gap-8">

@@ -202,7 +202,7 @@
      }">
 
     <!-- Page header -->
-    {{ page_shell(title='Sprint Charts', subtitle='Velocity &amp; burndown analytics') }}
+    {{ page_shell(title='Sprint Charts', breadcrumb=[('Home', '/'), ('Sprint Charts', none)], subtitle='Velocity &amp; burndown analytics') }}
 
     <!-- No board resolved: state the real situation instead of charting nothing -->
     <div x-show="boardError" x-cloak

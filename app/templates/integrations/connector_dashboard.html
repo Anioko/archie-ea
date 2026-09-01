@@ -6,7 +6,7 @@
 {% block content %}
 <div class="mx-auto px-4 py-6" x-data="connectorDashboard()">
   <!-- Header -->
-  {{ page_shell(title='Connector Health Dashboard', subtitle='Monitor external system integrations (Datadog, Jira, ServiceNow, Salesforce)') }}
+  {{ page_shell(title='Connector Health Dashboard', breadcrumb=[('Home', '/'), ('Connector Health Dashboard', none)], subtitle='Monitor external system integrations (Datadog, Jira, ServiceNow, Salesforce)') }}
 
   <!-- Loading State -->
   <div x-show="loading" x-cloak class="flex items-center justify-center py-12">

@@ -9,7 +9,7 @@
 {% block content %}
 <div class="space-y-6">
     {{ page_header(
-        title='Create Application',
+        title='Create Application', breadcrumbs=[{'label': 'Home', 'href': '/'}, {'label': 'Create Application'}],
         description='Add a new application to the portfolio',
         actions=[
             {'text': 'Back to Applications', 'icon': 'arrow-left', 'href': url_for('unified_applications.application_list'), 'variant': 'outline'}

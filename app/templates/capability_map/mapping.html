@@ -7,7 +7,7 @@
 {% block content %}
 {% set can_edit = can_edit_capabilities(current_user) %}
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-    {{ page_header(title='Capability Mapping', description='Map applications to business capabilities') }}
+    {{ page_header(title='Capability Mapping', breadcrumbs=[{'label': 'Home', 'href': '/'}, {'label': 'Capability Mapping'}], description='Map applications to business capabilities') }}
 
     {% if load_error %}
     <div role="alert" class="mb-6 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive-emphasis">

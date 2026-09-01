@@ -15,7 +15,7 @@
     </form>
     {% endmacro %}
     {{ page_shell(
-        title='Capability Coverage',
+        title='Capability Coverage', breadcrumb=[('Home', '/'), ('Capability Coverage', none)],
         subtitle='Deterministic Capability → Application coverage matrix, built from the business_capability store with element-level provenance (zero LLM).',
         actions_caller=_ps_actions) }}
 

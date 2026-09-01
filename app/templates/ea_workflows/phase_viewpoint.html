@@ -20,7 +20,7 @@
   <!-- Page Header -->
   <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
     {{ page_header(
-        title=phase_name,
+        title=phase_name, breadcrumbs=[{'label': 'Home', 'href': '/'}, {'label': phase_name}],
         description='ArchiMate 3.2 viewpoint detail for this TOGAF ADM phase'
     ) }}
   </div>

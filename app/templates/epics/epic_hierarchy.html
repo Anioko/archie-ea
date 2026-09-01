@@ -13,7 +13,7 @@
       + Add Epic
     </button>
   {% endmacro %}
-  {{ page_shell(title='Epic → Story → Sub-task Hierarchy', actions_caller=_ps_actions) }}
+  {{ page_shell(title='Epic → Story → Sub-task Hierarchy', breadcrumb=[('Home', '/'), ('Epic → Story → Sub-task Hierarchy', none)], actions_caller=_ps_actions) }}
 
   <!-- Add Epic Form -->
   <div x-show="showEpicForm" x-cloak class="mb-6 p-4 bg-background border border-border rounded-lg shadow-sm">

@@ -17,7 +17,7 @@
       </select>
     </div>
   {% endmacro %}
-  {{ page_shell(title='Capability Heatmap', subtitle='Maturity levels by domain with investment overlay', actions_caller=_ps_actions) }}
+  {{ page_shell(title='Capability Heatmap', breadcrumb=[('Home', '/'), ('Capability Heatmap', none)], subtitle='Maturity levels by domain with investment overlay', actions_caller=_ps_actions) }}
 
   {# Loading state #}
   <div x-show="loading" x-cloak class="flex items-center justify-center py-16">

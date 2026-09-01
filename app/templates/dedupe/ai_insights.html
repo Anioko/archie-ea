@@ -18,7 +18,7 @@
             <i data-lucide="arrow-left" class="w-5 h-5" aria-hidden="true"></i>
         </a>
         {% endif %}
-        {{ page_shell(title='AI Deduplication Insights', subtitle='Run #' ~ (run.id if run else '—')) }}
+        {{ page_shell(title='AI Deduplication Insights', breadcrumb=[('Home', '/'), ('AI Deduplication Insights', none)], subtitle='Run #' ~ (run.id if run else '—')) }}
     </div>
 
     {% if ai_insights %}

@@ -7,7 +7,7 @@
 {% block content %}
 <div class="space-y-6">
     {{ page_header(
-        title='Integration Workflows',
+        title='Integration Workflows', breadcrumbs=[{'label': 'Home', 'href': '/'}, {'label': 'Integration Workflows'}],
         description='Manage and monitor enterprise architecture automation workflows.',
         actions=[
             {'text': 'Browse Catalog', 'icon': 'book-open', 'href': url_for('integration.list_workflows'), 'variant': 'default'}

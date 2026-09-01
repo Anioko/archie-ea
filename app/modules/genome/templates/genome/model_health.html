@@ -14,7 +14,7 @@
     </form>
     {% endmacro %}
     {{ page_shell(
-        title='Model Health',
+        title='Model Health', breadcrumb=[('Home', '/'), ('Model Health', none)],
         subtitle='Deterministic drift and staleness detection across the enterprise genome — every finding links to the ArchiMate element it is about (zero LLM). Fixes are queued for human approval, never applied silently.',
         actions_caller=_ps_actions) }}
 

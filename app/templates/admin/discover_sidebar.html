@@ -5,7 +5,7 @@
 {% block content %}
 <div class="space-y-6">
     {{ page_header(
-        title='Discover Sidebar Items',
+        title='Discover Sidebar Items', breadcrumbs=[{'label': 'Home', 'href': '/'}, {'label': 'Discover Sidebar Items'}],
         description='Select sidebar menu items to create feature flags for visibility control',
         actions=[
             {'text': 'Back to Feature Flags', 'icon': 'arrow-left', 'href': url_for('admin.feature_flags'), 'variant': 'outline'}

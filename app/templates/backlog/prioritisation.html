@@ -26,7 +26,7 @@ input.score-input { width: 60px; border: 1px solid #d1d5db; border-radius: 4px;
 <div class="p-6 space-y-6 mx-auto" x-data="prioritisationApp()">
 
   {{ page_shell(
-      title='Backlog Prioritisation',
+      title='Backlog Prioritisation', breadcrumb=[('Home', '/'), ('Backlog Prioritisation', none)],
       subtitle='Classify requirements with MoSCoW, score them with WSJF or RICE.'
   ) }}
 

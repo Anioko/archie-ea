@@ -6,7 +6,7 @@
 {% block content %}
 <div class="p-6 space-y-6 mx-auto" x-data="consolidationManager()">
     <!-- Header -->
-    {{ page_shell(title='Capability Consolidation', subtitle='Review and merge duplicate capabilities from Abacus and manual sources') }}
+    {{ page_shell(title='Capability Consolidation', breadcrumb=[('Home', '/'), ('Capability Consolidation', none)], subtitle='Review and merge duplicate capabilities from Abacus and manual sources') }}
 
     <!-- Statistics Cards -->
     <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">

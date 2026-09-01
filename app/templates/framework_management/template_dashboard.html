@@ -7,7 +7,7 @@
 {% block content %}
 <div class="space-y-6">
     {{ page_header(
-        title=template_name|title ~ ' Template',
+        title=template_name|title ~ ' Template', breadcrumbs=[{'label': 'Home', 'href': '/'}, {'label': template_name|title ~ ' Template'}],
         description='Framework template configuration and deployment',
         actions=[
             {'text': 'Apply Template', 'icon': 'play', 'onclick': 'applyTemplate()', 'variant': 'default'},

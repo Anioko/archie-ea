@@ -15,7 +15,7 @@
     </form>
     {% endmacro %}
     {{ page_shell(
-        title='Transformation Roadmap',
+        title='Transformation Roadmap', breadcrumb=[('Home', '/'), ('Transformation Roadmap', none)],
         subtitle='Deterministic Plateau → Work Package transformation roadmap, built from the implementation-and-migration stores with element-level provenance (zero LLM).',
         actions_caller=_ps_actions) }}
 

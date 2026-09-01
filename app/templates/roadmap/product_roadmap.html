@@ -22,7 +22,7 @@
       <span class="text-xs text-muted-foreground/60" x-text="'Total epics: ' + totalEpics"></span>
     </div>
   {% endmacro %}
-  {{ page_shell(title='Product Roadmap', subtitle='Epics across Now · Next · Later horizons', actions_caller=_ps_actions) }}
+  {{ page_shell(title='Product Roadmap', breadcrumb=[('Home', '/'), ('Product Roadmap', none)], subtitle='Epics across Now · Next · Later horizons', actions_caller=_ps_actions) }}
 
   <!-- Error banner -->
   <div x-show="error" x-cloak class="mb-4 p-3 bg-destructive/5 border border-destructive/20 rounded text-destructive-emphasis text-sm" x-text="error"></div>

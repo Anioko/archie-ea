@@ -42,7 +42,7 @@
             {% endif %}
         </div>
     {% endmacro %}
-    {{ page_shell(title='Flow Analytics', subtitle='Throughput, cycle time, and WIP metrics from Kanban card flow.', actions_caller=_ps_actions) }}
+    {{ page_shell(title='Flow Analytics', breadcrumb=[('Home', '/'), ('Flow Analytics', none)], subtitle='Throughput, cycle time, and WIP metrics from Kanban card flow.', actions_caller=_ps_actions) }}
 
     <!-- Metric Summary Cards -->
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

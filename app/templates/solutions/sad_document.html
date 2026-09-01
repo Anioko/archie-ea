@@ -67,7 +67,7 @@
       </a>
     </div>
   {% endmacro %}
-  {{ page_shell(title='Solution Architecture Document', subtitle=(sad.solution.name), actions_caller=_ps_actions) }}
+  {{ page_shell(title='Solution Architecture Document', breadcrumb=[('Home', '/'), ('Solution Architecture Document', none)], subtitle=(sad.solution.name), actions_caller=_ps_actions) }}
 
   {# ── Table of Contents ───────────────────────────────────────────────── #}
   <nav class="sad-toc print-hide" aria-label="Table of Contents">

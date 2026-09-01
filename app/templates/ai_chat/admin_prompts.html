@@ -22,7 +22,7 @@
             </button>
         </div>
     {% endmacro %}
-    {{ page_shell(title='AI Chat Persona Management', subtitle='View and override AI chat persona configurations. Overrides are stored in the database and take precedence over defaults.', actions_caller=_ps_actions) }}
+    {{ page_shell(title='AI Chat Persona Management', breadcrumb=[('Home', '/'), ('AI Chat Persona Management', none)], subtitle='View and override AI chat persona configurations. Overrides are stored in the database and take precedence over defaults.', actions_caller=_ps_actions) }}
 
     <!-- Error banner -->
     <div x-show="errorMsg" x-cloak

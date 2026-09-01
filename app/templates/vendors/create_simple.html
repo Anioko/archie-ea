@@ -9,7 +9,7 @@
 {% block content %}
 <div class="space-y-6">
     {{ page_header(
-        title='Create Vendor',
+        title='Create Vendor', breadcrumbs=[{'label': 'Home', 'href': '/'}, {'label': 'Create Vendor'}],
         description='Add a new vendor to the catalog',
         actions=[
             {'text': 'Back to Vendors', 'icon': 'arrow-left', 'href': url_for('application_mgmt.vendors_dashboard'), 'variant': 'outline'}

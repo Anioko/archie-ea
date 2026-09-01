@@ -5,7 +5,7 @@
 
 {% block content %}
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-    {{ page_shell(title='Consolidation Opportunities', subtitle='Cost savings and rationalization opportunities') }}
+    {{ page_shell(title='Consolidation Opportunities', breadcrumb=[('Home', '/'), ('Consolidation Opportunities', none)], subtitle='Cost savings and rationalization opportunities') }}
 
     {% if savings_forecast %}
     <div class="rounded-xl border-2 border-input bg-background p-6 mb-6">

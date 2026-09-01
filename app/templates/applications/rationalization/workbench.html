@@ -25,7 +25,7 @@
                     class="text-xs text-primary hover:underline font-medium">Load all</button>
         </div>
     {% endmacro %}
-    {{ page_shell(title='Decision Workbench', subtitle='Triage scored applications by readiness, disposition, and confidence', actions_caller=_ps_actions) }}
+    {{ page_shell(title='Decision Workbench', breadcrumb=[('Home', '/'), ('Decision Workbench', none)], subtitle='Triage scored applications by readiness, disposition, and confidence', actions_caller=_ps_actions) }}
 
     {% include 'applications/rationalization/_sub_nav.html' %}
 

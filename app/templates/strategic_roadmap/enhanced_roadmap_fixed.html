@@ -13,7 +13,7 @@
    apiBase, and not a route this application serves) and got a 404. #}
 <div x-data="enhancedStrategicRoadmap()">
     <!-- Header -->
-    {{ page_shell(title='Strategic Roadmap', subtitle='Strategic capability evolution and work package planning') }}
+    {{ page_shell(title='Strategic Roadmap', breadcrumb=[('Home', '/'), ('Strategic Roadmap', none)], subtitle='Strategic capability evolution and work package planning') }}
 
     <!-- Filters Section -->
     <div class="bg-card rounded-lg shadow-md p-6 mb-8">

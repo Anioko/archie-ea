@@ -16,7 +16,7 @@
             ← Back to Kanban
         </a>
     {% endmacro %}
-    {{ page_shell(title='ADM Roadmap Timeline', subtitle='All architecture tasks visualised across TOGAF ADM phases', actions_caller=_ps_actions) }}
+    {{ page_shell(title='ADM Roadmap Timeline', breadcrumb=[('Home', '/'), ('ADM Roadmap Timeline', none)], subtitle='All architecture tasks visualised across TOGAF ADM phases', actions_caller=_ps_actions) }}
 
     {{ gantt_timeline(
         endpoint=url_for('adm_kanban_v2.roadmap_timeline_all'),

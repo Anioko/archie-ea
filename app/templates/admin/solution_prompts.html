@@ -21,7 +21,7 @@
             </button>
         </div>
     {% endmacro %}
-    {{ page_shell(title='Solution AI Prompts', subtitle='Customize the prompts used by the Architecture Journey to generate ArchiMate elements. Overrides are stored in the database and take precedence over defaults.', actions_caller=_ps_actions) }}
+    {{ page_shell(title='Solution AI Prompts', breadcrumb=[('Home', '/'), ('Solution AI Prompts', none)], subtitle='Customize the prompts used by the Architecture Journey to generate ArchiMate elements. Overrides are stored in the database and take precedence over defaults.', actions_caller=_ps_actions) }}
 
     <!-- Error banner -->
     <div x-show="errorMsg" x-cloak

@@ -5,7 +5,7 @@
 
 {% block content %}
 <div class="p-6 space-y-6 mx-auto" x-data="policyMonitoring()">
-    {{ page_shell(title='Policy Enforcement Monitoring', subtitle='Monitor LLM policy enforcement system status and violations') }}
+    {{ page_shell(title='Policy Enforcement Monitoring', breadcrumb=[('Home', '/'), ('Policy Enforcement Monitoring', none)], subtitle='Monitor LLM policy enforcement system status and violations') }}
 
     <!-- Fetch Error Banner -->
     <div x-show="fetchError" x-cloak class="bg-destructive/10 border border-destructive text-destructive-emphasis rounded-lg px-4 py-3 mb-6 flex items-center gap-2">

@@ -221,7 +221,7 @@ input:checked + .slider:before {
             </button>
         </div>
     {% endmacro %}
-    {{ page_shell(title='System Settings', subtitle='Configure application settings, security, and user preferences', actions_caller=_ps_actions) }}
+    {{ page_shell(title='System Settings', breadcrumb=[('Home', '/'), ('System Settings', none)], subtitle='Configure application settings, security, and user preferences', actions_caller=_ps_actions) }}
 
     <!-- Settings Tabs -->
     <div class="mb-6">

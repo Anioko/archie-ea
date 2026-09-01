@@ -60,7 +60,7 @@
 <div class="space-y-6">
     <!-- Header -->
     {{ page_header(
-        title='Import History',
+        title='Import History', breadcrumbs=[{'label': 'Home', 'href': '/'}, {'label': 'Import History'}],
         description='View and manage application import history and audit trail',
         actions=[
             {'text': 'Export CSV', 'icon': 'download', 'onclick': 'exportHistory()', 'variant': 'default'},

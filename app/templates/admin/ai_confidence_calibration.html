@@ -4,7 +4,7 @@
 {% block content %}
 <div class="p-6 space-y-6">
     {{ page_shell(
-        title='AI Confidence Calibration',
+        title='AI Confidence Calibration', breadcrumb=[('Home', '/'), ('AI Confidence Calibration', none)],
         subtitle='Tracks whether AI confidence labels match actual architect acceptance rates. Architects record verdicts (accepted / modified / rejected) on individual suggestions; this page aggregates those verdicts by confidence tier so you can spot over-confident or under-confident AI outputs.'
     ) }}
 

@@ -9,7 +9,7 @@
 {% block content %}
 <div class="space-y-6">
     {{ page_header(
-        title=action + ' Work Package',
+        title=action + ' Work Package', breadcrumbs=[{'label': 'Home', 'href': '/'}, {'label': action + ' Work Package'}],
         description='Manage implementation work package details',
         actions=[
             {'text': 'Back to Dashboard', 'icon': 'arrow-left', 'href': url_for('implementation_planning.implementation_dashboard'), 'variant': 'outline'}

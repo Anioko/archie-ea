@@ -13,7 +13,7 @@
             New System Boundary
         </button>
     {% endmacro %}
-    {{ page_shell(title='System Boundaries', subtitle='Group solutions into microservice systems — generate docker-compose, Terraform, contracts, and client SDKs.', actions_caller=_ps_actions) }}
+    {{ page_shell(title='System Boundaries', breadcrumb=[('Home', '/'), ('System Boundaries', none)], subtitle='Group solutions into microservice systems — generate docker-compose, Terraform, contracts, and client SDKs.', actions_caller=_ps_actions) }}
 
     <!-- Success / Error banners -->
     <div x-show="successMsg" x-cloak x-transition

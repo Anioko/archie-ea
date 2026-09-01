@@ -17,7 +17,7 @@
             Back to Dashboard
         </a>
     {% endmacro %}
-    {{ page_shell(title='Application Health Overview', subtitle='Health status of your applications', actions_caller=_ps_actions) }}
+    {{ page_shell(title='Application Health Overview', breadcrumb=[('Home', '/'), ('Application Health Overview', none)], subtitle='Health status of your applications', actions_caller=_ps_actions) }}
 
     <!-- Summary Cards -->
     <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">

@@ -12,7 +12,7 @@
 {% set can_delete = current_user.is_admin() %}
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
     <div class="flex flex-wrap items-start justify-between gap-3">
-        {{ page_header(title='Business Capabilities', description='Capability taxonomy and hierarchy') }}
+        {{ page_header(title='Business Capabilities', breadcrumbs=[{'label': 'Home', 'href': '/'}, {'label': 'Business Capabilities'}], description='Capability taxonomy and hierarchy') }}
         {% if can_edit %}
         <button type="button" data-action="openCapCreate"
             class="inline-flex items-center gap-2 h-9 px-4 rounded-md text-sm font-medium bg-primary text-primary-foreground hover:opacity-90 shrink-0"

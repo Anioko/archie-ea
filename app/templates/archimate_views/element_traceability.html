@@ -16,7 +16,7 @@
 } %}
 <div class="space-y-6">
     {{ page_header(
-        title="Traceability: " ~ element.name,
+        title="Traceability: ", breadcrumbs=[{'label': 'Home', 'href': '/'}, {'label': "Traceability: "}] ~ element.name,
         description="Cross-layer traceability chain for this ArchiMate element"
     ) }}
 

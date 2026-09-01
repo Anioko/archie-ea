@@ -17,7 +17,7 @@
             Back to Dashboard
         </a>
     {% endmacro %}
-    {{ page_shell(title='Roadmap Impact', subtitle='Upcoming changes affecting your applications', actions_caller=_ps_actions) }}
+    {{ page_shell(title='Roadmap Impact', breadcrumb=[('Home', '/'), ('Roadmap Impact', none)], subtitle='Upcoming changes affecting your applications', actions_caller=_ps_actions) }}
 
     <!-- Summary -->
     <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
