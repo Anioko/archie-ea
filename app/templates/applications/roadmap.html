@@ -83,13 +83,11 @@
             </tr>
           </thead>
           <tbody>
-            <template x-if="filteredItems.length === 0">
-              <tr>
-                <td colspan="6" class="px-4 py-10 text-center text-muted-foreground">
-                  No work packages for this filter.
-                </td>
-              </tr>
-            </template>
+            <tr x-show="filteredItems.length === 0">
+              <td colspan="6" class="px-4 py-10 text-center text-muted-foreground">
+                No work packages for this filter.
+              </td>
+            </tr>
             <template x-for="item in filteredItems" :key="item.id">
               <tr class="border-t">
                 <td class="px-4 py-3 align-top">
