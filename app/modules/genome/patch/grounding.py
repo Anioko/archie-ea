@@ -32,6 +32,30 @@ from app.modules.genome.patch.schema import ARCHIMATE_TYPE_LAYER, ARCHIMATE_TYPE
 NEAR_DUPLICATE_THRESHOLD = 0.5
 
 
+def _resolve_anchor(anchor, existing_query, ArchiMateElement):
+    """Resolve a provenance anchor to ``(element, names_a_known_type)``.
+
+    Mirrors the anchor grammar the anchor-existence check accepts: a bare
+    ArchiMate type, a bare element name, or a ``"Type:Name"`` reference (the
+    Name half is looked up in the org; the Type half is validated against
+    ``ARCHIMATE_TYPES``). Returns the matched ``ArchiMateElement`` (or ``None``)
+    and whether the anchor names a known ArchiMate type.
+
+    Extracted so the anchor-existence check (below) and the coherence check
+    (``coherence.assess_coherence``) read the anchor the *same* way — one
+    grammar, one lookup, no drift between the two consumers.
+    """
+    anchor = (anchor or "").strip()
+    if not anchor:
+        return None, False
+    if anchor in ARCHIMATE_TYPES:
+        return None, True
+    anchor_name = anchor.split(":", 1)[1].strip() if ":" in anchor else anchor
+    known_type = anchor.split(":", 1)[0].strip() in ARCHIMATE_TYPES if ":" in anchor else False
+    match = existing_query().filter(ArchiMateElement.name.ilike(anchor_name)).first()
+    return match, known_type
+
+
 class GroundingResult:
     """Outcome of grounding a patch against the existing model.
 
@@ -115,9 +139,7 @@ def ground_genome_patch(patch: Dict[str, Any], session=None) -> GroundingResult:
     anchor = (provenance.get("archimate_anchor") or "").strip()
     if anchor and anchor not in ARCHIMATE_TYPES:
         # Accept a "Type:Name" reference by checking the Name half.
-        anchor_name = anchor.split(":", 1)[1].strip() if ":" in anchor else anchor
-        known_type = anchor.split(":", 1)[0].strip() in ARCHIMATE_TYPES if ":" in anchor else False
-        match = _existing().filter(ArchiMateElement.name.ilike(anchor_name)).first()
+        match, known_type = _resolve_anchor(anchor, _existing, ArchiMateElement)
         if match is None and not known_type:
             warnings.append(
                 f"provenance.archimate_anchor {anchor!r} does not resolve to an "
@@ -163,5 +185,20 @@ def ground_genome_patch(patch: Dict[str, Any], session=None) -> GroundingResult:
                     f"({int(best[0] * 100)}% similar) — confirm it is genuinely "
                     f"distinct, not a rephrased duplicate"
                 )
+
+    # 4. cross-layer coherence (ADVISORY) -------------------------------------
+    # Architecture is the relationships: an element that is well-formed and
+    # non-duplicate can still be *incoherent* with the model around it — a
+    # capability with nothing below that could realize it, an anchor in a layer
+    # that cannot validly relate to the proposed one. These are judgement aids
+    # for the approver, never hard blocks, because ArchiMate permits far more
+    # cross-layer wiring than any deterministic rule should presume to forbid.
+    from app.modules.genome.patch.coherence import assess_coherence
+
+    warnings.extend(
+        assess_coherence(
+            element, provenance, operation, _existing, ArchiMateElement, _resolve_anchor
+        )
+    )
 
     return GroundingResult(errors, warnings)

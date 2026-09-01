@@ -97,6 +97,11 @@ def test_unrelated_name_does_not_warn(db_session, make_org, tenant_ctx):
     org = make_org()
     with tenant_ctx(org.id):
         _seed(db_session, org.id, "Order Management", "Capability", "strategy")
+        # Seed a business-layer element so the proposed strategy Capability has a
+        # realizing layer present — otherwise the (separate) coherence check would
+        # add a "floating" warning, which is not what this near-duplicate test is
+        # about. See tests/test_genome_patch_coherence.py for the floating case.
+        _seed(db_session, org.id, "Fulfilment Service", "BusinessService", "business")
         r = ground_genome_patch(
             _patch(org.id, a_type="Capability", name="Payroll Processing"),
             session=db_session,
