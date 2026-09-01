@@ -265,9 +265,12 @@
     const serverArchiElements = {{ target_arch_elements|map(attribute='id')|list|tojson|safe }};
     const serverArchiNames = {{ target_arch_elements|map(attribute='name')|list|tojson|safe }};
     const serverArchiTypes = {{ target_arch_elements|map(attribute='type')|list|tojson|safe }};
-    const archiElementsInit = serverArchiElements.map((id, i) => ({
-      id, name: serverArchiNames[i] || '', type: serverArchiTypes[i] || ''
-    }));
+    const archiElementsInit = [...new Map(
+      serverArchiElements
+        .map((id, i) => ({ id, name: serverArchiNames[i] || '', type: serverArchiTypes[i] || '' }))
+        .filter(e => e.id != null)
+        .map(e => [e.id, e])
+    ).values()];
 
     return {
       items: Array.isArray(initialItems) ? initialItems : [],
@@ -288,7 +291,11 @@
           ]);
           this.plateaus = pd.plateaus || [];
           const grouped = cd.capabilities || cd;
-          this.capabilities = Object.values(grouped).flat();
+          // Dedupe by id (a capability can appear in multiple groups, and Alpine
+          // x-for :key must be unique/defined — duplicate keys crash the render).
+          this.capabilities = [...new Map(
+            Object.values(grouped).flat().filter(c => c && c.id != null).map(c => [c.id, c])
+          ).values()];
         } catch (e) {
           // Plateau/capability lists are optional for the form, so this is a
           // heads-up rather than a blocker — but the user must still be told
