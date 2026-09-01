@@ -85,6 +85,29 @@ ARCHIMATE_TYPES = (
     "TechnologyService",
 )
 
+# Canonical layer for each ArchiMate type above — promoted from the grouping
+# comments so grounding can check an element's declared `layer` against the
+# layer its `archimate_type` actually belongs to (a Capability declared in the
+# business layer is a hallucination, schema-valid though it is).
+ARCHIMATE_TYPE_LAYER = {
+    # Motivation
+    "Driver": "motivation", "Goal": "motivation", "Outcome": "motivation",
+    "Constraint": "motivation", "Requirement": "motivation", "Principle": "motivation",
+    "Risk": "motivation", "Assessment": "motivation", "Stakeholder": "motivation",
+    "Metric": "motivation",
+    # Strategy
+    "Capability": "strategy", "CourseOfAction": "strategy", "ValueStream": "strategy",
+    # Implementation
+    "WorkPackage": "implementation", "Plateau": "implementation",
+    # Business
+    "BusinessService": "business", "BusinessProcess": "business",
+    # Application
+    "ApplicationComponent": "application", "ApplicationService": "application",
+    "DataObject": "application",
+    # Technology
+    "Node": "technology", "TechnologyService": "technology",
+}
+
 GENOME_PATCH_OPERATIONS = ("add", "modify")
 
 # --------------------------------------------------------------------------- #

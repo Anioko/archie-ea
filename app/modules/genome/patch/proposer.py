@@ -108,6 +108,27 @@ def propose_genome_patch(
             ),
         }
 
+    # 1b) Ground the (well-shaped) patch against the EXISTING model: a schema-valid
+    # patch can still be untrue — wrong layer for its type, an anchor that does not
+    # exist, or a re-invention of something already modelled. Fail closed on a
+    # provable contradiction so a hallucination cannot reach the approval queue.
+    from app.modules.genome.patch.grounding import ground_genome_patch
+
+    grounded = ground_genome_patch(patch)
+    if not grounded.ok:
+        logger.info("genome patch REJECTED (ungrounded, not queued): %s", grounded.errors)
+        return {
+            "success": False,
+            "status": "rejected",
+            "errors": grounded.errors,
+            "warnings": grounded.warnings,
+            "patch": patch,
+            "message": (
+                "The proposed genome patch is well-formed but contradicts the "
+                "existing model, so it was not queued. No change was made."
+            ),
+        }
+
     # 2) Queue through the EXISTING approval gate. This does not apply anything.
     from app.modules.ai_chat.services.ai_chat_approval_service import (
         AIChatApprovalService,
