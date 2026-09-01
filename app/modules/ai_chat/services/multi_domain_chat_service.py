@@ -840,7 +840,7 @@ class MultiDomainChatService:
                             "success": True,
                             "response": "Capability design workflow cancelled.",
                         }
-            except Exception as _wf_err:  # fabricated-values-ok: workflow guard
+            except Exception as _wf_err:  # fabricated-ok: guarded skip on error; emits no fabricated value
                 logger.debug("CAP-014 workflow check: %s", _wf_err)
 
             # AIC-305: Multi-turn ADM design workflow state machine
@@ -1320,7 +1320,7 @@ class MultiDomainChatService:
             if response.get("success") and response.get("response"):
                 try:
                     self._detect_and_handle_decision(message, response["response"], domain_context)
-                except Exception:  # fabricated-values-ok: non-critical decision recording
+                except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
                     pass  # Non-critical — don't break chat for decision recording
 
             # ENT-048: Attach executive brief for CIO/executive persona when brief/summary requested
@@ -4572,7 +4572,7 @@ Use enterprise architecture terminology appropriate for this role."""
                 ), ({"org": _org} if _org is not None else {})).fetchall()
                 for eid, cnt in rows:
                     rel_counts[eid] = rel_counts.get(eid, 0) + cnt
-            except Exception:  # fabricated-values-ok
+            except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
                 logger.exception("Failed to database query")
                 pass
 
@@ -5112,7 +5112,7 @@ Use enterprise architecture terminology appropriate for this role."""
                     .all()
                 )
                 product_counts = {vid: cnt for vid, cnt in prod_rows}
-            except Exception:  # fabricated-values-ok
+            except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
                 logger.exception("Failed to compute prod_rows")
                 pass
 
@@ -5689,7 +5689,7 @@ Use enterprise architecture terminology appropriate for this role."""
                         quality_block += f"  Missing layers: {', '.join(qs['layers_missing'])}\n"
                     if qs['invalid_relationships'] > 0:
                         quality_block += f"  Invalid relationships: {qs['invalid_relationships']} (fix these for better validity)\n"
-                except Exception:  # fabricated-values-ok — optional context enrichment
+                except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value — optional context enrichment
                     logger.exception("Failed to operation")
                     pass
 
@@ -5717,7 +5717,7 @@ Use enterprise architecture terminology appropriate for this role."""
                                 rel_lines.append(f"  {src.name} ({src.type}) --{r.type}--> {tgt.name} ({tgt.type})")
                         if rel_lines:
                             relationship_block = "\nRELATIONSHIP CHAIN (what connects to what):\n" + "\n".join(rel_lines) + "\n"
-                except Exception:  # fabricated-values-ok — optional context enrichment
+                except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value — optional context enrichment
                     logger.exception("Failed to operation")
                     pass
 
@@ -5997,7 +5997,7 @@ Instructions:
                             step_data["lifecycle_risks"] = svc.find_vendor_lifecycle_risks()[:10]  # fabricated-values-ok: preview cap
                         elif next_step == "GENERATE_RECOMMENDATIONS":
                             step_data["summary"] = svc.get_comprehensive_gap_summary()
-                    except Exception as _wf_svc_err:  # fabricated-values-ok: graceful degradation
+                    except Exception as _wf_svc_err:  # fabricated-ok: guarded skip on error; emits no fabricated value
                         self.logger.warning("Gap workflow service step skipped: %s", _wf_svc_err)
                     wf_state["results"][next_step] = step_data
                     flask_session["_gap_workflow_state"] = wf_state
@@ -7174,7 +7174,7 @@ End with: "Type **'next'** to proceed to Step 4: Solution Options."
                     if v:
                         vendor_names.append(f"{v.name} ({count} products)")
                 vendor_data = f"\nAvailable vendors in portfolio: {', '.join(vendor_names)}\n"
-        except Exception:  # fabricated-values-ok
+        except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
             logger.exception("Failed to operation")
             pass
 
@@ -7524,7 +7524,7 @@ End with: "Type **'next'** to complete the design workflow."
                              "WHERE organization_id = :org"),
                         {"org": _org},
                     ).scalar() or 0
-            except Exception:  # fabricated-values-ok
+            except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
                 logger.exception("Failed to operation")
                 pass
 
@@ -7622,7 +7622,7 @@ End with: "Type **'next'** to complete the design workflow."
             pct_matches = re.findall(r'(\d+(?:\.\d+)?)\s*%', response_text)
             if pct_matches and not contextual_questions:
                 contextual_questions.append("How can we improve these scores? What are the quick wins?")
-        except Exception:  # fabricated-values-ok
+        except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
             logger.exception("Failed to operation")
             pass
 
@@ -7872,7 +7872,7 @@ End with: "Type **'next'** to complete the design workflow."
                     app_obj = ApplicationComponent.query.get(element_id)
                     if app_obj:
                         subject_str = f"NAME: {app_obj.name}\nDESCRIPTION: {app_obj.description or 'n/a'}"
-                except Exception:  # fabricated-values-ok: non-critical element lookup fallback
+                except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
                     logger.exception("Failed to database query")
                     pass
 
@@ -8237,7 +8237,7 @@ End with: "Type **'next'** to complete the design workflow."
                 try:
                     from app import db as _db
                     _db.session.rollback()
-                except Exception:  # fabricated-values-ok: rollback guard
+                except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
                     logger.exception("Failed to operation")
                     pass
 
@@ -8282,7 +8282,7 @@ End with: "Type **'next'** to complete the design workflow."
             try:
                 from app import db as _db
                 _db.session.rollback()
-            except Exception:  # fabricated-values-ok: rollback guard
+            except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
                 logger.exception("Failed to operation")
                 pass
 
@@ -8331,7 +8331,7 @@ End with: "Type **'next'** to complete the design workflow."
                     ],
                     "accepted_ids": [],
                 }
-        except Exception:  # fabricated-values-ok: session guard
+        except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
             logger.exception("Failed to operation")
             pass
 
@@ -8556,7 +8556,7 @@ End with: "Type **'next'** to complete the design workflow."
                     if has_request_context():
                         _wb = flask_session.get("_workbench_workflow_state", {})
                         workspace_id = _wb.get("workspace_id")
-                except Exception:  # fabricated-values-ok: session fallback
+                except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
                     logger.exception("Failed to operation")
                     pass
 

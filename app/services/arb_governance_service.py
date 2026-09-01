@@ -533,7 +533,7 @@ class ARBGovernanceService:
                 )
         except ARBDecisionError:
             raise
-        except Exception:  # fabricated-values-ok — never let a lookup failure block a valid decision path silently succeed with bad data
+        except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value — never let a lookup failure block a valid decision path silently succeed with bad data
             logger.exception("ARB decision role check failed for user %s", decided_by_id)
 
         previous_status = item.status

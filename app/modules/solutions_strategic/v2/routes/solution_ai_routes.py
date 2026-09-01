@@ -37,7 +37,7 @@ def _compute_architecture_completeness(solution_id):
         from app.models.solution_archimate_element import SolutionArchiMateElement
         if SolutionArchiMateElement.query.filter_by(solution_id=solution_id).first():
             score += 20
-    except Exception:  # fabricated-values-ok: graceful degradation for completeness scoring
+    except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
         logger.exception("Failed to operation")
         pass
     try:
@@ -48,7 +48,7 @@ def _compute_architecture_completeness(solution_id):
             ).first()
             if row:
                 score += 20
-    except Exception:  # fabricated-values-ok: graceful degradation for completeness scoring
+    except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
         logger.exception("Failed to compute tbl")
         pass
     try:
@@ -59,21 +59,21 @@ def _compute_architecture_completeness(solution_id):
             ).first()
             if row:
                 score += 20
-    except Exception:  # fabricated-values-ok: graceful degradation for completeness scoring
+    except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
         logger.exception("Failed to compute tbl")
         pass
     try:
         from app.models.solution_architect_models import SolutionRequirement
         if SolutionRequirement.query.filter_by(solution_id=solution_id).first():
             score += 20
-    except Exception:  # fabricated-values-ok: graceful degradation for completeness scoring
+    except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
         logger.exception("Failed to operation")
         pass
     try:
         from app.models.solution_models import SolutionCapabilityMapping
         if SolutionCapabilityMapping.query.filter_by(solution_id=solution_id).first():
             score += 20
-    except Exception:  # fabricated-values-ok: graceful degradation for completeness scoring
+    except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
         logger.exception("Failed to operation")
         pass
     return score

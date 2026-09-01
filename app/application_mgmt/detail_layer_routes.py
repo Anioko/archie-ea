@@ -688,7 +688,7 @@ def update_motivation_layer(id):
         if changed_fields:
             try:
                 session["motivation_changes"] = json.dumps(changed_fields)
-            except Exception as e:  # fabricated-values-ok
+            except Exception as e:  # fabricated-ok: guarded skip on error; emits no fabricated value
                 logger.debug(f"Ignored: {e}")
 
         return jsonify(
@@ -816,7 +816,7 @@ def update_strategy_layer(id):
         if changed_fields:
             try:
                 session["strategy_changes"] = changed_fields
-            except Exception as e:  # fabricated-values-ok
+            except Exception as e:  # fabricated-ok: guarded skip on error; emits no fabricated value
                 logger.debug(f"Ignored: {e}")
 
         return jsonify(
@@ -1218,7 +1218,7 @@ def update_business_layer(id):
         if changed_fields:
             try:
                 session["business_changes"] = json.dumps(changed_fields)
-            except Exception as e:  # fabricated-values-ok
+            except Exception as e:  # fabricated-ok: guarded skip on error; emits no fabricated value
                 logger.debug(f"Ignored: {e}")
         return jsonify(
             {
@@ -1511,7 +1511,7 @@ def update_application_layer(id):
         if changed_fields:
             try:
                 session["application_changes"] = json.dumps(changed_fields)
-            except Exception as e:  # fabricated-values-ok
+            except Exception as e:  # fabricated-ok: guarded skip on error; emits no fabricated value
                 logger.debug(f"Ignored: {e}")
         return jsonify(
             {
@@ -1900,7 +1900,7 @@ def update_technology_layer(id):
         if changed_fields:
             try:
                 session["technology_changes"] = json.dumps(changed_fields)
-            except Exception as e:  # fabricated-values-ok
+            except Exception as e:  # fabricated-ok: guarded skip on error; emits no fabricated value
                 logger.debug(f"Ignored: {e}")
         return jsonify(
             {

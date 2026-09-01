@@ -6104,7 +6104,7 @@ def api_import_csv():
                         archimate_element_id=el.id,
                     )
                     db.session.add(sae)
-                except Exception:  # noqa: BLE001  # fabricated-values-ok
+                except Exception:  # noqa: BLE001  # fabricated-ok: guarded skip on error; emits no fabricated value
                     pass  # solution link is best-effort
 
             created.append({"id": el.id, "name": el.name, "type": el.type, "layer": el.layer})

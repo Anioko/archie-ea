@@ -84,7 +84,7 @@ def login():
             session.permanent = True
             try:
                 audit_logger.log_authentication(success=True)
-            except Exception:  # fabricated-values-ok — audit log is fire-and-forget
+            except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value — audit log is fire-and-forget
                 pass
             # V-06: audit_logger writes to `audit_events`, which nothing
             # surfaces. Record the same event in `soc2_audit_log`, the table
@@ -106,7 +106,7 @@ def login():
         else:
             try:
                 audit_logger.log_authentication(success=False)
-            except Exception:  # fabricated-values-ok — audit log is fire-and-forget
+            except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value — audit log is fire-and-forget
                 pass
             # V-06: failed-login monitoring needs the attempt in the surfaced
             # audit table, attributed to the account it targeted where one exists.
@@ -142,7 +142,7 @@ def logout():
     """Log out the current user."""
     try:
         audit_logger.log_logout()
-    except Exception:  # fabricated-values-ok — audit log is fire-and-forget
+    except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value — audit log is fire-and-forget
         pass
     # V-06: logout is a session-forensics event too; record it in the surfaced
     # audit table while current_user is still resolvable.

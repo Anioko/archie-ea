@@ -405,7 +405,7 @@ def update_overview(id):
                     db.session.add(comp)
                     updated_components.append(comp.name)
                     changed_fields.append(f"vendorClass_{comp_id}")
-        except Exception as e:  # fabricated-values-ok
+        except Exception as e:  # fabricated-ok: guarded skip on error; emits no fabricated value
             # Fallback: no vendor component updates
             logger.debug(f"Vendor component update error: {e}")
 

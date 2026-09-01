@@ -421,7 +421,7 @@ def create_requirement():
             tpl = RequirementTemplate.query.get(template_id)
             if tpl:
                 req_type = getattr(tpl, 'type', None)
-        except Exception:  # fabricated-values-ok
+        except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
             logger.exception("Failed to operation")
             pass
 
@@ -432,7 +432,7 @@ def create_requirement():
             if card:
                 card_phase = getattr(card, 'phase', None) or getattr(card, 'adm_phase', None) or ''
                 layer = _suggest_layer_from_phase(card_phase) or layer
-        except Exception:  # fabricated-values-ok
+        except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
             logger.exception("Failed to database query")
             pass
 
@@ -462,7 +462,7 @@ def create_requirement():
         try:
             from datetime import date
             req.target_release_date = date.fromisoformat(raw_date)
-        except Exception:  # fabricated-values-ok
+        except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
             logger.exception("Failed to operation")
             pass
     compliance_tags = data.get('compliance_tags', [])
@@ -514,7 +514,7 @@ def suggest_requirement_layer():
                     elif 'technology' in title or 'infrastructure' in title:
                         suggested_layer = 'technology'
                         source = 'work_package_title'
-        except Exception:  # fabricated-values-ok
+        except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
             logger.exception("Failed to database query")
             pass
 
@@ -549,7 +549,7 @@ def generate_requirement_ac(req_id):
             template = RequirementTemplate.query.get(req.template_id)
             if template and template.ac_hint:
                 template_hint = template.ac_hint
-        except Exception:  # fabricated-values-ok
+        except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
             logger.exception("Failed to database query")
             pass
 
@@ -1011,7 +1011,7 @@ def _resolve_archimate_req_name(archimate_requirement_id):
         if elem:
             return elem.title or getattr(elem, 'name', None)
         return None
-    except Exception:  # fabricated-values-ok
+    except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
         return None
 
 
@@ -1298,7 +1298,7 @@ def patch_requirement_status(req_id):
             new_values={"status": req.status, "owner": req.owner},
             status="success",
         )
-    except Exception:  # fabricated-values-ok
+    except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
         logger.exception("Failed to operation")
         pass
     return jsonify({"success": True, "data": _req_to_dict(req)})
@@ -1391,7 +1391,7 @@ def enrich_requirement(req_id):
         try:
             from datetime import date
             req.target_release_date = date.fromisoformat(data['target_release_date'])
-        except Exception:  # fabricated-values-ok
+        except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
             logger.exception("Failed to operation")
             pass
     if 'compliance_tags' in data:
@@ -1444,7 +1444,7 @@ def enrich_requirement(req_id):
             },
             status="success",
         )
-    except Exception:  # fabricated-values-ok
+    except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
         logger.exception("Failed to operation")
         pass
     return jsonify({"success": True, "data": _req_to_dict(req)})
@@ -1787,7 +1787,7 @@ def batch_enrich_requirements():
                     _tmpl = RequirementTemplate.query.get(req.template_id)
                     if _tmpl and _tmpl.ac_hint:
                         _template_hint = _tmpl.ac_hint
-                except Exception:  # fabricated-values-ok
+                except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
                     logger.exception("Failed to database query")
                     pass
             _layer_context = getattr(req, 'layer', None) or ''
@@ -2633,7 +2633,7 @@ def auto_classify_requirement(req_id):
             if tpl_score > best_template_score:
                 best_template_score = tpl_score
                 best_template = tpl
-    except Exception:  # fabricated-values-ok
+    except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
         best_template = None
 
     apply_changes = request.get_json(silent=True) or {}

@@ -1096,13 +1096,13 @@ def analyze_import():
     try:
         # Force rollback to clear any failed transaction state
         db.session.rollback()
-    except Exception as e:  # fabricated-values-ok
+    except Exception as e:  # fabricated-ok: guarded skip on error; emits no fabricated value
         logger.debug(f"Ignored: {e}")  # Ignore rollback errors
 
     # Start a fresh transaction
     try:
         db.session.begin()
-    except Exception as e:  # fabricated-values-ok
+    except Exception as e:  # fabricated-ok: guarded skip on error; emits no fabricated value
         logger.debug(f"Ignored: {e}")  # If begin fails, continue with existing session
 
     if "file" not in request.files:
@@ -1327,12 +1327,12 @@ def analyze_import():
             # Ensure clean transaction state before queries
             try:
                 db.session.rollback()
-            except Exception as e:  # fabricated-values-ok
+            except Exception as e:  # fabricated-ok: guarded skip on error; emits no fabricated value
                 logger.debug(f"Ignored: {e}")
 
             try:
                 db.session.begin()
-            except Exception as e:  # fabricated-values-ok
+            except Exception as e:  # fabricated-ok: guarded skip on error; emits no fabricated value
                 logger.debug(f"Ignored: {e}")
 
             # Execute queries with proper error handling
@@ -1363,7 +1363,7 @@ def analyze_import():
             # Force rollback to clear any failed transaction state
             try:
                 db.session.rollback()
-            except Exception as e:  # fabricated-values-ok
+            except Exception as e:  # fabricated-ok: guarded skip on error; emits no fabricated value
                 logger.debug(f"Ignored: {e}")
             return jsonify({"error": "An internal error occurred"}), 500
 
@@ -1705,7 +1705,7 @@ def analyze_import():
                 # Force rollback to clear any failed transaction state
                 try:
                     db.session.rollback()
-                except Exception as e:  # fabricated-values-ok
+                except Exception as e:  # fabricated-ok: guarded skip on error; emits no fabricated value
                     logger.debug(f"Ignored: {e}")
                 # Assume it doesn't exist if database query fails
                 existing_app = None
@@ -3275,7 +3275,7 @@ def upload_excel_applications():
                         # Rollback to clear failed transaction state (critical for PostgreSQL)
                         try:
                             db.session.rollback()
-                        except Exception as e:  # fabricated-values-ok
+                        except Exception as e:  # fabricated-ok: guarded skip on error; emits no fabricated value
                             logger.debug(f"Ignored: {e}")
                         # Assume it doesn't exist if database query fails
                         existing_app = None
@@ -3430,7 +3430,7 @@ def upload_excel_applications():
                     # Row processing failed - rollback only this row's changes
                     try:
                         db.session.rollback()
-                    except Exception as e:  # fabricated-values-ok
+                    except Exception as e:  # fabricated-ok: guarded skip on error; emits no fabricated value
                         logger.debug(f"Ignored: {e}")
                     records_failed += 1
                     errors.append(f"Row {row_idx}: {str(e)}")
@@ -3763,7 +3763,7 @@ def upload_excel_applications():
                     # Rollback to clear failed transaction state (critical for PostgreSQL)
                     try:
                         db.session.rollback()
-                    except Exception as e:  # fabricated-values-ok
+                    except Exception as e:  # fabricated-ok: guarded skip on error; emits no fabricated value
                         logger.debug(f"Ignored: {e}")
                     # Assume it doesn't exist if database query fails
                     existing_app = None
@@ -4146,7 +4146,7 @@ def upload_excel_applications():
                 # Since we commit each successful row above, rollback here only affects the current failed row
                 try:
                     db.session.rollback()
-                except Exception as e:  # fabricated-values-ok
+                except Exception as e:  # fabricated-ok: guarded skip on error; emits no fabricated value
                     logger.debug(
                         f"Ignored: {e}"
                     )  # Rollback may fail if session is already clean

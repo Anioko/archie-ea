@@ -1977,7 +1977,7 @@ def _build_solution_detail_context(solution):
                 from app.models.apqc_process import APQCProcess
                 procs = APQCProcess.query.filter(APQCProcess.id.in_(apqc_ids)).all()
                 apqc_map = {p.id: f"{p.process_code} {p.process_name}" for p in procs}
-            except Exception:  # fabricated-values-ok
+            except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
                 logger.exception("Failed to operation")
                 pass
         result = []

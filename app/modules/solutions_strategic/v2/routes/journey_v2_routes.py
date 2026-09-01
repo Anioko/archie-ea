@@ -257,7 +257,7 @@ def _get_problem_id(solution_id):
         if session:
             prob = SolutionProblemDefinition.query.filter_by(session_id=session.id).first()
             return prob.id if prob else None
-    except Exception:  # fabricated-values-ok
+    except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
         pass
     return None
 

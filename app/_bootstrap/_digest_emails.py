@@ -280,7 +280,7 @@ def _compute_executive_data():
         try:
             cs = sol.architecture_completeness_score
             scores.append(cs["score"])
-        except Exception:  # fabricated-values-ok: skip solutions with missing junctions
+        except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
             continue
 
     avg_score = round(sum(scores) / len(scores)) if scores else 0

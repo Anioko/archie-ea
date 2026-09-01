@@ -3615,7 +3615,7 @@ def export_arb_document(solution_id):
             ae = se.archimate_element
             if ae:
                 elements.append({"name": ae.name, "type": ae.type, "layer": ae.layer})
-    except Exception:  # fabricated-values-ok
+    except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
         logger.exception("Failed to database query")
         pass
 

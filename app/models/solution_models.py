@@ -362,7 +362,7 @@ class Solution(TenantMixin, db.Model, OptimisticLockMixin):
                         warnings.append(
                             "Phase H recommends at least 1 success metric for value realization"
                         )
-                except Exception:  # fabricated-values-ok: validation error in optional metric check
+                except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
                     pass
         return {
             "valid": len(errors) == 0,
@@ -531,7 +531,7 @@ class Solution(TenantMixin, db.Model, OptimisticLockMixin):
                         ).all()
                         for m in problem_maps:
                             all_cap_ids_domain.add(m.capability_id)
-                except Exception:  # fabricated-values-ok: graceful degradation
+                except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
                     pass
 
             if all_cap_ids_domain and self.business_domain:
@@ -592,7 +592,7 @@ class Solution(TenantMixin, db.Model, OptimisticLockMixin):
                         ).all()
                         for m in problem_mappings:
                             all_cap_ids.add(m.capability_id)
-                except Exception:  # fabricated-values-ok: graceful degradation
+                except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
                     pass
 
             if all_cap_ids:
@@ -698,7 +698,7 @@ class Solution(TenantMixin, db.Model, OptimisticLockMixin):
                 sess = self.analysis_session
                 if sess and sess.problem_definition:
                     problem_id = sess.problem_definition.id
-            except Exception:  # fabricated-values-ok: graceful degradation
+            except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
                 logger.debug("Could not resolve analysis session for completeness score")
 
         for name, model, fk_field in junction_checks:
@@ -716,7 +716,7 @@ class Solution(TenantMixin, db.Model, OptimisticLockMixin):
                         has_rows = model.query.filter_by(session_id=session_id).count() > 0
                 elif model:
                     has_rows = model.query.filter_by(solution_id=self.id).count() > 0
-            except Exception:  # fabricated-values-ok: graceful degradation
+            except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
                 logger.debug("Could not check junction %s for completeness", name)
 
             if has_rows:

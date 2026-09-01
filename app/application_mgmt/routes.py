@@ -1254,7 +1254,7 @@ def get_archimate_elements_batch(application_component_id, layer=None, search=No
                 for elem in model_elements:
                     if matches_search(elem):
                         elements.append(serialize_element(elem, type_name, layer_name))
-            except Exception as e:  # fabricated-values-ok
+            except Exception as e:  # fabricated-ok: guarded skip on error; emits no fabricated value
                 # Model may not have the expected column or other issues
                 logger.debug(f"Model error: {e}")
 
@@ -1313,7 +1313,7 @@ def get_element_counts_batch(application_component_id):
                 layer_total += model_class.query.filter_by(  # model-safety-ok: iterating over model classes, not data rows
                     application_component_id=application_component_id
                 ).count()
-            except Exception as e:  # fabricated-values-ok: optional model may not exist
+            except Exception as e:  # fabricated-ok: guarded skip on error; emits no fabricated value
                 logger.debug(
                     "Optional model query failed for layer %s: %s", layer_name, e
                 )
@@ -1351,12 +1351,12 @@ def teardown_request(exception=None):
     if exception:
         try:
             db.session.rollback()
-        except Exception as e:  # fabricated-values-ok
+        except Exception as e:  # fabricated-ok: guarded skip on error; emits no fabricated value
             logger.debug(f"Ignored: {e}")
     if not current_app.testing:
         try:
             db.session.remove()
-        except Exception as e:  # fabricated-values-ok
+        except Exception as e:  # fabricated-ok: guarded skip on error; emits no fabricated value
             logger.debug(f"Ignored: {e}")
 
 

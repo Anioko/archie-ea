@@ -273,7 +273,7 @@ def workflow_start():
             "uncovered_count": len(uncovered),
         }
         _save_workflow_state(state)
-    except Exception as _wf_err:  # fabricated-values-ok: graceful degradation when service unavailable
+    except Exception as _wf_err:  # fabricated-ok: guarded skip on error; emits no fabricated value
         current_app.logger.warning("Gap workflow init skipped: %s", _wf_err)
 
     return jsonify({
@@ -328,7 +328,7 @@ def workflow_advance():
             step_data["lifecycle_risks"] = svc.find_vendor_lifecycle_risks()[:10]  # fabricated-values-ok: preview 10
         elif next_step == "GENERATE_RECOMMENDATIONS":
             step_data["summary"] = svc.get_comprehensive_gap_summary()
-    except Exception as _wf_err:  # fabricated-values-ok: graceful degradation
+    except Exception as _wf_err:  # fabricated-ok: guarded skip on error; emits no fabricated value
         current_app.logger.warning("Gap workflow advance skipped: %s", _wf_err)
 
     state["results"][next_step] = step_data

@@ -1127,7 +1127,7 @@ def upload_excel_applications():
                                         app_data[target_field] = float(clean_value)
                                     else:
                                         app_data[target_field] = int(clean_value)
-                            except ValueError:  # fabricated-values-ok
+                            except ValueError:  # fabricated-ok: guarded skip on error; emits no fabricated value
                                 current_app.logger.warning(
                                     "Import row %d: could not parse '%s' as number for field '%s'",
                                     row_idx, value_str[:50], target_field,

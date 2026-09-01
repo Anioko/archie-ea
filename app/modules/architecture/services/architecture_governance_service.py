@@ -775,7 +775,7 @@ class ArchitectureGovernanceService:
                         ),
                     }
                 )
-        except Exception:  # fabricated-values-ok: graceful degradation
+        except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
             pass  # Return what we have so far; do not propagate
 
         # --- Alert Type 2: Maturity Regression ---
@@ -824,7 +824,7 @@ class ArchitectureGovernanceService:
                         ),
                     }
                 )
-        except Exception:  # fabricated-values-ok: graceful degradation
+        except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
             logger.exception("Failed to operation")
             pass
 
@@ -860,7 +860,7 @@ class ArchitectureGovernanceService:
                         ),
                     }
                 )
-        except Exception:  # fabricated-values-ok: graceful degradation
+        except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
             logger.exception("Failed to operation")
             pass
 

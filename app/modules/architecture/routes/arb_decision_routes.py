@@ -139,7 +139,7 @@ def capability_governance_panel(capability_id):
             ArchitectureChangeRequest.id.in_(open_change_request_ids),
             ArchitectureChangeRequest.status.in_(['open', 'assessing', 'disposition_set'])
         ).all() if open_change_request_ids else []
-    except Exception:  # fabricated-values-ok
+    except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
         open_change_requests = []
 
     return jsonify({

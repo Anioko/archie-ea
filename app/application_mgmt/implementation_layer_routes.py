@@ -196,7 +196,7 @@ def update_implementation_layer(id):
         if changed_fields:
             try:
                 session["implementation_changes"] = json.dumps(changed_fields)
-            except Exception as e:  # fabricated-values-ok
+            except Exception as e:  # fabricated-ok: guarded skip on error; emits no fabricated value
                 logger.debug(f"Ignored: {e}")
 
         return jsonify(

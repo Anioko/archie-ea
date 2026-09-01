@@ -502,7 +502,7 @@ class VendorRiskService:
                 total_contract_value = sum(
                     contract.annual_cost for contract in contracts if contract.annual_cost
                 )
-            except Exception:  # fabricated-values-ok: VendorContract table may not exist yet
+            except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
                 logger.debug("VendorContract not available for impact analysis")
 
             # Find alternatives

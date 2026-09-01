@@ -1966,7 +1966,7 @@ class EAWorkflowEngine:
                 cls = getattr(mod, class_name, None)
                 if cls:
                     artifact_registry.append((cls, type_name, title_field))
-            except Exception:  # fabricated-values-ok optional model not present in this deployment
+            except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value optional model not present in this deployment
                 pass
 
         refs = []

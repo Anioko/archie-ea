@@ -400,7 +400,7 @@ class DocumentProcessingService:
                     b = np.array(row.embedding)
                     cos_dist = 1 - float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
                     similarity = round(1 - cos_dist, 4)
-                except Exception:  # fabricated-values-ok: similarity calc fallback
+                except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
                     logger.exception("Failed to operation")
                     pass
 

@@ -2561,7 +2561,7 @@ CRITICAL -- TRACEABILITY:
                     logger.info(f"Budget >60% used ({cumulative_tokens}/{budget}), switching to {cheap_models[provider]}")
                     return provider, cheap_models[provider]
                 return provider, model
-            except Exception:  # fabricated-values-ok -- fallback to default model
+            except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value -- fallback to default model
                 logger.exception("Failed to compute provider, model")
                 pass
         return LLMService._get_configured_provider()
@@ -2857,7 +2857,7 @@ CRITICAL -- TRACEABILITY:
                 'provider_used': provider,
                 'wave': 'architecture_layers',
             }
-        except Exception:  # fabricated-values-ok -- token tracking is non-critical
+        except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value -- token tracking is non-critical
             logger.exception("Failed to database query")
             pass
 
@@ -3313,7 +3313,7 @@ CRITICAL -- TRACEABILITY:
                      'description': s.description or ''}
                     for s in stakeholders
                 ], indent=2)
-        except Exception:  # fabricated-values-ok -- optional enrichment
+        except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value -- optional enrichment
             logger.exception("Failed to operation")
             pass
 
@@ -3386,7 +3386,7 @@ CRITICAL -- TRACEABILITY:
                  'target_value': o.target_value or '', 'kpi_metric': o.kpi_metric or ''}
                 for o in outcomes
             ], indent=2)
-        except Exception:  # fabricated-values-ok -- optional enrichment
+        except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value -- optional enrichment
             logger.exception("Failed to operation")
             pass
 
@@ -3406,7 +3406,7 @@ CRITICAL -- TRACEABILITY:
                  'value_type': v.value_type or '', 'amount': float(v.amount) if v.amount else None}
                 for v in values
             ], indent=2)
-        except Exception:  # fabricated-values-ok -- optional enrichment
+        except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value -- optional enrichment
             logger.exception("Failed to operation")
             pass
 
@@ -3593,7 +3593,7 @@ CRITICAL -- TRACEABILITY:
                     )
                 lines.append("Use these REAL applications. Do NOT invent apps when existing ones cover the capability.")
                 ctx['app_capability_map'] = '\n'.join(lines)
-        except Exception as exc:  # fabricated-values-ok -- optional enrichment
+        except Exception as exc:  # fabricated-ok: guarded skip on error; emits no fabricated value -- optional enrichment
             logger.debug("App-capability enrichment failed: %s", exc)
 
         # 2. Technology standards from existing portfolio
@@ -3625,7 +3625,7 @@ CRITICAL -- TRACEABILITY:
                     lines.append("  Database platforms: " + ", ".join(f"{d} ({c} apps)" for d, c in top_dbs))
                 lines.append("MATCH these technology standards. Do NOT suggest technologies the org doesn't use unless explicitly required.")
                 ctx['tech_standards'] = '\n'.join(lines)
-        except Exception as exc:  # fabricated-values-ok -- optional enrichment
+        except Exception as exc:  # fabricated-ok: guarded skip on error; emits no fabricated value -- optional enrichment
             logger.debug("Tech standards enrichment failed: %s", exc)
 
         # 3. Existing business processes from catalog
@@ -3649,7 +3649,7 @@ CRITICAL -- TRACEABILITY:
                     lines.append(f"  - {p.name} (type: {ptype}{auto_str})")
                 lines.append("MATCH these existing processes by name. Do NOT create duplicates.")
                 ctx['process_baseline'] = '\n'.join(lines)
-        except Exception as exc:  # fabricated-values-ok -- optional enrichment
+        except Exception as exc:  # fabricated-ok: guarded skip on error; emits no fabricated value -- optional enrichment
             logger.debug("Process baseline enrichment failed: %s", exc)
 
         # 4. Historical implementation metrics
@@ -3671,7 +3671,7 @@ CRITICAL -- TRACEABILITY:
                         lines.append(f"  - Average work package cost: £{avg_cost:,.0f} (n={len(costs)})")
                     lines.append("Base your estimates on these REAL historical averages, not generic industry benchmarks.")
                     ctx['historical_metrics'] = '\n'.join(lines)
-        except Exception as exc:  # fabricated-values-ok -- optional enrichment
+        except Exception as exc:  # fabricated-ok: guarded skip on error; emits no fabricated value -- optional enrichment
             logger.debug("Historical metrics enrichment failed: %s", exc)
 
         return ctx
@@ -3934,7 +3934,7 @@ CRITICAL -- TRACEABILITY:
             # element_role exists in DB but not in SAEFull model -- set via attribute
             try:
                 sae.element_role = role
-            except Exception:  # fabricated-values-ok -- column may not exist on model
+            except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value -- column may not exist on model
                 logger.exception("Failed to compute sae.element_role")
                 pass
             db.session.add(sae)

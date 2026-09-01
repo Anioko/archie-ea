@@ -251,7 +251,7 @@ class User(UserMixin, db.Model):
             for role in junction_roles:
                 if role.permissions is not None and (role.permissions & permissions) == permissions:
                     return True
-        except Exception:  # fabricated-values-ok
+        except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
             db.session.rollback()  # Prevent transaction poisoning if user_roles table missing
         return False
 

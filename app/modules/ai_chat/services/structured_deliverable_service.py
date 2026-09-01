@@ -597,7 +597,7 @@ class StructuredDeliverableService:
             if json_match:
                 try:
                     requirements_data = json.loads(json_match.group())
-                except Exception:  # fabricated-values-ok
+                except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
                     logger.exception("Failed to JSON parsing")
                     pass
             # Accumulator for the rows created below. Its initialisation had been

@@ -151,7 +151,7 @@ class DiagramRenderService:
                         f'<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}"'
                         f' stroke="#666" stroke-width="1.5" marker-end="url(#arrow)"/>'
                     )
-        except Exception:  # fabricated-values-ok — relationship errors must not abort SVG output
+        except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value — relationship errors must not abort SVG output
             # Relationship query failures are non-fatal; diagram is still useful without edges
             pass
 

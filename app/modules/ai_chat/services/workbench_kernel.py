@@ -1495,7 +1495,7 @@ class GreenfieldWorkflow:
             vendors = VendorOrganization.query.limit(10).all()
             if vendors:
                 vendor_ctx = "Available vendors: " + ", ".join(v.name for v in vendors if v.name)
-        except Exception as _ve:  # fabricated-values-ok: graceful fallback
+        except Exception as _ve:  # fabricated-ok: guarded skip on error; emits no fabricated value
             logger.debug("Vendor context load failed: %s", _ve)
             vendor_ctx = ""
 

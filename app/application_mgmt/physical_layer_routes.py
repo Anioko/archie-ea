@@ -183,7 +183,7 @@ def update_physical_layer(id):
         if changed_fields:
             try:
                 session["physical_changes"] = json.dumps(changed_fields)
-            except Exception as e:  # fabricated-values-ok
+            except Exception as e:  # fabricated-ok: guarded skip on error; emits no fabricated value
                 logger.debug(f"Ignored: {e}")
         return jsonify(
             {

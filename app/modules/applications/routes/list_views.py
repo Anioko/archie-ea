@@ -341,7 +341,7 @@ def application_list():
         try:
             if hasattr(ApplicationComponent, "primary_vendor_product"):
                 eager_opts.append(joinedload(ApplicationComponent.primary_vendor_product))
-        except Exception:  # fabricated-values-ok
+        except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
             current_app.logger.debug("primary_vendor_product eager-load unavailable", exc_info=True)
 
         order_by_clause = (
