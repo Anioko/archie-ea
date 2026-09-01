@@ -1185,6 +1185,45 @@ TOOL_SCHEMAS = [
         "tier": "approve",
     },
     {
+        "name": "merge_capabilities",
+        "mutates": True,
+        "description": (
+            "Resolve a duplicate business capability by MERGING one into another "
+            "(Capability-Gap Register G3 — the systemic duplication debt). The "
+            "copilot can already DETECT duplicate capabilities; this is how it "
+            "PROPOSES resolving one. Repoints the removed capability's children, "
+            "APQC process mappings and application-capability mappings onto the "
+            "kept capability, then RETIRES the duplicate (soft-delete — reversible; "
+            "the row is marked deprecated, not physically removed). Returns a full "
+            "before-state snapshot for audit. Both capabilities must belong to your "
+            "organization; a capability cannot be merged into itself. "
+            "USE when the user confirms two capabilities are the same record and "
+            "asks to merge, consolidate, or de-duplicate them. This is a "
+            "DESTRUCTIVE governance action — REQUIRES USER CONFIRMATION before "
+            "executing, and you must never pick which one to keep on the user's "
+            "behalf without their agreement."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "keep_capability_id": {
+                    "type": "integer",
+                    "description": "ID of the capability to KEEP (references are repointed onto this one)",
+                },
+                "remove_capability_id": {
+                    "type": "integer",
+                    "description": "ID of the duplicate capability to RETIRE (soft-deleted after its references move)",
+                },
+                "rationale": {
+                    "type": "string",
+                    "description": "Optional reason for the merge, recorded on the retired capability's deprecation note",
+                },
+            },
+            "required": ["keep_capability_id", "remove_capability_id"],
+        },
+        "tier": "approve",
+    },
+    {
         "name": "create_vendor",
         "mutates": True,
         "description": (

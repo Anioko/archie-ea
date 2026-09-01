@@ -2293,6 +2293,218 @@ class ToolExecutor:
         }
 
     # ------------------------------------------------------------------ #
+    # Tool: merge_capabilities (WRITE — G3, duplication debt)             #
+    # ------------------------------------------------------------------ #
+    def _tool_merge_capabilities(self, args: dict) -> dict:
+        """Merge one duplicate business capability into another — G3 headline.
+
+        Register gap G3 (docs/CAPABILITY_GAP_REGISTER.md): the copilot could
+        DETECT duplicate capabilities (propose_rationalization surfaces the
+        clusters) but had no governed way to RESOLVE them. This is that resolver:
+        the LLM PROPOSES a merge; because the tool is mutates=True / tier
+        'approve', a human approves it through the existing confirmation gate
+        before anything runs. There is no auto-merge path.
+
+        REPOINT-THEN-RETIRE, reversible variant.
+        ---------------------------------------------------------------
+        This follows the repoint logic of the abacus consolidation route's
+        merge_keep_target (app/modules/capabilities/routes/abacus_consolidation.py)
+        — children, APQC process mappings and application-capability mappings are
+        moved from the removed capability onto the kept one — but it deviates on
+        two points, deliberately, and both are documented here because a reviewer
+        must be able to see the safety reasoning without reading three files:
+
+        1. STORE. The task brief cited
+           capability_naming_service.merge_duplicate_capabilities. That service
+           operates on UnifiedCapability + UnifiedApplicationCapabilityMapping.
+           UnifiedCapability holds 0 rows in production (it is the canonical store
+           with no producer — see ADR 0008 / the store-agreement gate) and uses
+           HybridCapabilityTenantMixin, whose shared-reference semantics
+           (organization_id IS NULL == shared) are the wrong isolation model for a
+           destructive per-tenant merge. The store the maturity routes, the
+           heatmap and the abacus route actually read and write — and the one the
+           task's own org-scope requirement names — is BusinessCapability
+           (business_capability, 461 rows in production), a plain TenantMixin
+           model. So this tool merges BusinessCapability, exactly as
+           _tool_record_capability_maturity chose the same store for the same
+           reason.
+
+        2. REMOVAL. merge_duplicate_capabilities (and merge_keep_target)
+           HARD-delete the duplicate. The owner guardrail requires the reversible
+           variant where one exists, and BusinessCapability carries a soft-delete
+           (is_deprecated / deprecated_as_of / deprecation_notes). So the duplicate
+           is SOFT-deleted — marked is_deprecated with a note naming the kept id —
+           not physically removed. The row survives for audit and hand-reversal;
+           its references have already been repointed onto the kept capability, so
+           nothing is orphaned. The tool's return also carries a full before-state
+           snapshot (the removed capability's key fields + every repointed
+           reference id) so the action is auditable and reversible even by hand.
+
+        Org scope, self-merge and non-existent ids
+        ---------------------------------------------------------------
+        BusinessCapability is TenantMixin, so the ORM tenant filter scopes both
+        lookups: a capability in another org is invisible and reads back as
+        not-found — never resolved, never cross-merged. Self-merge (keep ==
+        remove) and a non-existent id are rejected before any write.
+        """
+        from datetime import datetime
+
+        from app.models.business_capabilities import BusinessCapability
+
+        keep_id = args.get("keep_capability_id")
+        remove_id = args.get("remove_capability_id")
+        rationale = args.get("rationale")
+
+        if keep_id is None or remove_id is None:
+            return {
+                "success": False,
+                "error": "keep_capability_id and remove_capability_id are required.",
+            }
+        if not isinstance(keep_id, int) or isinstance(keep_id, bool) or \
+           not isinstance(remove_id, int) or isinstance(remove_id, bool):
+            return {
+                "success": False,
+                "error": "keep_capability_id and remove_capability_id must be integers.",
+            }
+        # Refuse to merge a capability into itself.
+        if keep_id == remove_id:
+            return {
+                "success": False,
+                "error": "Cannot merge a capability into itself (keep and remove ids are the same).",
+            }
+
+        # Tenant filter is applied by the ORM (TenantMixin) — .filter_by().first(),
+        # not .get() (which is scoped only on an identity-map miss). A foreign-org
+        # or non-existent id reads back as None → rejected, never cross-written.
+        keep_cap = BusinessCapability.query.filter_by(id=keep_id).first()
+        if keep_cap is None:
+            return {
+                "success": False,
+                "error": f"Capability to keep ({keep_id}) not found in your organization.",
+            }
+        remove_cap = BusinessCapability.query.filter_by(id=remove_id).first()
+        if remove_cap is None:
+            return {
+                "success": False,
+                "error": f"Capability to remove ({remove_id}) not found in your organization.",
+            }
+        # Already retired — nothing to do, and merging a soft-deleted row would be
+        # misleading. Surface it honestly rather than silently re-merging.
+        if getattr(remove_cap, "is_deprecated", False):
+            return {
+                "success": False,
+                "error": f"Capability {remove_id} is already retired (deprecated); nothing to merge.",
+            }
+
+        from app.models.apqc_process import CapabilityProcessMapping
+        from app.models.application_capability import ApplicationCapabilityMapping
+
+        org_id = self._get_organization_id()
+
+        # -- BEFORE-STATE SNAPSHOT (audit + hand-reversal) ----------------- #
+        # Captured before any write, so the return records exactly what existed
+        # and exactly which references moved.
+        children = BusinessCapability.query.filter_by(
+            parent_capability_id=remove_id
+        ).all()
+        apqc_mappings = CapabilityProcessMapping.query.filter_by(
+            capability_id=remove_id
+        ).all()
+        # Not a TenantMixin model — scope by organization_id explicitly as
+        # defence-in-depth (the removed capability is already org-scoped, so its
+        # mappings are too, but we do not rely on that alone for a write).
+        app_mappings = ApplicationCapabilityMapping.query.filter_by(
+            business_capability_id=remove_id, organization_id=org_id
+        ).all()
+
+        before_state = {
+            "removed_capability": {
+                "id": remove_cap.id,
+                "name": remove_cap.name,
+                "code": remove_cap.code,
+                "level": remove_cap.level,
+                "business_domain": remove_cap.business_domain,
+                "parent_capability_id": remove_cap.parent_capability_id,
+                "archimate_id": remove_cap.archimate_id,  # model-safety-ok: direct field access
+                "organization_id": remove_cap.organization_id,
+            },
+            "repointed_child_ids": [c.id for c in children],
+            "repointed_apqc_mapping_ids": [m.id for m in apqc_mappings],
+            "repointed_app_mapping_ids": [m.id for m in app_mappings],
+        }
+
+        # -- REPOINT ------------------------------------------------------- #
+        # Children: reparent onto the kept capability.
+        for child in children:
+            child.parent_capability_id = keep_id
+
+        # APQC process mappings: repoint, dropping any that would duplicate a
+        # mapping the kept capability already has (no compound unique constraint,
+        # but a duplicate mapping is still wrong data).
+        keep_apqc_ids = {
+            m.apqc_process_id
+            for m in CapabilityProcessMapping.query.filter_by(capability_id=keep_id).all()
+        }
+        apqc_repointed = 0
+        for mapping in apqc_mappings:
+            if mapping.apqc_process_id in keep_apqc_ids:
+                db.session.delete(mapping)
+            else:
+                mapping.capability_id = keep_id
+                apqc_repointed += 1
+
+        # Application-capability mappings: repoint, de-duping against the kept
+        # capability's existing application links.
+        keep_app_ids = {
+            m.application_component_id
+            for m in ApplicationCapabilityMapping.query.filter_by(
+                business_capability_id=keep_id, organization_id=org_id
+            ).all()
+        }
+        app_repointed = 0
+        for mapping in app_mappings:
+            if mapping.application_component_id in keep_app_ids:
+                db.session.delete(mapping)
+            else:
+                mapping.business_capability_id = keep_id
+                app_repointed += 1
+
+        # -- RETIRE (soft delete — reversible) ----------------------------- #
+        remove_cap.is_deprecated = True
+        remove_cap.deprecated_as_of = datetime.utcnow()
+        note = f"Merged into capability {keep_id} ('{keep_cap.name}') by AI copilot (user {self.user_id})."
+        if rationale:
+            note += f" Rationale: {rationale}"
+        remove_cap.deprecation_notes = note
+        remove_cap.updated_at = datetime.utcnow()
+
+        db.session.commit()
+
+        logger.info(
+            "Agent merged capability id=%s into id=%s (children=%s apqc=%s apps=%s) user=%s",
+            remove_id, keep_id, len(children), apqc_repointed, app_repointed, self.user_id,
+        )
+        return {
+            "success": True,
+            "result": {
+                "kept_capability": {"id": keep_cap.id, "name": keep_cap.name},
+                "removed_capability_id": remove_id,
+                "removal_method": "soft_delete (is_deprecated=True)",
+                "children_repointed": len(children),
+                "apqc_mappings_repointed": apqc_repointed,
+                "app_mappings_repointed": app_repointed,
+                "before_state": before_state,
+            },
+            "message": (
+                f"Merged '{remove_cap.name}' into '{keep_cap.name}': "
+                f"repointed {len(children)} child capabilit(ies), "
+                f"{app_repointed} application mapping(s) and {apqc_repointed} APQC "
+                f"mapping(s); the duplicate was retired (soft-deleted, reversible). "
+                f"A full before-state snapshot is in the result for audit."
+            ),
+        }
+
+    # ------------------------------------------------------------------ #
     # Tool: create_vendor (WRITE — G5, procurement)                       #
     # ------------------------------------------------------------------ #
     def _tool_create_vendor(self, args: dict) -> dict:
