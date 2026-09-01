@@ -43,6 +43,27 @@
 
     // Initialize Lucide icons
     if (typeof lucide !== 'undefined') {
+        // Guard: lucide.createIcons() copies a placeholder <i data-lucide>'s
+        // attributes onto the generated <svg> via setAttribute. Alpine directive
+        // attributes on icons (:class, x-bind:*, @click, @keydown.escape.window —
+        // used on dozens of icons across the app) have names setAttribute rejects,
+        // so the first one THROWS and aborts icon rendering for the rest of the
+        // page. Those directives are meaningless on the static replacement SVG, so
+        // skip them (and swallow any other invalid name) just for createIcons.
+        if (!lucide.__alpineSafe) {
+            var _create = lucide.createIcons.bind(lucide);
+            lucide.createIcons = function () {
+                var proto = Element.prototype, native = proto.setAttribute;
+                proto.setAttribute = function (name, value) {
+                    var c = name ? name.charCodeAt(0) : 0;
+                    if (c === 64 || c === 58 || (name && name.slice(0, 2) === 'x-')) return; // @ : x-
+                    try { return native.call(this, name, value); } catch (e) { /* invalid name — skip */ }
+                };
+                try { return _create.apply(this, arguments); }
+                finally { proto.setAttribute = native; }
+            };
+            lucide.__alpineSafe = true;
+        }
         lucide.createIcons();
     }
 
