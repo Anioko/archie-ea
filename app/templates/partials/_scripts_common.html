@@ -41,29 +41,31 @@
         return originalXHRSend.apply(this, [data]);
     };
 
+    // Guard: lucide.createIcons() copies a placeholder <i data-lucide>'s
+    // attributes onto the generated <svg> via setAttribute. Alpine directive
+    // attributes on icons (:class, x-bind:*, @click, @keydown.escape.window —
+    // used on dozens of icons across the app) have names setAttribute REJECTS, so
+    // the first one THROWS and aborts icon rendering for the rest of the page.
+    // A createIcons-scoped wrapper proved fragile (lucide's setAttribute can run
+    // after the wrapper restores). So install ONE permanent, safe override of
+    // Element.prototype.setAttribute that skips @ / : / x- prefixed names — which
+    // are Alpine markup parsed by the HTML parser and are NEVER valid setAttribute
+    // names in any legitimate code path — and swallows any other invalid-name
+    // throw. Every real attribute (class, id, aria-*, data-*, style, …) is
+    // unaffected. Idempotent.
+    if (!Element.prototype.__alpineSafeSetAttr) {
+        var _nativeSetAttr = Element.prototype.setAttribute;
+        Element.prototype.setAttribute = function (name, value) {
+            var c = name ? name.charCodeAt(0) : 0;
+            if (c === 64 /*@*/ || c === 58 /*:*/ || (name && name.charCodeAt(0) === 120 && name.charCodeAt(1) === 45)) return; // @ : x-
+            try { return _nativeSetAttr.call(this, name, value); }
+            catch (e) { /* invalid attribute name — skip rather than abort caller */ }
+        };
+        Element.prototype.__alpineSafeSetAttr = true;
+    }
+
     // Initialize Lucide icons
     if (typeof lucide !== 'undefined') {
-        // Guard: lucide.createIcons() copies a placeholder <i data-lucide>'s
-        // attributes onto the generated <svg> via setAttribute. Alpine directive
-        // attributes on icons (:class, x-bind:*, @click, @keydown.escape.window —
-        // used on dozens of icons across the app) have names setAttribute rejects,
-        // so the first one THROWS and aborts icon rendering for the rest of the
-        // page. Those directives are meaningless on the static replacement SVG, so
-        // skip them (and swallow any other invalid name) just for createIcons.
-        if (!lucide.__alpineSafe) {
-            var _create = lucide.createIcons.bind(lucide);
-            lucide.createIcons = function () {
-                var proto = Element.prototype, native = proto.setAttribute;
-                proto.setAttribute = function (name, value) {
-                    var c = name ? name.charCodeAt(0) : 0;
-                    if (c === 64 || c === 58 || (name && name.slice(0, 2) === 'x-')) return; // @ : x-
-                    try { return native.call(this, name, value); } catch (e) { /* invalid name — skip */ }
-                };
-                try { return _create.apply(this, arguments); }
-                finally { proto.setAttribute = native; }
-            };
-            lucide.__alpineSafe = true;
-        }
         lucide.createIcons();
     }
 
