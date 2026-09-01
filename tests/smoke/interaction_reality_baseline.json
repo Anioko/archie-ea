@@ -1,12 +1,38 @@
 {
-  "_comment": "Per-archetype allowance for dead controls / junk modals found by test_interaction_reality.py, captured by measurement on 2026-09-01 (all zero: no dead control, junk modal, or form 5xx on any persona's key screens). form_500 is never baselined -- a silent 5xx is a hard zero. Regenerate after an intentional UI change: SMOKE_WRITE_INTERACTION_BASELINE=1 pytest tests/smoke/test_interaction_reality.py::test_write_interaction_baseline -m census",
-  "application_manager": {"dead": 0, "junk": 0},
-  "arb_member": {"dead": 0, "junk": 0},
-  "business_architect": {"dead": 0, "junk": 0},
-  "cto": {"dead": 0, "junk": 0},
-  "enterprise_architect": {"dead": 0, "junk": 0},
-  "platform_admin": {"dead": 0, "junk": 0},
-  "portfolio_manager": {"dead": 0, "junk": 0},
-  "procurement": {"dead": 0, "junk": 0},
-  "solution_architect": {"dead": 0, "junk": 0}
+  "application_manager": {
+    "dead": 0,
+    "junk": 0
+  },
+  "arb_member": {
+    "dead": 0,
+    "junk": 0
+  },
+  "business_architect": {
+    "dead": 0,
+    "junk": 0
+  },
+  "cto": {
+    "dead": 0,
+    "junk": 0
+  },
+  "enterprise_architect": {
+    "dead": 0,
+    "junk": 0
+  },
+  "platform_admin": {
+    "dead": 0,
+    "junk": 0
+  },
+  "portfolio_manager": {
+    "dead": 0,
+    "junk": 0
+  },
+  "procurement": {
+    "dead": 0,
+    "junk": 0
+  },
+  "solution_architect": {
+    "dead": 0,
+    "junk": 0
+  }
 }

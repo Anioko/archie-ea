@@ -92,6 +92,58 @@ WRITE_BASELINE = os.environ.get("SMOKE_WRITE_INTERACTION_BASELINE") == "1"
 # (a 404 is a different test's finding). Screens are deduplicated per persona.
 SCREENS = {a: list(dict.fromkeys(paths)) for a, paths in JOURNEY.items()}
 
+# Landing/journey screens are only half of where the owner clicks. The controls
+# that render nothing, the modals that leak a coercion token, and the forms that
+# 5xx cluster on the OTHER half: the DETAIL page a persona drills into, the /new
+# or /create form they fill, and the modal a control on those screens raises.
+# JOURNEY covers none of those, so this map extends each persona onto them.
+#
+# Paths may carry a {placeholder} resolved at runtime from the seeded fixture's
+# ids (the only deterministic entity ids we own -- an application and a vendor
+# contract). Screens whose id we do not seed are reached through their /create or
+# /new form instead of a detail page, so every entry here serves for real rather
+# than redirecting away and censusing nothing. A path that still 404s or 3xxs is
+# skipped by the same guard as the journey screens -- it is another test's find.
+EXTRA_SCREENS = {
+    "solution_architect":   ["/solutions/create",
+                             "/solutions/architect/workspace"],
+    "enterprise_architect": ["/architecture/strategy/capability/new",
+                             "/capability-map/hierarchy"],
+    "business_architect":   ["/capability-map/hierarchy",
+                             "/capability-map/trees"],
+    "arb_member":           ["/arb/reviews/create",
+                             "/arb/change-requests/new",
+                             "/arb/sessions/create"],
+    "portfolio_manager":    ["/applications/{application}",
+                             "/applications/create"],
+    "cto":                  ["/applications/{application}"],
+    "procurement":          ["/procurement/contracts/new",
+                             "/procurement/contracts/{contract}",
+                             "/procurement/licenses/new"],
+    "application_manager":  ["/applications/{application}",
+                             "/applications/{application}/roadmap"],
+    "platform_admin":       ["/admin/new-user",
+                             "/admin/feature-flags/new"],
+}
+
+
+def _screens_for(archetype, seeded):
+    """Journey screens plus the persona's detail/create/modal screens.
+
+    {placeholder} tokens in EXTRA_SCREENS are filled from the seeded ids; an
+    entry naming an id we did not seed is dropped rather than requested against a
+    missing row. Deduplicated, journey screens first so the signature screen is
+    always measured even if a later screen times out.
+    """
+    ids = seeded.get("ids", {})
+    paths = list(SCREENS.get(archetype, []))
+    for tmpl in EXTRA_SCREENS.get(archetype, []):
+        try:
+            paths.append(tmpl.format(**ids))
+        except (KeyError, IndexError):
+            continue  # id not seeded -- do not request a placeholder URL
+    return list(dict.fromkeys(paths))
+
 # ---------------------------------------------------------------------------
 # The init-script probe. Installed BEFORE any page script via add_init_script,
 # so every listener the app binds during boot is observed. It marks each Element
@@ -330,7 +382,7 @@ def _measure(archetype, live_server, seeded, browser):
     result = {"dead": 0, "junk": 0, "suppressed": 0, "form_500": 0, "screens": {}}
     try:
         _login(page, live_server, seeded["emails"][archetype])
-        for path in SCREENS.get(archetype, []):
+        for path in _screens_for(archetype, seeded):
             try:
                 resp = page.goto(live_server + path, wait_until="domcontentloaded",
                                  timeout=PAGE_TIMEOUT)
@@ -371,6 +423,9 @@ def _measure(archetype, live_server, seeded, browser):
             result["form_500"] += form_500
     finally:
         ctx.close()
+    if os.environ.get("SMOKE_IR_DEBUG") == "1":
+        print("[ir-debug] %s measured screens: %s" % (
+            archetype, {p: s.get("candidates") for p, s in result["screens"].items()}))
     return result
 
 
