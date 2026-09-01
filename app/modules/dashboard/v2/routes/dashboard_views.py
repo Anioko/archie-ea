@@ -126,6 +126,48 @@ def overview():
     except Exception:
         db.session.rollback()
 
+    # Per-ArchiMate-3.2-layer element counts, driving the dashboard's by-layer
+    # architecture lens (replacing the ambiguous "Architect"/"Business" persona
+    # tabs). Six canonical layers — ArchiMate 3.2 folds Physical elements
+    # (Equipment/Facility/Material) into Technology, so there is no separate
+    # Physical tab. Grouped count so it is one query, not O(N).
+    _LAYER_TYPES = {
+        "motivation": {"stakeholder", "driver", "assessment", "goal", "outcome",
+                       "principle", "requirement", "constraint", "meaning", "value"},
+        "strategy": {"resource", "capability", "valuestream", "courseofaction"},
+        "business": {"businessactor", "businessrole", "businesscollaboration",
+                     "businessinterface", "businessprocess", "businessfunction",
+                     "businessinteraction", "businessevent", "businessservice",
+                     "businessobject", "contract", "representation", "product"},
+        "application": {"applicationcomponent", "applicationcollaboration",
+                        "applicationinterface", "applicationfunction",
+                        "applicationinteraction", "applicationprocess",
+                        "applicationevent", "applicationservice", "dataobject"},
+        "technology": {"node", "device", "systemsoftware", "technologycollaboration",
+                       "technologyinterface", "path", "communicationnetwork",
+                       "technologyfunction", "technologyprocess", "technologyinteraction",
+                       "technologyevent", "technologyservice", "artifact",
+                       "equipment", "facility", "distributionnetwork", "material"},
+        "implementation": {"workpackage", "deliverable", "implementationevent",
+                           "plateau", "gap"},
+    }
+    _type_to_layer = {t: layer for layer, ts in _LAYER_TYPES.items() for t in ts}
+    layer_breakdown = {layer: 0 for layer in _LAYER_TYPES}
+    try:
+        from app.models.archimate_core import ArchiMateElement
+
+        rows = (
+            db.session.query(ArchiMateElement.type, db.func.count(ArchiMateElement.id))
+            .group_by(ArchiMateElement.type)
+            .all()
+        )
+        for elem_type, count in rows:
+            layer = _type_to_layer.get((elem_type or "").lower())
+            if layer:
+                layer_breakdown[layer] += count or 0
+    except Exception:
+        db.session.rollback()
+
     applications = []
     vendors = []
     try:
@@ -667,6 +709,7 @@ def overview():
         "dashboards/overview.html",
         metrics=metrics,
         nav_stats=nav_stats,
+        layer_breakdown=layer_breakdown,
         feature_sections=feature_sections,
         persona_metrics=persona_metrics,
         capability_health=capability_health,
