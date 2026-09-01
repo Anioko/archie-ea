@@ -78,3 +78,27 @@ def test_valid_grounded_patch_passes(db_session, make_org, tenant_ctx):
     with tenant_ctx(org.id):
         r = ground_genome_patch(_patch(org.id, name="Wholly New Capability", anchor="Capability"), session=db_session)
         assert r.ok, r.errors
+
+
+def test_near_duplicate_warns_not_blocks(db_session, make_org, tenant_ctx):
+    org = make_org()
+    with tenant_ctx(org.id):
+        _seed(db_session, org.id, "Order Management", "Capability", "strategy")
+        # a rephrasing/superset — lexically ~0.67 similar, not an exact match
+        r = ground_genome_patch(
+            _patch(org.id, a_type="Capability", name="Order Management System"),
+            session=db_session,
+        )
+        assert r.ok  # advisory, not a hard block
+        assert any("resembles" in w and "Order Management" in w for w in r.warnings)
+
+
+def test_unrelated_name_does_not_warn(db_session, make_org, tenant_ctx):
+    org = make_org()
+    with tenant_ctx(org.id):
+        _seed(db_session, org.id, "Order Management", "Capability", "strategy")
+        r = ground_genome_patch(
+            _patch(org.id, a_type="Capability", name="Payroll Processing"),
+            session=db_session,
+        )
+        assert r.ok and not r.warnings

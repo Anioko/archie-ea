@@ -121,6 +121,24 @@ class DuplicateDetectionUtils:
         return set(text.lower().split())
 
     @staticmethod
+    def calculate_jaccard_similarity(text1: str, text2: str) -> float:
+        """Jaccard similarity of the word sets of two strings, in [0.0, 1.0].
+
+        Referenced by is_duplicate() and find_duplicates() for fuzzy mode but
+        never defined — so every fuzzy call raised AttributeError and the whole
+        fuzzy duplicate-detection path was dead (the same latent-method class as
+        normalize_name's H-01, and invisible to ruff's F821 because attribute
+        access on a class is not a bare name). Uses the module's own tokenize()
+        so fuzzy agrees with the rest of the module on what a token is.
+        """
+        t1 = DuplicateDetectionUtils.tokenize(text1)
+        t2 = DuplicateDetectionUtils.tokenize(text2)
+        if not t1 or not t2:
+            return 0.0
+        union = len(t1 | t2)
+        return len(t1 & t2) / union if union else 0.0
+
+    @staticmethod
     def is_duplicate(
         name1: str,
         name2: str,

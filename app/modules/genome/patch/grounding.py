@@ -25,6 +25,12 @@ from typing import Any, Dict, List, Optional
 
 from app.modules.genome.patch.schema import ARCHIMATE_TYPE_LAYER, ARCHIMATE_TYPES
 
+# Lexical (Jaccard) similarity at/above which a proposed name is warned as a
+# likely rephrased duplicate of an existing element. 0.5 catches token-supersets
+# and reorderings ("Order Management" vs "Order Management System") without
+# firing on merely-related names; synonyms are left to the embedding tier.
+NEAR_DUPLICATE_THRESHOLD = 0.5
+
 
 class GroundingResult:
     """Outcome of grounding a patch against the existing model.
@@ -119,7 +125,7 @@ def ground_genome_patch(patch: Dict[str, Any], session=None) -> GroundingResult:
                 f"something real before approving"
             )
 
-    # 3. no duplicate on add ---------------------------------------------------
+    # 3. duplicate / near-duplicate on add ------------------------------------
     if operation == "add" and name and a_type:
         dupe = _existing(type=a_type).filter(
             ArchiMateElement.name.ilike(name)
@@ -130,5 +136,32 @@ def ground_genome_patch(patch: Dict[str, Any], session=None) -> GroundingResult:
                 f"(id={dupe.id}); propose a modify or a distinct name rather than "
                 f"re-inventing it"
             )
+        else:
+            # Exact match is defeated by rephrasing, and silent NEAR-duplicate
+            # proliferation is how a system of record rots. Warn the approver of
+            # the closest lexical match (reusing the platform's duplicate utils —
+            # whose fuzzy path this change also repairs). Lexical only: synonyms
+            # (Billing vs Invoicing) are the embedding tier's job, not this one.
+            from app.modules.duplicate_detection.services.duplicate_detection_utils import (
+                DuplicateDetectionUtils,
+            )
+
+            best = None
+            for (other,) in _existing(type=a_type).with_entities(
+                ArchiMateElement.name
+            ).all():
+                if not other or other.strip().lower() == name.lower():
+                    continue
+                is_near, score = DuplicateDetectionUtils.is_duplicate(
+                    name, other, mode="fuzzy", threshold=NEAR_DUPLICATE_THRESHOLD
+                )
+                if is_near and (best is None or score > best[0]):
+                    best = (score, other)
+            if best is not None:
+                warnings.append(
+                    f"{a_type} {name!r} closely resembles existing {best[1]!r} "
+                    f"({int(best[0] * 100)}% similar) — confirm it is genuinely "
+                    f"distinct, not a rephrased duplicate"
+                )
 
     return GroundingResult(errors, warnings)
