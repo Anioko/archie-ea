@@ -141,6 +141,12 @@ def _init_blueprints(app):
         app.logger.info("[BLUEPRINT] Genome transformation roadmap registered at /genome/roadmap")
     except Exception as _gr_exc:
         app.logger.warning("[BLUEPRINT] Genome roadmap not available: %s", _gr_exc)
+    try:
+        from app.modules.enterprise_genome.routes.security_genome_routes import enterprise_genome_bp
+        app.register_blueprint(enterprise_genome_bp)
+        app.logger.info("[BLUEPRINT] Genome security matrix registered at /enterprise-genome/security/matrix")
+    except Exception as _gs_exc:
+        app.logger.warning("[BLUEPRINT] Genome security matrix not available: %s", _gs_exc)
 
     # --- Feature-flagged domain modules ---
     _ff_solutions_strategic = _register_solutions_strategic(app, csrf)

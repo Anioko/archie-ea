@@ -1,0 +1,59 @@
+{#- Deterministic control-to-requirement matrix / SOC 2 evidence table.
+    Rendered from a SECURITY genome slice by security_matrix_emitter.render_control_matrix.
+    ZERO LLM. Every row is provenance-linked (data-archimate-element-id). -#}
+<div class="rounded-lg border border-border bg-card overflow-x-auto"
+     data-genome-slice="security"
+     data-spec-hash="{{ slice.spec_hash }}"
+     data-control-count="{{ slice.controls | length }}">
+  <table class="w-full text-sm">
+    <caption class="sr-only">SOC 2 / ISO 27001 control-to-requirement matrix, derived from the {{ slice.store }} store</caption>
+    <thead class="text-left text-muted-foreground border-b border-border">
+      <tr>
+        <th scope="col" class="px-4 py-3 font-semibold">Control</th>
+        <th scope="col" class="px-4 py-3 font-semibold">Framework</th>
+        <th scope="col" class="px-4 py-3 font-semibold">Requirement satisfied</th>
+        <th scope="col" class="px-4 py-3 font-semibold">Status</th>
+        <th scope="col" class="px-4 py-3 font-semibold">Provenance (element)</th>
+      </tr>
+    </thead>
+    <tbody>
+      {%- for node in slice.controls %}
+      <tr class="border-b border-border last:border-0"
+          data-archimate-element-id="{{ node.provenance.archimate_element_id }}">
+        <td class="px-4 py-3 align-top">
+          <span class="font-mono text-xs font-semibold text-primary">{{ node.control.code }}</span>
+          <div class="text-foreground">{{ node.control.title }}</div>
+          {%- if node.control.category %}
+          <div class="text-xs text-muted-foreground">{{ node.control.category }}</div>
+          {%- endif %}
+        </td>
+        <td class="px-4 py-3 align-top">
+          <span class="inline-block rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">{{ node.framework.code }}</span>
+          <div class="text-xs text-muted-foreground">{{ node.framework.name }}</div>
+        </td>
+        <td class="px-4 py-3 align-top text-foreground">{{ node.requirement.title }}</td>
+        <td class="px-4 py-3 align-top">
+          {%- set st = node.requirement.implementation_status or node.requirement.status %}
+          {%- if st in ('completed', 'verified') %}
+          <span class="inline-block rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">{{ st }}</span>
+          {%- elif st %}
+          <span class="inline-block rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">{{ st }}</span>
+          {%- else %}
+          <span class="text-muted-foreground">&mdash;</span>
+          {%- endif %}
+        </td>
+        <td class="px-4 py-3 align-top">
+          <div class="text-foreground">{{ node.provenance.element_name }}</div>
+          <div class="text-xs text-muted-foreground font-mono">{{ node.provenance.archimate_type }} #{{ node.provenance.archimate_element_id }}</div>
+        </td>
+      </tr>
+      {%- else %}
+      <tr>
+        <td colspan="5" class="px-4 py-8 text-center text-muted-foreground">
+          No provenance-linked controls found for this organisation. Seed demo controls, or bind controls to requirement elements.
+        </td>
+      </tr>
+      {%- endfor %}
+    </tbody>
+  </table>
+</div>
