@@ -1,0 +1,44 @@
+{% extends 'layouts/admin_base.html' %}
+{% from 'components/page_header.html' import page_header %}
+
+{% block title %}AI Systems Register — A.R.C.H.I.E.{% endblock %}
+
+{% block content %}
+<div class="flex-1 overflow-auto">
+  {{ page_header(
+      title='AI Systems Register',
+      description='The AI systems the enterprise runs — model, autonomy, governance, data sensitivity and model currency — modelled as first-class ArchiMate elements. Ungoverned, stale-model and high-autonomy AI is flagged as architectural risk.',
+      breadcrumbs=[
+          {'label': 'Home', 'href': url_for('main.index')},
+          {'label': 'AI Systems Register'}
+      ]
+  ) }}
+
+  <div class="p-6 space-y-6">
+    <div class="flex items-center justify-between gap-4">
+      <p class="text-sm text-muted-foreground">
+        Each row is a real modelled <span class="font-medium">ArchiMateElement</span>
+        (ApplicationComponent, AI-system profile). Values that were never recorded show
+        as <span class="font-mono">—</span>, never a fabricated default.
+      </p>
+      <form method="POST" action="{{ url_for('ai_systems_genome.ai_systems_seed') }}" class="shrink-0">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit"
+          class="h-9 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90">
+          Generate / refresh register
+        </button>
+      </form>
+    </div>
+
+    {% if register_html %}
+      {{ register_html }}
+    {% else %}
+    <div class="rounded-lg border border-border bg-card p-6">
+      <p class="text-sm text-muted-foreground">
+        No organisation context — the AI Systems Register is org-scoped and needs a signed-in tenant.
+      </p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

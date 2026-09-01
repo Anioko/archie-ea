@@ -1,0 +1,143 @@
+"""0-LLM emitter: the AI Systems Register matrix (PILLAR 6).
+
+Turns a slice from ``build_ai_systems_slice`` into a deterministic, CSP-safe
+HTML table fragment. No LLM, no randomness, no clock — the same slice emits the
+same bytes. Every cell is produced from recorded data or the honest literal
+``—`` (em dash) for ``"unknown"``; nothing is invented.
+
+Each row carries ``data-element-id`` (structural provenance back to the
+ArchiMateElement) and ``data-currency`` / ``data-flagged`` so the row's risk
+state is machine-readable. Risk rows (retired model, ungoverned high autonomy,
+regulated data without human review) are marked ``data-flagged="1"`` and list
+their flags.
+
+CSP-safe: emits plain markup only — no inline ``<script>``, no ``on*=`` handler,
+no ``style=`` attribute. All text is HTML-escaped via ``markupsafe.escape``.
+"""
+
+from __future__ import annotations
+
+from markupsafe import Markup, escape
+
+EM_DASH = "—"
+
+# Human labels for the machine enum values. A value the profile could not
+# resolve is "unknown" -> em dash, never a made-up label.
+_CURRENCY_LABEL = {
+    "current": "Current",
+    "stale": "Stale",
+    "retired": "Retired",
+    "unknown": EM_DASH,
+}
+_FLAG_LABEL = {
+    "retired-model": "Retired model",
+    "ungoverned-high-autonomy": "Ungoverned high autonomy",
+    "regulated-no-human-review": "Regulated data, no human review",
+}
+
+
+def _cell(value) -> str:
+    """Escape a scalar for a table cell; 'unknown'/empty -> em dash."""
+    if value is None:
+        return EM_DASH
+    s = str(value).strip()
+    if not s or s == "unknown":
+        return EM_DASH
+    return str(escape(s))
+
+
+def _tri_cell(value) -> str:
+    """Render a tri-state governance flag: Yes / No / em dash (unrecorded)."""
+    if value is True:
+        return "Yes"
+    if value is False:
+        return "No"
+    return EM_DASH
+
+
+def _flags_cell(flags: list[str]) -> str:
+    if not flags:
+        return EM_DASH
+    labels = [str(escape(_FLAG_LABEL.get(f, f))) for f in flags]
+    return " · ".join(labels)
+
+
+def emit_ai_systems_register(slice_data: dict) -> Markup:
+    """Emit the register table for a slice. Returns a ``Markup`` fragment."""
+    systems = slice_data.get("systems") or []
+    counts = slice_data.get("counts") or {}
+    spec_hash = slice_data.get("spec_hash") or ""
+
+    rows: list[str] = []
+    for s in systems:
+        flags = s.get("risk_flags") or []
+        flagged = "1" if flags else "0"
+        currency = s.get("model_currency", "unknown")
+        currency_label = _CURRENCY_LABEL.get(currency, EM_DASH)
+        gov = s.get("governance") or {}
+
+        rows.append(
+            "<tr class=\"border-b border-border\" "
+            f'data-element-id="{int(s["archimate_element_id"])}" '
+            f'data-currency="{escape(currency)}" '
+            f'data-flagged="{flagged}">'
+            f'<td class="px-3 py-2 text-sm font-medium">{_cell(s.get("name"))}</td>'
+            f'<td class="px-3 py-2 text-sm">{_cell(s.get("provider"))}</td>'
+            f'<td class="px-3 py-2 text-sm font-mono">{_cell(s.get("model_id"))}</td>'
+            f'<td class="px-3 py-2 text-sm" data-currency-cell="{escape(currency)}">{escape(currency_label)}</td>'
+            f'<td class="px-3 py-2 text-sm">{_cell(s.get("autonomy_level"))}</td>'
+            f'<td class="px-3 py-2 text-sm">{_tri_cell(gov.get("approval_gate"))}</td>'
+            f'<td class="px-3 py-2 text-sm">{_tri_cell(gov.get("human_review"))}</td>'
+            f'<td class="px-3 py-2 text-sm">{_cell(s.get("data_sensitivity"))}</td>'
+            f'<td class="px-3 py-2 text-sm text-destructive">{_flags_cell(flags)}</td>'
+            "</tr>"
+        )
+
+    if rows:
+        body = "".join(rows)
+    else:
+        body = (
+            '<tr><td colspan="9" class="px-3 py-6 text-sm text-muted-foreground text-center">'
+            "No AI systems modelled yet.</td></tr>"
+        )
+
+    header_cells = [
+        "AI system",
+        "Provider",
+        "Model",
+        "Model currency",
+        "Autonomy",
+        "Approval gate",
+        "Human review",
+        "Data sensitivity",
+        "Risk flags",
+    ]
+    head = "".join(
+        f'<th class="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">{escape(h)}</th>'
+        for h in header_cells
+    )
+
+    summary = (
+        '<div class="text-xs text-muted-foreground" data-testid="ai-systems-summary">'
+        f'Total {int(counts.get("total", 0))} · '
+        f'retired {int(counts.get("retired", 0))} · '
+        f'stale {int(counts.get("stale", 0))} · '
+        f'current {int(counts.get("current", 0))} · '
+        f'flagged {int(counts.get("flagged", 0))}'
+        "</div>"
+    )
+    provenance = (
+        f'<div class="text-xs text-muted-foreground font-mono" data-spec-hash="{escape(spec_hash)}">'
+        f"spec: {escape(spec_hash) or EM_DASH}</div>"
+    )
+
+    html = (
+        '<div class="space-y-3" data-testid="ai-systems-register">'
+        f'<div class="flex items-center justify-between">{summary}{provenance}</div>'
+        '<div class="overflow-x-auto rounded-lg border border-border">'
+        '<table class="min-w-full divide-y divide-border">'
+        f"<thead><tr>{head}</tr></thead>"
+        f"<tbody>{body}</tbody>"
+        "</table></div></div>"
+    )
+    return Markup(html)

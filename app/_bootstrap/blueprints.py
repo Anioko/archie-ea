@@ -147,6 +147,12 @@ def _init_blueprints(app):
         app.logger.info("[BLUEPRINT] Genome security matrix registered at /enterprise-genome/security/matrix")
     except Exception as _gs_exc:
         app.logger.warning("[BLUEPRINT] Genome security matrix not available: %s", _gs_exc)
+    try:
+        from app.modules.enterprise_genome.routes.ai_systems_routes import ai_systems_genome_bp
+        app.register_blueprint(ai_systems_genome_bp)
+        app.logger.info("[BLUEPRINT] Genome AI-systems register at /genome/ai-systems")
+    except Exception as _gai_exc:
+        app.logger.warning("[BLUEPRINT] Genome AI-systems not available: %s", _gai_exc)
 
     # --- Feature-flagged domain modules ---
     _ff_solutions_strategic = _register_solutions_strategic(app, csrf)
