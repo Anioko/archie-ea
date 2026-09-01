@@ -48,6 +48,7 @@ ROOT = Path(__file__).resolve().parents[1]
 # HAND_WRITTEN is a literal on purpose: each of these was inspected and its
 # write path confirmed, and a new one must be added here deliberately.
 HAND_WRITTEN = {
+    "create_adr",
     "create_archimate_element", "create_archimate_relationship", "create_constraint",
     "create_driver", "create_goal", "create_option", "create_requirement",
     "create_risk", "create_solution", "link_application_to_capability",

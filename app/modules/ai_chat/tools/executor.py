@@ -1905,6 +1905,220 @@ class ToolExecutor:
 
         return apply_genome_patch(args, self.user_id)
 
+    # ------------------------------------------------------------------ #
+    # Governance / executive READ tools (Capability-Gap Register G1)       #
+    #                                                                      #
+    # These wrap services that already exist but had no AI binding, so the #
+    # copilot could not answer the personas' headline questions. All are   #
+    # read-only (mutates=False) and never write to db.session.             #
+    # ------------------------------------------------------------------ #
+
+    def _tool_get_investment_priorities(self, args: dict) -> dict:
+        """CTO headline: ranked capability investment priorities for THIS org.
+
+        Wraps InvestmentPrioritizationService.analyze_investment_priorities()
+        via the architecture blueprint's own helpers. That service reads
+        UnifiedCapability / UnifiedApplicationCapabilityMapping, NEITHER of
+        which carries organization_id — so the raw analysis spans every org on
+        the install. We reuse _org_scoped_investment_context() (the same
+        org-name derivation the dashboard's AI-suggest endpoint uses) so only
+        capabilities THIS org has actually mapped ever reach the model.
+        """
+        from app.modules.architecture.routes.architecture_routes import (
+            _assemble_investment_priorities_context,
+            _org_scoped_investment_context,
+        )
+
+        limit = int(args.get("limit", 25) or 25)
+
+        analysis, mapping_count = _assemble_investment_priorities_context()
+        if analysis is None:
+            # Honest empty state — no fabricated numbers.
+            return {
+                "success": True,
+                "result": {
+                    "ranked": [],
+                    "split": None,
+                    "mapping_count": mapping_count,
+                },
+                "message": (
+                    "No capability mappings exist yet, so investment priorities "
+                    "cannot be computed. This is not zero priority — it is not "
+                    "yet measurable."
+                ),
+            }
+
+        org_context = _org_scoped_investment_context(analysis, limit=limit)
+        if org_context is None:
+            return {
+                "success": True,
+                "result": {"ranked": [], "split": None, "mapping_count": mapping_count},
+                "message": "No capabilities are mapped in this organization yet.",
+            }
+
+        scores = org_context["capability_scores"]
+        ranked = [
+            {
+                "capability_name": c.get("capability_name"),
+                "priority_level": c.get("priority_level"),
+                "investment_priority_score": c.get("investment_priority_score"),
+                "estimated_cost": c.get("estimated_cost"),
+                "timeframe_months": c.get("timeframe"),
+            }
+            for c in scores
+        ]
+        # The service's real posture buckets are the four priority tiers, not an
+        # "invest/stall" pair — report what the service actually produces.
+        split = {
+            "critical": len(org_context["critical_investments"]),
+            "high": len(org_context["high_investments"]),
+            "medium": len(org_context["medium_investments"]),
+            "low": len(org_context["low_investments"]),
+        }
+        return {
+            "success": True,
+            "result": {
+                "ranked": ranked,
+                "split": split,
+                "recommendations": org_context.get("recommendations", []),
+                "mapping_count": mapping_count,
+            },
+            "message": (
+                f"{len(ranked)} capability investment priorities for this "
+                f"organization — {split['critical']} critical, {split['high']} high, "
+                f"{split['medium']} medium, {split['low']} low."
+            ),
+        }
+
+    def _tool_get_executive_dashboard(self, args: dict) -> dict:
+        """CTO/CIO one-call executive summary.
+
+        Wraps ExecutiveDashboardService.get_executive_summary(), whose metric
+        methods each query TenantMixin models (Solution, SolutionRisk,
+        ARBReviewItem, ...) inside this request context and are therefore
+        org-scoped by the ORM tenant filter. The service already returns None
+        for pieces it cannot compute, so we pass its shape through unchanged —
+        no metric is fabricated to fill a gap.
+        """
+        from app.modules.dashboard.v2.services.executive_dashboard_service import (
+            ExecutiveDashboardService,
+        )
+
+        summary = ExecutiveDashboardService().get_executive_summary()
+        return {
+            "success": True,
+            "result": {
+                "portfolio_health": summary.get("architecture_health"),
+                "portfolio_stats": summary.get("portfolio_stats"),
+                "programme_progress": summary.get("programme_progress"),
+                "arb_pipeline": summary.get("pending_decisions"),
+                "top_risks": summary.get("risk_posture"),
+                "capability_coverage": summary.get("capability_coverage"),
+            },
+            "message": (
+                "Executive summary: portfolio health, ARB pipeline and risk "
+                "posture. Fields that read null were not computable and must be "
+                "shown as an em dash, never as zero."
+            ),
+        }
+
+    def _tool_get_arb_status(self, args: dict) -> dict:
+        """Read a solution's ARB review status, decision and conditions.
+
+        Closes 'ARB is write-only to the AI' — the copilot could submit_for_arb
+        but never read the outcome back. ARBReviewItem is a TenantMixin model,
+        so this query is org-scoped automatically inside the request context.
+        """
+        from app.models.architecture_review_board import ARBReviewItem
+
+        solution_id = args.get("solution_id")
+        if not solution_id:
+            return {"success": False, "error": "solution_id is required."}
+
+        items = (
+            ARBReviewItem.query.filter_by(solution_id=solution_id)
+            .order_by(ARBReviewItem.submitted_at.desc().nullslast())
+            .all()
+        )
+        if not items:
+            return {
+                "success": True,
+                "result": {"solution_id": solution_id, "reviews": []},
+                "message": (
+                    f"Solution {solution_id} has no ARB review items in this "
+                    f"organization."
+                ),
+            }
+
+        reviews = [
+            {
+                "review_number": it.review_number,
+                "title": it.title,
+                "status": it.status,
+                "decision": it.decision,
+                "decision_rationale": it.decision_rationale,
+                "conditions": it.conditions,
+                "decision_date": it.decision_date.isoformat() if it.decision_date else None,
+                "overall_score": it.overall_score,
+            }
+            for it in items
+        ]
+        latest = reviews[0]
+        return {
+            "success": True,
+            "result": {"solution_id": solution_id, "reviews": reviews, "latest": latest},
+            "message": (
+                f"Solution {solution_id}: latest ARB review {latest['review_number']} "
+                f"is '{latest['status']}'"
+                + (f", decision '{latest['decision']}'." if latest["decision"] else ".")
+            ),
+        }
+
+    # ------------------------------------------------------------------ #
+    # Governance WRITE tool (Capability-Gap Register G2)                   #
+    # ------------------------------------------------------------------ #
+
+    def _tool_create_adr(self, args: dict) -> dict:
+        """Author an Architecture Decision Record — solution_architect headline.
+
+        Wraps ADRService.create_adr(). mutates=True / tier 'approve', so it
+        flows through the existing confirmation gate. ArchitectureDecision is a
+        TenantMixin model, so organization_id is auto-set from the acting org on
+        flush — the ADR cannot land in another tenant.
+
+        NOTE (brief deviation): the real service takes a required `rationale`
+        and has NO `status` argument — every ADR is created status='proposed'
+        and moves via approve/reject. This tool therefore drops `status` and
+        adds `rationale` (+ optional decision_type) to match the real signature.
+        """
+        from app.services.adr_service import ADRService
+
+        solution_id = args.get("solution_id")
+        title = args.get("title")
+        if not solution_id or not title:
+            return {"success": False, "error": "solution_id and title are required."}
+
+        adr = ADRService.create_adr(
+            solution_id=solution_id,
+            title=title,
+            context=args.get("context") or "",
+            decision=args.get("decision") or "",
+            rationale=args.get("rationale") or "",
+            decision_type=args.get("decision_type") or "technology_choice",
+            consequences=args.get("consequences"),
+        )
+        return {
+            "success": True,
+            "result": {
+                "id": adr.id,
+                "title": adr.title,
+                "status": adr.status,
+                "solution_id": adr.solution_id,
+                "decision_type": adr.decision_type,
+            },
+            "message": f"Created ADR {adr.id} '{adr.title}' (status={adr.status}).",
+        }
+
 
 # ------------------------------------------------------------------ #
 # Lightweight helper (avoids importing ApplicationCapabilityMapping   #

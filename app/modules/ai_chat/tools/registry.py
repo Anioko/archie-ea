@@ -995,6 +995,125 @@ TOOL_SCHEMAS = [
         },
         "tier": "auto",
     },
+    # ------------------------------------------------------------------ #
+    # Governance / executive tools (Capability-Gap Register G1 + G2)      #
+    # Three reads that bind existing services the copilot could not reach, #
+    # and one governed write (create_adr) through the approval gate.       #
+    # ------------------------------------------------------------------ #
+    {
+        "name": "get_investment_priorities",
+        "mutates": False,
+        "description": (
+            "CTO view: the ranked capability investment priorities for this "
+            "organization, with the split across CRITICAL/HIGH/MEDIUM/LOW "
+            "priority tiers and recommended next steps. "
+            "USE when the user asks 'where should we invest?', 'what is our "
+            "investment posture?', or any portfolio-investment question. "
+            "Read-only â safe to execute without confirmation."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "limit": {
+                    "type": "integer",
+                    "description": "Max ranked capabilities to return (default 25)",
+                    "default": 25,
+                    "maximum": 100,
+                },
+            },
+        },
+        "tier": "auto",
+    },
+    {
+        "name": "get_executive_dashboard",
+        "mutates": False,
+        "description": (
+            "CTO/CIO one-call executive summary: portfolio health and stats, "
+            "programme (ADM-phase) progress, the ARB decision pipeline, and the "
+            "top risks â all from real data. Fields that could not be computed "
+            "return null and MUST be shown as an em dash, never as zero. "
+            "USE when the user asks for an executive overview, portfolio health, "
+            "or a board-level status. Read-only â safe to execute without confirmation."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {},
+        },
+        "tier": "auto",
+    },
+    {
+        "name": "get_arb_status",
+        "mutates": False,
+        "description": (
+            "Read a solution's Architecture Review Board status: each review "
+            "item's status, decision (approved / approved_with_conditions / "
+            "rejected / deferred), decision rationale and any conditions. "
+            "USE when the user asks 'what did the ARB decide about X?', 'what are "
+            "the conditions on X?', or wants a solution's governance outcome read "
+            "back. Read-only â safe to execute without confirmation."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "solution_id": {
+                    "type": "integer",
+                    "description": "ID of the solution whose ARB reviews to read",
+                },
+            },
+            "required": ["solution_id"],
+        },
+        "tier": "auto",
+    },
+    {
+        "name": "create_adr",
+        "mutates": True,
+        "description": (
+            "Author an Architecture Decision Record (ADR) for a solution â the "
+            "artifact the solution-architect charter centres on. Captures the "
+            "context, the decision taken, its rationale and consequences. The "
+            "ADR is created in status 'proposed' and moves through approve/reject "
+            "governance afterwards. REQUIRES USER CONFIRMATION before executing."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "solution_id": {
+                    "type": "integer",
+                    "description": "ID of the solution this ADR relates to",
+                },
+                "title": {
+                    "type": "string",
+                    "description": "ADR title, e.g. 'Adopt event-driven integration'",
+                },
+                "context": {
+                    "type": "string",
+                    "description": "Why this decision was needed (the forces at play)",
+                },
+                "decision": {
+                    "type": "string",
+                    "description": "What was decided",
+                },
+                "rationale": {
+                    "type": "string",
+                    "description": "Why this option was chosen over the alternatives",
+                },
+                "consequences": {
+                    "type": "string",
+                    "description": "Consequences of the decision (trade-offs accepted)",
+                },
+                "decision_type": {
+                    "type": "string",
+                    "enum": [
+                        "technology_choice", "vendor_selection",
+                        "pattern_selection", "integration_approach",
+                    ],
+                    "description": "Classification of the decision (default technology_choice)",
+                },
+            },
+            "required": ["solution_id", "title", "context", "decision", "rationale"],
+        },
+        "tier": "approve",
+    },
 ]
 
 # Index by name for O(1) lookup
