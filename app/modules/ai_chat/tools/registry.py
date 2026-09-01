@@ -956,6 +956,45 @@ TOOL_SCHEMAS = [
         },
         "tier": "auto",
     },
+    {
+        # ADR 0009 / 0010 — genome-as-substrate. The copilot proposes a
+        # schema-validated, provenance-bearing PATCH to the enterprise genome
+        # instead of doing direct CRUD. Proposing only QUEUES the patch for
+        # approval (mutates=False w.r.t. the model); the real write happens in
+        # the un-registered `apply_genome_patch` handler once a human approves.
+        "name": "propose_genome_patch",
+        "mutates": False,
+        "description": (
+            "Propose a change to the enterprise genome (the ArchiMate model) as a "
+            "structured, provenance-bearing PATCH. Use when the user asks to propose "
+            "a missing capability, a control, a driver, a requirement, or any "
+            "motivation/architecture element. Do NOT create elements directly — emit "
+            "a patch object and this tool validates it and queues it for human "
+            "approval. The patch MUST include target.organization_id, target.domain, "
+            "operation (add|modify), element (archimate_type, layer, name), and "
+            "provenance (proposed_by, rationale, archimate_anchor)."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "request": {
+                    "type": "string",
+                    "description": "What the user asked for, in one line.",
+                },
+                "patch": {
+                    "type": "object",
+                    "description": (
+                        "The genome patch object conforming to GENOME_PATCH_SCHEMA: "
+                        "{target:{organization_id,domain}, operation, "
+                        "element:{archimate_type,layer,name,description?}, "
+                        "provenance:{proposed_by,rationale,archimate_anchor}}."
+                    ),
+                },
+            },
+            "required": ["patch"],
+        },
+        "tier": "auto",
+    },
 ]
 
 # Index by name for O(1) lookup
