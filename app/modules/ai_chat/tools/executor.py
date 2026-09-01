@@ -1851,46 +1851,61 @@ class ToolExecutor:
         }
 
 
-    # ------------------------------------------------------------------ #
-    # Genome patch (ADR 0009 / 0010)                                      #
-    # ------------------------------------------------------------------ #
-
-    def _tool_propose_genome_patch(self, args: dict) -> dict:
-        """Validate an LLM-proposed genome patch and QUEUE it for approval.
-
-        Non-mutating with respect to the enterprise model: it only creates a
-        pending approval (or rejects an invalid patch). The actual model write
-        happens later, in `_tool_apply_genome_patch`, once a human approves —
-        exactly the existing approve-tier queue/confirm mechanism.
-
-        The LLM supplies the candidate patch as ``args["patch"]`` (or as the
-        argument object itself). Whatever it emits is validated deterministically
-        before anything is queued, so a hallucinated patch cannot reach the model.
-        """
-        from app.modules.genome.patch.proposer import propose_genome_patch
-
-        patch = args.get("patch", args)
-        request_text = args.get("request") or "propose a genome patch"
-        return propose_genome_patch(
-            request_text=request_text,
-            user_id=self.user_id,
-            patch_source=lambda *_a, **_k: patch,
-        )
-
-    def _tool_apply_genome_patch(self, args: dict) -> dict:
-        """Apply an APPROVED genome patch to the model (with provenance).
-
-        Reached only through the approval gate: AgentRunner/proposer queue an
-        ``operation_type="tool_use"`` approval whose ``entity_type`` is
-        ``apply_genome_patch`` and whose payload is the validated patch;
-        ``AIChatApprovalService.approve_and_execute`` builds a ToolCall for it
-        and dispatches here. `args` IS the patch dict.
-        """
-        from app.modules.genome.patch.applier import apply_genome_patch
-
-        return apply_genome_patch(args, self.user_id)
-
-
+    # ------------------------------------------------------------------ #
+    # Genome patch (ADR 0009 / 0010)                                      #
+    # ------------------------------------------------------------------ #
+
+    def _tool_propose_genome_patch(self, args: dict) -> dict:
+        """Validate an LLM-proposed genome patch and QUEUE it for approval.
+
+        Non-mutating with respect to the enterprise model: it only creates a
+        pending approval (or rejects an invalid patch). The actual model write
+        happens later, in `_tool_apply_genome_patch`, once a human approves —
+        exactly the existing approve-tier queue/confirm mechanism.
+
+        The LLM supplies the candidate patch as ``args["patch"]`` (or as the
+        argument object itself). Whatever it emits is validated deterministically
+        before anything is queued, so a hallucinated patch cannot reach the model.
+        """
+        from app.modules.genome.patch.proposer import propose_genome_patch
+
+        request_text = args.get("request") or "propose a genome patch"
+
+        supplied = args.get("patch")
+        if isinstance(supplied, dict):
+            # The model supplied the full patch -- pass it through verbatim.
+            return propose_genome_patch(
+                request_text=request_text,
+                user_id=self.user_id,
+                patch_source=lambda *_a, **_k: supplied,
+            )
+
+        # No patch supplied: synthesize one from the prose via the LLM, whose
+        # default patch source reads organization_id + proposed_by from context
+        # and forces target to the acting org.
+        return propose_genome_patch(
+            request_text=request_text,
+            user_id=self.user_id,
+            context={
+                "organization_id": self._get_organization_id(),
+                "proposed_by": str(self.user_id),
+            },
+        )
+
+    def _tool_apply_genome_patch(self, args: dict) -> dict:
+        """Apply an APPROVED genome patch to the model (with provenance).
+
+        Reached only through the approval gate: AgentRunner/proposer queue an
+        ``operation_type="tool_use"`` approval whose ``entity_type`` is
+        ``apply_genome_patch`` and whose payload is the validated patch;
+        ``AIChatApprovalService.approve_and_execute`` builds a ToolCall for it
+        and dispatches here. `args` IS the patch dict.
+        """
+        from app.modules.genome.patch.applier import apply_genome_patch
+
+        return apply_genome_patch(args, self.user_id)
+
+
 # ------------------------------------------------------------------ #
 # Lightweight helper (avoids importing ApplicationCapabilityMapping   #
 # at module level to prevent circular imports)                        #

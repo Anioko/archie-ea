@@ -138,17 +138,18 @@ def propose_genome_patch(
 
 
 def _default_patch_source(request_text: str, context: Dict[str, Any]) -> Dict[str, Any]:
-    """Default (production) patch source.
+    """Default (production) patch source: real LLM synthesis.
 
-    Intentionally minimal in this first increment: genome-patch synthesis from
-    free text is a follow-up. It raises a clear error so the caller reports
-    honestly rather than fabricating a patch. Tests and callers inject their own
-    `patch_source`; when LLM synthesis lands it replaces this function only.
+    Delegates to `app.modules.genome.patch.synth.llm_patch_source`, which prompts
+    the existing LLM service to emit a candidate genome patch and parses its JSON
+    fail-closed. The returned dict is NOT trusted — `propose_genome_patch`
+    validates it deterministically before anything is queued. `context` must
+    carry `organization_id` (the acting org); an unparseable/prose response
+    raises rather than fabricating a patch (CLAUDE.md: never invent data).
     """
-    raise NotImplementedError(
-        "No genome-patch source configured. Provide `patch_source` (an LLM "
-        "adapter constrained to emit a genome patch) to propose_genome_patch()."
-    )
+    from app.modules.genome.patch.synth import llm_patch_source
+
+    return llm_patch_source(request_text, context)
 
 
 __all__ = ["propose_genome_patch", "APPLY_ENTITY_TYPE", "PatchSource"]
