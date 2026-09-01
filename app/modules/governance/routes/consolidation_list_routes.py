@@ -875,17 +875,24 @@ def recalculate_savings():
                     "license_savings": license_savings,
                 }
             else:
-                # Fallback: £10,000 baseline per redundant app
-                estimated_savings = 10000  # fabricated-values-ok: documented baseline for zero-cost apps
-                cost_source = "baseline_estimate"
-                cost_breakdown["baseline"] = 10000
+                # No cost data at all: savings cannot be estimated. Record it as
+                # unknown (None -> em dash) rather than inventing a plausible
+                # figure — a fabricated £10,000 is indistinguishable from a real
+                # estimate once persisted and shown.
+                estimated_savings = None
+                cost_source = "unknown"
 
-            if estimated_savings != float(entry.estimated_savings or 0):
+            if estimated_savings is None:
+                if entry.estimated_savings is not None:
+                    entry.estimated_savings = None
+                    entry.updated_at = datetime.utcnow()
+                    updated_count += 1
+            elif estimated_savings != float(entry.estimated_savings or 0):
                 entry.estimated_savings = estimated_savings
                 entry.updated_at = datetime.utcnow()
                 updated_count += 1
 
-            if cost_source == "baseline_estimate":
+            if cost_source == "unknown":
                 baseline_count += 1
             else:
                 real_data_count += 1

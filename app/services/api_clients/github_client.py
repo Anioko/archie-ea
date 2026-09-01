@@ -284,7 +284,7 @@ class GitHubAPIClient(BaseAPIClient):
                 }
             return {"count": 0, "top_contributors": []}
         except Exception:
-            return {"count": 0, "top_contributors": []}
+            return None  # honest failure: no fabricated contributor metrics on error
 
     def _get_recent_activity(self, owner: str, repo: str) -> Dict[str, Any]:
         """Get recent repository activity."""
@@ -322,7 +322,7 @@ class GitHubAPIClient(BaseAPIClient):
                 "activity_score": recent_commits + recent_issues,
             }
         except Exception:
-            return {"commits_last_30_days": 0, "issues_last_30_days": 0, "activity_score": 0}
+            return None  # honest failure: no fabricated activity metrics on error
 
     def _get_community_metrics(self, owner: str, repo: str) -> Dict[str, Any]:
         """Get community engagement metrics."""
@@ -344,7 +344,7 @@ class GitHubAPIClient(BaseAPIClient):
                 "community_health_score": min(100, stars // 10 + (0 if fork_ratio > 0.1 else 20)),
             }
         except Exception:
-            return {"stars": 0, "forks": 0, "fork_ratio": 0, "community_health_score": 0}
+            return None  # honest failure: no fabricated community metrics on error
 
     def _get_dependency_files(self, owner: str, repo: str) -> List[Dict[str, Any]]:
         """Get dependency files from repository."""

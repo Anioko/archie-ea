@@ -32,7 +32,7 @@ def _safe(fn, default=None):
         try:
             db.session.rollback()
         except Exception:  # noqa: BLE001
-            logger.debug("SAD safe-query rollback also failed")  # fabricated-values-ok
+            logger.debug("SAD safe-query rollback also failed")  # fabricated-ok: log-only on rollback failure; returns the caller-supplied default, invents nothing
         return default
 
 

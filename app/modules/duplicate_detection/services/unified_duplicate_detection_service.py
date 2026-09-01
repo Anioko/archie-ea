@@ -30,7 +30,7 @@ from app.services.fuzzy_matcher import FuzzyMatcher
 logger = logging.getLogger(__name__)
 
 # Estimated annual savings per redundant application (used for ROI projections)
-ESTIMATED_SAVINGS_PER_REDUNDANT_APP = 10000  # fabricated-values-ok
+ESTIMATED_SAVINGS_PER_REDUNDANT_APP = 10000  # fabricated-ok: declared estimation constant for ROI projection, not a measured value
 
 
 @dataclass

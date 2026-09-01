@@ -114,7 +114,7 @@ class MetricsService:
             }
         except Exception as e:
             logger.error(f"Error in get_technical_debt_index: {e}")
-            return {"overall_index": 0, "total_apps": 0}
+            raise  # honest failure: never return a fabricated zero metric
 
     @staticmethod
     @transactional
@@ -174,7 +174,7 @@ class MetricsService:
             }
         except Exception as e:
             logger.error(f"Error in get_capability_coverage_metrics: {e}")
-            return {"by_level": [], "overall_coverage": 0}
+            raise  # honest failure: never return a fabricated zero metric
 
     @staticmethod
     @transactional
@@ -279,7 +279,7 @@ class MetricsService:
             }
         except Exception as e:
             logger.error(f"Error in get_strategic_alignment_score: {e}")
-            return {"alignment_score": 0}
+            raise  # honest failure: never return a fabricated zero metric
 
     # ============================================================================
     # 2. VENDOR MANAGEMENT METRICS
@@ -371,7 +371,7 @@ class MetricsService:
             }
         except Exception as e:
             logger.error(f"Error in get_vendor_portfolio_metrics: {e}")
-            return {"vendor_diversity": {}, "contract_analysis": {}, "risk_metrics": {}}
+            raise  # honest failure: never return a fabricated zero metric
 
     # ============================================================================
     # 3. COST & ROI METRICS
@@ -430,7 +430,7 @@ class MetricsService:
             }
         except Exception as e:
             logger.error(f"Error in get_it_cost_distribution: {e}")
-            return {"by_category": [], "total_it_cost": 0}
+            raise  # honest failure: never return a fabricated zero metric
 
     @staticmethod
     @transactional
@@ -497,7 +497,7 @@ class MetricsService:
             }
         except Exception as e:
             logger.error(f"Error in get_roi_metrics: {e}")
-            return {"by_category": [], "portfolio_avg_cost": 0, "portfolio_avg_roi": 0}
+            raise  # honest failure: never return a fabricated zero metric
 
     # ============================================================================
     # 4. COMPLIANCE & RISK METRICS
@@ -582,7 +582,7 @@ class MetricsService:
             }
         except Exception as e:
             logger.error(f"Error in get_compliance_status: {e}")
-            return {"by_type": [], "overall_compliance_rate": 0}
+            raise  # honest failure: never return a fabricated zero metric
 
     # ============================================================================
     # 5. PERFORMANCE & OPERATIONAL METRICS
@@ -658,7 +658,7 @@ class MetricsService:
             }
         except Exception as e:
             logger.error(f"Error in get_system_performance_metrics: {e}")
-            return {"by_type": [], "portfolio_avg_response_time": 0}
+            raise  # honest failure: never return a fabricated zero metric
 
     # ============================================================================
     # 6. EXECUTIVE DASHBOARD METRICS

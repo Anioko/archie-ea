@@ -1347,8 +1347,10 @@ class VendorProductService:
                 "total_products": total_products,
             }
         except Exception as e:
+            # Do not fabricate an empty/zero catalog on failure; the route
+            # handler turns this into a clean 500 rather than a fake "0 vendors".
             logger.error(f"Error getting complete catalog: {e}")
-            return {"vendors": [], "total_vendors": 0, "total_families": 0, "total_products": 0}
+            raise
 
     def get_catalog_statistics(self) -> Dict[str, Any]:
         """Get aggregate statistics for the vendor catalog."""
@@ -1380,8 +1382,10 @@ class VendorProductService:
                 "category_breakdown": {cat: cnt for cat, cnt in category_breakdown if cat},
             }
         except Exception as e:
+            # Do not fabricate zero statistics on failure; the route handler
+            # turns this into a clean 500 rather than a fake "0 vendors".
             logger.error(f"Error getting catalog statistics: {e}")
-            return {"total_vendors": 0, "total_product_families": 0, "total_products": 0}
+            raise
 
     def get_all_categories(self) -> List[str]:
         """Get all unique product family categories."""

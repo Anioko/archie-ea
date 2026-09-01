@@ -67,7 +67,8 @@ def _get_vendor_list_context():
         }
         return stats, vendors
     except Exception:
-        return {"total": 0, "active": 0, "strategic": 0, "total_products": 0, "total_linked_apps": 0, "total_acv": 0, "renewals_due": 0}, []
+        # Query failed: report unknown (em dash), not fabricated zero vendor metrics.
+        return {"total": None, "active": None, "strategic": None, "total_products": None, "total_linked_apps": None, "total_acv": None, "renewals_due": None}, []
 
 # Blueprint defined here (was in app/unified_vendors/__init__.py)
 unified_vendors_bp = Blueprint(

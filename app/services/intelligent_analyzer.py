@@ -256,7 +256,7 @@ Provide accurate, research-backed information. If specific details weren't found
 
             return {"web_content": tech_info}
 
-        except Exception as e:
+        except Exception as e:  # fabricated-ok: empty container on scrape failure, no invented values
             logger.warning(f"Failed to scrape vendor docs: {str(e)}")
             return {"web_content": {}}
 
@@ -276,7 +276,7 @@ Provide accurate, research-backed information. If specific details weren't found
 
             return {"api_specs": api_info}
 
-        except Exception as e:
+        except Exception as e:  # fabricated-ok: empty container on scrape failure, no invented values
             logger.warning(f"Failed to scrape API docs: {str(e)}")
             return {"api_specs": {}}
 
@@ -295,7 +295,7 @@ Provide accurate, research-backed information. If specific details weren't found
 
             return {"pricing_data": pricing_info}
 
-        except Exception as e:
+        except Exception as e:  # fabricated-ok: empty container on scrape failure, no invented values
             logger.warning(f"Failed to scrape pricing data: {str(e)}")
             return {"pricing_data": {}}
 

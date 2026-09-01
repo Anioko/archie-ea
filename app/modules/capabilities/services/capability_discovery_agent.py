@@ -211,7 +211,7 @@ RESPOND WITH JSON:
 
             return json.loads(cleaned)
 
-        except Exception as e:
+        except Exception as e:  # fabricated-ok: empty suggestion lists are the honest result when the LLM call or JSON parse fails
             logger.error(f"Error suggesting hierarchy: {e}")
             return {"hierarchy_suggestions": [], "root_capabilities": []}
 

@@ -44,7 +44,7 @@ from app.models.unified_capability import UnifiedCapability  # dead-code-ok
 
 logger = logging.getLogger(__name__)
 
-BASE_SAVINGS_PER_APP_USD = 50000  # fabricated-values-ok: named constant for estimated savings
+BASE_SAVINGS_PER_APP_USD = 50000  # fabricated-ok: declared estimation baseline constant, not a measured value
 
 
 class AIGapDetectionService:

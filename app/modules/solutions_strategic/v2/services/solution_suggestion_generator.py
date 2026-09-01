@@ -261,7 +261,7 @@ class SolutionSuggestionGenerator:
                 "existing_elements": data.get("existing_elements", []),
                 "new_elements": data.get("new_elements", []),
             }
-        except (json.JSONDecodeError, IndexError, KeyError) as e:
+        except (json.JSONDecodeError, IndexError, KeyError) as e:  # fabricated-ok: returns honest empty suggestion set below, no invented elements
             logger.warning("Failed to parse LLM response for phase %s: %s", phase, e)
             return {"existing_elements": [], "new_elements": []}
 

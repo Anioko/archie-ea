@@ -51,7 +51,7 @@ class ExecutiveDashboardService:
             return {"distribution": distribution, "total": total}
         except Exception as exc:
             logger.warning("Executive dashboard: phase distribution unavailable: %s", exc)
-            return {"distribution": {}, "total": 0}
+            return {"distribution": {}, "total": None}  # honest: totals not computed on error
 
     def _get_risk_summary(self):
         """Aggregate open risks by impact severity."""
@@ -102,7 +102,7 @@ class ExecutiveDashboardService:
             }
         except Exception as exc:
             logger.warning("Executive dashboard: ARB pending unavailable: %s", exc)
-            return {"pending": 0, "approved": 0, "rejected": 0, "total": 0}
+            return {"pending": None, "approved": None, "rejected": None, "total": None}  # honest: ARB counts not computed on error
 
     def _get_capability_coverage(self):
         """Percentage of business capabilities with at least one solution mapping."""

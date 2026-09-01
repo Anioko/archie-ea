@@ -443,7 +443,7 @@ class Solution(TenantMixin, db.Model, OptimisticLockMixin):
                 has_recommendations = SolutionRecommendation.query.filter_by(
                     session_id=self.analysis_session_id
                 ).count() > 0
-            except Exception:  # fabricated-values-ok: graceful degradation
+            except Exception:  # fabricated-ok: on error the readiness flag stays False, rendering the check as not-passed; invents no value
                 import logging
                 logging.getLogger(__name__).debug("Could not check analysis data for readiness")
 
@@ -460,21 +460,21 @@ class Solution(TenantMixin, db.Model, OptimisticLockMixin):
                     has_capabilities = SolutionCapabilityMapping.query.filter_by(
                         solution_id=self.id
                     ).count() > 0
-            except Exception:  # fabricated-values-ok: graceful degradation
+            except Exception:  # fabricated-ok: on error the readiness flag stays False, rendering the check as not-passed; invents no value
                 import logging
                 logging.getLogger(__name__).debug("Could not check capabilities for readiness")
 
         try:
             from app.models.solution_lifecycle_models import SolutionRisk
             has_risks = SolutionRisk.query.filter_by(solution_id=self.id).count() > 0
-        except Exception:  # fabricated-values-ok: graceful degradation
+        except Exception:  # fabricated-ok: on error the readiness flag stays False, rendering the check as not-passed; invents no value
             import logging
             logging.getLogger(__name__).debug("Could not check risks for readiness")
 
         has_architecture = False
         try:
             has_architecture = self.archimate_elements.count() > 0
-        except Exception:  # fabricated-values-ok: graceful degradation
+        except Exception:  # fabricated-ok: on error the readiness flag stays False, rendering the check as not-passed; invents no value
             import logging
             logging.getLogger(__name__).debug("Could not check architecture elements for readiness")
 
@@ -555,7 +555,7 @@ class Solution(TenantMixin, db.Model, OptimisticLockMixin):
                 capability_domain_msg = (
                     "Solution has no business domain set."
                 )
-        except Exception:  # fabricated-values-ok: graceful degradation
+        except Exception:  # fabricated-ok: on error the check is marked not-passed with an explicit 'could not evaluate' message; invents no value
             import logging
             logging.getLogger(__name__).debug(
                 "Could not check capability domain coverage for readiness"
@@ -612,12 +612,13 @@ class Solution(TenantMixin, db.Model, OptimisticLockMixin):
                     no_critical_gaps_msg = (
                         f"{gap_count} critical capabilities have unresolved maturity gaps."
                     )
-        except Exception:  # fabricated-values-ok: graceful degradation
+        except Exception:  # fabricated-ok: on error the check is marked not-passed with an explicit message; a pass is never shown unverified
             import logging
             logging.getLogger(__name__).debug(
                 "Could not check critical capability gaps for readiness"
             )
-            no_critical_gaps_passed = True  # Graceful degradation: don't block on error
+            no_critical_gaps_passed = False
+            no_critical_gaps_msg = "Could not evaluate critical capability gaps."
 
         checks.append({
             "label": "No critical capability gaps",

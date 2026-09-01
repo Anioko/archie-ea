@@ -271,7 +271,7 @@ class SolutionAIOrchestrator:
             reasoning_trail.append({
                 'phase': 'scope',
                 'summary': f'Solution #{solution_id} created',
-                'confidence': 0.9,  # fabricated-values-ok: confidence scale 0-1
+                'confidence': 0.9,  # fabricated-ok: fixed heuristic confidence for this deterministic phase, not a per-record measurement
             })
         except Exception as e:
             scope_phase = {'error': str(e), 'status': 'failed'}
@@ -287,7 +287,7 @@ class SolutionAIOrchestrator:
             reasoning_trail.append({
                 'phase': 'capabilities',
                 'summary': f'{len(suggestions or [])} capabilities identified',
-                'confidence': 0.8,  # fabricated-values-ok: confidence scale 0-1
+                'confidence': 0.8,  # fabricated-ok: fixed heuristic confidence for this deterministic phase, not a per-record measurement
             })
         except Exception as e:
             capabilities_phase = {'suggestions': [], 'count': 0, 'error': str(e)}
@@ -309,7 +309,7 @@ class SolutionAIOrchestrator:
             reasoning_trail.append({
                 'phase': 'gaps',
                 'summary': f'{len(risks)} gaps identified',
-                'confidence': 0.75,  # fabricated-values-ok: confidence scale 0-1
+                'confidence': 0.75,  # fabricated-ok: fixed heuristic confidence for this deterministic phase, not a per-record measurement
             })
         except Exception as e:
             gaps_phase = {'gaps': [], 'critical_count': 0, 'error': str(e)}
@@ -324,7 +324,7 @@ class SolutionAIOrchestrator:
             reasoning_trail.append({
                 'phase': 'options',
                 'summary': f'{len(opts)} options generated',
-                'confidence': 0.8,  # fabricated-values-ok: confidence scale 0-1
+                'confidence': 0.8,  # fabricated-ok: fixed heuristic confidence for this deterministic phase, not a per-record measurement
             })
         except Exception as e:
             options_phase = {'options': [], 'error': str(e)}
@@ -343,7 +343,7 @@ class SolutionAIOrchestrator:
             reasoning_trail.append({
                 'phase': 'roadmap',
                 'summary': '3-plateau roadmap generated',
-                'confidence': 0.7,  # fabricated-values-ok: confidence scale 0-1
+                'confidence': 0.7,  # fabricated-ok: fixed heuristic confidence for this deterministic phase, not a per-record measurement
             })
         except Exception as e:
             roadmap_phase = {'plateaus': [], 'error': str(e)}
@@ -378,7 +378,7 @@ class SolutionAIOrchestrator:
             reasoning_trail.append({
                 'phase': 'arb_draft',
                 'summary': 'ARB draft compiled from all phases',
-                'confidence': 0.85,  # fabricated-values-ok: confidence scale 0-1
+                'confidence': 0.85,  # fabricated-ok: fixed heuristic confidence for this deterministic phase, not a per-record measurement
             })
         except Exception as e:
             arb_draft_phase = {'status': 'failed', 'error': str(e)}
@@ -413,7 +413,7 @@ class SolutionAIOrchestrator:
                 ),
                 'confidence': archimate_result.get(
                     'validation_results', {}
-                ).get('confidence', 0.8),  # fabricated-values-ok: confidence scale 0-1
+                ).get('confidence'),  # None when the validator reported none -> UI renders em dash, not a fabricated 0.8
             })
         except Exception as e:
             archimate_phase = {

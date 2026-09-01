@@ -172,37 +172,37 @@ def _rule_based_classify(app: ApplicationComponent) -> tuple:
 
     # Rule 1 – SaaS deployment model is a high-confidence signal
     if deployment in ("saas", "cloud_saas"):
-        return "saas", 0.90, ["deployment_model=saas"]  # fabricated-values-ok: confidence bound for saas rule
+        return "saas", 0.90, ["deployment_model=saas"]  # fabricated-ok: designed confidence weight for this deterministic classifier rule
 
     # Rule 2 – explicit API gateway signals
     if any(kw in joined_tech for kw in _API_GATEWAY_KEYWORDS) or "api_gateway" in _safe_lower(
         app.application_type or ""
     ):
-        return "api_gateway", 0.85, ["api_gateway_keyword"]  # fabricated-values-ok: confidence bound for api_gateway rule
+        return "api_gateway", 0.85, ["api_gateway_keyword"]  # fabricated-ok: designed confidence weight for this deterministic classifier rule
 
     # Rule 3 – microservice keywords in tech stack
     if any(kw in joined_tech for kw in _MICROSERVICE_KEYWORDS):
-        return "microservice", 0.80, ["microservice_keyword"]  # fabricated-values-ok: confidence bound for microservice rule
+        return "microservice", 0.80, ["microservice_keyword"]  # fabricated-ok: designed confidence weight for this deterministic classifier rule
 
     # Rule 4 – legacy technology detected
     if any(kw in joined_tech for kw in _LEGACY_KEYWORDS):
-        return "legacy", 0.85, ["legacy_keyword"]  # fabricated-values-ok: confidence bound for legacy rule
+        return "legacy", 0.85, ["legacy_keyword"]  # fabricated-ok: designed confidence weight for this deterministic classifier rule
 
     # Rule 5 – explicit monolith keyword
     if any(kw in joined_tech for kw in _MONOLITH_KEYWORDS):
-        return "monolith", 0.80, ["monolith_keyword"]  # fabricated-values-ok: confidence bound for monolith rule
+        return "monolith", 0.80, ["monolith_keyword"]  # fabricated-ok: designed confidence weight for this deterministic classifier rule
 
     # Rule 6 – enterprise ERP/CRM category → monolith
     if category in _ERP_CRM_CATEGORIES:
         signals.append(f"category={category}")
-        return "monolith", 0.70, signals  # fabricated-values-ok: confidence bound for ERP/CRM monolith rule
+        return "monolith", 0.70, signals  # fabricated-ok: designed confidence weight for this deterministic classifier rule
 
     # Rule 7 – on-premise commercial apps without microservice signal → monolith
     if deployment in ("on_premise", "on-premise", "on_prem") and app.vendor_name:
         signals.append("on_premise_commercial")
-        return "monolith", 0.60, signals  # fabricated-values-ok: confidence bound for on-premise monolith rule
+        return "monolith", 0.60, signals  # fabricated-ok: designed confidence weight for this deterministic classifier rule
 
-    return "unknown", 0.40, ["no_signal"]  # fabricated-values-ok: default confidence for unknown
+    return "unknown", 0.40, ["no_signal"]  # fabricated-ok: designed confidence weight for the no-signal classifier fallthrough
 
 
 def _llm_classify_batch(apps: List[ApplicationComponent]) -> List[Dict]:
@@ -447,7 +447,7 @@ class ApplicationPatternClassifierService:
             by_source[source] = by_source.get(source, 0) + 1
 
             confidence = rec["confidence"]
-            if confidence >= 0.75:  # fabricated-values-ok: confidence band thresholds (high/medium/low)
+            if confidence >= 0.75:  # fabricated-ok: threshold constant for bucketing, not a displayed value
                 confidence_distribution["high"] += 1
             elif confidence >= 0.50:
                 confidence_distribution["medium"] += 1

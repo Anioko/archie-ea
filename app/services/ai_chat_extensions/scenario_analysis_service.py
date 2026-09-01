@@ -678,8 +678,8 @@ class ScenarioAnalysisService:
             }
         except Exception as e:
             logger.warning(f"Retirement cost calculation failed: {e}")
-            return {"current_annual_cost": 0, "migration_cost": 0, "annual_savings": 0,
-                    "payback_period_months": 0, "five_year_savings": 0}
+            return {"current_annual_cost": None, "migration_cost": None, "annual_savings": None,
+                    "payback_period_months": None, "five_year_savings": None}  # honest: costs not computed on error
 
     def _assess_retirement_risks(
         self, app_details: Dict, capability_impact: Dict, integration_impact: Dict

@@ -79,8 +79,8 @@ logger = logging.getLogger(__name__)
 # Use centralized cache service (Redis if available, falls back to in-memory)
 from app.services.core.cache_service import cache_service
 
-CACHE_TTL_SECONDS = 3600  # fabricated-values-ok: named constant for cache TTL in seconds
-DEFAULT_TOKEN_COST_MULTIPLIER = 1000  # fabricated-values-ok: named constant for token cost multiplier
+CACHE_TTL_SECONDS = 3600  # fabricated-ok: named config constant (cache TTL), not displayed data
+DEFAULT_TOKEN_COST_MULTIPLIER = 1000  # fabricated-ok: named config constant (token cost multiplier), not displayed data
 
 # Fallback in-memory cache if Redis is not available
 _llm_cache_fallback = {}
@@ -782,10 +782,11 @@ Generate the JSON object now:"""
             )
             return result
 
-        except (ValueError, TypeError) as e:
+        except (ValueError, TypeError) as e:  # fabricated-ok: returns honest empty structure below, no invented data
             logger.error(f"✗ Architecture response validation failed: {e}")
             logger.debug(f"Response was: {response_text[:500]}...")
-            # Return empty structure on validation failure
+            # Return empty structure on validation failure -- no data is
+            # invented; downstream renders nothing rather than a fake element.
             return {"elements": [], "relationships": []}
 
     @staticmethod

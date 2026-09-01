@@ -1,6 +1,6 @@
 """Shared form choice constants for the Applications module."""
 
-DEFAULT_TOKEN_RATE_DIVISOR = 1_000_000  # fabricated-values-ok: standard token rate divisor (per million)
+DEFAULT_TOKEN_RATE_DIVISOR = 1_000_000  # fabricated-ok: named unit-conversion constant (per-million divisor), not measured data
 
 # ArchiMate relationship choices for forms
 ARCHIMATE_RELATIONSHIP_CHOICES = [

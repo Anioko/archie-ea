@@ -2481,8 +2481,8 @@ function sadPage() {
 
     const nodes = g.selectAll('.stk-node').data(stakeholders).enter().append('g').attr('class','stk-node')
       .attr('transform', function(d){
-        const jx = (Math.random()-0.5)*14;  // fabricated-values-ok
-        const jy = (Math.random()-0.5)*14;  // fabricated-values-ok
+        const jx = (Math.random()-0.5)*14;  // fabricated-ok: pixel jitter for node layout position, not a displayed value
+        const jy = (Math.random()-0.5)*14;  // fabricated-ok: pixel jitter for node layout position, not a displayed value
         return 'translate('+(x(d.interest_level||3)+jx)+','+(y(d.influence_level||3)+jy)+')';
       });
 

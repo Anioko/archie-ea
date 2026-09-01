@@ -28,7 +28,7 @@ def init_swagger(app):
                 flag = FeatureFlag.query.filter_by(key="openapi_docs").first()
                 if flag and not flag.is_active:
                     abort(404)
-            except Exception:  # fabricated-values-ok
+            except Exception:  # fabricated-ok: only rolls back the poisoned txn, returns no value
                 from app import db
                 db.session.rollback()  # Prevent transaction poisoning
 

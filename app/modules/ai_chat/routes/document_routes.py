@@ -23,7 +23,7 @@ from app.utils.pagination import MAX_PAGE_SIZE, safe_int_arg
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_BASE_INFRASTRUCTURE_COST = 100000  # fabricated-values-ok: configurable infrastructure cost baseline
+DEFAULT_BASE_INFRASTRUCTURE_COST = 100000  # fabricated-ok: named default config constant, not a per-record measured value
 
 @unified_ai_chat_bp.route("/upload-document", methods=["POST"])
 @login_required

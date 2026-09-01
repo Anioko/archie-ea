@@ -4331,7 +4331,7 @@ def _generate_architecture_invariant_tests(
 
     if not tests:
         # Always include a baseline test so the file is never empty
-        # fabricated-values-ok: template string generates test code, not production data
+        # fabricated-ok: template emits generated test-file source code, not production/UI data
         tests.append(
             "    def test_no_hardcoded_secrets(self):\n"
             '        """Baseline invariant: generated code must not contain hardcoded secrets."""\n'

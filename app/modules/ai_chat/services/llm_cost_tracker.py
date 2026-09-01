@@ -169,7 +169,7 @@ class LLMCostTracker:
         USD_TO_GBP = Decimal("0.787")  # 1 USD = 0.787 GBP (approximate)
 
         cost_usd = Decimal("0")
-        PER_1K = 1000  # fabricated-values-ok: standard per-1K-token pricing divisor
+        PER_1K = 1000  # fabricated-ok: literal 1000-token divisor for per-1K pricing, a real constant
 
         if provider == "openai":
             if "gpt - 4" in model.lower():

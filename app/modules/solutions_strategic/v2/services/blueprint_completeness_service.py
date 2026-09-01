@@ -495,7 +495,7 @@ class BlueprintCompletenessService:
                 "element_count": len(entries),
             }
         except Exception:
-            return {"element": 0, "relationship": 0, "traceability": 0, "overall": 0, "element_count": 0}
+            raise  # honest failure: never report a fabricated 0% completeness score on error
 
     def _score_integration_architecture_section(self, solution_id: int) -> dict:
         """Score the Integration Architecture section.

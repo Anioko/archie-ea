@@ -214,6 +214,8 @@ def overview():
                     _sol_ids_with_risks.add(r.solution_id)
             except Exception as exc:
                 logger.warning("ENT-017: SolutionRisk unavailable: %s", exc)
+                # Query failed: report unknown (em dash), not a fabricated zero-risk portfolio.
+                risk_counts = {"critical": None, "high": None, "medium": None, "low": None}
             arb_pipeline = {"pending": 0, "approved": 0, "rejected": 0}
             try:
                 from app.models.architecture_review_board import ARBReviewItem
@@ -227,6 +229,8 @@ def overview():
                         arb_pipeline["rejected"] += 1
             except Exception as exc:
                 logger.warning("ENT-017: ARBReviewItem unavailable: %s", exc)
+                # Query failed: report unknown (em dash), not a fabricated empty pipeline.
+                arb_pipeline = {"pending": None, "approved": None, "rejected": None}
             persona_metrics["cto"] = {
                 "risk_counts": risk_counts,
                 "arb_pipeline": arb_pipeline,
@@ -920,6 +924,8 @@ def _assemble_health_scorecard_metrics():
             risk_counts[level] = risk_counts.get(level, 0) + 1
     except Exception as exc:
         logger.warning("health_scorecard: SolutionRisk unavailable: %s", exc)
+        # Query failed: report unknown (em dash), not a fabricated zero-risk summary.
+        risk_counts = {"critical": None, "high": None, "medium": None, "low": None}
 
     # 2. ARB pipeline from ARBReviewItem
     arb_pipeline = {"pending": 0, "approved": 0, "rejected": 0, "under_review": 0, "deferred": 0}

@@ -182,7 +182,7 @@ def init_context_processors(app):
         except (OperationalError, ProgrammingError):
             db.session.rollback()
             return default_result
-        except Exception as e:  # fabricated-values-ok
+        except Exception as e:  # fabricated-ok: empty nav categories on error, rendered as no items not a measured value
             app.logger.debug(f"Error loading dashboard categories: {e}")
             return default_result
 
@@ -207,7 +207,7 @@ def init_context_processors(app):
                 for path in ["/admin", "/capability", "/architecture", "/enterprise"]
             ):
                 return {"applications": [], "vendors": []}
-        except Exception:
+        except Exception:  # fabricated-ok: empty nav lists, not measured data; page needs no app/vendor list here
             return {"applications": [], "vendors": []}
 
         # Keyed by tenant. The query below IS tenant-filtered (entity query, so
@@ -242,7 +242,7 @@ def init_context_processors(app):
         except (OperationalError, ProgrammingError):
             db.session.rollback()
             return {"applications": [], "vendors": []}
-        except Exception as e:  # fabricated-values-ok
+        except Exception as e:  # fabricated-ok: empty nav lists on error, rendered as no items not a measured value
             db.session.rollback()
             app.logger.debug(f"Error loading applications/vendors: {e}")
             return {"applications": [], "vendors": []}

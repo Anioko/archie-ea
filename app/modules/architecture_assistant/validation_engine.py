@@ -312,5 +312,7 @@ class ValidationEngineService:
                 "mitigated": sum(1 for r in risks if r.mitigation_strategy),
             }
         except Exception as e:
+            # Do not fabricate a zero-risk summary on failure; None flows through
+            # to the caller as risk_summary=None and renders as an em dash.
             logger.debug("Risk summary query failed: %s", e)
-            return {"total": 0, "by_level": {}, "mitigated": 0}
+            return None

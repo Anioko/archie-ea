@@ -1294,7 +1294,7 @@ Focus on QUALITY and SPECIFICITY - each requirement must be measurable and testa
 
             return requirements_data
 
-        except json.JSONDecodeError as e:
+        except json.JSONDecodeError as e:  # fabricated-ok: unparseable response yields empty lists, not fabricated requirements
             logger.error(f" Failed to parse compliance requirements JSON: {e}")
             logger.info(f"Response: {response[:500]}")
             return {

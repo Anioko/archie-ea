@@ -1651,7 +1651,7 @@ The implementation will follow a phased approach to minimize risk and ensure suc
     def _estimate_gap_investment(self, gap: float, capability) -> float:
         """Estimate investment needed to close a capability gap."""
         # Simple estimation model — baseline figure for gap investment calculation
-        base_cost = 50000  # fabricated-values-ok
+        base_cost = 50000  # fabricated-ok: baseline parameter of the documented gap-investment estimation model, not a measured figure
 
         # Adjust based on gap size
         if gap > 75:

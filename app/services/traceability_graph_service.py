@@ -133,9 +133,12 @@ def build_traceability_graph(organization_id=None):
         return {"edges": edges, "elements": elements}
 
     except Exception as exc:
+        # Do not fabricate an empty graph on failure -- that reads as "no
+        # relationships exist". Roll back for session hygiene, then re-raise so
+        # the page surfaces the error instead of an invented empty graph.
         logger.warning("build_traceability_graph failed: %s", exc)
         try:
             db.session.rollback()
         except Exception:
             pass
-        return {"edges": [], "elements": {}}
+        raise

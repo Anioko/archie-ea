@@ -640,6 +640,6 @@ class ArchiMatePatternLibrary:
                 "pattern_id": pattern_id,
             }
 
-        except Exception as e:
+        except Exception as e:  # fabricated-ok: empty element/relationship lists mean the pattern produced nothing to apply, not a measured value
             logger.error(f"Pattern application error: {e}")
             return {"elements": [], "relationships": []}

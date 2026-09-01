@@ -21,7 +21,7 @@ from . import unified_ai_chat_bp
 # Baseline annual infrastructure cost used for rough vendor TCO estimates when
 # calculate_tco is requested (discover-vendors). Mirrors the constant in
 # document_routes.py.
-DEFAULT_BASE_INFRASTRUCTURE_COST = 100000  # fabricated-values-ok: configurable infrastructure cost baseline
+DEFAULT_BASE_INFRASTRUCTURE_COST = 100000  # fabricated-ok: declared estimation baseline constant, not a measured value
 
 logger = logging.getLogger(__name__)
 

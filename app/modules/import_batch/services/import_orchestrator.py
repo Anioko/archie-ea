@@ -38,7 +38,7 @@ audit_logger = logging.getLogger("import_audit")
 
 _import_idempotency_cache: Dict[str, Dict[str, Any]] = {}
 _idempotency_lock = threading.Lock()
-IDEMPOTENCY_TTL = 300  # fabricated-values-ok: 5 minutes TTL for idempotency window
+IDEMPOTENCY_TTL = 300  # fabricated-ok: config constant (idempotency window seconds), not measured data
 
 
 def _make_idempotency_key(file_content: bytes, user_id: int) -> str:

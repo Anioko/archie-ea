@@ -736,7 +736,7 @@ def get_architecture_statistics():
             "models": ArchitectureModel.query.count(),
         }
     except Exception:
-        return {"elements": 0, "relationships": 0, "models": 0}
+        return {"elements": None, "relationships": None, "models": None}
 
 
 def get_capability_map_statistics():
@@ -748,7 +748,7 @@ def get_capability_map_statistics():
             "mapped_relationships": 0,  # Placeholder
         }
     except Exception:
-        return {"capabilities": 0, "applications": 0, "mapped_relationships": 0}
+        return {"capabilities": None, "applications": None, "mapped_relationships": None}
 
 
 def get_strategic_statistics():
@@ -762,9 +762,9 @@ def get_strategic_statistics():
                 "milestones": data.get("milestones", {}).get("total", 0),
                 "risks": data.get("initiatives", {}).get("at_risk", 0),
             }
-        return {"initiatives": 0, "milestones": 0, "risks": 0}
+        return {"initiatives": None, "milestones": None, "risks": None}
     except Exception:
-        return {"initiatives": 0, "milestones": 0, "risks": 0}
+        return {"initiatives": None, "milestones": None, "risks": None}
 
 
 def get_consolidation_statistics():
@@ -778,9 +778,9 @@ def get_consolidation_statistics():
                 "opportunities": data.get("opportunities", {}).get("total", 0),
                 "savings_estimate": data.get("estimated_pipeline_savings", 0),
             }
-        return {"candidates": 0, "opportunities": 0, "savings_estimate": 0}
+        return {"candidates": None, "opportunities": None, "savings_estimate": None}
     except Exception:
-        return {"candidates": 0, "opportunities": 0, "savings_estimate": 0}
+        return {"candidates": None, "opportunities": None, "savings_estimate": None}
 
 
 def get_policy_monitoring_statistics():
@@ -794,9 +794,9 @@ def get_policy_monitoring_statistics():
                 "violations": data.get("total_violations", 0),
                 "compliance_rate": data.get("compliance_percentage", 0),
             }
-        return {"policies": 0, "violations": 0, "compliance_rate": 0}
+        return {"policies": None, "violations": None, "compliance_rate": None}
     except Exception:
-        return {"policies": 0, "violations": 0, "compliance_rate": 0}
+        return {"policies": None, "violations": None, "compliance_rate": None}
 
 
 # === ERROR HANDLERS ===

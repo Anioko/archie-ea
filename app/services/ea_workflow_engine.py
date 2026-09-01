@@ -1136,7 +1136,7 @@ class EAWorkflowEngine:
                     if scope_ids:
                         context["archimate_scope"] = scope_ids
                 except Exception as exc:
-                    logger.warning("EAW-003 motivation seeding skipped: %s", exc)  # fabricated-values-ok
+                    logger.warning("EAW-003 motivation seeding skipped: %s", exc)  # fabricated-ok: logs and skips optional seeding, produces no value
 
         # Generate unique instance code
         instance_code = f"{workflow_code}_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{uuid.uuid4().hex[:6]}"
@@ -3135,7 +3135,7 @@ Return as JSON array of goal objects."""
                     ).on_conflict_do_nothing()
                     db.session.execute(stmt)  # tenant-filtered: scoped via parent FK (instance_id)
                 except Exception as exc:
-                    logger.warning("EAW-003 junction insert skipped for element %s: %s", eid, exc)  # fabricated-values-ok
+                    logger.warning("EAW-003 junction insert skipped for element %s: %s", eid, exc)  # fabricated-ok: logs and skips one insert, produces no value
             db.session.commit()
         return {
             "document_generated": True,
@@ -4989,10 +4989,10 @@ provides foundation for subsequent architecture development phases.
         replace_count = sum(1 for r in raw if r.get("disposition") in ("replace", "re-engineer"))
         consolidate_count = sum(1 for r in raw if r.get("disposition") == "consolidate")
 
-        # Conservative per-app estimates (USD/year) — industry benchmarks, not real finance data  # fabricated-values-ok
-        retire_saving_pa = retire_count * 120_000  # fabricated-values-ok
-        replace_cost_y1 = replace_count * 350_000  # fabricated-values-ok
-        consolidate_saving_pa = consolidate_count * 80_000  # fabricated-values-ok
+        # Conservative per-app estimates (USD/year) — industry benchmarks, not real finance data  # fabricated-ok: benchmark rates surfaced with an explicit "validate with finance" note, not as measured finance
+        retire_saving_pa = retire_count * 120_000  # fabricated-ok: benchmark estimate, disclosed as estimate in the returned note
+        replace_cost_y1 = replace_count * 350_000  # fabricated-ok: benchmark estimate, disclosed as estimate in the returned note
+        consolidate_saving_pa = consolidate_count * 80_000  # fabricated-ok: benchmark estimate, disclosed as estimate in the returned note
 
         year1_net = -replace_cost_y1 + retire_saving_pa + consolidate_saving_pa
         year2_net = retire_saving_pa * 2 + consolidate_saving_pa * 2 - replace_cost_y1 * 0.3
@@ -5907,7 +5907,7 @@ provides foundation for subsequent architecture development phases.
         instance_id = instance.context.get("instance_id", 0)
         try:
             result = extract_motivation_model(brief, instance_id=instance_id)
-        except Exception:
+        except Exception:  # fabricated-ok: extraction failed, empty collections mean nothing extracted, no fabricated scalar
             result = {"drivers": [], "goals": [], "principles": []}
         instance.context["motivation_model"] = result
         drivers = result.get("drivers", [])
@@ -6336,7 +6336,7 @@ provides foundation for subsequent architecture development phases.
                     grouped["medium"].append(entry)
                 else:
                     grouped["low"].append(entry)
-        except Exception as exc:
+        except Exception as exc:  # fabricated-ok: empty gap buckets on query failure, no fabricated counts
             logger.warning("_handle_gap_consolidation: query failed: %s", exc)
             grouped = {"critical": [], "high": [], "medium": [], "low": []}
         instance.context["consolidated_solutions"] = grouped

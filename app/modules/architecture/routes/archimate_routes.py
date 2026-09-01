@@ -4966,7 +4966,7 @@ def api_list_patterns():
         for cp in customs:
             try:
                 pdata = _json.loads(cp.pattern_json)
-            except (ValueError, TypeError):
+            except (ValueError, TypeError):  # fabricated-ok: unparseable pattern JSON yields empty lists, not fabricated content
                 pdata = {"elements": [], "relationships": []}
             results.append({
                 "id": cp.id,

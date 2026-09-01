@@ -163,8 +163,10 @@ def _get_solutions_portfolio_stats() -> dict:
             "top_risks": [{"description": r.risk_description[:80], "impact": r.impact} for r in top_risks],
         }
     except Exception as e:
+        # Do not fabricate a zero portfolio on failure -- the caller renders
+        # None as an em dash rather than an invented "0 solutions".
         logger.warning(f"Could not compute solution portfolio stats: {e}")
-        return {"total": 0, "phases": {}, "pending_arb": 0, "top_risks": []}
+        return None
 
 
 def _get_data_maturity_stats() -> dict:

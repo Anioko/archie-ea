@@ -1037,7 +1037,7 @@ class ArchitectureMonitoringService:
 
         except Exception as e:
             logger.error(f"Error capturing coverage snapshot: {e}")
-            return {"average_coverage": 0, "total_capabilities": 0}
+            raise  # do not persist a fabricated zero-coverage snapshot; caller returns an honest failure
 
     def _capture_health_snapshot(self) -> Dict[str, Any]:
         """Capture snapshot of health metrics."""
@@ -1058,7 +1058,7 @@ class ArchitectureMonitoringService:
 
         except Exception as e:
             logger.warning(f"Could not capture health snapshot: {e}")
-            return {"average_health": 0, "total_capabilities": 0}
+            raise  # do not persist a fabricated zero-health snapshot; caller returns an honest failure
 
     def _capture_gap_snapshot(self) -> List[Dict[str, Any]]:
         """Capture snapshot of current gaps."""
@@ -1274,7 +1274,7 @@ class ArchitectureMonitoringService:
 
             service = GapDiscoveryService()
             return service.discover_all_gaps()
-        except Exception as e:
+        except Exception as e:  # fabricated-ok: empty gap list on discovery failure, no fabricated scalar
             logger.warning(f"Could not run gap discovery: {e}")
             return {"gaps": [], "summary": {}}
 

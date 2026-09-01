@@ -2140,7 +2140,7 @@ def sync_requirement_from_jira(req_id):
         req.jira_push_status = f'synced:{jira_status}'
         db.session.commit()
         return jsonify({'jira_issue_key': req.jira_issue_key, 'jira_status': jira_status}), 200
-    except Exception:  # fabricated-values-ok
+    except Exception:  # fabricated-ok: returns an honest 502 error, fabricates no value
         return jsonify({'error': 'Failed to reach Jira'}), 502
 
 

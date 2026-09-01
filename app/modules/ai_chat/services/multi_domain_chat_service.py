@@ -1258,7 +1258,7 @@ class MultiDomainChatService:
                 len(v) for v in domain_context.values() if isinstance(v, list)
             )
             _sampled_items = sum(
-                min(len(v), 50) for v in domain_context.values() if isinstance(v, list)  # fabricated-values-ok: standard cap
+                min(len(v), 50) for v in domain_context.values() if isinstance(v, list)  # fabricated-ok: length cap on real data, computes no value
             )
             response["processing_metadata"] = {
                 "domain": domain,
@@ -3709,11 +3709,11 @@ Use enterprise architecture terminology appropriate for this role."""
         t_words = set(item_text.lower().split())
         if not q_words:
             return 0.0
-        return len(q_words & t_words) / len(q_words)  # fabricated-values-ok: normalised ratio
+        return len(q_words & t_words) / len(q_words)  # fabricated-ok: overlap ratio computed from real inputs
 
     @classmethod
     def _sample_context(
-        cls, items: list, query: str, max_items: int = 50  # fabricated-values-ok: token-budget default
+        cls, items: list, query: str, max_items: int = 50  # fabricated-ok: default arg cap, not a measured value
     ) -> list:
         """Return up to max_items items ranked by relevance to query."""
         if not items or len(items) <= max_items:
@@ -3900,7 +3900,7 @@ Use enterprise architecture terminology appropriate for this role."""
                 db.session.rollback()
             except Exception:
                 logger.debug("Failed to rollback session after portfolio health error", exc_info=True)
-            return {"total_applications": 0, "health_distribution": {}}
+            return None  # fabricated-ok: load failed; None signals unavailable, not a measured zero-app portfolio
 
     def _load_technology_lifecycle_context(self) -> Dict[str, Any]:
         """Load technology lifecycle data from database"""
@@ -4035,7 +4035,7 @@ Use enterprise architecture terminology appropriate for this role."""
                 "vendors": [{"id": v.id, "name": v.name} for v in vendors],
             }
         except Exception:
-            return {"vendor_count": 0, "vendors": []}
+            return None  # fabricated-ok: load failed; None signals unavailable, not a measured zero-vendor count
 
     def _load_application_health_context(self) -> Dict[str, Any]:
         """Load application health metrics for Application Architects"""
@@ -4068,7 +4068,7 @@ Use enterprise architecture terminology appropriate for this role."""
                 db.session.rollback()
             except Exception:
                 logger.debug("Failed to rollback session after application health error", exc_info=True)
-            return {"application_count": 0, "applications": []}
+            return None  # fabricated-ok: load failed; None signals unavailable, not a measured zero-app count
 
     def _load_dependencies_context(self) -> Dict[str, Any]:
         """Load application dependency data from database"""
@@ -5992,9 +5992,9 @@ Instructions:
                     step_data: Dict = {}
                     try:
                         if next_step == "SURFACE_APPS":
-                            step_data["unmapped_apps"] = svc.find_low_coverage_capabilities(threshold=20)[:10]  # fabricated-values-ok: preview cap
+                            step_data["unmapped_apps"] = svc.find_low_coverage_capabilities(threshold=20)[:10]  # fabricated-ok: query threshold and slice of real rows
                         elif next_step == "SUGGEST_VENDORS":
-                            step_data["lifecycle_risks"] = svc.find_vendor_lifecycle_risks()[:10]  # fabricated-values-ok: preview cap
+                            step_data["lifecycle_risks"] = svc.find_vendor_lifecycle_risks()[:10]  # fabricated-ok: slice of real query rows
                         elif next_step == "GENERATE_RECOMMENDATIONS":
                             step_data["summary"] = svc.get_comprehensive_gap_summary()
                     except Exception as _wf_svc_err:  # fabricated-ok: guarded skip on error; emits no fabricated value
@@ -7463,7 +7463,7 @@ End with: "Type **'next'** to complete the design workflow."
             }
         except Exception as e:
             logger.debug("get_usage_analytics failed: %s", e)
-            return {"total_conversations": 0, "total_messages": 0, "active_days": 0, "avg_messages_per_session": 0}
+            raise  # do not fabricate zero analytics; let the route return an honest 500
 
     def get_domain_analytics(self) -> dict:
         """Return message counts grouped by domain from LLMInteraction prompts."""
@@ -7487,7 +7487,7 @@ End with: "Type **'next'** to complete the design workflow."
             }
         except Exception as e:
             logger.debug("get_domain_analytics failed: %s", e)
-            return {"domains": [], "total_domains": 0, "total_messages": 0}
+            raise  # do not fabricate zero analytics; let the route return an honest 500
 
     def get_quality_metrics(self) -> dict:
         """Return AI response quality metrics from LLMInteraction data."""
@@ -7860,7 +7860,7 @@ End with: "Type **'next'** to complete the design workflow."
             from app.models.models import Principle  # dead-code-ok: conditional import
             from app.models.models import ApplicationComponent  # dead-code-ok: conditional import
 
-            principles = Principle.query.filter_by(enforcement_level="MUST").limit(20).all()  # fabricated-values-ok: top-20 mandatory
+            principles = Principle.query.filter_by(enforcement_level="MUST").limit(20).all()  # fabricated-ok: query row limit on real data
             principles_str = json.dumps(
                 [{"name": p.name, "statement": p.statement, "category": p.category} for p in principles],
                 indent=2,

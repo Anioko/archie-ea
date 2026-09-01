@@ -120,8 +120,10 @@ def _get_status_counts(user_id: int) -> dict:
         return result
 
     except Exception as e:
+        # Do not fabricate zero counts on failure; the dashboard view catches
+        # this and shows an error instead of a fake "0 imports".
         logger.error(f"Error getting status counts: {e}")
-        return {"total": 0, "active": 0, "review_needed": 0}
+        raise
 
 
 def _get_review_needed_count(user_id: int) -> int:

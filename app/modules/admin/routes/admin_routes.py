@@ -3664,15 +3664,12 @@ def pricing_analytics():
         engine = ConfidenceEngine()
         analytics = engine.get_analytics()
     except Exception as exc:
-        logger.warning("pricing_analytics: ConfidenceEngine unavailable: %s", exc)
-        analytics = {
-            "coverage_pct": 0,
-            "covered_capabilities": 0,
-            "total_capabilities": 0,
-            "confidence_distribution": {},
-            "stale_count": 0,
-            "conflict_count": 0,
-        }
+        # Honest failure: the template renders coverage_pct, counts and stale/conflict
+        # totals as measured values (and injects them into JS), so a zero-filled dict
+        # would present an engine outage as a real 0% coverage reading. Surface the
+        # error instead of fabricating a measurement.
+        logger.error("pricing_analytics: ConfidenceEngine unavailable: %s", exc)
+        raise
     return render_template("admin/pricing_analytics.html", analytics=analytics)
 
 
