@@ -1324,7 +1324,7 @@ def _platform_admin_context() -> str:
 
     def user_counts():
         from app.models.user import User
-        total = _org_scope(db.session.query(func.count(User.id))).scalar() or 0
+        total = _org_scope(db.session.query(func.count(User.id))).scalar() or 0  # tenant-scoping-ok: org-scoped via _org_scope() above (filters User.organization_id == g.current_org_id)
         return f"- Users provisioned: {total}"
 
     def pending_invites():
@@ -1332,7 +1332,7 @@ def _platform_admin_context() -> str:
         # for "invited but not yet activated" is an unconfirmed account.
         from app.models.user import User
         pending = _org_scope(
-            db.session.query(func.count(User.id)).filter(User.confirmed.is_(False))
+            db.session.query(func.count(User.id)).filter(User.confirmed.is_(False))  # tenant-scoping-ok: wrapped in _org_scope() below/above (filters User.organization_id == g.current_org_id)
         ).scalar() or 0
         return f"- Accounts pending activation (unconfirmed): {pending}"
 

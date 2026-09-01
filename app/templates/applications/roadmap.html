@@ -94,18 +94,12 @@
                   <p class="font-medium text-foreground" x-text="item.name"></p>
                   <p class="mt-1 text-xs text-muted-foreground" x-text="item.description || 'No description'"></p>
                   <div class="mt-1 flex flex-wrap gap-1.5">
-                    <template x-if="item.plateau_name">
-                      <span class="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium bg-info/10 text-primary border border-info/30"
+                    <span x-show="item.plateau_name" class="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium bg-info/10 text-primary border border-info/30"
                         x-text="'Plateau: ' + item.plateau_name"></span>
-                    </template>
-                    <template x-if="item.archimate_element_name">
-                      <span class="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium bg-info/10 text-info-emphasis border border-info/30"
+                    <span x-show="item.archimate_element_name" class="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium bg-info/10 text-info-emphasis border border-info/30"
                         x-text="item.archimate_element_name"></span>
-                    </template>
-                    <template x-if="item.capability_name">
-                      <span class="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium bg-warning/10 text-warning-emphasis border border-warning/30"
+                    <span x-show="item.capability_name" class="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium bg-warning/10 text-warning-emphasis border border-warning/30"
                         x-text="'Cap: ' + item.capability_name"></span>
-                    </template>
                   </div>
                 </td>
                 <td class="px-4 py-3 align-top" x-text="formatLabel(item.transformation_type || 'Modernization')"></td>
