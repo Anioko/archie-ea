@@ -1179,6 +1179,74 @@ def _application_architect_context() -> str:
     return "\n".join(lines)
 
 
+def _security_architect_context() -> str:
+    # Written 1 Sep 2026. The security_architect charter shipped without a
+    # live-context builder, so build_architect_prompt("security_architect")
+    # returned the charter with an EMPTY "Live Platform Data" block — the AI
+    # security persona spoke generically with no grounding, the one thing its
+    # own charter forbids ("never invents CVEs"). This queries the real
+    # security-domain stores so its numbers are measured, not asserted.
+    lines = []
+
+    def controls():
+        from app.models.compliance_models import ComplianceControl
+        total = db.session.query(func.count(ComplianceControl.id)).scalar() or 0
+        if not total:
+            return "- Compliance controls: none catalogued yet"
+        implemented = db.session.query(func.count(ComplianceControl.id)).filter(
+            ComplianceControl.implementation_status == "completed"
+        ).scalar() or 0
+        pct = round(implemented / total * 100)
+        return (f"- Compliance controls: {implemented}/{total} implemented ({pct}%) — "
+                "the unimplemented remainder are open findings")
+
+    def frameworks():
+        from app.models.compliance_models import RegulatoryFramework
+        names = [
+            f.name for f in db.session.query(RegulatoryFramework.name)
+            .filter(RegulatoryFramework.status == "active").limit(6).all()
+        ] if hasattr(RegulatoryFramework, "name") else []
+        return f"- Active regulatory frameworks: {', '.join(names) if names else 'none recorded'}"
+
+    def risks():
+        from app.models.risk import Risk, RiskStatus
+        open_risks = db.session.query(Risk).filter(Risk.status == RiskStatus.OPEN).all()
+        if not open_risks:
+            return "- Open risks: none recorded"
+        high = [r for r in open_risks if r.risk_score >= 9]
+        top = sorted(high, key=lambda r: r.risk_score, reverse=True)[:3]
+        detail = "; ".join(f"{r.title} (score {r.risk_score})" for r in top)
+        return (f"- Open risks: {len(open_risks)} ({len(high)} high/critical)"
+                + (f" — top: {detail}" if detail else ""))
+
+    def classification():
+        from app.models.application_portfolio import ApplicationComponent
+        total = db.session.query(func.count(ApplicationComponent.id)).scalar() or 0
+        if not total:
+            return "- Data classification: no applications recorded"
+        classified = db.session.query(func.count(ApplicationComponent.id)).filter(
+            ApplicationComponent.data_classification.isnot(None),
+            ApplicationComponent.data_classification != "",
+        ).scalar() or 0
+        pct = round(classified / total * 100)
+        return (f"- Data classification coverage: {classified}/{total} apps ({pct}%) — "
+                "unclassified systems cannot have their trust boundaries assessed")
+
+    def boundaries():
+        from app.models.archimate_core import ArchiMateElement
+        n = db.session.query(func.count(ArchiMateElement.id)).filter(
+            ArchiMateElement.type.in_(["Node", "TechnologyService"])
+        ).scalar() or 0
+        return f"- Technology-layer elements available for boundary mapping: {n}"
+
+    for label, fn in (
+        ("controls", controls), ("frameworks", frameworks), ("risks", risks),
+        ("classification", classification), ("boundaries", boundaries),
+    ):
+        lines.append(_safe(label, fn))
+    return "\n".join(lines)
+
+
 def _integration_architect_context() -> str:
     lines = []
 
@@ -1379,6 +1447,7 @@ _CONTEXT_BUILDERS: Dict[str, Callable[[], str]] = {
     "technology_architect": _ta_context,
     "data_architect": _da_context,
     "business_architect": _ba_context,
+    "security_architect": _security_architect_context,
     "arb_member": _arb_member_context,
     "portfolio_manager": _portfolio_manager_context,
     "cto": _cto_context,
