@@ -1,0 +1,46 @@
+{% extends 'layouts/admin_base.html' %}
+{% from 'macros/page_shell.html' import page_shell %}
+{% block title %}Model Health{% endblock %}
+
+{% block content %}
+<div class="p-6 space-y-6 mx-auto">
+    {% macro _ps_actions() %}
+    <form method="get" action="{{ url_for('genome_drift.index') }}">
+        <button type="submit"
+                class="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors">
+            <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+            Re-scan for drift
+        </button>
+    </form>
+    {% endmacro %}
+    {{ page_shell(
+        title='Model Health',
+        subtitle='Deterministic drift and staleness detection across the enterprise genome — every finding links to the ArchiMate element it is about (zero LLM). Fixes are queued for human approval, never applied silently.',
+        actions_caller=_ps_actions) }}
+
+    {% if error %}
+    <div class="p-4 border border-destructive/50 bg-destructive/10 rounded-lg text-sm text-destructive">
+        {{ error }}
+    </div>
+    {% endif %}
+
+    {% if report_html %}
+    <div class="bg-card border border-border rounded-lg p-4">
+        {{ report_html }}
+    </div>
+    <p class="text-xs text-muted-foreground">
+        Each finding carries the ArchiMate element id(s) it concerns. "Propose governed fix"
+        queues a genome patch through the existing approval gate — it validates and grounds
+        the proposal and files it for a human to approve; nothing is written to the model here.
+    </p>
+    {% else %}
+    {% if not error %}
+    <div class="p-8 text-center text-muted-foreground border border-dashed border-border rounded-lg">
+        <i data-lucide="activity" class="w-8 h-8 mx-auto mb-3 opacity-60"></i>
+        <p>No report yet. Click <span class="font-medium text-foreground">Re-scan for drift</span>
+        to build the deterministic model-health report for your organization.</p>
+    </div>
+    {% endif %}
+    {% endif %}
+</div>
+{% endblock %}

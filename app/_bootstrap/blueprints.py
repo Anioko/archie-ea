@@ -142,6 +142,12 @@ def _init_blueprints(app):
     except Exception as _gr_exc:
         app.logger.warning("[BLUEPRINT] Genome roadmap not available: %s", _gr_exc)
     try:
+        from app.modules.genome.routes.drift_routes import register as register_genome_drift
+        register_genome_drift(app)
+        app.logger.info("[BLUEPRINT] Genome model-health / drift registered at /genome/model-health")
+    except Exception as _gh_exc:
+        app.logger.warning("[BLUEPRINT] Genome model-health not available: %s", _gh_exc)
+    try:
         from app.modules.enterprise_genome.routes.security_genome_routes import enterprise_genome_bp
         app.register_blueprint(enterprise_genome_bp)
         app.logger.info("[BLUEPRINT] Genome security matrix registered at /enterprise-genome/security/matrix")
