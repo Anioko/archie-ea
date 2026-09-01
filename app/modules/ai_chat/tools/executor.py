@@ -2292,6 +2292,115 @@ class ToolExecutor:
             ),
         }
 
+    # ------------------------------------------------------------------ #
+    # Tool: create_vendor (WRITE — G5, procurement)                       #
+    # ------------------------------------------------------------------ #
+    def _tool_create_vendor(self, args: dict) -> dict:
+        """Register a vendor in the shared catalogue — procurement headline write.
+
+        Wraps AIDataInteractionService.create_vendor()
+        (app/modules/ai_chat/services/ai_data_interaction_service.py:295), which
+        creates a VendorOrganization, runs the capability guardrails and commits.
+        mutates=True / tier 'approve', so it flows through the confirmation gate.
+
+        DEVIATION from the task brief, made as data/security architect: the brief
+        said "vendor is tenant-scoped; must not write cross-org". It is NOT.
+        VendorOrganization is DELIBERATELY not a TenantMixin model (ADR-0003,
+        app/models/vendor/vendor_organization.py:252): it is shared reference data
+        — Gartner position, market share, revenue — identical for every customer,
+        with a GLOBALLY UNIQUE `name`. Giving it an organization_id would break
+        that unique constraint and duplicate every row per org, and is pinned
+        against by tests/test_vendor_tenancy_policy.py. So this tool does not (and
+        must not) org-scope the write; the tenant-owned parts of vendor data live
+        in vendor_contracts / VendorProductCapability, which other tools cover.
+        The guardrails + the unique-name constraint are the write's safety, not a
+        tenant predicate.
+        """
+        from app.modules.ai_chat.services.ai_data_interaction_service import (
+            AIDataInteractionService,
+        )
+
+        name = (args.get("name") or "").strip()
+        if not name:
+            return {"success": False, "error": "name is required."}
+
+        vendor_data = {"name": name}
+        for key in (
+            "display_name", "vendor_type", "website",
+            "headquarters_location", "description", "strategic_tier",
+        ):
+            value = args.get(key)
+            if value is not None:
+                vendor_data[key] = value
+
+        service = AIDataInteractionService(user_id=self.user_id)
+        result = service.create_vendor(vendor_data)
+
+        if not result.get("success"):
+            # Surface the service's real error (e.g. duplicate unique name,
+            # guardrails violation) honestly — never a fabricated success.
+            return {"success": False, "error": result.get("error", "Vendor creation failed.")}
+
+        logger.info(
+            "Agent created vendor id=%s name=%r user=%s",
+            result.get("vendor_id"), name, self.user_id,
+        )
+        return {
+            "success": True,
+            "result": {"id": result.get("vendor_id"), "name": name},
+            "message": result.get("message", f"Created vendor '{name}'."),
+        }
+
+    # ------------------------------------------------------------------ #
+    # Tool: extract_contract_from_document (READ/extract — G5, procurement)#
+    # ------------------------------------------------------------------ #
+    def _tool_extract_contract_from_document(self, args: dict) -> dict:
+        """Extract structured contract terms from pasted text — procurement.
+
+        Wraps contract_extraction_service.extract_contract_terms()
+        (app/modules/procurement/contract_extraction_service.py:148), an
+        LLM-backed, text-in / JSON-out extractor that returns exactly the
+        EXTRACTED_FIELDS keys, each either its typed value or None — it never
+        guesses. mutates=False / tier 'auto': it reads only and persists nothing;
+        a human (or create_vendor / a contract form) applies the result.
+
+        The service raises ContractExtractionError when the LLM call fails or the
+        response cannot be parsed as JSON — that is surfaced here as an honest
+        failure (no fabricated extraction), matching the brief's requirement that
+        a missing/absent LLM key be reported rather than papered over.
+        """
+        from app.modules.procurement.contract_extraction_service import (
+            ContractExtractionError,
+            extract_contract_terms,
+        )
+
+        text = (args.get("contract_text") or "").strip()
+        if not text:
+            return {"success": False, "error": "contract_text is required."}
+
+        try:
+            extracted = extract_contract_terms(text)
+        except ContractExtractionError as exc:
+            logger.warning("Contract extraction failed for user=%s: %s", self.user_id, exc)
+            return {
+                "success": False,
+                "error": (
+                    f"Contract extraction could not run: {exc}. "
+                    "No fields were extracted — nothing was fabricated."
+                ),
+            }
+
+        populated = [k for k, v in extracted.items() if v is not None]
+        return {
+            "success": True,
+            "result": extracted,
+            "message": (
+                f"Extracted {len(populated)} of {len(extracted)} contract field(s) "
+                "from the text. Fields not stated in the document are null and must "
+                "be filled in by hand — they were not guessed. Nothing was saved."
+            ),
+        }
+
 
 # ------------------------------------------------------------------ #
 # Lightweight helper (avoids importing ApplicationCapabilityMapping   #

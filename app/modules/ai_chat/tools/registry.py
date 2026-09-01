@@ -1184,6 +1184,78 @@ TOOL_SCHEMAS = [
         },
         "tier": "approve",
     },
+    {
+        "name": "create_vendor",
+        "mutates": True,
+        "description": (
+            "Register a new vendor organization in the shared vendor catalogue — the "
+            "Procurement / vendor-management headline write. Use when the user wants to "
+            "add a supplier that is not yet on file (e.g. 'add ACME Corp as a vendor'). "
+            "Creates the master vendor record (name, type, website, description, strategic "
+            "tier); commercial terms and contracts are attached separately afterwards. "
+            "NOTE: VendorOrganization is SHARED reference data by design (ADR-0003) — its "
+            "name is globally unique, so a vendor is visible to every organisation, not "
+            "tenant-private. REQUIRES USER CONFIRMATION before executing."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "Vendor name — globally unique, e.g. 'Snowflake Inc'",
+                },
+                "display_name": {
+                    "type": "string",
+                    "description": "Display/legal name, e.g. 'Snowflake Computing, Inc.' (defaults to name)",
+                },
+                "vendor_type": {
+                    "type": "string",
+                    "enum": ["software_vendor", "cloud_provider", "systems_integrator"],
+                    "description": "Category of vendor (default software_vendor)",
+                },
+                "website": {"type": "string", "description": "Vendor website URL"},
+                "headquarters_location": {"type": "string", "description": "HQ location"},
+                "description": {"type": "string", "description": "What the vendor does"},
+                "strategic_tier": {
+                    "type": "string",
+                    "enum": [
+                        "tier_1_strategic", "tier_2_preferred",
+                        "tier_3_approved", "tier_4_restricted",
+                    ],
+                    "description": "Strategic positioning (default tier_3_approved)",
+                },
+            },
+            "required": ["name"],
+        },
+        "tier": "approve",
+    },
+    {
+        "name": "extract_contract_from_document",
+        "mutates": False,
+        "description": (
+            "Extract structured contract terms from pasted contract / MSA text — the "
+            "Procurement 'paste this contract' capability. Reads the text and returns a "
+            "structured first pass (contract name/number, vendor name, start/end/renewal "
+            "dates, notice period, auto-renewal, value, currency, payment terms, "
+            "termination summary, liability cap, risk flags). Any field the text does not "
+            "state comes back as null — never a guess. This does NOT save anything: it "
+            "extracts, and a human (or create_vendor / a contract form) applies the "
+            "result. If the LLM backend is unavailable or returns something unparseable, "
+            "it fails honestly with an error rather than fabricating fields. Read-only — "
+            "safe to run without confirmation."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "contract_text": {
+                    "type": "string",
+                    "description": "The full contract / MSA text to extract terms from",
+                },
+            },
+            "required": ["contract_text"],
+        },
+        "tier": "auto",
+    },
 ]
 
 # Index by name for O(1) lookup
