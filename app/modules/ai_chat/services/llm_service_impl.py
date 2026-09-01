@@ -210,7 +210,7 @@ class LLMService:
         # Default models for each provider (used when falling back to .env)
         # Single source of truth - these ids were hardcoded in six places and
         # drifted independently until every Claude id was stale, several to
-        # RETIRED models that now 404 (claude-3-sonnet-20240229 went out in
+        # RETIRED models that now 404 (claude-3-sonnet-20240229 went out in  stale-model-ok
         # July 2025).
         from app.modules.ai_chat.services.model_defaults import DEFAULT_MODELS
 
@@ -2683,7 +2683,7 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
             },
             "gemini": {
                 "name": "Google (Gemini)",
-                "default_models": ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-pro"]
+                "default_models": ["gemini-2.0-flash", "gemini-2.0-flash-lite"]
             },
             "deepseek": {
                 "name": "DeepSeek",

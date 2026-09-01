@@ -36,7 +36,7 @@ class AIUsageTracker:
     
     # Model costs per 1K tokens.
     #
-    # This priced claude-3-opus and claude-3-sonnet - both RETIRED - so any spend
+    # This priced claude-3-opus and claude-3-sonnet - both RETIRED - so any spend  # stale-model-ok
     # figure built on it was fiction: a cost reported for models nobody can call.
     # Current Anthropic prices come from model_defaults, which is also what the
     # chat falls back to, so the two cannot drift apart again.

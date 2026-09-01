@@ -138,7 +138,7 @@ class TestStreamCarriesTheFailureMessage:
                 # LLM CALL itself, not "no provider configured" - a different,
                 # already-covered fallback branch).
                 LLMService._get_configured_provider = staticmethod(
-                    lambda: ("anthropic", "claude-3-5-sonnet-20241022")
+                    lambda: ("anthropic", "claude-opus-5")
                 )
                 LLMService._get_all_api_keys = staticmethod(lambda provider: ["fake-test-key"])
                 AgentRunner._call_llm = _raise_call_llm
@@ -209,7 +209,7 @@ class TestStreamCarriesTheFailureMessage:
             _orig_keys = LLMService._get_all_api_keys
             try:
                 LLMService._get_configured_provider = staticmethod(
-                    lambda: ("anthropic", "claude-3-5-sonnet-20241022")
+                    lambda: ("anthropic", "claude-opus-5")
                 )
                 LLMService._get_all_api_keys = staticmethod(lambda provider: [])
 
@@ -278,7 +278,7 @@ class TestKeepaliveKeepsTheStreamGenuinelyBusy:
             try:
                 chat_core._STREAM_KEEPALIVE_INTERVAL_S = _KEEPALIVE_TEST_INTERVAL_S
                 LLMService._get_configured_provider = staticmethod(
-                    lambda: ("anthropic", "claude-3-5-sonnet-20241022")
+                    lambda: ("anthropic", "claude-opus-5")
                 )
                 LLMService._get_all_api_keys = staticmethod(lambda provider: ["fake-test-key"])
                 AgentRunner._call_llm = _slow_then_raise_call_llm

@@ -747,6 +747,20 @@ def gate_fabricated_data() -> Result:
     return Result("fabricated-data", PASS if count == 0 else FAIL, detail, count, 0)
 
 
+def gate_stale_models() -> Result:
+    """No RETIRED LLM model id may appear in shipped code — a retired id 404s in
+    production. The single source of truth is model_defaults.py; this keeps a
+    retired id from creeping back anywhere else. Escape hatch: 'stale-model-ok'.
+    """
+    proc = _run([sys.executable, "scripts/check_stale_models.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("stale-models", FAIL, f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    detail = "" if count == 0 else "run scripts/check_stale_models.py to list them"
+    return Result("stale-models", PASS if count == 0 else FAIL, detail, count, 0)
+
+
 def gate_sri() -> Result:
     """Every same-origin integrity= hash matches the file it guards. Gated at ZERO.
 
@@ -1368,6 +1382,11 @@ def build_gates(baseline: dict) -> list[Gate]:
              remediation="render an explicit empty/error state instead of inventing data; "
                          "if genuinely fine, append 'fabricated-ok: <reason>'",
              tags=["static", "ui"]),
+        Gate("stale-models", "no retired LLM model id (404s in prod) in shipped code", "zero",
+             gate_stale_models,
+             remediation="use a current id from DEFAULT_MODELS (model_defaults.py); "
+                         "if the line legitimately documents a retirement, append 'stale-model-ok'",
+             tags=["static"]),
         # NOT tagged "static": it compares requirements.txt against what is
         # actually importable, so it needs the app's dependencies installed. The
         # static-gates CI job deliberately installs only ruff and pip-audit, where
