@@ -87,7 +87,7 @@ def ai_systems_seed():
             org_id,
             name="Legacy Ticket Classifier",
             provider="anthropic",
-            model_id="claude-3-5-sonnet-20241022",  # on the retired denylist
+            model_id="claude-3-5-sonnet-20241022",  # on the retired denylist  stale-model-ok: demo AI system intentionally on a retired model to exercise the retired-model risk flag
             purpose="Routes inbound support tickets to queues.",
             autonomy_level="assisted",
             data_sensitivity="internal",

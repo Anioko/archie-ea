@@ -43,6 +43,12 @@ EXCLUDE_PATHS = {
     # denylist and asserts those ids never reappear as a default or as guidance,
     # so it names them deliberately (a live stale USE here would fail the test).
     "tests/test_ai_chat_models.py",
+    # The AI-systems genome profile carries its OWN retired-id denylist (used to
+    # compute model_currency = current|stale|retired), and its test asserts the
+    # retired-flag logic — both name retired ids by design, same rationale as
+    # tests/test_ai_chat_models.py above. Not live model calls.
+    "app/modules/enterprise_genome/services/ai_system_profile.py",
+    "tests/test_genome_ai_systems.py",
 }
 SCAN_EXT = {".py", ".html", ".js", ".j2", ".jinja", ".json", ".yaml", ".yml", ".md"}
 SKIP_DIRS = {".git", "__pycache__", "node_modules", ".worktrees", ".claude", "migrations"}
