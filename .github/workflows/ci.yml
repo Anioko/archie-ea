@@ -345,6 +345,8 @@ jobs:
           python -m flask --app manage reconcile-schema
       - name: Run archetype journeys
         run: pytest tests/smoke -q -p no:randomly --timeout=900 -W ignore::DeprecationWarning -m "not adversarial and not census"
+      - name: Interaction-reality census (dead controls, junk modals, silent forms)
+        run: pytest tests/smoke/test_interaction_reality.py -q -p no:randomly -m census --timeout=1200 -W ignore::DeprecationWarning
       - name: Upload failure screenshots
         if: failure()
         uses: actions/upload-artifact@v6
