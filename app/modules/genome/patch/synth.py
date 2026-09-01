@@ -98,16 +98,22 @@ layer MUST be chosen from the allowed values above — never invent a value.
 placeholder; if you cannot justify the element, that is fine — still return your \
 best honest rationale.
 
+{references}
 User request:
 {request_text}
 """
 
 
 def _build_prompt(request_text: str, organization_id: int, proposed_by: str) -> str:
+    # Ground the proposal in known-good reference architectures the platform
+    # already ships, so the AI designs FROM proven practice, not a blank slate.
+    from app.modules.genome.patch.references import references_prompt_block
+
     return _PROMPT_TEMPLATE.format(
         organization_id=organization_id,
         proposed_by=proposed_by,
         request_text=(request_text or "").strip() or "(no request text provided)",
+        references=references_prompt_block(request_text),
         domains=list(GENOME_DOMAINS),
         operations=list(GENOME_PATCH_OPERATIONS),
         types=list(ARCHIMATE_TYPES),
