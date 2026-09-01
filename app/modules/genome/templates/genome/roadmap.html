@@ -1,0 +1,49 @@
+{% extends 'layouts/admin_base.html' %}
+{% from 'macros/page_shell.html' import page_shell %}
+{% block title %}Transformation Roadmap{% endblock %}
+
+{% block content %}
+<div class="p-6 space-y-6 mx-auto">
+    {% macro _ps_actions() %}
+    <form method="post" action="{{ url_for('genome_roadmap.generate') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit"
+                class="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors">
+            <i data-lucide="calendar-range" class="w-4 h-4"></i>
+            Generate roadmap
+        </button>
+    </form>
+    {% endmacro %}
+    {{ page_shell(
+        title='Transformation Roadmap',
+        subtitle='Deterministic Plateau → Work Package transformation roadmap, built from the implementation-and-migration stores with element-level provenance (zero LLM).',
+        actions_caller=_ps_actions) }}
+
+    {% if error %}
+    <div class="p-4 border border-destructive/50 bg-destructive/10 rounded-lg text-sm text-destructive">
+        {{ error }}
+    </div>
+    {% endif %}
+
+    {% if roadmap_html %}
+    <div class="bg-card border border-border rounded-lg p-4">
+        {{ roadmap_html }}
+    </div>
+    <p class="text-xs text-muted-foreground">
+        Each lane is a plateau and each bar a real work package, positioned by its
+        start and target dates and shaded by status. Hover a bar to see its status,
+        completion, the gaps it closes, and its ArchiMate element id — provenance is
+        structural where an element is anchored and honestly marked synthetic where
+        one is legitimately absent.
+    </p>
+    {% else %}
+    {% if not error %}
+    <div class="p-8 text-center text-muted-foreground border border-dashed border-border rounded-lg">
+        <i data-lucide="calendar-range" class="w-8 h-8 mx-auto mb-3 opacity-60"></i>
+        <p>Click <span class="font-medium text-foreground">Generate roadmap</span>
+        to build the deterministic transformation roadmap for your organization.</p>
+    </div>
+    {% endif %}
+    {% endif %}
+</div>
+{% endblock %}

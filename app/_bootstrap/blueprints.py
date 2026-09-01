@@ -135,6 +135,12 @@ def _init_blueprints(app):
         app.logger.info("[BLUEPRINT] Genome data RoPA registered at /genome/data/ropa")
     except Exception as _gd_exc:
         app.logger.warning("[BLUEPRINT] Genome data RoPA not available: %s", _gd_exc)
+    try:
+        from app.modules.genome.routes.roadmap_routes import register as register_genome_roadmap
+        register_genome_roadmap(app)
+        app.logger.info("[BLUEPRINT] Genome transformation roadmap registered at /genome/roadmap")
+    except Exception as _gr_exc:
+        app.logger.warning("[BLUEPRINT] Genome roadmap not available: %s", _gr_exc)
 
     # --- Feature-flagged domain modules ---
     _ff_solutions_strategic = _register_solutions_strategic(app, csrf)
