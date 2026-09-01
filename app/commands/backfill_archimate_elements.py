@@ -161,7 +161,9 @@ def backfill_archimate_elements_command(dry_run, motivation_only):
                     break
                 for app_comp in batch:
                     ae = ArchiMateElement(
-                        name=app_comp.name,
+                        # ArchiMateElement.name is String(100); source names can be
+                        # longer, which would raise mid-batch and abort the backfill.
+                        name=(app_comp.name or "")[:100],
                         type="ApplicationComponent",
                         layer="Application",
                         description=app_comp.description or f"Application: {app_comp.name}",
@@ -186,7 +188,7 @@ def backfill_archimate_elements_command(dry_run, motivation_only):
                     break
                 for cap in batch:
                     ae = ArchiMateElement(
-                        name=cap.name,
+                        name=(cap.name or "")[:100],
                         type="Capability",
                         layer="Strategy",
                         description=cap.description or f"Capability: {cap.name}",

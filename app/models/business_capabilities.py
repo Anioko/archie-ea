@@ -577,12 +577,19 @@ def create_capability_archimate_element(mapper, connection, target):
 
         from .archimate_core import ArchiMateElement
 
+        # BusinessCapability.name is String(256) but ArchiMateElement.name is
+        # String(100); an over-long capability name would raise
+        # StringDataRightTruncation here and 500 the create. Truncate the mirrored
+        # name (the element IS the field — it must never fail to be created because
+        # the field was long); the full name still lives on the capability row.
+        full_name = target.name or ""
+        element_name = full_name if len(full_name) <= 100 else full_name[:99] + "…"
         result = connection.execute(
             insert(ArchiMateElement.__table__).values(
-                name=target.name,
+                name=element_name,
                 type="Capability",
                 layer="Strategy",
-                description=target.description or f"Business capability: {target.name}",
+                description=target.description or f"Business capability: {full_name}",
                 organization_id=target.organization_id,
             )
         )
