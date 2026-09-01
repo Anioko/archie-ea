@@ -456,7 +456,7 @@ def update_lifecycle(element_id):
 @login_required
 def traceability_matrix():
     """Cross-layer traceability matrix across Strategy/Business/Application/Technology."""
-    from app.services.archimate_traceability_service import ArchiMateTraceabilityService, get_gap_analysis
+    from app.services.archimate_traceability_service import ArchiMateTraceabilityService, get_archimate_gap_analysis
 
     service = ArchiMateTraceabilityService()
     direction = request.args.get('direction', 'forward')
@@ -482,7 +482,10 @@ def traceability_matrix():
         service.get_full_matrix(pivot_type=pivot_type, pivot_layer=pivot_layer, plateau=plateau,
                                 limit=page_size, offset=offset, search=search, scope=scope)
     )
-    gap_analysis = get_gap_analysis()
+    # ADR-0008: read coverage/orphans from the SAME store the matrix and pivot
+    # dropdown read (archimate_elements + archimate_relationships), so the three
+    # surfaces on this page agree instead of counting three different stores.
+    gap_analysis = get_archimate_gap_analysis()
     if direction == 'forward' and pivot_type == "ApplicationComponent" and not plateau and not search and page == 1 and (
         not matrix or not _has_aligned_traceability_rows(matrix)
     ):

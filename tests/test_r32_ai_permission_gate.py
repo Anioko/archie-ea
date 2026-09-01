@@ -362,18 +362,41 @@ class TestV04RegressionProtections:
 
 
 class TestARBWriteRoutesDefaultDeny:
-    def test_review_numbers_are_globally_collision_resistant(self):
+    def test_review_numbers_are_globally_sequential_and_unique(self, db_session, architect):
+        """ARB review numbers are sequential ``ARB-YYYY-NNN`` (QA 01 Sep 2026),
+        not the opaque ``REV-YYYY-<uuid>`` they used to be. Sequential numbering
+        is still collision-resistant across tenants because the allocation domain
+        matches the GLOBAL unique index: ``next_reference`` scans the whole table
+        with raw SQL (not tenant-filtered) and takes the maximum suffix, so a row
+        already holding a number pushes the next allocation past it rather than
+        colliding with it."""
         from datetime import datetime
 
         from app.models.architecture_review_board import ARBReviewItem
 
-        first = ARBReviewItem.generate_review_number()
-        second = ARBReviewItem.generate_review_number()
+        year = datetime.utcnow().year
+        prefix = f"ARB-{year}-"
 
-        prefix = f"REV-{datetime.utcnow():%Y}-"
+        first = ARBReviewItem.generate_review_number()
         assert first.startswith(prefix)
+        suffix = first[len(prefix):]
+        assert suffix.isdigit()
+
+        # Persist a row carrying that number; the next allocation must move past
+        # it (table-wide max-suffix scan) — the collision-resistance property.
+        review = ARBReviewItem(
+            title="collision probe",
+            review_type="other",
+            submitter_id=architect.id,
+            organization_id=architect.organization_id,
+            review_number=first,
+        )
+        db_session.add(review)
+        db_session.flush()
+
+        second = ARBReviewItem.generate_review_number()
         assert second.startswith(prefix)
-        assert len(first) == len(prefix) + 12
+        assert int(second[len(prefix):]) == int(suffix) + 1
         assert first != second
 
     def test_viewer_blocked_from_reviews_create(self, client, app, login_as, viewer):

@@ -1,0 +1,46 @@
+{% extends 'layouts/admin_base.html' %}
+{% from 'macros/page_shell.html' import page_shell %}
+{% block title %}Capability Coverage{% endblock %}
+
+{% block content %}
+<div class="p-6 space-y-6 mx-auto">
+    {% macro _ps_actions() %}
+    <form method="post" action="{{ url_for('genome_coverage.generate') }}">
+        <button type="submit"
+                class="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors">
+            <i data-lucide="grid-3x3" class="w-4 h-4"></i>
+            Generate coverage matrix
+        </button>
+    </form>
+    {% endmacro %}
+    {{ page_shell(
+        title='Capability Coverage',
+        subtitle='Deterministic Capability → Application coverage matrix, built from the business_capability store with element-level provenance (zero LLM).',
+        actions_caller=_ps_actions) }}
+
+    {% if error %}
+    <div class="p-4 border border-destructive/50 bg-destructive/10 rounded-lg text-sm text-destructive">
+        {{ error }}
+    </div>
+    {% endif %}
+
+    {% if matrix_html %}
+    <div class="bg-card border border-border rounded-lg p-4">
+        {{ matrix_html }}
+    </div>
+    <p class="text-xs text-muted-foreground">
+        Each shaded cell is a real application → capability mapping. Hover a cell to
+        see its capability and application ArchiMate element ids — provenance is
+        structural and present on every populated cell.
+    </p>
+    {% else %}
+    {% if not error %}
+    <div class="p-8 text-center text-muted-foreground border border-dashed border-border rounded-lg">
+        <i data-lucide="grid-3x3" class="w-8 h-8 mx-auto mb-3 opacity-60"></i>
+        <p>Click <span class="font-medium text-foreground">Generate coverage matrix</span>
+        to build the deterministic coverage heatmap for your organization.</p>
+    </div>
+    {% endif %}
+    {% endif %}
+</div>
+{% endblock %}

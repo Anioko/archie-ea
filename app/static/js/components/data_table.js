@@ -178,7 +178,15 @@
         // Override _loadItems to add onResponse hook and selection clearing
         let origLoadItems = base._loadItems;
 
-        let baseMixin = Object.assign({}, base, {
+        // extendMixin (defineProperties), NOT Object.assign: `base` carries the
+        // pagination getters (totalPages, hasPrev, hasNext, pageStart, pageEnd)
+        // as own enumerable accessors. Object.assign INVOKES them during the
+        // copy — against the freshly-created empty base (totalItems 0, page 1) —
+        // and freezes the results as static 0/0/false/1 data properties. That is
+        // exactly the "Showing 0-0 of 46 items, Next disabled, only page 1"
+        // symptom every dataTable.mixin table exhibited. Copying descriptors
+        // keeps them as live getters bound to the Alpine component.
+        let baseMixin = extendMixin(base, {
 
             // ── Selection state (arrays for Alpine reactivity) ───────
             _selectedIds:    [],

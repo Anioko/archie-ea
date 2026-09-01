@@ -753,6 +753,130 @@ def get_gap_analysis(solution_id=None) -> dict:
     return gap
 
 
+def get_archimate_gap_analysis() -> dict:
+    """ADR-0008: coverage/orphan analysis read from the ArchiMate backbone.
+
+    Unlike ``get_gap_analysis`` (which counts the enterprise DOMAIN tables —
+    ``motivation.Driver``, ``requirements.Requirement`` etc.), this reads the
+    SAME store the cross-layer matrix and the pivot-type dropdown read:
+    ``archimate_elements`` + ``archimate_relationships``. It exists so the
+    ``/architecture/traceability`` page can show ONE consistent set of numbers.
+    A tenant whose motivation entities live only as ArchiMate elements (created
+    via the composer or the AI, with no domain row) previously saw the pivot
+    dropdown count 3 Drivers while the coverage tile read "0 of 0" — the two
+    surfaces were counting different stores. This closes that disagreement.
+
+    Returns the same dict shape as ``get_gap_analysis`` so the template is
+    unchanged; ``orphaned_*`` item ids here are ArchiMateElement ids.
+    """
+    from collections import defaultdict
+
+    gap = {
+        "orphaned_drivers": [],
+        "orphaned_goals": [],
+        "orphaned_requirements": [],
+        "orphaned_capabilities": [],
+        "coverage": {
+            "drivers_with_goals": {"count": 0, "total": 0},
+            "goals_with_requirements": {"count": 0, "total": 0},
+            "requirements_with_capabilities": {"count": 0, "total": 0},
+            "capabilities_with_apps": {"count": 0, "total": 0},
+        },
+        "total_drivers": 0,
+        "total_goals": 0,
+        "total_requirements": 0,
+        "total_capabilities": 0,
+        "unlinked_drivers": 0,
+        "coverage_pct": 0,
+    }
+
+    try:
+        elements = ArchiMateElement.query.with_entities(
+            ArchiMateElement.id,
+            ArchiMateElement.name,
+            ArchiMateElement.type,
+            ArchiMateElement.layer,
+        ).filter(
+            ArchiMateElement.type.isnot(None),
+            ~ArchiMateElement.name.like("tmp-%"),
+        ).all()
+
+        id_set = {e.id for e in elements}
+        type_by_id = {e.id: e.type for e in elements}
+        layer_by_id = {e.id: (e.layer or "") for e in elements}
+        name_by_id = {e.id: e.name for e in elements}
+
+        # Undirected neighbour map, restricted to in-tenant elements so it counts
+        # exactly the relationships the matrix traversal can see.
+        neighbours = defaultdict(set)
+        rels = ArchiMateRelationship.query.with_entities(
+            ArchiMateRelationship.source_id,
+            ArchiMateRelationship.target_id,
+        ).filter(ArchiMateRelationship.type.in_(TRACEABILITY_RELATIONSHIP_TYPES)).all()
+        for src, tgt in rels:
+            if src in id_set and tgt in id_set:
+                neighbours[src].add(tgt)
+                neighbours[tgt].add(src)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("get_archimate_gap_analysis failed: %s", exc)
+        try:
+            db.session.rollback()
+        except Exception as rb_exc:  # noqa: BLE001
+            logger.debug("get_archimate_gap_analysis rollback: %s", rb_exc)
+        return gap
+
+    def _neighbour_types(eid):
+        return {type_by_id.get(n) for n in neighbours.get(eid, ())}
+
+    def _neighbour_layers(eid):
+        return {(layer_by_id.get(n) or "").lower() for n in neighbours.get(eid, ())}
+
+    def _transition(source_types, target_test):
+        """Return (connected_list, orphaned_list) of {id,name} dicts."""
+        connected, orphaned = [], []
+        for eid, etype in type_by_id.items():
+            if etype not in source_types:
+                continue
+            item = {"id": int(eid), "name": name_by_id.get(eid) or f"Item {eid}"}
+            if target_test(eid):
+                connected.append(item)
+            else:
+                orphaned.append(item)
+        connected.sort(key=lambda i: (i["name"] or "").lower())
+        orphaned.sort(key=lambda i: (i["name"] or "").lower())
+        return connected, orphaned
+
+    driver_conn, driver_orph = _transition(
+        {"Driver"}, lambda eid: bool(_neighbour_types(eid) & {"Goal", "Outcome"}))
+    goal_conn, goal_orph = _transition(
+        {"Goal", "Outcome"}, lambda eid: "Requirement" in _neighbour_types(eid))
+    req_conn, req_orph = _transition(
+        {"Requirement"}, lambda eid: "Capability" in _neighbour_types(eid))
+    cap_conn, cap_orph = _transition(
+        {"Capability"}, lambda eid: "application" in _neighbour_layers(eid))
+
+    gap["orphaned_drivers"] = driver_orph[:100]
+    gap["orphaned_goals"] = goal_orph[:100]
+    gap["orphaned_requirements"] = req_orph[:100]
+    gap["orphaned_capabilities"] = cap_orph[:100]
+
+    def _cov(conn, orph):
+        total = len(conn) + len(orph)
+        return {"count": len(conn), "total": total}
+
+    gap["coverage"]["drivers_with_goals"] = _cov(driver_conn, driver_orph)
+    gap["coverage"]["goals_with_requirements"] = _cov(goal_conn, goal_orph)
+    gap["coverage"]["requirements_with_capabilities"] = _cov(req_conn, req_orph)
+    gap["coverage"]["capabilities_with_apps"] = _cov(cap_conn, cap_orph)
+
+    gap["total_drivers"] = len(driver_conn) + len(driver_orph)
+    gap["total_goals"] = len(goal_conn) + len(goal_orph)
+    gap["total_requirements"] = len(req_conn) + len(req_orph)
+    gap["total_capabilities"] = len(cap_conn) + len(cap_orph)
+    gap["unlinked_drivers"] = len(driver_orph)
+    return gap
+
+
 def get_element_solution_map(element_ids):
     """Return {element_id: [{id, name, status, element_role}, ...]} for linked solutions.
 

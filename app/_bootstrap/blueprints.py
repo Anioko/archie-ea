@@ -120,6 +120,22 @@ def _init_blueprints(app):
     # --- North Star Phase 2: ArchiMate Layer Navigation (NORTH-STAR-002) ---
     _register_archimate_layer_navigation(app)
 
+    # --- Enterprise Genome (ADR 0010) — deterministic, provenance-carrying
+    # emitter slices; each registers non-fatally so one broken slice degrades
+    # to a missing page, not a dead app. ---
+    try:
+        from app.modules.genome.routes.coverage_routes import register as register_genome_coverage
+        register_genome_coverage(app)
+        app.logger.info("[BLUEPRINT] Genome coverage matrix registered at /genome/coverage")
+    except Exception as _gc_exc:
+        app.logger.warning("[BLUEPRINT] Genome coverage not available: %s", _gc_exc)
+    try:
+        from app.modules.codegen.routes.genome_data_routes import genome_data_bp
+        app.register_blueprint(genome_data_bp)
+        app.logger.info("[BLUEPRINT] Genome data RoPA registered at /genome/data/ropa")
+    except Exception as _gd_exc:
+        app.logger.warning("[BLUEPRINT] Genome data RoPA not available: %s", _gd_exc)
+
     # --- Feature-flagged domain modules ---
     _ff_solutions_strategic = _register_solutions_strategic(app, csrf)
     _ff_architecture = _register_architecture(app, csrf)

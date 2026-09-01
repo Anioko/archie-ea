@@ -34,11 +34,13 @@
         description="Shows how ApplicationComponent elements trace upward to Strategy/Business and downward to Technology layers"
     ) }}
 
+    {# ADR-0008: orphan ids are ArchiMateElement ids (this page reads the ArchiMate
+       backbone), so every orphan links to its element traceability view. #}
     {% set orphan_groups = [
-        ('Drivers', gap_analysis.orphaned_drivers | default([], true), '/applications/0/drivers/'),
-        ('Goals', gap_analysis.orphaned_goals | default([], true), '/applications/0/goals/'),
-        ('Requirements', gap_analysis.orphaned_requirements | default([], true), '/requirements/'),
-        ('Capabilities', gap_analysis.orphaned_capabilities | default([], true), '/capability-maturity/edit/')
+        ('Drivers', gap_analysis.orphaned_drivers | default([], true)),
+        ('Goals', gap_analysis.orphaned_goals | default([], true)),
+        ('Requirements', gap_analysis.orphaned_requirements | default([], true)),
+        ('Capabilities', gap_analysis.orphaned_capabilities | default([], true))
     ] %}
     {% set total_orphans = (gap_analysis.orphaned_drivers | default([], true) | length)
         + (gap_analysis.orphaned_goals | default([], true) | length)
@@ -183,7 +185,7 @@
         <div x-show="gapOpen" x-cloak x-trap.noscroll="gapOpen" @keydown.escape.window="gapOpen = false" role="dialog" aria-modal="true" tabindex="-1" class="mt-4 border-t border-border pt-4">
             {% if total_orphans %}
             <div class="grid gap-4 lg:grid-cols-2">
-                {% for title, items, href_prefix in orphan_groups if items %}
+                {% for title, items in orphan_groups if items %}
                 <section class="rounded-md border border-border/60 bg-background p-3">
                     <div class="flex items-center justify-between gap-2">
                         <h3 class="text-sm font-semibold text-foreground">{{ title }}</h3>
@@ -192,7 +194,7 @@
                     <ul class="mt-3 space-y-2">
                         {% for item in items[:8] %}
                         <li>
-                            <a href="{{ href_prefix }}{{ item.id }}"
+                            <a href="{{ url_for('architect_ui.element_traceability', element_id=item.id) }}"
                                class="inline-flex items-center gap-2 text-sm text-primary hover:underline">
                                 <i data-lucide="arrow-up-right" class="h-3.5 w-3.5"></i>
                                 <span>{{ item.name }}</span>

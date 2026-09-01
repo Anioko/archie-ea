@@ -10,7 +10,16 @@
     {% with active_view = 'applications' %}{% include 'capability_map/_view_switcher.html' %}{% endwith %}
 
     {% set total = applications|length %}
-    {% set active_count = applications|selectattr('status', 'equalto', 'active')|list|length %}
+    {# Count "Active" using the SAME rule the status column renders with below —
+       (app.status or 'active')|lower == 'active'. The old selectattr('status',
+       'equalto', 'active') missed rows whose status is NULL (shown as Active via
+       the fallback) or differently-cased, so the KPI read 0 while every row said
+       Active. #}
+    {% set ns = namespace(active=0) %}
+    {% for app in applications %}
+        {% if (app.status or 'active')|lower == 'active' %}{% set ns.active = ns.active + 1 %}{% endif %}
+    {% endfor %}
+    {% set active_count = ns.active %}
     {% set mapped_count = applications|selectattr('capability_mappings')|list|length %}
     <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
         {{ metrics_card(title='Total', value=total, icon='monitor') }}

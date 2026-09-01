@@ -818,15 +818,23 @@ class ARBReviewItem(TenantMixin, db.Model, OptimisticLockMixin):
 
     @staticmethod
     def generate_review_number():
-        """Generate a globally unique, non-enumerable review number.
+        """Generate a sequential, table-wide-unique review number.
 
         ``ARBReviewItem`` is tenant-scoped but ``review_number`` has a global
-        unique constraint. A sequential "last row + 1" query is filtered to
-        the current tenant and is also race-prone, so two organizations (or
-        concurrent submissions) can select the same number. Match the
-        canonical evidence-gated submission format instead.
+        unique constraint. A sequential "last row + 1" ORM query would be
+        silently filtered to the current tenant while the unique index spans
+        every tenant, so two organizations could collide. ``next_reference``
+        allocates against the whole table with raw SQL (not subject to
+        ``do_orm_execute``) and takes the maximum suffix rather than the last
+        row, which is both tenant-safe and matches the seeded ``ARB-YYYY-NNN``
+        format a reader expects — rather than an opaque ``REV-YYYY-<uuid>``.
         """
-        return f"REV-{datetime.utcnow():%Y}-{uuid.uuid4().hex[:12].upper()}"
+        from app.utils.reference_numbers import next_reference
+
+        year = datetime.utcnow().year
+        return next_reference(
+            "arb_review_items", "review_number", f"ARB-{year}-", width=3
+        )
 
     def calculate_overall_score(self):
         """Calculate weighted overall score."""

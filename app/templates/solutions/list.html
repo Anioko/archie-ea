@@ -22,7 +22,7 @@
          class="inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-input bg-background text-sm font-medium hover:bg-accent transition-colors">
         <i data-lucide="layers" class="h-4 w-4" aria-hidden="true"></i>New Programme
       </a>
-      <button type="button" data-testid="btn-new-from-template" @click="openTemplateModal()"
+      <button type="button" data-testid="btn-new-from-template" data-action="open-template-modal"
         class="inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-input bg-background text-sm font-medium hover:bg-accent transition-colors">
         <i data-lucide="layout-template" class="h-4 w-4" aria-hidden="true"></i>New from Template
       </button>
@@ -410,7 +410,7 @@
                     <i data-lucide="zap" class="h-4 w-4" aria-hidden="true"></i>
                     Start Architecture Journey
                 </a>
-                <button type="button" @click="openTemplateModal()" class="inline-flex items-center justify-center gap-2 h-11 px-5 rounded-lg border border-border/50 bg-card hover:bg-accent transition-colors text-sm font-medium" aria-label="Create from template">
+                <button type="button" data-action="open-template-modal" class="inline-flex items-center justify-center gap-2 h-11 px-5 rounded-lg border border-border/50 bg-card hover:bg-accent transition-colors text-sm font-medium" aria-label="Create from template">
                     <i data-lucide="layout-template" class="h-4 w-4" aria-hidden="true"></i>
                     New from Template
                 </button>
@@ -466,6 +466,16 @@
         }
       });
     }
+    // "New from Template" buttons. Previously wired via Alpine @click calling a
+    // GLOBAL openTemplateModal() — the button sat inside x-data but the function
+    // is not a component method, so it only ran if Alpine's evaluator reached the
+    // window global, which under the production CSP-safe interpreter is fragile.
+    // A direct listener is CSP-safe and deterministic (matches the codebase's
+    // no-inline-handler rule).
+    document.querySelectorAll('[data-action="open-template-modal"]').forEach(function(btn) {
+      btn.addEventListener('click', function() { openTemplateModal(); });
+    });
+
     let allPagesBtn = document.getElementById('sol-select-all-pages-btn');
     if (allPagesBtn) {
       allPagesBtn.addEventListener('click', function() {

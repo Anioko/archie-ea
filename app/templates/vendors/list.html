@@ -73,11 +73,7 @@
               {'label': 'Actions', 'align': 'right'},
           ],
           filters=[
-              {'key': 'vendor_type', 'label': 'Types', 'options': [
-                  {'value': 'Cloud', 'label': 'Cloud'},
-                  {'value': 'Enterprise', 'label': 'Enterprise'},
-                  {'value': 'Hybrid', 'label': 'Hybrid'},
-              ]},
+              {'key': 'vendor_type', 'label': 'Types', 'options': vendor_type_filter_options or []},
               {'key': 'contract_status', 'label': 'Statuses', 'options': [
                   {'value': 'catalog', 'label': 'Catalog'},
                   {'value': 'contracted', 'label': 'Contracted'},

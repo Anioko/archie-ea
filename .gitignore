@@ -214,6 +214,7 @@ scripts/check_*.py
 !scripts/check_template_references.py
 !scripts/check_sidebar_links.py
 !scripts/check_tenant_scoping.py
+!scripts/check_llm_boundary.py
 !scripts/check_dynamic_link_prefixes.py
 !scripts/check_asset_urls.py
 !scripts/check_qa_register.py
@@ -310,15 +311,3 @@ recheck.py
 # reviewed in-session, not committed.
 docs/superpowers/evidence/
 route_verification.json
-
-# Output of scripts/production_readiness_audit.py. These are measurement
-# artefacts of one run against one database, not repository content: they name
-# local ports and seeded user emails, and they go stale the moment anything is
-# fixed. The harness that produces them is committed; its output is not.
-audit_*.json
-production_readiness_report.json
-audit-server.log
-layout-probe-server.log
-
-# Output of scripts/walkthrough_archetypes.py -- one run against one server.
-walkthrough_report.json

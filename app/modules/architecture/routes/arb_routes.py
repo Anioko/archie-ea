@@ -1494,7 +1494,13 @@ def create_review():
                 return jsonify({"success": False, "errors": {"general": str(e)}}), 500
             flash("Error creating review. Please try again.", "error")
 
-    # GET — redirect to dashboard (modal handles creation inline)
+    # GET — no standalone create page exists; creation is an inline modal on the
+    # dashboard. A bare redirect looked like the empty-state CTA "did nothing"
+    # (QA 01 Sep 2026), so tell the user where the form is and open it.
+    flash(
+        "Use the “Create Review Item” button to submit a new ARB review.",
+        "info",
+    )
     return redirect(url_for("arb.dashboard"))
 
 

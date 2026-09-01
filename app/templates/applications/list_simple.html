@@ -148,9 +148,13 @@
          violation. Both counts now come from stats.owner_assigned / stats.vendor_assigned,
          computed server-side in application_list() from real business_owner / vendor_name
          / vendor_product_id data. #}
-      <span>{{ stats.owner_assigned|dash }} of {{ stats.total|dash }} applications have an assigned owner</span>
-      <span>{{ stats.vendor_assigned|dash }} of {{ stats.total|dash }} applications have a vendor recorded</span>
-      <span>{{ stats.decommissioned|dash }} of {{ stats.total|dash }} applications decommissioned</span>
+      {# D13: these are portfolio-wide figures (denominator = the full portfolio,
+         including the decommissioned app the default table hides). Say "in the
+         portfolio" so "24 of 24" cannot read as a contradiction of the 23-row
+         active view below it. #}
+      <span>{{ stats.owner_assigned|dash }} of {{ stats.total|dash }} applications in the portfolio have an assigned owner</span>
+      <span>{{ stats.vendor_assigned|dash }} of {{ stats.total|dash }} applications in the portfolio have a vendor recorded</span>
+      <span>{{ stats.decommissioned|dash }} of {{ stats.total|dash }} applications in the portfolio decommissioned</span>
     </div>
   </div>
 
@@ -194,7 +198,11 @@
     <div class="flex items-center justify-between px-4 py-3 border-b gap-3 flex-wrap">
       <p class="text-sm text-muted-foreground">Track and manage all applications across your enterprise architecture.</p>
       <div class="flex items-center gap-2">
-        {% if total_count %}<span class="text-xs font-medium bg-muted text-muted-foreground px-2.5 py-1 rounded-full" data-testid="total-count-badge">{{ total_count }} total</span>{% endif %}
+        {# D13: this badge counts the rows in the current (filtered) view, which by
+           default hides decommissioned apps — so it is NOT the portfolio total.
+           Label it "shown" and, when it differs, name the portfolio size so the
+           23-row view and the 24-app portfolio can never read as a contradiction. #}
+        {% if total_count %}<span class="text-xs font-medium bg-muted text-muted-foreground px-2.5 py-1 rounded-full" data-testid="total-count-badge">{{ total_count }} shown{% if portfolio_total and portfolio_total != total_count %} of {{ portfolio_total }}{% endif %}</span>{% endif %}
         {# ARCH-100: density toggle, persisted to localStorage in appPortfolio.init(). #}
         <button type="button" data-testid="btn-density-toggle" @click="toggleDensity()"
           title="Toggle row density between comfortable and compact"

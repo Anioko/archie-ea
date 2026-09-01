@@ -5274,7 +5274,87 @@
         selectedApplications.clear();
         applicationsData = [];
     }
-    
+
+    // Row action "View Details" — opens a read-only detail dialog for a
+    // capability. Fetches the canonical detail record and renders it with a
+    // dynamically-created Platform modal (no inline handlers; CSP-safe).
+    // Missing values render as an em dash, never a fabricated 0/blank.
+    window.openCapabilityDetail = async function(capabilityId, capabilityName) {
+        const DASH = '—';
+        const esc = (window.Platform && Platform.sanitize && Platform.sanitize.escape)
+            ? Platform.sanitize.escape
+            : (s => String(s == null ? '' : s).replace(/[&<>"']/g, c => (
+                {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])));
+        const val = v => (v === null || v === undefined || v === '') ? DASH : esc(v);
+
+        const modalId = 'capability-detail-modal';
+        // Destroy any prior instance so re-opening always shows fresh data.
+        if (window.Platform && Platform.modal && typeof Platform.modal.destroy === 'function') {
+            Platform.modal.destroy(modalId);
+        }
+
+        let data;
+        try {
+            const resp = await Platform.fetch(`/enterprise/capabilities/${encodeURIComponent(capabilityId)}`, { silent: true });
+            data = (resp && resp.data) ? resp.data : resp;
+        } catch (e) {
+            if (window.Platform && Platform.toast) {
+                Platform.toast.error('Could not load capability details. Please try again.');
+            }
+            return;
+        }
+        if (!data) {
+            if (window.Platform && Platform.toast) Platform.toast.error('Capability not found.');
+            return;
+        }
+
+        const rows = [
+            ['Domain', val(data.business_domain)],
+            ['Level', val(data.level)],
+            ['Category', val(data.category)],
+            ['Strategic Importance', val(data.strategic_importance)],
+            ['Current Maturity', val(data.current_maturity_level)],
+            ['Target Maturity', val(data.target_maturity_level)],
+            ['Business Owner', val(data.business_owner)],
+            ['IT Owner', val(data.it_owner)],
+            ['Mapped Applications', val(data.application_count)]
+        ];
+        let content = '<dl class="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">';
+        rows.forEach(([label, value]) => {
+            content += '<dt class="font-medium text-muted-foreground">' + esc(label) + '</dt>'
+                     + '<dd class="text-foreground">' + value + '</dd>';
+        });
+        content += '</dl>';
+
+        if (data.description) {
+            content += '<div class="mt-4"><p class="font-medium text-muted-foreground text-sm mb-1">Description</p>'
+                     + '<p class="text-sm text-foreground whitespace-pre-line">' + esc(data.description) + '</p></div>';
+        }
+
+        const apps = Array.isArray(data.applications) ? data.applications : [];
+        if (apps.length) {
+            content += '<div class="mt-4"><p class="font-medium text-muted-foreground text-sm mb-2">Applications</p><ul class="space-y-1">';
+            apps.forEach(a => {
+                content += '<li class="text-sm text-foreground flex items-center justify-between border-b border-border py-1">'
+                         + '<span>' + esc(a.name) + '</span>'
+                         + '<span class="text-xs text-muted-foreground">' + val(a.support_level) + '</span></li>';
+            });
+            content += '</ul></div>';
+        }
+
+        Platform.modal.create({
+            id: modalId,
+            title: (data.name || capabilityName || 'Capability') + ' — Details',
+            size: 'lg',
+            content: content,
+            buttons: [{ label: 'Close', variant: 'secondary' }]
+        });
+        Platform.modal.open(modalId);
+        if (window.lucide && typeof window.lucide.createIcons === 'function') {
+            window.lucide.createIcons();
+        }
+    };
+
     // AUDIT-CAP-003: Set loading state for modal dropdowns and application list
     function setModalLoadingState(isLoading) {
         const typeFilter = getEl('filter-type');

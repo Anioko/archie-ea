@@ -235,21 +235,26 @@
                     'D': 'Technology', 'E': 'Opportunities', 'F': 'Migration',
                     'G': 'Governance', 'H': 'Change Mgmt'
                 } %}
-                {% set adm_pct = {'A': 12, 'B': 25, 'C': 37, 'D': 50, 'E': 62, 'F': 75, 'G': 87, 'H': 100} %}
+                {# The trailing % is the MEASURED share of the portfolio in this
+                   phase (count / total_solutions), not a hardcoded ladder. A
+                   fixed 12/25/…/100 ladder per phase was removed: it read as
+                   "Governance 87%" from zero solutions — a fabricated-looking
+                   constant. Em dash when there are no solutions to measure. #}
                 <div class="space-y-2">
                     {% for phase in 'ABCDEFGH' %}
                     {% set count = adm_distribution.get(phase, 0) %}
+                    {% set phase_share = ((count / total_solutions) * 100) | round(1) if total_solutions > 0 else none %}
                     <div class="flex items-center gap-3">
                         <span class="w-24 text-xs font-medium text-muted-foreground shrink-0">
                             {{ phase }}: {{ adm_labels.get(phase, '') }}
                         </span>
                         <div class="flex-1 bg-muted rounded-full h-2 overflow-hidden">
                             <div class="bg-primary h-full rounded-full transition-all"
-                                 style="width: {% if total_solutions > 0 %}{{ ((count / total_solutions) * 100) | round(1) }}%{% else %}0%{% endif %}">
+                                 style="width: {% if phase_share is not none %}{{ phase_share }}%{% else %}0%{% endif %}">
                             </div>
                         </div>
                         <span class="w-8 text-xs text-right text-foreground font-medium shrink-0">{{ count }}</span>
-                        <span class="w-10 text-xs text-right text-muted-foreground shrink-0">{{ adm_pct.get(phase, 0) }}%</span>
+                        <span class="w-12 text-xs text-right text-muted-foreground shrink-0">{% if phase_share is not none %}{{ phase_share }}%{% else %}&#8212;{% endif %}</span>
                     </div>
                     {% endfor %}
                 </div>

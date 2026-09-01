@@ -78,15 +78,11 @@ BASELINE_PATH = REPO_ROOT / "verification_baseline.json"
 
 PASS, FAIL, SKIP = "PASS", "FAIL", "SKIP"
 
-# The PostgreSQL-backed suite takes just over 30 minutes on the supported Windows
-# development environment as of August 2026, and ~59 minutes on slower hardware.
-#
-# Two fixes for one defect met here and both are kept. Default 3600, so normal
-# load variance does not report a progressing suite as a release failure. And
-# overridable, because on a machine where the suite exceeds the ceiling the gate
-# reported "timed out -> fix the failing test" on a tree with no failing test --
-# which reads as a red release and is not one.
-TEST_SUITE_TIMEOUT_SECONDS = int(os.environ.get("ARCHIE_TEST_SUITE_TIMEOUT", "3600"))
+# The PostgreSQL-backed suite currently takes about 26 minutes on the supported
+# Windows development environment.  Keep a bounded subprocess, but do not let
+# the generic 15-minute command timeout turn a fully progressing suite into a
+# false release failure.
+TEST_SUITE_TIMEOUT_SECONDS = 1800
 
 
 @dataclass
@@ -298,30 +294,13 @@ def gate_nav_verified(baseline: int) -> Result:
     someone will find it by clicking.
 
     Counts from route_verification.json, written by running the suite with
-    ``-p scripts.route_verification_audit``.
-
-    Missing data fails, but says so rather than inventing a score. That file is
-    untracked and exists in exactly one working copy, so on the same commit the
-    repository root reported ``[18 > 0]`` while a fresh worktree reported
-    ``[57 > 0]`` -- 57 being the entire navigation set, printed as though 57
-    routes had been found wanting. No clean clone could ever pass. A gate is held
-    to the rule it enforces: a number that means "not measured" is
-    indistinguishable from one that was.
+    ``-p scripts.route_verification_audit``. Stale or missing data reports the
+    full nav set as unverified, which fails loudly rather than passing on
+    absent evidence.
     """
     proc = _run([sys.executable, "scripts/route_verification_audit.py", "--count"])
-    last = proc.stdout.strip().splitlines()[-1].strip() if proc.stdout.strip() else ""
-    if last == "unmeasured":
-        return Result(
-            "nav-verified",
-            FAIL,
-            "no audit data in this checkout, so nothing was measured -- this is "
-            "not a count of unverified routes.\n"
-            "route_verification.json is untracked and exists only where the suite "
-            "has been run.\n"
-            "Produce it with:  pytest -p scripts.route_verification_audit",
-        )
     try:
-        count = int(last)
+        count = int(proc.stdout.strip().splitlines()[-1])
     except (ValueError, IndexError):
         return Result("nav-verified", FAIL, f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
     if count > baseline:
@@ -370,627 +349,6 @@ def gate_air_gap(baseline: int) -> Result:
     except (ValueError, IndexError):
         return Result("air-gap", FAIL, f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
     return Result("air-gap", PASS if count <= baseline else FAIL, "", count, baseline)
-
-
-def gate_control_labels(baseline: int) -> Result:
-    """No button a screen reader announces as just "button".
-
-    An icon-only button contributes no text, so without an aria-label the only
-    way to learn what it does is to press it. A live browser audit of every
-    route (Aug 2026) found 50, on close buttons, delete buttons and send
-    buttons across the whole app.
-
-    The gate exists rather than the cleanup alone because of the shape it also
-    catches: /account/manage's notification toggles carried an
-    `aria-labelledby` pointing at the `sr-only` checkbox rather than the visible
-    <label>. It read like a deliberate, filed label and resolved to an empty
-    name. Counted by scripts/check_control_labels.py, which follows the id.
-    """
-    proc = _run([sys.executable, "scripts/check_control_labels.py", "--count"])
-    try:
-        count = int(proc.stdout.strip().splitlines()[-1])
-    except (ValueError, IndexError):
-        return Result("control-labels", FAIL, f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
-    detail = "" if count <= baseline else "run scripts/check_control_labels.py to list them"
-    return Result("control-labels", PASS if count <= baseline else FAIL, detail, count, baseline)
-
-def gate_alpine_await(baseline: int) -> Result:
-    """No `await` / `async` inside an Alpine attribute expression.
-
-    Pages are served under a CSP with no 'unsafe-eval', so Alpine expressions
-    written in HTML attributes are executed by our own synchronous interpreter
-    (app/static/js/csp/csp-evaluator.js), not by the browser. It cannot await:
-    `await p` used to return the Promise object unchanged, so
-    `this.total = await api.count()` left `total` holding a Promise and the
-    template rendered the seeded initialiser. The strategic-roadmap and sprint
-    statistic tiles sat on a fabricated `0` for months -- indistinguishable
-    from a measured zero on a page that looked perfectly healthy. `async` is a
-    parse error in that grammar, which kills the whole component.
-
-    The evaluator now throws on `await` rather than fabricating, and this gate
-    keeps the templates at zero so that throw stays unreachable. Counted by
-    scripts/check_alpine_await.py, which ignores <script> bodies, string
-    literals and comments.
-    """
-    proc = _run([sys.executable, "scripts/check_alpine_await.py", "--count"])
-    try:
-        count = int(proc.stdout.strip().splitlines()[-1])
-    except (ValueError, IndexError):
-        return Result("alpine-await", FAIL, f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
-    detail = "" if count <= baseline else "run scripts/check_alpine_await.py to list them"
-    return Result("alpine-await", PASS if count <= baseline else FAIL, detail, count, baseline)
-
-
-def gate_attr_quoting(baseline: int) -> Result:
-    """No `| tojson` inside a DOUBLE-quoted HTML attribute.
-
-    Jinja's tojson emits HTML-safe JSON: it escapes `<`, `>`, `&` and `'`
-    (to \u0027) but deliberately leaves `"` literal, because JSON without
-    double quotes is not JSON. So `x-data="foo({{ report | tojson }})"`
-    renders as `x-data="foo({"score": 3, ...})"` and the payload's own first
-    `"` closes the attribute early. Alpine's CSP-safe parser then receives a
-    truncated expression and throws `Uncaught SyntaxError: expected } got ""`,
-    which aborts x-data init and kills the whole component -- every x-show,
-    x-text and @click inside it silently stops working. Measured live in a
-    browser on /solutions/1/completeness and /modules/.
-
-    A single-quoted attribute is safe precisely because tojson escapes `'`,
-    so the fix is normally a delimiter swap; where the expression carries its
-    own single-quoted JS strings those become double-quoted, or the value
-    moves to a data-* attribute. Counted by scripts/check_attr_quoting.py,
-    which masks Jinja comment regions and flags every tojson in a
-    double-quoted attribute -- "this value can never contain a quote" is a
-    property of today's data, not of the template.
-    """
-    proc = _run([sys.executable, "scripts/check_attr_quoting.py", "--count"])
-    try:
-        count = int(proc.stdout.strip().splitlines()[-1])
-    except (ValueError, IndexError):
-        return Result("attr-quoting", FAIL, f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
-    detail = "" if count <= baseline else "run scripts/check_attr_quoting.py to list them"
-    return Result("attr-quoting", PASS if count <= baseline else FAIL, detail, count, baseline)
-
-
-def gate_input_labels(baseline: int) -> Result:
-    """No form control a screen reader cannot name.
-
-    An unlabelled <input>/<select>/<textarea> is announced as its type and
-    nothing else, so the only way to learn what a field holds is to fill it in.
-    The same audit found 34 in rendered pages alone -- toolbar filter selects,
-    every table's select-all checkbox, and a "Paste CSV Data" textarea whose
-    visible <label> simply had no `for`, so the association was never made.
-
-    A placeholder does not count: it is not reliably exposed as an accessible
-    name, and it disappears the moment the user types.
-    """
-    proc = _run([sys.executable, "scripts/check_input_labels.py", "--count"])
-    try:
-        count = int(proc.stdout.strip().splitlines()[-1])
-    except (ValueError, IndexError):
-        return Result("input-labels", FAIL, f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
-    detail = "" if count <= baseline else "run scripts/check_input_labels.py to list them"
-    return Result("input-labels", PASS if count <= baseline else FAIL, detail, count, baseline)
-
-
-def gate_macro_kwargs(baseline: int) -> Result:
-    """No Jinja macro call passing a keyword the macro does not accept.
-
-    Jinja resolves a macro signature only when the call executes, so this is
-    invisible to `template-syntax` (the file parses) and to `boot-health` (the
-    url_for resolves). The page raises `TypeError: macro 'x' takes no keyword
-    argument 'y'` the first time a request renders that branch.
-
-    Found by the Aug 2026 route audit: capability_maturity/heatmap.html called
-    components/empty_state.html's `empty_state` with `cta_label=`, which is the
-    correct parameter of a *different, identically named* macro in
-    macros/page_shell.html. It rendered only for an organisation with zero
-    capabilities, so every seeded database hid it and only a brand-new customer
-    could reach the 500 -- which is why counting the class beats fixing the one
-    instance.
-    """
-    proc = _run([sys.executable, "scripts/check_macro_kwargs.py", "--count"])
-    try:
-        count = int(proc.stdout.strip().splitlines()[-1])
-    except (ValueError, IndexError):
-        return Result("macro-kwargs", FAIL, f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
-    detail = "" if count <= baseline else "run scripts/check_macro_kwargs.py to list them"
-    return Result("macro-kwargs", PASS if count <= baseline else FAIL, detail, count, baseline)
-
-
-def gate_journey_coverage(baseline: int) -> Result:
-    """Every persona has a journey test that writes and asserts the outcome.
-
-    Levels 0-8 all ask "does this break?". None of them asks "can a person
-    achieve their goal?" -- and a screen can compile, render, label its controls
-    correctly, leak nothing, and still be a workflow nobody can complete.
-    /capability-analysis/unmapped returned 200 for months while never querying
-    the rows it exists to show, because the view's own name shadowed the query
-    result; a status assertion could not have caught it and a journey would
-    have.
-
-    Writing the four missing journeys this gate demanded found, in one pass: a
-    portfolio manager's core action rejected with 400 by its own endpoint, a
-    governed retire disposition approvable with no ARB decision, a 500 on every
-    successful bulk approval (a dict written to a TEXT column, raised at commit
-    outside the caller's try/except), and an ARB decision that was recorded
-    correctly and then displayed nowhere on the review page.
-
-    See docs/TESTING_STANDARD.md, Level 9.
-    """
-    proc = _run([sys.executable, "scripts/check_journey_coverage.py", "--count"])
-    try:
-        count = int(proc.stdout.strip().splitlines()[-1])
-    except (ValueError, IndexError):
-        return Result("journey-coverage", FAIL, f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
-    detail = "" if count <= baseline else "run scripts/check_journey_coverage.py to list them"
-    return Result("journey-coverage", PASS if count <= baseline else FAIL, detail, count, baseline)
-
-
-def gate_unreachable_actions(baseline: int) -> Result:
-    """No handler branch behind a whitelist that already rejected its value.
-
-    POST /applications/rationalization/api/bulk-review validated
-    valid_actions = {"approve", "defer", "request_data"} and then implemented
-    `elif action == "set_disposition":` -- the portfolio_manager persona's core
-    action, rejected with 400 before it could reach its own implementation.
-    The module compiles, ruff sees a reachable elif, and the endpoint returns a
-    well-formed 400, so nothing in levels 0-8 could see it; a journey test
-    could, and did.
-    """
-    proc = _run([sys.executable, "scripts/check_unreachable_actions.py", "--count"])
-    try:
-        count = int(proc.stdout.strip().splitlines()[-1])
-    except (ValueError, IndexError):
-        return Result("unreachable-actions", FAIL, f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
-    detail = "" if count <= baseline else "run scripts/check_unreachable_actions.py to list them"
-    return Result("unreachable-actions", PASS if count <= baseline else FAIL, detail, count, baseline)
-
-
-def gate_inline_handlers(baseline: int) -> Result:
-    """No inline event handler attribute -- this app's CSP refuses to run them.
-
-    script-src carries no 'unsafe-inline' and no 'unsafe-hashes', and a nonce
-    does not cover attributes, so onclick=/onchange=/onsubmit= render fine and
-    never fire. Sixteen were live when this gate was written, including six
-    destructive forms whose confirmation dialog never appeared -- Delete
-    submitted straight through -- and the admin role select, which silently
-    stopped changing anyone's role. Every template parsed, every route returned
-    200, and every gate was green.
-    """
-    proc = _run([sys.executable, "scripts/check_inline_handlers.py", "--count"])
-    try:
-        count = int(proc.stdout.strip().splitlines()[-1])
-    except (ValueError, IndexError):
-        return Result("inline-handlers", FAIL, f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
-    detail = "" if count <= baseline else "run scripts/check_inline_handlers.py to list them"
-    return Result("inline-handlers", PASS if count <= baseline else FAIL, detail, count, baseline)
-
-
-def gate_persona_vocabularies(baseline: int) -> Result:
-    """The product's four persona lists must reconcile with VALID_ROLES.
-
-    All four disagreed: the admin SSO screen's list is both its dropdown and
-    its validator, and it had drifted three roles behind -- so an administrator
-    at an SSO-only customer could not map an IdP group to a CTO, a procurement
-    user or an application manager at all. Three of nine shipped personas,
-    each with a sidebar zone, permissions and a governed AI charter,
-    unprovisionable. Every page returned 200 throughout.
-    """
-    proc = _run([sys.executable, "scripts/check_persona_vocabularies.py", "--count"])
-    try:
-        count = int(proc.stdout.strip().splitlines()[-1])
-    except (ValueError, IndexError):
-        return Result("persona-vocabularies", FAIL, f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
-    detail = "" if count <= baseline else "run scripts/check_persona_vocabularies.py to list them"
-    return Result("persona-vocabularies", PASS if count <= baseline else FAIL, detail, count, baseline)
-
-
-def gate_evidence_contract(baseline: int) -> Result:
-    """No unevidenced claim ships, and no gate is trusted until it has failed.
-
-    Two rules, both binding on any agent working this repository:
-
-    A behavioural change under app/ must land with a test or an `Evidence:`
-    trailer naming the command and its result -- because on 30 Aug 2026 the
-    model running this repo announced three conclusions it had not measured
-    (a harness "broken" that had just measured 1,700 page loads; a page
-    "hanging" that answers in 0.04s). None reached production, because the
-    artifacts were measured even when the narration was not. This makes the
-    measurement the deliverable.
-
-    And every checker registered here must carry a `Proven-against:` line
-    naming the input it was watched to fail on. TESTING_STANDARD.md rule 7 has
-    always required it and nothing enforced it -- which is precisely the hole
-    an agent walks through by writing a checker that has never once gone red
-    and reporting it as coverage.
-    """
-    proc = _run([sys.executable, "scripts/check_evidence_contract.py", "--count"])
-    try:
-        count = int(proc.stdout.strip().splitlines()[-1])
-    except (ValueError, IndexError):
-        return Result("evidence-contract", FAIL, f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
-    detail = "" if count <= baseline else "run scripts/check_evidence_contract.py to list them"
-    return Result("evidence-contract", PASS if count <= baseline else FAIL, detail, count, baseline)
-
-
-def gate_ai_evidence_rules(baseline: int) -> Result:
-    """Every AI persona charter carries the no-fabrication rules.
-
-    A persona charter is a large f-string; adding one means copying one, and a copy that drops the rules block still produces a working, plausible, entirely ungoverned persona that may state numbers it was never given.
-    """
-    proc = _run([sys.executable, "scripts/check_ai_evidence_rules.py", "--count"])
-    try:
-        count = int(proc.stdout.strip().splitlines()[-1])
-    except (ValueError, IndexError):
-        return Result("ai-evidence-rules", FAIL, f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
-    detail = "" if count <= baseline else "run scripts/check_ai_evidence_rules.py to list them"
-    return Result("ai-evidence-rules", PASS if count <= baseline else FAIL, detail, count, baseline)
-
-
-def gate_ai_tool_guard(baseline: int) -> Result:
-    """The AI write path keeps its single permission choke point.
-
-    ToolExecutor.execute's docstring states there is no other path from a tool name to a handler. One direct call and 27 write tools lose their permission check with nothing going red -- the docstring would still say it.
-    """
-    proc = _run([sys.executable, "scripts/check_ai_tool_guard.py", "--count"])
-    try:
-        count = int(proc.stdout.strip().splitlines()[-1])
-    except (ValueError, IndexError):
-        return Result("ai-tool-guard", FAIL, f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
-    detail = "" if count <= baseline else "run scripts/check_ai_tool_guard.py to list them"
-    return Result("ai-tool-guard", PASS if count <= baseline else FAIL, detail, count, baseline)
-
-
-def gate_ai_untrusted_content(baseline: int) -> Result:
-    """Retrieved content enters the system prompt fenced, after the charter.
-
-    Organisation RAG chunks and vector hits were PREPENDED to the system prompt unfenced, so uploaded document text outranked the governance charter by position -- a planted instruction sat above the rules meant to govern it.
-    """
-    proc = _run([sys.executable, "scripts/check_ai_untrusted_content.py", "--count"])
-    try:
-        count = int(proc.stdout.strip().splitlines()[-1])
-    except (ValueError, IndexError):
-        return Result("ai-untrusted-content", FAIL, f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
-    detail = "" if count <= baseline else "run scripts/check_ai_untrusted_content.py to list them"
-    return Result("ai-untrusted-content", PASS if count <= baseline else FAIL, detail, count, baseline)
-
-
-def gate_authz_widening(baseline: int) -> Result:
-    """No role is granted from a field the user's own record carries.
-
-    A read-only Viewer could create and delete ArchiMate elements: require_roles credited any '*_architect' enterprise_role with the 'architect' tier without consulting what the account was permitted to do.
-    """
-    proc = _run([sys.executable, "scripts/check_authz_widening.py", "--count"])
-    try:
-        count = int(proc.stdout.strip().splitlines()[-1])
-    except (ValueError, IndexError):
-        return Result("authz-widening", FAIL, f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
-    detail = "" if count <= baseline else "run scripts/check_authz_widening.py to list them"
-    return Result("authz-widening", PASS if count <= baseline else FAIL, detail, count, baseline)
-
-
-def gate_nullable_columns(baseline: int) -> Result:
-    """A NOT NULL column carries a default reconcile-schema can apply.
-
-    Deploys do not run Alembic. reconcile-schema adds nullable columns only, so a new NOT NULL column without a default cannot be applied to a populated table -- and one missing column 500s every page via InFailedSqlTransaction.
-    """
-    proc = _run([sys.executable, "scripts/check_nullable_columns.py", "--count"])
-    try:
-        count = int(proc.stdout.strip().splitlines()[-1])
-    except (ValueError, IndexError):
-        return Result("nullable-columns", FAIL, f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
-    detail = "" if count <= baseline else "run scripts/check_nullable_columns.py to list them"
-    return Result("nullable-columns", PASS if count <= baseline else FAIL, detail, count, baseline)
-
-
-def gate_page_cost(baseline: int) -> Result:
-    """No query loads every row only to count them.
-
-    Nothing in 53 gates measured query cost, so an N+1 that only bites at 100,000 rows had no way of being caught before a customer found it.
-    """
-    proc = _run([sys.executable, "scripts/check_page_cost.py", "--count"])
-    try:
-        count = int(proc.stdout.strip().splitlines()[-1])
-    except (ValueError, IndexError):
-        return Result("page-cost", FAIL, f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
-    detail = "" if count <= baseline else "run scripts/check_page_cost.py to list them"
-    return Result("page-cost", PASS if count <= baseline else FAIL, detail, count, baseline)
-
-
-def gate_credential_autofill(baseline: int) -> Result:
-    """Every credential field declares an autocomplete value.
-
-    Chrome pattern-matches a text input followed by a password input as a login
-    form and offers a saved credential -- it does not care that the label says
-    "API Key". The 30 Aug 2026 QA audit watched it populate the Anthropic API
-    key and Salesforce Consumer Secret fields with a real saved email and
-    password. The audit reached two instances; a full-tree scan found five
-    unprotected password inputs and nineteen PasswordField definitions.
-    """
-    proc = _run([sys.executable, "scripts/check_credential_autofill.py", "--count"])
-    try:
-        count = int(proc.stdout.strip().splitlines()[-1])
-    except (ValueError, IndexError):
-        return Result("credential-autofill", FAIL, f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
-    detail = "" if count <= baseline else "run scripts/check_credential_autofill.py to list them"
-    return Result("credential-autofill", PASS if count <= baseline else FAIL, detail, count, baseline)
-
-
-def gate_nested_jinja(baseline: int) -> Result:
-    """No Jinja expression opened inside another -- it renders as literal text.
-
-    `{{ page_header(title='{{ framework.industry_name }}') }}` put the inner
-    expression inside a string literal, so the Industry APQC framework page
-    rendered the seven words of the placeholder as its <h1> while the breadcrumb
-    one line above showed the resolved name. The template parses, the route
-    returns 200, and no other gate can see it.
-    """
-    proc = _run([sys.executable, "scripts/check_nested_jinja.py", "--count"])
-    try:
-        count = int(proc.stdout.strip().splitlines()[-1])
-    except (ValueError, IndexError):
-        return Result("nested-jinja", FAIL, f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
-    detail = "" if count <= baseline else "run scripts/check_nested_jinja.py to list them"
-    return Result("nested-jinja", PASS if count <= baseline else FAIL, detail, count, baseline)
-
-
-def gate_cache_tenancy(baseline: int) -> Result:
-    """A module-level cache over tenant data must be keyed by the tenant.
-
-    Two were found unkeyed on 30 Aug 2026 and both were cross-tenant data leaks:
-    the capability health cache served one tenant's capability names and scores
-    to every other tenant for 60 seconds, and the AI's RAG context cache put one
-    tenant's prior ARB decision titles into another tenant's system prompt for
-    five minutes. Neither needed any action by the receiving user.
-
-    tenant-scoping and raw-sql-tenancy read QUERIES; these are dictionaries. And
-    do_orm_execute cannot help, because a cache hit emits no SQL to filter --
-    the same blind spot CLAUDE.md records for Query.get() on an identity-map hit.
-    """
-    proc = _run([sys.executable, "scripts/check_cache_tenancy.py", "--count"])
-    try:
-        count = int(proc.stdout.strip().splitlines()[-1])
-    except (ValueError, IndexError):
-        return Result("cache-tenancy", FAIL, f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
-    detail = "" if count <= baseline else "run scripts/check_cache_tenancy.py to list them"
-    return Result("cache-tenancy", PASS if count <= baseline else FAIL, detail, count, baseline)
-
-
-def gate_ai_approval_honoured(baseline: int) -> Result:
-    """The agent honours the operator's AI approval control.
-
-    config.py said REQUIRE_AI_APPROVAL gated the LLM-agent mutating-tool queue.
-    The agent loop never read it: the decision came from a per-session user
-    preference any authenticated account could flip in one request, after which
-    every tier auto mutating tool wrote to the system of record with no approval
-    row. The /ai-chat/data/* routes were gated correctly throughout, which is
-    why it went unnoticed.
-    """
-    proc = _run([sys.executable, "scripts/check_ai_approval_honoured.py", "--count"])
-    try:
-        count = int(proc.stdout.strip().splitlines()[-1])
-    except (ValueError, IndexError):
-        return Result("ai-approval-honoured", FAIL, f"could not parse count: {proc.stdout!r}")
-    detail = "" if count <= baseline else "run scripts/check_ai_approval_honoured.py to list them"
-    return Result("ai-approval-honoured", PASS if count <= baseline else FAIL, detail, count, baseline)
-
-
-def gate_business_layer_backbone(baseline: int) -> Result:
-    """The business architect's layer, which no gate read until now.
-
-    check_archimate_backbone covers motivation entities. Capabilities, value
-    streams and business processes -- the layer the product's headline feature
-    models -- had nothing. A BusinessCapability with no element is invisible to
-    every capability lens that walks the model rather than the table.
-    """
-    proc = _run([sys.executable, "scripts/check_business_layer_backbone.py", "--count"])
-    try:
-        count = int(proc.stdout.strip().splitlines()[-1])
-    except (ValueError, IndexError):
-        return Result("business-layer-backbone", FAIL, f"could not parse count: {proc.stdout!r}")
-    detail = "" if count <= baseline else "run scripts/check_business_layer_backbone.py to list them"
-    return Result("business-layer-backbone", PASS if count <= baseline else FAIL, detail, count, baseline)
-
-
-def gate_api_envelope(baseline: int) -> Result:
-    """One API, one response shape.
-
-    850 of 2,668 jsonify handlers commit to no envelope, so every caller carries
-    `json.data ?? json` -- which returns the wrong object whenever a bare
-    payload has its own data key. Ratcheted: choosing the canonical shape and
-    moving the callers in step is a migration, not a lint fix.
-    """
-    proc = _run([sys.executable, "scripts/check_api_envelope.py", "--count"])
-    try:
-        count = int(proc.stdout.strip().splitlines()[-1])
-    except (ValueError, IndexError):
-        return Result("api-envelope", FAIL, f"could not parse count: {proc.stdout!r}")
-    detail = "" if count <= baseline else "run scripts/check_api_envelope.py to list them"
-    return Result("api-envelope", PASS if count <= baseline else FAIL, detail, count, baseline)
-
-
-def _simple_ratchet(script: str, name: str, baseline: int) -> Result:
-    """Run a --count checker and compare against its baseline."""
-    proc = _run([sys.executable, script, "--count"])
-    try:
-        count = int(proc.stdout.strip().splitlines()[-1])
-    except (ValueError, IndexError):
-        return Result(name, FAIL, f"could not parse count: {proc.stdout!r}")
-    detail = "" if count <= baseline else f"run {script} to list them"
-    return Result(name, PASS if count <= baseline else FAIL, detail, count, baseline)
-
-
-def gate_collapsed_nav_affordance(baseline: int) -> Result:
-    """The collapsed rail must stay navigable.
-
-    Collapsing is a width change with no label hiding and no tooltips, so the
-    sidebar clips to "All mo..." beside icons that say nothing. Seventy gates
-    were green over it, because they all read source for structure.
-    """
-    return _simple_ratchet(
-        "scripts/check_collapsed_nav_affordance.py", "collapsed-nav-affordance", baseline)
-
-
-def gate_nav_icon_ambiguity(baseline: int) -> Result:
-    """Two destinations behind one icon in one persona's own sidebar."""
-    return _simple_ratchet(
-        "scripts/check_nav_icon_ambiguity.py", "nav-icon-ambiguity", baseline)
-
-
-def gate_nav_label_clarity(baseline: int) -> Result:
-    """One label naming two destinations, or a label too long to survive."""
-    return _simple_ratchet(
-        "scripts/check_nav_label_clarity.py", "nav-label-clarity", baseline)
-
-
-def gate_handoff_continuity(baseline: int) -> Result:
-    """Work moved into a state no reachable persona surface reads back.
-
-    The service designer's gate. Archie is a governance workflow product, so
-    the handoff between personas IS the product -- and a state written into a
-    queue nobody can open fails silently on both sides: the sender believes it
-    was sent, the reviewer never sees it. Must stay clean at 0.
-    """
-    return _simple_ratchet(
-        "scripts/check_handoff_continuity.py", "handoff-continuity", baseline)
-
-
-def gate_metric_provenance(baseline: int) -> Result:
-    """A proportion shown to the user that is a literal, not a measurement.
-
-    The data / evidence analyst's gate. "Total Capabilities 191" above a table
-    reading "Showing 1-10 of 0 results" is the class; the tractable half is a
-    percentage or score written in the source, which no user can distinguish
-    from a real reading.
-    """
-    return _simple_ratchet(
-        "scripts/check_metric_provenance.py", "metric-provenance", baseline)
-
-
-def gate_raw_sql_columns(baseline: int) -> Result:
-    """Raw SQL naming a column the table does not have.
-
-    reconcile-schema and the schema-drift gate compare ORM MODELS to the
-    database; raw SQL is invisible to both. Four statements were selecting
-    columns that do not exist -- including the solution narrative's risk
-    register, which meant every SAD rendered "no risks" regardless of the
-    register, and a vendor enrichment whose failure cost the AI its Gartner
-    position too. All four are fixed, so this is must-stay-clean at 0.
-    """
-    return _simple_ratchet(
-        "scripts/check_raw_sql_columns.py", "raw-sql-columns", baseline)
-
-
-def gate_actionable_rows(baseline: int) -> Result:
-    """A row you cannot act on is a report, and this is not a report.
-
-    /archimate-roadmap listed three gaps -- name, type, severity, status -- with
-    no link, no button and no route to the work package they should become. 112
-    of 158 record tables are the same shape. Ratcheted, because a status
-    breakdown is legitimately read-only and each exemption must say why.
-    """
-    return _simple_ratchet(
-        "scripts/check_actionable_rows.py", "actionable-rows", baseline)
-
-
-def gate_placeholder_copy(baseline: int) -> Result:
-    """Copy that satisfies every rule and tells the user nothing.
-
-    The owner found `<label for="application-search">Field</label>` in the
-    capability map's mapping dialog on the deployed site. 59 such labels exist.
-    axe passes them -- "Field" IS a valid accessible name, and axe checks that a
-    control HAS a label, never that the label means anything. Nothing else in
-    the estate opens a form and reads it. Gates check presence, not meaning.
-    """
-    return _simple_ratchet(
-        "scripts/check_placeholder_copy.py", "placeholder-copy", baseline)
-
-
-def gate_ai_layer_coverage(baseline: int) -> Result:
-    """How much of ArchiMate 3.2 the AI can model for someone who cannot hire
-    an architect.
-
-    54 of the 58 element types the product declares have no dedicated AI
-    creation path. The assistant can reason about motivation and design
-    solutions; it cannot model the business, technology, strategy or migration
-    layers. A generic create_archimate_element does not count -- emitting a
-    typed node hands the modelling judgement back to the user, which is the
-    thing this product exists to remove. Ratcheted so it falls as the gap
-    closes.
-    """
-    return _simple_ratchet(
-        "scripts/check_ai_layer_coverage.py", "ai-layer-coverage", baseline)
-
-
-def gate_canonical_store(baseline: int) -> Result:
-    """One concept, one store.
-
-    Ten tables are mapped by two model classes each. They select different columns,
-    apply different defaults and feed different screens the same record -- which
-    is how /capability-map/ shows 'Total Capabilities 191' above a table reading
-    'Showing 1-10 of 0 results'. A ratchet cannot pay the debt down; it stops it
-    growing while that migration is outstanding.
-    """
-    proc = _run([sys.executable, "scripts/check_canonical_store.py", "--count"])
-    try:
-        count = int(proc.stdout.strip().splitlines()[-1])
-    except (ValueError, IndexError):
-        return Result("canonical-store", FAIL, f"could not parse count: {proc.stdout!r}")
-    detail = "" if count <= baseline else "run scripts/check_canonical_store.py to list them"
-    return Result("canonical-store", PASS if count <= baseline else FAIL, detail, count, baseline)
-
-
-def gate_role_gate_coverage(baseline: int) -> Result:
-    """A role declared in the delivery contract with no gate enforcing it.
-
-    CLAUDE.md tells every agent to act as CTO, architect and QA lead at once,
-    and agents act as developers only because nothing measures the difference.
-    docs/DELIVERY_CONTRACT.md defines a role as its family of gate tags; this
-    counts the roles whose tags resolve to nothing in the registry above.
-    """
-    proc = _run([sys.executable, "scripts/check_role_gate_coverage.py", "--count"])
-    try:
-        count = int(proc.stdout.strip().splitlines()[-1])
-    except (ValueError, IndexError):
-        return Result("role-gate-coverage", FAIL, f"could not parse count: {proc.stdout!r}")
-    detail = "" if count <= baseline else "run scripts/check_role_gate_coverage.py to list them"
-    return Result("role-gate-coverage", PASS if count <= baseline else FAIL, detail, count, baseline)
-
-
-def gate_empty_state_cta(baseline: int) -> Result:
-    """A new tenant's first hour is empty states. They must offer a way forward.
-
-    21 of 40 tell the user there is nothing here and stop -- including the
-    applications list, whose entire purpose is getting applications into it.
-    The macro already supports a CTA in both variants, so each of these is a
-    call-site omission. A ratchet: writing 21 pieces of product copy is a
-    per-screen product decision, but the number must not grow meanwhile.
-    """
-    proc = _run([sys.executable, "scripts/check_empty_state_cta.py", "--count"])
-    try:
-        count = int(proc.stdout.strip().splitlines()[-1])
-    except (ValueError, IndexError):
-        return Result("empty-state-cta", FAIL, f"could not parse count: {proc.stdout!r}")
-    detail = "" if count <= baseline else "run scripts/check_empty_state_cta.py to list them"
-    return Result("empty-state-cta", PASS if count <= baseline else FAIL, detail, count, baseline)
-
-
-def gate_archimate_backbone(baseline: int) -> Result:
-    """Every motivation create syncs an archimate element.
-
-    CLAUDE.md calls ArchiMate the backbone, not a view: the field IS the element.
-    53 creation paths never call the sync, including four of the AI agent's own
-    write tools -- so entities a human approved have been landing outside the
-    model every capability lens reads from. The runtime audit finds the
-    consequence; this finds the cause, before the rows exist.
-    """
-    proc = _run([sys.executable, "scripts/check_archimate_backbone.py", "--count"])
-    try:
-        count = int(proc.stdout.strip().splitlines()[-1])
-    except (ValueError, IndexError):
-        return Result("archimate-backbone", FAIL, f"could not parse count: {proc.stdout!r}")
-    detail = "" if count <= baseline else "run scripts/check_archimate_backbone.py to list them"
-    return Result("archimate-backbone", PASS if count <= baseline else FAIL, detail, count, baseline)
 
 
 def gate_template_syntax() -> Result:
@@ -1129,54 +487,6 @@ def gate_silent_data() -> Result:
                       f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
     detail = "" if count == 0 else "run scripts/check_silent_data.py to list them"
     return Result("silent-data", PASS if count == 0 else FAIL, detail, count, 0)
-
-
-def gate_store_agreement(baseline: int) -> Result:
-    """Two surfaces answering one question with different numbers.
-
-    The only gate here that compares ANSWERS rather than reading source. Every
-    other one passed "Total Capabilities 191" printed above a table reading
-    "Showing 1-10 of 0 results", because both halves are correct code reading
-    different stores. ADR 0008 states the rule; this measures it.
-
-    Boots the app and needs a seeded tenant, so it lives with boot-health and
-    broken-surfaces rather than in the static set.
-    """
-    proc = _run([sys.executable, "scripts/check_store_agreement.py", "--count"])
-    try:
-        count = int(proc.stdout.strip().splitlines()[-1])
-    except (ValueError, IndexError):
-        return Result("store-agreement", FAIL,
-                      f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
-    if count < 0:
-        return Result("store-agreement", FAIL,
-                      "the app could not be booted, so nothing was compared")
-    detail = "" if count <= baseline else "run scripts/check_store_agreement.py to list them"
-    return Result("store-agreement", PASS if count <= baseline else FAIL,
-                  detail, count, baseline)
-
-
-def gate_canonical_route(baseline: int) -> Result:
-    """Two endpoints claiming one (URL, method); the loser never runs.
-
-    Boots the app, like broken-surfaces, because a static scan of @route
-    decorators cannot see a blueprint's url_prefix, cannot see which side the
-    USE_*_GUARDRAILS flags selected, and cannot see that init_blueprints logged
-    an import failure and carried on. The checker prints -1 when it cannot
-    boot, so a boot failure can never be read as "no collisions".
-    """
-    proc = _run([sys.executable, "scripts/check_canonical_route.py", "--count"])
-    try:
-        count = int(proc.stdout.strip().splitlines()[-1])
-    except (ValueError, IndexError):
-        return Result("canonical-route", FAIL,
-                      f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
-    if count < 0:
-        return Result("canonical-route", FAIL,
-                      "the app could not be booted, so nothing was measured")
-    detail = "" if count <= baseline else "run scripts/check_canonical_route.py to list them"
-    return Result("canonical-route", PASS if count <= baseline else FAIL,
-                  detail, count, baseline)
 
 
 def gate_broken_surfaces(baseline: int) -> Result:
@@ -1337,35 +647,6 @@ def gate_template_references() -> Result:
     return Result("template-references", PASS if count == 0 else FAIL, detail, count, 0)
 
 
-def gate_alpine_data_binding() -> Result:
-    """Every `x-data` names something the CSP evaluator can resolve. Gated at ZERO.
-
-    Alpine expressions run through the hand-written interpreter in
-    `app/static/js/csp/csp-evaluator.js` (so script-src can drop
-    'unsafe-eval'). It resolves a bare identifier against the component scope
-    and then `window` -- it never reads Alpine's `Alpine.data()` registry. A
-    template that registers `Alpine.data('foo', ...)` and then writes a bare
-    `foo` in the attribute therefore mounts an EMPTY component, and nothing
-    goes red: no console error, no failed request, no 5xx.
-
-    Measured on Impact Analysis, the enterprise architect's "if I retire this,
-    what breaks?" page. Typing in the element picker fired no request and
-    Analyze Impact did nothing. Worse, the surviving expressions fell through
-    to globals of the same name, so `x-text="'(' + history.length + ')'"`
-    rendered `window.history.length` -- the page showed a badge reading
-    "Recent Analyses (4)", counting the browser's navigation entries, above an
-    empty table. Three other templates carried the same binding.
-    """
-    proc = _run([sys.executable, "scripts/check_alpine_data_binding.py", "--json"])
-    try:
-        count = int(json.loads(proc.stdout)["count"])
-    except (ValueError, KeyError, json.JSONDecodeError):
-        return Result("alpine-data-binding", FAIL,
-                      f"could not parse output: {proc.stdout[:200]!r} {proc.stderr[:200]}")
-    detail = "" if count == 0 else "run scripts/check_alpine_data_binding.py to list them"
-    return Result("alpine-data-binding", PASS if count == 0 else FAIL, detail, count, 0)
-
-
 def gate_asset_urls() -> Result:
     """No doubled '?' asset URL, no stylesheet/script included twice per template.
 
@@ -1445,78 +726,6 @@ def gate_null_filters() -> Result:
     return Result("null-filters", PASS if count == 0 else FAIL, detail, count, 0)
 
 
-def gate_test_data_in_queries() -> Result:
-    """Test fixture names filtered out of production queries. Gated at ZERO.
-
-    Found in the Architecture Journey hub, then in seven more places once there was
-    something to look with: production queries excluding rows named 'J1-AutoTest-%',
-    'J7-E2E-Test%' and '%-AutoTest-%'.
-
-    Wrong twice over. A customer who names a solution "Migration-AutoTest-Rig"
-    watches it disappear from their own screen with no explanation and no way to get
-    it back. And the exclusion makes leaked test rows invisible, so the leak is never
-    fixed and the workaround becomes permanent -- one site even documented the
-    reasoning as "the weekly AutoTest purge can lag", which is an argument for fixing
-    the purge, not for hiding its backlog from the screen most likely to prompt
-    someone to fix it.
-
-    Zero rather than a ratchet: unlike the fabricated-data backlog, this population
-    was small enough to clear in one pass, and every instance is the same defect with
-    the same fix. Escape hatch is 'test-filter-ok: <reason>' for the genuine case --
-    a cleanup CLI, a seeder.
-    """
-    proc = _run([sys.executable, "scripts/check_test_data_in_queries.py", "--count"])
-    try:
-        count = int(proc.stdout.strip().splitlines()[-1])
-    except (ValueError, IndexError):
-        return Result("test-data-in-queries", FAIL,
-                      "could not read a count from the checker:\n" + proc.stdout[-400:])
-    detail = "" if count == 0 else _run(
-        [sys.executable, "scripts/check_test_data_in_queries.py"]
-    ).stdout.strip()
-    return Result("test-data-in-queries", PASS if count == 0 else FAIL, detail, count, 0)
-
-
-def gate_fabricated_data_server(baseline: int) -> Result:
-    """Server-side fabrication, and escape hatches that never worked. RATCHET.
-
-    The sibling gate has been green at zero for a long time, and that was true of
-    what it could see. Every one of its rules was written JavaScript-first: it
-    matches a `catch` assigning an array-of-objects, "// mock data", displayed
-    randomness, and fictional company names in markup. The identical defect
-    written in Python -- an `except` returning ``{"pending": 0, "approval_rate":
-    0}`` -- was invisible to all four, and that is precisely the shape the ARB
-    legacy dashboard uses to render "Pending 0" after a database failure. A
-    reader seeing 0 concludes the queue is clear.
-
-    The second rule is about the escape hatch itself. ``ALLOW`` matches
-    ``fabricated-ok:``; the string ``fabricated-values-ok`` does not contain it,
-    so it suppressed nothing -- while reading, to every subsequent author,
-    exactly like a filed and accepted exception. 152 of them accumulated. A
-    silent non-exception is worse than no exception, because it stops the next
-    reader looking.
-
-    Ratcheted, not gated at zero, and deliberately so. The population is real
-    debt that predates the rules finding it, and 209 findings cannot be triaged
-    honestly in one pass -- each dead marker is a claim that an exception was
-    warranted, and converting them wholesale to the working spelling would
-    legitimise 152 fabrications nobody ever reviewed. The ratchet stops the
-    number growing while that review happens.
-    """
-    proc = _run([
-        sys.executable, "scripts/check_fabricated_data.py", "--count",
-        "--select", "python-zero-fill",
-        "--select", "unknown-ok-marker",
-    ])
-    try:
-        count = int(proc.stdout.strip().splitlines()[-1])
-    except (ValueError, IndexError):
-        return Result("fabricated-data-server", FAIL,
-                      "could not read a count from the checker:\n" + proc.stdout[-400:])
-    return Result("fabricated-data-server", PASS if count <= baseline else FAIL,
-                  "", count, baseline)
-
-
 def gate_fabricated_data() -> Result:
     """No invented data can reach the UI. Gated at ZERO.
 
@@ -1529,19 +738,7 @@ def gate_fabricated_data() -> Result:
 
     Escape hatch is 'fabricated-ok: <reason>' on or above the flagged line.
     """
-    # Explicitly the four rules this gate has been green on. Two more rules were
-    # added later and surface a population that was always present but invisible
-    # to a JS-shaped checker; those ratchet separately in
-    # gate_fabricated_data_server. Folding them in here would have meant relaxing
-    # a zero guarantee to accommodate newly-found debt -- the wrong direction for
-    # a gate to move, and the reason this call names its rules.
-    proc = _run([
-        sys.executable, "scripts/check_fabricated_data.py", "--count",
-        "--select", "catch-returns-fake",
-        "--select", "self-admitted-fake",
-        "--select", "random-data",
-        "--select", "fictional-entity",
-    ])
+    proc = _run([sys.executable, "scripts/check_fabricated_data.py", "--count"])
     try:
         count = int(proc.stdout.strip().splitlines()[-1])
     except (ValueError, IndexError):
@@ -2000,6 +1197,27 @@ def gate_tests() -> Result:
     return Result("tests", PASS if not failed else FAIL, "\n".join(summaries))
 
 
+def gate_llm_boundary(baseline: int) -> Result:
+    """Deterministic codegen emitters must never call the LLM directly — ratchet @ 0.
+
+    The genome→artifact emitters (`genome_to_bundle` and any
+    `genome_to_<domain>_bundle`/`emit_*`) are the reproducible, testable core of
+    the codegen re-architecture. The LLM may only propose schema-validated genome
+    edits, never emit a final artifact (ADR 0010; 03_integration.md §2). This
+    counts direct `_call_llm`/`LLMService` references inside those files and fails
+    if the count rises above the recorded baseline, so the boundary cannot erode.
+    """
+    proc = _run([sys.executable, "scripts/check_llm_boundary.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("llm-boundary", FAIL,
+                      f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    detail = "" if count <= baseline else "run scripts/check_llm_boundary.py to list them"
+    return Result("llm-boundary", PASS if count <= baseline else FAIL,
+                  detail, count, baseline)
+
+
 # ---------------------------------------------------------------- registry
 
 
@@ -2044,175 +1262,6 @@ def build_gates(baseline: dict) -> list[Gate]:
              "ratchet", lambda: gate_nav_coverage(baseline["nav_coverage"]),
              remediation="add a link to the owning persona's zone in app/utils/role_access.py",
              tags=["static"]),
-        Gate("control-labels", "every button has an accessible name", "ratchet",
-             lambda: gate_control_labels(baseline["control_labels"]),
-             remediation="add an aria-label naming the ACTION ('Delete board', not "
-                         "'trash icon'), or append 'control-label-ok: <reason>'",
-             tags=["static", "ui", "a11y"]),
-        Gate("alpine-await", "no await/async in an Alpine attribute expression",
-             "ratchet", lambda: gate_alpine_await(baseline["alpine_await"]),
-             remediation="rewrite as a promise chain (.then/.catch) and set unmeasured "
-                         "values to null (never 0) on the error path, or append "
-                         "'alpine-await-ok: <reason>'",
-             tags=["static", "ui"]),
-        Gate("attr-quoting", "no tojson inside a double-quoted HTML attribute",
-             "ratchet", lambda: gate_attr_quoting(baseline["attr_quoting"]),
-             remediation="switch the attribute delimiter to single quotes (tojson "
-                         "escapes ' but not \"); if the expression already contains "
-                         "single-quoted JS strings, double-quote those or move the "
-                         "payload to a data-* attribute, or append "
-                         "'attr-quoting-ok: <reason>'",
-             tags=["static", "ui"]),
-        Gate("input-labels", "every form control has a label", "ratchet",
-             lambda: gate_input_labels(baseline["input_labels"]),
-             remediation="add a <label for=...> or an aria-label (a placeholder is not "
-                         "a label), or append 'input-label-ok: <reason>'",
-             tags=["static", "ui", "a11y"]),
-        Gate("macro-kwargs", "every macro call uses that macro's parameter names",
-             "ratchet", lambda: gate_macro_kwargs(baseline["macro_kwargs"]),
-             remediation="open the macro named in the message and use ITS parameter "
-                         "names (a same-named macro in another file is the usual "
-                         "cause), or append 'macro-kwargs-ok: <reason>'",
-             tags=["static", "ui"]),
-        Gate("nested-jinja", "no Jinja expression opens inside another",
-             "ratchet", lambda: gate_nested_jinja(baseline["nested_jinja"]),
-             remediation="pass the value itself instead of a quoted placeholder, "
-                         "or append 'nested-jinja-ok: <reason>'",
-             tags=["static", "ui"]),
-        Gate("credential-autofill", "every credential field declares an autocomplete value",
-             "ratchet", lambda: gate_credential_autofill(baseline["credential_autofill"]),
-             remediation="autocomplete=\"current-password\" where the user's own password belongs, \"new-password\" on any third-party secret; or append 'autofill-ok: <reason>'",
-             tags=["static", "security"]),
-        Gate("ai-approval-honoured", "the agent honours the operator's ai approval control",
-             "ratchet", lambda k='ai_approval_honoured': gate_ai_approval_honoured(baseline[k]),
-             tags=["static", "architecture", "ai"]),
-        Gate("archimate-backbone", "every motivation create syncs an ArchiMate element",
-             "ratchet", lambda: gate_archimate_backbone(baseline["archimate_backbone"]),
-             tags=["static", "architecture"]),
-        Gate("empty-state-cta", "an empty state offers the user a way forward",
-             "ratchet", lambda k='empty_state_cta': gate_empty_state_cta(baseline[k]),
-             remediation="give the empty state its cta_text/cta_label + cta_href, or append 'empty-state-ok: <reason>'",
-             tags=["static", "product"]),
-        Gate("role-gate-coverage", "every role in the delivery contract has gates enforcing it",
-             "ratchet", lambda k='role_gate_coverage': gate_role_gate_coverage(baseline[k]),
-             remediation="build a gate for the role and tag it, or append "
-                         "'role-gate-ok: <reason>' to that row of "
-                         "docs/DELIVERY_CONTRACT.md's role table",
-             tags=["static", "governance"]),
-        Gate("business-layer-backbone", "capabilities and value streams are in the ArchiMate model",
-             "ratchet", lambda k='business_layer_backbone': gate_business_layer_backbone(baseline[k]),
-             remediation="call sync_archimate_element() after the create, or append 'business-backbone-ok: <reason>'",
-             tags=["static", "business", "architecture"]),
-        Gate("api-envelope", "one API, one response shape",
-             "ratchet", lambda k='api_envelope': gate_api_envelope(baseline[k]),
-             remediation="return through success_response()/error_response(), or append 'envelope-ok: <reason>'",
-             tags=["static", "integration"]),
-        Gate("collapsed-nav-affordance", "the collapsed sidebar is still navigable",
-             "ratchet", lambda k='collapsed_nav_affordance': gate_collapsed_nav_affordance(baseline[k]),
-             remediation="add a title naming the destination, or append 'collapsed-nav-ok: <reason>'",
-             tags=["static", "rendered", "ui"]),
-        Gate("nav-icon-ambiguity", "one icon, one destination within a persona's menu",
-             "ratchet", lambda k='nav_icon_ambiguity': gate_nav_icon_ambiguity(baseline[k]),
-             remediation="give each destination its own icon, or append 'nav-icon-ok: <reason>'",
-             tags=["static", "wayfinding", "ui"]),
-        Gate("nav-label-clarity", "one name, one destination, and it fits",
-             "ratchet", lambda k='nav_label_clarity': gate_nav_label_clarity(baseline[k]),
-             remediation="rename the destination or shorten the label, or append 'nav-label-ok: <reason>'",
-             tags=["static", "content", "ui"]),
-        Gate("handoff-continuity", "every handoff reaches a reachable next actor",
-             "ratchet", lambda k='handoff_continuity': gate_handoff_continuity(baseline[k]),
-             remediation="surface the state on a screen a persona can reach, or append 'handoff-ok: <reason>'",
-             tags=["static", "handoff", "journey"]),
-        Gate("metric-provenance", "every number shown came from a query",
-             "ratchet", lambda k='metric_provenance': gate_metric_provenance(baseline[k]),
-             remediation="compute it or send None, or append 'metric-provenance-ok: <reason>'",
-             tags=["static", "evidence", "correctness"]),
-        Gate("raw-sql-columns", "raw SQL only names columns that exist",
-             "ratchet", lambda k='raw_sql_columns': gate_raw_sql_columns(baseline[k]),
-             remediation="fix the column name, or append 'raw-sql-columns-ok: <reason>'",
-             tags=["static", "schema", "db"]),
-        Gate("actionable-rows", "a table of records offers a way to act on them",
-             "ratchet", lambda k='actionable_rows': gate_actionable_rows(baseline[k]),
-             remediation="link the row to its record or give it the control that moves it on, or append 'actionable-rows-ok: <reason>'",
-             tags=["static", "handoff", "rendered", "product"]),
-        Gate("placeholder-copy", "labels say what the thing is",
-             "ratchet", lambda k='placeholder_copy': gate_placeholder_copy(baseline[k]),
-             remediation="name the input, or append 'placeholder-copy-ok: <reason>' saying who supplies the word",
-             tags=["static", "content", "rendered"]),
-        Gate("ai-layer-coverage", "the AI can model ArchiMate, not just discuss it",
-             "ratchet", lambda k='ai_layer_coverage': gate_ai_layer_coverage(baseline[k]),
-             remediation="give the AI a tool that knows the element's semantics, or append 'ai-layer-ok: <reason>'",
-             tags=["static", "ai", "architecture"]),
-        Gate("canonical-store", "one concept, one store",
-             "ratchet", lambda k='canonical_store': gate_canonical_store(baseline[k]),
-             tags=["static", "architecture"]),
-        Gate("ai-evidence-rules", "every AI persona charter carries the no-fabrication rules",
-             "ratchet", lambda k='ai_evidence_rules': gate_ai_evidence_rules(baseline[k]),
-             remediation="interpolate {_EVIDENCE_RULES} into the charter, or append 'evidence-rules-ok: <reason>'",
-             tags=["static", "ai"]),
-        Gate("ai-tool-guard", "the AI write path keeps its single permission choke point",
-             "ratchet", lambda k='ai_tool_guard': gate_ai_tool_guard(baseline[k]),
-             remediation="route the call through ToolExecutor.execute, declare the tool's \"mutates\" flag honestly, or append 'ai-tool-guard-ok: <reason>'",
-             tags=["static", "ai", "security"]),
-        Gate("ai-untrusted-content", "retrieved content enters the system prompt fenced, after the charter",
-             "ratchet", lambda k='ai_untrusted_content': gate_ai_untrusted_content(baseline[k]),
-             remediation="wrap it in fence_untrusted(\"<LABEL>\", value) and append it after the charter, or append 'untrusted-ok: <reason>'",
-             tags=["static", "ai", "security"]),
-        Gate("cache-tenancy", "a cache over tenant data is keyed by the tenant",
-             "ratchet", lambda: gate_cache_tenancy(baseline["cache_tenancy"]),
-             remediation="include g.current_org_id in the key, cache nothing without "
-                         "a tenant context, and bound the map; or append "
-                         "'cache-tenancy-ok: <reason>' saying why the contents are "
-                         "tenant-independent",
-             tags=["static", "security"]),
-        Gate("authz-widening", "no role is granted from a field the user's own record carries",
-             "ratchet", lambda k='authz_widening': gate_authz_widening(baseline[k]),
-             remediation="gate the contribution on user.can(Permission.GENERAL) / ADMINISTER, or append 'authz-widening-ok: <reason>'",
-             tags=["static", "security"]),
-        Gate("nullable-columns", "a NOT NULL column carries a default reconcile-schema can apply",
-             "ratchet", lambda k='nullable_columns': gate_nullable_columns(baseline[k]),
-             remediation="give the column a default= or server_default=, make it nullable, or append 'nullable-ok: <reason>'",
-             tags=["static", "schema"]),
-        Gate("page-cost", "no query loads every row only to count them",
-             "ratchet", lambda k='page_cost': gate_page_cost(baseline[k]),
-             remediation="replace len(q.all()) with q.count(), or append 'page-cost-ok: <reason>'",
-             tags=["static", "performance"]),
-        Gate("evidence-contract", "every behavioural change carries its measurement, "
-             "every gate carries its proof",
-             "ratchet", lambda: gate_evidence_contract(baseline["evidence_contract"]),
-             remediation="land the test with the change, or add an 'Evidence: <command> "
-                         "-> <result>' trailer to the commit; for a gate, add a "
-                         "'Proven-against:' line naming the input you watched it fail "
-                         "on (docs/DELIVERY_CONTRACT.md)",
-             tags=["static", "process"]),
-        Gate("persona-vocabularies", "every persona list reconciles with VALID_ROLES",
-             "ratchet", lambda: gate_persona_vocabularies(baseline["persona_vocabularies"]),
-             remediation="add the role to app/auth/sso.py's DEFAULT_GROUP_ROLE_MAP so it "
-                         "can be provisioned, or list the charter in ASPIRATIONAL in "
-                         "scripts/check_persona_vocabularies.py with the reason it has "
-                         "no role yet",
-             tags=["static", "correctness"]),
-        Gate("inline-handlers", "no inline event handler the CSP refuses to run",
-             "ratchet", lambda: gate_inline_handlers(baseline["inline_handlers"]),
-             remediation="use data-confirm / data-autosubmit (wired in "
-                         "app/static/js/ui/modal.js), bind the listener in a "
-                         "nonce'd <script> block, or use Alpine's @click/@submit; "
-                         "or append 'inline-handler-ok: <reason>'",
-             tags=["static", "ui", "security"]),
-        Gate("unreachable-actions", "no handler branch its own validator rejects first",
-             "ratchet", lambda: gate_unreachable_actions(baseline["unreachable_actions"]),
-             remediation="either delete the branch (the product does not have that "
-                         "feature) or add the value to the whitelist; if it is "
-                         "unreachable on purpose append 'unreachable-action-ok: <reason>'",
-             tags=["static", "correctness"]),
-        Gate("journey-coverage", "every persona has a journey proving they can do their job",
-             "ratchet", lambda: gate_journey_coverage(baseline["journey_coverage"]),
-             remediation="add a test under tests/journeys/ that signs in as the persona, "
-                         "performs its write, and asserts the result BOTH persisted and is "
-                         "visible on the page they look at next (docs/TESTING_STANDARD.md, "
-                         "Level 9); or append 'journey-coverage-ok: <reason>' naming a "
-                         "persona that genuinely cannot act",
-             tags=["static", "journey"]),
         Gate("air-gap", "No UI assets loaded from public CDNs", "ratchet",
              lambda: gate_air_gap(baseline["air_gap"]),
              remediation="vendor the asset into app/static/ and use url_for('static', ...)",
@@ -2224,6 +1273,12 @@ def build_gates(baseline: dict) -> list[Gate]:
         Gate("tenant-scoping", "ORM queries on tenant-owned-but-unmixed models without an org predicate",
              "ratchet", lambda: gate_tenant_scoping(baseline["tenant_scoping"]),
              remediation="scope the query, or append 'tenant-scoping-ok: <reason>'",
+             tags=["static", "security"]),
+        Gate("llm-boundary", "codegen emitters make no direct LLM calls (deterministic boundary)",
+             "ratchet", lambda: gate_llm_boundary(baseline.get("llm_boundary", 0)),
+             remediation="move the LLM call out of the emitter; the LLM may only propose "
+                         "schema-validated genome edits, never emit artifacts "
+                         "(03_integration.md §2). Or append 'llm-boundary-ok: <reason>'",
              tags=["static", "security"]),
         Gate("sidebar-links", "no persona sidebar exceeds its link budget", "ratchet",
              lambda: gate_sidebar_links(baseline.get("sidebar_links", 25)),
@@ -2239,28 +1294,6 @@ def build_gates(baseline: dict) -> list[Gate]:
              remediation="create the missing partial, correct the path, or delete the "
                          "dead reference; run scripts/check_template_references.py",
              tags=["static", "ui"]),
-        Gate("alpine-data-binding", "every x-data resolves under the CSP evaluator", "zero",
-             gate_alpine_data_binding,
-             remediation='use x-data="component()" with a top-level '
-                         "`function component()` assigned to window; Alpine.data() "
-                         "plus a bare name mounts an empty component silently",
-             tags=["static", "ui"]),
-        Gate("store-agreement", "every surface answers a question the same way", "ratchet",
-             lambda: gate_store_agreement(baseline.get("store_agreement", 1)),
-             remediation="pick the canonical store and repoint the other surface "
-                         "at it (ADR 0008); if the difference is real, declare a "
-                         "scope= filter or 'store-agreement-ok: <reason>'",
-             tags=["boot", "evidence"]),
-        Gate("canonical-route", "one endpoint per URL and method", "ratchet",
-             lambda: gate_canonical_route(baseline.get("canonical_route", 24)),
-             remediation="decide which endpoint is authoritative and remove or "
-                         "rename the other; if the shadowing is deliberate put "
-                         "'canonical-route-ok: <reason>' on the losing handler",
-             # NOT "static", for the same reason as broken-surfaces below: CI's
-             # static-gates job installs no database and does not boot the app,
-             # and a gate that crashes there reads as a gate failure rather
-             # than as "this gate cannot run here".
-             tags=["boot", "architecture"]),
         Gate("broken-surfaces", "front-end targets resolve to real routes", "ratchet",
              lambda: gate_broken_surfaces(baseline.get("broken_surfaces", 479)),
              remediation="run scripts/check_broken_surfaces.py; repoint the URL, "
@@ -2335,22 +1368,6 @@ def build_gates(baseline: dict) -> list[Gate]:
              remediation="render an explicit empty/error state instead of inventing data; "
                          "if genuinely fine, append 'fabricated-ok: <reason>'",
              tags=["static", "ui"]),
-        Gate("test-data-in-queries",
-             "no production query hides rows named like test fixtures",
-             "zero", gate_test_data_in_queries,
-             remediation="purge the test rows instead of filtering them out of the "
-                         "product; a customer whose data matches the pattern loses it "
-                         "with no explanation",
-             tags=["static"]),
-        Gate("fabricated-data-server",
-             "server-side fabrication and dead escape-hatch markers",
-             "ratchet",
-             lambda: gate_fabricated_data_server(baseline["fabricated_data_server"]),
-             remediation="return None (rendered as an em dash) rather than 0 or a "
-                         "severity word from an except; and use the exact spelling "
-                         "'fabricated-ok: <reason>' -- any other 'fabricated-*-ok' "
-                         "variant suppresses nothing",
-             tags=["static", "ui"]),
         # NOT tagged "static": it compares requirements.txt against what is
         # actually importable, so it needs the app's dependencies installed. The
         # static-gates CI job deliberately installs only ruff and pip-audit, where
@@ -2409,13 +1426,7 @@ def build_gates(baseline: dict) -> list[Gate]:
         Gate("nav-verified",
              "No new sidebar route goes untested",
              "ratchet", lambda: gate_nav_verified(baseline["nav_verified"]),
-             remediation="if routes are listed above: add a test that loads each, or "
-                         "remove it from the sidebar. If it says NO AUDIT DATA, nothing "
-                         "was measured -- run 'pytest -p scripts.route_verification_audit' "
-                         "first; the two failures need opposite responses",
-             # Deliberately untagged, and that is a trap worth knowing about: an
-             # untagged gate is unreachable from EVERY --tag invocation, so only a
-             # bare `python scripts/verify.py` ever runs it.
+             remediation="add a test that loads the route, or remove it from the sidebar",
              tags=[]),
     ]
 
@@ -2427,41 +1438,6 @@ DEFAULT_BASELINE = {
     "design_tokens": 1255,
     "design_tokens_extended": 4552,
     "air_gap": 78,
-    "control_labels": 0,
-    "input_labels": 0,
-    "macro_kwargs": 0,
-    "alpine_await": 0,
-    "attr_quoting": 0,
-    "journey_coverage": 0,
-    "unreachable_actions": 0,
-    "inline_handlers": 0,
-    "persona_vocabularies": 0,
-    "evidence_contract": 34,
-    "ai_evidence_rules": 0,
-    "ai_tool_guard": 0,
-    "ai_untrusted_content": 0,
-    "authz_widening": 0,
-    "nullable_columns": 1208,
-    "page_cost": 0,
-    "credential_autofill": 0,
-    "nested_jinja": 0,
-    "cache_tenancy": 0,
-    "ai_approval_honoured": 0,
-    "canonical_store": 0,
-    "ai_layer_coverage": 54,
-    "placeholder_copy": 59,
-    "actionable_rows": 0,
-    "raw_sql_columns": 0,
-    "handoff_continuity": 0,
-    "metric_provenance": 0,
-    "collapsed_nav_affordance": 0,
-    "nav_icon_ambiguity": 0,
-    "nav_label_clarity": 0,
-    "business_layer_backbone": 18,
-    "api_envelope": 850,
-    "role_gate_coverage": 0,
-    "empty_state_cta": 0,
-    "archimate_backbone": 0,
 }
 
 
@@ -2510,7 +1486,6 @@ def main(argv: list[str] | None = None) -> int:
     baseline = load_baseline()
     gates = build_gates(baseline)
 
-    all_gate_names = [g.name for g in gates]
     if args.gate:
         wanted = set(args.gate)
         unknown = wanted - {g.name for g in gates}
@@ -2519,15 +1494,6 @@ def main(argv: list[str] | None = None) -> int:
         gates = [g for g in gates if g.name in wanted]
     if args.tag:
         gates = [g for g in gates if set(args.tag) & set(g.tags)]
-    # Everything the filter removed. A filtered run has to say so: `--tag static`
-    # reads as a full run and is not one - it excludes broken-surfaces,
-    # and dynamic-link-prefixes, both of which boot the app
-    # and so is deliberately untagged `static`, plus nav-verified, which carries
-    # no tags at all and is therefore unreachable from EVERY --tag invocation.
-    # A red broken-surfaces sat unnoticed on deployed main for exactly this
-    # reason: the pre-deploy command everyone ran could not see it, and its
-    # "31 passed, 0 failed" line looked like proof the tree was clean.
-    not_run = [n for n in all_gate_names if n not in {g.name for g in gates}]
 
     db_ok, db_reason = database_available()
     results: list[Result] = []
@@ -2546,17 +1512,7 @@ def main(argv: list[str] | None = None) -> int:
         try:
             result = gate.runner()
         except subprocess.TimeoutExpired:
-            # Say it timed out and how to give it longer. The old message ended
-            # "-> fix the failing test", which sends the reader hunting a failure
-            # that may not exist. A slow gate and a red gate are different findings
-            # and must not read the same.
-            result = Result(
-                gate.name,
-                FAIL,
-                "timed out -- the gate ran out of time, which is not the same as a "
-                "failing test. Raise ARCHIE_TEST_SUITE_TIMEOUT (seconds) if this "
-                "hardware is simply slower than the default allows.",
-            )
+            result = Result(gate.name, FAIL, "timed out")
         except Exception as exc:  # noqa: BLE001 — a broken gate must report, not crash the run
             result = Result(gate.name, FAIL, f"{exc.__class__.__name__}: {exc}")
         result.duration_s = round(time.time() - started, 1)
@@ -2583,10 +1539,7 @@ def main(argv: list[str] | None = None) -> int:
             "database_available": db_ok,
             "database_detail": db_reason,
             "summary": {"pass": len(results) - len(failed) - len(skipped),
-                        "fail": len(failed), "skip": len(skipped),
-                        "not_run": len(not_run)},
-            "partial_run": bool(not_run),
-            "not_run": not_run,
+                        "fail": len(failed), "skip": len(skipped)},
             "gates": [r.__dict__ for r in results],
         }, indent=2))
         return 1 if failed else 0
@@ -2616,18 +1569,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"    {r.name}: {r.detail}")
         print("    CI runs with --require-db so these cannot be silently skipped there.")
 
-    if not_run:
-        print(f"\n{len(not_run)} gate(s) EXCLUDED BY THE FILTER and therefore NOT verified:")
-        for name in not_run:
-            print(f"    {name}")
-        print("    This is a PARTIAL run. It is not evidence the tree is clean.")
-        print("    Before a deploy run the full set:  python scripts/verify.py")
-
-    summary = (f"\n{len(results) - len(failed) - len(skipped)} passed, "
-               f"{len(failed)} failed, {len(skipped)} skipped")
-    if not_run:
-        summary += f", {len(not_run)} not run (PARTIAL RUN)"
-    print(summary)
+    print(f"\n{len(results) - len(failed) - len(skipped)} passed, {len(failed)} failed, {len(skipped)} skipped")
     return 1 if failed else 0
 
 

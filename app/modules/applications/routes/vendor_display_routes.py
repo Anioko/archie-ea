@@ -78,6 +78,7 @@ def vendors():
             vendors=[],
             stats=None,
             load_error="The vendor catalogue could not be read.",
+            vendor_type_filter_options=[],
             vendor_type_filter=vendor_type_filter,
             domain_filter=domain_filter,
             contract_status_filter=contract_status_filter,

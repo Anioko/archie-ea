@@ -62,10 +62,10 @@
             value_class='text-warning'
         ) }}
         {{ metrics_card(
-            title='Active Gaps',
+            title='Capability Gap Signals',
             value=metrics.gaps_summary.gaps_identified|string,
             icon='git-branch',
-            description=metrics.gaps_summary.gaps_with_decisions|string + ' already have linked solutions or requirements'
+            description='Coverage/maturity shortfalls across capabilities — ' + metrics.gaps_summary.gaps_with_decisions|string + ' already have linked solutions or requirements'
         ) }}
     </div>
 

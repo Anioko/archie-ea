@@ -153,9 +153,23 @@ function arbReviewCreateModal() {
           }
           setTimeout(() => window.location.reload(), 800);
         })
-        .catch(() => {
+        .catch(err => {
           this.submitting = false;
-          this.errorMsg = 'Network error. Please try again.';
+          // Platform.fetch throws a structured HttpError on a non-ok response:
+          // err.data is the parsed JSON body, err.message the flattened field
+          // errors, err.status the HTTP code. A real 400 (e.g. the solution
+          // evidence-gate rejection) must reach the user verbatim, not be
+          // relabelled as a network failure. Only a genuine transport error
+          // (no response) falls through to the generic message.
+          if (err && err.type === 'HttpError') {
+            const data = err.data || {};
+            this.errorMsg = Object.values(data.errors || {}).join(' ')
+              || data.error
+              || err.message
+              || ('Request failed (HTTP ' + (err.status || '?') + ').');
+          } else {
+            this.errorMsg = (err && err.message) || 'Network error. Please try again.';
+          }
         });
     }
   };

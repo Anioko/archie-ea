@@ -551,10 +551,30 @@ def _vendors_impl(
         "renewals_due": renewals_due,
     }
 
+    # Populate the Type filter from the vendor types actually stored, so the
+    # dropdown offers values that match rows (D12: it used to hard-code
+    # Cloud/Enterprise/Hybrid, none of which are real vendor_type values).
+    vendor_type_options = [
+        r[0]
+        for r in db.session.query(VendorOrganization.vendor_type)
+        .filter(
+            VendorOrganization.vendor_type.isnot(None),
+            VendorOrganization.vendor_type != "",
+        )
+        .distinct()
+        .order_by(VendorOrganization.vendor_type)
+        .all()
+    ]
+
+    vendor_type_filter_options = [
+        {"value": vt, "label": vt} for vt in vendor_type_options
+    ]
+
     return render_template(
         "vendors/list.html",
         vendors=vendors,
         stats=stats,
+        vendor_type_filter_options=vendor_type_filter_options,
         vendor_type_filter=vendor_type_filter,
         domain_filter=domain_filter,
         contract_status_filter=contract_status_filter,

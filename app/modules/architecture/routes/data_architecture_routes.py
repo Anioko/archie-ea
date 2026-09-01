@@ -125,7 +125,21 @@ def data_architecture_dashboard():
             archimate_data_count = ArchiMateElement.query.filter(
                 ArchiMateElement.layer.in_(["Application", "Technology"])
             ).count()
-            archimate_rel_count = ArchiMateRelationship.query.count()
+            # ADR-0008: ArchiMateRelationship is NOT tenant-scoped (no TenantMixin),
+            # so a bare .count() sums every org's edges and disagrees with the
+            # tenant-filtered traceability matrix. Count only edges whose endpoints
+            # are this tenant's elements — the same relationships the matrix sees.
+            tenant_element_ids = [
+                row[0]
+                for row in db.session.query(ArchiMateElement.id).all()
+            ]
+            if tenant_element_ids:
+                archimate_rel_count = ArchiMateRelationship.query.filter(
+                    ArchiMateRelationship.source_id.in_(tenant_element_ids),
+                    ArchiMateRelationship.target_id.in_(tenant_element_ids),
+                ).count()
+            else:
+                archimate_rel_count = 0
         except Exception:
             logger.debug(
                 "Failed to query ArchiMate element/relationship counts", exc_info=True

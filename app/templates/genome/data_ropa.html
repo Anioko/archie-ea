@@ -1,0 +1,35 @@
+{% extends "layouts/base.html" %}
+{% block title %}Data Genome — Record of Processing Activities{% endblock %}
+{% block content %}
+<div class="max-w-6xl mx-auto">
+  <div class="mb-6">
+    <h1 class="text-2xl font-semibold">Data Genome — GDPR Article 30</h1>
+    <p class="text-muted-foreground mt-1">
+      Record of Processing Activities, derived deterministically from the modelled
+      data &amp; business objects and their access relationships. Every row traces
+      back to a real ArchiMate element.
+    </p>
+  </div>
+
+  <form method="post" action="{{ url_for('genome_data.generate_ropa') }}" class="mb-6">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit"
+            class="inline-flex items-center px-4 py-2 rounded-md bg-primary text-primary-foreground font-medium hover:opacity-90">
+      Generate RoPA
+    </button>
+  </form>
+
+  {% if ropa_html is not none %}
+  <div class="rounded-lg border border-border p-4 overflow-x-auto">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-lg font-semibold">Record of Processing Activities</h2>
+      <span class="text-xs text-muted-foreground">
+        {{ activity_count }} activit{{ 'y' if activity_count == 1 else 'ies' }}
+        · spec {{ spec_hash }}
+      </span>
+    </div>
+    {{ ropa_html }}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

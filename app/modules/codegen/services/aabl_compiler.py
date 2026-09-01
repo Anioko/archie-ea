@@ -31,28 +31,75 @@ GENOME_VERSION = "1.0.0"
 # that stored genomes compiled under an older version are upgraded on load.
 _GENOME_MIGRATIONS = {
     # "0.9.0" → "1.0.0": 'security' key was renamed from 'auth_config'
+    # Each migrator MUST return a genome whose "genome_version" has advanced to
+    # its target version; the migration loop below relies on that to make
+    # progress and refuses to loop forever.
     # Only add entries here when a breaking schema change is made to GENOME_VERSION.
 }
+
+
+class GenomeMigrationError(Exception):
+    """A stored genome is at a version with no path to the current schema.
+
+    Raised instead of silently version-stamping. A genome that cannot be
+    transformed to GENOME_VERSION must NOT be relabelled as current — that
+    passes a structurally-old IR to the emitters under a new version number,
+    which is silent corruption. Fail loud so the caller can quarantine it.
+    """
 
 
 def migrate_genome(genome: dict) -> dict:
     """Normalise a stored genome dict to the current GENOME_VERSION schema.
 
     Safe to call on already-current genomes — returns the dict unchanged.
+
+    Raises:
+        GenomeMigrationError: the genome is at an older version for which no
+            migration path to GENOME_VERSION exists (or a registered migrator
+            failed to advance the version). Never version-stamp without
+            transformation — that is silent IR corruption.
     """
     if not isinstance(genome, dict):
         return genome
-    stored_version = genome.get("genome_version", "1.0.0")
+    # An absent version is treated as the current baseline (1.0.0 == GENOME_VERSION),
+    # consistent with the original behaviour: pre-versioning genomes ARE the baseline.
+    stored_version = genome.get("genome_version", GENOME_VERSION)
     if stored_version == GENOME_VERSION:
         return genome
-    # Apply incremental migrations in version order
-    for _from_ver, _migrator in _GENOME_MIGRATIONS.items():
-        if stored_version == _from_ver:
-            genome = _migrator(genome)
-            stored_version = genome.get("genome_version", GENOME_VERSION)
-    # Ensure version stamp is current after migrations
-    genome["genome_version"] = GENOME_VERSION
-    logger.info("Genome migrated from %s → %s", stored_version, GENOME_VERSION)
+
+    origin_version = stored_version
+    # Walk migrations until we actually reach the current version. Each step must
+    # be transformed by a registered migrator that advances the version — a
+    # version we cannot migrate is a hard error, not a silent stamp.
+    seen = set()
+    while stored_version != GENOME_VERSION:
+        if stored_version in seen:
+            raise GenomeMigrationError(
+                f"Genome migration for version {stored_version!r} does not "
+                f"terminate (cycle detected); refusing to corrupt the IR."
+            )
+        seen.add(stored_version)
+
+        migrator = _GENOME_MIGRATIONS.get(stored_version)
+        if migrator is None:
+            raise GenomeMigrationError(
+                f"Stored genome is at version {origin_version!r} with no "
+                f"migration path to {GENOME_VERSION!r} (stuck at {stored_version!r}). "
+                f"Refusing to version-stamp without transformation — that would "
+                f"silently corrupt the intermediate representation. Quarantine and "
+                f"recompile this genome instead."
+            )
+
+        genome = migrator(genome)
+        new_version = genome.get("genome_version") if isinstance(genome, dict) else None
+        if not new_version or new_version == stored_version:
+            raise GenomeMigrationError(
+                f"Migrator for version {stored_version!r} did not advance "
+                f"genome_version; refusing to loop or corrupt the IR."
+            )
+        stored_version = new_version
+
+    logger.info("Genome migrated from %s → %s", origin_version, GENOME_VERSION)
     return genome
 
 # ArchiMate element types → genome mapping layer
