@@ -1,4 +1,12 @@
-{% extends 'admin/index.html' %}
+{% extends 'layouts/admin_base.html' %}
+{% block title %}Platform Health{% endblock %}
+{% block breadcrumb %}
+{% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
+{{ breadcrumb_nav(items=[
+    {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
+    {'text': 'Platform Health', 'current': true}
+]) }}
+{% endblock %}
 {% block content %}
 <div class="max-w-5xl mx-auto py-8">
   <h1 class="text-2xl font-bold mb-6">Platform Health Dashboard</h1>
