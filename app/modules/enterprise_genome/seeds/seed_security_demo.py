@@ -82,8 +82,7 @@ def seed_security_demo(organization_id: int, session=None, created_by_id=None) -
     frameworks = {code: _get_or_create_framework(session, code, name)
                   for code, name in _FRAMEWORKS.items()}
 
-    n_elements = n_controls = n_requirements = -1  # We'll compute actual created counts
-    # We'll track which rows we actually create vs reuse
+    # Track which rows we actually create vs reuse.
     created_elements = 0
     created_controls = 0
     created_requirements = 0
