@@ -54,7 +54,14 @@ function vendorCreateModal() {
   };
 }
 
-// NOTE: Alpine.data('vendorCreateModal', ...) is registered centrally in
-// alpine-architecture.js — do NOT register it here a second time.
+// Register the component with Alpine so `x-data="vendorCreateModal()"` resolves
+// to THIS factory (with submitCreateVendor + the correct createVendorUrl POST
+// target). A stale duplicate that exposed submit()/POST /api/vendors used to be
+// registered in alpine-architecture.js and shadowed this one, so the template's
+// @submit.prevent="submitCreateVendor()" threw "submitCreateVendor is not a
+// function" under the CSP Alpine build and no request was ever issued.
+document.addEventListener('alpine:init', function () {
+  Alpine.data('vendorCreateModal', vendorCreateModal);
+});
 // Expose factory on window only for backward-compat / testing.
 window.vendorCreateModal = vendorCreateModal;

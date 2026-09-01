@@ -48,6 +48,7 @@ from app.services.rate_limiter import rate_limit
 from app.services.arb_governance_service import (
     ARBDecisionError,
     ARBGovernanceService,
+    DECIDABLE_STATUSES,
     MissingApproverError,
     SelfApprovalError,
 )
@@ -953,12 +954,39 @@ def dashboard():
             sla_data_by_review[_rev.id] = {"cls": _cls, "txt": _txt}
 
     typed_queue = _typed_queue_context()
+
+    # ADR-0008 (store agreement). The KPI tiles above count arb_review_items
+    # while the queue below reads the typed ARBReviewCycle graph, so a tenant
+    # whose reviews predate typed submission saw "Total reviews 6 / Pending 2"
+    # printed directly above "No typed ARB reviews yet" -- two queries answering
+    # the same question with different answers on one screen.
+    #
+    # The tiles are not wrong: those rows exist. The queue is not wrong either:
+    # they are not typed. So the list renders the rows the tiles counted,
+    # labelled for what they are, instead of claiming there are none. Nothing is
+    # repointed and no count is invented.
+    generic_reviews = []
+    if typed_queue and typed_queue.get("state") == "empty":
+        try:
+            generic_reviews = (
+                ARBReviewItem.query.options(joinedload(ARBReviewItem.submitter))
+                .order_by(ARBReviewItem.created_at.desc())
+                .limit(15)
+                .all()
+            )
+        except Exception:
+            # Leave the list empty rather than fabricating rows; the tiles above
+            # still show the counts and the failure is logged.
+            db.session.rollback()
+            current_app.logger.exception("ARB dashboard generic review list failed")
+
     response_status = 503 if typed_queue and typed_queue.get("state") == "failed" else 200
     return render_template(
         "arb/dashboard.html",
         # The dispatcher renders the typed queue whenever an actor exists. A
         # failed read remains typed and visible; it never resurrects legacy UI.
         typed_queue=typed_queue,
+        generic_reviews=generic_reviews,
         sessions=recent_sessions,
         status=request.args.get("status", "all"),
         pending_reviews=pending_reviews,
@@ -1043,19 +1071,19 @@ def create_session():
 
             if not data.get("name"):
                 if is_json:
-                    return jsonify({"success": False, "errors": {"name": "Session name is required"}}), 400
+                    return jsonify({"success": False, "error": "Session name is required", "errors": {"name": "Session name is required"}}), 400
                 flash("Session name is required.", "error")
                 return redirect(url_for("arb.create_session"))
 
             if not data.get("scheduled_date"):
                 if is_json:
-                    return jsonify({"success": False, "errors": {"scheduled_date": "Scheduled date is required"}}), 400
+                    return jsonify({"success": False, "error": "Scheduled date is required", "errors": {"scheduled_date": "Scheduled date is required"}}), 400
                 flash("Scheduled date is required.", "error")
                 return redirect(url_for("arb.create_session"))
 
             if not data.get("chair_id"):
                 if is_json:
-                    return jsonify({"success": False, "errors": {"chair_id": "Chair is required"}}), 400
+                    return jsonify({"success": False, "error": "Chair is required", "errors": {"chair_id": "Chair is required"}}), 400
                 flash("Chair is required.", "error")
                 return redirect(url_for("arb.create_session"))
 
@@ -1082,11 +1110,39 @@ def create_session():
             flash(f"ARB session {arb.board_number} created successfully", "success")
             return redirect(url_for("arb.session_detail", id=arb.id))
 
-        except Exception as e:
-            current_app.logger.error(f"Error creating ARB session: {e}")
+        except ValueError:
+            # The only user-correctable parse failure here is the date format.
+            db.session.rollback()
+            message = (
+                "Scheduled date must be a date and time, for example 2026-09-15 14:00."
+            )
             if is_json:
-                return jsonify({"success": False, "errors": {"general": str(e)}}), 500
-            flash("Error creating session. Please try again.", "error")
+                return jsonify(
+                    {"success": False, "error": message, "errors": {"scheduled_date": message}}
+                ), 400
+            flash(message, "error")
+            return redirect(url_for("arb.sessions"))
+
+        except Exception as e:
+            # A failure here used to reach the user as nothing at all: the JSON
+            # branch answered with an `errors` key the modal only read on a 400,
+            # and the HTML branch flashed a message and then fell through to the
+            # GET redirect below, which the browser followed away from the page
+            # before anything rendered. Both branches now carry the reason, and
+            # the HTML branch returns immediately so the flash survives as a
+            # toast on /arb/sessions.
+            current_app.logger.exception("Error creating ARB session")
+            db.session.rollback()
+            if is_json:
+                return jsonify(
+                    {
+                        "success": False,
+                        "error": "The ARB session could not be created.",
+                        "errors": {"general": str(e)},
+                    }
+                ), 500
+            flash(f"The ARB session could not be created: {e}", "error")
+            return redirect(url_for("arb.sessions"))
 
     # GET — redirect to sessions list (modal handles creation inline)
     return redirect(url_for("arb.sessions"))
@@ -1570,6 +1626,11 @@ def review_detail(id):
         conditions_with_flags=conditions_with_flags,
         applicable_principles=applicable_principles,
         audit_trail=audit_trail,
+        # The template must not re-derive which states can be decided: the
+        # service owns that set, and the two drifted (the page offered a
+        # decision on `pending_info`, which record_decision refuses, and
+        # withheld it on `deferred`, which it accepts).
+        decidable_statuses=sorted(DECIDABLE_STATUSES),
     )
 
 

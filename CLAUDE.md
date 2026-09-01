@@ -163,14 +163,58 @@ and `/api/v1/capabilities/` both answer 0, because the canonical store has no
 producer. Baselining it at 0 would have hidden the very defect the gate exists
 to surface. It closes when the projection lands.
 
-## Done means deployed — standing instruction from the owner (14 Aug 2026)
+## Done means DEMONSTRATED — standing instruction from the owner (1 Sep 2026)
 
-The owner is non-technical and has delegated technical judgement entirely. **A wave of work is
-not complete until it is verified green AND running in production** — merge, push, deploy, and
-confirm the live site serves, in the same session. Do not end a session by offering deployment
-as a menu option or asking "shall I deploy?"; that is the failure mode this rule exists to stop
-(one-strike rule, per the owner). The only legitimate reason to stop short is that verification
-is red. Everything else: execute end-to-end.
+**A feature is not done because a test passed, a gate went green, or it deployed.
+It is done when a named persona has completed the actual journey in the actual
+rendered UI — clicking the real controls — and the result persisted and was
+seen.** "Green and deployed" is necessary but NOT sufficient, and treating it as
+sufficient is the single failure this project has paid for most.
+
+Why this rule exists, stated bluntly so it is not softened later. On 1 Sep 2026
+the platform reached a Fortune 500 demo with, by a browser walkthrough, roughly
+a dozen demo-path BLOCKERS and fifty lesser defects — a capability-map "Save"
+that fired no request, an ARB with no decision button, forms that 500'd, a
+dashboard contradicting its own list — while **81 verification gates were all
+green**. They were green because every one of them reads SOURCE. Not one of them
+clicked a button or looked at a rendered screen. The owner, who is non-technical,
+had become the QA function by accident: for months the defects were found by the
+owner clicking around, never by the build. That is backwards, and this rule is
+the correction.
+
+The mechanism of the failure, so you can recognise it: agents optimise whatever
+"done" is defined as. When done meant "green", the estate filled with software
+built to pass a check rather than to be used — every backend working, every
+front-end half-wired; the ARB decision API succeeds with no button, the mapping
+endpoint persists with a dead Save, `unified_capabilities` wired into eight APIs
+with nothing writing to it. That signature is the tell of a check-passing reward
+function. Changing the definition of done is how you change the output.
+
+What this requires of every wave, not negotiable:
+
+- **A write feature is not shipped until a browser test clicks its real control
+  and asserts the result persisted after a reload.** If the only way to reach an
+  endpoint is `curl`, it is not done. Use the Playwright harness in
+  `tests/smoke/` — extend the journeys, do not leave them shallow.
+- **The builder is never the sole verifier.** Every wave ends with a separate
+  pass that DRIVES A BROWSER as each persona and clicks everything — the
+  end-of-wave QA agent, not a source scan. The `production-watch.yml` adversarial
+  job is the scheduled half of this; the per-wave half is mandatory too.
+- **Prefer gates that read RENDERED REALITY over gates that read source.** The
+  `store-agreement`, `canonical-route` and dead-control gates boot the app and
+  operate it; a source-only gate must never be the *only* evidence a UI works.
+- **"Show me, don't tell me."** Never report a feature done on the strength of a
+  status line. The report must be able to point at the clicked-through journey —
+  a recording, a browser test, or a live walk. A green run is evidence a feature
+  did not regress in source; it is not evidence a human can use it.
+
+Then — and this half is unchanged — **that demonstrated feature must be running
+in production**: merge, push, deploy, and confirm the live site serves, in the
+same session. Do not end a session by offering deployment as a menu option or
+asking "shall I deploy?"; that is a failure mode this rule also stops (one-strike
+rule, per the owner). The only legitimate reason to stop short is that
+verification is red OR the journey does not actually work when clicked.
+Everything else: execute end-to-end.
 
 **Superseded 17 Aug 2026:** this section used to add "or the next action is
 destructive/irreversible (`recreate-db --force`, data deletion, history rewrites) — those still

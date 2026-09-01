@@ -29,6 +29,8 @@
     </p>
 </div>
 
+{% with decision_review = _orm_review if _orm_review is defined else none %}{% include 'arb/partials/_decision_bar.html' %}{% endwith %}
+
 {% call card() %}
     {% call card_header() %}
         {% call card_title(class='text-lg') %}Recorded legacy review{% endcall %}
@@ -43,6 +45,32 @@
             <dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Review item ID</dt>
             <dd class="break-all font-mono text-xs text-foreground">{{ dash((review.identity or {}).get('review_item_id')) }}</dd>
         </div>
+        {% if _orm_review is defined and _orm_review %}
+        <div class="min-w-0">
+            <dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Status</dt>
+            <dd class="break-words text-sm text-foreground">{{ dash(_orm_review.status | replace('_', ' ') | title if _orm_review.status else none) }}</dd>
+        </div>
+        <div class="min-w-0">
+            <dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Priority</dt>
+            <dd class="break-words text-sm text-foreground">{{ dash(_orm_review.priority | title if _orm_review.priority else none) }}</dd>
+        </div>
+        <div class="min-w-0">
+            <dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Review type</dt>
+            <dd class="break-words text-sm text-foreground">{{ dash(_orm_review.review_type | replace('_', ' ') | title if _orm_review.review_type else none) }}</dd>
+        </div>
+        <div class="min-w-0">
+            <dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Submitted by</dt>
+            <dd class="break-words text-sm text-foreground">{{ dash(_orm_review.submitter.email if _orm_review.submitter else none) }}</dd>
+        </div>
+        <div class="min-w-0">
+            <dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Submitted on</dt>
+            <dd class="break-words text-sm text-foreground">{{ dash(_orm_review.submitted_at.strftime('%d %b %Y') if _orm_review.submitted_at else none) }}</dd>
+        </div>
+        <div class="min-w-0 sm:col-span-2">
+            <dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Description</dt>
+            <dd class="whitespace-pre-line break-words text-sm text-foreground">{{ dash(_orm_review.description) }}</dd>
+        </div>
+        {% endif %}
         <div class="min-w-0 sm:col-span-2">
             <dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Reason</dt>
             <dd class="break-words text-sm text-foreground">{{ dash(review.reason) }}</dd>

@@ -588,7 +588,49 @@ let ComposerAI = (function() {
             });
         },
 
+        /* Governance: AI-generated elements are written to the model only after an
+           explicit human confirmation. "Place Full Diagram on Canvas" no longer
+           persists silently — it summarises what will be created (and how many
+           possible duplicates are unresolved) and waits for the architect to approve. */
         acceptAllGenerated: function() {
+            let self = this;
+            let pending = self.generatedElements.slice();
+            if (!pending.length) return;
+
+            let newCount = pending.filter(function(e) {
+                return !(e.category === 'existing' && e.existing_id);
+            }).length;
+            let existingCount = pending.length - newCount;
+            let dupCount = pending.filter(function(e) {
+                return e.category === 'possible_duplicate';
+            }).length;
+
+            let msg = 'This will create ' + newCount + ' new element'
+                + (newCount === 1 ? '' : 's') + ' in your architecture model';
+            if (existingCount) {
+                msg += ' and link ' + existingCount + ' existing element'
+                    + (existingCount === 1 ? '' : 's');
+            }
+            msg += '.';
+            if (dupCount) {
+                msg += ' ' + dupCount + (dupCount === 1 ? ' element is' : ' elements are')
+                    + ' flagged as a possible duplicate and will be created as new'
+                    + ' unless you resolve them first (Use existing / Keep new).';
+            }
+            msg += ' These AI-generated changes are written to your model once you confirm.';
+
+            Platform.confirm({
+                title: 'Place ' + pending.length + ' element'
+                    + (pending.length === 1 ? '' : 's') + ' into the model?',
+                message: msg,
+                confirmText: 'Create & place',
+                cancelText: 'Keep reviewing',
+            }).then(function(ok) {
+                if (ok) self._doAcceptAllGenerated();
+            });
+        },
+
+        _doAcceptAllGenerated: function() {
             let self = this;
             let pending = self.generatedElements.slice();
             let pendingRelationships = self.generatedRelationships.slice();

@@ -266,7 +266,10 @@ def application_list():
                 | ApplicationComponent.technology_stack.ilike(safe_search, escape="\\")
             )
         if type_filter:
-            query = query.filter(ApplicationComponent.application_category == type_filter)
+            # "Type" is component_type everywhere it is shown (fact sheet, edit form,
+            # list column). application_category is a separate, mostly-empty field;
+            # filtering on it left the Type dropdown dead. Filter on component_type.
+            query = query.filter(ApplicationComponent.component_type == type_filter)
         # APP-032: lifecycle_status only (no deployment_status); ignore legacy/invalid query values
         if status_filter:
             sf = status_filter.strip().lower()
@@ -372,7 +375,9 @@ def application_list():
                         result.append(n)
             return sorted(result)
 
-        component_types = _distinct_normalised(ApplicationComponent.application_category)
+        # "Type" is component_type (the field the fact sheet, edit form and list
+        # column all treat as Type), not application_category.
+        component_types = _distinct_normalised(ApplicationComponent.component_type)
         # APP-032: fixed Abacus lifecycle list (not DISTINCT deployment_status or ad hoc DB strings)
         lifecycle_statuses = [{"value": v, "label": v} for v in _LIFECYCLE_ABACUS_CODES]
         try:

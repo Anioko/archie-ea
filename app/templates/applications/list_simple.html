@@ -425,7 +425,7 @@
               <p class="font-medium text-sm text-foreground truncate max-w-[200px]" title="{{ app.name | e }}">{{ app.name }}</p>
               {% if app.description %}<p class="text-xs text-muted-foreground truncate max-w-[200px]">{{ app.description[:80] }}{% if app.description | length > 80 %}…{% endif %}</p>{% endif %}
             </td>
-            <td class="px-4" :class="density === 'compact' ? 'py-1' : 'py-3'"><span class="text-sm text-muted-foreground">{{ app.application_category or '—' }}</span></td>
+            <td class="px-4" :class="density === 'compact' ? 'py-1' : 'py-3'"><span class="text-sm text-muted-foreground">{{ app.component_type or '—' }}</span></td>
             <td class="px-4 text-center" :class="density === 'compact' ? 'py-1' : 'py-3'">
               {% if app.archimate_element_id %}
               {# role="img" makes the aria-label legal: a bare span is a generic

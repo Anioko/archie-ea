@@ -65,6 +65,14 @@ class ArchitectureDecision(TenantMixin, db.Model):
     valid_from = db.Column(db.DateTime, nullable=True)
     valid_until = db.Column(db.DateTime, nullable=True)
 
+    # Provenance (ADR-0008: "a copy declares itself"). A row projected from
+    # another store carries where it came from, so "why does this exist?" is
+    # answered by query rather than by reading code. Both columns are nullable
+    # so `reconcile-schema` can add them to existing databases (ADR-0002), and a
+    # hand-authored ADR simply leaves them NULL.
+    source_table = db.Column(db.String(64), nullable=True, index=True)
+    source_id = db.Column(db.Integer, nullable=True, index=True)
+
     # Classification
     horizon = db.Column(db.String(20), nullable=True, default='strategic')
     authority_level = db.Column(db.String(30), nullable=True, default='enterprise_arb')
@@ -104,19 +112,24 @@ class ArchitectureDecision(TenantMixin, db.Model):
             "horizon": self.horizon,
             "authority_level": self.authority_level,
             "decision_type": self.decision_type,
+            "source_table": self.source_table,
+            "source_id": self.source_id,
         }
 
     @classmethod
     def next_decision_id(cls):
-        """Auto-generate next AD-XXX id."""
-        last = cls.query.order_by(cls.id.desc()).first()
-        if not last or not last.decision_id:
-            return "AD-001"
-        try:
-            n = int(last.decision_id.split("-")[1]) + 1
-            return f"AD-{n:03d}"
-        except Exception:
-            return "AD-001"
+        """Auto-generate the next AD-XXX id.
+
+        ``decision_id`` is UNIQUE across the whole table, but this class is a
+        ``TenantMixin`` — so the ORM query this used to run was narrowed to the
+        caller's organisation by ``do_orm_execute``. Any second tenant's first
+        ADR therefore computed ``AD-001``, collided with the unique index and
+        500'd ``POST /architecture/decisions/new`` while persisting nothing.
+        Allocate over the same domain the index enforces.
+        """
+        from app.utils.reference_numbers import next_reference
+
+        return next_reference("architecture_decisions", "decision_id", "AD-")
 
 
 VALID_LINK_TYPES = ['governs', 'constrains', 'enables']

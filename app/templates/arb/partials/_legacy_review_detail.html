@@ -143,83 +143,9 @@
         </div>
     </div>
 
-    <!-- Approve / Reject Decision Bar -->
-    {% if review.status in ['submitted', 'under_review', 'pending_info'] and not review.decision %}
-    <div x-data="{ showDecisionForm: false, selectedDecision: '' }" class="bg-card border border-border rounded-lg p-4 mb-6">
-        <div class="flex items-center justify-between">
-            <div>
-                <h3 class="text-sm font-semibold text-foreground">ARB Decision Required</h3>
-                <p class="text-xs text-muted-foreground mt-0.5">This review is awaiting an architecture board decision.</p>
-            </div>
-            <div class="flex items-center gap-2" x-show="!showDecisionForm" x-cloak>
-                <button type="button"
-                    @click="selectedDecision = 'approved'; showDecisionForm = true"
-                    class="inline-flex items-center px-4 py-2 rounded-md text-sm font-medium bg-success/10 text-success-emphasis border border-success/30 hover:bg-success/20 transition-colors"
-                    aria-label="Approve this review">
-                    <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
-                    Approve
-                </button>
-                <button type="button"
-                    @click="selectedDecision = 'rejected'; showDecisionForm = true"
-                    class="inline-flex items-center px-4 py-2 rounded-md text-sm font-medium bg-destructive/10 text-destructive-emphasis border border-destructive/30 hover:bg-destructive/20 transition-colors"
-                    aria-label="Reject this review">
-                    <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
-                    Reject
-                </button>
-                <button type="button"
-                    @click="selectedDecision = 'approved_with_conditions'; showDecisionForm = true"
-                    class="inline-flex items-center px-4 py-2 rounded-md text-sm font-medium bg-warning/10 text-warning-emphasis border border-warning/30 hover:bg-warning/20 transition-colors"
-                    aria-label="Approve with conditions">
-                    <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                    Approve with Conditions
-                </button>
-                <button type="button"
-                    @click="selectedDecision = 'deferred'; showDecisionForm = true"
-                    class="inline-flex items-center px-4 py-2 rounded-md text-sm font-medium bg-muted text-muted-foreground border border-border hover:bg-muted/80 transition-colors"
-                    aria-label="Defer this review">
-                    Defer
-                </button>
-            </div>
-        </div>
-
-        <!-- Inline decision form -->
-        <div x-show="showDecisionForm" x-cloak class="mt-4 pt-4 border-t border-border">
-            <form method="POST" action="{{ url_for('arb.record_decision', id=review.id) }}">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                <input type="hidden" name="decision" :value="selectedDecision"/>
-                <div class="mb-3">
-                    <label class="block text-sm font-medium text-foreground/80 mb-1">
-                        Decision: <span class="font-semibold" x-text="selectedDecision.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())"></span>
-                    </label>
-                </div>
-                <div class="mb-3">
-                    <label for="decision_rationale" class="block text-sm font-medium text-foreground/80 mb-1">Rationale</label>
-                    <textarea id="decision_rationale" name="rationale" rows="3" required
-                        class="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-                        placeholder="Explain the reasoning behind this decision..."></textarea>
-                </div>
-                <div x-show="selectedDecision === 'approved_with_conditions'" x-cloak class="mb-3">
-                    <label for="decision_conditions" class="block text-sm font-medium text-foreground/80 mb-1">Conditions (one per line)</label>
-                    <textarea id="decision_conditions" name="conditions" rows="2"
-                        class="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-                        placeholder="Enter conditions that must be met..."></textarea>
-                </div>
-                <div class="flex items-center gap-2">
-                    <button type="submit"
-                        class="inline-flex items-center px-4 py-2 rounded-md text-sm font-medium text-primary-foreground bg-primary hover:bg-primary/90 transition-colors"
-                        aria-label="Confirm decision">
-                        Confirm Decision
-                    </button>
-                    <button type="button" @click="showDecisionForm = false"
-                        class="inline-flex items-center px-4 py-2 rounded-md text-sm font-medium text-foreground/80 bg-muted border border-border hover:bg-muted/80 transition-colors"
-                        aria-label="Cancel">
-                        Cancel
-                    </button>
-                </div>
-            </form>
-        </div>
-    </div>
-    {% endif %}
+    {# ARB decision controls — shared with the typed legacy_generic branch so the
+       board can decide a legacy row from either dispatch path. #}
+    {% with decision_review = review %}{% include 'arb/partials/_decision_bar.html' %}{% endwith %}
 
     {#
       The recorded decision was never rendered anywhere on this page. Once a

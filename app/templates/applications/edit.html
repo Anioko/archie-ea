@@ -93,19 +93,30 @@
           <label for="criticality" class="block text-sm font-medium mb-1">Business Criticality</label>
           <select id="criticality" name="criticality"
                   class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
-            <option value="">Not set</option>
-            {% for val in ['Critical', 'High', 'Medium', 'Low'] %}
-            <option value="{{ val }}" {% if application.business_criticality == val %}selected{% endif %}>{{ val }}</option>
+            {% set current_crit = application.business_criticality %}
+            {% set crit_options = ['Critical', 'High', 'Medium', 'Low'] %}
+            {% set crit_matched = current_crit and (crit_options | map('lower') | list) | select('equalto', current_crit | lower) | list | length > 0 %}
+            <option value="" {% if not current_crit %}selected{% endif %}>Not set</option>
+            {% for val in crit_options %}
+            <option value="{{ val }}" {% if current_crit and current_crit | lower == val | lower %}selected{% endif %}>{{ val }}</option>
             {% endfor %}
+            {% if current_crit and not crit_matched %}
+            {# Preserve a stored value outside the standard vocabulary so a save never wipes it #}
+            <option value="{{ current_crit }}" selected>{{ current_crit | capitalize }}</option>
+            {% endif %}
           </select>
         </div>
         <div>
           <label for="deployment_status" class="block text-sm font-medium mb-1">Deployment Status</label>
           <select id="deployment_status" name="deployment_status"
                   class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
-            {% for val in ['production', 'development', 'testing', 'retired'] %}
-            <option value="{{ val }}" {% if application.deployment_status == val %}selected{% endif %}>{{ val | title }}</option>
+            <option value="" {% if not application.deployment_status %}selected{% endif %}>Not set</option>
+            {% for val in ['production', 'development', 'testing', 'staging', 'retired'] %}
+            <option value="{{ val }}" {% if application.deployment_status and application.deployment_status | lower == val | lower %}selected{% endif %}>{{ val | title }}</option>
             {% endfor %}
+            {% if application.deployment_status and application.deployment_status | lower not in ['production','development','testing','staging','retired'] %}
+            <option value="{{ application.deployment_status }}" selected>{{ application.deployment_status | title }}</option>
+            {% endif %}
           </select>
         </div>
         <div>

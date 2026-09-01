@@ -144,11 +144,14 @@ def init_cli(app):
         from flask import current_app
 
         click.echo("Generating data maturity digest...")
-        data = send_data_maturity_digest(current_app._get_current_object())
+        run = send_data_maturity_digest(current_app._get_current_object())
+        # Per-tenant now (JobRun), not a single global dict: report the
+        # organisations attempted and the recipients reached across them.
+        recipients = sum((r.value or {}).get("recipients", 0)
+                         for r in run.results if r.ok)
         click.echo(
-            f"Done: {data['total']} solutions, "
-            f"{data['avg_score']}% avg completeness, "
-            f"{len(data['zero_connections'])} with zero connections."
+            f"Done: sent to {run.succeeded} organisation(s), "
+            f"{recipients} recipient(s); {run.failed} failed."
         )
 
     # PLT-031: Executive summary CLI command
@@ -159,11 +162,12 @@ def init_cli(app):
         from flask import current_app
 
         click.echo("Generating executive summary...")
-        data = send_executive_summary(current_app._get_current_object())
+        run = send_executive_summary(current_app._get_current_object())
+        recipients = sum((r.value or {}).get("recipients", 0)
+                         for r in run.results if r.ok)
         click.echo(
-            f"Done: {data['total_solutions']} solutions, "
-            f"{data['new_solutions_count']} new this week, "
-            f"{data['arb_decisions_count']} ARB decisions."
+            f"Done: sent to {run.succeeded} organisation(s), "
+            f"{recipients} recipient(s); {run.failed} failed."
         )
 
     # ACM-001: Cloud pricing API sync CLI commands

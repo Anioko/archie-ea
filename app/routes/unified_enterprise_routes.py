@@ -691,6 +691,53 @@ def api_work_packages_gantt():
 
 
 # CSRF: Protected via X-CSRFToken header sent by Platform.fetch
+# Work-package fields whose DB columns are Date / Integer / Float. The Create and
+# Edit forms serialise empty inputs as "" (empty string), which Postgres rejects
+# with `invalid input syntax for type date: ""` (and for integer/float) — that was
+# the 500 on "New Work Package -> Create" with only a Name filled in. Normalise ""
+# (and whitespace) to NULL, and parse the values that are present.
+_WP_DATE_FIELDS = {"start_date", "target_date", "completed_date"}
+_WP_INT_FIELDS = {
+    "estimated_effort_hours", "actual_effort_hours", "percent_complete", "level",
+    "sequence_order", "plateau_id", "architecture_id", "owner_id", "capability_id",
+    "parent_id",
+}
+_WP_FLOAT_FIELDS = {"estimated_cost", "actual_cost"}
+
+
+def _normalise_wp_payload(data):
+    """Coerce empty strings to None and parse date/number fields in-place.
+
+    Raises ValueError with a user-facing message on a malformed value so the
+    caller can return a 400 rather than letting it 500 at flush time.
+    """
+    from datetime import datetime as _dt
+
+    for key in list(data.keys()):
+        value = data[key]
+        if isinstance(value, str) and value.strip() == "":
+            data[key] = None
+            value = None
+        if value is None:
+            continue
+        if key in _WP_DATE_FIELDS and isinstance(value, str):
+            try:
+                data[key] = _dt.strptime(value.strip(), "%Y-%m-%d").date()
+            except ValueError:
+                raise ValueError(f"{key} must be a valid date (YYYY-MM-DD)")
+        elif key in _WP_INT_FIELDS and isinstance(value, str):
+            try:
+                data[key] = int(value.strip())
+            except ValueError:
+                raise ValueError(f"{key} must be a whole number")
+        elif key in _WP_FLOAT_FIELDS and isinstance(value, str):
+            try:
+                data[key] = float(value.strip())
+            except ValueError:
+                raise ValueError(f"{key} must be a number")
+    return data
+
+
 @enterprise_bp.route("/api/work-packages", methods=["POST"])
 @login_required
 def api_create_work_package():
@@ -699,6 +746,11 @@ def api_create_work_package():
 
     if not data.get("name", "").strip():
         return api_error("name is required", "MISSING_NAME")
+
+    try:
+        _normalise_wp_payload(data)
+    except ValueError as ve:
+        return api_error(str(ve), "INVALID_FIELD")
 
     wp = WorkPackage(
         name=data["name"].strip(),
@@ -744,6 +796,11 @@ def api_update_work_package(wp_id):
     """Update a work package. PROD-008"""
     wp = WorkPackage.query.get_or_404(wp_id)
     data = request.get_json(force=True) or {}
+
+    try:
+        _normalise_wp_payload(data)
+    except ValueError as ve:
+        return api_error(str(ve), "INVALID_FIELD")
 
     allowed = {
         "name", "summary", "description", "status", "priority", "togaf_phase",

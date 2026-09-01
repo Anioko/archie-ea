@@ -230,35 +230,47 @@
 </div>
 
 {% call modal(id='create-arb-session', title='Schedule ARB Session', description='Create a new Architecture Review Board meeting', size='lg') %}
-<form @submit.prevent="submitCreateSession()" class="space-y-4" x-data="arbSessionModal()">
+{#
+  Progressive enhancement, deliberately. Alpine intercepts the submit and posts
+  JSON when it is bound; when it is NOT bound the browser posts this form
+  natively to the same endpoint and the server's flash reaches the user as a
+  toast. Before 01 Sep 2026 the form carried no method/action and no name
+  attributes, so an unbound Alpine meant a native GET-shaped submit that lost
+  every field: the modal closed, the page returned to /arb/sessions and nothing
+  at all was reported. There is no third outcome now -- a session is created, or
+  the reason is on screen.
+#}
+<form method="POST" action="{{ url_for('arb.create_session') }}"
+      @submit.prevent="submitCreateSession()" class="space-y-4" x-data="arbSessionModal()">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div>
         <label for="cas-name" class="block text-sm font-medium mb-1">Session Name <span class="text-destructive-emphasis">*</span></label>
-        <input type="text" id="cas-name" x-model="formData.name" required
+        <input type="text" id="cas-name" name="name" x-model="formData.name" required
                class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                placeholder="e.g. ARB Session Q1 2026">
     </div>
     <div>
         <label for="cas-description" class="block text-sm font-medium mb-1">Description</label>
-        <textarea id="cas-description" x-model="formData.description" rows="2"
+        <textarea id="cas-description" name="description" x-model="formData.description" rows="2"
                   class="flex min-h-[64px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   placeholder="Agenda and objectives for this session"></textarea>
     </div>
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
             <label for="cas-date" class="block text-sm font-medium mb-1">Scheduled Date &amp; Time <span class="text-destructive-emphasis">*</span></label>
-            <input type="datetime-local" id="cas-date" x-model="formData.scheduled_date" required
+            <input type="datetime-local" id="cas-date" name="scheduled_date" x-model="formData.scheduled_date" required
                    class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
         </div>
         <div>
             <label for="cas-duration" class="block text-sm font-medium mb-1">Duration (minutes)</label>
-            <input type="number" id="cas-duration" x-model="formData.duration_minutes" min="30" max="480" value="120"
+            <input type="number" id="cas-duration" name="duration_minutes" x-model="formData.duration_minutes" min="30" max="480" value="120"
                    class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
         </div>
     </div>
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
             <label for="cas-chair" class="block text-sm font-medium mb-1">Chair <span class="text-destructive-emphasis">*</span></label>
-            <select id="cas-chair" x-model="formData.chair_id" required
+            <select id="cas-chair" name="chair_id" x-model="formData.chair_id" required
                     class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                 <option value="">Select chair...</option>
                 {% for user in users %}
@@ -268,7 +280,7 @@
         </div>
         <div>
             <label for="cas-secretary" class="block text-sm font-medium mb-1">Secretary (optional)</label>
-            <select id="cas-secretary" x-model="formData.secretary_id"
+            <select id="cas-secretary" name="secretary_id" x-model="formData.secretary_id"
                     class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                 <option value="">Select secretary...</option>
                 {% for user in users %}
@@ -280,13 +292,13 @@
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
             <label for="cas-location" class="block text-sm font-medium mb-1">Location</label>
-            <input type="text" id="cas-location" x-model="formData.location"
+            <input type="text" id="cas-location" name="location" x-model="formData.location"
                    class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                    placeholder="Room or building name">
         </div>
         <div>
             <label for="cas-link" class="block text-sm font-medium mb-1">Meeting Link</label>
-            <input type="url" id="cas-link" x-model="formData.meeting_link"
+            <input type="url" id="cas-link" name="meeting_link" x-model="formData.meeting_link"
                    class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                    placeholder="https://teams.microsoft.com/...">
         </div>

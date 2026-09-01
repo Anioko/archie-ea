@@ -94,6 +94,41 @@
                 cta_href=queue_action_url,
                 cta_icon='x'
             ) }}
+        {% elif generic_reviews | default([]) %}
+            {#
+              ADR-0008. The KPI tiles above count arb_review_items; this queue
+              reads the typed ARBReviewCycle graph. When the typed graph is
+              empty but those rows exist, saying "No typed ARB reviews yet"
+              contradicts the tile directly above it. Render the rows the tiles
+              counted, labelled as untyped, so both surfaces answer the same
+              question with the same answer.
+            #}
+            <div class="border-b border-border bg-muted/50 px-4 py-3" role="status">
+                <p class="text-sm font-medium text-foreground">
+                    Review items outside the typed governance graph
+                </p>
+                <p class="mt-1 text-sm text-muted-foreground">
+                    These are the {{ generic_reviews | length }} most recent rows behind the counts above.
+                    They predate typed ARB submission, so they carry no evidence snapshot.
+                </p>
+            </div>
+            <ul class="divide-y divide-border">
+                {% for item in generic_reviews %}
+                <li class="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3">
+                    <a href="{{ url_for('arb.review_detail', id=item.id) }}"
+                       class="min-w-0 flex-1 truncate text-sm font-medium text-foreground hover:underline">
+                        {{ item.review_number }} &#183; {{ item.title }}
+                    </a>
+                    <span class="text-xs text-muted-foreground">{{ (item.status or '') | replace('_', ' ') | title or '&#8212;' }}</span>
+                    <span class="text-xs text-muted-foreground">{{ item.created_at.strftime('%d %b %Y') if item.created_at else '&#8212;' }}</span>
+                </li>
+                {% endfor %}
+            </ul>
+            <div class="border-t border-border px-4 py-3">
+                <a href="{{ url_for('arb.reviews') }}" class="text-sm font-medium text-primary hover:underline">
+                    Open the full review ledger
+                </a>
+            </div>
         {% else %}
             {{ empty_state(
                 icon='clipboard-list',

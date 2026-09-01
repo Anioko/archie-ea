@@ -586,7 +586,75 @@ class ARBGovernanceService:
                 "Failed to write ARB decision audit log for review %s", review_item_id
             )
 
+        self._project_decision_to_register(item)
+
         return item
+
+    def _project_decision_to_register(self, item) -> None:
+        """Project a recorded ARB decision into the architecture decision register.
+
+        The register at /architecture/decisions/ and /arb/decisions reads
+        ``architecture_decisions``. Recording an ARB decision wrote only to
+        ``arb_review_items``, so nothing the board actually decided ever reached
+        the register: production held three recorded ARB decisions and both
+        register screens read "Total Decisions 0".
+
+        Per ADR-0008 the fix is the missing PRODUCER, not repointing the
+        register's readers at ``arb_review_items``. The projected row declares
+        its provenance (``source_table`` / ``source_id``), which also makes this
+        idempotent -- re-deciding a reopened review updates the same row instead
+        of accumulating duplicates.
+
+        Best-effort: the decision itself is already committed and must not be
+        rolled back because a derived row failed to write.
+        """
+        from app.models.architecture_decision import ArchitectureDecision
+
+        _STATUS_FOR_DECISION = {
+            "approved": "accepted",
+            "approved_with_conditions": "accepted",
+            "rejected": "rejected",
+            # A deferral is explicitly NOT a decision on the substance: the
+            # register must not show it as accepted or rejected.
+            "deferred": "proposed",
+        }
+
+        try:
+            record = ArchitectureDecision.query.filter_by(
+                source_table="arb_review_items", source_id=item.id
+            ).first()
+            if record is None:
+                record = ArchitectureDecision(
+                    decision_id=ArchitectureDecision.next_decision_id(),
+                    source_table="arb_review_items",
+                    source_id=item.id,
+                    organization_id=item.organization_id,
+                    created_by_id=item.decided_by_id,
+                )
+                db.session.add(record)
+
+            record.title = item.title
+            record.status = _STATUS_FOR_DECISION.get(item.decision, "proposed")
+            record.context = item.description
+            # The outcome, verbatim -- not a restatement. "Approved with
+            # conditions" and "approved" are different decisions.
+            record.decision = (item.decision or "").replace("_", " ").capitalize()
+            record.rationale = item.decision_rationale
+            record.consequences = None
+            record.decided_by_id = item.decided_by_id
+            record.decided_at = item.decision_date
+            record.enterprise_level = True
+            record.authority_level = "enterprise_arb"
+            if item.arb_session_id:
+                record.arb_session_id = item.arb_session_id
+
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            logger.exception(
+                "Failed to project ARB decision for review %s into the decision register",
+                item.id,
+            )
 
     def _audit_decision_refusal(self, item, *, event, reason, actor_id=None):
         """Record that a decision write was refused, and why.
@@ -895,7 +963,12 @@ class ARBGovernanceService:
         pending_items = ARBReviewItem.query.filter(
             ARBReviewItem.status.in_(["submitted", "under_review", "pending_info"])
         ).count()
-        approved_items = ARBReviewItem.query.filter(ARBReviewItem.status == "approved").count()
+        # approved_with_conditions IS an approval -- the list badge already said
+        # "Approved" for those rows while this count excluded them, so recording
+        # one made the approval rate FALL. Both surfaces now mean the same thing.
+        approved_items = ARBReviewItem.query.filter(
+            ARBReviewItem.status.in_(["approved", "approved_with_conditions"])
+        ).count()
         rejected_items = ARBReviewItem.query.filter(ARBReviewItem.status == "rejected").count()
 
         # Recent activity

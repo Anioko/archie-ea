@@ -316,33 +316,10 @@ if (window.__ALPINE_ARCH_LOADED__) {
             });
         });
 
-        Alpine.data('vendorCreateModal', function () {
-            return Object.assign(
-                {}, _asyncMixin(), _modalMixin(),
-                _formMixin({ name: '', vendor_type: '', country: '', website: '', description: '' }),
-                {
-                    apiUrl: '/api/vendors',
-                    validate() {
-                        this.validationErrors = {};
-                        if (!this.formData.name || !this.formData.name.trim())
-                            this._setFieldError('name', 'Vendor name is required.');
-                        if (this.formData.website && !/^https?:\/\//i.test(this.formData.website))
-                            this._setFieldError('website', 'Must start with http:// or https://');
-                        return !this._hasErrors();
-                    },
-                    async submit() {
-                        if (!this.validate()) return;
-                        this._startLoading();
-                        try {
-                            let data = await _fetch(this.apiUrl, { method: 'POST', body: this.formData });
-                            this._handleSuccess('Vendor created successfully.');
-                            this.$dispatch('vendor-created', { vendor: data });
-                            this.closeModal();
-                        } catch (err) { this._handleError(err); }
-                    }
-                }
-            );
-        });
+        // NOTE: vendorCreateModal is registered by app/static/js/vendors/create_modal.js
+        // (the page-specific factory with submitCreateVendor + the vendor_management
+        // .create_vendor POST target). A duplicate registration here shadowed it and
+        // broke vendor creation under the CSP Alpine build — do NOT re-add it.
 
         /* -----------------------------------------------------------------------
          * APPLICATION COMPONENTS

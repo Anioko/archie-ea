@@ -40,13 +40,16 @@ function arbSessionModal() {
         })
         .catch(err => {
           this.submitting = false;
-          // Platform.fetch throws for network errors or HTTP errors (non-ok responses)
-          if (err.type === 'HttpError' && err.data && err.data.errors) {
-            // This is a validation error (e.g., 400) with field-specific messages
-            this.errorMsg = Object.values(err.data.errors || {}).join(' ') || 'An error occurred.';
-          } else {
-            // Network error or other HTTP error without field errors
-            this.errorMsg = 'Network error. Please try again.';
+          // Every failure must reach the user. Reporting the server's own reason
+          // beats a generic line: a 500 here used to read "Network error. Please
+          // try again." while the response body said exactly what was wrong.
+          const data = (err && err.data) || {};
+          const fieldErrors = Object.values(data.errors || {}).filter(Boolean).join(' ');
+          this.errorMsg =
+            fieldErrors || data.error || (err && err.message) ||
+            'The session could not be scheduled.';
+          if (window.Platform && Platform.toast) {
+            Platform.toast.error(this.errorMsg);
           }
         });
     }

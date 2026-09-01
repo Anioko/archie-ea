@@ -102,6 +102,26 @@
     }
 
     document.addEventListener('click', runCmAction);
+
+    // Delegated CHANGE handler — the Map Applications modal's checkboxes and the
+    // per-application mapping settings (support level, coverage %, priority, ...)
+    // used inline on*= handlers, which the strict CSP silently drops, so nothing
+    // fired: the "N selected" counter stayed 0 and Save Mappings had an empty set.
+    // Same delegation reason as CM_ACTIONS: the list is re-rendered wholesale.
+    const CM_CHANGES = {
+        'toggle-app':         (el) => toggleApplicationSelection(el.dataset.appId),
+        'update-app-mapping': (el) => {
+            const raw = el.value;
+            const value = el.dataset.parse === 'int' ? parseInt(raw, 10) : raw;
+            updateApplicationMapping(el.dataset.appId, el.dataset.field, value);
+        },
+    };
+    document.addEventListener('change', function(event) {
+        const el = event.target.closest('[data-cm-change]');
+        if (!el) return;
+        const handler = CM_CHANGES[el.getAttribute('data-cm-change')];
+        if (handler) handler(el, event);
+    });
     // Two of the controls are <div role="button"> -- absolutely positioned
     // gradient roadmap bars, not buttons -- so keyboard activation has to be
     // wired explicitly rather than inherited from the element.
@@ -5448,7 +5468,8 @@
                             <input
                                 type="checkbox"
                                 ${isSelected ? 'checked' : ''}
-                                onchange="toggleApplicationSelection('${app.id}')"
+                                data-cm-change="toggle-app"
+                                data-app-id="${escapeAttr(app.id)}"
                                 class="mt-1 h-5 w-5 text-primary focus-visible:ring-ring border-input rounded cursor-pointer"
                                 title="${isSelected ? 'Deselect' : 'Select'} ${escapeHtml(app.name)}"
                                 aria-label="${isSelected ? 'Deselect' : 'Select'} ${escapeHtml(app.name)}"
@@ -5520,14 +5541,11 @@
         const container = getEl('applications-list');
         if (!container) return;
     
-        const checkboxes = container.querySelectorAll('input[type="checkbox"]:not(:checked)');
+        const checkboxes = container.querySelectorAll('input[type="checkbox"][data-app-id]:not(:checked)');
         checkboxes.forEach(checkbox => {
-            const match = checkbox.getAttribute('onchange').match(/toggleApplicationSelection\('([^']+)'\)/);
-            if (match) {
-                const appId = match[1];
-                if (!selectedApplications.has(appId)) {
-                    toggleApplicationSelection(appId);
-                }
+            const appId = checkbox.getAttribute('data-app-id');
+            if (appId) {
+                toggleApplicationSelection(appId);
             }
         });
     }
@@ -5546,7 +5564,7 @@
                         <label class="block text-xs font-medium text-muted-foreground mb-1">Support Level</label>
                         <select
                             class="w-full text-sm border border-input rounded px-2 py-1"
-                            onchange="updateApplicationMapping(${appId}, 'support_level', this.value)"
+                            data-cm-change="update-app-mapping" data-app-id="${escapeAttr(appId)}" data-field="support_level"
                         >
                             <option value="full" ${mappingData.support_level === 'full' ? 'selected' : ''}>Full</option>
                             <option value="partial" ${mappingData.support_level === 'partial' ? 'selected' : ''}>Partial</option>
@@ -5562,7 +5580,7 @@
                             value="${mappingData.coverage_percentage || 0}"
                             aria-label="Coverage %"
                             class="w-full text-sm border border-input rounded px-2 py-1"
-                            onchange="updateApplicationMapping(${appId}, 'coverage_percentage', parseInt(this.value))"
+                            data-cm-change="update-app-mapping" data-app-id="${escapeAttr(appId)}" data-field="coverage_percentage" data-parse="int"
                         />
                     </div>
                     <div>
@@ -5574,14 +5592,14 @@
                             value="${mappingData.support_quality || 3}"
                             aria-label="Support Quality (1-5)"
                             class="w-full text-sm border border-input rounded px-2 py-1"
-                            onchange="updateApplicationMapping(${appId}, 'support_quality', parseInt(this.value))"
+                            data-cm-change="update-app-mapping" data-app-id="${escapeAttr(appId)}" data-field="support_quality" data-parse="int"
                         />
                     </div>
                     <div>
                         <label class="block text-xs font-medium text-muted-foreground mb-1">Relationship Type</label>
                         <select
                             class="w-full text-sm border border-input rounded px-2 py-1"
-                            onchange="updateApplicationMapping(${appId}, 'relationship_type', this.value)"
+                            data-cm-change="update-app-mapping" data-app-id="${escapeAttr(appId)}" data-field="relationship_type"
                         >
                             <option value="enables" ${mappingData.relationship_type === 'enables' ? 'selected' : ''}>Enables</option>
                             <option value="supports" ${mappingData.relationship_type === 'supports' ? 'selected' : ''}>Supports</option>
@@ -5593,7 +5611,7 @@
                         <label class="block text-xs font-medium text-muted-foreground mb-1">Dependency Level</label>
                         <select
                             class="w-full text-sm border border-input rounded px-2 py-1"
-                            onchange="updateApplicationMapping(${appId}, 'dependency_level', this.value)"
+                            data-cm-change="update-app-mapping" data-app-id="${escapeAttr(appId)}" data-field="dependency_level"
                         >
                             <option value="critical" ${mappingData.dependency_level === 'critical' ? 'selected' : ''}>Critical</option>
                             <option value="high" ${mappingData.dependency_level === 'high' ? 'selected' : ''}>High</option>
@@ -5605,7 +5623,7 @@
                         <label class="block text-xs font-medium text-muted-foreground mb-1">Priority</label>
                         <select
                             class="w-full text-sm border border-input rounded px-2 py-1"
-                            onchange="updateApplicationMapping(${appId}, 'priority', this.value)"
+                            data-cm-change="update-app-mapping" data-app-id="${escapeAttr(appId)}" data-field="priority"
                         >
                             <option value="high" ${mappingData.priority === 'high' ? 'selected' : ''}>High</option>
                             <option value="medium" ${mappingData.priority === 'medium' ? 'selected' : ''}>Medium</option>
@@ -5618,7 +5636,7 @@
                     <textarea
                         class="w-full text-sm border border-input rounded px-2 py-1"
                         rows="2"
-                        onchange="updateApplicationMapping(${appId}, 'gap_description', this.value)"
+                        data-cm-change="update-app-mapping" data-app-id="${escapeAttr(appId)}" data-field="gap_description"
                     >${mappingData.gap_description || ''}</textarea>
                 </div>
             </div>
@@ -5626,8 +5644,12 @@
     }
     
     window.toggleApplicationSelection = function(appId) {
-        const app = applicationsData.find(a => a.id === appId);
+        // appId arrives as a string from data-app-id; applicationsData ids and the
+        // selectedApplications keys are the native JSON type (usually number), so
+        // resolve the app by loose match and key everything by its real id.
+        const app = applicationsData.find(a => String(a.id) === String(appId));
         if (!app) return;
+        appId = app.id;
     
         if (selectedApplications.has(appId)) {
             // Remove selection
@@ -5673,6 +5695,9 @@
     }
     
     window.updateApplicationMapping = function(appId, field, value) {
+        // Normalise the string data-app-id to the native key used in the map.
+        const app = applicationsData.find(a => String(a.id) === String(appId));
+        if (app) appId = app.id;
         if (!selectedApplications.has(appId)) return;
     
         const appData = selectedApplications.get(appId);

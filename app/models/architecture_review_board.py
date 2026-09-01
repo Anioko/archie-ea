@@ -355,26 +355,22 @@ class ArchitectureReviewBoard(TenantMixin, db.Model, OptimisticLockMixin):
 
     @staticmethod
     def generate_board_number():
-        """Generate next ARB session number."""
+        """Generate the next ARB session number.
+
+        ``board_number`` is UNIQUE across the whole table while this model is a
+        ``TenantMixin``, so the ORM query this used to run was narrowed to the
+        caller's organisation by ``do_orm_execute``. A second tenant scheduling
+        its first session of the year computed ``ARB-<year>-001``, which another
+        tenant already held, and the INSERT died on the unique index — which is
+        why ``POST /arb/sessions/create`` returned 500 for every submission and
+        no session could be scheduled at all.
+        """
+        from app.utils.reference_numbers import next_reference
+
         year = datetime.utcnow().year
-        last_arb = (
-            ArchitectureReviewBoard.query.filter(
-                ArchitectureReviewBoard.board_number.like(f"ARB-{year}-%")
-            )
-            .order_by(ArchitectureReviewBoard.id.desc())
-            .first()
+        return next_reference(
+            "architecture_review_boards", "board_number", f"ARB-{year}-"
         )
-
-        if last_arb:
-            try:
-                last_num = int(last_arb.board_number.split("-")[-1])
-                next_num = last_num + 1
-            except ValueError:
-                next_num = 1
-        else:
-            next_num = 1
-
-        return f"ARB-{year}-{next_num:03d}"
 
     def to_dict(self):
         return {

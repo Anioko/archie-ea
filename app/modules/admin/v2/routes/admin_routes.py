@@ -97,19 +97,21 @@ def send_digest():
     results = {}
 
     if digest_type in ("maturity", "both"):
-        data = send_data_maturity_digest(current_app._get_current_object())
+        run = send_data_maturity_digest(current_app._get_current_object())
         results["maturity"] = {
-            "total_solutions": data["total"],
-            "avg_score": data["avg_score"],
-            "zero_connections": len(data["zero_connections"]),
+            "organisations": run.succeeded,
+            "recipients": sum((r.value or {}).get("recipients", 0)
+                              for r in run.results if r.ok),
+            "failed": run.failed,
         }
 
     if digest_type in ("executive", "both"):
-        data = send_executive_summary(current_app._get_current_object())
+        run = send_executive_summary(current_app._get_current_object())
         results["executive"] = {
-            "total_solutions": data["total_solutions"],
-            "new_this_week": data["new_solutions_count"],
-            "arb_decisions": data["arb_decisions_count"],
+            "organisations": run.succeeded,
+            "recipients": sum((r.value or {}).get("recipients", 0)
+                              for r in run.results if r.ok),
+            "failed": run.failed,
         }
 
     return jsonify({"success": True, "results": results})

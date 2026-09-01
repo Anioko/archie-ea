@@ -429,34 +429,36 @@ triggering, flow, specialization, association.
 
         Used by the generation dialog to show "Found: 12 apps, 8 elements..."
         before the user clicks Generate.
+
+        The counts MUST reflect the context the AI actually reasons over, so the
+        preview runs the same assembly path as generation (assemble_context) and
+        reports the size of each resulting entity list. A previous version ran a
+        separate, tighter search (limit=5) here, which reported far fewer entities
+        than generation truly used and made the modal look as though the AI only
+        saw a handful of the tenant's records.
         """
         terms = self.extract_terms(description)
-        # Build individual search queries: each compound term + its individual words
-        queries = list(terms)
-        for term in terms:
-            words = term.split()
-            if len(words) > 1:
-                queries.extend(w for w in words if len(w) > 2)
 
-        if not queries:
-            queries = [description[:100]]
-
-        counts = {}
-        for entity_type in ["application", "archimate_element", "vendor",
-                             "capability"]:
-            seen_ids: set = set()
-            for q in queries:
-                try:
-                    results = self._search.search(
-                        q, entity_type=entity_type, limit=5, threshold=0.3
-                    )
-                    for r in results:
-                        rid = r.get("id")
-                        if rid and rid not in seen_ids:
-                            seen_ids.add(rid)
-                except Exception as exc:
-                    logger.debug("Semantic search failed for %s: %s", entity_type, exc)
-            counts[entity_type] = len(seen_ids)
+        counts = {
+            "application": 0,
+            "archimate_element": 0,
+            "vendor": 0,
+            "capability": 0,
+        }
+        try:
+            ctx = self.assemble_context(
+                description=description,
+                phase=phase,
+                business_domain=business_domain,
+            )
+            counts = {
+                "application": len(ctx.applications),
+                "archimate_element": len(ctx.archimate_elements),
+                "vendor": len(ctx.vendors),
+                "capability": len(ctx.capabilities),
+            }
+        except Exception as exc:
+            logger.debug("Context preview assembly failed: %s", exc)
 
         return {
             "query_terms": terms,

@@ -661,7 +661,10 @@ def application_edit(id):
 
             # Validate deployment_status
             deployment_status = request.form.get("deployment_status")
-            if deployment_status is not None:
+            # An empty submission means "not set / leave alone" -- without this,
+            # a NULL deployment_status renders as the first <option> and any save
+            # silently reclassifies the application (was: to 'production').
+            if deployment_status:
                 is_valid, validated_status, error = validate_string(
                     deployment_status, max_length=50, field_name="deployment_status"
                 )
