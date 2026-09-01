@@ -29,7 +29,20 @@
 {% block content %}
 {% set role = enterprise_role|default('platform_admin') %}
 {% set mode = dashboard_mode|default('data') %}
-<div class="space-y-6" x-data="{ activeRole: 'overview' }">
+{# Open the dashboard on the lens that matches the signed-in user's role rather
+   than always on Overview — the persona tabs previously ignored enterprise_role
+   entirely. The five assignable architecture roles share the discipline
+   ("architect") lens for now; business_architect has its own. #}
+{% set _tab_for_role = {
+    'business_architect': 'business',
+    'enterprise_architect': 'architect',
+    'solution_architect': 'architect',
+    'security_architect': 'architect',
+    'data_architect': 'architect',
+    'cto': 'cto',
+} %}
+{% set default_tab = _tab_for_role.get(role, 'overview') %}
+<div class="space-y-6" x-data="{ activeRole: '{{ default_tab }}' }">
 
     {{ page_shell(
         title="Dashboard",
@@ -142,7 +155,7 @@
 
     {# ── Persona Tabs ────────────────────────────────────── #}
     <div class="flex items-center gap-1 rounded-lg border border-border bg-muted/50 p-1 w-fit">
-        {% for role_key, role_label in [('overview', 'Overview'), ('cto', 'CTO'), ('cfo', 'CFO'), ('architect', 'Architect'), ('business', 'Business')] %}
+        {% for role_key, role_label in [('overview', 'Overview'), ('cto', 'CTO'), ('cfo', 'CFO'), ('architect', 'Architect'), ('business', 'Business Architecture')] %}
         <button type="button" @click="activeRole = '{{ role_key }}'"
                 :class="activeRole === '{{ role_key }}' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'"
                 class="px-3 py-1.5 rounded-md text-xs font-medium transition-all">
