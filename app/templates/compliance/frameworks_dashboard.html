@@ -1,0 +1,91 @@
+{% extends "layouts/admin_base.html" %}
+{% from 'components/page_header.html' import page_header %}
+
+{% block title %}Regulatory Compliance{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    {{ page_header(
+        title='Regulatory Compliance',
+        description='Regulatory frameworks and their controls, and how far the estate maps to them.',
+        breadcrumbs=[
+            {'label': 'Home', 'href': url_for('dashboard.index') if 'dashboard.index' in flask.current_app.view_functions else '/'},
+            {'label': 'Regulatory Compliance'}
+        ]
+    ) }}
+
+    {# Summary tiles — every value is a real query result; — when there is nothing to show. #}
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div class="bg-card text-card-foreground rounded-lg border border-border p-5">
+            <div class="text-sm text-muted-foreground">Active frameworks</div>
+            <div class="mt-1 text-2xl font-bold text-foreground">
+                {{ total_frameworks if total_frameworks else '—' }}
+            </div>
+        </div>
+        <div class="bg-card text-card-foreground rounded-lg border border-border p-5">
+            <div class="text-sm text-muted-foreground">Controls</div>
+            <div class="mt-1 text-2xl font-bold text-foreground">
+                {{ total_controls if total_controls else '—' }}
+            </div>
+        </div>
+        <div class="bg-card text-card-foreground rounded-lg border border-border p-5">
+            <div class="text-sm text-muted-foreground">Application control mappings</div>
+            <div class="mt-1 text-2xl font-bold text-foreground">
+                {{ total_mappings if total_mappings else '—' }}
+            </div>
+            {% if mapped_by_status %}
+            <div class="mt-2 flex flex-wrap gap-1.5">
+                {% for status, count in mapped_by_status.items() %}
+                <span class="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground">
+                    {{ status.replace('_', ' ') }}: {{ count }}
+                </span>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    {# Frameworks table #}
+    <div class="bg-card text-card-foreground rounded-lg border border-border overflow-hidden">
+        <div class="px-5 py-4 border-b border-border">
+            <h2 class="text-base font-semibold text-foreground">Frameworks</h2>
+        </div>
+        {% if frameworks %}
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="text-left text-muted-foreground border-b border-border">
+                        <th class="px-5 py-3 font-medium">Code</th>
+                        <th class="px-5 py-3 font-medium">Name</th>
+                        <th class="px-5 py-3 font-medium">Category</th>
+                        <th class="px-5 py-3 font-medium">Jurisdiction</th>
+                        <th class="px-5 py-3 font-medium">Enforcement</th>
+                        <th class="px-5 py-3 font-medium">Penalty risk</th>
+                        <th class="px-5 py-3 font-medium text-right">Controls</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for f in frameworks %}
+                    <tr class="border-b border-border last:border-0">
+                        <td class="px-5 py-3 font-medium text-foreground">{{ f.code }}</td>
+                        <td class="px-5 py-3 text-foreground">{{ f.name }}</td>
+                        <td class="px-5 py-3 text-muted-foreground">{{ f.category or '—' }}</td>
+                        <td class="px-5 py-3 text-muted-foreground">{{ f.jurisdiction or '—' }}</td>
+                        <td class="px-5 py-3 text-muted-foreground">{{ f.enforcement_level or '—' }}</td>
+                        <td class="px-5 py-3 text-muted-foreground">{{ f.penalty_risk or '—' }}</td>
+                        <td class="px-5 py-3 text-right text-foreground">
+                            {{ f.control_count if f.control_count else '—' }}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="px-5 py-12 text-center text-sm text-muted-foreground">
+            No active regulatory frameworks are recorded yet.
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

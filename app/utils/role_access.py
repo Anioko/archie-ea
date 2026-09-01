@@ -39,6 +39,11 @@ NAVIGATION_SECTIONS = [
     "my_applications",
     "data_integration",
     "administration",
+    # G6 (register close, 1 Sep 2026): the regulatory-compliance surface
+    # (RegulatoryFramework / ComplianceControl) had no section of its own, so no
+    # role could be granted it. security_architect owns it; see its
+    # ROLE_SECTION_ACCESS entry and the "Compliance" link in its _MY_WORK_LINKS.
+    "compliance",
 ]
 
 # Role to sections mapping
@@ -124,6 +129,28 @@ ROLE_SECTION_ACCESS: Dict[str, Set[str]] = {
         "my_applications",
         "data_integration",
         "administration",
+    },
+    # G6 (register close, 1 Sep 2026): security_architect and data_architect
+    # were promoted to first-class roles (VALID_ROLES, own charters, own sidebar
+    # zones) but were never added here, so can_access_section() / the module
+    # directory treated them as zero-access — an empty directory for a role that
+    # otherwise had a full sidebar. These sets are additive and strictly scoped:
+    # neither carries "administration" (the platform_admin power) or the
+    # procurement vendor/spend surface.
+    ROLE_SECURITY_ARCHITECT: {
+        "home",
+        "governance",
+        "capabilities",
+        "architecture",
+        "data_integration",
+        "compliance",
+    },
+    ROLE_DATA_ARCHITECT: {
+        "home",
+        "architecture",
+        "capabilities",
+        "data_integration",
+        "governance",
     },
 }
 
@@ -623,7 +650,16 @@ _MY_WORK_LINKS = {
               "unified_low_priority.policy_monitoring_dashboard", "shield-alert"),
         _link("Governance Gates", "admin.governance_gates", "shield-check"),
         _link("Risk Register", "risk.risk_register", "alert-triangle"),
-        _link("Compliance", "procurement.compliance_dashboard", "clipboard-check"),
+        # G6 (register close, 1 Sep 2026): was procurement.compliance_dashboard,
+        # which is the LICENSE-compliance page and is guarded by
+        # @requires_procurement — a guaranteed 403 for this role, and the wrong
+        # compliance besides. Repointed to the regulatory-framework dashboard
+        # that surfaces the built-but-orphaned RegulatoryFramework /
+        # ComplianceControl model. The sidebar drops any link whose endpoint is
+        # unregistered (admin_sidebar.html selectattr on view_functions), so
+        # this degrades safely if application_mgmt fails to import.
+        _link("Compliance", "application_mgmt.compliance_frameworks_dashboard",
+              "clipboard-check"),
         _link("Applications", "unified_applications.application_list", "list"),
         _link("Data Architecture", "data_architecture.data_architecture_dashboard", "database"),
         _link("Traceability Matrix", "architect_ui.traceability_matrix", "git-compare"),

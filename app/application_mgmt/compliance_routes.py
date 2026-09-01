@@ -1,6 +1,6 @@
 """API routes for compliance framework management."""
 
-from flask import current_app, jsonify, request
+from flask import current_app, jsonify, render_template, request
 from flask_login import current_user, login_required
 
 from app import db
@@ -8,6 +8,62 @@ from app.application_mgmt import application_mgmt
 from app.models.application_compliance import ApplicationComplianceControl
 from app.models.compliance_models import ComplianceControl, RegulatoryFramework
 from app.utils.route_guards import require_entity
+
+
+@application_mgmt.route("/compliance", methods=["GET"])
+@login_required
+def compliance_frameworks_dashboard():
+    """Read-only regulatory-compliance dashboard (G6).
+
+    Surfaces the built-but-previously-orphaned RegulatoryFramework /
+    ComplianceControl model — until now reachable only through the JSON API in
+    this module, with no door in any persona's navigation. It is the
+    security_architect's compliance surface (see role_access.py).
+
+    RegulatoryFramework and ComplianceControl are GLOBAL master data (no
+    organization_id); the app<->control mappings are org-scoped via
+    ApplicationComplianceControl (TenantMixin), so its counts filter to the
+    caller's organisation mechanically inside a request context. Every number
+    below is a real query result — an empty estate renders zeros/— rather than a
+    fabricated figure.
+    """
+    frameworks = (
+        RegulatoryFramework.query.filter_by(status="active")
+        .order_by(RegulatoryFramework.code)
+        .all()
+    )
+
+    framework_rows = [
+        {
+            "id": f.id,
+            "code": f.code,
+            "name": f.name,
+            "category": f.category,
+            "jurisdiction": f.jurisdiction,
+            "enforcement_level": f.enforcement_level,
+            "penalty_risk": f.penalty_risk,
+            "control_count": f.controls.count(),
+        }
+        for f in frameworks
+    ]
+
+    total_controls = ComplianceControl.query.filter_by(is_active=True).count()
+
+    # Org-scoped mapping coverage (TenantMixin auto-filters inside the request).
+    mappings = ApplicationComplianceControl.query.all()
+    mapped_by_status = {}
+    for m in mappings:
+        status = m.implementation_status or "planned"
+        mapped_by_status[status] = mapped_by_status.get(status, 0) + 1
+
+    return render_template(
+        "compliance/frameworks_dashboard.html",
+        frameworks=framework_rows,
+        total_frameworks=len(framework_rows),
+        total_controls=total_controls,
+        total_mappings=len(mappings),
+        mapped_by_status=mapped_by_status,
+    )
 
 
 @application_mgmt.route("/api/compliance/frameworks", methods=["GET"])
