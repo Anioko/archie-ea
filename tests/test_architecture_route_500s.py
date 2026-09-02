@@ -157,3 +157,33 @@ def test_new_archimate_element_with_a_known_pair_still_reaches_the_create_page(
 
     assert resp.status_code == 302, resp.status_code
     assert resp.headers["Location"].endswith("/motivation/Goal/new")
+
+
+def test_create_element_page_itself_does_not_500(logged_in_client):
+    """Capgemini walkthrough (F-18-adjacent): the redirect above landed on
+    /architecture/motivation/Goal/new, and THAT page 500'd —
+    dashboard.html's title block reads selected_layer.title unconditionally
+    and create_element() never passed selected_layer at all. The redirect
+    test above only proved the Location header was right, never that the
+    page it points at actually renders."""
+    resp = logged_in_client.get(
+        "/architecture/motivation/Goal/new", follow_redirects=True
+    )
+    assert resp.status_code == 200, resp.status_code
+
+
+def test_edit_archimate_element_page_does_not_500(logged_in_client, db_session, org):
+    """Same missing selected_layer bug, on the edit render — this is F-18's
+    literal report: 'Edit returns HTTP 500'."""
+    from app.models.motivation import Goal
+
+    # Goal is not tenant-scoped (no TenantMixin / organization_id column) —
+    # it reaches tenancy only through its linked ArchiMateElement.
+    goal = Goal(name="Route audit goal")
+    db_session.add(goal)
+    db_session.flush()
+
+    resp = logged_in_client.get(
+        f"/architecture/motivation/Goal/{goal.id}/edit", follow_redirects=True
+    )
+    assert resp.status_code == 200, resp.status_code

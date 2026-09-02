@@ -915,6 +915,21 @@ def list_elements(layer, element_type):
     )
 
 
+def _selected_layer_for(layer):
+    """The dashboard.html template's title block reads selected_layer.title
+    unconditionally (`{% block title %}{{ selected_layer.title }}{% endblock %}`)
+    — every render of this template needs it or the whole page 500s before any
+    content renders, which is what GET .../<type>/new did (Capgemini walkthrough,
+    F-18-adjacent: element creation was unreachable, not merely edit). Mirrors
+    the same presentation_config lookup the dashboard() route already does."""
+    presentation_config = {
+        key: {**config, **LAYER_PRESENTATION[key], "key": key}
+        for key, config in LAYER_CONFIG.items()
+    }
+    selected_key = layer if layer in presentation_config else "motivation"
+    return presentation_config[selected_key]
+
+
 @archimate_crud.route(f"/{_LAYER_URL_PATTERN}/<element_type>/new", methods=["GET", "POST"])
 @login_required
 def create_element(layer, element_type):
@@ -1010,6 +1025,7 @@ def create_element(layer, element_type):
                 layer=layer,
                 element_type=element_type,
                 layer_config=LAYER_CONFIG,
+                selected_layer=_selected_layer_for(layer),
                 field_config=get_element_config(element_type),
                 form_data=create_empty_form_data(element_type),
                 element_field_configs=ELEMENT_FIELD_CONFIGS,
@@ -1020,6 +1036,7 @@ def create_element(layer, element_type):
         layer=layer,
         element_type=element_type,
         layer_config=LAYER_CONFIG,
+        selected_layer=_selected_layer_for(layer),
         field_config=get_element_config(element_type),
         form_data=create_empty_form_data(element_type),
         element_field_configs=ELEMENT_FIELD_CONFIGS,
@@ -1164,6 +1181,7 @@ def update_element(layer, element_type, element_id):
         element_type=element_type,
         element=element,
         layer_config=LAYER_CONFIG,
+        selected_layer=_selected_layer_for(layer),
         element_field_configs=ELEMENT_FIELD_CONFIGS,
     )
 
