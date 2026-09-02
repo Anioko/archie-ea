@@ -34,11 +34,27 @@ def org_admin_required(f):
 
 
 def platform_admin_required(f):
-    """Require authenticated user who is a platform admin (cross-org access)."""
+    """Require authenticated user who is a platform admin (cross-org access).
+
+    Capgemini dry-run DEF-036: a demo tenant's org-admin (is_org_admin, not
+    is_platform_admin) reached /admin/organizations and every route this
+    decorator guards, listing every tenant on the instance (including a real
+    customer's users, emails and Make Admin/Deactivate/Delete controls) while
+    the same account correctly got 403 from /admin/, /admin/users and other
+    routes gated by Permission.ADMINISTER (a separate authz vocabulary — see
+    CLAUDE.md's "Three authz vocabularies" note). Requiring both closes the
+    gap regardless of which flag a given account was seeded with, and never
+    weakens access for an account provisioned with both, which is how a real
+    platform admin is meant to be set up.
+    """
     @wraps(f)
     @login_required
     def decorated(*args, **kwargs):
-        if not getattr(current_user, "is_platform_admin", False):
+        from app.models import Permission
+
+        is_flagged_platform_admin = getattr(current_user, "is_platform_admin", False)
+        has_administer_permission = current_user.can(Permission.ADMINISTER)
+        if not (is_flagged_platform_admin and has_administer_permission):
             if _wants_json():
                 return jsonify({"error": "Platform admin access required"}), 403
             abort(403)

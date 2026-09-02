@@ -5471,8 +5471,15 @@ def _sf_settings_row():
 @admin_bp_v2.route("/integrations/salesforce", methods=["GET"])
 @timed_route
 @login_required
+@admin_required
 def salesforce_integration():
-    """GET /admin/integrations/salesforce — org discovery configuration UI."""
+    """GET /admin/integrations/salesforce — org discovery configuration UI.
+
+    DEF-038, Capgemini dry-run: this GET page (Instance URL, Consumer Key,
+    Consumer Secret form) had no @admin_required, unlike every POST action
+    on it — any authenticated user could reach it. Only the read differed;
+    added the same guard the writes already carry.
+    """
     row = _sf_settings_row()
     sf_config = {}
     if row:
@@ -5622,8 +5629,13 @@ def _pp_settings_row():
 @admin_bp_v2.route("/integrations/power-platform", methods=["GET"])
 @timed_route
 @login_required
+@admin_required
 def power_platform_integration():
-    """GET /admin/integrations/power-platform — CoE configuration and discovery UI."""
+    """GET /admin/integrations/power-platform — CoE configuration and discovery UI.
+
+    DEF-038: same gap as salesforce_integration above — this GET page (Azure
+    Tenant ID / service principal form) had no @admin_required.
+    """
     row = _pp_settings_row()
     config = {}
     if row:

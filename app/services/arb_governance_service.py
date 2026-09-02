@@ -514,18 +514,28 @@ class ARBGovernanceService:
                 "(separation of duties)"
             )
 
-        # A read-only (Viewer, permissions=0) account is a Contributor at
-        # most — it may submit and comment, never decide. Approver-tier
-        # accounts (Administrator, or the additive "Approver" role) pass.
+        # Capgemini dry-run DEF-037: this used to check only
+        # `decider.can(Permission.GENERAL)` — the bar every non-read-only
+        # account clears, including a solution architect with no board seat —
+        # so any authenticated user could record (and re-record — see the
+        # already-decided check above, which this bug bypassed the same way)
+        # a decision on a review they had no governance role over. Governance
+        # decisions require an enterprise_role this codebase already treats as
+        # ARB-decision-eligible (see ROLE_SECTION_ACCESS in
+        # app/utils/role_access.py: arb_member/cto/enterprise_architect/
+        # platform_admin are the roles with a "governance" section).
+        ARB_DECISION_ELIGIBLE_ROLES = {
+            "arb_member", "cto", "enterprise_architect", "platform_admin",
+        }
         try:
-            from app.models.user import Permission, User
+            from app.models.user import User
 
             decider = db.session.get(User, decided_by_id)
-            if decider is not None and decider.role is not None and not decider.can(Permission.GENERAL):
+            if decider is not None and (decider.enterprise_role or "") not in ARB_DECISION_ELIGIBLE_ROLES:
                 self._audit_decision_refusal(
                     item,
                     event="decision_refused",
-                    reason=f"role '{decider.role.name}' has no decision permission",
+                    reason=f"role '{decider.enterprise_role}' is not ARB-decision-eligible",
                     actor_id=decided_by_id,
                 )
                 raise ARBDecisionError(
