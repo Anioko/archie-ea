@@ -15,6 +15,7 @@ from flask_login import login_required
 # already used by app/modules/capabilities/routes/enterprise_crud_routes.py.
 from app.decorators import require_roles
 
+from app import db
 from app.models.organization_model import RACI_VALUES, STAKEHOLDER_TYPES
 from app.utils.api_response import error_response, not_found_response, success_response
 
@@ -68,6 +69,186 @@ def workforce_transition_api():
     BusinessRole workforce fields that were previously written but never surfaced."""
     from app.services.workforce_transition_service import WorkforceTransitionService
     return success_response(WorkforceTransitionService.analyze())
+
+
+def _role_to_edit_dict(role):
+    """The workforce-specific fields this form owns — deliberately a small
+    subset of BusinessRole's real columns (job_family/job_level/salary/etc.
+    stay reachable only through the generic ArchiMate element form, which is
+    where they belong). See _apply_role_workforce_fields for why."""
+    import json
+
+    try:
+        skills = json.loads(role.required_skills) if role.required_skills else []
+    except (ValueError, TypeError):
+        skills = []
+    return {
+        "id": role.id,
+        "name": role.name,
+        "current_filled_positions": role.current_filled_positions,
+        "forecasted_demand": role.forecasted_demand,
+        "replacement_role_id": role.replacement_role_id,
+        "required_skills": skills,
+        "deprecated": role.deprecated_date is not None,
+    }
+
+
+@organization_bp.route("/workforce-transition/api/roles")
+@login_required
+def workforce_transition_roles_api():
+    """List BusinessRoles for the role picker (create-transition and
+    replacement-role select). Excludes the row being edited, if any, from the
+    'replacement' options — passed as ?exclude=<id> — a role can't replace
+    itself."""
+    from app.models.business_layer import BusinessRole
+
+    exclude_id = request.args.get("exclude", type=int)
+    q = BusinessRole.query.order_by(BusinessRole.name)
+    if exclude_id:
+        q = q.filter(BusinessRole.id != exclude_id)
+    return success_response([{"id": r.id, "name": r.name} for r in q.all()])
+
+
+@organization_bp.route("/workforce-transition/api/roles/<int:role_id>")
+@login_required
+def workforce_transition_role_detail_api(role_id):
+    """One role's workforce fields, for the edit form."""
+    from app.models.business_layer import BusinessRole
+
+    role = BusinessRole.query.filter_by(id=role_id).first()
+    if role is None:
+        return not_found_response("Business role")
+    return success_response(_role_to_edit_dict(role))
+
+
+def _apply_role_workforce_fields(role, data):
+    """Set-only, one field at a time, per key present — mirrors the
+    _apply_optional_capability_fields pattern (enterprise_crud_routes.py):
+    a field the caller didn't send is left untouched, not cleared, so a
+    partial PATCH from this narrow form can never silently wipe a value set
+    elsewhere. Returns a list of validation errors."""
+    import json
+
+    errors = []
+    if "current_filled_positions" in data:
+        raw = data.get("current_filled_positions")
+        if raw in (None, ""):
+            role.current_filled_positions = None
+        else:
+            try:
+                v = int(raw)
+            except (TypeError, ValueError):
+                errors.append("Current filled positions must be a number")
+            else:
+                if v < 0:
+                    errors.append("Current filled positions cannot be negative")
+                else:
+                    role.current_filled_positions = v
+
+    if "forecasted_demand" in data:
+        raw = data.get("forecasted_demand")
+        if raw in (None, ""):
+            role.forecasted_demand = None
+        else:
+            try:
+                v = int(raw)
+            except (TypeError, ValueError):
+                errors.append("Forecasted demand must be a number")
+            else:
+                if v < 0:
+                    errors.append("Forecasted demand cannot be negative")
+                else:
+                    role.forecasted_demand = v
+
+    if "replacement_role_id" in data:
+        raw = data.get("replacement_role_id")
+        if raw in (None, "", 0, "0"):
+            role.replacement_role_id = None
+        else:
+            try:
+                replacement_id = int(raw)
+            except (TypeError, ValueError):
+                errors.append("Replacement role id must be a number")
+            else:
+                if role.id is not None and replacement_id == role.id:
+                    errors.append("A role cannot replace itself")
+                else:
+                    from app.models.business_layer import BusinessRole
+
+                    replacement = BusinessRole.query.filter_by(id=replacement_id).first()
+                    if replacement is None:
+                        errors.append("Replacement role not found")
+                    else:
+                        role.replacement_role_id = replacement.id
+
+    if "required_skills" in data:
+        raw = data.get("required_skills")
+        if raw in (None, ""):
+            role.required_skills = None
+        elif isinstance(raw, list):
+            cleaned = [str(s).strip() for s in raw if str(s).strip()]
+            role.required_skills = json.dumps(cleaned) if cleaned else None
+        else:
+            errors.append("Required skills must be a list")
+
+    if "deprecated" in data:
+        from datetime import date as _date
+        role.deprecated_date = _date.today() if data.get("deprecated") else None
+
+    return errors
+
+
+@organization_bp.route("/workforce-transition/api/roles", methods=["POST"])
+@login_required
+@require_roles("admin", "architect", "business_architect")
+def workforce_transition_role_create():
+    """Create a Business Role with its workforce-transition fields set from
+    the start — the gap this endpoint closes: previously the only way to
+    populate current_filled_positions/forecasted_demand/replacement_role_id/
+    required_skills was direct DB/CLI access; a business user had no path at
+    all (2 Sep 2026, Capgemini delivery-team dry-run)."""
+    from app.models.business_layer import BusinessRole
+
+    data = request.get_json(silent=True) or {}
+    name = (data.get("name") or "").strip()
+    if not name:
+        return error_response("A role name is required", code="VALIDATION_ERROR", status_code=400)
+
+    role = BusinessRole(name=name[:255])
+    errors = _apply_role_workforce_fields(role, data)
+    if errors:
+        return error_response("; ".join(errors), code="VALIDATION_ERROR", status_code=400)
+
+    db.session.add(role)
+    db.session.commit()
+    return success_response(_role_to_edit_dict(role))
+
+
+@organization_bp.route("/workforce-transition/api/roles/<int:role_id>", methods=["PATCH"])
+@login_required
+@require_roles("admin", "architect", "business_architect")
+def workforce_transition_role_update(role_id):
+    """Update an existing Business Role's workforce-transition fields."""
+    from app.models.business_layer import BusinessRole
+
+    role = BusinessRole.query.filter_by(id=role_id).first()
+    if role is None:
+        return not_found_response("Business role")
+
+    data = request.get_json(silent=True) or {}
+    if "name" in data:
+        name = (data.get("name") or "").strip()
+        if not name:
+            return error_response("Role name cannot be blank", code="VALIDATION_ERROR", status_code=400)
+        role.name = name[:255]
+
+    errors = _apply_role_workforce_fields(role, data)
+    if errors:
+        db.session.rollback()
+        return error_response("; ".join(errors), code="VALIDATION_ERROR", status_code=400)
+
+    db.session.commit()
+    return success_response(_role_to_edit_dict(role))
 
 
 # ---------------------------------------------------------------------------

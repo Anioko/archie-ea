@@ -1,16 +1,29 @@
 {% extends 'layouts/admin_base.html' %}
 {% from 'macros/page_shell.html' import page_shell %}
 {% from 'components/metrics_card.html' import metrics_card %}
+{% from 'components/modal.html' import modal %}
 
 {% block title %}Workforce Transition{% endblock %}
 
 {% block content %}
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8"
      x-data="workforceTransition()" x-init="load()">
+  {% macro _wt_actions() %}
+  {# 2 Sep 2026 (Capgemini delivery-team dry-run): this page's analysis had a
+     working READ and zero write path — the fields it reads
+     (current_filled_positions/forecasted_demand/replacement_role_id/
+     required_skills) were only settable via direct DB/CLI access. This is
+     that missing write path. #}
+  <button type="button" @click="openCreate()"
+          class="inline-flex items-center gap-2 h-9 px-4 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors">
+    <i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i> Define role transition
+  </button>
+  {% endmacro %}
   {{ page_shell(
       title='Workforce Transition',
       subtitle='The people move behind the transformation — role transitions, retiring and growing roles, headcount delta and the skills gap.',
-      breadcrumb=[('Home', '/'), ('Organization', url_for('organization.index') if 'organization.index' in flask.current_app.view_functions else '/organization/'), ('Workforce Transition', none)]
+      breadcrumb=[('Home', '/'), ('Organization', url_for('organization.index') if 'organization.index' in flask.current_app.view_functions else '/organization/'), ('Workforce Transition', none)],
+      actions_caller=_wt_actions
   ) }}
 
   {# Loading #}
@@ -153,6 +166,60 @@
       </template>
     </div>
   </template>
+
+  {% call modal(id='wt-role-modal', title='Define Role Transition', description='A role being retired/replaced, or one being grown for the target state.', size='lg') %}
+  <div class="space-y-4">
+    <div>
+      <label for="wt-role-name" class="block text-sm font-medium mb-1">Role name <span class="text-destructive-emphasis">*</span></label>
+      <input id="wt-role-name" type="text" x-model="form.name" placeholder="e.g. Revenue Operations Lead"
+             class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+    </div>
+    <div class="grid grid-cols-2 gap-3">
+      <div>
+        <label for="wt-current" class="block text-sm font-medium mb-1">Current headcount</label>
+        <input id="wt-current" type="number" min="0" x-model="form.current_filled_positions"
+               class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+      </div>
+      <div>
+        <label for="wt-forecast" class="block text-sm font-medium mb-1">Target headcount</label>
+        <input id="wt-forecast" type="number" min="0" x-model="form.forecasted_demand"
+               class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+      </div>
+    </div>
+    <div>
+      <label for="wt-replacement" class="block text-sm font-medium mb-1">Replaced by</label>
+      <select id="wt-replacement" x-model="form.replacement_role_id"
+              class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+        <option value="">— None (this role is not retiring) —</option>
+        <template x-for="r in replacementOptions" :key="r.id">
+          <option :value="r.id" x-text="r.name"></option>
+        </template>
+      </select>
+      <p class="mt-1 text-xs text-muted-foreground">Setting this marks the role retiring — it appears under "Retiring roles" and is excluded from the target headcount total.</p>
+    </div>
+    <div>
+      <label for="wt-skills" class="block text-sm font-medium mb-1">Required skills</label>
+      <input id="wt-skills" type="text" x-model="skillsText" placeholder="Comma-separated, e.g. Salesforce, RevOps"
+             class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+    </div>
+    <label class="flex items-center gap-2 text-sm">
+      <input type="checkbox" x-model="form.deprecated" class="rounded border-input">
+      Mark this role as retiring (independent of a replacement)
+    </label>
+    <p x-show="formError" x-cloak class="text-sm text-destructive-emphasis" x-text="formError"></p>
+  </div>
+  <div class="flex justify-end gap-2 mt-4">
+    <button type="button" data-modal-close="wt-role-modal"
+            class="inline-flex items-center h-9 px-4 rounded-md border border-input bg-background text-sm font-medium hover:bg-accent">
+      Cancel
+    </button>
+    <button type="button" @click="submitRole()" :disabled="formSaving"
+            class="inline-flex items-center h-9 px-4 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-50">
+      <span x-show="formSaving" x-cloak class="mr-1.5 h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent"></span>
+      Save
+    </button>
+  </div>
+  {% endcall %}
 </div>
 
 <script>
@@ -161,6 +228,11 @@ function workforceTransition() {
     loading: true,
     error: '',
     data: { role_count: 0, transitions: [], retiring_roles: [], new_or_growing_roles: [], headcount: { current: 0, target: 0, delta: 0 }, skills_gap: [] },
+    replacementOptions: [],
+    skillsText: '',
+    form: { id: null, name: '', current_filled_positions: '', forecasted_demand: '', replacement_role_id: '', deprecated: false },
+    formError: '',
+    formSaving: false,
     async load() {
       this.loading = true; this.error = '';
       try {
@@ -173,6 +245,44 @@ function workforceTransition() {
       } finally {
         this.loading = false;
         this.$nextTick(() => { if (window.lucide) window.lucide.createIcons(); });
+      }
+    },
+    async openCreate() {
+      this.form = { id: null, name: '', current_filled_positions: '', forecasted_demand: '', replacement_role_id: '', deprecated: false };
+      this.skillsText = '';
+      this.formError = '';
+      try {
+        const json = await Platform.fetch.get('/organization/workforce-transition/api/roles');
+        this.replacementOptions = json.data ?? json;
+      } catch (e) {
+        this.replacementOptions = [];
+      }
+      Platform.modal.open('wt-role-modal');
+    },
+    async submitRole() {
+      this.formError = '';
+      if (!this.form.name || !this.form.name.trim()) {
+        this.formError = 'Role name is required.';
+        return;
+      }
+      this.formSaving = true;
+      const payload = {
+        name: this.form.name.trim(),
+        current_filled_positions: this.form.current_filled_positions === '' ? null : Number(this.form.current_filled_positions),
+        forecasted_demand: this.form.forecasted_demand === '' ? null : Number(this.form.forecasted_demand),
+        replacement_role_id: this.form.replacement_role_id === '' ? null : Number(this.form.replacement_role_id),
+        required_skills: this.skillsText.split(',').map(s => s.trim()).filter(Boolean),
+        deprecated: !!this.form.deprecated,
+      };
+      try {
+        await Platform.fetch.post('/organization/workforce-transition/api/roles', payload);
+        Platform.modal.close('wt-role-modal');
+        Platform.toast.success('Role transition saved.');
+        await this.load();
+      } catch (e) {
+        this.formError = (e && e.message) ? e.message : 'Could not save this role.';
+      } finally {
+        this.formSaving = false;
       }
     }
   };
