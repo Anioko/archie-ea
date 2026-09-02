@@ -263,8 +263,12 @@ def _build_solution_impact_fallback(element_id: int, change_type: str = "MODIFY"
     else:
         risk_level = "LOW"
 
+    # F-12, Capgemini dry-run: `total_affected * 25000` invented a financial-risk
+    # figure out of a literal per-dependency dollar amount with no source —
+    # exactly the "0 that means not computed" problem CLAUDE.md's
+    # never-invent-data rule calls out. Report the real TCO or nothing.
     app_tco = float(getattr(app, "total_cost_of_ownership", 0) or 0) if app else 0.0
-    estimated_financial_risk = app_tco if app_tco > 0 else total_affected * 25000
+    estimated_financial_risk = app_tco if app_tco > 0 else None
 
     return {
         "element_id": element_id,
