@@ -267,6 +267,12 @@
         {% endif %}
     </div>
 
+    {# The modal must stay INSIDE this raidLog() div — its :value="k" x-for and
+       submitRaid()/raidForm bindings resolve against raidLog's Alpine scope,
+       which ends where this component's own </div> closes. Moved outside
+       once already (silently broke the Kind dropdown and Save in production,
+       caught only by a live browser round trip — the tests hit the API
+       directly and never noticed). #}
     {% call modal(id='create-raid-modal', title='Add RAID Item', description='Record an assumption, issue or dependency.', size='lg') %}
     <div class="space-y-4">
         <div>
@@ -319,6 +325,7 @@
         </button>
     </div>
     {% endcall %}
+    </div>
 
     {% call modal(id='create-risk-modal', title='Add Risk', description='Record an enterprise architecture risk.', size='lg') %}
     <div class="space-y-4">
