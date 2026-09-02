@@ -237,7 +237,7 @@
                     <div class="px-6 py-4 border-b border-border flex justify-between items-center">
                         <h2 class="text-lg font-medium text-foreground">Unified Capability View (Application + Manufacturing)</h2>
                         <div class="text-sm text-muted-foreground">
-                            Showing <span id="unified-start-record">1</span>-<span id="unified-end-record">10</span> of <span id="unified-total-records">0</span> results
+                            Showing <span id="unified-start-record">1</span>-<span id="unified-end-record">10</span> of <span id="unified-total-records">—</span> results
                         </div>
                     </div>
 
@@ -529,7 +529,7 @@
                     <div class="px-6 py-4 border-b border-border flex justify-between items-center">
                         <h2 class="text-lg font-medium text-foreground">Manufacturing Capability Mappings</h2>
                         <div class="text-sm text-muted-foreground">
-                            Showing <span id="manufacturing-start-record">1</span>-<span id="manufacturing-end-record">10</span> of <span id="manufacturing-total-records">0</span> results
+                            Showing <span id="manufacturing-start-record">1</span>-<span id="manufacturing-end-record">10</span> of <span id="manufacturing-total-records">—</span> results
                         </div>
                     </div>
 
@@ -682,7 +682,7 @@
                     <div class="px-6 py-4 border-b border-border flex justify-between items-center">
                         <h2 class="text-lg font-medium text-foreground">Application Capability Mappings</h2>
                         <div class="text-sm text-muted-foreground">
-                            Showing <span id="application-start-record">1</span>-<span id="application-end-record">10</span> of <span id="application-total-records">0</span> results
+                            Showing <span id="application-start-record">1</span>-<span id="application-end-record">10</span> of <span id="application-total-records">—</span> results
                         </div>
                     </div>
 
@@ -782,7 +782,7 @@
                     {{ data_card(
                         icon='alert-circle',
                         icon_color='red',
-                        value='<span id="gap-total-count">0</span>' | safe,
+                        value='<span id="gap-total-count">—</span>' | safe,
                         label='Total Gaps',
                         subtitle='All gaps'
                     ) }}
@@ -834,7 +834,7 @@
                     <div class="px-6 py-4 border-b border-border flex justify-between items-center">
                         <h2 class="text-lg font-medium text-foreground">Gap Analysis (Capabilities Without Applications)</h2>
                         <div class="text-sm text-muted-foreground">
-                            Showing <span id="gap-start-record">1</span>-<span id="gap-end-record">10</span> of <span id="gap-total-records">0</span> results
+                            Showing <span id="gap-start-record">1</span>-<span id="gap-end-record">10</span> of <span id="gap-total-records">—</span> results
                         </div>
                     </div>
 
@@ -1079,7 +1079,7 @@
                     {{ data_card(
                         icon='workflow',
                         icon_color='purple',
-                        value='<span id="process-total-count">0</span>' | safe,
+                        value='<span id="process-total-count">—</span>' | safe,
                         label='Total Processes',
                         subtitle='APQC processes'
                     ) }}
@@ -1340,7 +1340,7 @@
                             <p class="text-sm text-muted-foreground">Business processes lacking application support or automation</p>
                         </div>
                         <div class="text-sm text-muted-foreground">
-                            Showing <span id="process-gap-start-record">1</span>-<span id="process-gap-end-record">10</span> of <span id="process-gap-total-records">0</span> results
+                            Showing <span id="process-gap-start-record">1</span>-<span id="process-gap-end-record">10</span> of <span id="process-gap-total-records">—</span> results
                         </div>
                     </div>
 
@@ -1704,7 +1704,7 @@
                             </select>
                         </div>
                         <div class="text-sm text-muted-foreground">
-                            Showing <span id="acm-start-record">1</span>-<span id="acm-end-record">10</span> of <span id="acm-total-records">0</span> results
+                            Showing <span id="acm-start-record">1</span>-<span id="acm-end-record">10</span> of <span id="acm-total-records">—</span> results
                         </div>
                         <div class="flex items-center space-x-2">
                             <button type="button" @click="previousACMPage()" class="px-3 py-1 border border-input rounded-md text-sm hover:bg-accent disabled:opacity-50" id="acm-prev-btn" disabled aria-label="Previous page">
@@ -1749,7 +1749,7 @@
                                 </div>
                                 <div>
                                     <p class="text-xs text-muted-foreground">Total Gaps</p>
-                                    <p class="text-sm font-semibold text-foreground" id="convert-total-count">0</p>
+                                    <p class="text-sm font-semibold text-foreground" id="convert-total-count">—</p>
                                 </div>
                             </div>
                             <div class="flex items-center space-x-3">

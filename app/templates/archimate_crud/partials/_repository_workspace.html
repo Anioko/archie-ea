@@ -261,8 +261,12 @@
                 <div class="mt-3 flex items-center justify-between gap-3">
                     <p class="text-xs text-muted-foreground" data-field="element-relationships"><span class="font-medium text-foreground" x-text="el.rel_count === null || el.rel_count === undefined ? '—' : el.rel_count"></span> relationships</p>
                     <div class="flex flex-wrap items-center justify-end gap-1" data-field="element-actions">
-                        <button type="button" @click="openDetailPanel(el)" class="inline-flex h-8 items-center rounded-md px-3 text-xs font-medium hover:bg-accent disabled:pointer-events-none disabled:opacity-50" :aria-label="'Open details for ' + el.name">Details</button>
-                        <a :href="detailUrl(el)" class="inline-flex h-8 items-center rounded-md px-3 text-xs font-medium hover:bg-accent" :aria-label="'Open full detail for ' + el.name">View</a>
+                        {# T-16 (2 Sep 2026 audit): "Details" and "View" sat side by side doing two
+                           different things (a quick-peek side panel vs. navigating to the full page)
+                           with names that read as synonyms. Labelled to match what each actually
+                           does — the aria-labels already said this; the visible text didn't. #}
+                        <button type="button" @click="openDetailPanel(el)" class="inline-flex h-8 items-center rounded-md px-3 text-xs font-medium hover:bg-accent disabled:pointer-events-none disabled:opacity-50" :aria-label="'Open details for ' + el.name">Quick View</button>
+                        <a :href="detailUrl(el)" class="inline-flex h-8 items-center rounded-md px-3 text-xs font-medium hover:bg-accent" :aria-label="'Open full detail for ' + el.name">Full Detail</a>
                         <button type="button" @click="openEditModal(el)" class="inline-flex h-8 items-center rounded-md px-3 text-xs font-medium hover:bg-accent disabled:pointer-events-none disabled:opacity-50" :aria-label="'Edit ' + el.name">Edit</button>
                         <button type="button" @click="confirmDelete(el)" class="inline-flex h-8 items-center rounded-md px-3 text-xs font-medium text-destructive-emphasis hover:bg-destructive/10 disabled:pointer-events-none disabled:opacity-50" :aria-label="'Delete ' + el.name">Delete</button>
                     </div>
