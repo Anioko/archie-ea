@@ -214,8 +214,16 @@
     </section>
 
     <!-- View toggle -->
+    {# T-03 (2 Sep 2026 audit): this page defaulted to the Sankey DIAGRAM, with the
+       actual 43-row matrix TABLE hidden (style="display:none") until a user found
+       and clicked this "Matrix" toggle. At a narrow viewport a Sankey diagram — a
+       flow visualisation designed for a wide canvas — read as "hides its table and
+       shows an unreadable diagram instead", because the audited pass never found
+       the toggle. A table works at ANY width via horizontal scroll (T-01 restored
+       that); a Sankey diagram genuinely does not. Default to Matrix; Sankey stays
+       one click away for anyone who wants the flow view. #}
     <div class="flex items-center gap-2">
-        <div class="inline-flex rounded-lg border border-border p-1 bg-muted/30" x-data="{ view: 'sankey' }">
+        <div class="inline-flex rounded-lg border border-border p-1 bg-muted/30" x-data="{ view: 'matrix' }">
             <button type="button" @click="view = 'sankey'; document.getElementById('sankey-view').style.display = ''; document.getElementById('matrix-view').style.display = 'none'; if (window.createTraceabilitySankey) window.createTraceabilitySankey('#sankey-container', '/architecture/api/traceability/sankey?direction={{ direction }}&plateau={{ current_plateau or '' }}');"
                     :class="view === 'sankey' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'"
                     class="inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors">
@@ -231,13 +239,13 @@
         </div>
     </div>
 
-    <!-- Sankey view -->
-    <div id="sankey-view" class="rounded-lg border border-border bg-card shadow-sm overflow-hidden" style="min-height: 500px;">
+    <!-- Sankey view (hidden by default — see T-03 note above) -->
+    <div id="sankey-view" style="display: none; min-height: 500px;" class="rounded-lg border border-border bg-card shadow-sm overflow-hidden">
         <div id="sankey-container" style="width: 100%; min-height: 500px;"></div>
     </div>
 
-    <!-- Matrix table -->
-    <div id="matrix-view" style="display: none;" class="rounded-lg border border-border bg-card shadow-sm overflow-hidden">
+    <!-- Matrix table (visible by default) -->
+    <div id="matrix-view" class="rounded-lg border border-border bg-card shadow-sm overflow-hidden">
         {% if matrix %}
         <div class="overflow-x-auto">
             <table class="w-full text-sm">

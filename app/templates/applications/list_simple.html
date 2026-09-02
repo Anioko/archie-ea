@@ -598,6 +598,65 @@
               <i data-lucide="eye" class="h-4 w-4" aria-hidden="true"></i>
             </a>
           </div>
+          {# T-02 (2 Sep 2026 audit): below the lg breakpoint the table becomes this
+             card list, but only "View" survived the switch — Fact sheet, Edit, the
+             Map menu (4 targets) and Delete were desktop-only. Same URLs/handlers
+             as the desktop row (data-app-map-id drives openMappingForApp exactly
+             like the desktop dropdown), just laid out for a touch target. #}
+          <div class="mt-3 pt-3 border-t flex items-center gap-1 flex-wrap">
+            <a href="{{ url_for('unified_applications.application_fact_sheet', id=app.id) }}"
+              data-testid="btn-factsheet-mobile-{{ app.id }}"
+              class="inline-flex items-center gap-1 h-8 px-2.5 rounded-md text-xs font-medium hover:bg-accent transition-colors">
+              <i data-lucide="file-text" class="h-3.5 w-3.5" aria-hidden="true"></i>Fact sheet
+            </a>
+            <a href="{{ url_for('unified_applications.application_edit', id=app.id) }}"
+              data-testid="btn-edit-mobile-{{ app.id }}"
+              class="inline-flex items-center gap-1 h-8 px-2.5 rounded-md text-xs font-medium hover:bg-accent transition-colors">
+              <i data-lucide="pencil" class="h-3.5 w-3.5" aria-hidden="true"></i>Edit
+            </a>
+            <div class="relative" x-data="{ mapOpen: false }"
+              data-app-map-id="{{ app.id }}"
+              data-app-map-name="{{ app.name | e }}">
+              <button type="button" @click="mapOpen = !mapOpen" @click.outside="mapOpen = false" @keydown.escape="mapOpen = false"
+                :aria-expanded="mapOpen.toString()" aria-haspopup="menu"
+                aria-label="Map application {{ app.name | e }}"
+                data-testid="btn-map-mobile-{{ app.id }}"
+                class="inline-flex items-center gap-1 h-8 px-2.5 rounded-md text-xs font-medium border border-input bg-background hover:bg-accent transition-colors">
+                <i data-lucide="link" class="h-3.5 w-3.5" aria-hidden="true"></i>Map
+              </button>
+              <!-- modal-a11y-ok: dropdown menu, not a dialog --><div x-show="mapOpen" x-transition x-cloak
+                class="absolute left-0 mt-1 w-52 bg-card border rounded-md shadow-lg z-30 py-1" role="menu">
+                <button type="button" @click="(() => { const el = $el.closest('[data-app-map-id]'); if (el) openMappingForApp(el.dataset.appMapId, el.dataset.appMapName, 'capability'); mapOpen=false; })()"
+                  class="w-full text-left px-4 py-2 text-sm hover:bg-accent flex items-center gap-2" role="menuitem" aria-label="Map to Capabilities">
+                  <i data-lucide="box" class="h-4 w-4 text-primary" aria-hidden="true"></i>Map to Capabilities
+                </button>
+                <button type="button" @click="(() => { const el = $el.closest('[data-app-map-id]'); if (el) openMappingForApp(el.dataset.appMapId, el.dataset.appMapName, 'apqc'); mapOpen=false; })()"
+                  class="w-full text-left px-4 py-2 text-sm hover:bg-accent flex items-center gap-2" role="menuitem" aria-label="Map to APQC">
+                  <i data-lucide="git-branch" class="h-4 w-4 text-success" aria-hidden="true"></i>Map to APQC
+                </button>
+                <button type="button" @click="(() => { const el = $el.closest('[data-app-map-id]'); if (el) openMappingForApp(el.dataset.appMapId, el.dataset.appMapName, 'vendor'); mapOpen=false; })()"
+                  class="w-full text-left px-4 py-2 text-sm hover:bg-accent flex items-center gap-2" role="menuitem" aria-label="Map to Vendors">
+                  <i data-lucide="package" class="h-4 w-4 text-primary" aria-hidden="true"></i>Map to Vendors
+                </button>
+                <div class="border-t my-1"></div>
+                <button type="button" @click="(() => { const el = $el.closest('[data-app-map-id]'); if (el) openMappingForApp(el.dataset.appMapId, el.dataset.appMapName, 'archimate'); mapOpen=false; })()"
+                  class="w-full text-left px-4 py-2 text-sm hover:bg-accent flex items-center gap-2" role="menuitem" aria-label="Map to ArchiMate">
+                  <i data-lucide="layers" class="h-4 w-4 text-warning" aria-hidden="true"></i>Map to ArchiMate
+                </button>
+              </div>
+            </div>
+            {% if current_user.is_admin() or current_user.role_archetype == 'architect' %}
+            <form method="POST" action="{{ url_for('unified_applications.application_delete', id=app.id) }}" class="ml-auto"
+              @submit.prevent='Platform.modal.confirmSubmit($event, "Delete " + {{ app.name | tojson }} + "? This cannot be undone.")'>
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" data-testid="btn-delete-mobile-{{ app.id }}"
+                class="inline-flex items-center justify-center h-8 w-8 rounded-md text-destructive-emphasis hover:bg-destructive/10 transition-colors"
+                aria-label="Delete {{ app.name | e }}">
+                <i data-lucide="trash-2" class="h-3.5 w-3.5" aria-hidden="true"></i>
+              </button>
+            </form>
+            {% endif %}
+          </div>
           <div class="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
             <div>
               <p class="text-xs text-muted-foreground mb-0.5">Status</p>
