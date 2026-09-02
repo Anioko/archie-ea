@@ -1289,20 +1289,33 @@ def delete_element(layer, element_type, element_id):
                 )
             ).delete(synchronize_session=False)
 
-        # DEF-067's actual live failure (found in server logs): the
-        # dedicated model's own archimate_element_id column is an FK INTO
-        # archimate_elements, so deleting the ArchiMateElement mirror while
-        # the dedicated row still points at it violated e.g.
-        # stakeholders_archimate_element_id_fkey (ON DELETE NO ACTION) —
-        # swallowed into the misleading message above. Calling
-        # session.delete() in "dedicated row first" order was NOT enough:
-        # SQLAlchemy's unit-of-work orders the two DELETE statements by its
-        # own dependency analysis, not by call order, since there is no
-        # mapped relationship() between these two unrelated model classes
-        # for it to use — confirmed by the identical FK violation recurring
-        # after that reorder. An explicit flush after the first delete
-        # forces it to hit the database before the second delete is even
-        # issued.
+        # DEF-067's actual live failure (found in server logs, and only
+        # reproduced by clicking the real duplicated production element —
+        # see DEF-004): the dashboard card for a DEF-004-duplicated element
+        # links to the ArchiMateElement's own id, not its dedicated-model
+        # twin's id, so model_class.query.get(element_id) returns None and
+        # this falls into the `_from_ae` branch — which deleted ONLY the
+        # archimate_elements row. The dedicated row (a *different* id, e.g.
+        # stakeholders.id=2 with archimate_element_id=1287) was never found
+        # or deleted, and it still held stakeholders_archimate_element_id_fkey
+        # (ON DELETE NO ACTION) pointing at the row this branch just tried
+        # to delete. Reordering session.delete() calls and even an explicit
+        # flush did not help THIS path, because the dedicated row was never
+        # looked up here at all. When falling back to the ArchiMateElement,
+        # also find and delete any dedicated-model row of the same type that
+        # mirrors it (the DEF-004 duplicate), before deleting the
+        # ArchiMateElement row itself.
+        if _from_ae:
+            dedicated_model = MODEL_REGISTRY.get(getattr(element, "type", None))
+            if dedicated_model is not None and hasattr(dedicated_model, "archimate_element_id"):
+                duplicate_rows = dedicated_model.query.filter_by(
+                    archimate_element_id=element.id
+                ).all()
+                for row in duplicate_rows:
+                    db.session.delete(row)
+                if duplicate_rows:
+                    db.session.flush()
+
         db.session.delete(element)
         db.session.flush()
         if not _from_ae and archimate_element:
