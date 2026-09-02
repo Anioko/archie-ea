@@ -127,14 +127,21 @@
           <p class="text-xs text-muted-foreground mt-1">Systems delivering or affected by this change. Hold Ctrl/Cmd to select multiple.</p>
         </div>
         <div class="sm:col-span-2">
-          <label for="car-solution" class="block text-sm font-medium mb-1">Solution</label>
-          <select id="car-solution" x-model="formData.solution_id"
-                  class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-            <option value="">—</option>
-            <template x-for="s in formOptions.solutions" :key="s.id">
-              <option :value="s.id" x-text="s.name"></option>
-            </template>
-          </select>
+          {# 2 Sep 2026 (Capgemini delivery-team dry-run): this used to be a
+             Solution dropdown wired to formData.solution_id — but the server
+             ALWAYS rejects a solution-linked submission from this modal
+             (_create_arb_review_item, arb_routes.py): a Solution review needs
+             the evidence dossier only the solution's own "Submit for ARB"
+             flow can build, which this generic modal cannot collect. Offering
+             a control that can never succeed is a dead end, not a shortcut —
+             point the user at the real path instead of a guaranteed error. #}
+          <label class="block text-sm font-medium mb-1">Solution</label>
+          <div class="rounded-md border border-input bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+            Reviewing a Solution? Submit it from the solution's own page — open
+            the solution, then use <span class="font-medium text-foreground">Submit for ARB</span>.
+            That captures the evidence a solution review requires; this form is
+            for ADRs and architecture models only.
+          </div>
         </div>
         <div>
           <label for="car-adr" class="block text-sm font-medium mb-1">ADR</label>
