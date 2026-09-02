@@ -1444,9 +1444,13 @@ class TransformationGateService:
             gate = cls.evaluate(actor=actor, workstream_id=workstream.id, target_stage=target)
             if gate.blockers:
                 return gate.blockers[0]
+            # F-07, Capgemini dry-run: this used workstream.lifecycle_stage
+            # (the CURRENT stage) here, so "Advance this workstream to X"
+            # always linked back to the page the user was already on. `target`
+            # is the stage the message actually names.
             return GateBlocker("transition_ready", f"Advance this workstream to {target.replace('_', ' ')}.",
                                "workstream", workstream.id,
-                               f"/solutions/programmes/{workstream.programme_id}/workstreams/{workstream.id}/{workstream.lifecycle_stage}")
+                               f"/solutions/programmes/{workstream.programme_id}/workstreams/{workstream.id}/{target}")
         return None
 
 

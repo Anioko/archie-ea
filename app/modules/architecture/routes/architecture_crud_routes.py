@@ -275,16 +275,59 @@ def delete_element(element_id):
 @architecture_crud_bp.route("/relationships", methods=["GET"])
 @login_required
 def list_relationships():
-    """List all relationships."""
+    """List all relationships.
+
+    F-05(b), Capgemini dry-run: this used to query `Relationship` /
+    `architecture_elements` — a legacy pair abandoned in favour of
+    ArchiMateRelationship/ArchiMateElement (the tables the Composer and
+    everything else actually write to), empty in every environment checked.
+    The page rendered "20 rows of bare numeric IDs with a — type" because the
+    only other route sharing this template (unified_low_priority.
+    architecture_relationships, a different URL) queried the right table but
+    still fed the template `rel.source_element`/`rel.relationship_type` —
+    attributes ArchiMateRelationship does not have (it has `source_id`/
+    `target_id` FKs and a `type` column, no ORM relationship() to the element).
+    Jinja silently treats a missing attribute as falsy and falls back to the
+    bare id, which is how BOTH routes produced the same "IDs, no names" bug
+    from two different causes. Resolve real names/types here explicitly
+    instead of relying on attributes that were never declared.
+    """
+    from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship
+
     page = safe_int_arg('page', 1, minimum=1)
     per_page = 20
 
-    relationships = Relationship.query.paginate(page=page, per_page=per_page)
+    pagination = ArchiMateRelationship.query.order_by(
+        ArchiMateRelationship.type
+    ).paginate(page=page, per_page=per_page)
+
+    element_ids = {
+        eid for rel in pagination.items
+        for eid in (rel.source_id, rel.target_id) if eid is not None
+    }
+    names_by_id = {}
+    if element_ids:
+        names_by_id = dict(
+            db.session.query(ArchiMateElement.id, ArchiMateElement.name)
+            .filter(ArchiMateElement.id.in_(element_ids))
+        )
+
+    relationships = [
+        {
+            "id": rel.id,
+            "type": rel.type,
+            "source_id": rel.source_id,
+            "target_id": rel.target_id,
+            "source_name": names_by_id.get(rel.source_id),
+            "target_name": names_by_id.get(rel.target_id),
+        }
+        for rel in pagination.items
+    ]
 
     return render_template(
         "architecture/relationships.html",
-        relationships=relationships.items,
-        total=relationships.total,
+        relationships=relationships,
+        total=pagination.total,
     )
 
 

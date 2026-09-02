@@ -163,6 +163,21 @@
             </template>
           </select>
         </div>
+        {# 2 Sep 2026 (Capgemini delivery-team dry-run, F-06): a review with
+           neither field set is created successfully and then stuck permanently
+           — arb_read_models._legacy_generic() classifies it "legacy" the
+           instant review_cycle_id is never set, with no Submit/Advance action
+           ever again. Nothing at creation time said so. Warn here, and require
+           an explicit acknowledgement rather than silently accepting it. #}
+        <div class="sm:col-span-2" x-show="!formData.adr_id && !formData.architecture_model_id" x-cloak>
+          <div class="rounded-md bg-warning/10 border border-warning/30 px-3 py-2 text-sm text-warning-emphasis space-y-2">
+            <p>Without a linked ADR or Architecture Model, this review can never reach the board — no Submit or Decision action will ever appear on it.</p>
+            <label class="flex items-start gap-2 font-normal">
+              <input type="checkbox" x-model="formData.acknowledge_no_subject" class="mt-0.5">
+              <span>I understand this will be a record-only item the board cannot act on.</span>
+            </label>
+          </div>
+        </div>
         <div>
           <label for="car-cap-impact-type" class="block text-sm font-medium mb-1">Capability Impact Type</label>
           <select id="car-cap-impact-type" x-model="formData.capability_impact_type"

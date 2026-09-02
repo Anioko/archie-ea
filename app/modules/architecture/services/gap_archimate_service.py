@@ -452,6 +452,10 @@ class GapArchiMateService:
             "estimated_cost",
             "actual_cost",
             "dependencies",
+            # F-08(b), Capgemini dry-run: the Capability Roadmap's edit form
+            # has always offered "Target Plateau" — it was accepted (200) and
+            # silently dropped because this whitelist never included it.
+            "plateau_id",
         }
 
         for field, value in updates.items():

@@ -133,6 +133,63 @@ def register_transformation_room_routes(blueprint) -> None:
             return _render_error(error)
         return render_template(f"solutions/transformation_room/{stage}.html", room=room)
 
+    @blueprint.route(
+        "/programmes/<int:programme_id>/workstreams/<int:workstream_id>/<stage>/advance",
+        methods=["POST"],
+    )
+    @login_required
+    def transformation_workstream_advance(programme_id, workstream_id, stage):
+        """Advance a workstream to its next lifecycle stage.
+
+        F-07, Capgemini dry-run: TransformationGateService.transition (the
+        real, gate-checked state machine) and its command-service plumbing
+        already existed; nothing in this module ever called it from a
+        server-rendered POST — every stage past Objective was permanently
+        read-only as a result. Mirrors the existing "objective" POST branch's
+        error handling above.
+        """
+        from app.modules.transformation_room.gate_service import TransformationGateService
+
+        if stage not in STAGE_ROUTES:
+            return render_template("errors/404.html"), 404
+        target_stage = TransformationGateService.NEXT_STAGE.get(stage)
+        if target_stage is None:
+            abort(404)
+        try:
+            actor = actor_from_request()
+            # Prove that the URL programme owns this workstream before the
+            # gate service is allowed to mutate it.
+            _room(programme_id, workstream_id, stage)
+            TransformationGateService.transition(
+                actor=actor,
+                workstream_id=workstream_id,
+                target_stage=target_stage,
+                expected_revision=int(request.form.get("expected_revision", "0")),
+                command_key=request.form.get("command_key", "").strip() or str(uuid.uuid4()),
+            )
+            return redirect(
+                f"/solutions/programmes/{programme_id}/workstreams/{workstream_id}/{target_stage}",
+                code=303,
+            )
+        except (TypeError, ValueError) as error:
+            try:
+                room = _room(programme_id, workstream_id, stage)
+            except TransformationError as room_error:
+                return _render_error(room_error)
+            room["form_error"] = str(error)
+            return render_template(f"solutions/transformation_room/{stage}.html", room=room), 400
+        except TransformationError as error:
+            if error.http_status not in {403, 404}:
+                try:
+                    room = _room(programme_id, workstream_id, stage)
+                except TransformationError as room_error:
+                    return _render_error(room_error)
+                room["form_error"] = error.reason
+                return render_template(
+                    f"solutions/transformation_room/{stage}.html", room=room
+                ), error.http_status
+            return _render_error(error)
+
     @blueprint.route("/programmes/<int:programme_id>/governance", methods=["GET"])
     @login_required
     def transformation_programme_governance(programme_id):

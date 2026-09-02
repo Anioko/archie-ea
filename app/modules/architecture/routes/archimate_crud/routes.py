@@ -708,6 +708,18 @@ def api_layer_elements(layer):
                             ArchiMateElement.id, ArchiMateElement.togaf_plateau
                         ).filter(ArchiMateElement.id.in_(linked_ae_ids))
                     )
+                # F-08(a), Capgemini dry-run: the edit modal's typedFieldDefaults()
+                # (dashboard.js) reads source[name] for each of this type's
+                # configured fields (goal_type, driver_type, category, ...) —
+                # this dict never had any of them, so every typed field looked
+                # blank on reopening even though the write path (create/edit
+                # POST -> _set_model_fields/_apply_architecture_state) worked
+                # and persisted correctly. It was a read gap, not a write one.
+                type_config = get_element_config(etype)
+                typed_field_names = (
+                    [f.name for f in type_config.fields if f.name != "architecture_state"]
+                    if type_config else []
+                )
                 for elem in rows:
                     name = getattr(elem, "name", None) or getattr(
                         elem, "title", "Unnamed"
@@ -716,21 +728,27 @@ def api_layer_elements(layer):
                         elem, "operational_status", None
                     )  # model-safety-ok: polymorphic ArchiMate elements
                     ae_id = getattr(elem, "archimate_element_id", None)
-                    all_elements.append(
-                        {
-                            "id": elem.id,
-                            "name": name,
-                            "description": getattr(elem, "description", "")
-                            or "",  # model-safety-ok: polymorphic ArchiMate elements
-                            "element_type": etype,
-                            "status": status,
-                            "layer": layer,
-                            "source": "portfolio",
-                            "properties": getattr(elem, "properties", None) or "",
-                            "plateau": plateau_by_ae_id.get(ae_id) if ae_id else None,
-                            "rel_count": None,
-                        }
-                    )
+                    elem_dict = {
+                        "id": elem.id,
+                        "name": name,
+                        "description": getattr(elem, "description", "")
+                        or "",  # model-safety-ok: polymorphic ArchiMate elements
+                        "element_type": etype,
+                        "status": status,
+                        "layer": layer,
+                        "source": "portfolio",
+                        "properties": getattr(elem, "properties", None) or "",
+                        "plateau": plateau_by_ae_id.get(ae_id) if ae_id else None,
+                        "rel_count": None,
+                    }
+                    # architecture_state is the form's name for the plateau
+                    # select; the API calls the same value "plateau" — map it
+                    # under both keys so typedFieldDefaults finds it.
+                    elem_dict["architecture_state"] = elem_dict["plateau"] or ""
+                    for field_name in typed_field_names:
+                        value = getattr(elem, field_name, None)
+                        elem_dict[field_name] = value if value is not None else ""
+                    all_elements.append(elem_dict)
             except Exception as e:
                 current_app.logger.warning(f"Error querying {etype}: {e}")
 
@@ -764,20 +782,40 @@ def api_layer_elements(layer):
                             ArchiMateRelationship.target_id == ae.id,
                         )
                     ).count()
-                    all_elements.append(
-                        {
-                            "id": ae.id,
-                            "name": ae.name or "",
-                            "description": ae.description or "",
-                            "element_type": ae.type,
-                            "status": None,
-                            "layer": layer,
-                            "source": "architecture",
-                            "properties": ae.properties or "",
-                            "plateau": ae.togaf_plateau,
-                            "rel_count": _rel_count,
-                        }
-                    )
+                    ae_dict = {
+                        "id": ae.id,
+                        "name": ae.name or "",
+                        "description": ae.description or "",
+                        "element_type": ae.type,
+                        "status": None,
+                        "layer": layer,
+                        "source": "architecture",
+                        "properties": ae.properties or "",
+                        "plateau": ae.togaf_plateau,
+                        "rel_count": _rel_count,
+                    }
+                    ae_dict["architecture_state"] = ae_dict["plateau"] or ""
+                    # F-08(a): the F-04 dedup fix means every MIRRORED element
+                    # (the overwhelming majority — anything created through
+                    # the normal form) is now listed from here, not from the
+                    # dedicated-table branch above. Without this lookup, this
+                    # branch's elements would still lose their typed fields —
+                    # trading the double-listing bug for a "typed fields only
+                    # populate for the rare unmirrored row" bug instead.
+                    ae_type_config = get_element_config(ae.type)
+                    if ae_type_config:
+                        dedicated_model = MODEL_REGISTRY.get(ae.type)
+                        dedicated_row = None
+                        if dedicated_model is not None and hasattr(dedicated_model, "archimate_element_id"):
+                            dedicated_row = dedicated_model.query.filter_by(
+                                archimate_element_id=ae.id
+                            ).first()
+                        for f in ae_type_config.fields:
+                            if f.name == "architecture_state":
+                                continue
+                            value = getattr(dedicated_row, f.name, None) if dedicated_row else None
+                            ae_dict[f.name] = value if value is not None else ""
+                    all_elements.append(ae_dict)
         except Exception as e:
             current_app.logger.warning(f"Error supplementing from archimate_elements: {e}")
 
@@ -1065,6 +1103,15 @@ def detail_element(layer, element_type, element_id):
     # Get relationships
     relationships = _get_element_relationships(element, element_id)
 
+    # The real archimate_elements.id to source a new relationship from (F-05(a)
+    # "Add relationship" control) — a dedicated-table element reaches it via
+    # archimate_element_id, same resolution _get_element_relationships uses.
+    ae_id = None
+    if hasattr(element, "archimate_element_id") and element.archimate_element_id:
+        ae_id = element.archimate_element_id
+    elif element.__class__.__name__ == "ArchiMateElement":
+        ae_id = element.id
+
     # Auto-discover displayable fields from the model
     display_fields = _get_display_fields(element, model_class)
 
@@ -1074,6 +1121,7 @@ def detail_element(layer, element_type, element_id):
         element_type=element_type,
         element=element,
         relationships=relationships,
+        source_ae_id=ae_id,
         display_fields=display_fields,
         layer_config=LAYER_CONFIG,
     )

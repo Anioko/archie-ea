@@ -757,6 +757,16 @@ def application_edit(id):
                         logger.exception("Failed to operation")
                         pass
 
+            # F-08(c), Capgemini dry-run: applications had no plateau/as-is-to-be
+            # control anywhere, though ApplicationComponent already reaches one
+            # via archimate_element_id — the same mechanism BusinessRole already
+            # uses (see tests/test_plateau_filter_roundtrip.py). Reuse the
+            # existing set-only helper rather than duplicating its logic.
+            from app.modules.architecture.routes.archimate_crud.routes import (
+                _apply_architecture_state,
+            )
+            _apply_architecture_state(app, request.form)
+
             app.updated_by = current_user.id
 
             db.session.commit()
@@ -770,7 +780,17 @@ def application_edit(id):
                 )
             )
 
-        return render_template("applications/edit.html", application=app)
+        # Current architecture state, for pre-selecting the control below —
+        # read from the linked ArchiMateElement, same resolution
+        # _apply_architecture_state uses to write it.
+        architecture_state = None
+        if app.archimate_element_id:
+            ae = db.session.get(ArchiMateElement, app.archimate_element_id)
+            if ae is not None:
+                architecture_state = ae.togaf_plateau
+        return render_template(
+            "applications/edit.html", application=app, architecture_state=architecture_state
+        )
 
     except Exception:
         db.session.rollback()

@@ -222,6 +222,55 @@
         {% set outgoing = relationships | selectattr('direction', 'equalto', 'outgoing') | list %}
         {% set incoming = relationships | selectattr('direction', 'equalto', 'incoming') | list %}
 
+        {# F-05(a), Capgemini dry-run: this tab was read-only with no way to add
+           a relationship — the create API and valid-types API already work
+           (F-05(c)'s investigation confirmed both, for real element ids),
+           nothing on this page called them. #}
+        {% if source_ae_id %}
+        <div class="border rounded-lg p-4" x-data="addRelationshipForm({{ source_ae_id }})">
+            <button type="button" @click="open = !open"
+                    class="text-sm font-medium text-primary hover:underline inline-flex items-center gap-1">
+                <i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i>
+                <span x-text="open ? 'Cancel' : 'Add relationship'"></span>
+            </button>
+            <div x-show="open" x-cloak class="mt-3 space-y-3">
+                <div>
+                    <label class="block text-xs font-medium mb-1" for="rel-target-search">Target element</label>
+                    <input id="rel-target-search" type="text" x-model="targetQuery" @input.debounce.400ms="searchTargets()"
+                           placeholder="Search by name…"
+                           class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+                    <div x-show="targetResults.length > 0" x-cloak class="mt-1 border rounded-md divide-y max-h-48 overflow-y-auto">
+                        <template x-for="r in targetResults" :key="r.id">
+                            <button type="button" @click="selectTarget(r)"
+                                    class="w-full text-left px-3 py-1.5 text-sm hover:bg-accent">
+                                <span x-text="r.name"></span>
+                                <span class="text-xs text-muted-foreground" x-text="' · ' + r.type"></span>
+                            </button>
+                        </template>
+                    </div>
+                    <p x-show="selectedTarget" x-cloak class="mt-1 text-sm">
+                        Selected: <span class="font-medium" x-text="selectedTarget && selectedTarget.name"></span>
+                    </p>
+                </div>
+                <div x-show="selectedTarget" x-cloak>
+                    <label class="block text-xs font-medium mb-1" for="rel-type-select">Relationship type</label>
+                    <select id="rel-type-select" x-model="relType"
+                            class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+                        <option value="">Select a type…</option>
+                        <template x-for="t in validTypes" :key="t.type">
+                            <option :value="t.type" x-text="t.type"></option>
+                        </template>
+                    </select>
+                </div>
+                <p x-show="errorMsg" x-cloak class="text-sm text-destructive-emphasis" x-text="errorMsg"></p>
+                <button type="button" @click="createRelationship()" :disabled="!selectedTarget || !relType || saving"
+                        class="inline-flex items-center h-9 px-4 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-50">
+                    <span x-text="saving ? 'Saving…' : 'Create relationship'"></span>
+                </button>
+            </div>
+        </div>
+        {% endif %}
+
         {% if not relationships %}
         <div class="border rounded-lg p-8 text-center text-sm text-muted-foreground">
             <i data-lucide="git-merge" class="h-8 w-8 mx-auto mb-3 opacity-40" aria-hidden="true"></i>
@@ -335,6 +384,65 @@ function archimateDetail() {
     };
 }
 window.archimateDetail = archimateDetail;
+
+function addRelationshipForm(sourceId) {
+    return {
+        open: false,
+        targetQuery: '',
+        targetResults: [],
+        selectedTarget: null,
+        validTypes: [],
+        relType: '',
+        errorMsg: '',
+        saving: false,
+
+        async searchTargets() {
+            this.selectedTarget = null;
+            this.validTypes = [];
+            this.relType = '';
+            if (!this.targetQuery.trim()) { this.targetResults = []; return; }
+            try {
+                const data = await Platform.fetch.get('/archimate/api/elements/search', { q: this.targetQuery, limit: 15 }, { silent: true });
+                this.targetResults = (data.data || data.elements || data || []).filter(e => e.id !== sourceId);
+            } catch (e) {
+                this.targetResults = [];
+            }
+        },
+
+        async selectTarget(target) {
+            this.selectedTarget = target;
+            this.targetResults = [];
+            this.errorMsg = '';
+            try {
+                const data = await Platform.fetch.get('/archimate/api/valid-relationship-types',
+                    { source_id: sourceId, target_id: target.id }, { silent: true });
+                this.validTypes = data.valid_types_detailed || [];
+            } catch (e) {
+                this.validTypes = [];
+                this.errorMsg = (e && e.message) || 'Could not load valid relationship types.';
+            }
+        },
+
+        async createRelationship() {
+            if (this.saving || !this.selectedTarget || !this.relType) return;
+            this.saving = true;
+            this.errorMsg = '';
+            try {
+                await Platform.fetch.post('/archimate/api/relationships', {
+                    source_element_id: sourceId,
+                    target_element_id: this.selectedTarget.id,
+                    relationship_type: this.relType
+                }, { silent: true });
+                window.location.reload();
+            } catch (e) {
+                this.errorMsg = (e && e.message) || 'Could not create that relationship.';
+            } finally {
+                this.saving = false;
+            }
+        }
+    };
+}
+window.addRelationshipForm = addRelationshipForm;
 </script>
 
 <script>

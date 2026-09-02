@@ -113,11 +113,39 @@ def architecture_elements():
 @unified_low_priority_bp.route("/architecture/relationships")
 @login_required
 def architecture_relationships():
-    """List architecture relationships"""
+    """List architecture relationships.
+
+    F-05(b), Capgemini dry-run: fed the template rel.source_element/
+    rel.relationship_type — attributes ArchiMateRelationship never declares
+    (it has source_id/target_id FKs and a `type` column, no relationship()).
+    Jinja silently falls back to the bare id for a missing attribute, so this
+    route showed "20 rows of bare numeric IDs" despite querying the right
+    table. Resolve names explicitly instead. Same fix as
+    architecture_crud.list_relationships, the other route sharing this
+    template.
+    """
     try:
-        relationships = ArchiMateRelationship.query.order_by(
-            ArchiMateRelationship.type
-        ).all()
+        rels = ArchiMateRelationship.query.order_by(ArchiMateRelationship.type).all()
+        element_ids = {
+            eid for rel in rels for eid in (rel.source_id, rel.target_id) if eid is not None
+        }
+        names_by_id = {}
+        if element_ids:
+            names_by_id = dict(
+                db.session.query(ArchiMateElement.id, ArchiMateElement.name)
+                .filter(ArchiMateElement.id.in_(element_ids))
+            )
+        relationships = [
+            {
+                "id": rel.id,
+                "type": rel.type,
+                "source_id": rel.source_id,
+                "target_id": rel.target_id,
+                "source_name": names_by_id.get(rel.source_id),
+                "target_name": names_by_id.get(rel.target_id),
+            }
+            for rel in rels
+        ]
         return render_template(
             "architecture/relationships.html", relationships=relationships
         )

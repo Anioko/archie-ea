@@ -37,7 +37,23 @@
       <div><dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Objective</dt><dd class="mt-1 text-sm text-foreground">{{ room.header.objective or '—' }}</dd></div>
       <div><dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Lifecycle</dt><dd class="mt-1 text-sm text-foreground">{{ (room.header.lifecycle or '—')|replace('_', ' ')|title }}</dd></div>
       <div><dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Owner</dt><dd class="mt-1 text-sm text-foreground">{{ room.header.owner or '—' }}</dd></div>
-      <div><dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Next action</dt><dd class="mt-1 text-sm text-foreground">{% if room.header.next_action_url %}<a href="{{ room.header.next_action_url }}" class="font-medium text-primary hover:underline">{{ room.header.next_action }}</a>{% else %}{{ room.header.next_action or '—' }}{% endif %}</dd></div>
+      <div><dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Next action</dt><dd class="mt-1 text-sm text-foreground">
+        {% if room.header.next_action_url %}<a href="{{ room.header.next_action_url }}" class="font-medium text-primary hover:underline">{{ room.header.next_action }}</a>
+        {#- F-07, Capgemini dry-run: this link now points at the right target
+            stage (a prior bug always linked back to the current one), but
+            arriving there still left the workstream on its old stage — the
+            gate-checked transition itself had no server-rendered POST path.
+            Offer it right here, next to the action that names it. #}
+        {% if room.workstream and room.stage in ('objective', 'discover', 'evidence', 'options') %}
+        <form method="post" action="{{ url_for('solution_design.transformation_workstream_advance', programme_id=room.programme.id, workstream_id=room.workstream.id, stage=room.stage) }}" class="mt-2">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="expected_revision" value="{{ room.workstream.revision }}">
+          <input type="hidden" name="command_key" value="{{ room.command_key }}">
+          <button type="submit" class="inline-flex items-center h-8 px-3 rounded-md bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90">Advance now</button>
+        </form>
+        {% endif %}
+        {% else %}{{ room.header.next_action or '—' }}{% endif %}
+      </dd></div>
       <div><dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Evidence posture</dt><dd class="mt-1 text-sm text-foreground">{{ room.header.evidence_posture or '—' }}{% if room.header.evidence_reason %}<span class="mt-1 block text-xs text-muted-foreground">{{ room.header.evidence_reason }}</span>{% endif %}</dd></div>
       <div><dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Expected outcome</dt><dd class="mt-1 text-sm text-foreground">{{ room.header.expected_outcome or '—' }}<span class="mt-1 block text-xs text-muted-foreground">{{ room.header.expected_measure or 'No measure recorded.' }} · Baseline {{ room.header.baseline if room.header.baseline is not none else '—' }}</span>{% if room.header.baseline_reason %}<span class="mt-1 block text-xs text-muted-foreground">{{ room.header.baseline_reason }}</span>{% endif %}</dd></div>
     </dl>

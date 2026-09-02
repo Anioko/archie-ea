@@ -631,3 +631,69 @@ def test_business_first_to_frozen_brief_uses_only_public_operations(
     assert brief_root.status == "frozen"
     assert frozen_brief.cited_evidence_ids == sorted(accepted_evidence_ids)
     assert frozen_brief.option_version_ids == sorted(version_ids)
+
+
+def test_advance_route_actually_transitions_the_workstream(app, public_journey_scope):
+    """F-07, Capgemini dry-run: TransformationGateService.transition (used
+    directly above) already worked — nothing in this module ever called it
+    from a server-rendered POST, so every stage past Objective was
+    permanently read-only through the real UI. This drives the actual HTTP
+    route a browser would hit, not the service function directly."""
+    scope = public_journey_scope
+    intake = ProgrammeIntake(
+        name="Advance route programme",
+        objective="Prove the advance route actually transitions the workstream",
+        owner_id=scope.actor_id,
+        target_date=date(2027, 12, 31),
+        target_date_unavailable_reason=None,
+        workstream_type="application_rationalisation",
+        scope_expression={"application_ids": [scope.application_id]},
+        outcome={
+            "statement": "Reduce annual claims-platform run cost",
+            "owner_id": scope.actor_id,
+            "direction": "decrease",
+            "measure": {
+                "metric_name": "Annual run cost",
+                "unit": "GBP",
+                "currency": "GBP",
+                "aggregation": "sum",
+                "baseline_value": Decimal("125000.00"),
+                "target_value": Decimal("95000.00"),
+                "unavailable_reason": None,
+            },
+        },
+    )
+    programme = ProgrammeSetupService.create_business_first_programme(
+        actor=scope.actor, command_key="advance-route-programme", request=intake
+    )
+    programme_id = programme.object_ids["programme_id"]
+    workstream_id = programme.object_ids["workstream_id"]
+
+    from tests.test_ba_tenant_and_authz import _login
+    client = app.test_client()
+    with app.app_context():
+        _login(client, scope.actor_id)
+
+        page = client.get(
+            f"/solutions/programmes/{programme_id}/workstreams/{workstream_id}/objective"
+        )
+        assert page.status_code == 200
+        html = page.get_data(as_text=True)
+        assert "Advance now" in html
+        assert f"/workstreams/{workstream_id}/objective/advance" in html
+
+        resp = client.post(
+            f"/solutions/programmes/{programme_id}/workstreams/{workstream_id}/objective/advance",
+            data={"expected_revision": "1", "command_key": "advance-route-to-discover"},
+        )
+        assert resp.status_code == 303, resp.get_data(as_text=True)
+        assert resp.headers["Location"].endswith(
+            f"/workstreams/{workstream_id}/discover"
+        )
+
+        # Read back independently — the transition actually persisted, not
+        # just a redirect that looked successful.
+        snapshot = TransformationGateService.load_policy_snapshot(
+            actor=scope.actor, workstream_id=workstream_id
+        )
+        assert snapshot.workstream.lifecycle_stage == "discover"

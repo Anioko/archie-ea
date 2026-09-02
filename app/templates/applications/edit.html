@@ -131,6 +131,20 @@
                  placeholder="e.g. Java, Spring Boot, PostgreSQL"
                  class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
         </div>
+        {# F-08(c), Capgemini dry-run: applications had no way to record where
+           they sit in the baseline/target architecture — the Traceability
+           Matrix's plateau filters had nothing to find for ApplicationComponent
+           rows as a direct result. #}
+        <div>
+          <label for="architecture_state" class="block text-sm font-medium mb-1">Architecture state</label>
+          <select id="architecture_state" name="architecture_state"
+                  class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+            <option value="" {% if not architecture_state %}selected{% endif %}>Unspecified</option>
+            <option value="Baseline" {% if architecture_state == 'Baseline' %}selected{% endif %}>As-Is (baseline)</option>
+            <option value="Target" {% if architecture_state == 'Target' %}selected{% endif %}>To-Be (target)</option>
+            <option value="Transition" {% if architecture_state == 'Transition' %}selected{% endif %}>Transition</option>
+          </select>
+        </div>
       </div>
     </section>
 
