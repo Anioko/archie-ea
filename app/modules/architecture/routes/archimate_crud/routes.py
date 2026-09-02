@@ -1263,12 +1263,34 @@ def delete_element(layer, element_type, element_id):
         abort(404)
 
     try:
+        # DEF-067, Capgemini dry-run pass 3: this deleted the ArchiMateElement
+        # mirror (and, for a dedicated model, the row itself) with no cleanup
+        # of ArchiMateRelationship rows still pointing at it.
+        # archimate_relationships.source_id/target_id carry ON DELETE NO
+        # ACTION, so any element with a relationship raised an
+        # IntegrityError on commit — caught below and reported as the
+        # actively misleading "Invalid request parameters" (this was never
+        # a request-parameter problem). Clear relationships referencing
+        # either id first so delete is robust regardless of how the
+        # relationship got there.
+        archimate_element = None
         if not _from_ae:
-            # Delete linked ArchiMateElement if exists in dedicated model
             if getattr(element, "archimate_element_id", None):
                 archimate_element = ArchiMateElement.query.get(element.archimate_element_id)
-                if archimate_element:
-                    db.session.delete(archimate_element)
+        else:
+            archimate_element = element
+
+        ae_ids = [aid for aid in (element_id if _from_ae else None, getattr(archimate_element, "id", None)) if aid]
+        if ae_ids:
+            ArchiMateRelationship.query.filter(
+                db.or_(
+                    ArchiMateRelationship.source_id.in_(ae_ids),
+                    ArchiMateRelationship.target_id.in_(ae_ids),
+                )
+            ).delete(synchronize_session=False)
+
+        if not _from_ae and archimate_element:
+            db.session.delete(archimate_element)
 
         db.session.delete(element)
         db.session.commit()
@@ -1288,15 +1310,17 @@ def delete_element(layer, element_type, element_id):
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(
-            f"Error deleting {element_type}: {str(e)}", exc_info=True
+            f"Error deleting {element_type} {element_id}: {str(e)}", exc_info=True
         )
 
-        if request.is_json:
-            return jsonify(
-                {"success": False, "error": "Invalid request parameters"}
-            ), 400
+        # Never surface the raw exception (DEF-003: no toast may contain
+        # psycopg2/SQL:/sqlalche) — the real detail goes to the log above.
+        safe_message = f"Could not delete this {element_type}. It may still be referenced elsewhere in the model."
 
-        flash("Error deleting {element_type}. Please try again.", "error")
+        if request.is_json:
+            return jsonify({"success": False, "error": safe_message}), 400
+
+        flash(safe_message, "error")
         return redirect(
             url_for(
                 "archimate_crud.detail_element",
