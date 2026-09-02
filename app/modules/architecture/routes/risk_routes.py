@@ -1,9 +1,12 @@
 """Risk REST API and UI routes — TPM-013 risk heat map."""
 import logging
+from datetime import date
 
 from flask import Blueprint, jsonify, render_template, request
 from flask_login import login_required
 
+from app import db
+from app.models.raid_item import RaidItem, RaidKind, RaidStatus
 from app.models.risk import Risk
 from app.services import risk_service
 
@@ -67,6 +70,89 @@ def update_risk(risk_id):
     return jsonify(risk.to_dict()), 200
 
 
+@risk_bp.route("/api/raid", methods=["GET"])
+@login_required
+def list_raid_items():
+    """GET /api/raid?kind=assumption|issue|dependency — list RAID items,
+    optionally filtered by kind. Risk (the "R") lives at /api/risks, not here —
+    see RaidItem's docstring for why this is a separate table."""
+    kind = request.args.get("kind", "").strip()
+    q = RaidItem.query
+    if kind:
+        try:
+            q = q.filter_by(kind=RaidKind(kind))
+        except ValueError:
+            return jsonify({"error": f"Invalid kind: {kind}. Must be one of "
+                            f"{[k.value for k in RaidKind]}"}), 400
+    items = q.order_by(RaidItem.id).all()
+    return jsonify([i.to_dict() for i in items]), 200
+
+
+@risk_bp.route("/api/raid", methods=["POST"])
+@login_required
+def create_raid_item():
+    """POST /api/raid — create an Assumption/Issue/Dependency. Returns 201."""
+    data = request.get_json(force=True) or {}
+    required = ("kind", "title")
+    missing = [f for f in required if not data.get(f)]
+    if missing:
+        return jsonify({"error": f"Missing fields: {', '.join(missing)}"}), 400
+    try:
+        kind = RaidKind(data["kind"])
+    except ValueError:
+        return jsonify({"error": f"Invalid kind: {data['kind']!r}. Must be one of "
+                        f"{[k.value for k in RaidKind]}"}), 400
+    target_date = None
+    if data.get("target_date"):
+        try:
+            target_date = date.fromisoformat(data["target_date"])
+        except ValueError:
+            return jsonify({"error": "target_date must be YYYY-MM-DD"}), 400
+    item = RaidItem(
+        kind=kind,
+        title=data["title"],
+        description=data.get("description"),
+        owner=data.get("owner"),
+        target_date=target_date,
+        programme_name=data.get("programme_name"),
+    )
+    db.session.add(item)
+    db.session.commit()
+    return jsonify(item.to_dict()), 201
+
+
+@risk_bp.route("/api/raid/<int:item_id>", methods=["PATCH"])
+@login_required
+def update_raid_item(item_id):
+    """PATCH /api/raid/<id> — update status and/or resolution notes."""
+    data = request.get_json(force=True) or {}
+    item = db.session.get(RaidItem, item_id)
+    if item is None:
+        return jsonify({"error": "RAID item not found"}), 404
+    if "status" in data:
+        try:
+            item.status = RaidStatus(data["status"])
+        except ValueError:
+            return jsonify({"error": f"Invalid status: {data['status']!r}. Must be one of "
+                            f"{[s.value for s in RaidStatus]}"}), 400
+    if "resolution_notes" in data:
+        item.resolution_notes = data["resolution_notes"]
+    db.session.commit()
+    return jsonify(item.to_dict()), 200
+
+
+@risk_bp.route("/api/raid/<int:item_id>", methods=["DELETE"])
+@login_required
+def delete_raid_item(item_id):
+    """DELETE /api/raid/<id> — remove a RAID item that was logged in error."""
+    item = db.session.get(RaidItem, item_id)
+    if item is None:
+        return jsonify({"error": "RAID item not found"}), 404
+    db.session.delete(item)
+    db.session.commit()
+    return jsonify({"deleted": True}), 200
+
+
 @risk_bp.route("/api/risks/heat-map", methods=["GET"])
 @login_required
 def risk_heat_map_data():
@@ -106,6 +192,10 @@ def risk_register():
     order = column.desc() if direction == "desc" else column.asc()
     risks = Risk.query.order_by(order, Risk.id).all()
     heat_data = risk_service.get_heat_map_data(solution_id=None)
+    # RAID (2 Sep 2026, Capgemini delivery-team dry-run): the register was
+    # Risk-only — 1 of the 4 RAID categories. Loaded here so the same page
+    # can show all four without a separate navigation destination for each.
+    raid_items = RaidItem.query.order_by(RaidItem.kind, RaidItem.id).all()
     return render_template(
         "governance/risk_register.html",
         risks=risks,
@@ -113,6 +203,8 @@ def risk_register():
         total=len(risks),
         current_sort=sort_key if sort_key in _RISK_SORT_COLUMNS else "id",
         current_dir=direction if direction in ("asc", "desc") else "asc",
+        raid_items=raid_items,
+        raid_kinds=[k.value for k in RaidKind],
     )
 
 

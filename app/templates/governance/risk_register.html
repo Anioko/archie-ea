@@ -181,6 +181,145 @@
         {% endif %}
     </div>
 
+    {# RAID (2 Sep 2026, Capgemini delivery-team dry-run): the register was
+       Risk-only — 1 of the 4 RAID categories a real programme needs. Same
+       page, same patterns (Platform.fetch, Platform.toast, the modal +
+       inline-error convention above) rather than a separate destination for
+       three categories that share every field. #}
+    <div class="bg-card border border-border rounded-lg overflow-hidden" x-data="raidLog({{ raid_kinds | tojson }})" x-cloak>
+        <div class="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-border">
+            <div>
+                <h2 class="text-sm font-semibold text-foreground">Assumptions, Issues &amp; Dependencies</h2>
+                <p class="text-xs text-muted-foreground mt-0.5">The rest of the RAID log — Risk is tracked above.</p>
+            </div>
+            <div class="flex items-center gap-2">
+                <div class="inline-flex rounded-md border border-input p-0.5">
+                    <template x-for="k in kinds" :key="k">
+                        <button type="button" @click="kindFilter = (kindFilter === k ? '' : k)"
+                                :class="kindFilter === k ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'"
+                                class="px-2.5 py-1 rounded text-xs font-medium capitalize transition-colors"
+                                x-text="k + 's'"></button>
+                    </template>
+                </div>
+                <button type="button" @click="openCreate()"
+                        class="inline-flex items-center gap-1.5 h-8 px-3 rounded-md bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 transition-colors">
+                    <i data-lucide="plus" class="h-3.5 w-3.5" aria-hidden="true"></i> Add item
+                </button>
+            </div>
+        </div>
+        {% if raid_items %}
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
+                        <th class="px-4 py-2 font-medium">Kind</th>
+                        <th class="px-4 py-2 font-medium">Title</th>
+                        <th class="px-4 py-2 font-medium">Owner</th>
+                        <th class="px-4 py-2 font-medium">Target date</th>
+                        <th class="px-4 py-2 font-medium">Status</th>
+                        <th class="px-4 py-2 font-medium text-right">Action</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-border">
+                    {% for item in raid_items %}
+                    <tr class="hover:bg-accent/40 transition-colors" x-show="!kindFilter || kindFilter === {{ item.kind.value | tojson }}">
+                        <td class="px-4 py-2">
+                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-muted text-muted-foreground capitalize">{{ item.kind.value }}</span>
+                        </td>
+                        <td class="px-4 py-2">
+                            <div class="font-medium text-foreground">{{ item.title }}</div>
+                            {% if item.description %}
+                            <div class="text-xs text-muted-foreground">{{ item.description | truncate(90) }}</div>
+                            {% endif %}
+                        </td>
+                        <td class="px-4 py-2 text-muted-foreground">{{ item.owner or '—' }}</td>
+                        <td class="px-4 py-2 tabular-nums text-muted-foreground">{{ item.target_date.isoformat() if item.target_date else '—' }}</td>
+                        <td class="px-4 py-2">
+                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium
+                                {% if item.status.value == 'open' %}bg-warning/10 text-warning-emphasis
+                                {% elif item.status.value == 'resolved' %}bg-info/10 text-info-emphasis
+                                {% else %}bg-success/10 text-success-emphasis{% endif %}">
+                                {{ item.status.value | title }}
+                            </span>
+                        </td>
+                        <td class="px-4 py-2 text-right whitespace-nowrap">
+                            {% if item.status.value != 'closed' %}
+                            <button type="button"
+                                    @click="setStatus({{ item.id }}, {{ 'resolved' if item.status.value == 'open' else 'closed' }})"
+                                    :disabled="updatingId === {{ item.id }}"
+                                    class="inline-flex items-center rounded-md border border-input bg-background px-2 py-1 text-xs font-medium hover:bg-accent hover:text-accent-foreground disabled:opacity-50">
+                                {{ 'Resolve' if item.status.value == 'open' else 'Close' }}
+                            </button>
+                            {% else %}
+                            <span class="text-xs text-muted-foreground">Closed</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="px-4 py-10 text-center">
+            <p class="text-sm text-muted-foreground">No assumptions, issues or dependencies recorded yet.</p>
+            <p class="mt-1 text-xs text-muted-foreground">Use <span class="font-medium">Add item</span> to record the first one.</p>
+        </div>
+        {% endif %}
+    </div>
+
+    {% call modal(id='create-raid-modal', title='Add RAID Item', description='Record an assumption, issue or dependency.', size='lg') %}
+    <div class="space-y-4">
+        <div>
+            <label for="raid-kind" class="block text-sm font-medium mb-1">Kind <span class="text-destructive-emphasis">*</span></label>
+            <select id="raid-kind" x-model="raidForm.kind"
+                    class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm capitalize">
+                <template x-for="k in kinds" :key="k">
+                    <option :value="k" x-text="k" class="capitalize"></option>
+                </template>
+            </select>
+        </div>
+        <div>
+            <label for="raid-title" class="block text-sm font-medium mb-1">Title <span class="text-destructive-emphasis">*</span></label>
+            <input id="raid-title" type="text" x-model="raidForm.title"
+                   class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        </div>
+        <div>
+            <label for="raid-description" class="block text-sm font-medium mb-1">Description</label>
+            <textarea id="raid-description" x-model="raidForm.description" rows="3"
+                      class="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm"></textarea>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+            <div>
+                <label for="raid-owner" class="block text-sm font-medium mb-1">Owner</label>
+                <input id="raid-owner" type="text" x-model="raidForm.owner"
+                       class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+            </div>
+            <div>
+                <label for="raid-target-date" class="block text-sm font-medium mb-1">Target date</label>
+                <input id="raid-target-date" type="date" x-model="raidForm.target_date"
+                       class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+            </div>
+        </div>
+        <div>
+            <label for="raid-programme" class="block text-sm font-medium mb-1">Programme</label>
+            <input id="raid-programme" type="text" x-model="raidForm.programme_name" placeholder="e.g. Constellation"
+                   class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+        </div>
+        <p x-show="raidError" x-cloak class="text-sm text-destructive-emphasis" x-text="raidError"></p>
+    </div>
+    <div class="flex justify-end gap-2 mt-4">
+        <button type="button" data-modal-close="create-raid-modal"
+                class="inline-flex items-center h-9 px-4 rounded-md border border-input bg-background text-sm font-medium hover:bg-accent">
+            Cancel
+        </button>
+        <button type="button" @click="submitRaid()" :disabled="raidSaving"
+                class="inline-flex items-center h-9 px-4 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-50">
+            <span x-show="raidSaving" x-cloak class="mr-1.5 h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent"></span>
+            Save
+        </button>
+    </div>
+    {% endcall %}
+
     {% call modal(id='create-risk-modal', title='Add Risk', description='Record an enterprise architecture risk.', size='lg') %}
     <div class="space-y-4">
         <div>
@@ -343,6 +482,81 @@ function riskRegister() {
                 .finally(function () {
                     self.saving = false;
                 });
+        }
+    };
+}
+
+function raidLog(kinds) {
+    return {
+        kinds: kinds,
+        kindFilter: '',
+        raidSaving: false,
+        raidError: '',
+        updatingId: null,
+        raidForm: {
+            kind: kinds[0], title: '', description: '',
+            owner: '', target_date: '', programme_name: ''
+        },
+
+        openCreate() {
+            this.raidForm = {
+                kind: this.kindFilter || this.kinds[0], title: '', description: '',
+                owner: '', target_date: '', programme_name: ''
+            };
+            this.raidError = '';
+            this.raidSaving = false;
+            Platform.modal.open('create-raid-modal');
+        },
+
+        submitRaid() {
+            if (this.raidSaving) return;
+            if (!String(this.raidForm.title || '').trim()) {
+                this.raidError = 'Title is required.';
+                return;
+            }
+            this.raidSaving = true;
+            this.raidError = '';
+            const self = this;
+            Platform.fetch.post('/api/raid', this.raidForm, { silent: true })
+                .then(function (data) {
+                    if (data && data.error) {
+                        self.raidError = data.error;
+                        return;
+                    }
+                    Platform.modal.close('create-raid-modal');
+                    Platform.toast.success('Item recorded.');
+                    window.location.reload();
+                })
+                .catch(function (err) {
+                    self.raidError = 'Could not save this item.';
+                    throw err;
+                })
+                .finally(function () {
+                    self.raidSaving = false;
+                });
+        },
+
+        // PATCH /api/raid/<id> — same {status} contract as /api/risks/<id>.
+        setStatus(id, status) {
+            if (this.updatingId) return;
+            this.updatingId = id;
+            const self = this;
+            Platform.fetch('/api/raid/' + id, {
+                method: 'PATCH', body: { status: status }, silent: true
+            })
+                .then(function (data) {
+                    if (data && data.error) {
+                        Platform.toast.error(data.error);
+                        return;
+                    }
+                    Platform.toast.success('Item marked ' + status + '.');
+                    setTimeout(function () { window.location.reload(); }, 600);
+                })
+                .catch(function (err) {
+                    Platform.toast.error('Could not update this item.');
+                    throw err;
+                })
+                .finally(function () { self.updatingId = null; });
         }
     };
 }

@@ -322,6 +322,9 @@ else:
     # Risk model for TPM-013 risk heat map
     from .risk import Risk, RiskStatus  # noqa: F401
 
+    # RAID: Assumption/Issue/Dependency (Risk above already covers the "R")
+    from .raid_item import RaidItem, RaidKind, RaidStatus  # noqa: F401
+
     # Approved-technology register behind the governance dashboard's Standards tab
     from .technology_standard import TechnologyStandard  # noqa: F401
 
