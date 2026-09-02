@@ -1245,7 +1245,7 @@ def suggest_capabilities(id):
 @login_required
 def accept_capability_suggestion(id):
     """Accept an AI-suggested capability mapping — creates the ApplicationCapabilityMapping record."""
-    from flask_login import current_user
+    from flask import g
 
     ApplicationComponent.query.get_or_404(id)
     data = request.get_json() or {}
@@ -1254,6 +1254,9 @@ def accept_capability_suggestion(id):
 
     if not cap_id:
         return jsonify({"success": False, "error": "capability_id required"}), 400
+
+    if db.session.get(BusinessCapability, cap_id) is None:
+        return jsonify({"success": False, "error": "Capability not found"}), 404
 
     # Check if already mapped
     # tenant-scoping-ok: FK id already org-scoped (application/capability resolved via a TenantMixin model or the current request's own app/solution).
@@ -1264,6 +1267,9 @@ def accept_capability_suggestion(id):
         return jsonify({"success": False, "error": "Already mapped"}), 409
 
     mapping = ApplicationCapabilityMapping(
+        # organization_id is NOT NULL on this table and this model has no
+        # TenantMixin to default it — omitting it 500'd on every accept.
+        organization_id=g.current_org_id,
         application_component_id=id,
         business_capability_id=cap_id,
         support_level="partial",
@@ -1276,8 +1282,15 @@ def accept_capability_suggestion(id):
         is_active=True,
         created_by_id=getattr(current_user, "id", None),
     )
-    db.session.add(mapping)
-    db.session.commit()
+    try:
+        db.session.add(mapping)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception(
+            "Failed to accept capability suggestion %s for application %s", cap_id, id
+        )
+        return jsonify({"success": False, "error": "Could not save that suggestion."}), 500
 
     return jsonify({
         "success": True,

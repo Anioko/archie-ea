@@ -43,6 +43,7 @@ from ..models.technology_layer import (
     TechnologyService,
 )
 from ..models.unified_application_capability_mapping import UnifiedApplicationCapabilityMapping
+from ..models.unified_capability import UnifiedCapability
 from ..models.vendor.vendor_organization import VendorProduct, application_vendor_products
 from . import application_mgmt
 from .forms import (
@@ -306,8 +307,25 @@ def application_capability_mapping_create(id):
         flash("Selected capability was not found.", "error")
         return _redirect_to_detail(app.id, tab="capabilities")
 
+    # The picker posts a BusinessCapability.id, but UnifiedApplicationCapabilityMapping
+    # FKs to unified_capabilities.id — a different sequence (ADR-0008: unified_capabilities
+    # is the canonical, provenance-tracked projection of business_capability, kept in sync
+    # by `flask project-capabilities`). Resolve the real projected row rather than reusing
+    # the BusinessCapability id directly, which only worked by accident where the two
+    # sequences happened to collide and otherwise violated the FK.
+    unified_capability = UnifiedCapability.query.filter_by(
+        source_table="business_capability", source_id=str(capability_id)
+    ).first()
+    if not unified_capability:
+        flash(
+            f"{capability.name} has not finished syncing to the capability store yet — "
+            "try again shortly, or ask an administrator to run the capability projection.",
+            "error",
+        )
+        return _redirect_to_detail(app.id, tab="capabilities")
+
     existing = UnifiedApplicationCapabilityMapping.query.filter_by(
-        application_component_id=app.id, unified_capability_id=capability_id
+        application_component_id=app.id, unified_capability_id=unified_capability.id
     ).first()
     if existing:
         flash("Capability already linked to this application.", "info")
@@ -348,7 +366,7 @@ def application_capability_mapping_create(id):
 
     mapping = UnifiedApplicationCapabilityMapping(
         application_component_id=app.id,
-        unified_capability_id=capability_id,
+        unified_capability_id=unified_capability.id,
         support_level=support_level or None,
         coverage_percentage=coverage_value,
         maturity_level=maturity_value,
@@ -360,9 +378,14 @@ def application_capability_mapping_create(id):
         db.session.add(mapping)
         db.session.commit()
         flash(f"Linked {capability.name} to {app.name}.", "success")
-    except Exception as exc:
+    except Exception:
         db.session.rollback()
-        flash(f"Unable to link capability: {exc}", "error")
+        current_app.logger.exception(
+            "Failed to link capability %s to application %s", capability_id, app.id
+        )
+        # Never interpolate the raw exception into user-facing text — it leaked
+        # internal table names, the full INSERT and its parameter dictionary.
+        flash("Unable to link that capability. The team has been notified.", "error")
 
     return _redirect_to_detail(app.id, tab="capabilities")
 

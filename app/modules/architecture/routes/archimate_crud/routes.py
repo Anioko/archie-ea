@@ -662,6 +662,19 @@ def api_layer_elements(layer):
                 continue
             try:
                 q = model_class.query
+                # Same fix as _count_layer_elements (ARCH — "a tenant with 71
+                # elements was told it had 142"): a dedicated-table row that has
+                # been mirrored into archimate_elements is added again below as
+                # its own "architecture" entry — the seen_pairs check at line 728
+                # keyed on (element_type, elem.id), never the actual mirror's
+                # own id, so it never recognised the mirror as already seen. Every
+                # correctly-mirrored element therefore appeared twice, as
+                # Source=Portfolio and Source=Architecture with different ids.
+                # Excluding mirrored rows here (they're still shown, once, via
+                # the archimate_elements supplement below) fixes it the same way
+                # the count endpoint was already fixed.
+                if hasattr(model_class, "archimate_element_id"):
+                    q = q.filter(model_class.archimate_element_id.is_(None))
                 if search:
                     safe_search = search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
                     filters = []
