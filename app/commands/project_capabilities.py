@@ -422,8 +422,16 @@ DO UPDATE SET
     kpis = EXCLUDED.kpis,
     status = EXCLUDED.status,
     source_checksum = EXCLUDED.source_checksum,
+    -- 2 Sep 2026: archimate_element_id was copied on INSERT only. A capability
+    -- projected before its source BusinessCapability got its ArchiMate element
+    -- (e.g. the truncation-bug backfill that ran this session) stayed permanently
+    -- NULL here even after every later re-run of this projection, because this
+    -- column was absent from the UPDATE list — the checksum comparison below
+    -- doesn't cover it, but once matched it must still be applied on every write.
+    archimate_element_id = EXCLUDED.archimate_element_id,
     updated_at = now()
 WHERE unified_capabilities.source_checksum IS DISTINCT FROM EXCLUDED.source_checksum
+   OR unified_capabilities.archimate_element_id IS DISTINCT FROM EXCLUDED.archimate_element_id
 """  # noqa: S608 - both interpolated fragments are module literals
 
 # Pass 2 — hierarchy. bc.parent_capability_id is a business_capability id and must
