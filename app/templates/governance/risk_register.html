@@ -80,15 +80,34 @@
         <div class="overflow-x-auto">
             <table class="w-full text-sm">
                 <caption class="sr-only">Enterprise risk register</caption>
+                {# T-14 (2 Sep 2026 audit): one of six tables with no sort at all.
+                   Sort is server-side (risk_routes.py) so it survives a reload/bookmark;
+                   Score and Level stay unsorted since they're derived (likelihood*impact
+                   and its bucketing) rather than real columns. #}
+                {% macro sort_th(key, label, extra_class='') %}
+                {% set next_dir = 'desc' if current_sort == key and current_dir == 'asc' else 'asc' %}
+                <th scope="col" class="px-4 py-2 font-medium {{ extra_class }}">
+                    <a href="{{ request.path }}?sort={{ key }}&dir={{ next_dir }}"
+                       class="inline-flex items-center gap-1 hover:text-foreground transition-colors"
+                       aria-label="Sort by {{ label }}{{ ', currently ' ~ current_dir ~ 'ending' if current_sort == key }}">
+                        {{ label }}
+                        {% if current_sort == key %}
+                        <i data-lucide="{{ 'arrow-up' if current_dir == 'asc' else 'arrow-down' }}" class="h-3 w-3" aria-hidden="true"></i>
+                        {% else %}
+                        <i data-lucide="chevrons-up-down" class="h-3 w-3 opacity-40" aria-hidden="true"></i>
+                        {% endif %}
+                    </a>
+                </th>
+                {% endmacro %}
                 <thead>
                     <tr class="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
-                        <th scope="col" class="px-4 py-2 font-medium">Title</th>
-                        <th scope="col" class="px-4 py-2 font-medium">Owner</th>
-                        <th scope="col" class="px-4 py-2 font-medium">Likelihood</th>
-                        <th scope="col" class="px-4 py-2 font-medium">Impact</th>
+                        {{ sort_th('title', 'Title') }}
+                        {{ sort_th('owner', 'Owner') }}
+                        {{ sort_th('likelihood', 'Likelihood') }}
+                        {{ sort_th('impact', 'Impact') }}
                         <th scope="col" class="px-4 py-2 font-medium">Score</th>
                         <th scope="col" class="px-4 py-2 font-medium">Level</th>
-                        <th scope="col" class="px-4 py-2 font-medium">Status</th>
+                        {{ sort_th('status', 'Status') }}
                         <th scope="col" class="px-4 py-2 font-medium text-right">Action</th>
                     </tr>
                 </thead>

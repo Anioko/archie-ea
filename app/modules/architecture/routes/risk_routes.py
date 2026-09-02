@@ -80,17 +80,39 @@ def risk_heat_map_data():
 # UI routes
 # ---------------------------------------------------------------------------
 
+# T-14 (2 Sep 2026 audit): the risk register was one of six tables with no sort
+# at all. Server-side, query-param driven sort — consistent with how a plain
+# Jinja-rendered table (no Alpine reactive array backing it) sorts elsewhere in
+# this codebase, and it survives a page reload/bookmark, which a client-only
+# sort would not. Column keys map to real, indexed-or-cheap-to-sort columns
+# only; an unrecognised key falls back to the existing default rather than
+# raising, so a stale/hand-edited URL can't 500 the page.
+_RISK_SORT_COLUMNS = {
+    "title": Risk.title,
+    "owner": Risk.owner,
+    "likelihood": Risk.likelihood,
+    "impact": Risk.impact,
+    "status": Risk.status,
+}
+
+
 @risk_bp.route("/risks/")
 @login_required
 def risk_register():
     """Standalone Risk Register page — shows all risks across the enterprise."""
-    risks = Risk.query.order_by(Risk.id).all()
+    sort_key = request.args.get("sort", "id")
+    direction = request.args.get("dir", "asc")
+    column = _RISK_SORT_COLUMNS.get(sort_key, Risk.id)
+    order = column.desc() if direction == "desc" else column.asc()
+    risks = Risk.query.order_by(order, Risk.id).all()
     heat_data = risk_service.get_heat_map_data(solution_id=None)
     return render_template(
         "governance/risk_register.html",
         risks=risks,
         grid=heat_data.get("grid", []),
         total=len(risks),
+        current_sort=sort_key if sort_key in _RISK_SORT_COLUMNS else "id",
+        current_dir=direction if direction in ("asc", "desc") else "asc",
     )
 
 
