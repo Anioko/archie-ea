@@ -224,7 +224,7 @@
                 </thead>
                 <tbody class="divide-y divide-border">
                     {% for item in raid_items %}
-                    <tr class="hover:bg-accent/40 transition-colors" x-show="!kindFilter || kindFilter === {{ item.kind.value | tojson }}">
+                    <tr class="hover:bg-accent/40 transition-colors" x-show='!kindFilter || kindFilter === {{ item.kind.value | tojson }}'>
                         <td class="px-4 py-2">
                             <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-muted text-muted-foreground capitalize">{{ item.kind.value }}</span>
                         </td>
