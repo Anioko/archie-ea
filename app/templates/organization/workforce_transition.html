@@ -1,0 +1,181 @@
+{% extends 'layouts/admin_base.html' %}
+{% from 'macros/page_shell.html' import page_shell %}
+{% from 'components/metrics_card.html' import metrics_card %}
+
+{% block title %}Workforce Transition{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8"
+     x-data="workforceTransition()" x-init="load()">
+  {{ page_shell(
+      title='Workforce Transition',
+      subtitle='The people move behind the transformation — role transitions, retiring and growing roles, headcount delta and the skills gap.',
+      breadcrumb=[('Home', '/'), ('Organization', url_for('organization.index') if 'organization.index' in flask.current_app.view_functions else '/organization/'), ('Workforce Transition', none)]
+  ) }}
+
+  {# Loading #}
+  <div x-show="loading" x-cloak class="rounded-lg border border-border bg-card p-10 text-center text-muted-foreground">
+    <i data-lucide="loader" class="h-5 w-5 animate-spin inline-block" aria-hidden="true"></i>
+    <span class="ml-2">Loading workforce analysis…</span>
+  </div>
+
+  {# Error — render it, never a fabricated fallback #}
+  <div x-show="error" x-cloak class="rounded-lg border border-destructive/30 bg-destructive/5 p-6 text-sm text-destructive-emphasis">
+    <p class="font-medium">Could not load the workforce analysis.</p>
+    <p class="mt-1 text-muted-foreground" x-text="error"></p>
+  </div>
+
+  <template x-if="!loading && !error">
+    <div class="space-y-6">
+      {# Empty estate — honest empty state, no invented numbers #}
+      <template x-if="data.role_count === 0">
+        <div class="rounded-lg border border-border bg-card p-10 text-center text-muted-foreground">
+          No business roles are modelled yet. Define roles with their headcount
+          (filled positions, forecasted demand), replacement and skills to see the
+          transition picture here.
+        </div>
+      </template>
+
+      <template x-if="data.role_count > 0">
+        <div class="space-y-6">
+          {# Headcount summary #}
+          <div class="grid gap-4 sm:grid-cols-3">
+            {{ metrics_card(title='Current headcount', value='—', icon='users', description='Filled positions today') }}
+            {{ metrics_card(title='Target headcount', value='—', icon='user-plus', description='Forecast for the to-be estate') }}
+            {{ metrics_card(title='Net change', value='—', icon='trending-up', description='Target minus current') }}
+          </div>
+          {# The macro values are static placeholders (em dash); the live figures
+             are bound below so the numbers are always the queried ones. #}
+          <div class="grid gap-4 sm:grid-cols-3 -mt-2">
+            <div class="rounded-lg border border-border bg-card px-5 py-3">
+              <div class="text-2xl font-bold text-foreground" x-text="data.headcount.current"></div>
+              <div class="text-xs text-muted-foreground">current (filled)</div>
+            </div>
+            <div class="rounded-lg border border-border bg-card px-5 py-3">
+              <div class="text-2xl font-bold text-foreground" x-text="data.headcount.target"></div>
+              <div class="text-xs text-muted-foreground">target (forecast)</div>
+            </div>
+            <div class="rounded-lg border border-border bg-card px-5 py-3">
+              <div class="text-2xl font-bold"
+                   :class="data.headcount.delta > 0 ? 'text-success-emphasis' : (data.headcount.delta < 0 ? 'text-destructive-emphasis' : 'text-foreground')"
+                   x-text="(data.headcount.delta > 0 ? '+' : '') + data.headcount.delta"></div>
+              <div class="text-xs text-muted-foreground">net change</div>
+            </div>
+          </div>
+
+          {# Role-to-role transitions #}
+          <section class="rounded-lg border border-border bg-card">
+            <div class="border-b border-border px-6 py-4">
+              <h2 class="text-sm font-semibold text-foreground">Role transitions</h2>
+              <p class="text-xs text-muted-foreground">Where the workforce moves from an as-is role to its to-be replacement.</p>
+            </div>
+            <div class="overflow-x-auto">
+              <table class="w-full text-sm">
+                <thead>
+                  <tr class="text-left text-xs text-muted-foreground">
+                    <th class="px-6 py-3 font-medium">From (as-is)</th>
+                    <th class="px-6 py-3 font-medium">To (to-be)</th>
+                    <th class="px-6 py-3 font-medium text-right">Headcount</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-border">
+                  <template x-for="t in data.transitions" :key="t.from_role_id + '-' + t.to_role_id">
+                    <tr>
+                      <td class="px-6 py-3 text-foreground" x-text="t.from_role"></td>
+                      <td class="px-6 py-3 text-foreground" x-text="t.to_role"></td>
+                      <td class="px-6 py-3 text-right text-muted-foreground">
+                        <span x-text="t.headcount_from"></span>
+                        <i data-lucide="arrow-right" class="h-3 w-3 inline-block mx-1" aria-hidden="true"></i>
+                        <span class="text-foreground font-medium" x-text="t.headcount_to"></span>
+                      </td>
+                    </tr>
+                  </template>
+                  <template x-if="data.transitions.length === 0">
+                    <tr><td colspan="3" class="px-6 py-6 text-center text-muted-foreground">No role transitions recorded (set a role's replacement to record one).</td></tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <div class="grid gap-6 lg:grid-cols-2">
+            {# Retiring #}
+            <section class="rounded-lg border border-border bg-card p-6">
+              <h2 class="text-sm font-semibold text-foreground mb-3">Retiring roles</h2>
+              <template x-if="data.retiring_roles.length === 0">
+                <p class="text-sm text-muted-foreground">None marked for retirement.</p>
+              </template>
+              <ul class="space-y-2">
+                <template x-for="r in data.retiring_roles" :key="r.id">
+                  <li class="flex items-center justify-between text-sm">
+                    <span class="text-foreground" x-text="r.role"></span>
+                    <span class="inline-flex items-center rounded-md border border-border px-2 py-0.5 text-xs text-muted-foreground" x-text="r.reason"></span>
+                  </li>
+                </template>
+              </ul>
+            </section>
+
+            {# New / growing #}
+            <section class="rounded-lg border border-border bg-card p-6">
+              <h2 class="text-sm font-semibold text-foreground mb-3">New &amp; growing roles</h2>
+              <template x-if="data.new_or_growing_roles.length === 0">
+                <p class="text-sm text-muted-foreground">No roles are growing (target ≤ current everywhere).</p>
+              </template>
+              <ul class="space-y-2">
+                <template x-for="r in data.new_or_growing_roles" :key="r.id">
+                  <li class="flex items-center justify-between text-sm">
+                    <span class="text-foreground" x-text="r.role"></span>
+                    <span class="text-muted-foreground">
+                      <span x-text="r.headcount_from"></span>
+                      <i data-lucide="arrow-right" class="h-3 w-3 inline-block mx-1" aria-hidden="true"></i>
+                      <span class="text-foreground font-medium" x-text="r.headcount_to"></span>
+                    </span>
+                  </li>
+                </template>
+              </ul>
+            </section>
+          </div>
+
+          {# Skills gap #}
+          <section class="rounded-lg border border-border bg-card p-6">
+            <h2 class="text-sm font-semibold text-foreground mb-1">Skills gap</h2>
+            <p class="text-xs text-muted-foreground mb-3">Competencies the growing roles need that the shrinking roles don't already supply — the hire/train list.</p>
+            <template x-if="data.skills_gap.length === 0">
+              <p class="text-sm text-muted-foreground">No unmet skills — the shrinking roles already cover what the growing ones need.</p>
+            </template>
+            <div class="flex flex-wrap gap-2">
+              <template x-for="s in data.skills_gap" :key="s">
+                <span class="inline-flex items-center rounded-md bg-primary/10 text-primary border border-primary/30 px-2.5 py-1 text-xs font-medium" x-text="s"></span>
+              </template>
+            </div>
+          </section>
+        </div>
+      </template>
+    </div>
+  </template>
+</div>
+
+<script>
+function workforceTransition() {
+  return {
+    loading: true,
+    error: '',
+    data: { role_count: 0, transitions: [], retiring_roles: [], new_or_growing_roles: [], headcount: { current: 0, target: 0, delta: 0 }, skills_gap: [] },
+    async load() {
+      this.loading = true; this.error = '';
+      try {
+        // Platform.fetch.get rejects on a non-ok response, so the catch below is
+        // the error path — no silent fall-through to a fabricated default.
+        const json = await Platform.fetch.get('/organization/workforce-transition/api');
+        this.data = json.data ?? json;   // success_response wraps in { data }
+      } catch (e) {
+        this.error = (e && e.message) ? e.message : 'Unknown error';
+      } finally {
+        this.loading = false;
+        this.$nextTick(() => { if (window.lucide) window.lucide.createIcons(); });
+      }
+    }
+  };
+}
+</script>
+{% endblock %}

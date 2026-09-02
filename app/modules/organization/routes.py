@@ -53,6 +53,13 @@ def chart_data():
     return success_response(tree)
 
 
+@organization_bp.route("/workforce-transition")
+@login_required
+def workforce_transition():
+    """Read-only workforce-transition view (fetches the api route below)."""
+    return render_template("organization/workforce_transition.html")
+
+
 @organization_bp.route("/workforce-transition/api")
 @login_required
 def workforce_transition_api():
