@@ -182,15 +182,16 @@
     </div>
 
     {# RAID (2 Sep 2026, Capgemini delivery-team dry-run): the register was
-       Risk-only — 1 of the 4 RAID categories a real programme needs. Same
-       page, same patterns (Platform.fetch, Platform.toast, the modal +
-       inline-error convention above) rather than a separate destination for
-       three categories that share every field. #}
+       Risk-only. Risk (R) and Assumption (A — demand.Assumption) already have
+       their own homes; this covers Issues and Dependencies, the two
+       categories that had none, on the same page with the same patterns
+       (Platform.fetch, Platform.toast, the modal + inline-error convention
+       above) rather than a separate destination. #}
     <div class="bg-card border border-border rounded-lg overflow-hidden" x-data='raidLog({{ raid_kinds | tojson }})' x-cloak>
         <div class="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-border">
             <div>
-                <h2 class="text-sm font-semibold text-foreground">Assumptions, Issues &amp; Dependencies</h2>
-                <p class="text-xs text-muted-foreground mt-0.5">The rest of the RAID log — Risk is tracked above.</p>
+                <h2 class="text-sm font-semibold text-foreground">Issues &amp; Dependencies</h2>
+                <p class="text-xs text-muted-foreground mt-0.5">The rest of the RAID log — Risk is tracked above; Assumptions live on each programme's own page.</p>
             </div>
             <div class="flex items-center gap-2">
                 <div class="inline-flex rounded-md border border-input p-0.5">
@@ -198,7 +199,7 @@
                         <button type="button" @click="kindFilter = (kindFilter === k ? '' : k)"
                                 :class="kindFilter === k ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'"
                                 class="px-2.5 py-1 rounded text-xs font-medium capitalize transition-colors"
-                                x-text="k + 's'"></button>
+                                x-text="k === 'dependency' ? 'dependencies' : k + 's'"></button>
                     </template>
                 </div>
                 <button type="button" @click="openCreate()"
@@ -214,6 +215,7 @@
                     <tr class="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
                         <th class="px-4 py-2 font-medium">Kind</th>
                         <th class="px-4 py-2 font-medium">Title</th>
+                        <th class="px-4 py-2 font-medium">Programme</th>
                         <th class="px-4 py-2 font-medium">Owner</th>
                         <th class="px-4 py-2 font-medium">Target date</th>
                         <th class="px-4 py-2 font-medium">Status</th>
@@ -232,6 +234,7 @@
                             <div class="text-xs text-muted-foreground">{{ item.description | truncate(90) }}</div>
                             {% endif %}
                         </td>
+                        <td class="px-4 py-2 text-muted-foreground">{{ item.strategic_initiative.name if item.strategic_initiative else (item.programme_name or '—') }}</td>
                         <td class="px-4 py-2 text-muted-foreground">{{ item.owner or '—' }}</td>
                         <td class="px-4 py-2 tabular-nums text-muted-foreground">{{ item.target_date.isoformat() if item.target_date else '—' }}</td>
                         <td class="px-4 py-2">
@@ -307,8 +310,13 @@
         </div>
         <div>
             <label for="raid-programme" class="block text-sm font-medium mb-1">Programme</label>
-            <input id="raid-programme" type="text" x-model="raidForm.programme_name" placeholder="e.g. Constellation"
-                   class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+            <select id="raid-programme" x-model="raidForm.strategic_initiative_id"
+                    class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+                <option value="">— Not linked to a programme —</option>
+                {% for p in programmes %}
+                <option value="{{ p.id }}">{{ p.name }}</option>
+                {% endfor %}
+            </select>
         </div>
         <p x-show="raidError" x-cloak class="text-sm text-destructive-emphasis" x-text="raidError"></p>
     </div>
@@ -501,13 +509,13 @@ function raidLog(kinds) {
         updatingId: null,
         raidForm: {
             kind: kinds[0], title: '', description: '',
-            owner: '', target_date: '', programme_name: ''
+            owner: '', target_date: '', strategic_initiative_id: ''
         },
 
         openCreate() {
             this.raidForm = {
                 kind: this.kindFilter || this.kinds[0], title: '', description: '',
-                owner: '', target_date: '', programme_name: ''
+                owner: '', target_date: '', strategic_initiative_id: ''
             };
             this.raidError = '';
             this.raidSaving = false;

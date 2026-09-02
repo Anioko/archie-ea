@@ -940,6 +940,22 @@ class EnterpriseInitiative(TenantMixin, db.Model):
 
     Links capabilities, vendors, and technology stacks to strategic programs
     for complete transformation traceability and ROI analysis.
+
+    ADR-0008 note (2 Sep 2026): this is a SECOND "programme" aggregate root,
+    independent of StrategicInitiative (app/models/strategic.py) — the one
+    with real programme governance (ProgrammeWorkstream, ProgrammeRoleAssignment,
+    ProgrammeOutcomeCommitment) and the one WorkPackage/Benefit/Solution treat
+    as canonical. This model is where the Portfolio module's demand-intake →
+    benefit → assumption workflow (app/modules/portfolio/) actually lives, and
+    it is real, used data — not dead weight to delete on sight. It has not been
+    merged into StrategicInitiative because that requires matching real rows
+    (by name/date/owner) to know which pairs describe the same programme,
+    which is a judgement call outside what a schema change can decide safely.
+    `linked_strategic_initiative_id` below lets a specific pair be tied
+    together once someone with that context confirms the match — link, don't
+    silently duplicate further. See WorkPackage.enterprise_initiative_id /
+    .strategic_initiative_id, which already sit side by side with nothing
+    requiring they agree.
     """
 
     __tablename__ = "enterprise_initiatives"
@@ -963,6 +979,14 @@ class EnterpriseInitiative(TenantMixin, db.Model):
     )
 
     id = db.Column(db.Integer, primary_key=True)
+
+    # See the ADR-0008 note in this class's docstring: set only when someone
+    # with direct knowledge confirms this row and a StrategicInitiative row
+    # describe the same real-world programme.
+    linked_strategic_initiative_id = db.Column(
+        db.Integer, db.ForeignKey("strategic_initiatives.id", ondelete="SET NULL"),
+        nullable=True, index=True,
+    )
 
     # Initiative identity
     name = db.Column(db.String(200), nullable=False, index=True)

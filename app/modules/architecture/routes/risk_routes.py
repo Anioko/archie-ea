@@ -73,9 +73,10 @@ def update_risk(risk_id):
 @risk_bp.route("/api/raid", methods=["GET"])
 @login_required
 def list_raid_items():
-    """GET /api/raid?kind=assumption|issue|dependency — list RAID items,
-    optionally filtered by kind. Risk (the "R") lives at /api/risks, not here —
-    see RaidItem's docstring for why this is a separate table."""
+    """GET /api/raid?kind=issue|dependency&strategic_initiative_id=N — list RAID
+    items, optionally filtered by kind and/or programme. Risk (the "R") lives
+    at /api/risks and Assumption (the "A") at demand.Assumption, not here —
+    see RaidItem's docstring for why this covers only Issue/Dependency."""
     kind = request.args.get("kind", "").strip()
     q = RaidItem.query
     if kind:
@@ -84,6 +85,9 @@ def list_raid_items():
         except ValueError:
             return jsonify({"error": f"Invalid kind: {kind}. Must be one of "
                             f"{[k.value for k in RaidKind]}"}), 400
+    strategic_initiative_id = request.args.get("strategic_initiative_id", type=int)
+    if strategic_initiative_id:
+        q = q.filter_by(strategic_initiative_id=strategic_initiative_id)
     items = q.order_by(RaidItem.id).all()
     return jsonify([i.to_dict() for i in items]), 200
 
@@ -91,7 +95,7 @@ def list_raid_items():
 @risk_bp.route("/api/raid", methods=["POST"])
 @login_required
 def create_raid_item():
-    """POST /api/raid — create an Assumption/Issue/Dependency. Returns 201."""
+    """POST /api/raid — create an Issue/Dependency. Returns 201."""
     data = request.get_json(force=True) or {}
     required = ("kind", "title")
     missing = [f for f in required if not data.get(f)]
@@ -108,12 +112,18 @@ def create_raid_item():
             target_date = date.fromisoformat(data["target_date"])
         except ValueError:
             return jsonify({"error": "target_date must be YYYY-MM-DD"}), 400
+    strategic_initiative_id = data.get("strategic_initiative_id")
+    if strategic_initiative_id:
+        from app.models.strategic import StrategicInitiative
+        if db.session.get(StrategicInitiative, strategic_initiative_id) is None:
+            return jsonify({"error": "Programme not found"}), 400
     item = RaidItem(
         kind=kind,
         title=data["title"],
         description=data.get("description"),
         owner=data.get("owner"),
         target_date=target_date,
+        strategic_initiative_id=strategic_initiative_id or None,
         programme_name=data.get("programme_name"),
     )
     db.session.add(item)
@@ -194,8 +204,12 @@ def risk_register():
     heat_data = risk_service.get_heat_map_data(solution_id=None)
     # RAID (2 Sep 2026, Capgemini delivery-team dry-run): the register was
     # Risk-only — 1 of the 4 RAID categories. Loaded here so the same page
-    # can show all four without a separate navigation destination for each.
+    # can show Issues/Dependencies without a separate navigation destination.
+    # Risk (R) and Assumption (A, demand.Assumption) already have their own
+    # homes; this covers only the two categories that had none.
     raid_items = RaidItem.query.order_by(RaidItem.kind, RaidItem.id).all()
+    from app.models.strategic import StrategicInitiative
+    programmes = StrategicInitiative.query.order_by(StrategicInitiative.name).all()
     return render_template(
         "governance/risk_register.html",
         risks=risks,
@@ -205,6 +219,7 @@ def risk_register():
         current_dir=direction if direction in ("asc", "desc") else "asc",
         raid_items=raid_items,
         raid_kinds=[k.value for k in RaidKind],
+        programmes=[{"id": p.id, "name": p.name} for p in programmes],
     )
 
 

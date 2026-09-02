@@ -18,6 +18,30 @@ from sqlalchemy.orm import relationship
 from app import db
 from app.models.mixins import TenantMixin
 
+# StrategicInitiative <-> Goal (2 Sep 2026): before this, a programme's goal
+# alignment was recorded as strategic_alignment — a JSON list of goal NAME
+# strings on the initiative row, unqueryable as "every programme serving goal
+# X" and silently divergent the moment a goal is renamed. A parallel, correct
+# junction (initiative_goals) already existed for the SAME purpose but wired
+# to EnterpriseInitiative, a second/legacy "programme" concept — leaving this,
+# the aggregate root WorkPackage/Benefit/Solution already point at, with no
+# real Goal linkage at all. This table is the fix for that root; the string
+# column stays for now as a display fallback on old rows only.
+strategic_initiative_goals = db.Table(
+    "strategic_initiative_goals",
+    db.Column(
+        "strategic_initiative_id", db.Integer,
+        db.ForeignKey("strategic_initiatives.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    db.Column(
+        "goal_id", db.Integer, db.ForeignKey("goals.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    db.Column("contribution_level", db.String(20)),  # 'primary', 'supporting', 'indirect'
+    db.Column("created_at", db.DateTime, default=datetime.utcnow),
+)
+
 
 class StrategicInitiative(TenantMixin, db.Model):
     """
@@ -69,7 +93,8 @@ class StrategicInitiative(TenantMixin, db.Model):
     vendor_key = Column(String(50), index=True)  # aligns with VendorArchiMateTemplate/IntegrationPattern vendor keys (SAP, SALESFORCE, MICROSOFT_POWER, ...)
     clean_core_target = Column(Integer)  # governance target %, e.g. 70 — cockpit shows actual vs target (PROG-004)
 
-    # Strategic alignment - stored as JSON list of strategic goals
+    # Legacy display-only fallback — see strategic_initiative_goals above for
+    # the real, queryable linkage. Not written to by new code.
     strategic_alignment = Column(Text)  # JSON list: ["goal1", "goal2"]
 
     # Metadata
@@ -87,6 +112,8 @@ class StrategicInitiative(TenantMixin, db.Model):
         lazy="dynamic",
     )
     roadmap_items = relationship("RoadmapItem", back_populates="initiative", lazy="dynamic")
+    goals = relationship("Goal", secondary=strategic_initiative_goals, backref="strategic_initiatives")
+    raid_items = relationship("RaidItem", back_populates="strategic_initiative")
 
     def __repr__(self):
         return f"<StrategicInitiative {self.name}>"
