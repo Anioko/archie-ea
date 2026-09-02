@@ -1540,6 +1540,53 @@ function composerApp() {
             });
 
             /* ── Event: link connected → show relationship type picker ── */
+            /* F-05(c), Capgemini dry-run: a template-loaded element's id is a
+               client-only string ("__builtin__sh1"), never written to the
+               database. Connecting two of these sent that fake id straight to
+               valid-relationship-types (400) and then to POST /api/relationships
+               (500 — a string into an Integer FK). Materialize on demand here,
+               before either lookup — the common case (both ids already real
+               integers) makes zero network calls and behaves exactly as before. */
+            function isMaterializedId(id) {
+                return /^\d+$/.test(String(id));
+            }
+
+            this._materializeConnectEnds = function(srcCell, tgtCell, srcElementId, tgtElementId) {
+                if (isMaterializedId(srcElementId) && isMaterializedId(tgtElementId)) {
+                    return Promise.resolve({ srcElementId: srcElementId, tgtElementId: tgtElementId });
+                }
+                let toMaterialize = [];
+                if (!isMaterializedId(srcElementId)) {
+                    toMaterialize.push({
+                        element_id: srcElementId,
+                        name: srcCell.get('elName') || srcCell.get('name') || '',
+                        el_type: srcCell.get('elType') || 'ApplicationComponent',
+                        layer: srcCell.get('layer') || 'application',
+                    });
+                }
+                if (!isMaterializedId(tgtElementId)) {
+                    toMaterialize.push({
+                        element_id: tgtElementId,
+                        name: tgtCell.get('elName') || tgtCell.get('name') || '',
+                        el_type: tgtCell.get('elType') || 'ApplicationComponent',
+                        layer: tgtCell.get('layer') || 'application',
+                    });
+                }
+                return Platform.fetch.post('/archimate/api/elements/materialize', { elements: toMaterialize }, { silent: true })
+                    .then(function(data) {
+                        let map = data.element_id_map || {};
+                        let realSrc = map[String(srcElementId)] || srcElementId;
+                        let realTgt = map[String(tgtElementId)] || tgtElementId;
+                        // Adopt the new DB ids on the canvas cells — same pattern the
+                        // full-diagram save flow already uses (composer_persistence.js) —
+                        // so a later save or a second connect from the same cell also
+                        // sees a real id, not a repeat materialize.
+                        if (map[String(srcElementId)]) srcCell.set('elementId', realSrc);
+                        if (map[String(tgtElementId)]) tgtCell.set('elementId', realTgt);
+                        return { srcElementId: realSrc, tgtElementId: realTgt };
+                    });
+            };
+
             this.paper.on('link:connect', function(linkView) {
                 if (self.mode === 'view') return;
                 let link = linkView.model;
@@ -1551,9 +1598,20 @@ function composerApp() {
                 let tgtCell = self.graph.getCell(targetId);
                 if (!srcCell || !tgtCell) return;
 
-                let srcElementId = srcCell.get('elementId');
-                let tgtElementId = tgtCell.get('elementId');
-                if (!srcElementId || !tgtElementId) return;
+                let rawSrcElementId = srcCell.get('elementId');
+                let rawTgtElementId = tgtCell.get('elementId');
+                if (!rawSrcElementId || !rawTgtElementId) return;
+
+                self._materializeConnectEnds(srcCell, tgtCell, rawSrcElementId, rawTgtElementId)
+                .catch(function() {
+                    // Materialization failed — proceed with the raw ids so the existing
+                    // error handling below (400/500 -> fallback association + toast)
+                    // still fires, rather than silently dropping the connect gesture.
+                    return { srcElementId: rawSrcElementId, tgtElementId: rawTgtElementId };
+                })
+                .then(function(resolved) {
+                let srcElementId = resolved.srcElementId;
+                let tgtElementId = resolved.tgtElementId;
 
                 self._pendingLink = link;
                 self.relPickerSourceCell = srcCell;
@@ -1630,6 +1688,7 @@ function composerApp() {
                     self.relPickerTypes = [{ type: 'association', tier: 'fallback', description: '' }];
                     self.relPickerInvalidTypes = [];
                     _toast('error', 'Failed to load relationship types');
+                });
                 });
             });
 

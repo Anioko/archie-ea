@@ -1164,6 +1164,37 @@ def composer_page():
     )
 
 
+@archimate_bp.route("/api/elements/materialize", methods=["POST"])
+@login_required
+def api_materialize_elements():
+    """Turn Composer template placeholder ids (e.g. "__builtin__sh1") into
+    real ArchiMateElement rows, on demand.
+
+    F-05(c), Capgemini dry-run: connecting two template elements (dropped
+    from "Load template") sent their client-only ids straight to
+    valid-relationship-types (400 — correctly refusing a non-integer id) and
+    then to POST /api/relationships (500 — an uncaught DB error feeding a
+    string into an Integer FK column). `_materialize_canvas_items()` already
+    solves exactly this for a full diagram save; this exposes the same logic
+    for a single connect-mode gesture, called before the two lookups above so
+    they see real ids like everything else already does.
+
+    JSON body: {"elements": [{"element_id": "__builtin__sh1", "name": ...,
+    "el_type": ..., "layer": ...}, ...]} — same shape _materialize_canvas_items
+    already accepts; only elements whose id is not an existing integer are
+    written. Returns {"element_id_map": {<source id string>: <new int id>}}.
+    """
+    data = request.get_json(silent=True) or {}
+    elements = data.get("elements")
+    if not isinstance(elements, list) or not elements:
+        return api_error("elements (non-empty list) is required", 400)
+
+    payload = {"elements": elements}
+    element_id_map, _ = _materialize_canvas_items(payload)
+    db.session.commit()
+    return jsonify({"element_id_map": element_id_map})
+
+
 @archimate_bp.route("/api/valid-relationship-types", methods=["GET"])
 @login_required
 def api_valid_relationship_types():
