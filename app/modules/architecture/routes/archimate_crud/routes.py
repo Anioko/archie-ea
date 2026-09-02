@@ -1289,14 +1289,22 @@ def delete_element(layer, element_type, element_id):
                 )
             ).delete(synchronize_session=False)
 
-        # DEF-067's actual live failure (found in server logs, not
-        # reproducible from a bare create+delete): the dedicated model's own
-        # archimate_element_id column is an FK INTO archimate_elements, so
-        # deleting the ArchiMateElement mirror before the dedicated row still
-        # referencing it violated e.g. stakeholders_archimate_element_id_fkey
-        # (ForeignKeyViolation, ON DELETE NO ACTION) — swallowed into the
-        # misleading message above. The dedicated row must go first.
+        # DEF-067's actual live failure (found in server logs): the
+        # dedicated model's own archimate_element_id column is an FK INTO
+        # archimate_elements, so deleting the ArchiMateElement mirror while
+        # the dedicated row still points at it violated e.g.
+        # stakeholders_archimate_element_id_fkey (ON DELETE NO ACTION) —
+        # swallowed into the misleading message above. Calling
+        # session.delete() in "dedicated row first" order was NOT enough:
+        # SQLAlchemy's unit-of-work orders the two DELETE statements by its
+        # own dependency analysis, not by call order, since there is no
+        # mapped relationship() between these two unrelated model classes
+        # for it to use — confirmed by the identical FK violation recurring
+        # after that reorder. An explicit flush after the first delete
+        # forces it to hit the database before the second delete is even
+        # issued.
         db.session.delete(element)
+        db.session.flush()
         if not _from_ae and archimate_element:
             db.session.delete(archimate_element)
         db.session.commit()
