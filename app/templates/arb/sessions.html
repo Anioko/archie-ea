@@ -83,7 +83,12 @@
                 <div class="flex justify-between items-start">
                     <div class="flex-1">
                         <div class="flex items-center gap-3 mb-2">
-                            <span class="text-sm font-mono text-primary">{% if is_reviews_view %}{{ session.review_number or ('REV-' ~ session.id) }}{% else %}SESSION-{{ session.id }}{% endif %}</span>
+                            {# F-23, Capgemini dry-run: this rendered a synthetic
+                               SESSION-{{ id }} instead of the board's real,
+                               unique board_number (ARB-2026-001 style), which
+                               collided in spirit with the ARB-numbered boards
+                               list elsewhere in the app. #}
+                            <span class="text-sm font-mono text-primary">{% if is_reviews_view %}{{ session.review_number or ('REV-' ~ session.id) }}{% else %}{{ session.board_number or ('SESSION-' ~ session.id) }}{% endif %}</span>
                             {% if is_reviews_view %}
                                 {% if session.status == 'approved' %}
                                 {{ status_badge('Approved', 'success') }}
