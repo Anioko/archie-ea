@@ -18,10 +18,14 @@
        destination. ─ #}
     {% macro _solutions_page_actions() %}
     <div class="flex flex-wrap items-center gap-2" data-testid="page-actions">
+      {# Only offer the wizard to users who can actually create a programme
+         (CREATE_ROLES); otherwise it is a six-step dead end (audit F-04). #}
+      {% if can_create_programme %}
       <a href="{{ url_for('solution_design.new_programme') }}" data-testid="btn-new-programme"
          class="inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-input bg-background text-sm font-medium hover:bg-accent transition-colors">
         <i data-lucide="layers" class="h-4 w-4" aria-hidden="true"></i>New Programme
       </a>
+      {% endif %}
       <button type="button" data-testid="btn-new-from-template" data-action="open-template-modal"
         class="inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-input bg-background text-sm font-medium hover:bg-accent transition-colors">
         <i data-lucide="layout-template" class="h-4 w-4" aria-hidden="true"></i>New from Template

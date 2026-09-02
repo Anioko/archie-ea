@@ -8,7 +8,7 @@ import logging
 import uuid
 from datetime import date
 
-from flask import g, jsonify, redirect, render_template, request
+from flask import flash, g, jsonify, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 
 from app.models.user import User
@@ -27,6 +27,20 @@ logger = logging.getLogger(__name__)
 @login_required
 def new_programme():
     """Render the canonical business-first programme intake."""
+    # Gate the wizard at ENTRY (audit F-04). The create command already enforces
+    # CREATE_ROLES, but letting a user who cannot create complete six steps and
+    # then rejecting them is a dead end — tell them at the door, and send them
+    # back to where they came from.
+    from app.modules.transformation_room.programme_service import (
+        TransformationProgrammeService,
+    )
+    if not TransformationProgrammeService.can_create_programme(current_user):
+        flash(
+            "Only Enterprise Architects, CTOs and administrators can create "
+            "programmes. Ask one of them to set it up, or to give you that role.",
+            "warning",
+        )
+        return redirect(url_for("solution_design.list_solutions"))
     return _render_programme_form()
 
 
@@ -165,6 +179,19 @@ def programme_templates():
 @login_required
 def create_programme():
     """Create the canonical business-first programme aggregate."""
+    # Authorise at the door as well as at the command (audit F-04): without
+    # this the service's NotAuthorised surfaced as the raw code
+    # 'programme_create_not_authorised' after six completed wizard steps.
+    from app.modules.transformation_room.programme_service import (
+        TransformationProgrammeService,
+    )
+    if not TransformationProgrammeService.can_create_programme(current_user):
+        msg = ("Only Enterprise Architects, CTOs and administrators can create "
+               "programmes. Ask one of them to set the programme up, or to give "
+               "you that role.")
+        if request.is_json:
+            return jsonify({"success": False, "error": msg}), 403
+        return _render_programme_form(errors=(msg,), status=403)
     from app.modules.solutions_strategic.v2.services.programme_setup_service import (
         ProgrammeSetupService,
     )

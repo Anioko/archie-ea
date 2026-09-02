@@ -881,6 +881,19 @@ class TransformationProgrammeService:
         return roles
 
     @classmethod
+    def can_create_programme(cls, user) -> bool:
+        """Whether *user* may start a programme — the same CREATE_ROLES test the
+        create command enforces. Exposed so the wizard can gate at ENTRY and the
+        list page can hide the CTA: the 2 Sep 2026 audit (F-04) found a six-step
+        wizard that let a Solution Architect fill everything in and only rejected
+        at the final submit with a raw 'programme_create_not_authorised'. Authorising
+        once at the door and once at the command keeps both honest."""
+        try:
+            return bool(cls._server_roles(user) & CREATE_ROLES)
+        except Exception:
+            return False
+
+    @classmethod
     def _require_programme_authority(
         cls,
         session,

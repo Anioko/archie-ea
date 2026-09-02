@@ -1,6 +1,6 @@
 {
   "_comment": "Ratchet baselines for scripts/verify.py. Lowering a number is routine (run --update-baseline after a cleanup). Raising one is a deliberate regression and must be justified in review.",
-  "_note": "updated 2026-08-27 (raw_fetch_sites -> 0; only sidebar_links 25 (at budget) and shell_conformance 3 remain)",
+  "_note": "updated 2026-09-02: sidebar_links 25 -> 27 is a CORRECTED MEASUREMENT, not link growth — audit F-11 changed the admin-zone predicate from is_platform_admin (which the check's stub evaluated falsy, hiding the zone: platform_admin measured 16) to user.is_admin() (what @admin_required enforces); an Administrator platform_admin now renders 27, within SIDEBAR_LINK_BUDGET 28. No link definitions were added. shell_conformance 3 remains.",
   "ratchets": {
     "undefined_names": 0,
     "redefinitions": 0,
@@ -13,7 +13,7 @@
     "broken_surfaces": 0,
     "dynamic_link_prefixes": 0,
     "fetch_guards": 0,
-    "sidebar_links": 25,
+    "sidebar_links": 27,
     "nav_coverage": 0,
     "design_tokens_extended": 0,
     "shell_conformance": 3,

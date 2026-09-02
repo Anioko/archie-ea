@@ -1219,8 +1219,15 @@ def list_solutions():
                 logger.warning("solutions list: hidden-count unavailable: %s", _hid_err)
                 hidden_by_default_filter = 0
 
+        # Show the "New Programme" CTA only to users who can actually create one
+        # (audit F-04: otherwise the wizard is a six-step dead end).
+        from app.modules.transformation_room.programme_service import (
+            TransformationProgrammeService,
+        )
+        can_create_programme = TransformationProgrammeService.can_create_programme(current_user)
         return render_template(
             "solutions/list.html",
+            can_create_programme=can_create_programme,
             hidden_by_default_filter=hidden_by_default_filter,
             solutions=pagination.items,
             pagination=pagination,
@@ -1268,6 +1275,7 @@ def list_solutions():
         # total_count=None so the header reads an em dash rather than "0
         # solutions", which the user would take as a fact about their estate.
         return render_template("solutions/list.html", solutions=[], pagination=None,
+                             can_create_programme=False,
                              total_count=None, stats=None,
                              statuses=[], domains=[], solution_types=[],
                              workspace_summaries={}, workspace_stats=None,

@@ -358,8 +358,19 @@ def _zone(zone_key, links):
     return {"zone": zone_key, "title": _ZONE_TITLES[zone_key], "links": links}
 
 
-def _link(label, endpoint, icon):
-    return {"label": label, "endpoint": endpoint, "icon": icon}
+def _link(label, endpoint, icon, requires=None):
+    """A sidebar link. ``requires`` names the guard the route enforces so the
+    sidebar can drop links the user cannot reach — a link that 403s is a dead
+    end, and the 2 Sep 2026 browser audit found seven of them (F-11):
+      "admin"          — route is @admin_required (Permission.ADMINISTER)
+      "platform_admin" — route is @platform_admin_required (the cross-tenant
+                         is_platform_admin super-admin flag)
+    Navigation must be driven by the same predicate the route checks, not by
+    enterprise_role alone."""
+    d = {"label": label, "endpoint": endpoint, "icon": icon}
+    if requires:
+        d["requires"] = requires
+    return d
 
 
 _HOME_LINKS = [
@@ -403,7 +414,8 @@ _GOVERNANCE_LINKS = [
 _ADMIN_LINKS = [
     _link("Command Center", "admin.index", "layout-dashboard"),
     _link("Users", "admin.registered_users", "users"),
-    _link("Organizations", "admin.organizations_list", "building-2"),
+    # Cross-tenant: the route is @platform_admin_required, not merely admin.
+    _link("Organizations", "admin.organizations_list", "building-2", requires="platform_admin"),
     _link("API Settings", "admin.api_settings", "key"),
     # NAV-1 (27 Aug 2026): repointed from `solution_prompt_admin.
     # solution_prompts_page` to `admin.solution_prompts_page`. Both blueprints
@@ -414,7 +426,7 @@ _ADMIN_LINKS = [
     # nav-verified gate: no test had ever exercised that endpoint, and none
     # could. The link now names the handler that actually runs.
     _link("AI Prompts", "admin.solution_prompts_page", "sparkles"),
-    _link("Governance Gates", "admin.governance_gates", "shield-check"),
+    _link("Governance Gates", "admin.governance_gates", "shield-check", requires="admin"),
     _link("Import History", "dashboard_pages.import_history", "history"),
     _link("Seed Management", "admin.seed_management", "database"),
     _link("Settings", "main.settings", "settings"),
@@ -648,7 +660,7 @@ _MY_WORK_LINKS = {
         # navigation_registry.py already records exactly this alias.
         _link("Policy Monitoring",
               "unified_low_priority.policy_monitoring_dashboard", "shield-alert"),
-        _link("Governance Gates", "admin.governance_gates", "shield-check"),
+        _link("Governance Gates", "admin.governance_gates", "shield-check", requires="admin"),
         _link("Risk Register", "risk.risk_register", "alert-triangle"),
         # G6 (register close, 1 Sep 2026): was procurement.compliance_dashboard,
         # which is the LICENSE-compliance page and is guarded by
@@ -735,9 +747,33 @@ def get_sidebar_zones(user) -> List[Dict]:
     """
     role = get_user_role(user)
     zones = SIDEBAR_ZONES.get(role, SIDEBAR_ZONES[DEFAULT_ROLE])
-    if not getattr(user, "is_platform_admin", False):
-        zones = [z for z in zones if z["zone"] != "admin"]
-    return zones
+
+    # Permission-driven navigation (F-11, 2 Sep 2026 audit). Every admin-zone
+    # route is @admin_required, i.e. Permission.ADMINISTER — so the zone is shown
+    # only when user.is_admin() holds, which is exactly what those routes check.
+    # Keying it off is_platform_admin (as before) showed a zone full of 403s to a
+    # super-admin-flag holder whose Role was Architect. Individual links then
+    # declare the guard they need via _link(requires=...) and are dropped when
+    # the user cannot satisfy it. New dicts are built — the module-level zone
+    # constants are shared and must never be mutated per request.
+    try:
+        is_admin = bool(user.is_admin())
+    except Exception:  # anonymous / unexpected user object
+        is_admin = False
+    is_super = bool(getattr(user, "is_platform_admin", False))
+
+    visible = []
+    for z in zones:
+        if z["zone"] == "admin" and not is_admin:
+            continue
+        links = [
+            link for link in z["links"]
+            if link.get("requires") is None
+            or (link["requires"] == "admin" and is_admin)
+            or (link["requires"] == "platform_admin" and is_super)
+        ]
+        visible.append({**z, "links": links})
+    return visible
 
 
 # Context processor for templates
