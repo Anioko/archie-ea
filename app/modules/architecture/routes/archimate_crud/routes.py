@@ -1289,10 +1289,16 @@ def delete_element(layer, element_type, element_id):
                 )
             ).delete(synchronize_session=False)
 
+        # DEF-067's actual live failure (found in server logs, not
+        # reproducible from a bare create+delete): the dedicated model's own
+        # archimate_element_id column is an FK INTO archimate_elements, so
+        # deleting the ArchiMateElement mirror before the dedicated row still
+        # referencing it violated e.g. stakeholders_archimate_element_id_fkey
+        # (ForeignKeyViolation, ON DELETE NO ACTION) — swallowed into the
+        # misleading message above. The dedicated row must go first.
+        db.session.delete(element)
         if not _from_ae and archimate_element:
             db.session.delete(archimate_element)
-
-        db.session.delete(element)
         db.session.commit()
 
         if request.is_json:
