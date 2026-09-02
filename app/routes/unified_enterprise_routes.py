@@ -863,6 +863,36 @@ def api_bulk_delete_work_packages():
     return jsonify({"deleted": deleted})
 
 
+@enterprise_bp.route("/api/work-packages/<int:wp_id>", methods=["DELETE"])
+@login_required
+def api_delete_work_package(wp_id):
+    """Delete one work package. The 2 Sep 2026 audit (F-06) found rows had no
+    delete at all — only the bulk path existed. Mirrors the bulk handler: the
+    WorkPackage query is tenant-scoped by TenantMixin, and the deletion is
+    audit-logged with the same SOC2 flag."""
+    wp = WorkPackage.query.filter_by(id=wp_id).first()
+    if wp is None:
+        return api_error("Work package not found", "NOT_FOUND", 404)
+    wp_name = wp.name
+    db.session.delete(wp)
+    db.session.flush()
+    try:
+        audit_logger.log_event(
+            AuditEventType.DATA_MODIFICATION,
+            AuditEventSeverity.HIGH,
+            "delete",
+            resource_type="work_package",
+            resource_id=str(wp_id),
+            details={"name": wp_name,
+                     "user_id": current_user.id if current_user.is_authenticated else None},
+            compliance_flags=["SOC2"],
+        )
+    except Exception as _exc:
+        logger.warning("audit log failed for delete wp %s: %s", wp_id, _exc)
+    db.session.commit()
+    return jsonify({"deleted": 1, "id": wp_id})
+
+
 @enterprise_bp.route("/implementation/plateaus")
 @login_required
 def plateaus():

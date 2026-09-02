@@ -174,7 +174,19 @@
                     // ── Bulk delete ────────────────────────────────────
                     confirmBulkDelete: function () {
                         this.bulkConfirmText = '';
-                        Platform.modal.open('bulk-delete-work-package-modal');
+                        // Must match the modal id in enterprise/work_packages.html
+                        // ('bulk-delete-confirm-modal'). It named a modal that does
+                        // not exist, so "Delete selected" opened nothing — the inert
+                        // control the 2 Sep 2026 audit reported (F-06).
+                        Platform.modal.open('bulk-delete-confirm-modal');
+                    },
+
+                    // Per-row delete (audit F-06: rows had no delete at all). Reuses
+                    // the typed-DELETE confirm flow so a single row gets the same
+                    // safety as a bulk selection, with no second modal to maintain.
+                    deleteRow: function (row) {
+                        this._selectedIds = [row.id];
+                        this.confirmBulkDelete();
                     },
 
                     executeBulkDelete: async function () {

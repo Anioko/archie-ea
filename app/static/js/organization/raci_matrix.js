@@ -160,6 +160,19 @@ document.addEventListener('alpine:init', () => {
             }
         },
 
+        // Audit F-08: when search finds nothing, let the user create the
+        // stakeholder as a Business Actor and add it in one step.
+        async createStakeholder() {
+            const name = this.searchQuery.trim();
+            if (!name) return;
+            try {
+                const data = await Platform.fetch.post('/organization/raci/api/stakeholder', { name });
+                this.addStakeholder(data.data ?? data);   // success_response wraps in { data }
+            } catch (e) {
+                // Platform.fetch already surfaces the error toast.
+            }
+        },
+
         addStakeholder(result) {
             const exists = this.stakeholders.some(sh => sh.type === result.type && sh.id === result.id);
             if (!exists) {

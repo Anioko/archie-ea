@@ -125,6 +125,15 @@
     </template>
   </div>
   <p class="text-xs text-muted-foreground" x-show="searchQuery.length > 0 && searchResults.length === 0 && !searching" x-cloak>No matches found.</p>
+  {# Audit F-08: no way to add a stakeholder that does not exist yet. Offer to
+     create it as a Business Actor (a real ArchiMate element) and add it. #}
+  <button type="button"
+          x-show="searchQuery.length > 0 && searchResults.length === 0 && !searching" x-cloak
+          @click="createStakeholder()"
+          class="mt-2 inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium hover:bg-muted transition-colors">
+    <i data-lucide="user-plus" class="h-3.5 w-3.5" aria-hidden="true"></i>
+    <span>Create "<span x-text="searchQuery"></span>" as a Business Actor</span>
+  </button>
   <div class="flex justify-end gap-3 pt-2 border-t border-border">
     <button type="button" data-modal-close="org-raci-add-stakeholder"
       class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 h-9 px-4 py-2">

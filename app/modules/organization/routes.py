@@ -166,4 +166,39 @@ def stakeholder_search():
     return jsonify({"results": results})
 
 
+@organization_bp.route("/raci/api/stakeholder", methods=["POST"])
+@login_required
+@require_roles("admin", "architect", "business_architect")
+def raci_stakeholder_create():
+    """Create a Business Actor by name from the RACI picker.
+
+    The 2 Sep 2026 audit (F-08) found the Add Stakeholder modal was a search
+    over existing actors/roles/users with no way to add one that did not exist
+    yet — "no name field, so no stakeholder can be added". A new actor is a
+    real ArchiMate Business Actor (its before_insert listener mirrors it into
+    the backbone) and TenantMixin scopes it to the caller's organisation.
+    Returns the same {type, id, name, sublabel} shape the search returns so the
+    picker can add it directly."""
+    from app import db
+    from app.models.business_layer import BusinessActor
+
+    data = request.get_json(silent=True) or {}
+    name = (data.get("name") or "").strip()
+    if not name:
+        return error_response("A name is required", code="VALIDATION_ERROR", status_code=400)
+    actor_type = (data.get("actor_type") or "Individual").strip()
+    try:
+        actor = BusinessActor(name=name[:255], actor_type=actor_type)
+    except ValueError as exc:  # invalid actor_type — the model's validator names the valid set
+        return error_response(str(exc), code="VALIDATION_ERROR", status_code=400)
+    db.session.add(actor)
+    db.session.commit()
+    return success_response({
+        "type": "actor",
+        "id": actor.id,
+        "name": actor.name,
+        "sublabel": actor.actor_type or "Actor",
+    })
+
+
 __all__ = ["organization_bp", "RACI_VALUES"]
