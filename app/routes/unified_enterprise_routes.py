@@ -909,6 +909,15 @@ def plateaus():
         )
 
 
+_GAP_SORT_COLUMNS = {
+    "name": Gap.name,
+    "gap_type": Gap.gap_type,
+    "priority": Gap.priority,
+    "resolution_status": Gap.resolution_status,
+    "impact": Gap.impact,
+}
+
+
 @enterprise_bp.route("/implementation/gap-analysis")
 @login_required
 def gap_analysis():
@@ -920,10 +929,21 @@ def gap_analysis():
     redirected here. This one lists the ArchiMate Implementation & Migration
     `Gap` model and is the one linked from navigation.
     """
+    # T-14 (2 Sep 2026 audit): one of six tables with no sort at all. Same
+    # server-side, query-param pattern as /risks/ — the columns are real,
+    # indexed String fields, so this is a cheap, safe sort.
+    sort_key = request.args.get("sort", "name")
+    direction = request.args.get("dir", "asc")
+    column = _GAP_SORT_COLUMNS.get(sort_key, Gap.name)
+    order = column.desc() if direction == "desc" else column.asc()
     try:
-        gaps = Gap.query.limit(500).all()
+        gaps = Gap.query.order_by(order, Gap.id).limit(500).all()
 
-        return render_template("enterprise/gap_analysis.html", gaps=gaps)
+        return render_template(
+            "enterprise/gap_analysis.html", gaps=gaps,
+            current_sort=sort_key if sort_key in _GAP_SORT_COLUMNS else "name",
+            current_dir=direction if direction in ("asc", "desc") else "asc",
+        )
     except SQLAlchemyError as e:
         current_app.logger.error(f"Database error loading gap analysis: {e}")
         raise DatabaseError(

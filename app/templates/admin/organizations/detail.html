@@ -95,13 +95,31 @@
         {% if users %}
         <div class="overflow-x-auto">
             <table class="min-w-full divide-y divide-border">
+                {# T-14 (2 Sep 2026 audit): same server-side sort pattern as /risks/ and
+                   the Gap register. "Role" (the Permission-tier bitfield) is intentionally
+                   NOT sortable — it is largely uniform across users, per the T-10 note above. #}
+                {% macro sort_th(key, label, align='text-left') %}
+                {% set next_dir = 'desc' if current_sort == key and current_dir == 'asc' else 'asc' %}
+                <th class="px-6 py-3 {{ align }} text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    <a href="{{ request.path }}?sort={{ key }}&dir={{ next_dir }}"
+                       class="inline-flex items-center gap-1 hover:text-foreground transition-colors"
+                       aria-label="Sort by {{ label }}{{ ', currently ' ~ current_dir ~ 'ending' if current_sort == key }}">
+                        {{ label }}
+                        {% if current_sort == key %}
+                        <i data-lucide="{{ 'arrow-up' if current_dir == 'asc' else 'arrow-down' }}" class="h-3 w-3" aria-hidden="true"></i>
+                        {% else %}
+                        <i data-lucide="chevrons-up-down" class="h-3 w-3 opacity-40" aria-hidden="true"></i>
+                        {% endif %}
+                    </a>
+                </th>
+                {% endmacro %}
                 <thead class="bg-muted/50">
                     <tr>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Name</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Email</th>
+                        {{ sort_th('name', 'Name') }}
+                        {{ sort_th('email', 'Email') }}
                         <th class="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Role</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Persona</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Org Admin</th>
+                        {{ sort_th('persona', 'Persona') }}
+                        {{ sort_th('org_admin', 'Org Admin') }}
                         <th class="px-6 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider">Actions</th>
                     </tr>
                 </thead>

@@ -41,11 +41,28 @@
                 <table class="w-full">
                     <thead>
                         <tr class="border-b">
-                            <th class="text-left p-3 font-medium">Gap</th>
-                            <th class="text-left p-3 font-medium">Type</th>
-                            <th class="text-left p-3 font-medium">Priority</th>
-                            <th class="text-left p-3 font-medium">Status</th>
-                            <th class="text-left p-3 font-medium">Impact</th>
+                            {# T-14 (2 Sep 2026 audit): same server-side sort pattern as /risks/ —
+                               survives reload/bookmark since this table has no Alpine array backing it. #}
+                            {% macro sort_th(key, label) %}
+                            {% set next_dir = 'desc' if current_sort == key and current_dir == 'asc' else 'asc' %}
+                            <th class="text-left p-3 font-medium">
+                                <a href="{{ request.path }}?sort={{ key }}&dir={{ next_dir }}"
+                                   class="inline-flex items-center gap-1 hover:text-foreground transition-colors"
+                                   aria-label="Sort by {{ label }}{{ ', currently ' ~ current_dir ~ 'ending' if current_sort == key }}">
+                                    {{ label }}
+                                    {% if current_sort == key %}
+                                    <i data-lucide="{{ 'arrow-up' if current_dir == 'asc' else 'arrow-down' }}" class="h-3 w-3" aria-hidden="true"></i>
+                                    {% else %}
+                                    <i data-lucide="chevrons-up-down" class="h-3 w-3 opacity-40" aria-hidden="true"></i>
+                                    {% endif %}
+                                </a>
+                            </th>
+                            {% endmacro %}
+                            {{ sort_th('name', 'Gap') }}
+                            {{ sort_th('gap_type', 'Type') }}
+                            {{ sort_th('priority', 'Priority') }}
+                            {{ sort_th('resolution_status', 'Status') }}
+                            {{ sort_th('impact', 'Impact') }}
                             <th class="text-left p-3 font-medium">Actions</th>
                         </tr>
                     </thead>

@@ -5294,6 +5294,14 @@ def organization_create():
     return render_template("admin/organizations/form.html", org=None)
 
 
+_ORG_USER_SORT_COLUMNS = {
+    "name": (User.first_name, User.last_name),
+    "email": (User.email,),
+    "persona": (User.enterprise_role,),
+    "org_admin": (User.is_org_admin,),
+}
+
+
 @admin_bp_v2.route("/organizations/<int:org_id>")
 @timed_route
 @login_required
@@ -5303,10 +5311,19 @@ def organization_detail(org_id):
     from app.utils.role_access import get_role_display_name
 
     org = Organization.query.get_or_404(org_id)
-    users = User.query.filter_by(organization_id=org.id).all()
+    # T-14 (2 Sep 2026 audit): another of the six no-sort tables. Real columns
+    # only; "name" sorts by first then last name since full_name() is a
+    # Python method, not a column SQL can order by.
+    sort_key = request.args.get("sort", "name")
+    direction = request.args.get("dir", "asc")
+    columns = _ORG_USER_SORT_COLUMNS.get(sort_key, _ORG_USER_SORT_COLUMNS["name"])
+    order = [c.desc() if direction == "desc" else c.asc() for c in columns]
+    users = User.query.filter_by(organization_id=org.id).order_by(*order, User.id).all()
     return render_template(
         "admin/organizations/detail.html", org=org, users=users,
         get_role_display_name=get_role_display_name,
+        current_sort=sort_key if sort_key in _ORG_USER_SORT_COLUMNS else "name",
+        current_dir=direction if direction in ("asc", "desc") else "asc",
     )
 
 
