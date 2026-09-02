@@ -788,6 +788,14 @@ document.addEventListener('alpine:init', function() {
                         if (window.Platform && window.Platform.modal) {
                             window.Platform.modal.close('archimate-form-modal');
                         }
+                        // F-18, Capgemini dry-run: save succeeded silently — the
+                        // modal just closed and the list re-rendered, which reads
+                        // identically to nothing having happened.
+                        if (window.Platform && window.Platform.toast) {
+                            window.Platform.toast.success(
+                                this.editingElement ? 'Element updated.' : 'Element created.'
+                            );
+                        }
                         this.loadElements();
                         this.loadAllLayerCounts();
                     } else {
