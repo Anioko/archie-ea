@@ -199,7 +199,7 @@
                         <button type="button" @click="kindFilter = (kindFilter === k ? '' : k)"
                                 :class="kindFilter === k ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'"
                                 class="px-2.5 py-1 rounded text-xs font-medium capitalize transition-colors"
-                                x-text="k === 'dependency' ? 'dependencies' : k + 's'"></button>
+                                x-text="k + 's'"></button>
                     </template>
                 </div>
                 <button type="button" @click="openCreate()"
