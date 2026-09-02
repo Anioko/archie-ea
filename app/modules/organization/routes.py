@@ -53,6 +53,16 @@ def chart_data():
     return success_response(tree)
 
 
+@organization_bp.route("/workforce-transition/api")
+@login_required
+def workforce_transition_api():
+    """As-is → to-be workforce transition analysis for the current org — role-to-role
+    transitions, retiring roles, headcount delta and the skills gap. Reads the
+    BusinessRole workforce fields that were previously written but never surfaced."""
+    from app.services.workforce_transition_service import WorkforceTransitionService
+    return success_response(WorkforceTransitionService.analyze())
+
+
 # ---------------------------------------------------------------------------
 # Enterprise RACI matrix
 # ---------------------------------------------------------------------------
