@@ -193,7 +193,7 @@
                                    x-text="item.name || item.file_name"
                                    @click.stop></a>
                             </td>
-                            <td class="px-4 py-3 align-middle text-sm text-muted-foreground" x-text="item.job_type || '&mdash;'"></td>
+                            <td class="px-4 py-3 align-middle text-sm text-muted-foreground" x-text="item.job_type || '—'"></td>
                             <td class="px-4 py-3 align-middle">
                                 <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold"
                                       :class="statusClass(item.status)"
@@ -210,7 +210,7 @@
                                     </div>
                                 </div>
                             </td>
-                            <td class="px-4 py-3 align-middle text-sm text-muted-foreground" x-text="item.started_at || '&mdash;'"></td>
+                            <td class="px-4 py-3 align-middle text-sm text-muted-foreground" x-text="item.started_at || '—'"></td>
                             <td class="px-4 py-3 align-middle text-right" @click.stop>
                                 <a :href="'/batch-import/jobs/' + item.id"
                                    class="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"

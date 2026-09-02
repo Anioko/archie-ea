@@ -41,7 +41,7 @@
     <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <div class="rounded-lg border border-border bg-card p-4">
             <div class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Total</div>
-            <div class="mt-1 text-2xl font-semibold tabular-nums text-foreground">{{ total if total is not none else '&mdash;' }}</div>
+            <div class="mt-1 text-2xl font-semibold tabular-nums text-foreground">{{ total if total is not none else '—' }}</div>
         </div>
         <div class="rounded-lg border border-border bg-card p-4">
             <div class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Open</div>
@@ -103,7 +103,7 @@
                             {% endif %}
                         </td>
                         {# Em dash, never a blank: an unset owner is a fact worth showing. #}
-                        <td class="px-4 py-2 text-muted-foreground">{{ risk.owner or '&mdash;' }}</td>
+                        <td class="px-4 py-2 text-muted-foreground">{{ risk.owner or '—' }}</td>
                         <td class="px-4 py-2 tabular-nums">{{ risk.likelihood }}</td>
                         <td class="px-4 py-2 tabular-nums">{{ risk.impact }}</td>
                         <td class="px-4 py-2 tabular-nums font-medium">{{ risk.risk_score }}</td>
@@ -127,6 +127,15 @@
                                     :disabled="updatingId === {{ risk.id }}"
                                     class="inline-flex items-center rounded-md border border-input bg-background px-2 py-1 text-xs font-medium hover:bg-accent hover:text-accent-foreground disabled:opacity-50">
                                 Mark mitigated
+                            </button>
+                            {% endif %}
+                            {% if risk.status.value == 'mitigated' %}
+                            <button type="button"
+                                    @click="setStatus({{ risk.id }}, 'open')"
+                                    :disabled="updatingId === {{ risk.id }}"
+                                    aria-label="Reopen risk {{ risk.title | e }}"
+                                    class="inline-flex items-center rounded-md border border-input bg-background px-2 py-1 text-xs font-medium hover:bg-accent hover:text-accent-foreground disabled:opacity-50">
+                                Reopen
                             </button>
                             {% endif %}
                             {% if risk.status.value != 'closed' %}
@@ -256,7 +265,7 @@ function riskRegister() {
                         return;
                     }
                     Platform.toast.success('Risk marked ' + status + '.');
-                    window.location.reload();
+                    setTimeout(function () { window.location.reload(); }, 600);
                 })
                 .catch(function (err) {
                     Platform.toast.error('Could not update this risk.');

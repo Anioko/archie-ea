@@ -76,7 +76,7 @@
         <a href="#contract-lifecycle"
            class="inline-flex items-center justify-center h-9 px-3 rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors">
             <i data-lucide="rocket" class="w-4 h-4 mr-1.5" aria-hidden="true"></i>
-            Activate Vendor
+            Activate Contract
         </a>
         {% endif %}
         <button type="button" @click="openUnifiedMappingModalDiscovery({ context: 'archimate' })"
@@ -282,7 +282,8 @@
                       action="{{ url_for('unified_vendors.activate_vendor', vendor_id=vendor.id) }}"
                       class="mt-4 pt-4 border-t space-y-3">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <h3 class="text-sm font-semibold">Activate Vendor</h3>
+                    <h3 class="text-sm font-semibold">Activate Contract</h3>
+                    <p class="text-xs text-muted-foreground -mt-2">Moves this vendor's contract lifecycle out of "Catalog" — separate from the Operational Status above, which is already Active for most catalog vendors.</p>
                     <div>
                         <label for="contract_start_date" class="block text-xs text-muted-foreground mb-1">Contract Start Date</label>
                         <input id="contract_start_date" name="contract_start_date" type="date" class="w-full h-9 rounded-md border border-input bg-background px-3 text-sm">
@@ -297,7 +298,7 @@
                     </div>
                     <button type="submit" class="w-full inline-flex items-center justify-center h-9 px-3 rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors" aria-label="Submit">
                         <i data-lucide="rocket" class="w-4 h-4 mr-1.5" aria-hidden="true"></i>
-                        Activate Vendor
+                        Activate Contract
                     </button>
                 </form>
                 {% endif %}

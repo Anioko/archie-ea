@@ -376,7 +376,7 @@
                             <tr class="border-b border-input/30">
                                 <td class="py-1.5 pr-3 font-medium">{% set _h = am_href(el.layer, el.id)|trim %}{% if _h %}<a href="{{ _h }}" class="text-primary hover:underline">{{ el.name }}</a>{% else %}{{ el.name }}{% endif %}</td>
                                 <td class="py-1.5 pr-3">{{ el.layer }}</td>
-                                <td class="py-1.5 pr-3 text-muted-foreground">{{ el.element_type or '&mdash;' }}</td>
+                                <td class="py-1.5 pr-3 text-muted-foreground">{{ el.element_type or '—' }}</td>
                                 <td class="py-1.5 text-muted-foreground">Add at least one serving or composition relationship</td>
                             </tr>
                             {% endfor %}
@@ -399,7 +399,7 @@
                             <tr class="border-b border-input/30">
                                 <td class="py-1.5 pr-3 font-medium">{% set _h = am_href(el.layer, el.id)|trim %}{% if _h %}<a href="{{ _h }}" class="text-primary hover:underline">{{ el.name }}</a>{% else %}{{ el.name }}{% endif %}</td>
                                 <td class="py-1.5 pr-3">{{ el.layer }}</td>
-                                <td class="py-1.5 pr-3 text-muted-foreground">{{ el.element_type or '&mdash;' }}</td>
+                                <td class="py-1.5 pr-3 text-muted-foreground">{{ el.element_type or '—' }}</td>
                                 <td class="py-1.5 text-muted-foreground">Add a description explaining this element's purpose</td>
                             </tr>
                             {% endfor %}

@@ -74,7 +74,7 @@
                 <div class="flex items-center justify-between p-3 bg-muted/50 rounded-lg border border-border group">
                     <div>
                         <template x-if="vp.vendor_id">
-                            <a :href="'/vendors/' + vp.vendor_id" target="_blank"
+                            <a :href="'/vendors/' + vp.vendor_id" target="_blank" rel="noopener noreferrer"
                                class="font-medium text-primary hover:underline" x-text="vp.name"></a>
                         </template>
                         <template x-if="!vp.vendor_id">

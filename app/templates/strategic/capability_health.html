@@ -43,7 +43,7 @@
         #}
         {{ metrics_card(
             title='Avg. Portfolio Health',
-            value=(metrics.average_health|string + '%') if metrics.average_health is not none else '&mdash;',
+            value=(metrics.average_health|string + '%') if metrics.average_health is not none else '—',
             icon='activity',
             description=('Across ' + metrics.assessed_capabilities|string + ' of ' + metrics.total_capabilities|string + ' capabilities with recorded data')
                         if metrics.assessed_capabilities else 'No capability has recorded maturity, coverage or delivery data yet'
@@ -86,7 +86,7 @@
                                 <span class="text-xs text-muted-foreground font-normal">({{ domain.count }} caps)</span>
                             </div>
                             <span class="{% if domain.score is none %}text-muted-foreground{% elif domain.score < 60 %}text-destructive-emphasis{% elif domain.score < 80 %}text-warning-emphasis{% else %}text-success-emphasis{% endif %}">
-                                {{ (domain.score|string + '%') if domain.score is not none else '&mdash;' }}
+                                {{ (domain.score|string + '%') if domain.score is not none else '—' }}
                             </span>
                         </div>
                         <div class="h-2 w-full bg-secondary rounded-full overflow-hidden">
@@ -173,7 +173,7 @@
                             </div>
                         </td>
                         {# "Not assessed" is a fact; 60% would be an invention. #}
-                        <td class="p-4 font-bold">{{ (item.score|string + '%') if item.score is not none else '&mdash;' }}</td>
+                        <td class="p-4 font-bold">{{ (item.score|string + '%') if item.score is not none else '—' }}</td>
                         <td class="p-4">
                             <div class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 border-transparent bg-destructive text-destructive-foreground hover:bg-destructive/80">
                                 {{ item.status }}

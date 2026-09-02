@@ -80,7 +80,7 @@
                     <tbody class="divide-y">
                         {% for tech in technology_analyses|default([]) %}
                         <tr class="border-b hover:bg-muted/50">
-                            <td class="p-3 font-medium">{{ tech.component_name|default('&mdash;', true) }}</td>
+                            <td class="p-3 font-medium">{{ tech.component_name|default('—', true) }}</td>
                             {# A technology here is a string on an application's stack or a platform
                                configuration, not a record of its own -- so the row is linked to the
                                thing you can actually change. #}
@@ -98,10 +98,10 @@
                                     {% if tech.modernization_level == 'CRITICAL' %}bg-destructive/20 text-destructive-emphasis
                                     {% elif tech.modernization_level == 'HIGH' %}bg-warning/20 text-warning-emphasis
                                     {% else %}bg-primary/20 text-primary{% endif %}">
-                                    {{ tech.modernization_level|default('&mdash;', true) }}
+                                    {{ tech.modernization_level|default('—', true) }}
                                 </span>
                             </td>
-                            <td class="p-3">{{ tech.modernization_priority_score if tech.modernization_priority_score is not none else '&mdash;' }}</td>
+                            <td class="p-3">{{ tech.modernization_priority_score if tech.modernization_priority_score is not none else '—' }}</td>
                         </tr>
                         {% else %}
                         <tr>

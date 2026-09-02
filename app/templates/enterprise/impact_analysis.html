@@ -179,7 +179,7 @@
                             {% call badge('info') %}{{ analysis.analysis_type or 'unknown' }}{% endcall %}
                         </td>
                         <td class="px-6 py-4 text-sm text-foreground">
-                            <div class="text-xs text-muted-foreground">{{ analysis.trigger_element_type or '&mdash;' }}</div>
+                            <div class="text-xs text-muted-foreground">{{ analysis.trigger_element_type or '—' }}</div>
                             {# Every analysis for this element, which is the next thing you do
                                with a row in a history table. #}
                             {% if analysis.trigger_element_type and analysis.trigger_element_id %}

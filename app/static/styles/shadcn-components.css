@@ -8,13 +8,58 @@
 
 /* ── 1. Data Table ──────────────────────────────────────────────────────── */
 
-/* Give .overflow-x-auto containers that wrap a table card-like treatment */
+/* Give .overflow-x-auto containers that wrap a table card-like treatment.
+   T-01 (2 Sep 2026 browser audit): this rule used to set `overflow: hidden`
+   to clip the rounded corners around the table's straight edges. `overflow`
+   is a shorthand for BOTH overflow-x and overflow-y, so it silently
+   overwrote the `overflow-x: auto` these divs get from the Tailwind
+   `.overflow-x-auto` utility class -- the class stayed in the DOM (so it
+   looked correct in devtools) but the computed style was `overflow-x:
+   hidden`. That still lets `scrollLeft` move the content programmatically
+   (hidden containers remain scrollable via script) but kills the
+   scrollbar, wheel-scroll and drag a user actually has -- exactly the "no
+   scrollbar, scrollLeft works" symptom the audit reported on Capability
+   Map, Risk Register and Admin > Organization Users. Fix: only clip
+   vertically (`overflow-y: hidden`, enough to hide the straight corners
+   poking out top/bottom) and force horizontal scroll to stay enabled
+   (`overflow-x: auto`) rather than trusting the shorthand. */
 #main-content .overflow-x-auto:has(> table),
 #main-content .overflow-x-auto:has(> div > table),
 #main-content .table-responsive {
     border-radius: var(--radius);
     border: 1px solid hsl(var(--border));
-    overflow: hidden; /* clip border-radius on child rows */
+    overflow-x: auto;
+    overflow-y: hidden;
+}
+
+/* Sticky first + last column on any scrollable table (T-01 requirement 2):
+   keeps row identity (first column) and the Actions column (last column)
+   visible while the middle of a wide table scrolls underneath. Harmless on
+   tables that never overflow -- position: sticky is a no-op with nothing to
+   scroll. Backgrounds are set explicitly so scrolled-under cell content
+   doesn't show through the sticky column. */
+#main-content .overflow-x-auto table thead th:first-child,
+#main-content .overflow-x-auto table thead th:last-child {
+    position: sticky;
+    z-index: 2;
+    background-color: hsl(var(--muted) / 0.5);
+}
+
+#main-content .overflow-x-auto table tbody td:first-child,
+#main-content .overflow-x-auto table tbody td:last-child {
+    position: sticky;
+    z-index: 1;
+    background-color: hsl(var(--card));
+}
+
+#main-content .overflow-x-auto table thead th:first-child,
+#main-content .overflow-x-auto table tbody td:first-child {
+    left: 0;
+}
+
+#main-content .overflow-x-auto table thead th:last-child,
+#main-content .overflow-x-auto table tbody td:last-child {
+    right: 0;
 }
 
 /* Don't double-border containers that already have border classes */

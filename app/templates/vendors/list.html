@@ -94,7 +94,7 @@
           <div>
             <button type="button" @click="openEditModal(row)" class="font-medium text-left hover:text-primary hover:underline transition-colors" x-text="row.name"></button>
             <template x-if="row.website">
-              <a :href="row.website" target="_blank" class="text-xs text-primary hover:underline block" x-text="row.website"></a>
+              <a :href="row.website" target="_blank" rel="noopener noreferrer" class="text-xs text-primary hover:underline block" x-text="row.website"></a>
             </template>
           </div>
         </td>
@@ -129,11 +129,12 @@
         </td>
         <td class="px-4 py-3 align-middle text-right" @click.stop>
           <div class="flex items-center gap-2 justify-end">
-            <button type="button" @click="window.location.href = '/applications/vendors/' + row.id"
-                    class="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium border border-input bg-background hover:bg-accent transition-colors">
+            <a :href="'{{ url_for('application_mgmt.vendor_detail', vendor_id=0) }}'.replace('0', row.id)"
+               aria-label="View vendor details"
+               class="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium border border-input bg-background hover:bg-accent transition-colors">
               <i data-lucide="eye" class="h-3 w-3"></i>
               View
-            </button>
+            </a>
             <button type="button" @click.stop="openEditModal(row)"
                     class="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
               <i data-lucide="pencil" class="h-3 w-3"></i>

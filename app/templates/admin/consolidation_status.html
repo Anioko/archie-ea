@@ -2,6 +2,7 @@
 {% from 'components/page_header.html' import page_header %}
 {% from 'components/metrics_card.html' import metrics_card %}
 {% from 'components/card.html' import card, card_header, card_title, card_content %}
+{% from 'components/empty_state.html' import empty_state %}
 
 {% block title %}Blueprint Consolidation Status{% endblock %}
 
@@ -104,6 +105,12 @@
                             </td>
                             <td class="p-4 text-muted-foreground">{{ target.estimated_effort }}</td>
                         </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="7">
+                                {{ empty_state(icon='shield-check', title='No consolidation targets', description='No blueprint-consolidation targets are recorded.') }}
+                            </td>
+                        </tr>
                         {% endfor %}
                     </tbody>
                 </table>
@@ -155,6 +162,12 @@
                                 {% endif %}
                             </td>
                             <td class="p-4 text-muted-foreground max-w-xs truncate">{{ bp.notes|truncate(50) }}</td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="6">
+                                {{ empty_state(icon='layout-list', title='No blueprints found', description='No registered Flask blueprints were found in this process.') }}
+                            </td>
                         </tr>
                         {% endfor %}
                     </tbody>

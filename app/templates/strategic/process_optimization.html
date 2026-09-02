@@ -57,16 +57,16 @@
                                 {% set _h = row_href('archimate_crud.detail_element', layer='business', element_type='BusinessProcess', element_id=process.process_id)|trim %}{% if _h %}<a href="{{ _h }}" class="font-medium text-primary hover:underline">{{ process.process_name|default('N/A') }}</a>{% else %}{{ process.process_name|default('N/A') }}{% endif %}
                                 {% else %}{{ process.process_name|default('N/A') }}{% endif %}
                             </td>
-                            <td class="p-3">{{ process.efficiency_score if process.efficiency_score is not none else '&mdash;' }}</td>
+                            <td class="p-3">{{ process.efficiency_score if process.efficiency_score is not none else '—' }}</td>
                             <td class="p-3">
                                 <span class="px-2 py-1 text-xs rounded-full
                                     {% if process.optimization_level == 'CRITICAL' %}bg-destructive/20 text-destructive-emphasis
                                     {% elif process.optimization_level == 'HIGH' %}bg-warning/20 text-warning-emphasis
                                     {% else %}bg-primary/20 text-primary{% endif %}">
-                                    {{ process.optimization_level|default('&mdash;', true) }}
+                                    {{ process.optimization_level|default('—', true) }}
                                 </span>
                             </td>
-                            <td class="p-3 text-sm text-muted-foreground">{{ process.optimization_priority_score if process.optimization_priority_score is not none else '&mdash;' }}</td>
+                            <td class="p-3 text-sm text-muted-foreground">{{ process.optimization_priority_score if process.optimization_priority_score is not none else '—' }}</td>
                         </tr>
                         {% else %}
                         <tr>

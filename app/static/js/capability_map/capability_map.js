@@ -353,8 +353,15 @@
                         html += '</div>';
                     }
 
-                    // Linked applications
-                    const apps = data.applications || [];
+                    // Linked applications — "Linked Applications" must list only apps
+                    // actually mapped to this capability (is_mapped === true). The
+                    // endpoint returns every application in the org (mapped and
+                    // unmapped) so callers can offer them for mapping; showing that
+                    // full list here under a "Linked" heading is what produced the
+                    // "0 of 25 apps mapped" / "Linked Applications (25)" contradiction
+                    // — filtering here makes both figures come from the same
+                    // is_mapped flag, so they can no longer disagree.
+                    const apps = (data.applications || []).filter(function(app) { return app.is_mapped; });
                     html += '<div class="mb-2"><p class="text-sm font-medium mb-2">Linked Applications (' + apps.length + ')</p>';
                     if (apps.length === 0) {
                         html += '<p class="text-sm text-muted-foreground py-4 text-center">No applications mapped to this capability.</p>';

@@ -152,13 +152,15 @@
                                     <button type="button"
                                             @click="openEdit(gate)"
                                             class="p-1.5 rounded-md hover:bg-accent transition-colors"
-                                            title="Edit gate">
+                                            title="Edit gate"
+                                            :aria-label="'Edit ' + gate.gate_name">
                                         <i data-lucide="edit" class="h-4 w-4"></i>
                                     </button>
                                     <button type="button"
                                             @click="toggleGate(gate)"
                                             class="p-1.5 rounded-md hover:bg-accent transition-colors"
-                                            :title="gate.enabled ? 'Disable gate' : 'Enable gate'">
+                                            :title="gate.enabled ? 'Disable gate' : 'Enable gate'"
+                                            :aria-label="(gate.enabled ? 'Disable ' : 'Enable ') + gate.gate_name">
                                         <i data-lucide="power" class="h-4 w-4" :class="gate.enabled ? 'text-success' : 'text-muted-foreground'"></i>
                                     </button>
                                 </div>

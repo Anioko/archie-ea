@@ -5300,9 +5300,14 @@ def organization_create():
 @platform_admin_required
 def organization_detail(org_id):
     """View organization details and its users."""
+    from app.utils.role_access import get_role_display_name
+
     org = Organization.query.get_or_404(org_id)
     users = User.query.filter_by(organization_id=org.id).all()
-    return render_template("admin/organizations/detail.html", org=org, users=users)
+    return render_template(
+        "admin/organizations/detail.html", org=org, users=users,
+        get_role_display_name=get_role_display_name,
+    )
 
 
 @admin_bp_v2.route("/organizations/<int:org_id>/edit", methods=["GET", "POST"])

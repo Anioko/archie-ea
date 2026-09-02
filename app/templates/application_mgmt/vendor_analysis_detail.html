@@ -618,7 +618,7 @@
               <option value="risk_averse">Risk-Averse</option>
               <option value="strategic">Strategic Alignment</option>
             </select>
-            <button type="button" @click="resetWeights()" class="px-3 py-1.5 text-xs border border-border rounded-md hover:bg-muted text-muted-foreground" title="Reset to defaults">
+            <button type="button" @click="resetWeights()" class="px-3 py-1.5 text-xs border border-border rounded-md hover:bg-muted text-muted-foreground" title="Reset to defaults" aria-label="Reset scoring weights to defaults">
               <i data-lucide="rotate-ccw" class="h-3.5 w-3.5 inline"></i>
             </button>
           </div>
@@ -997,7 +997,7 @@
                         </td>
                       </template>
                       <td class="px-3 py-2 text-center">
-                        <button type="button" @click="deleteRequirement(req.id)" class="text-muted-foreground hover:text-destructive-emphasis transition-colors" title="Delete requirement">
+                        <button type="button" @click="deleteRequirement(req.id)" class="text-muted-foreground hover:text-destructive-emphasis transition-colors" title="Delete requirement" aria-label="Delete requirement">
                           <i data-lucide="trash-2" class="h-3.5 w-3.5"></i>
                         </button>
                       </td>
@@ -1346,7 +1346,7 @@
                     </td>
                     <td class="py-2" x-text="s.preferred_vendor_id ? ('Option #' + s.preferred_vendor_id) : '—'"></td>
                     <td class="py-2">
-                      <button aria-label="Delete" @click="removeStakeholder(s.id)" type="button"
+                      <button aria-label="Remove stakeholder" @click="removeStakeholder(s.id)" type="button"
                               class="text-muted-foreground hover:text-destructive-emphasis">
                         <i data-lucide="trash-2" class="w-4 h-4"></i>
                       </button>

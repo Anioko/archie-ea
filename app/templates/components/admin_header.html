@@ -491,12 +491,19 @@
     const buLabel    = document.getElementById('bu-scope-label');
     const buList     = document.getElementById('bu-scope-list');
 
+    const buWrapper = document.getElementById('bu-scope-wrapper');
+
     function loadBuScope() {
         if (!window.Platform || !window.Platform.fetch) return;
         Platform.fetch.get('/api/bu-scope', undefined, { silent: true })
             .then(function(data) {
                 let items = data.business_units || [];
                 const currentId = data.current_bu_id;
+                /* No real business units to scope to for this tenant yet: "All" is
+                   the only option there ever is, so there is nothing to choose
+                   between. Hide the menu chrome rather than show a fake dropdown. */
+                if (buWrapper) buWrapper.classList.toggle('hidden', items.length === 0);
+                if (items.length === 0) return;
                 let html = '<button type="button" data-bu-id="" role="menuitem" ' +
                     'class="bu-scope-item w-full text-left px-3 py-1.5 text-sm hover:bg-accent transition-colors' +
                     (!currentId ? ' font-semibold text-foreground' : '') + '">All Business Units</button>';

@@ -426,7 +426,11 @@ async function openCapabilityDetail(capabilityId, capabilityName) {
             html += '<div class="flex items-center gap-2"><span class="text-xs w-16">Target</span><div class="flex-1 h-2 bg-muted rounded-full"><div class="h-2 bg-green-500 rounded-full" style="width:' + (tgt*20) + '%"></div></div><span class="text-xs">' + tgt + '/5</span></div>';
             html += '</div>';
         }
-        const apps = data.applications || [];
+        // "Linked Applications" lists only apps mapped to this capability; the
+        // endpoint returns every application (mapped and unmapped), so filter by
+        // is_mapped to keep this count consistent with the "X of Y apps mapped"
+        // line above, which is derived from the same is_mapped flag server-side.
+        const apps = (data.applications || []).filter(function(app) { return app.is_mapped; });
         html += '<div class="mb-2"><p class="text-sm font-medium mb-2">Linked Applications (' + apps.length + ')</p>';
         if (apps.length === 0) {
             html += '<p class="text-sm text-muted-foreground py-4 text-center">No applications mapped to this capability.</p>';

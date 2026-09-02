@@ -34,7 +34,7 @@
     </div>
 
     <!-- Gaps Table -->
-    <div data-slot="card" class="rounded-xl border bg-card">
+    <div data-slot="card" class="rounded-xl border bg-card" x-data="gapAnalysisTable()">
         <div class="p-6">
             <h3 class="font-semibold mb-4">Identified Gaps</h3>
             <div class="overflow-x-auto">
@@ -77,8 +77,12 @@
                             </td>
                             <td class="p-3 text-sm text-muted-foreground">{{ gap.impact|default('Unknown') }}</td>
                             <td class="p-3">
-                                <button type="button" class="p-2 hover:bg-muted rounded-md" aria-label="Action">
-                                    <i data-lucide="more-horizontal" class="h-4 w-4" aria-hidden="true"></i>
+                                <button type="button" class="px-3 py-1.5 text-sm rounded-md border hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
+                                        @click="convertToWorkPackage({{ gap.id }}, {{ (gap.name|default('this gap'))|tojson }}, $event.target)"
+                                        :disabled="busyId === {{ gap.id }}"
+                                        aria-label="Convert this gap to a work package">
+                                    <span x-show="busyId !== {{ gap.id }}">Convert to Work Package</span>
+                                    <span x-show="busyId === {{ gap.id }}">Converting…</span>
                                 </button>
                             </td>
                         </tr>
@@ -93,4 +97,30 @@
         </div>
     </div>
 </div>
+<script>
+    function gapAnalysisTable() {
+        return {
+            busyId: null,
+            convertToWorkPackage(gapId, gapName) {
+                if (this.busyId !== null) return;
+                this.busyId = gapId;
+                Platform.fetch.post('/api/roadmap/gaps/' + gapId + '/work-packages', { template: 'auto' })
+                    .then((data) => {
+                        if (data && data.success === false) {
+                            Platform.toast.error(data.error || 'Could not convert "' + gapName + '" to a work package.');
+                            return;
+                        }
+                        Platform.toast.success('"' + gapName + '" converted to a work package.');
+                    })
+                    .catch((err) => {
+                        Platform.toast.error('Could not convert "' + gapName + '" to a work package.');
+                        throw err;
+                    })
+                    .finally(() => {
+                        this.busyId = null;
+                    });
+            }
+        };
+    }
+</script>
 {% endblock %}

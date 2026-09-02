@@ -178,20 +178,23 @@
                                         {% if settings.provider == 'openrouter' %}
                                             <button type="button"
                                                     class="p-1.5 rounded-md hover:bg-background transition-colors or-change-model-btn"
-                                                    title="Browse & Change Model">
+                                                    title="Browse & Change Model"
+                                                    aria-label="Browse and change model for {{ settings.provider }}">
                                                 <i data-lucide="layers" class="w-4 h-4" aria-hidden="true"></i>
                                             </button>
                                         {% endif %}
                                         <a href="{{ url_for('admin.api_settings', edit=settings.id) }}"
                                            class="p-1.5 rounded-md hover:bg-background transition-colors"
-                                           title="Edit">
+                                           title="Edit"
+                                           aria-label="Edit {{ settings.provider }} settings">
                                             <i data-lucide="edit" class="w-4 h-4" aria-hidden="true"></i>
                                         </a>
                                         <form method="POST" action="{{ url_for('admin.test_api_settings', settings_id=settings.id) }}" class="inline">
                                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                                             <button type="submit"
                                                     class="p-1.5 rounded-md hover:bg-background transition-colors"
-                                                    title="Test Connection">
+                                                    title="Test Connection"
+                                                    aria-label="Test connection for {{ settings.provider }}">
                                                 <i data-lucide="wifi" class="w-4 h-4" aria-hidden="true"></i>
                                             </button>
                                         </form>
@@ -201,7 +204,8 @@
                                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                                             <button type="submit"
                                                     class="p-1.5 rounded-md hover:bg-background transition-colors text-destructive-emphasis"
-                                                    title="Delete">
+                                                    title="Delete"
+                                                    aria-label="Delete {{ settings.provider }} settings">
                                                 <i data-lucide="trash-2" class="w-4 h-4" aria-hidden="true"></i>
                                             </button>
                                         </form>

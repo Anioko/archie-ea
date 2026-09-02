@@ -150,7 +150,7 @@
               <div class="min-w-0">
                 <p class="font-medium text-sm truncate">{{ vendor.name }}</p>
                 {% if vendor.website %}
-                <a href="{{ vendor.website }}" target="_blank" class="text-xs text-primary hover:underline block truncate">{{ vendor.website }}</a>
+                <a href="{{ vendor.website }}" target="_blank" rel="noopener noreferrer" class="text-xs text-primary hover:underline block truncate">{{ vendor.website }}</a>
                 {% endif %}
               </div>
             </td>
@@ -249,7 +249,7 @@
           <div class="flex-1">
             <h3 class="font-semibold text-base mb-1">{{ vendor.name }}</h3>
             {% if vendor.website %}
-            <a href="{{ vendor.website }}" target="_blank" class="text-xs text-primary hover:underline block">{{ vendor.website }}</a>
+            <a href="{{ vendor.website }}" target="_blank" rel="noopener noreferrer" class="text-xs text-primary hover:underline block">{{ vendor.website }}</a>
             {% endif %}
           </div>
           <div class="flex gap-2">

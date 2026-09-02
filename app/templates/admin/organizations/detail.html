@@ -52,7 +52,8 @@
                         Inactive
                     </span>
                     {% endif %}
-                    <form method="POST" action="{{ url_for('admin.organization_toggle', org_id=org.id) }}" class="inline">
+                    <form method="POST" action="{{ url_for('admin.organization_toggle', org_id=org.id) }}" class="inline"
+                          data-confirm="{% if org.is_active %}Deactivate {{ org.name }}? Users will lose access until it is reactivated.{% else %}Reactivate {{ org.name }}?{% endif %}">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <button type="submit"
                             class="inline-flex items-center justify-center rounded-md text-xs font-medium transition-colors h-7 px-2.5
@@ -99,6 +100,7 @@
                         <th class="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Name</th>
                         <th class="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Email</th>
                         <th class="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Role</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Persona</th>
                         <th class="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Org Admin</th>
                         <th class="px-6 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider">Actions</th>
                     </tr>
@@ -109,9 +111,17 @@
                         <td class="px-6 py-4 text-sm font-medium">{{ user.full_name() or '—' }}</td>
                         <td class="px-6 py-4 text-sm text-muted-foreground">{{ user.email }}</td>
                         <td class="px-6 py-4">
-                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-secondary text-secondary-foreground">
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-secondary text-secondary-foreground"
+                                  title="Permission tier (Role/Permission bitfield) — largely uniform across users; see Persona for what this person actually does">
                                 {{ user.role.name if user.role else 'No role' }}
                             </span>
+                        </td>
+                        <td class="px-6 py-4 text-sm text-foreground">
+                            {# T-10 (2 Sep 2026 audit): every row showed the same permission
+                               tier next to the same Org-Admin=No, which read as "every user
+                               is identical" — the field that actually varies day to day is
+                               enterprise_role, and it wasn't shown at all. #}
+                            {{ get_role_display_name(user.enterprise_role) if user.enterprise_role else '—' }}
                         </td>
                         <td class="px-6 py-4">
                             {% if user.is_org_admin %}
@@ -124,7 +134,8 @@
                         </td>
                         <td class="px-6 py-4 text-right">
                             <div class="flex items-center justify-end gap-1.5">
-                                <form method="POST" action="{{ url_for('admin.toggle_org_admin', org_id=org.id, user_id=user.id) }}" class="inline">
+                                <form method="POST" action="{{ url_for('admin.toggle_org_admin', org_id=org.id, user_id=user.id) }}" class="inline"
+                                      data-confirm="{% if user.is_org_admin %}Revoke org-admin rights for {{ user.full_name() or user.email }}?{% else %}Grant org-admin rights to {{ user.full_name() or user.email }}?{% endif %}">
                                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                     <button type="submit"
                                         class="inline-flex items-center justify-center rounded-md text-xs font-medium transition-colors h-7 px-2.5
@@ -141,7 +152,8 @@
                                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                     <button type="submit"
                                         class="inline-flex items-center justify-center rounded-md text-xs font-medium transition-colors h-7 px-2.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive-emphasis"
-                                        title="Remove from organization">
+                                        title="Remove from organization"
+                                        aria-label="Remove {{ user.full_name() or user.email }} from this organization">
                                         <i data-lucide="user-minus" class="w-3.5 h-3.5" aria-hidden="true"></i>
                                     </button>
                                 </form>
