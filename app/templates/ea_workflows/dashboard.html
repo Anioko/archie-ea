@@ -1138,7 +1138,8 @@ function renderStepPreview(workflowCode) {
 
     let html = '';
     wf.steps.forEach(function(step, idx) {
-        const isApproval = step.step_type === 'approval' || step.requires_approval;
+        // F-17: human_input steps pause the same way approval steps do.
+        const isApproval = step.step_type === 'approval' || step.step_type === 'human_input' || step.requires_approval;
         const typeClass = isApproval
             ? 'bg-warning/15 text-warning border-warning/20'
             : 'bg-background border-input';

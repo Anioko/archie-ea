@@ -1838,7 +1838,9 @@
                     {% set is_failed = exec_step and exec_step.status == 'failed' %}
                     {% set is_waiting = exec_step and exec_step.status == 'waiting_approval' %}
                     {% set is_current = loop.index0 == (instance.current_step_index or 0) and instance.status in ['running', 'waiting_approval'] %}
-                    {% set is_approval = def_step.get('requires_approval', false) or def_step.get('step_type') == 'approval' %}
+                    {# F-17: human_input steps pause on the same waiting_approval
+                       mechanism as approval steps — surface the same resume control. #}
+                    {% set is_approval = def_step.get('requires_approval', false) or def_step.get('step_type') in ('approval', 'human_input') %}
                     {% set has_output = exec_step and exec_step.output_data %}
                     {% set has_input = exec_step and exec_step.input_data %}
 
@@ -2387,7 +2389,12 @@ function instancePage() {
         activityLog: [],
         showActivityLog: false,
         showFailureBanner: initialStatus === 'failed',
-        failureSummary: '{{ instance.error_message|default("")|replace("'", "\\'")|truncate(200) }}',
+        {# F-17, Capgemini dry-run: replace("'", "\\'") only escapes a single
+           quote — a backslash, newline or double quote in error_message broke
+           the JS literal and 500'd this page for exactly the case that most
+           needs to render, a failed step. |tojson emits a valid JS string
+           literal (with its own quotes) for any input. #}
+        failureSummary: {{ (instance.error_message or '')|truncate(200)|tojson }},
         isWatching: {{ 'true' if is_watched else 'false' }},
         runHistory: null,
         isOvertime: false,

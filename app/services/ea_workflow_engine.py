@@ -2031,8 +2031,15 @@ class EAWorkflowEngine:
             )
             step_execution.input_data = input_data
 
-            # Check if approval is required
-            if step_def.get("step_type") == "approval" or step_def.get(
+            # Check if approval is required.
+            # F-17, Capgemini dry-run: "human_input" steps had no registered
+            # STEP_HANDLERS entry, so they fell through to
+            # _invoke_service(step_def, ...) with no service_class configured
+            # — a step meant to pause for a person instead executed as (and
+            # failed as) an automated step. A human-input step is, mechanically,
+            # the same "pause until a person acts" shape as approval — reuse
+            # that pause/resume machinery rather than build a second one.
+            if step_def.get("step_type") in ("approval", "human_input") or step_def.get(
                 "requires_approval"
             ):
                 step_execution.requires_approval = True

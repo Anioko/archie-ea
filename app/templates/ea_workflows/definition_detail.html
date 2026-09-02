@@ -6,7 +6,7 @@
 {% block content %}
 {% set ns = namespace(count=0) %}
 {% for step in definition.steps %}
-  {% if (step.requires_approval is defined and step.requires_approval) or step.step_type == 'approval' %}
+  {% if (step.requires_approval is defined and step.requires_approval) or step.step_type in ('approval', 'human_input') %}
     {% set ns.count = ns.count + 1 %}
   {% endif %}
 {% endfor %}
@@ -176,7 +176,7 @@
                             <span class="text-xs text-muted-foreground mt-1">Start</span>
                         </div>
                         {% for step in definition.steps %}
-                        {% set is_approval = step.step_type == 'approval' or step.get('requires_approval', false) %}
+                        {% set is_approval = step.step_type in ('approval', 'human_input') or step.get('requires_approval', false) %}
                         <!-- Connector arrow -->
                         <div class="flex items-center h-8">
                             <div class="w-6 h-0.5 bg-border"></div>
@@ -235,7 +235,7 @@
                 {% if definition.steps %}
                 <div class="relative">
                     {% for step in definition.steps %}
-                    {% set is_approval = step.step_type == 'approval' or step.get('requires_approval', false) %}
+                    {% set is_approval = step.step_type in ('approval', 'human_input') or step.get('requires_approval', false) %}
                     <div class="flex gap-4 {% if not loop.last %}pb-6{% endif %}">
                         <!-- Timeline connector -->
                         <div class="flex flex-col items-center">
