@@ -209,7 +209,14 @@
                                 // This is an inline error state, so we show a toast.
                                 Platform.toast.error(data.error);
                             } else {
-                                Platform.modal.close('bulk-delete-work-package-modal');
+                                // DEF-066, Capgemini dry-run: this closed
+                                // 'bulk-delete-work-package-modal', a modal id
+                                // that does not exist anywhere in the template
+                                // (the real one is 'bulk-delete-confirm-modal',
+                                // used to open it in confirmBulkDelete() above) —
+                                // harmless once the real blocker (below) is fixed,
+                                // but the modal would have stayed open regardless.
+                                Platform.modal.close('bulk-delete-confirm-modal');
                                 this.bulkConfirmText = '';
                                 this.clearSelection();
                                 this._loadItems();
