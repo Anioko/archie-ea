@@ -145,6 +145,45 @@ def _apply_fields(business_case, fields):
 # ---------------------------------------------------------------------------
 
 
+# NPV engine (2 Sep 2026): a real discounted-cash-flow NPV service already
+# existed (SolutionCostService.calculate_npv, solutions_strategic/v2) but was
+# wired to zero routes — an orphaned capability, per the transformation-gap
+# audit. That service is scoped to a Solution's multi-year cost MODEL
+# (SolutionCostModel/SolutionCostYearlyProjection), a different system of
+# record from BusinessCase's own capex/opex/benefit fields; repointing it here
+# would answer this question from the wrong store (ADR-0008). This computes a
+# genuine NPV from BusinessCase's own live fields instead.
+#
+# Computed on read, never stored: capex/opex/benefit can each be edited
+# independently via save_field(), so a stored NPV would silently go stale the
+# moment any one of them changed. Recomputing at serialization time (to_dict)
+# means it is never wrong, at the cost of a few float ops per read — cheap.
+NPV_DISCOUNT_RATE = Decimal("0.10")  # 10% — a standard corporate hurdle rate
+NPV_HORIZON_YEARS = 3  # matches tco_3yr's horizon, so the two numbers agree on a timeframe
+
+
+def calculate_npv(capex, opex_annual, financial_benefit_annual,
+                   years=NPV_HORIZON_YEARS, rate=NPV_DISCOUNT_RATE):
+    """Net present value of a business case's own capex/opex/benefit.
+
+    NPV = -capex + sum_{t=1..years} (benefit - opex) / (1+rate)^t
+
+    Returns None (never a fabricated number) unless at least capex or benefit
+    is set — a business case with nothing costed yet has no NPV to report, not
+    a zero one.
+    """
+    if capex is None and financial_benefit_annual is None:
+        return None
+    capex = _to_decimal(capex) or Decimal("0")
+    opex_annual = _to_decimal(opex_annual) or Decimal("0")
+    benefit = _to_decimal(financial_benefit_annual) or Decimal("0")
+    net_annual = benefit - opex_annual
+    npv = -capex
+    for year in range(1, years + 1):
+        npv += net_annual / ((Decimal("1") + rate) ** year)
+    return npv
+
+
 def aggregate_financials(business_case, apply_missing=True):
     """Pull cost/value data from the linked StrategicInitiative,
     CapabilityCostAllocation (+ UnifiedCapability), and Solution — and use it

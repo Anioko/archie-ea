@@ -110,6 +110,18 @@ class BusinessCase(TenantMixin, db.Model):
     def __repr__(self):
         return f"<BusinessCase {self.id} {self.title!r} status={self.status}>"
 
+    @property
+    def npv(self):
+        """Net present value, computed live from capex/opex/financial_benefit_annual
+        — never stored, since any of the three can be edited independently and a
+        stored value would go stale the moment one changed. None (never a
+        fabricated number) until at least capex or benefit is set. See
+        app/modules/business_case/service.py::calculate_npv for the formula."""
+        from app.modules.business_case.service import calculate_npv
+
+        result = calculate_npv(self.capex, self.opex_annual, self.financial_benefit_annual)
+        return float(result) if result is not None else None
+
     def to_dict(self):
         return {
             "id": self.id,
@@ -142,6 +154,7 @@ class BusinessCase(TenantMixin, db.Model):
                 float(self.roi_percentage) if self.roi_percentage is not None else None
             ),
             "payback_months": self.payback_months,
+            "npv": self.npv,
             "created_by_id": self.created_by_id,
             "created_by_name": self.created_by.full_name() if self.created_by else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,

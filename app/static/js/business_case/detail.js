@@ -34,6 +34,29 @@ document.addEventListener('alpine:init', () => {
       return document.querySelector('meta[name=csrf-token]')?.content || '';
     },
 
+    // NPV (2 Sep 2026): a real discounted-cash-flow NPV engine existed
+    // (SolutionCostService.calculate_npv) but was wired to zero routes.
+    // BusinessCase.npv (a computed model property, never a stored column —
+    // see app/models/business_case.py) is the real, server-side value used by
+    // the API and any other consumer. This getter mirrors the SAME formula
+    // purely so the number updates live as capex/opex/benefit are edited,
+    // without a page reload; the server property is the source of truth for
+    // persistence, this is a display convenience only. Keep the two in sync:
+    // NPV = -capex + sum_{t=1..3} (benefit - opex) / (1 + 0.10)^t
+    get npv() {
+      const capex = parseFloat(this.fields.capex);
+      const opex = parseFloat(this.fields.opex_annual);
+      const benefit = parseFloat(this.fields.financial_benefit_annual);
+      if (Number.isNaN(capex) && Number.isNaN(benefit)) return null;
+      const netAnnual = (Number.isNaN(benefit) ? 0 : benefit) - (Number.isNaN(opex) ? 0 : opex);
+      let npv = -(Number.isNaN(capex) ? 0 : capex);
+      const rate = 0.10;
+      for (let year = 1; year <= 3; year++) {
+        npv += netAnnual / Math.pow(1 + rate, year);
+      }
+      return npv;
+    },
+
     async saveField(fieldKey) {
       this.savingField = fieldKey;
       this.savedField = null;

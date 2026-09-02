@@ -230,6 +230,20 @@
             <input id="bc-payback" type="number" step="1" x-model="fields.payback_months" @blur="saveField('payback_months')" data-testid="bc-input-payback_months"
               class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
           </div>
+          <div>
+            {# NPV (2 Sep 2026): computed, not editable — it derives from capex/opex/
+               benefit above, so an input here would let a user type a number that
+               contradicts the fields it's supposed to summarise. Server value
+               (business_case.npv) renders on load; the Alpine getter keeps it live
+               as those three fields are edited, before the next save/reload. #}
+            <label for="bc-npv" class="block text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">
+              NPV <span class="normal-case font-normal">(3yr, 10% discount)</span>
+            </label>
+            <div id="bc-npv" data-testid="bc-display-npv"
+                 class="flex h-9 w-full items-center rounded-md border border-input bg-muted/30 px-3 text-sm">
+              <span x-text="npv !== null ? npv.toFixed(2) : '—'"></span>
+            </div>
+          </div>
         </div>
       {% endcall %}
     {% endcall %}
