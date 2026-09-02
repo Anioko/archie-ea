@@ -119,6 +119,24 @@
             {% endif %}
           </select>
         </div>
+        {# F-09, Capgemini dry-run: Lifecycle Status is shown on the detail
+           page, in the list filter and the Workbench facet — a genuinely
+           separate field from Deployment Status above — but no create or
+           edit form ever exposed it, so it could only be set in bulk via
+           /api/bulk-lifecycle, never per-application. #}
+        <div>
+          <label for="lifecycle_status" class="block text-sm font-medium mb-1">Lifecycle Status</label>
+          <select id="lifecycle_status" name="lifecycle_status"
+                  class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+            <option value="" {% if not application.lifecycle_status %}selected{% endif %}>Not set</option>
+            {% for val in lifecycle_stage_choices %}
+            <option value="{{ val }}" {% if application.lifecycle_status and application.lifecycle_status | lower == val | lower %}selected{% endif %}>{{ val | title }}</option>
+            {% endfor %}
+            {% if application.lifecycle_status and application.lifecycle_status | lower not in lifecycle_stage_choices_lower %}
+            <option value="{{ application.lifecycle_status }}" selected>{{ application.lifecycle_status | title }}</option>
+            {% endif %}
+          </select>
+        </div>
         <div>
           <label for="business_domain" class="block text-sm font-medium mb-1">Business Domain</label>
           <input type="text" id="business_domain" name="business_domain" value="{{ application.business_domain or '' }}"

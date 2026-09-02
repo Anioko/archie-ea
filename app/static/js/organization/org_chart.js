@@ -25,10 +25,15 @@ document.addEventListener('alpine:init', () => {
             this.loading = true;
             try {
                 // Platform.fetch throws on non-ok responses, returning parsed data directly.
-                const data = await Platform.fetch('/organization/chart/api/data');
+                const raw = await Platform.fetch('/organization/chart/api/data');
                 // Unchecked, a 500 parsed to `{}`: roots and groups came out empty and
                 // the chart rendered blank, reading as "no org structure modelled".
                 // (Now handled by Platform.fetch throwing before reaching this point.)
+                // F-16, Capgemini dry-run: the route wraps its payload in
+                // success_response() -> {"data": {...}}; this read the fields
+                // straight off the envelope, so a real Business Actor never
+                // showed — "No Business Actors yet" while the layer had one.
+                const data = raw.data || raw;
 
                 this.fallback = !!data.fallback;
                 this.actorCount = data.actor_count || 0;

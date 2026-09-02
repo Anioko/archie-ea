@@ -589,6 +589,7 @@ function applicationCreateForm() {
       application_type: '',
       business_criticality: '',
       deployment_status: '',
+      lifecycle_status: '',
       business_owner: '',
       description: '',
     },

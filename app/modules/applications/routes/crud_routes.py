@@ -33,7 +33,10 @@ from app.models.application_layer import (
     ApplicationService,
     DataObject,
 )
-from app.models.application_portfolio import ApplicationComponent
+from app.models.application_portfolio import (
+    APPLICATION_LIFECYCLE_STAGES,
+    ApplicationComponent,
+)
 from app.models.archimate_core import ArchiMateElement
 from app.models.business_capabilities import (  # dead-code-ok
     BusinessCapability,
@@ -152,7 +155,15 @@ def application_create():
     if not is_valid:
         validation_errors.append(error)
 
-    business_criticality = data.get("business_criticality")
+    # F-10(a), Capgemini dry-run: ApplicationCreateSchema names this field
+    # `criticality` (see app/schemas/api_schemas.py); the live create form
+    # (applicationCreateForm, app/static/js/applications/list.js) already
+    # knows this and sends `criticality` in its JSON body — but this route
+    # read `business_criticality` from the validated proxy, a key that
+    # dict never has, so the value was silently None on every JSON create.
+    # A raw form-encoded POST (the `else: data = request.form` branch above)
+    # still uses the model's own field name, so accept both.
+    business_criticality = data.get("criticality") or data.get("business_criticality")
     is_valid, validated_crit, error = validate_string(
         business_criticality, max_length=50, field_name="business_criticality"
     )
@@ -268,6 +279,9 @@ def application_create():
             "integration_pattern",
             "authentication_method",
             "data_classification",
+            # F-09, Capgemini dry-run: Lifecycle Status could previously only
+            # be set in bulk (POST /api/bulk-lifecycle), never per-application.
+            "lifecycle_status",
         ]
         for field in optional_fields:
             value = data.get(field)
@@ -598,7 +612,13 @@ def application_edit(id):
                 if not is_valid:
                     validation_errors.append(error)
                 else:
-                    app.name = sanitize_html(validated_name)
+                    # F-10(b), Capgemini dry-run: sanitize_html() entity-escapes
+                    # ('&' -> '&amp;'), and Jinja autoescapes again on render —
+                    # double-escaping "SCADE Plant Control & Reporting" into
+                    # "...&amp;amp;..." on every page showing the name.
+                    # application_create() already gets this right (see its own
+                    # comment on the same field); mirror it here.
+                    app.name = validated_name
 
             # Validate description
             description = request.form.get("description")
@@ -607,9 +627,7 @@ def application_edit(id):
                 if not is_valid:
                     validation_errors.append(error)
                 else:
-                    app.description = (
-                        sanitize_html(validated_desc) if validated_desc else None
-                    )
+                    app.description = validated_desc or None
 
             # Validate application_code
             application_code = request.form.get("application_code")
@@ -718,7 +736,11 @@ def application_edit(id):
             if validation_errors:
                 for error in validation_errors:
                     flash(error, "error")
-                return render_template("applications/edit.html", application=app), 400
+                return render_template(
+                    "applications/edit.html", application=app,
+                    lifecycle_stage_choices=APPLICATION_LIFECYCLE_STAGES,
+                    lifecycle_stage_choices_lower=[v.lower() for v in APPLICATION_LIFECYCLE_STAGES],
+                ), 400
 
             # Capture additional fields if submitted (API calls, expanded forms)
             optional_fields = [
@@ -767,6 +789,13 @@ def application_edit(id):
             )
             _apply_architecture_state(app, request.form)
 
+            # F-09, Capgemini dry-run: Lifecycle Status was shown on the detail
+            # page, the list filter and the Workbench facet but could only ever
+            # be set in bulk (POST /api/bulk-lifecycle) — never per-application.
+            lifecycle_status = request.form.get("lifecycle_status")
+            if lifecycle_status:
+                app.lifecycle_status = lifecycle_status
+
             app.updated_by = current_user.id
 
             db.session.commit()
@@ -789,7 +818,9 @@ def application_edit(id):
             if ae is not None:
                 architecture_state = ae.togaf_plateau
         return render_template(
-            "applications/edit.html", application=app, architecture_state=architecture_state
+            "applications/edit.html", application=app, architecture_state=architecture_state,
+            lifecycle_stage_choices=APPLICATION_LIFECYCLE_STAGES,
+            lifecycle_stage_choices_lower=[v.lower() for v in APPLICATION_LIFECYCLE_STAGES],
         )
 
     except Exception:

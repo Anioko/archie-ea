@@ -909,6 +909,20 @@
               <option value="planned">Planned</option>
             </select>
           </div>
+          {# F-09, Capgemini dry-run: Lifecycle Status (the TOGAF decommission
+             vocabulary) is a real, separate column from Deployment Status
+             above, shown on the detail page/filter/Workbench facet, but
+             could previously only be set in bulk. #}
+          <div>
+            <label for="ca-lifecycle" class="block text-sm font-medium mb-1">Lifecycle Status</label>
+            <select id="ca-lifecycle" x-model="form.lifecycle_status"
+              class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              <option value="">Select...</option>
+              {% for opt in filter_options.lifecycle_statuses %}
+              <option value="{{ opt.value }}">{{ opt.label }}</option>
+              {% endfor %}
+            </select>
+          </div>
           <div x-data="userSearchWidget(() => form.business_owner, v => { form.business_owner = v; })" @click.outside="ushow = false">
             <label for="ca-owner" class="block text-sm font-medium mb-1">Business Owner</label>
             <div class="relative">

@@ -780,7 +780,16 @@ class EnterprisePostureService:
     # ── lens: decisions ─────────────────────────────────────────────────────
     @classmethod
     def _decision_lens(cls) -> tuple[Dict[str, Any], List[Dict[str, Any]]]:
-        from app.models.adr import ArchitectureDecisionRecord
+        # F-15, Capgemini dry-run: this lens used to count
+        # app.models.adr.ArchitectureDecisionRecord, which maps a separate,
+        # orphaned `architecture_decision_records` table that no UI links to.
+        # The ADR list every template actually links to
+        # (arch_decisions.list_decisions) is backed by
+        # app.models.architecture_decision.ArchitectureDecision over the
+        # `architecture_decisions` table — see the note in
+        # app/modules/architecture/routes/adr_routes.py:list_adrs. Count that
+        # one so this posture tile agrees with the real ADR page.
+        from app.models.architecture_decision import ArchitectureDecision
 
         decisions_href = _first_url(
             "arch_decisions.list_decisions",
@@ -788,29 +797,29 @@ class EnterprisePostureService:
             "arb.decision_register_page",
         )
 
-        total = ArchitectureDecisionRecord.query.count()
-        proposed = ArchitectureDecisionRecord.query.filter(
-            db.func.lower(ArchitectureDecisionRecord.status) == "proposed"
+        total = ArchitectureDecision.query.count()
+        proposed = ArchitectureDecision.query.filter(
+            db.func.lower(ArchitectureDecision.status) == "proposed"
         ).count()
-        accepted = ArchitectureDecisionRecord.query.filter(
-            db.func.lower(ArchitectureDecisionRecord.status) == "accepted"
+        accepted = ArchitectureDecision.query.filter(
+            db.func.lower(ArchitectureDecision.status) == "accepted"
         ).count()
-        superseded = ArchitectureDecisionRecord.query.filter(
-            ArchitectureDecisionRecord.superseded_by_adr_id.isnot(None)
+        superseded = ArchitectureDecision.query.filter(
+            ArchitectureDecision.superseded_by_id.isnot(None)
         ).count()
-        undated = ArchitectureDecisionRecord.query.filter(
-            ArchitectureDecisionRecord.decision_date.is_(None)
+        undated = ArchitectureDecision.query.filter(
+            ArchitectureDecision.decided_at.is_(None)
         ).count()
-        no_rationale = ArchitectureDecisionRecord.query.filter(
+        no_rationale = ArchitectureDecision.query.filter(
             db.or_(
-                ArchitectureDecisionRecord.rationale.is_(None),
-                ArchitectureDecisionRecord.rationale == "",
+                ArchitectureDecision.rationale.is_(None),
+                ArchitectureDecision.rationale == "",
             )
         ).count()
-        no_consequences = ArchitectureDecisionRecord.query.filter(
+        no_consequences = ArchitectureDecision.query.filter(
             db.or_(
-                ArchitectureDecisionRecord.consequences.is_(None),
-                ArchitectureDecisionRecord.consequences == "",
+                ArchitectureDecision.consequences.is_(None),
+                ArchitectureDecision.consequences == "",
             )
         ).count()
 
@@ -828,21 +837,21 @@ class EnterprisePostureService:
                     "Accepted",
                     accepted,
                     of=total,
-                    source="ArchitectureDecisionRecord.status = 'accepted'",
+                    source="ArchitectureDecision.status = 'accepted'",
                     href=decisions_href,
                 ),
                 _measure(
                     "Awaiting a decision",
                     proposed,
                     of=total,
-                    source="ArchitectureDecisionRecord.status = 'proposed'",
+                    source="ArchitectureDecision.status = 'proposed'",
                     href=decisions_href,
                 ),
                 _measure(
                     "Superseded",
                     superseded,
                     of=total,
-                    source="ArchitectureDecisionRecord.superseded_by_adr_id",
+                    source="ArchitectureDecision.superseded_by_id",
                     href=decisions_href,
                 ),
             ],
@@ -851,21 +860,21 @@ class EnterprisePostureService:
                     "Decisions with no rationale",
                     no_rationale,
                     of=total,
-                    source="ArchitectureDecisionRecord.rationale IS NULL",
+                    source="ArchitectureDecision.rationale IS NULL",
                     href=decisions_href,
                 ),
                 _missing(
                     "Decisions with no recorded consequences",
                     no_consequences,
                     of=total,
-                    source="ArchitectureDecisionRecord.consequences IS NULL",
+                    source="ArchitectureDecision.consequences IS NULL",
                     href=decisions_href,
                 ),
                 _missing(
                     "Decisions with no decision date",
                     undated,
                     of=total,
-                    source="ArchitectureDecisionRecord.decision_date IS NULL",
+                    source="ArchitectureDecision.decided_at IS NULL",
                     href=decisions_href,
                 ),
             ],

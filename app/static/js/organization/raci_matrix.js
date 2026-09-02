@@ -27,9 +27,14 @@ document.addEventListener('alpine:init', () => {
             this.loading = true;
             try {
                 // Platform.fetch throws on non-ok responses, returns parsed data directly.
-                const data = await Platform.fetch('/organization/raci/api/data');
+                const raw = await Platform.fetch('/organization/raci/api/data');
                 // Unchecked, a 500 parsed to `{}` and the matrix rendered with no rows
                 // and no stakeholders — an unassigned-looking RACI that was never read.
+                // F-16, Capgemini dry-run: the route wraps its payload in
+                // success_response() -> {"data": {...}}; this read the fields
+                // straight off the envelope, so 219 real capabilities showed as
+                // "No capabilities to map yet".
+                const data = raw.data || raw;
                 this.capabilities = data.capabilities || [];
                 this.assignments = data.assignments || [];
                 this.stakeholders = this.deriveStakeholders(this.assignments);

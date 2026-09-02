@@ -10,8 +10,14 @@ function applicationCreateModal() {
       name: '',
       application_code: '',
       application_type: '',
-      criticality: '',
+      // F-10(a), Capgemini dry-run: this was named `criticality`, but
+      // application_create() (crud_routes.py) reads `business_criticality`
+      // — the field the user picked was silently dropped on every create,
+      // only "sticking" once re-entered on Edit (which reads a third,
+      // internally-consistent name of its own).
+      business_criticality: '',
       deployment_status: '',
+      lifecycle_status: '',
       business_owner: '',
       description: ''
     },
