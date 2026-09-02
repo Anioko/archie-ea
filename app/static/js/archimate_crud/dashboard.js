@@ -200,13 +200,16 @@ document.addEventListener('alpine:init', function() {
                     });
                 }
                 if (this.filterPlateau) {
+                    // Was reading el.properties.plateau — a JSON-blob field the
+                    // create/edit form's "Architecture state" selector never wrote
+                    // to (it writes ArchiMateElement.togaf_plateau, a real column,
+                    // via the /api/layer/<layer>/elements endpoint's own "plateau"
+                    // key). Tagging an element Baseline/Target and then filtering by
+                    // it silently returned nothing. Fixed 2 Sep 2026 alongside the
+                    // API serialization (archimate_crud/routes.py).
                     let wantedPlateau = this.filterPlateau.toLowerCase();
                     filtered = filtered.filter(function(el) {
-                        let props = el.properties;
-                        if (typeof props === 'string') {
-                            try { props = JSON.parse(props); } catch (_) { props = {}; }
-                        }
-                        return String((props || {}).plateau || (props || {}).lifecycle || '').toLowerCase() === wantedPlateau;
+                        return String(el.plateau || '').toLowerCase() === wantedPlateau;
                     });
                 }
                 if (this.filterHasRels === 'yes') {

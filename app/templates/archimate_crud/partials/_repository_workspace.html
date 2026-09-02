@@ -138,8 +138,14 @@
             </div>
             <div>
                 <label for="architecture-plateau" class="mb-1 block text-xs font-medium text-muted-foreground">Plateau</label>
+                {# Values must match what the create/edit "Architecture state" field
+                   actually writes (field_configs.py: Baseline/Target/Transition —
+                   ArchiMateElement.togaf_plateau) — this dropdown previously used
+                   current/transitional/target, a vocabulary that never matched a
+                   single stored value, on top of the separate JS-side bug (dashboard.js)
+                   reading the wrong response key. Both fixed together, 2 Sep 2026. #}
                 <select id="architecture-plateau" x-model="filterPlateau" @change="currentPage = 1; loadElements()" class="h-9 w-full rounded-md border border-input bg-background px-3 text-sm">
-                    <option value="">Any plateau</option><option value="current">Current</option><option value="transitional">Transitional</option><option value="target">Target</option>
+                    <option value="">Any plateau</option><option value="Baseline">Baseline (As-Is)</option><option value="Transition">Transition</option><option value="Target">Target (To-Be)</option>
                 </select>
             </div>
             <div>

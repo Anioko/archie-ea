@@ -675,15 +675,34 @@ def api_layer_elements(layer):
                         filters.append(model_class.description.ilike(f"%{safe_search}%", escape="\\"))
                     if filters:
                         q = q.filter(or_(*filters))
-                for (
-                    elem
-                ) in q.all():  # model-safety-ok: small fixed set (max 10 layer types)
+                rows = q.all()  # model-safety-ok: small fixed set (max 10 layer types)
+                # Batch-fetch the plateau off each row's linked ArchiMateElement in
+                # one query rather than N+1 — same fix as the "architecture" branch
+                # below (T-14-adjacent audit, 2 Sep 2026): the as-is/to-be state a
+                # user sets on the create/edit form is togaf_plateau, a real column,
+                # but this endpoint never read it back, so the client-side Plateau
+                # filter (dashboard.js) — which reads a "plateau" key this dict never
+                # had — silently matched nothing. Tagging worked; filtering by what
+                # you tagged did not.
+                linked_ae_ids = [
+                    getattr(e, "archimate_element_id", None) for e in rows
+                ]
+                linked_ae_ids = [i for i in linked_ae_ids if i]
+                plateau_by_ae_id = {}
+                if linked_ae_ids:
+                    plateau_by_ae_id = dict(
+                        db.session.query(
+                            ArchiMateElement.id, ArchiMateElement.togaf_plateau
+                        ).filter(ArchiMateElement.id.in_(linked_ae_ids))
+                    )
+                for elem in rows:
                     name = getattr(elem, "name", None) or getattr(
                         elem, "title", "Unnamed"
                     )  # model-safety-ok: polymorphic ArchiMate elements
                     status = getattr(elem, "status", None) or getattr(
                         elem, "operational_status", None
                     )  # model-safety-ok: polymorphic ArchiMate elements
+                    ae_id = getattr(elem, "archimate_element_id", None)
                     all_elements.append(
                         {
                             "id": elem.id,
@@ -695,6 +714,7 @@ def api_layer_elements(layer):
                             "layer": layer,
                             "source": "portfolio",
                             "properties": getattr(elem, "properties", None) or "",
+                            "plateau": plateau_by_ae_id.get(ae_id) if ae_id else None,
                             "rel_count": None,
                         }
                     )
@@ -741,6 +761,7 @@ def api_layer_elements(layer):
                             "layer": layer,
                             "source": "architecture",
                             "properties": ae.properties or "",
+                            "plateau": ae.togaf_plateau,
                             "rel_count": _rel_count,
                         }
                     )
