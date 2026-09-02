@@ -147,6 +147,10 @@ def detail(initiative_id):
         demands=demands,
         work_packages=list(initiative.migration_work_packages),
         transformation_programmes=transformation_programmes,
+        linked_programme=(
+            db.session.get(StrategicInitiative, initiative.linked_strategic_initiative_id)
+            if initiative.linked_strategic_initiative_id else None
+        ),
     )
 
 

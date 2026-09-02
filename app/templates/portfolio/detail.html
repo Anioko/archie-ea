@@ -24,6 +24,45 @@
 
   {{ page_shell(title=(initiative.name), subtitle=(initiative.current_phase or 'Phase not set') ~ ' · Sponsor: ' ~ (initiative.executive_sponsor or '—') ~ ' · Programme manager: ' ~ (initiative.program_manager or '—')) }}
 
+  {# ── Programme link (2 Sep 2026) ───────────────────────────────────────────
+     This EnterpriseInitiative and StrategicInitiative are two independent
+     "programme" concepts (see the ADR-0008 note on EnterpriseInitiative). A
+     benefit can only be recorded once this row is tied to the specific
+     StrategicInitiative row that describes the same real-world programme — a
+     human confirms the match, it is never guessed from a matching ID. #}
+  <div class="rounded-lg border bg-card p-6">
+    <p class="text-sm font-medium text-muted-foreground mb-2">Linked transformation programme</p>
+    {% if linked_programme %}
+    <p class="text-base font-medium">{{ linked_programme.name }}</p>
+    <form method="post" action="{{ url_for('portfolio.initiative_link_programme', initiative_id=initiative.id) }}" class="mt-2">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="text-sm text-muted-foreground hover:text-destructive hover:underline">Remove link</button>
+    </form>
+    {% elif transformation_programmes %}
+    <form method="post" action="{{ url_for('portfolio.initiative_link_programme', initiative_id=initiative.id) }}"
+          class="flex flex-wrap items-end gap-3">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="flex-1 min-w-[16rem]">
+        <label for="link-programme-id" class="block text-xs font-medium mb-1">This initiative describes the same programme as</label>
+        <select id="link-programme-id" name="programme_id" required
+                class="w-full h-9 rounded-md border border-input bg-background px-2 text-sm">
+          <option value="">Select the matching programme</option>
+          {% for programme in transformation_programmes %}
+          <option value="{{ programme.id }}">{{ programme.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <button type="submit"
+              class="h-9 px-4 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90">
+        Link
+      </button>
+    </form>
+    <p class="text-xs text-muted-foreground mt-2">Not linked yet — benefits can't be added here until it is.</p>
+    {% else %}
+    <p class="text-sm text-muted-foreground">No canonical transformation programmes exist yet to link to.</p>
+    {% endif %}
+  </div>
+
   {# ── Money ─────────────────────────────────────────────────────────────── #}
   <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
     <div class="rounded-lg border bg-card p-6">

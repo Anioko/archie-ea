@@ -115,7 +115,12 @@ def create_raid_item():
     strategic_initiative_id = data.get("strategic_initiative_id")
     if strategic_initiative_id:
         from app.models.strategic import StrategicInitiative
-        if db.session.get(StrategicInitiative, strategic_initiative_id) is None:
+        programme = db.session.get(StrategicInitiative, strategic_initiative_id)
+        # Same canonical-programme gate as the picker itself and the
+        # Portfolio module's Benefit linkage — enforced server-side too, so
+        # a direct API call can't link to a StrategicInitiative row the UI
+        # never offers.
+        if programme is None or programme.record_kind != "transformation_programme":
             return jsonify({"error": "Programme not found"}), 400
     item = RaidItem(
         kind=kind,
@@ -209,7 +214,19 @@ def risk_register():
     # homes; this covers only the two categories that had none.
     raid_items = RaidItem.query.order_by(RaidItem.kind, RaidItem.id).all()
     from app.models.strategic import StrategicInitiative
-    programmes = StrategicInitiative.query.order_by(StrategicInitiative.name).all()
+    # Same gate the Portfolio module already uses for "which programme owns
+    # this Benefit" (portfolio_routes.detail): only StrategicInitiative rows
+    # explicitly marked record_kind='transformation_programme' are canonical
+    # programmes. Listing every StrategicInitiative here would surface
+    # ordinary internal initiatives (upgrades, one-off projects) alongside
+    # real cross-cutting programmes — a second, inconsistent definition of
+    # "programme" on top of the two aggregate roots already in play.
+    programmes = (
+        StrategicInitiative.query
+        .filter(StrategicInitiative.record_kind == "transformation_programme")
+        .order_by(StrategicInitiative.name)
+        .all()
+    )
     return render_template(
         "governance/risk_register.html",
         risks=risks,

@@ -139,19 +139,23 @@ def demand_decide(demand_id):
 @portfolio_bp.route("/initiatives/<int:initiative_id>/benefits", methods=["POST"])
 @login_required
 def benefit_create(initiative_id):
-    """Keep the legacy URL explicit and read-only until a programme bridge exists.
-
-    EnterpriseInitiative and StrategicInitiative identifiers come from separate
-    sequences and cannot safely be treated as interchangeable.  Returning a
-    conflict prevents a legacy form from silently attaching a new Benefit to an
-    unrelated canonical programme with the same integer identifier.
+    """Legacy URL, now bridged (2 Sep 2026) — see EnterpriseInitiative.
+    linked_strategic_initiative_id. EnterpriseInitiative and StrategicInitiative
+    identifiers come from separate sequences and cannot safely be treated as
+    interchangeable, so a benefit is only ever attached to the CONFIRMED
+    canonical programme a human linked, never guessed from the matching ID.
     """
-    flash(
-        "This legacy initiative must be linked to a transformation programme "
-        "before benefits can be added.",
-        "error",
-    )
-    abort(409)
+    from app.models.vendor.vendor_organization import EnterpriseInitiative
+
+    initiative = db.session.get(EnterpriseInitiative, initiative_id)
+    if initiative is None or initiative.linked_strategic_initiative_id is None:
+        flash(
+            "This legacy initiative must be linked to a transformation programme "
+            "before benefits can be added.",
+            "error",
+        )
+        abort(409)
+    return _create_programme_benefit(initiative.linked_strategic_initiative_id)
 
 
 @portfolio_bp.route("/programmes/<int:programme_id>/benefits", methods=["POST"])
@@ -298,3 +302,43 @@ def assumption_resolve(assumption_id):
     db.session.commit()
     flash("Assumption updated.", "success")
     return redirect(url_for("portfolio.detail", initiative_id=assumption.initiative_id))
+
+
+@portfolio_bp.route("/initiatives/<int:initiative_id>/link-programme", methods=["POST"])
+@login_required
+def initiative_link_programme(initiative_id):
+    """Tie this legacy EnterpriseInitiative to the StrategicInitiative row that
+    describes the same real-world programme (ADR-0008 note on
+    EnterpriseInitiative — this is the human-confirmed link, never an
+    automated guess from matching names or dates). Once set, this legacy
+    initiative's benefits are governed by the linked programme (see
+    benefit_create above)."""
+    from app.models.strategic import StrategicInitiative
+    from app.models.vendor.vendor_organization import EnterpriseInitiative
+
+    initiative = db.session.get(EnterpriseInitiative, initiative_id)
+    if initiative is None:
+        abort(404)
+
+    programme_id = _int_or_none(request.form.get("programme_id"))
+    if programme_id is None:
+        initiative.linked_strategic_initiative_id = None
+        db.session.commit()
+        flash("Programme link removed.", "success")
+        return redirect(url_for("portfolio.detail", initiative_id=initiative_id))
+
+    programme = db.session.scalar(
+        db.select(StrategicInitiative).where(
+            StrategicInitiative.id == programme_id,
+            StrategicInitiative.organization_id == current_user.organization_id,
+            StrategicInitiative.record_kind == "transformation_programme",
+        )
+    )
+    if programme is None:
+        flash("That programme could not be found.", "error")
+        return redirect(url_for("portfolio.detail", initiative_id=initiative_id))
+
+    initiative.linked_strategic_initiative_id = programme.id
+    db.session.commit()
+    flash(f"Linked to {programme.name}.", "success")
+    return redirect(url_for("portfolio.detail", initiative_id=initiative_id))

@@ -466,9 +466,12 @@ class TestWritePathTenantIsolation:
         with app.app_context():
             assert db.session.query(Benefit).filter_by(name=name).one_or_none() is None
 
-    def test_legacy_initiative_benefit_write_is_explicitly_read_only(
+    def test_legacy_initiative_benefit_write_blocked_until_linked(
         self, app, client, org_a
     ):
+        """Unlinked, the legacy URL still refuses to write — see
+        test_legacy_initiative_benefit_write_works_once_linked for the bridged
+        path (2 Sep 2026, EnterpriseInitiative.linked_strategic_initiative_id)."""
         from app import db
         from app.models.benefit import Benefit
 
@@ -482,6 +485,56 @@ class TestWritePathTenantIsolation:
         assert response.status_code == 409
         with app.app_context():
             assert db.session.query(Benefit).filter_by(name=name).one_or_none() is None
+
+    def test_legacy_initiative_benefit_write_works_once_linked(
+        self, app, client, org_a
+    ):
+        """The bridge this session added: once a human confirms this legacy
+        EnterpriseInitiative and a StrategicInitiative describe the same real
+        programme, the legacy URL routes through to that programme instead of
+        permanently refusing."""
+        from app import db
+        from app.models.benefit import Benefit
+        from app.models.vendor.vendor_organization import EnterpriseInitiative
+
+        with app.app_context():
+            initiative = db.session.get(EnterpriseInitiative, org_a["initiative_id"])
+            initiative.linked_strategic_initiative_id = org_a["programme_id"]
+            db.session.commit()
+
+        _login(client, org_a["user_id"])
+        name = f"Bridged benefit {uuid.uuid4().hex[:6]}"
+        response = client.post(
+            f"/portfolio/initiatives/{org_a['initiative_id']}/benefits",
+            data={"name": name},
+        )
+
+        assert response.status_code == 302, response.status_code
+        with app.app_context():
+            benefit = db.session.query(Benefit).filter_by(name=name).one_or_none()
+            assert benefit is not None
+            assert benefit.strategic_initiative_id == org_a["programme_id"]
+
+    def test_link_programme_round_trips_via_form_and_page(self, app, client, org_a):
+        """The picker itself: link, then confirm the link is visible both via
+        an independent re-fetch and via the actual rendered detail page."""
+        from app import db
+        from app.models.vendor.vendor_organization import EnterpriseInitiative
+
+        _login(client, org_a["user_id"])
+        response = client.post(
+            f"/portfolio/initiatives/{org_a['initiative_id']}/link-programme",
+            data={"programme_id": org_a["programme_id"]},
+        )
+        assert response.status_code == 302, response.status_code
+
+        with app.app_context():
+            initiative = db.session.get(EnterpriseInitiative, org_a["initiative_id"])
+            assert initiative.linked_strategic_initiative_id == org_a["programme_id"]
+
+        page = client.get(f"/portfolio/{org_a['initiative_id']}")
+        assert page.status_code == 200
+        assert b"Remove link" in page.data
 
 
 # ==========================================================================

@@ -146,7 +146,9 @@ def test_programme_link_round_trips_via_api_and_page(client, app, ea_user):
         from app import db
         from app.models.strategic import StrategicInitiative
 
-        programme = StrategicInitiative(name="Constellation", organization_id=org)
+        programme = StrategicInitiative(
+            name="Constellation", organization_id=org, record_kind="transformation_programme"
+        )
         db.session.add(programme)
         db.session.commit()
         programme_id = programme.id
@@ -180,6 +182,32 @@ def test_programme_link_round_trips_via_api_and_page(client, app, ea_user):
         db.session.commit()
 
 
+def test_non_canonical_initiative_rejected(client, app, ea_user):
+    """A StrategicInitiative without record_kind='transformation_programme'
+    is an ordinary internal initiative, not a canonical programme — the same
+    gate the Portfolio module's Benefit linkage already applies. Confirm the
+    API enforces it too, not just the UI picker."""
+    uid, org = ea_user
+    with app.app_context():
+        from app import db
+        from app.models.strategic import StrategicInitiative
+
+        plain = StrategicInitiative(name="Just an upgrade project", organization_id=org)
+        db.session.add(plain)
+        db.session.commit()
+        plain_id = plain.id
+
+        _login(client, uid)
+        r = client.post("/api/raid", json={
+            "kind": "issue", "title": "X", "strategic_initiative_id": plain_id,
+        })
+        assert r.status_code == 400
+        assert "error" in r.get_json()
+
+        db.session.delete(plain)
+        db.session.commit()
+
+
 def test_unknown_programme_id_rejected(client, app, ea_user):
     uid, org = ea_user
     with app.app_context():
@@ -202,7 +230,9 @@ def test_strategic_initiative_goal_link_round_trips(app, ea_user):
         from app.models.motivation import Goal
         from app.models.strategic import StrategicInitiative
 
-        programme = StrategicInitiative(name="Constellation", organization_id=org)
+        programme = StrategicInitiative(
+            name="Constellation", organization_id=org, record_kind="transformation_programme"
+        )
         goal = Goal(name="Retire SCADE by Q4 2026")
         db.session.add_all([programme, goal])
         db.session.commit()
