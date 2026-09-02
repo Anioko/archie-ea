@@ -1,10 +1,14 @@
-"""App→capability mapping must also be an ArchiMate realization relationship.
+"""App→capability mapping must produce exactly ONE ArchiMate relationship, not two.
 
-Mapping an application to a capability was stored only as junction rows, so
-line-of-sight and impact analysis were blind to it — the fact existed as data but
-not as architecture. `_mirror_mapping` now also writes an ArchiMate 3.2
-`realization` relationship (ApplicationComponent → Capability). These tests pin
-that it is created, idempotent, and removed on unmap.
+A prior pass this session added a hand-rolled ArchiMateRelationship(type=
+"realization") mirror to _mirror_mapping, without checking whether one already
+existed. It did: app/models/archimate_relationship_sync.py's Listener 10 already
+mirrors every ApplicationCapabilityMapping insert/delete into a real
+ArchiMateRelationship(type="serving") — a mapper event that fires regardless of
+which code path inserts the row. The hand-rolled mirror was a second, duplicate
+authority for the same fact (ADR-0008) and has been removed; these tests pin the
+correct behaviour — exactly one relationship, of the canonical "serving" type,
+created by the existing listener alone.
 """
 
 import pytest
@@ -15,14 +19,12 @@ from app.models.business_capabilities import BusinessCapability
 from app.modules.capabilities.routes.mapping_routes import _mirror_mapping
 
 
-def _rel(db_session, src, tgt):
-    return ArchiMateRelationship.query.filter_by(
-        source_id=src, target_id=tgt, type="realization"
-    ).first()
+def _rels(db_session, src, tgt):
+    return ArchiMateRelationship.query.filter_by(source_id=src, target_id=tgt).all()
 
 
 @pytest.mark.usefixtures("db_session")
-def test_mapping_creates_realization_relationship(db_session, make_org, tenant_ctx):
+def test_mapping_creates_exactly_one_relationship_not_two(db_session, make_org, tenant_ctx):
     org = make_org("real")
     with tenant_ctx(org.id):
         cap = BusinessCapability(name="Order Mgmt", organization_id=org.id, level=1)
@@ -33,22 +35,20 @@ def test_mapping_creates_realization_relationship(db_session, make_org, tenant_c
 
         _mirror_mapping(cap.id, app.id, "full")
         db_session.commit()
-        rel = _rel(db_session, app.archimate_element_id, cap.archimate_element_id)
-        assert rel is not None, "app→capability mapping must create a realization"
-        assert rel.derived_from == "capability_mapping"
+
+        rels = _rels(db_session, app.archimate_element_id, cap.archimate_element_id)
+        assert len(rels) == 1, f"expected exactly one relationship, got {len(rels)}: {[r.type for r in rels]}"
+        assert rels[0].type == "serving"
 
         # idempotent — mapping again does not duplicate
         _mirror_mapping(cap.id, app.id, "partial")
         db_session.commit()
-        count = ArchiMateRelationship.query.filter_by(
-            source_id=app.archimate_element_id,
-            target_id=cap.archimate_element_id, type="realization",
-        ).count()
-        assert count == 1
+        rels_again = _rels(db_session, app.archimate_element_id, cap.archimate_element_id)
+        assert len(rels_again) == 1
 
 
 @pytest.mark.usefixtures("db_session")
-def test_unmapping_removes_relationship(db_session, make_org, tenant_ctx):
+def test_unmapping_removes_the_relationship(db_session, make_org, tenant_ctx):
     org = make_org("real")
     with tenant_ctx(org.id):
         cap = BusinessCapability(name="Billing", organization_id=org.id, level=1)
@@ -58,8 +58,8 @@ def test_unmapping_removes_relationship(db_session, make_org, tenant_ctx):
         db_session.commit()
         _mirror_mapping(cap.id, app.id, "full")
         db_session.commit()
-        assert _rel(db_session, app.archimate_element_id, cap.archimate_element_id)
+        assert len(_rels(db_session, app.archimate_element_id, cap.archimate_element_id)) == 1
 
         _mirror_mapping(cap.id, app.id, "full", delete=True)
         db_session.commit()
-        assert _rel(db_session, app.archimate_element_id, cap.archimate_element_id) is None
+        assert _rels(db_session, app.archimate_element_id, cap.archimate_element_id) == []

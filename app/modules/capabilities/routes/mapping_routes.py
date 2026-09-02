@@ -1185,7 +1185,6 @@ def _mirror_mapping(capability_id, application_id, support_level, delete=False):
     if delete:
         if existing:
             db.session.delete(existing)
-        _sync_capability_realization(capability_id, application_id, delete=True)
         return
 
     if existing:
@@ -1199,50 +1198,18 @@ def _mirror_mapping(capability_id, application_id, support_level, delete=False):
                 organization_id=getattr(g, "current_org_id", None),
             )
         )
-    # "The field IS the element" applies to relationships too: a capability
-    # mapped to an application is an ArchiMate 3.2 *realization* (the application
-    # realizes the capability). Writing only the junction row left line-of-sight
-    # and impact analysis blind to it — the relationship existed as data but not
-    # as architecture. Mirror it into ArchiMateRelationship so the backbone sees it.
-    _sync_capability_realization(capability_id, application_id)
-
-
-def _sync_capability_realization(capability_id, application_id, delete=False):
-    """Keep an ArchiMate `realization` relationship (ApplicationComponent →
-    Capability) in step with the app↔capability mapping. Idempotent; no-op when
-    either side has no ArchiMate element yet (both are backfilled/auto-synced, so
-    that is only a transient state). ArchiMateRelationship is scoped by its
-    endpoints, which are org-scoped, so it carries no organization_id itself."""
-    from app.models.application_portfolio import ApplicationComponent
-    from app.models.archimate_core import ArchiMateRelationship
-    from app.models.business_capabilities import BusinessCapability
-
-    cap = BusinessCapability.query.filter_by(id=capability_id).first()
-    app_comp = ApplicationComponent.query.filter_by(id=application_id).first()
-    if not cap or not app_comp:
-        return
-    src = getattr(app_comp, "archimate_element_id", None)
-    tgt = getattr(cap, "archimate_element_id", None)
-    if not src or not tgt:
-        return
-
-    existing = ArchiMateRelationship.query.filter_by(
-        source_id=src, target_id=tgt, type="realization"
-    ).first()
-    if delete:
-        if existing:
-            db.session.delete(existing)
-        return
-    if not existing:
-        db.session.add(
-            ArchiMateRelationship(
-                source_id=src,
-                target_id=tgt,
-                type="realization",
-                description="Application realizes capability (from capability map)",
-                derived_from="capability_mapping",
-            )
-        )
+    # "The field IS the element" applies to relationships too — but this is
+    # ALREADY handled: app/models/archimate_relationship_sync.py's Listener 10
+    # (after_insert/after_delete on ApplicationCapabilityMapping, the exact
+    # model this function writes) already mirrors every row here into a real
+    # ArchiMateRelationship(type="serving") the moment it's inserted/deleted.
+    #
+    # A prior session pass (2 Sep 2026) added a SECOND, hand-rolled mirror here
+    # — type="realization" — without checking whether one already existed. It
+    # did: every mapping made through this endpoint was producing TWO
+    # relationships for one fact, exactly the duplicate-authority problem
+    # ADR-0008 exists to prevent. Removed; the canonical listener already does
+    # this, correctly, tenant-validated, and idempotently — nothing to add here.
 
 
 @capability_map.route("/api/mappings", methods=["POST"])
