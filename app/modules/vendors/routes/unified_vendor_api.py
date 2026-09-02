@@ -154,8 +154,37 @@ def bulk_delete_vendors():
         return api_error("No IDs provided", "MISSING_IDS")
     if not isinstance(ids, list):
         return api_error("ids must be a list", "INVALID_INPUT")
-    deleted = VendorOrganization.query.filter(VendorOrganization.id.in_(ids)).delete(synchronize_session=False)
-    db.session.commit()
+
+    # DEF-073, Capgemini dry-run: vendor_products.vendor_id has no
+    # ondelete=CASCADE, so deleting a vendor with products raised
+    # IntegrityError straight out of the bulk DELETE, uncaught, and reached
+    # the user as a raw "Internal Server Error" toast twice (once per retry)
+    # with the vendor left in place either way. Report which vendors are
+    # blocked rather than let the DB error surface.
+    from app.models.vendor.vendor_organization import VendorProduct
+
+    blocking = (
+        db.session.query(VendorProduct.vendor_organization_id, db.func.count(VendorProduct.id))
+        .filter(VendorProduct.vendor_organization_id.in_(ids))
+        .group_by(VendorProduct.vendor_organization_id)
+        .all()
+    )
+    if blocking:
+        blocked_ids = [vendor_id for vendor_id, _count in blocking]
+        return api_error(
+            "Cannot delete vendor(s) with products still attached: "
+            + ", ".join(str(v) for v in blocked_ids)
+            + ". Remove their products first.",
+            "VENDOR_HAS_PRODUCTS",
+        )
+
+    try:
+        deleted = VendorOrganization.query.filter(VendorOrganization.id.in_(ids)).delete(synchronize_session=False)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception("Bulk vendor delete failed for ids %s", ids)
+        return api_error("Could not delete the selected vendor(s).", "DELETE_FAILED")
     return jsonify({"deleted": deleted, "ids": ids})
 
 

@@ -120,7 +120,13 @@ def update(business_case_id):
 
 @business_case_bp.route("/<int:business_case_id>/delete", methods=["POST"])
 @login_required
-@require_roles("admin")
+# DEF-075, Capgemini dry-run: this required "admin" while create/update/
+# save_field above accept admin/architect/business_architect — so the
+# business_architect who created a business case got a 403 (a full-page
+# error, not an inline one, since this route redirects rather than
+# returning JSON) trying to delete their own record. Same roles as
+# create/update.
+@require_roles("admin", "architect", "business_architect")
 def delete(business_case_id):
     """Delete a business case."""
     business_case = service.get_business_case_or_none(business_case_id)

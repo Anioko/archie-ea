@@ -109,7 +109,13 @@ def edit(value_stream_id):
 
 @value_stream.route("/<int:value_stream_id>/delete", methods=["POST"])
 @login_required
-@require_roles("admin")
+# DEF-074, Capgemini dry-run: this required "admin" while create_stage/
+# edit_stage below (and the stream's own create/edit) accept
+# admin/architect/business_architect — so the business_architect (or
+# solution/enterprise architect) who created a value stream got a 403
+# deleting the one thing on this page they could not do. Same roles as
+# create/edit, not stricter.
+@require_roles("admin", "architect", "business_architect")
 def delete(value_stream_id):
     try:
         vs_service.delete_value_stream(value_stream_id)
@@ -153,7 +159,9 @@ def edit_stage(stage_id):
 
 @value_stream.route("/stages/<int:stage_id>/delete", methods=["POST"])
 @login_required
-@require_roles("admin")
+# DEF-074: same fix as delete() above — stage delete must not be stricter
+# than create_stage/edit_stage.
+@require_roles("admin", "architect", "business_architect")
 def delete_stage(stage_id):
     value_stream_id = request.form.get("value_stream_id")
     try:
