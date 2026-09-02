@@ -51,29 +51,15 @@
 
       <template x-if="data.role_count > 0">
         <div class="space-y-6">
-          {# Headcount summary #}
+          {# Headcount summary — F-21, Capgemini dry-run: this used to render
+             two rows of cards, a static em-dash row from the macro and a
+             second, differently-styled row bound to the live figures below
+             it, because the macro's value_alpine binding was never wired.
+             One row, live-bound. #}
           <div class="grid gap-4 sm:grid-cols-3">
-            {{ metrics_card(title='Current headcount', value='—', icon='users', description='Filled positions today') }}
-            {{ metrics_card(title='Target headcount', value='—', icon='user-plus', description='Forecast for the to-be estate') }}
-            {{ metrics_card(title='Net change', value='—', icon='trending-up', description='Target minus current') }}
-          </div>
-          {# The macro values are static placeholders (em dash); the live figures
-             are bound below so the numbers are always the queried ones. #}
-          <div class="grid gap-4 sm:grid-cols-3 -mt-2">
-            <div class="rounded-lg border border-border bg-card px-5 py-3">
-              <div class="text-2xl font-bold text-foreground" x-text="data.headcount.current"></div>
-              <div class="text-xs text-muted-foreground">current (filled)</div>
-            </div>
-            <div class="rounded-lg border border-border bg-card px-5 py-3">
-              <div class="text-2xl font-bold text-foreground" x-text="data.headcount.target"></div>
-              <div class="text-xs text-muted-foreground">target (forecast)</div>
-            </div>
-            <div class="rounded-lg border border-border bg-card px-5 py-3">
-              <div class="text-2xl font-bold"
-                   :class="data.headcount.delta > 0 ? 'text-success-emphasis' : (data.headcount.delta < 0 ? 'text-destructive-emphasis' : 'text-foreground')"
-                   x-text="(data.headcount.delta > 0 ? '+' : '') + data.headcount.delta"></div>
-              <div class="text-xs text-muted-foreground">net change</div>
-            </div>
+            {{ metrics_card(title='Current headcount', value='—', value_alpine='data.headcount.current', icon='users', description='Filled positions today') }}
+            {{ metrics_card(title='Target headcount', value='—', value_alpine='data.headcount.target', icon='user-plus', description='Forecast for the to-be estate') }}
+            {{ metrics_card(title='Net change', value='—', value_alpine="(data.headcount.delta > 0 ? '+' : '') + data.headcount.delta", icon='trending-up', description='Target minus current') }}
           </div>
 
           {# Role-to-role transitions #}

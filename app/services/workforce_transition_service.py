@@ -50,10 +50,19 @@ class WorkforceTransitionService:
 
         retiring = [
             {"role": r.name, "id": r.id,
-             "reason": "deprecated" if r.deprecated_date else (r.operational_status or "retired")}
+             "reason": "deprecated" if r.deprecated_date else (
+                 (r.operational_status or "retired") if (r.operational_status or "").lower() in cls.RETIRED_STATUSES
+                 else "superseded"
+             )}
             for r in roles
             if r.deprecated_date is not None
             or (r.operational_status or "").lower() in cls.RETIRED_STATUSES
+            # F-21, Capgemini dry-run: a role with a replacement_role_id is being
+            # transitioned away from even when nobody ever flipped its status —
+            # it belongs on the "roles being retired" list too, or the KPI
+            # undercounts every role this same service's transition-pairs
+            # section already reports as being replaced.
+            or r.replacement_role_id is not None
         ]
 
         current = sum((r.current_filled_positions or 0) for r in roles)
