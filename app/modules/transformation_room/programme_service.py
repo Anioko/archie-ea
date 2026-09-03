@@ -662,6 +662,125 @@ class TransformationProgrammeService:
         )
 
     @classmethod
+    def create_workstream(
+        cls,
+        *,
+        actor: ActorContext,
+        programme_id: int,
+        workstream_type: str,
+        objective: str,
+        scope_expression: Mapping[str, Any],
+        target_date: Any,
+        target_date_unavailable_reason: Any,
+        lead_id: int,
+        command_key: str,
+    ) -> CommandResult:
+        """DEF-010, Capgemini dry-run: the new-programme wizard could create
+        exactly one workstream and there was no route to add another —
+        `/solutions/programmes/<id>/workstreams` had no create action, so
+        every programme was permanently limited to its founding workstream.
+        Mirrors update_objective's validate-then-CommandService.execute shape.
+        """
+        if workstream_type not in WORKSTREAM_TYPES:
+            raise ValueError("workstream_type is not supported")
+        objective = _required_text(objective, "objective")
+        if not isinstance(scope_expression, Mapping):
+            raise ValueError("scope_expression must be an object")
+        parsed_target_date = _date(target_date, "target_date")
+        target_reason = _optional_text(target_date_unavailable_reason)
+        if parsed_target_date is None and target_reason is None:
+            raise ValueError("target_date_unavailable_reason is required when target_date is unavailable")
+        if not isinstance(lead_id, int) or lead_id <= 0:
+            raise ValueError("lead_id must be a positive integer")
+        payload = {
+            "programme_id": programme_id,
+            "workstream_type": workstream_type,
+            "objective": objective,
+            "scope_expression": dict(scope_expression),
+            "target_date": parsed_target_date,
+            "target_date_unavailable_reason": target_reason,
+            "lead_id": lead_id,
+        }
+        natural_key = f"workstream-create:{command_key}"
+        return CommandService.execute(
+            actor=actor,
+            operation="workstream.create",
+            idempotency_key=command_key,
+            payload=payload,
+            natural_key=natural_key,
+            authorizer=cls.authorise_create_workstream(programme_id, natural_key),
+            natural_key_resolver=CommandService.fail_closed_pre_envelope_recovery,
+            handler=lambda session, claim: cls._insert_workstream_locked(session, actor, payload, claim),
+        )
+
+    @classmethod
+    def authorise_create_workstream(cls, programme_id: int, natural_key: str) -> OperationAuthorizer:
+        def authorize(session: Session, actor: ActorContext, operation: str, supplied_key: str) -> None:
+            if operation != "workstream.create" or supplied_key != natural_key:
+                raise NotAuthorised("workstream_create_command_mismatch")
+            programme = cls._programme_query(session, actor, programme_id).scalar_one_or_none()
+            if programme is None:
+                raise NotFound("programme_not_found")
+            cls._require_active_programme(programme)
+            cls._require_programme_authority(
+                session, actor, programme_id, None, CREATE_ROLES | frozenset({"programme_owner"}),
+                "workstream_create_not_authorised",
+            )
+
+        return authorize
+
+    @classmethod
+    def _insert_workstream_locked(cls, session, actor, payload, claim):
+        programme = cls._programme_query(
+            session, actor, payload["programme_id"], lock=True
+        ).scalar_one_or_none()
+        if programme is None:
+            raise NotFound("programme_not_found")
+        cls._require_active_programme(programme)
+        cls._require_programme_authority(
+            session,
+            actor,
+            programme.id,
+            None,
+            CREATE_ROLES | frozenset({"programme_owner"}),
+            "workstream_create_not_authorised",
+            lock=True,
+        )
+        lead = session.scalar(
+            select(User.id).where(
+                User.id == payload["lead_id"],
+                User.organization_id == actor.organization_id,
+            )
+        )
+        if lead is None:
+            raise NotFound("lead_not_found")
+        workstream = ProgrammeWorkstream(
+            organization_id=actor.organization_id,
+            programme_id=programme.id,
+            workstream_type=payload["workstream_type"],
+            objective=payload["objective"],
+            scope_expression=dict(payload["scope_expression"]),
+            lifecycle_stage="objective",
+            lead_id=payload["lead_id"],
+            target_date=payload["target_date"],
+            target_date_unavailable_reason=payload["target_date_unavailable_reason"],
+            revision=1,
+        )
+        session.add(workstream)
+        session.flush()
+        response = {
+            "programme_id": programme.id,
+            "workstream_id": workstream.id,
+            "workstream_type": workstream.workstream_type,
+            "revision": workstream.revision,
+        }
+        return DomainMutationResult(
+            response,
+            response,
+            ({"event_type": "workstream.created", "payload": {**response, "actor_id": actor.user_id}},),
+        )
+
+    @classmethod
     def archive(
         cls,
         *,

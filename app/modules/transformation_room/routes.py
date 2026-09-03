@@ -48,6 +48,20 @@ def _render_error(error: TransformationError):
     return render_template("errors/500.html"), error.http_status
 
 
+def _lead_options(programme_id: int):
+    from app.models.user import User
+
+    organization_id = getattr(g, "current_org_id", None)
+    if organization_id is None:
+        return ()
+    users = (
+        User.query.filter(User.organization_id == organization_id)
+        .order_by(User.email.asc(), User.id.asc())
+        .all()
+    )
+    return tuple({"id": u.id, "label": f"{u.full_name()} — {u.email}"} for u in users)
+
+
 def _room(programme_id: int, workstream_id: int | None = None, stage: str | None = None):
     room = TransformationRoomReadModel.room(
         actor=actor_from_request(),
@@ -69,14 +83,69 @@ def register_transformation_room_routes(blueprint) -> None:
             return _render_error(error)
         return render_template("solutions/transformation_room/overview.html", room=room)
 
-    @blueprint.route("/programmes/<int:programme_id>/workstreams", methods=["GET"])
+    @blueprint.route("/programmes/<int:programme_id>/workstreams", methods=["GET", "POST"])
     @login_required
     def transformation_programme_workstreams(programme_id):
+        """DEF-010, Capgemini dry-run: this page had no create control at all
+        — the new-programme wizard could create exactly one workstream and
+        there was no way to add another, so every programme was permanently
+        limited to its founding workstream."""
+        from app.models.transformation_programme import WORKSTREAM_TYPES
+        from app.modules.transformation_room.programme_service import TransformationProgrammeService
+
+        if request.method == "POST":
+            try:
+                actor = actor_from_request()
+                # Prove the URL programme is real and readable before the
+                # create command is allowed to touch it.
+                _room(programme_id)
+                lead_id = int(request.form.get("lead_id") or 0)
+                TransformationProgrammeService.create_workstream(
+                    actor=actor,
+                    programme_id=programme_id,
+                    workstream_type=request.form.get("workstream_type", ""),
+                    objective=request.form.get("objective", ""),
+                    scope_expression={
+                        "business_units": [
+                            value.strip()
+                            for value in request.form.get("scope_expression", "").split(",")
+                            if value.strip()
+                        ]
+                    },
+                    target_date=request.form.get("target_date") or None,
+                    target_date_unavailable_reason=request.form.get("target_date_unavailable_reason") or None,
+                    lead_id=lead_id,
+                    command_key=request.form.get("command_key", "").strip() or str(uuid.uuid4()),
+                )
+                return redirect(request.path, code=303)
+            except (TypeError, ValueError) as error:
+                try:
+                    room = _room(programme_id)
+                except TransformationError as room_error:
+                    return _render_error(room_error)
+                room["stage_label"] = "Workstreams"
+                room["form_error"] = str(error)
+                room["lead_options"] = _lead_options(programme_id)
+                return render_template("solutions/transformation_room/workstreams.html", room=room), 400
+            except TransformationError as error:
+                if error.http_status not in {403, 404}:
+                    try:
+                        room = _room(programme_id)
+                    except TransformationError as room_error:
+                        return _render_error(room_error)
+                    room["stage_label"] = "Workstreams"
+                    room["form_error"] = error.reason
+                    room["lead_options"] = _lead_options(programme_id)
+                    return render_template("solutions/transformation_room/workstreams.html", room=room), error.http_status
+                return _render_error(error)
+
         try:
             room = _room(programme_id)
         except TransformationError as error:
             return _render_error(error)
         room["stage_label"] = "Workstreams"
+        room["workstream_types"] = WORKSTREAM_TYPES
+        room["lead_options"] = _lead_options(programme_id)
         return render_template("solutions/transformation_room/workstreams.html", room=room)
 
     @blueprint.route(

@@ -13,4 +13,54 @@
   </div>
   {% else %}<p class="mt-4 text-sm text-muted-foreground">No persisted workstreams are available.</p>{% endif %}
 </section>
+
+<section class="mt-6 rounded-lg border border-border bg-card p-5" aria-labelledby="add-workstream-heading">
+  <h2 id="add-workstream-heading" class="text-lg font-semibold text-foreground">Add workstream</h2>
+  {% if room.form_error %}
+  <p class="mt-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive-emphasis">{{ room.form_error }}</p>
+  {% endif %}
+  <form method="POST" action="" class="mt-4 grid gap-4 sm:grid-cols-2">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="sm:col-span-1">
+      <label for="ws-type" class="block text-xs font-medium text-muted-foreground">Type</label>
+      <select id="ws-type" name="workstream_type" required
+              class="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+        {% for wt in room.workstream_types or [] %}
+        <option value="{{ wt }}">{{ wt|replace('_', ' ')|title }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="sm:col-span-1">
+      <label for="ws-lead" class="block text-xs font-medium text-muted-foreground">Lead</label>
+      <select id="ws-lead" name="lead_id" required
+              class="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+        {% for opt in room.lead_options or [] %}
+        <option value="{{ opt.id }}">{{ opt.label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="sm:col-span-2">
+      <label for="ws-objective" class="block text-xs font-medium text-muted-foreground">Objective</label>
+      <textarea id="ws-objective" name="objective" required rows="2"
+                class="mt-1 flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm"></textarea>
+    </div>
+    <div class="sm:col-span-1">
+      <label for="ws-target-date" class="block text-xs font-medium text-muted-foreground">Target date</label>
+      <input id="ws-target-date" name="target_date" type="date"
+             class="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+    </div>
+    <div class="sm:col-span-1">
+      <label for="ws-target-reason" class="block text-xs font-medium text-muted-foreground">Target date unavailable — reason</label>
+      <input id="ws-target-reason" name="target_date_unavailable_reason" type="text"
+             placeholder="Required if no target date"
+             class="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+    </div>
+    <div class="sm:col-span-2">
+      <button type="submit"
+              class="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">
+        Add workstream
+      </button>
+    </div>
+  </form>
+</section>
 {% endblock %}
