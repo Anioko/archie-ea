@@ -17,6 +17,7 @@ from __future__ import annotations
 import os
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
+from markupsafe import Markup
 
 _TEMPLATE_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "templates")
 _TEMPLATE_NAME = "control_matrix.html.j2"
@@ -32,14 +33,14 @@ _ENV = Environment(
 )
 
 
-def render_control_matrix(slice_dict: dict) -> str:
+def render_control_matrix(slice_dict: dict) -> Markup:
     """Render a SECURITY slice into the control-to-requirement matrix fragment.
 
     Args:
         slice_dict: the envelope returned by ``build_security_slice``.
 
     Returns:
-        An HTML fragment (str). Deterministic for a given slice.
+        A trusted HTML fragment whose modelled values were autoescaped.
     """
     template = _ENV.get_template(_TEMPLATE_NAME)
-    return template.render(slice=slice_dict)
+    return Markup(template.render(slice=slice_dict))  # nosec B704

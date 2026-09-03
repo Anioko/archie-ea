@@ -311,28 +311,28 @@ def test_overdue_work_package_ignores_completed_ones(db_session, tenant_ctx):
 
 
 def test_decision_quality_gaps_are_reported_as_missing(db_session, tenant_ctx):
-    from app.models.adr import ArchitectureDecisionRecord
+    from app.models.architecture_decision import ArchitectureDecision
 
     org = _org(db_session, "decisions")
     with tenant_ctx(org.id):
         db_session.add_all(
             [
-                ArchitectureDecisionRecord(
-                    adr_number=1,
+                ArchitectureDecision(
+                    decision_id="AD-1",
                     title="Well recorded",
                     status="accepted",
                     context="A context.",
                     decision="A decision.",
                     rationale="Because.",
                     consequences="These.",
-                    decision_date=date(2026, 1, 1),
+                    decided_at=datetime(2026, 1, 1),
                 ),
                 # `rationale` and `consequences` are both NOT NULL in the
                 # database, so an unrecorded value reaches the record as an empty
                 # string rather than as NULL. The lens counts both forms; this
                 # pins the reachable one.
-                ArchitectureDecisionRecord(
-                    adr_number=2,
+                ArchitectureDecision(
+                    decision_id="AD-2",
                     title="Bare proposal",
                     status="proposed",
                     context="A context.",

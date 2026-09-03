@@ -408,15 +408,15 @@ _GOVERNANCE_LINKS = [
     # model carries TenantMixin) and the one every template links to. The
     # duplicate, `adrs.list_adrs`, now 302s here; see
     # app/modules/architecture/routes/adr_routes.py:list_adrs.
-    _link("Decisions", "arch_decisions.list_decisions", "gavel"),
+    _link("Decisions", "arch_decisions.list_decisions", "file-check-2"),
 ]
 
 _ADMIN_LINKS = [
-    _link("Command Center", "admin.index", "layout-dashboard"),
+    _link("Command Center", "admin.index", "command"),
     _link("Users", "admin.registered_users", "users"),
     # Cross-tenant: the route is @platform_admin_required, not merely admin.
     _link("Organizations", "admin.organizations_list", "building-2", requires="platform_admin"),
-    _link("API Settings", "admin.api_settings", "key"),
+    _link("API Settings", "admin.api_settings", "key", requires="org_admin"),
     # NAV-1 (27 Aug 2026): repointed from `solution_prompt_admin.
     # solution_prompts_page` to `admin.solution_prompts_page`. Both blueprints
     # register the SAME rule, /admin/solution-prompts, and the admin (v2,
@@ -426,14 +426,14 @@ _ADMIN_LINKS = [
     # nav-verified gate: no test had ever exercised that endpoint, and none
     # could. The link now names the handler that actually runs.
     _link("AI Prompts", "admin.solution_prompts_page", "sparkles"),
-    _link("Governance Gates", "admin.governance_gates", "shield-check", requires="admin"),
+    _link("Governance Gates", "admin.governance_gates", "badge-check", requires="admin"),
     _link("Import History", "dashboard_pages.import_history", "history"),
     _link("Seed Management", "admin.seed_management", "database"),
     _link("Settings", "main.settings", "settings"),
     # Added in the Task 3 fix round (review finding: orphaned real routes —
     # both existed, worked, and had no sidebar link of any kind).
     _link("Salesforce Integration", "admin.salesforce_integration", "cloud"),
-    _link("Power Platform", "admin.power_platform_integration", "grid-3x3"),
+    _link("Power Platform", "admin.power_platform_integration", "blocks"),
     # S-11 remainder (18 Aug 2026): batch import was directory-only, never in
     # a sidebar zone of any role.
     _link("Batch Import", "batch_import_view.dashboard", "upload"),
@@ -660,6 +660,8 @@ _MY_WORK_LINKS = {
         # navigation_registry.py already records exactly this alias.
         _link("Policy Monitoring",
               "unified_low_priority.policy_monitoring_dashboard", "shield-alert"),
+        # Security architects have read-only access to the page and list API;
+        # mutation endpoints remain ADMINISTER-only.
         _link("Governance Gates", "admin.governance_gates", "shield-check", requires="admin"),
         _link("Risk Register", "risk.risk_register", "alert-triangle"),
         # G6 (register close, 1 Sep 2026): was procurement.compliance_dashboard,
@@ -761,6 +763,7 @@ def get_sidebar_zones(user) -> List[Dict]:
     except Exception:  # anonymous / unexpected user object
         is_admin = False
     is_super = bool(getattr(user, "is_platform_admin", False))
+    is_org_admin = bool(getattr(user, "is_org_admin", False))
 
     visible = []
     for z in zones:
@@ -770,6 +773,7 @@ def get_sidebar_zones(user) -> List[Dict]:
             link for link in z["links"]
             if link.get("requires") is None
             or (link["requires"] == "admin" and is_admin)
+            or (link["requires"] == "org_admin" and is_org_admin)
             or (link["requires"] == "platform_admin" and is_super)
         ]
         visible.append({**z, "links": links})

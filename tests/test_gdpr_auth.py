@@ -68,7 +68,7 @@ def _make_org_id(db, label):
 
 def _make_user_id(db, org_id, label, is_platform_admin=False):
     suffix = uuid.uuid4().hex[:8]
-    from app.models.user import User
+    from app.models.user import Permission, Role, User
 
     user = User(
         email=f"{label.lower()}-{suffix}@example.com",
@@ -79,6 +79,10 @@ def _make_user_id(db, org_id, label, is_platform_admin=False):
         enterprise_role="procurement",
         is_platform_admin=is_platform_admin,
     )
+    if is_platform_admin:
+        user.role = Role.query.filter(
+            Role.permissions.op("&")(Permission.ADMINISTER) == Permission.ADMINISTER
+        ).first()
     db.session.add(user)
     db.session.commit()
     return user.id

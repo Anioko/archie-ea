@@ -103,7 +103,9 @@ def index():
             html = emit_drift_report_html(report)
             # Substitute the CSRF placeholder AFTER the deterministic emit.
             html = html.replace(DRIFT_CSRF_PLACEHOLDER, _csrf_input())
-            report_html = Markup(html)
+            # The emitter escapes model data; the only substitution is a
+            # server-generated CSRF input, never request-controlled HTML.
+            report_html = Markup(html)  # nosec B704
         except Exception as exc:  # surface, never render a fabricated report
             logger.warning("Drift detection failed for org %s: %s", org_id, exc)
             error = f"Model-health report could not be built: {exc}"

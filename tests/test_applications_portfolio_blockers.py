@@ -92,9 +92,15 @@ def test_edit_template_preselects_stored_criticality(app, stored, expected_selec
 
     with app.test_request_context("/"):
         html = render_template("applications/edit.html", application=_Stub())
-    # The correct option carries selected; "Not set" must NOT be selected.
-    assert f'value="{expected_selected}" selected' in html
-    assert '<option value="" selected>Not set</option>' not in html
+    # Scope both assertions to this select: other optional fields legitimately
+    # have their own selected "Not set" option.
+    from bs4 import BeautifulSoup
+
+    criticality = BeautifulSoup(html, "html.parser").select_one("#criticality")
+    assert criticality is not None
+    selected = criticality.select_one("option[selected]")
+    assert selected is not None
+    assert selected.get("value") == expected_selected
 
 
 def test_edit_template_out_of_vocabulary_value_is_preserved(app):

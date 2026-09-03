@@ -66,7 +66,10 @@ def generate():
     else:
         try:
             slice_dict = build_roadmap_slice(org_id)
-            roadmap_html = Markup(emit_roadmap_gantt_html(slice_dict))
+            # The deterministic emitter escapes every database-derived text field.
+            roadmap_html = Markup(  # nosec B704
+                emit_roadmap_gantt_html(slice_dict)
+            )
         except SliceProvenanceError as exc:
             # Provenance is structural and non-optional — surface the failure,
             # never render a fabricated or half-provenanced roadmap.

@@ -5,7 +5,7 @@
     <h2 id="objective-heading" class="text-lg font-semibold text-foreground">Objective and scope</h2>
     <p class="mt-1 text-sm text-muted-foreground">Keep the accountable business change explicit before discovery begins.</p>
     {% if room.form_error %}<p class="mt-4 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive-emphasis" role="alert">{{ room.form_error }}</p>{% endif %}
-    <form method="post" class="mt-5 space-y-4" x-data="{ submitting: false }" @submit="submitting = true" @pageshow.window="submitting = false" :aria-busy="submitting">
+    <form method="post" data-testid="objective-form" class="mt-5 space-y-4" x-data="{ submitting: false }" @submit="submitting = true" @pageshow.window="submitting = false" :aria-busy="submitting">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="expected_revision" value="{{ room.workstream.revision }}">
       <input type="hidden" name="command_key" value="{{ room.command_key }}">

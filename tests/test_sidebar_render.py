@@ -44,7 +44,7 @@ def _login(client, user_id):
 
 
 def _make_logged_in_client(app, db_session, make_org, role, label):
-    from app.models.user import User
+    from app.models.user import Permission, Role, User
 
     org = make_org(f"sidebar-{label}")
     suffix = uuid.uuid4().hex[:8]
@@ -63,6 +63,11 @@ def _make_logged_in_client(app, db_session, make_org, role, label):
         # actually sees (15 links instead of the full set).
         is_platform_admin=(role == "platform_admin"),
     )
+    if role == "platform_admin":
+        user.role = Role.query.filter(
+            Role.permissions.op("&")(Permission.ADMINISTER) == Permission.ADMINISTER
+        ).first()
+        user.is_org_admin = True
     db_session.add(user)
     db_session.flush()
 

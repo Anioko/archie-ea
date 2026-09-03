@@ -226,12 +226,23 @@ class ToolExecutor:
         """Return the organization_id for the current user (cached after first call)."""
         if self._org_id is not None:
             return self._org_id
+        # The request/tenant context is the authority for the current operation.
+        # Prefer it over an identity lookup so a reused executor cannot silently
+        # act in another user's tenant. This also avoids the historic fallback to
+        # organization 1, which was a fail-open cross-tenant default.
+        from flask import g, has_app_context
+
+        if has_app_context() and getattr(g, "current_org_id", None) is not None:
+            self._org_id = int(g.current_org_id)
+            return self._org_id
         from sqlalchemy import text
         row = db.session.execute(
             text("SELECT organization_id FROM users WHERE id = :uid"),
             {"uid": self.user_id},
         ).fetchone()
-        self._org_id = row[0] if row and row[0] else 1
+        if not row or not row[0]:
+            raise RuntimeError("Cannot resolve an organization for the tool executor")
+        self._org_id = int(row[0])
         return self._org_id
 
     # ------------------------------------------------------------------ #

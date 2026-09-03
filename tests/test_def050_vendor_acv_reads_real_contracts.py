@@ -8,6 +8,7 @@ entirely.
 """
 
 from datetime import date, timedelta
+import uuid
 
 import pytest
 
@@ -20,12 +21,13 @@ def test_active_contract_is_reflected_in_portfolio_acv(app, db_session, make_org
 
     org = make_org("def050-vendor-acv")
     with tenant_ctx(org.id):
-        vendor = VendorOrganization(name="ZZ-VERIFY Vendor ACV")
+        suffix = uuid.uuid4().hex[:10]
+        vendor = VendorOrganization(name=f"ZZ-VERIFY Vendor ACV {suffix}")
         db_session.add(vendor)
         db_session.commit()
 
         db_session.add(VendorContract(
-            contract_name="ZZ-VERIFY Contract", vendor_id=vendor.id,
+            contract_name=f"ZZ-VERIFY Contract {suffix}", vendor_id=vendor.id,
             annual_cost=180000.0, status="active",
             start_date=date.today() - timedelta(days=30),
             end_date=date.today() + timedelta(days=335),

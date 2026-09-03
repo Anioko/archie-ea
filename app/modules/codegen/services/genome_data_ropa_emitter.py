@@ -18,7 +18,7 @@ them. A blank is the truth; a plausible-looking default would be a fabrication.
 """
 from __future__ import annotations
 
-from markupsafe import Markup, escape
+from markupsafe import Markup
 
 # Standalone Jinja environment — deliberately independent of the app's Jinja
 # globals so the emitter is pure and deterministic (no request/session state).
@@ -81,4 +81,8 @@ def render_ropa_table(slice_dict: dict) -> Markup:
     Deterministic: identical input -> byte-identical output. Autoescaped, so all
     element names are HTML-safe (CSP-friendly, no inline scripting).
     """
-    return Markup(_ROPA_TEMPLATE.render(slice=slice_dict, dash=Markup(escape(EM_DASH))))
+    # The private Jinja environment has autoescape enabled; all slice values pass
+    # through it before this trusted fragment is marked safe for the outer template.
+    return Markup(  # nosec B704
+        _ROPA_TEMPLATE.render(slice=slice_dict, dash=EM_DASH)
+    )

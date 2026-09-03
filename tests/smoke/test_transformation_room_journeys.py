@@ -155,7 +155,9 @@ def test_transformation_create_to_objective_deep_link_is_accessible_and_honest(
         page.goto(objective_url, wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
         assert console_errors == []
         assert page_errors == []
-        page.locator('input[name="expected_revision"]').evaluate(
+        page.get_by_test_id("objective-form").locator(
+            'input[name="expected_revision"]'
+        ).evaluate(
             "element => element.value = '999999'"
         )
         with page.expect_response(lambda item: item.url == objective_url) as submitted:

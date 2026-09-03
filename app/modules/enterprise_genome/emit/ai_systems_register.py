@@ -140,4 +140,6 @@ def emit_ai_systems_register(slice_data: dict) -> Markup:
         f"<tbody>{body}</tbody>"
         "</table></div></div>"
     )
-    return Markup(html)
+    # Every database-derived string is escaped above and identifiers/counts are
+    # integer-coerced before this trusted fragment reaches the outer template.
+    return Markup(html)  # nosec B704

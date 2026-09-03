@@ -1,0 +1,25 @@
+{
+  "observed_at": "2026-09-03T17:04:00+01:00",
+  "runs": [
+    {
+      "owner": "claude-code",
+      "finding": "F500-002",
+      "worktree": ".worktrees/retest-f500-002",
+      "command": "python scripts/verify.py --require-db",
+      "database": "archie_test",
+      "started_at": "2026-09-03T16:52:25+01:00",
+      "status": "terminated_no_progress",
+      "evidence_validity": "invalid_concurrent_shared_database"
+    },
+    {
+      "owner": "claude-code",
+      "finding": "F500-003",
+      "worktree": ".worktrees/retest-f500-003",
+      "command": "python scripts/verify.py --require-db",
+      "database": "archie_test",
+      "started_at": "2026-09-03T16:52:33+01:00",
+      "status": "terminated_no_progress",
+      "evidence_validity": "invalid_concurrent_shared_database"
+    }
+  ]
+}

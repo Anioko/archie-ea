@@ -82,7 +82,7 @@ PASS, FAIL, SKIP = "PASS", "FAIL", "SKIP"
 # Windows development environment.  Keep a bounded subprocess, but do not let
 # the generic 15-minute command timeout turn a fully progressing suite into a
 # false release failure.
-TEST_SUITE_TIMEOUT_SECONDS = 1800
+TEST_SUITE_TIMEOUT_SECONDS = 3600
 
 
 @dataclass
@@ -299,6 +299,14 @@ def gate_nav_verified(baseline: int) -> Result:
     absent evidence.
     """
     proc = _run([sys.executable, "scripts/route_verification_audit.py", "--count"])
+    if proc.stdout.strip().lower() == "unmeasured":
+        return Result(
+            "nav-verified",
+            FAIL,
+            "no audit data: run the behavioural suite with "
+            "-p scripts.route_verification_audit",
+            remediation="complete the audited test run before release",
+        )
     try:
         count = int(proc.stdout.strip().splitlines()[-1])
     except (ValueError, IndexError):

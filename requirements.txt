@@ -204,12 +204,12 @@ aiohttp>=3.9.0
 # NORTH STAR PHASE 4: Enterprise Export Formats
 # -----------------------------------------------------------------------------
 python-pptx>=0.6.23,<1.0.0  # PowerPoint generation
-weasyprint>=60.0,<61.0      # HTML to PDF (CSS support)
-# NOT upgraded to 68.x despite 2 advisories: it requires pydyf>=0.11, and the
-# pin below records that pydyf 0.11+ previously 500'd PDF export. Upgrading both
-# together needs a PDF-generation test on Linux first - a blind bump trades two
-# advisories for a broken user-facing feature.
-pydyf>=0.8.0,<0.11.0        # weasyprint 60 backend; pydyf 0.11+ broke PDF() -> 500 on PDF export
+weasyprint>=69.0,<70.0      # security-fixed HTML to PDF renderer
+# WeasyPrint 69 requires pydyf>=0.11. The previous pydyf<0.11 compatibility pin
+# applied to WeasyPrint 60; tests/test_weasyprint_runtime.py now executes the
+# exact HTML(string=...).write_pdf() API Archie uses so this pair cannot drift
+# back to a version combination that 500s PDF export.
+pydyf>=0.11.0,<0.13.0
 # pdfkit + wkhtmltopdf (alternative PDF generator - requires system install)
 
 # COM-010: Fernet field encryption for SOC 2 compliance — no existing encryption utility

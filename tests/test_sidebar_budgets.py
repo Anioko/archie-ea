@@ -4,6 +4,8 @@ Pure unit tests against app.utils.role_access.SIDEBAR_ZONES / get_sidebar_zones 
 no app/db fixtures needed, the structure is plain Python data.
 """
 
+from collections import Counter
+
 from app.models.user import (
     ROLE_APPLICATION_MANAGER,
     ROLE_ARB_MEMBER,
@@ -40,6 +42,9 @@ class _StubUser:
     def __init__(self, role, is_platform_admin=False):
         self.enterprise_role = role
         self.is_platform_admin = is_platform_admin
+
+    def is_admin(self):
+        return self.is_platform_admin
 
 
 def _zone_names(role):
@@ -331,6 +336,13 @@ def test_platform_admin_zone_link_total_is_pinned():
     under SIDEBAR_LINK_BUDGET (27).
     """
     assert len(_all_links(ROLE_PLATFORM_ADMIN)) == 25
+
+
+def test_platform_admin_collapsed_sidebar_icons_are_unambiguous():
+    """A collapsed rail must not use one glyph for different destinations."""
+    icons = [link["icon"] for link in _all_links(ROLE_PLATFORM_ADMIN)]
+    duplicates = {icon: count for icon, count in Counter(icons).items() if count > 1}
+    assert duplicates == {}
 
 
 def test_get_sidebar_zones_resolves_role():

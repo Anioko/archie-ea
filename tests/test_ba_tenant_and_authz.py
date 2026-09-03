@@ -639,7 +639,7 @@ class TestRoleGateOnDestructiveRoutes:
         with app.app_context():
             org_id = _make_org_id(db, "RbacGate")
             user_id = _make_user_id(
-                db, org_id, "ViewerRole", enterprise_role="procurement", role_name=None
+                db, org_id, "ViewerRole", enterprise_role="procurement", role_name="Viewer"
             )
 
             from app.models.business_case import BusinessCase

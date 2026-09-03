@@ -1,22 +1,5 @@
 {
   "_comment": "Accepted dependency vulnerabilities. Each entry is real, unremediated risk that a security review will ask about. Regenerate with: python scripts/ci/dependency_audit.py --update-baseline",
-  "accepted": {
-    "pytest": [
-      "PYSEC-2026-1845"
-    ],
-    "weasyprint": [
-      "PYSEC-2026-2034",
-      "PYSEC-2026-3412"
-    ]
-  },
-  "context": {
-    "pytest": {
-      "fix_available": "9.0.3",
-      "installed": "8.3.3"
-    },
-    "weasyprint": {
-      "fix_available": "68.0",
-      "installed": "60.2"
-    }
-  }
+  "accepted": {},
+  "context": {}
 }

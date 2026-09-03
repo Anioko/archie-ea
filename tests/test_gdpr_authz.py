@@ -31,7 +31,7 @@ from flask import url_for
 
 
 def _make_user(db_session, org, *, platform_admin: bool = False):
-    from app.models.user import User
+    from app.models.user import Permission, Role, User
 
     suffix = uuid.uuid4().hex[:12]
     user = User(
@@ -48,6 +48,10 @@ def _make_user(db_session, org, *, platform_admin: bool = False):
         external_id=f"ext-{suffix}",
         sso_provider="oidc",
     )
+    if platform_admin:
+        user.role = Role.query.filter(
+            Role.permissions.op("&")(Permission.ADMINISTER) == Permission.ADMINISTER
+        ).first()
     db_session.add(user)
     db_session.flush()
     return user

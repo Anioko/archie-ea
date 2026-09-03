@@ -63,7 +63,10 @@ def generate():
     else:
         try:
             slice_dict = build_coverage_slice(org_id)
-            matrix_html = Markup(emit_coverage_matrix_html(slice_dict))
+            # The deterministic emitter escapes every database-derived text field.
+            matrix_html = Markup(  # nosec B704
+                emit_coverage_matrix_html(slice_dict)
+            )
         except SliceProvenanceError as exc:
             # Provenance is structural and non-optional — surface the failure,
             # never render a fabricated or half-provenanced matrix.

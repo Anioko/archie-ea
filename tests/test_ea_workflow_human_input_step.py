@@ -7,6 +7,7 @@ steps already use.
 """
 
 import pytest
+import uuid
 
 
 @pytest.mark.usefixtures("db_session")
@@ -16,8 +17,9 @@ def test_human_input_step_pauses_instead_of_executing(app, db_session, make_org,
 
     org = make_org("ea-workflow-human-input")
     with tenant_ctx(org.id):
+        suffix = uuid.uuid4().hex[:10].upper()
         definition = EAWorkflowDefinition(
-            workflow_code="TEST_HUMAN_INPUT",
+            workflow_code=f"TEST_HUMAN_INPUT_{suffix}",
             workflow_name="Test human input pause",
             workflow_category="test",
             steps=[{
@@ -33,7 +35,7 @@ def test_human_input_step_pauses_instead_of_executing(app, db_session, make_org,
 
         instance = EAWorkflowInstance(
             workflow_definition_id=definition.id,
-            instance_code="TEST_HUMAN_INPUT_1",
+            instance_code=f"TEST_HUMAN_INPUT_{suffix}_1",
             status="running",
             context={},
             organization_id=org.id,

@@ -59,7 +59,9 @@
             var c = name ? name.charCodeAt(0) : 0;
             if (c === 64 /*@*/ || c === 58 /*:*/ || (name && name.charCodeAt(0) === 120 && name.charCodeAt(1) === 45)) return; // @ : x-
             try { return _nativeSetAttr.call(this, name, value); }
-            catch (e) { /* invalid attribute name — skip rather than abort caller */ }
+            catch (e) {
+                /* swallow-ok: lucide invalid attributes are skipped so remaining icons render */
+            }
         };
         Element.prototype.__alpineSafeSetAttr = true;
     }

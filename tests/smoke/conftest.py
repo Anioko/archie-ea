@@ -78,6 +78,34 @@ def _free_port():
         return s.getsockname()[1]
 
 
+def _require_explicit_test_database(env):
+    """Bind browser and seeder to one explicitly named candidate database."""
+    test_url = env.get("TEST_DATABASE_URL")
+    if not test_url:
+        raise pytest.UsageError(
+            "Smoke qualification requires an explicit TEST_DATABASE_URL; "
+            "the long-lived fallback database is not valid release evidence."
+        )
+    server_url = env.get("DATABASE_URL")
+    if server_url and server_url != test_url:
+        raise pytest.UsageError(
+            "TEST_DATABASE_URL and DATABASE_URL must name the same database "
+            "for smoke qualification."
+        )
+    env["DATABASE_URL"] = test_url
+
+
+def _select_browser_engine(playwright, env):
+    """Return the explicitly requested supported Playwright engine."""
+    name = env.get("SMOKE_BROWSER", "chromium").strip().lower()
+    if name not in {"chromium", "firefox", "webkit"}:
+        raise pytest.UsageError(
+            "SMOKE_BROWSER must be one of chromium, firefox, or webkit; got %r."
+            % name
+        )
+    return getattr(playwright, name), name
+
+
 @pytest.fixture(scope="session")
 def live_server(request):
     """Boot the real application on a free port and yield its base URL.
@@ -89,6 +117,7 @@ def live_server(request):
     """
     port = _free_port()
     env = dict(os.environ)
+    _require_explicit_test_database(env)
     env.setdefault("SECRET_KEY", "smoke-only-not-secret-" + "x" * 16)
     env.setdefault("FLASK_CONFIG", "testing")
     env["FLASK_DEBUG"] = "0"
@@ -96,11 +125,6 @@ def live_server(request):
     # subprocess silently falls back to the default DSN on port 5432 and every
     # request 500s on "connection refused" - which surfaces as a browser timeout,
     # not as a database error.
-    if env.get("TEST_DATABASE_URL") and not env.get("DATABASE_URL"):
-        env["DATABASE_URL"] = env["TEST_DATABASE_URL"]
-    if env.get("DATABASE_URL") and not env.get("TEST_DATABASE_URL"):
-        env["TEST_DATABASE_URL"] = env["DATABASE_URL"]
-
     # Serve with gunicorn where it exists - which is CI and every deployment.
     #
     # Flask's development server cannot sustain these journeys: each dashboard
@@ -209,6 +233,7 @@ def seeded(live_server):
     with app.app_context():
         from app.models.application_owner import ApplicationOwner
         from app.models.application_portfolio import ApplicationComponent, VendorContract
+        from app.models.architecture_journey import ArchitectureJourney
         from app.models.organization import Organization
         from app.models.user import Role, User
 
@@ -234,6 +259,21 @@ def seeded(live_server):
             out["emails"][archetype] = email
             if archetype == "application_manager":
                 out["ids"]["app_manager_user"] = user.id
+            if archetype == "business_architect":
+                out["ids"]["business_architect_user"] = user.id
+
+        journey = ArchitectureJourney(
+            owner_id=out["ids"]["business_architect_user"],
+            organization_id=org.id,
+            title="Smoke operating model %s" % suffix,
+            intent="operating_model",
+            selected_layers=["motivation", "business"],
+            current_stage="frame",
+            status="active",
+        )
+        db.session.add(journey)
+        db.session.commit()
+        out["ids"]["architecture_journey"] = journey.id
 
         component = ApplicationComponent(
             name="Smoke Payroll %s" % suffix, organization_id=org.id,
@@ -289,10 +329,14 @@ PAGE_TIMEOUT = int(os.environ.get("SMOKE_PAGE_TIMEOUT", "90000"))
 @pytest.fixture(scope="package")
 def browser():
     with sync_playwright() as p:
+        engine, engine_name = _select_browser_engine(p, os.environ)
         try:
-            b = p.chromium.launch(headless=True)
+            b = engine.launch(headless=True)
         except Exception as exc:                      # no browser binary in this env
-            pytest.skip("chromium unavailable: %s" % str(exc)[:120])
+            message = "%s unavailable: %s" % (engine_name, str(exc)[:120])
+            if os.environ.get("SMOKE_REQUIRE_BROWSER") == "1":
+                pytest.fail(message)
+            pytest.skip(message)
         yield b
         b.close()
 

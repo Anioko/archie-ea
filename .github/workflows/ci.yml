@@ -326,6 +326,9 @@ jobs:
       SECRET_KEY: ci-only-not-secret-0123456789abcdef
       SMOKE_BOOT_TIMEOUT: "300"
       SMOKE_PAGE_TIMEOUT: "45000"
+      SMOKE_BROWSER: chromium
+      SMOKE_REQUIRE_BROWSER: "1"
+      SMOKE_SCREENSHOT_DIR: tests/smoke/_shots
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -344,19 +347,85 @@ jobs:
           python -m flask --app manage init-db
           python -m flask --app manage reconcile-schema
       - name: Run archetype journeys
-        run: pytest tests/smoke -q -p no:randomly --timeout=900 -W ignore::DeprecationWarning -m "not adversarial and not census"
+        run: pytest tests/smoke -q -p no:randomly --timeout=900 -W ignore::DeprecationWarning -m "not adversarial and not census" --junitxml=tests/smoke/_artifacts/chromium-main.xml
       - name: Interaction-reality census (dead controls, junk modals, silent forms)
-        run: pytest tests/smoke/test_interaction_reality.py -q -p no:randomly -m census --timeout=1200 -W ignore::DeprecationWarning
-      - name: Upload failure screenshots
-        if: failure()
+        run: pytest tests/smoke/test_interaction_reality.py -q -p no:randomly -m census --timeout=1200 -W ignore::DeprecationWarning --junitxml=tests/smoke/_artifacts/chromium-census.xml
+      - name: Upload browser qualification evidence
+        if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: smoke-failures
+          name: smoke-chromium-${{ github.sha }}
           path: |
             tests/smoke/_shots/
+            tests/smoke/_artifacts/
             /tmp/smoke-server-*.log
           if-no-files-found: ignore
-          retention-days: 7
+          retention-days: 30
+
+  browser-compatibility:
+    name: Browser compatibility (${{ matrix.browser }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [firefox, webkit]
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: archie_browser_compat
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 10s
+          --health-timeout 5s --health-retries 5
+    env:
+      TEST_DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/archie_browser_compat
+      DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/archie_browser_compat
+      FLASK_CONFIG: testing
+      SECRET_KEY: ci-only-not-secret-0123456789abcdef
+      SMOKE_BOOT_TIMEOUT: "300"
+      SMOKE_PAGE_TIMEOUT: "45000"
+      SMOKE_BROWSER: ${{ matrix.browser }}
+      SMOKE_REQUIRE_BROWSER: "1"
+      SMOKE_SCREENSHOT_DIR: tests/smoke/_shots
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install playwright pytest-timeout
+      - name: Install ${{ matrix.browser }}
+        run: python -m playwright install --with-deps ${{ matrix.browser }}
+      - name: Create schema
+        run: |
+          python -m flask --app manage init-db
+          python -m flask --app manage reconcile-schema
+      - name: Run cross-browser critical journeys
+        run: >-
+          pytest -q -p no:randomly --timeout=900 -W ignore::DeprecationWarning
+          tests/smoke/test_accessibility_audit.py
+          tests/smoke/test_archetype_journeys.py
+          tests/smoke/test_authorisation_matrix.py
+          tests/smoke/test_roadmap_crud_journey.py
+          tests/smoke/test_transformation_room_journeys.py
+          --junitxml=tests/smoke/_artifacts/${{ matrix.browser }}.xml
+      - name: Upload compatibility evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: smoke-${{ matrix.browser }}-${{ github.sha }}
+          path: |
+            tests/smoke/_shots/
+            tests/smoke/_artifacts/
+            /tmp/smoke-server-*.log
+          if-no-files-found: ignore
+          retention-days: 30
 
   walkthrough:
     name: Level 10 archetype walkthrough

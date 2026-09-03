@@ -1,0 +1,141 @@
+{
+  "schema_version": 1,
+  "candidate_base": "2f7fdc5c121890f3266d3e3ea6e55f6bdac89331",
+  "qualification_status": "in_progress",
+  "closure_authority": "qa_lead_independent_retest",
+  "findings": [
+    {
+      "id": "F500-001",
+      "area": "test_environment",
+      "severity": "high",
+      "title": "Browser tests can silently use the long-lived fallback database",
+      "status": "verified",
+      "original_evidence": "2026-09-03 browser run: 4 accessibility errors and 11 adversarial failures; server warned TEST_DATABASE_URL was unset; procurement login failed.",
+      "required_fix": "Make release and smoke entry points fail closed unless an explicit disposable PostgreSQL database is supplied.",
+      "verified_evidence": "2026-09-03: contract regression 3/3 passed; clean-database adversarial smoke cohort 11/11 passed; clean-database accessibility traversal passed.",
+      "closure_tests": [
+        "A smoke invocation without TEST_DATABASE_URL must fail before browser launch",
+        "The same smoke test must pass against an explicitly named clean database"
+      ]
+    },
+    {
+      "id": "F500-002",
+      "area": "frontend_security",
+      "severity": "high",
+      "title": "Security matrix template used a raw safe bypass",
+      "status": "ready_for_retest",
+      "original_evidence": "tests/test_template_escaping.py detected rendered_matrix|safe",
+      "proposed_fix": "Return Markup only from the autoescaping emitter and render without a template-level safe filter.",
+      "closure_tests": [
+        "tests/test_template_escaping.py",
+        "tests/test_genome_emitter_xss.py::test_security_matrix_fragment_escapes_modelled_text",
+        "Bandit B704 review",
+        "Full static verification"
+      ]
+    },
+    {
+      "id": "F500-003",
+      "area": "release_harness",
+      "severity": "medium",
+      "title": "Release test timeout was shorter than its one-hour contract",
+      "status": "ready_for_retest",
+      "original_evidence": "tests/test_verify_test_suite_timeout.py expected 3600 seconds and observed 1800",
+      "proposed_fix": "Use a 3600-second timeout per release suite.",
+      "closure_tests": [
+        "tests/test_verify_test_suite_timeout.py",
+        "Full database-backed verifier"
+      ]
+    },
+    {
+      "id": "F500-004",
+      "area": "browser_compatibility",
+      "severity": "high",
+      "title": "Release CI exercises Chromium only",
+      "status": "open",
+      "original_evidence": "Smoke fixture launches p.chromium and no Firefox/WebKit release job is defined.",
+      "required_fix": "Define and execute the supported browser matrix; retain per-browser evidence. Safari support requires WebKit plus final real-device/service evidence where contractually required.",
+      "closure_tests": []
+    },
+    {
+      "id": "F500-005",
+      "area": "accessibility",
+      "severity": "high",
+      "title": "Manual WCAG 2.2 AA and assistive-technology evidence is absent",
+      "status": "blocked_external",
+      "original_evidence": "Repository contains axe and keyboard automation but no moderated NVDA, JAWS, or VoiceOver report.",
+      "required_fix": "Complete manual keyboard, zoom/reflow, NVDA/JAWS, and VoiceOver assessment of critical persona journeys and disposition all serious findings.",
+      "closure_tests": []
+    },
+    {
+      "id": "F500-006",
+      "area": "frontend_usability",
+      "severity": "medium",
+      "title": "Collapsed platform-admin sidebar uses ambiguous duplicate icons",
+      "status": "ready_for_retest",
+      "original_evidence": "Chromium smoke: test_the_collapsed_sidebar_stays_readable[platform_admin] found four icons each serving two destinations (layout-dashboard, gavel, shield-check, grid-3x3), baseline <= 1.",
+      "required_fix": "Assign semantically distinct icons so collapsed navigation remains identifiable without text.",
+      "closure_tests": [
+        "tests/smoke/test_rendered_legibility.py::test_the_collapsed_sidebar_stays_readable[platform_admin]",
+        "Sidebar static and rendered tests",
+        "Full static verifier"
+      ]
+    },
+    {
+      "id": "F500-007",
+      "area": "frontend_interaction",
+      "severity": "high",
+      "title": "Transformation objective page renders ambiguous duplicate revision controls",
+      "status": "ready_for_retest",
+      "original_evidence": "Chromium smoke at 390px and 1024px: the test's page-wide input[name=expected_revision] locator resolved to two controls in separate, valid Programme context and Objective and scope forms.",
+      "required_fix": "Give the objective form a stable identity and scope the optimistic-lock probe to the revision control owned by that form; retain both valid form controls.",
+      "closure_tests": [
+        "tests/smoke/test_transformation_room_journeys.py::test_transformation_create_to_objective_deep_link_is_accessible_and_honest",
+        "Transformation concurrency and form contract tests",
+        "Full static verifier"
+      ]
+    },
+    {
+      "id": "F500-008",
+      "area": "governance_gates",
+      "severity": "high",
+      "title": "Six documented governance/AI-safety gates exist as scripts but are never registered in build_gates(), so they never run",
+      "status": "open",
+      "original_evidence": "3 Sep 2026, docs-audit worktree (branch docs/claude-md-drift-audit, base 2f7fdc5c): `grep -oE '^\\s*Gate\\(\"[a-z0-9-]+\"' scripts/verify.py | sort -u | wc -l` -> 44, not the 67 docs/DELIVERY_CONTRACT.md claimed. `grep -rn \"role-gate-coverage|ai-evidence-rules|ai-tool-guard|ai-untrusted-content|ai-approval-honoured|evidence-contract\" scripts/verify.py` -> no matches. The six scripts (scripts/check_evidence_contract.py, scripts/check_role_gate_coverage.py, scripts/check_ai_evidence_rules.py, scripts/check_ai_tool_guard.py, scripts/check_ai_untrusted_content.py, scripts/check_ai_approval_honoured.py) exist on disk and are not wrapped in a Gate(...) entry in build_gates(), so none run as part of `python scripts/verify.py`, CI, or anywhere else found in the repository. Re-deriving DELIVERY_CONTRACT.md's role-to-gate table from the 44 gates that actually exist found 12 of 15 roles measure 0 real gates (including AI/ML architect, product architect, business architect, service designer, data/evidence analyst, integration architect), not the 1-8 the table claimed - because those roles' tags (ai, architecture, process, product, journey, business, handoff, evidence, integration, rendered, wayfinding, content) are not carried by any currently-registered gate. CLAUDE.md separately claimed 88/98 units of ratchet debt for design_tokens/raw_sql_tenancy that both currently measure 0, and documented 19 gates against the real 44 - both were also corrected in the same pass (see branch docs/claude-md-drift-audit for the full diff, not yet merged).",
+      "required_fix": "Register the six scripts as Gate(...) entries in scripts/verify.py's build_gates(), each with a Proven-against: line per DELIVERY_CONTRACT.md Rule 2 (reintroduce the defect, confirm red, restore, confirm green) before trusting them in the release gate - do not wire them in unproven, per this same document's own account of a gate it built and deliberately did not ship because it had false positives. Re-derive and correct docs/DELIVERY_CONTRACT.md's role-to-gate table once the real tag set is known.",
+      "closure_tests": [
+        "grep -oE '^\\s*Gate\\(\"(evidence-contract|role-gate-coverage|ai-evidence-rules|ai-tool-guard|ai-untrusted-content|ai-approval-honoured)\"' scripts/verify.py must match all six",
+        "Each of the six gates has a documented Proven-against case reproduced: reintroduce the named defect, gate goes red; restore, gate goes green",
+        "python scripts/verify.py includes all six in its run with zero unexpected new findings on the candidate SHA",
+        "docs/DELIVERY_CONTRACT.md's role-to-gate table matches a fresh run of scripts/check_role_gate_coverage.py --count against the corrected build_gates()"
+      ]
+    },
+    {
+      "id": "F500-008",
+      "area": "arb_governance",
+      "severity": "high",
+      "title": "Typed ARB browser qualification contains expected failures",
+      "status": "open",
+      "original_evidence": "Main Chromium smoke run reported six xfailed typed-ARB cases. Source records incomplete decision-brief/model fixtures, non-canonical solution framing, missing breadcrumb or return-for-evidence ingress, historical-unverified rendering, and unavailable server-side failure injection.",
+      "required_fix": "Replace every expected failure with deterministic passing end-to-end evidence or retain the associated behavior as an explicit release blocker; qualification cannot count xfail as green.",
+      "closure_tests": [
+        "tests/smoke/test_typed_arb_governance_journey.py with zero xfail/skip",
+        "Typed ARB service and route suites",
+        "Full Chromium qualification"
+      ]
+    },
+    {
+      "id": "F500-009",
+      "area": "browser_harness",
+      "severity": "medium",
+      "title": "Architecture Journey browser evidence skipped when seed had no journey",
+      "status": "ready_for_retest",
+      "original_evidence": "Main Chromium run skipped the journey-home honesty check and two screenshot cases because the smoke tenant contained no ArchitectureJourney.",
+      "required_fix": "Seed one real business-architect-owned journey so home, honesty, and screenshot checks always execute.",
+      "closure_tests": [
+        "tests/smoke/test_architecture_journey_home_journey.py",
+        "tests/smoke/test_architecture_journey_screenshots.py",
+        "Main Chromium qualification with zero missing-journey skips"
+      ]
+    }
+  ]
+}

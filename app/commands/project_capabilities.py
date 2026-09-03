@@ -206,7 +206,7 @@ def _plan(connection, row_limit: int | None) -> dict[str, object]:
             LEFT JOIN unified_capabilities AS uc
                    ON uc.source_table = :source_table
                   AND uc.source_id = bc.id::text
-            """  # noqa: S608 - no interpolated user input; both fragments are literals
+            """  # nosec B608 -- both interpolated fragments are module literals
         ),
         {"source_table": SOURCE_TABLE, "row_limit": limit},
     ).mappings().one()
@@ -268,7 +268,7 @@ def _plan(connection, row_limit: int | None) -> dict[str, object]:
                OR existing.source_id IS DISTINCT FROM bc.id::text
             ORDER BY bc.id
             LIMIT 200
-            """  # noqa: S608 - fragment is a module literal
+            """  # nosec B608 -- the interpolated fragment is a module literal
         ),
         {"source_table": SOURCE_TABLE, "row_limit": limit},
     ).mappings().all()
@@ -293,7 +293,7 @@ def _plan(connection, row_limit: int | None) -> dict[str, object]:
                 WHERE bc.archimate_id IS NOT NULL
                   AND (existing.source_table IS DISTINCT FROM :source_table
                        OR existing.source_id IS DISTINCT FROM bc.id::text)
-                """  # noqa: S608 - fragment is a module literal
+                """  # nosec B608 -- the interpolated fragment is a module literal
             ),
             {"source_table": SOURCE_TABLE, "row_limit": limit},
         ).scalar_one()
@@ -432,7 +432,7 @@ DO UPDATE SET
     updated_at = now()
 WHERE unified_capabilities.source_checksum IS DISTINCT FROM EXCLUDED.source_checksum
    OR unified_capabilities.archimate_element_id IS DISTINCT FROM EXCLUDED.archimate_element_id
-"""  # noqa: S608 - both interpolated fragments are module literals
+"""  # nosec B608 -- both interpolated fragments are module literals
 
 # Pass 2 — hierarchy. bc.parent_capability_id is a business_capability id and must
 # be translated through provenance, which means it can only run after pass 1.
@@ -481,7 +481,7 @@ def _verify(connection, row_limit: int | None) -> dict[str, object]:
                      SELECT 1 FROM unified_capabilities AS uc
                       WHERE uc.source_table = :source_table
                         AND uc.source_id = bc.id::text)
-                """  # noqa: S608 - fragment is a module literal
+                """  # nosec B608 -- the interpolated fragment is a module literal
             ),
             {"source_table": SOURCE_TABLE,
              "row_limit": row_limit if row_limit is not None else 2**31 - 1},
