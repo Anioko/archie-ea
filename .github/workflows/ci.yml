@@ -88,6 +88,8 @@ jobs:
             --output scripts/bin/tailwindcss \
             https://github.com/tailwindlabs/tailwindcss/releases/download/v3.4.17/tailwindcss-linux-x64
           chmod +x scripts/bin/tailwindcss
+      - name: Install Chromium for JavaScript syntax validation
+        run: python -m playwright install --with-deps chromium
       - name: Compile + lint ratchets + design tokens + air-gap
         run: python scripts/verify.py --tag static
       - name: Dependency CVE gate
@@ -509,3 +511,84 @@ jobs:
         run: python -m pip install --upgrade pip pip-audit
       - name: Audit declared dependencies
         run: python scripts/ci/dependency_audit.py
+
+  release-image:
+    name: Build immutable release image
+    if: github.event_name != 'pull_request'
+    needs:
+      - secret-scan
+      - static-gates
+      - boot-health
+      - tests
+      - db-gates
+      - security-sast
+      - smoke
+      - browser-compatibility
+      - walkthrough
+      - dependency-audit
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Resolve image identity
+        id: meta
+        shell: bash
+        run: echo "image=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/archie" >> "$GITHUB_OUTPUT"
+      - name: Build and push exactly once
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.image }}:${{ github.sha }}
+          build-args: |
+            VCS_REF=${{ github.sha }}
+            BUILD_DATE=${{ github.event.repository.updated_at }}
+          provenance: mode=max
+          sbom: true
+      - name: Verify registry digest and write release manifest
+        shell: bash
+        env:
+          IMAGE: ${{ steps.meta.outputs.image }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+          REVISION: ${{ github.sha }}
+        run: |
+          test -n "$DIGEST"
+          docker buildx imagetools inspect "$IMAGE@$DIGEST"
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+
+          image = os.environ["IMAGE"]
+          digest = os.environ["DIGEST"]
+          revision = os.environ["REVISION"]
+          Path("release.json").write_text(
+              json.dumps(
+                  {
+                      "schema_version": 1,
+                      "commit": revision,
+                      "digest": digest,
+                      "image": f"{image}@{digest}",
+                      "workflow_run": os.environ["GITHUB_RUN_ID"],
+                  },
+                  indent=2,
+                  sort_keys=True,
+              ) + "\n",
+              encoding="utf-8",
+          )
+          PY
+      - uses: actions/upload-artifact@v6
+        with:
+          name: release-${{ github.sha }}
+          path: release.json
+          if-no-files-found: error
+          retention-days: 90

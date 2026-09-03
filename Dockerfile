@@ -1,5 +1,11 @@
 FROM python:3.12-slim
 
+ARG VCS_REF=unknown
+ARG BUILD_DATE=unknown
+LABEL org.opencontainers.image.source="https://github.com/Anioko/archie-ea" \
+      org.opencontainers.image.revision=$VCS_REF \
+      org.opencontainers.image.created=$BUILD_DATE
+
 ENV PYTHONUNBUFFERED=1 \
     PATH=/venv/bin:$PATH
 

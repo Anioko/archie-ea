@@ -80,6 +80,9 @@ jobs:
           - 5432:5432
     env:
       TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/archie_test
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/archie_test
+      FLASK_CONFIG: testing
+      SECRET_KEY: production-watch-ci-only-not-secret
       SMOKE_BOOT_TIMEOUT: "300"
       SMOKE_PAGE_TIMEOUT: "45000"
     steps:

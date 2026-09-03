@@ -1,0 +1,32 @@
+# Production-only overlay. The base Compose file remains convenient for local
+# builds, while this file makes the deployed application code come exclusively
+# from one digest-addressed image produced by CI. Compose v2's !reset tag is
+# intentional: without it, the base build contexts and ./→/app bind mounts
+# would survive merge and silently override the verified image.
+services:
+  database-bootstrap:
+    build: !reset null
+    image: ${ARCHIE_IMAGE:?ARCHIE_IMAGE must be a digest-addressed release image}
+    volumes: !reset []
+
+  schema-deploy:
+    build: !reset null
+    image: ${ARCHIE_IMAGE:?ARCHIE_IMAGE must be a digest-addressed release image}
+    volumes: !reset []
+
+  database-acl:
+    build: !reset null
+    image: ${ARCHIE_IMAGE:?ARCHIE_IMAGE must be a digest-addressed release image}
+    volumes: !reset []
+
+  server:
+    build: !reset null
+    image: ${ARCHIE_IMAGE:?ARCHIE_IMAGE must be a digest-addressed release image}
+    volumes: !reset []
+
+  worker:
+    build: !reset null
+    image: ${ARCHIE_IMAGE:?ARCHIE_IMAGE must be a digest-addressed release image}
+    volumes: !reset []
+    entrypoint: !reset []
+    command: ["flask", "--app", "manage", "run-worker"]

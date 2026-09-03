@@ -21,8 +21,13 @@ from datetime import datetime
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 PASSWORD = os.environ.get("WALKTHROUGH_PASSWORD", "Walk!2026")
-PERSONAS = ("cto", "enterprise_architect", "portfolio_manager", "arb_member",
-            "solution_architect")
+PERSONAS = {
+    "cto": "cto@walkthrough.example.com",
+    "enterprise_architect": "ea@walkthrough.example.com",
+    "portfolio_manager": "pm@walkthrough.example.com",
+    "arb_member": "arb@walkthrough.example.com",
+    "solution_architect": "solution@walkthrough.example.com",
+}
 
 
 def main() -> int:
@@ -45,8 +50,7 @@ def main() -> int:
 
         role = Role.query.filter_by(name="Architect").first()
         users = {}
-        for persona in PERSONAS:
-            email = "%s@walkthrough.example.com" % persona.split("_")[0]
+        for persona, email in PERSONAS.items():
             user = User.query.filter_by(email=email).first()
             if user is None:
                 user = User(
