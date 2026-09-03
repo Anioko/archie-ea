@@ -147,7 +147,7 @@ def create_value_stream(data: Dict[str, Any]) -> ValueStream:
         name=data.get("name"),
         code=data.get("code") or None,
         description=data.get("description"),
-        value_stream_type=data.get("value_stream_type"),
+        value_stream_type=data.get("value_stream_type") or None,
         industry_domain=data.get("industry_domain"),
         strategic_importance=data.get("strategic_importance"),
         business_owner=data.get("business_owner"),

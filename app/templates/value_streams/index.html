@@ -92,8 +92,13 @@
             </div>
             <div>
                 <label for="vs-type" class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Type</label>
+                {# DEF-056, Capgemini dry-run: no placeholder option meant the
+                   browser pre-selected "Customer Facing" (the first option) —
+                   a value stream saved without the user ever touching this
+                   field, silently, as if it had been chosen deliberately. #}
                 <select id="vs-type" name="value_stream_type"
                         class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                    <option value="">Select type…</option>
                     <option value="customer_facing">Customer Facing</option>
                     <option value="internal">Internal</option>
                     <option value="supporting">Supporting</option>
