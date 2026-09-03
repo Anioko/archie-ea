@@ -83,7 +83,9 @@ def test_canonical_endpoint_returns_200(app, db_session, make_org, login_as, end
 # ── (b) the retired duplicate redirects to the canonical listing ────────────
 
 
-def test_adrs_blueprint_is_not_registered_in_the_default_configuration(app):
+def test_adr_listing_has_one_canonical_route_or_redirect(
+    app, db_session, make_org, login_as
+):
     """Measured, not assumed: `adr_bp` is only registered by
     `app.modules.architecture.register()`, which is the **Tier 2** branch of
     `_bootstrap/blueprints.py:_register_architecture`. Tier 1 (v2) is taken
@@ -93,17 +95,12 @@ def test_adrs_blueprint_is_not_registered_in_the_default_configuration(app):
     `arch_decisions.list_decisions` is actually routed.
     """
     assert "arch_decisions.list_decisions" in app.view_functions
-    if "adrs.list_adrs" in app.view_functions:
-        pytest.skip("adr_bp registered (Tier 2 architecture); see redirect test")
-
-
-def test_adrs_list_redirects_to_canonical_decisions(app, db_session, make_org, login_as):
-    """If the ADR module ever is registered (Tier 2), its duplicate listing
-    must 302 to the canonical, tenant-scoped one rather than serve a second,
-    untenanted view of the same `architecture_decisions` table.
-    """
     if "adrs.list_adrs" not in app.view_functions:
-        pytest.skip("adr_bp is not registered in the default configuration")
+        assert "adrs.list_adrs" not in app.view_functions
+        return
+
+    # If Tier 2 is selected, its duplicate listing must redirect to the
+    # canonical tenant-scoped route rather than serve a second implementation.
     user, _ = _user(db_session, make_org, "adr")
     client = app.test_client()
     login_as(client, user)

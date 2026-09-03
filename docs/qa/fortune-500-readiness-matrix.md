@@ -2,7 +2,7 @@
 
 Status: **qualification in progress**
 
-Candidate base: `2f7fdc5c121890f3266d3e3ea6e55f6bdac89331`
+Current candidate: `e69ebbcf` (superseded when the remediation below is committed)
 
 Qualification date: 3 September 2026
 
@@ -17,16 +17,16 @@ enterprise availability until the named owner supplies it.
 
 | Area | Required evidence and release threshold | Current evidence | Status |
 |---|---|---|---|
-| Build and static correctness | Every `verify.py --tag static` gate passes; no skip | 36/36 passed on candidate; CSS rebuilt with vendored Tailwind CLI | Proven on base SHA; repeat on final SHA |
-| Automated suite integrity | Suite collects with strict markers; no import/collection errors | 4,132 tests collected on Python 3.13; diagnostic run reached its 20-failure cap at 71% (2,802 passed, 5 skipped) | Failed; remediation required |
-| Functional workflows | All unit, integration and persona journeys pass against PostgreSQL 16 | Clean UTF-8 diagnostic rerun of affected modules: 145 passed, 17 failed | Failed; remediation required |
+| Build and static correctness | Every `verify.py --tag static` gate passes; no skip | 42/42 static gates passed; candidate-wide verifier passed 49/50 total gates with zero gate skips | Proven locally; repeat after remediation and in final CI |
+| Automated suite integrity | Suite collects with strict markers; no import/collection errors or applicable skips | Candidate-wide run: 3,933 passed, 4 failed, 22 errors and 8 skips; all failures/errors traced to missing pgcrypto in PG12 scratch databases and focused remediation passed 36 tests. Skip hygiene remediation is in progress. | Failed on candidate; corrected candidate pending |
+| Functional workflows | All unit, integration and persona journeys pass against PostgreSQL 16 | Typed ARB regression 439/439; full browser 177 passed/1 maintenance skip; complete unit suite requires post-remediation rerun | Pending corrected candidate and PG16 CI |
 | Tenant isolation | Cross-tenant read/write/search/export/cache/background paths denied; missing tenant context fails closed | Static SQL and ORM scoping gates pass at zero; extensive tenant tests collected | Pending full test execution and fail-closed design audit |
 | Authorization | Route/API action matrix covers anonymous and every enterprise role | Repeatable failures include business-case delete status, GDPR platform-admin erasure and an unauthorized admin navigation link | Failed; remediation required |
 | Frontend design system | Token, shell, navigation, UI-contract, asset, CSS and console gates pass | Broken-surface defect fixed with regression test; repeatable sidebar, portfolio criticality and data-quality-banner failures remain | Failed; remediation required |
 | Interaction correctness | Critical controls, modals, errors, loading, retry, empty and degraded states exercised | Interaction-reality, adversarial, no-error-banner and console suites collected | Pending browser execution |
 | Responsive design | Critical persona journeys pass at 320/390/768/1024 and desktop widths with no clipping or horizontal overflow | Mobile persona and repository-shell tests collected | Pending browser execution |
 | Visual regression | Reviewed deterministic screenshots for critical pages/states/viewports; unapproved pixel diffs = 0 | Screenshot capture exists for architecture journey only; no broad approved baseline found | Gap—automation required |
-| Browser compatibility | Agreed matrix passes: Edge/Chrome, Firefox ESR, Safari if supported | CI installs Chromium only | Gap—matrix and runners required |
+| Browser compatibility | Agreed matrix passes: Edge/Chrome, Firefox ESR, Safari if supported | CI now defines Chromium, Firefox and WebKit jobs with retained JUnit/screenshots; execution evidence is not yet recorded. Edge and real Safari remain external. | Pending CI execution and support-policy decision |
 | Accessibility | WCAG 2.2 AA automated and manual evidence; no critical/serious issue on critical journeys | Axe ratchet, keyboard/focus/legibility tests collected | Automated run pending; manual NVDA/VoiceOver external |
 | Usability and information architecture | Representative personas complete critical tasks; ≥90% completion, no critical usability failure, findings dispositioned | No moderated study evidence in repository | External—product research |
 | Frontend performance | Page-class budgets and Core Web Vitals at p75 on corporate hardware; no memory growth in long sessions | Query-growth tests exist; no browser performance gate found | Gap—automation and test environment required |
@@ -34,7 +34,7 @@ enterprise availability until the named owner supplies it.
 | Security SAST | Secret scan, Bandit and dependency scan green; no unreviewed high/critical | Bandit new-finding gate green after narrow reviewed annotations; dependency advisories reduced to zero | Proven locally; full-history gitleaks pending CI |
 | Dynamic security | Authenticated DAST, API fuzzing and independent penetration test; no open critical/high | No candidate-tied report | External/security environment |
 | Genome HTML safety | Hostile model text cannot create executable elements or event attributes | Five DOM-level adversarial emitter tests pass | Proven locally; repeat in CI |
-| AI safety | Direct/indirect prompt injection, cross-tenant retrieval, disclosure, approval bypass, malformed output and provider outage tested | LLM-boundary static gate passes; partial AI journey coverage collected | Gap—red-team suite and provider sandbox |
+| AI safety | Direct/indirect prompt injection, cross-tenant retrieval, disclosure, approval bypass, malformed output and provider outage tested | Six AI/governance gates execute; deterministic approval summary test passes. R-61 golden dataset and R-62 persona differentiation remain unimplemented external-provider qualification work and are not represented as passing. | Blocked—red-team corpus and provider sandbox |
 | Dependency and supply chain | Zero known shipped CVEs, immutable SBOM, verified vendor assets and provenance | `pip-audit` 0; dependency baseline 0; SRI/vendor gates pass; SBOM generated in CI | Proven locally except final SBOM |
 | PDF export | Security-fixed renderer generates a real PDF in production runtime | WeasyPrint 69/pydyf 0.12; version test passes; Linux render test added | Pending Linux CI execution |
 | Schema and migrations | Fresh install and supported upgrades pass; no drift; production-shaped rehearsal records counts/checksums/locks | Fresh install plus reconciliation added 3 foreign keys and 8 constraint triggers; subsequent drift gate passed | Proven diagnostically on PostgreSQL 12; PostgreSQL 16 rehearsal pending |
@@ -44,7 +44,7 @@ enterprise availability until the named owner supplies it.
 | Observability | Health/readiness, logs, metrics, traces and actionable alerts verified end-to-end with tenant-safe redaction | Boot-health passes; runtime alert evidence absent | Pending staging exercise |
 | Privacy | Export, erasure, retention and audit requirements pass with legal-approved policy | GDPR authorization tests collected | Automated run pending; policy/legal external |
 | Licensing | Deployment model and AGPL/commercial obligations approved | ADR identifies unresolved commercial position | External—owner/legal decision |
-| Deployment provenance | Exact green SHA promoted without rebuild; rollback rehearsal succeeds | No deployment executed for this candidate | Pending final CI and deployment |
+| Deployment provenance | Exact green SHA and artifact digest promoted without rebuild; rollback rehearsal succeeds | No deployment executed. Current `deploy/deploy.sh` rebuilds on the host, conflicting with immutable promotion. | Failed—artifact promotion path required |
 | Production acceptance | Live health plus critical synthetic persona journeys green; monitoring stable through observation window | No candidate deployment | Pending deployment |
 
 ## Final release decision rule

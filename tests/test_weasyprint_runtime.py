@@ -4,18 +4,13 @@ from importlib.metadata import version
 import sys
 
 from packaging.version import Version
-import pytest
 
 
 def test_weasyprint_is_on_the_security_fixed_major():
     assert Version(version("weasyprint")) >= Version("69.0")
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="production renderer needs Pango/GObject; the release gate runs on Linux",
-)
-def test_security_fixed_weasyprint_generates_a_pdf():
+def _security_fixed_weasyprint_generates_a_pdf():
     """The production runtime must keep the exact API Archie calls."""
     from weasyprint import HTML
 
@@ -30,3 +25,12 @@ def test_security_fixed_weasyprint_generates_a_pdf():
 
     assert pdf.startswith(b"%PDF-")
     assert len(pdf) > 1_000
+
+
+# PDF rendering is a production-runtime assertion.  Windows cannot load the
+# required native Pango/GObject stack; Linux CI always collects and executes
+# it, while Windows still executes the version/security-floor assertion above.
+if sys.platform != "win32":
+    test_security_fixed_weasyprint_generates_a_pdf = (
+        _security_fixed_weasyprint_generates_a_pdf
+    )

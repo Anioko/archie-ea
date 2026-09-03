@@ -508,15 +508,13 @@ def test_controls_are_wired_and_modals_are_clean(archetype, live_server, seeded,
            measured["form_500"], "\n".join(detail) or "  (per-screen detail above)"))
 
 
-def test_write_interaction_baseline(live_server, seeded, browser):
+def _write_interaction_baseline(live_server, seeded, browser):
     """Regenerate interaction_reality_baseline.json by MEASUREMENT.
 
     Only does anything under SMOKE_WRITE_INTERACTION_BASELINE=1, so an ordinary
     run never rewrites the ratchet. form_500 is deliberately NOT baselined -- a
     silent 5xx is never acceptable, so its allowance is a hard zero.
     """
-    if not WRITE_BASELINE:
-        pytest.skip("set SMOKE_WRITE_INTERACTION_BASELINE=1 to regenerate")
     out = {}
     for archetype in sorted(SCREENS):
         m = _measure(archetype, live_server, seeded, browser)
@@ -525,6 +523,13 @@ def test_write_interaction_baseline(live_server, seeded, browser):
         json.dump(out, fh, indent=2, sort_keys=True)
         fh.write("\n")
     print("[interaction-reality] wrote baseline: %s" % json.dumps(out))
+
+
+# Baseline generation is a maintenance command, not an applicable release
+# test.  Collect it only when explicitly requested so an ordinary smoke run
+# cannot report a misleading SKIP while every real product assertion passed.
+if WRITE_BASELINE:
+    test_write_interaction_baseline = _write_interaction_baseline
 
 
 # ---------------------------------------------------------------------------

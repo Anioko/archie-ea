@@ -130,25 +130,12 @@ class TestOEFExportValidation:
         assert rel.get("target") == "id-2"
         assert rel.get("identifier") == "rel-1"
 
-    @pytest.mark.skip(reason="Requires external XSD file - enable when schema validation is needed")
-    def test_oef_validates_against_official_xsd(self, sample_viewpoint_dict):
-        """Test that OEF XML validates against official ArchiMate XSD schema.
-        
-        This test is skipped by default as it requires downloading the official
-        ArchiMate XSD schema from The Open Group. Enable when full validation is needed.
+    def test_oef_document_is_well_formed_without_external_xsd(self, sample_viewpoint_dict):
+        """The offline suite guarantees a parseable OEF document.
+
+        Validation against The Open Group's licensed external XSD is tracked as
+        qualification evidence, not represented by a permanently skipped test.
         """
         xml_content = to_open_exchange_xml(sample_viewpoint_dict)
-        
-        # This would require downloading the official XSD:
-        # https://www.opengroup.org/xsd/archimate/3.2/archimate3_Model.xsd
-        # 
-        # Example implementation:
-        # with open('archimate3_Model.xsd', 'r') as schema_file:
-        #     schema_doc = etree.parse(schema_file)
-        #     schema = etree.XMLSchema(schema_doc)
-        #     xml_doc = etree.fromstring(xml_content.encode('utf-8'))
-        #     assert schema.validate(xml_doc), schema.error_log
-        
-        # For now, just ensure it's well-formed XML
         root = etree.fromstring(xml_content.encode('utf-8'))
         assert root is not None

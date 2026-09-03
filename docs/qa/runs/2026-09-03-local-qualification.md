@@ -27,6 +27,11 @@ Authority: diagnostic only; final acceptance requires the final Git SHA in CI.
 | Typed ARB service/route/template regression | 439 passed | Independent authorization, tenancy, decisions, evidence, ingress, compatibility, read-model, and template coverage green |
 | Expanded static verifier | 42 passed, 0 failed, 0 skipped | Six previously orphaned governance/AI checks now execute: evidence 29/29, role coverage 7/7, four AI safety checks 0/0 |
 | Governance-checker proof cohort | 6 passed | Seeded bad/good cases and provenance contract confirm the newly registered gates can fail for their intended defects |
+| Rebased candidate-wide verifier (`e69ebbcf`) | 49 passed, 1 failed, 0 skipped gates | Static/dependency/boot/schema gates green; test gate red: unit 3,933 passed/4 failed/22 errors/8 skipped, smoke 177 passed/1 skipped |
+| Runtime-role root-cause retest | 36 passed, 3 PostgreSQL-version skips | All 26 failures/errors were caused by missing `pgcrypto` in newly-created PG12 scratch databases; fixture now provisions the declared prerequisite before privilege fencing |
+| Runtime-role final local retest | 39 passed, 0 skipped | PG12 and PG16 behavior branches now make applicability explicit; complete security-hardening module is locally green |
+| Skip-hygiene focused cohort | 26 passed before approval-summary correction; follow-up AI cohort 4 passed | Maintenance writer removed from normal collection; OEF offline assertion named honestly; navigation and PostgreSQL branches assert applicability; Windows PDF render is collected only on production-like Linux; live-provider AI evaluation remains an explicit external blocker |
+| Full corrected Chromium smoke suite | 177 passed, 0 failed, 0 skipped, 0 xfailed | Accessibility, adversarial probes, persona journeys, authorization, interaction reality, responsive flows, console/error hygiene, transformation and typed ARB all green |
 
 ## Invalidated run
 

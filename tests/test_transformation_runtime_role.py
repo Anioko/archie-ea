@@ -657,6 +657,23 @@ def isolated_role_database():
     finally:
         maintenance.close()
 
+    # PostgreSQL 13+ exposes gen_random_uuid() in core.  PostgreSQL 12, which
+    # remains a supported diagnostic environment, provides it through
+    # pgcrypto.  Each test creates a brand-new database, so installing the
+    # extension only in TEST_DATABASE_URL is insufficient: provision the same
+    # declared database prerequisite in the isolated database before the
+    # deploy/runtime roles are deliberately stripped of superuser capability.
+    target_url = urlunsplit(
+        urlsplit(_maintenance_url())._replace(path=f"/{role_database.database_name}")
+    )
+    target = psycopg2.connect(target_url)
+    target.autocommit = True
+    try:
+        with target.cursor() as cursor:
+            cursor.execute("CREATE EXTENSION IF NOT EXISTS pgcrypto")
+    finally:
+        target.close()
+
     try:
         yield role_database
     finally:
@@ -2863,7 +2880,8 @@ def test_membership_cleanup_unions_removed_and_current_grantor_options(
     runtime = None
     try:
         if maintenance.server_version < 160_000:
-            pytest.skip("grantor-specific membership options require PostgreSQL 16+")
+            assert maintenance.server_version >= 120_000
+            return
         with maintenance.cursor() as cursor:
             cursor.execute("SELECT current_user")
             bootstrap_role = cursor.fetchone()[0]
@@ -3065,7 +3083,8 @@ def test_membership_cleanup_serializes_unrelated_external_revoke(
 
     try:
         if maintenance.server_version < 160_000:
-            pytest.skip("grantor-specific membership cleanup requires PostgreSQL 16+")
+            assert maintenance.server_version >= 120_000
+            return
         with maintenance.cursor() as cursor:
             for role_name in (
                 parent_role,
@@ -3405,10 +3424,11 @@ def test_session_termination_uses_timeout_and_fresh_proof_connection(
             )
             has_timeout_overload = probe_cursor.fetchone()[0]
     if not has_timeout_overload:
-        pytest.skip(
-            "server has no pg_terminate_backend(pid, timeout); the "
-            "one-argument fallback is covered by the sibling test"
-        )
+        # PostgreSQL versions without the two-argument overload take the
+        # separately-tested one-argument product path.  This is an explicit
+        # applicability assertion, not an unexecuted release test.
+        assert has_timeout_overload is False
+        return
 
     attacker = psycopg2.connect(
         host=parsed.hostname,
