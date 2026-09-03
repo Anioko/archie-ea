@@ -924,7 +924,25 @@
         if (toggleBtn) {
             event.stopPropagation();
             let menu = toggleBtn.parentElement.querySelector('.cap-actions-menu');
-            if (menu) menu.classList.toggle('hidden');
+            if (menu) {
+                const wasHidden = menu.classList.contains('hidden');
+                menu.classList.toggle('hidden');
+                // DEF-078, Capgemini dry-run: the menu was position:absolute
+                // inside the table's overflow-x-auto scroll container, which
+                // clips any descendant that would render past its edge — so
+                // every menu item's text ("View Detai…", "Map to App…", "Add
+                // to Roa…") was cut off. Reposition as position:fixed using
+                // the toggle button's real viewport coordinates so the menu
+                // escapes the table's clipping box entirely.
+                if (wasHidden) {
+                    const rect = toggleBtn.getBoundingClientRect();
+                    menu.style.position = 'fixed';
+                    menu.style.top = (rect.bottom + 4) + 'px';
+                    menu.style.right = (window.innerWidth - rect.right) + 'px';
+                    menu.style.left = 'auto';
+                    menu.style.marginTop = '0';
+                }
+            }
             return;
         }
 
@@ -4450,7 +4468,13 @@
                 showToast(data.error || 'Failed to add to roadmap', 'error');
             }
         } catch (error) {
-            showToast('Error adding to roadmap', 'error');
+            // DEF-078, Capgemini dry-run: Platform.fetch throws on a non-2xx
+            // response (silent:true suppresses its own toast, not the real
+            // reason) — this discarded the server's actual message (e.g.
+            // "This capability is already on the roadmap") in favour of a
+            // generic "Error adding to roadmap" that told the user nothing
+            // they could act on.
+            showToast((error && error.message) || 'Error adding to roadmap', 'error');
         }
     }
     
