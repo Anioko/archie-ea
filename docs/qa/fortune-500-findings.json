@@ -23,9 +23,10 @@
       "area": "frontend_security",
       "severity": "high",
       "title": "Security matrix template used a raw safe bypass",
-      "status": "ready_for_retest",
+      "status": "verified_local",
       "original_evidence": "tests/test_template_escaping.py detected rendered_matrix|safe",
       "proposed_fix": "Return Markup only from the autoescaping emitter and render without a template-level safe filter.",
+      "retest_evidence": "3 Sep 2026, isolated worktree retest/f500-002 off origin/main@2f7fdc5c, commit c9e5997f: reproduced original defect first (test_template_escaping.py::test_no_template_renders_a_bare_variable_unescaped failed, 1 failed/4 passed, citing security_matrix.html:45 rendered_matrix|safe) before applying the fix, confirming the finding was live on the candidate. After the fix: tests/test_template_escaping.py 5/5 passed; tests/test_genome_emitter_xss.py::test_security_matrix_fragment_escapes_modelled_text 1/1 passed; python -m bandit app/modules/enterprise_genome/services/security_matrix_emitter.py -> 0 findings (the retained # nosec B704 marker is inert, cosmetic only, not a blocker); python scripts/verify.py --tag static -> 35 passed, 0 failed, 1 skipped (css-build skipped: no vendored Tailwind CLI binary in this worktree, unrelated to this fix, documented pre-existing local-environment gap). Final CI retest still required on the release SHA per this ledger's closure controls.",
       "closure_tests": [
         "tests/test_template_escaping.py",
         "tests/test_genome_emitter_xss.py::test_security_matrix_fragment_escapes_modelled_text",
@@ -41,6 +42,7 @@
       "status": "ready_for_retest",
       "original_evidence": "tests/test_verify_test_suite_timeout.py expected 3600 seconds and observed 1800",
       "proposed_fix": "Use a 3600-second timeout per release suite.",
+      "retest_evidence": "3 Sep 2026, isolated worktree retest/f500-003 off origin/main@2f7fdc5c, commit 5f88acd1 (TEST_SUITE_TIMEOUT_SECONDS 1800->3600 only - an unrelated gate_nav_verified 'unmeasured'-handling change found bundled into the same uncommitted diff in the shared worktree was deliberately excluded as out of this finding's scope). Regression test confirmed the defect first: tests/test_verify_test_suite_timeout.py failed pre-fix (assert all(timeout==3600...) -> False), passed post-fix (1/1). Root cause of the regression traced one level: an earlier fix (commit b465bd1f, 28 Aug 2026) had already set this constant to 3600 with the same regression test, but candidate_base 2f7fdc5c carries 1800 again - lost via a merge, not re-investigated further here. SECOND closure test ('Full database-backed verifier', i.e. `python scripts/verify.py --gate tests --require-db`) could NOT be completed in this session: three attempts (two backgrounded run_in_background invocations and one direct redirect-to-file invocation, each 40-90+ minutes) all terminated at the harness/shell level (empty output files, exit 127 or 255) rather than at the test level - `tasklist` confirmed genuine pytest worker processes alive and consuming 800MB-1.8GB RAM mid-run each time, so this reads as a session/background-duration ceiling in the interactive tool harness on this Windows host, not a defect in the fix or a test failure. Recommend rerunning `python scripts/verify.py --require-db` (or just `--gate tests --require-db`) either in CI or as a detached, non-interactively-monitored process with a longer-lived shell before marking this verified - do not treat the unit-level pass alone as satisfying both named closure tests.",
       "closure_tests": [
         "tests/test_verify_test_suite_timeout.py",
         "Full database-backed verifier"
@@ -136,6 +138,20 @@
         "tests/smoke/test_architecture_journey_home_journey.py",
         "tests/smoke/test_architecture_journey_screenshots.py",
         "Main Chromium qualification with zero missing-journey skips"
+      ]
+    },
+    {
+      "id": "F500-011",
+      "area": "governance_gates",
+      "severity": "medium",
+      "title": ".gitignore blanket-ignores scripts/check_*.py, requiring a manual allowlist line per permanent gate - the likely root mechanism behind F500-008",
+      "status": "verified_local",
+      "original_evidence": "3 Sep 2026, worktree gov-gates (branch feat/docs-drift-and-check-registration, base e74bd8ec): creating two new checker scripts (scripts/check_docs_drift.py, scripts/check_unregistered_checks.py) and running `git add` showed 'The following paths are ignored by one of your .gitignore files'. `git check-ignore -v` traced both to .gitignore:196 `scripts/check_*.py`. The surrounding comment already documents one prior casualty: 'these globs are why DESIGN.md can reference a check_token_migration.py pre-commit hook that is absent from the repository - a permanent quality gate was named like a throwaway and got ignored out of existence.' Every one of the 70 check_*.py scripts currently tracked required its own `!scripts/check_X.py` negation line added by hand; the default is to silently drop a new one unless the author notices and force-adds it.",
+      "required_fix": "This finding was fixed rather than left open, since it was a one-line addition needed anyway to commit the two new gates: negation lines added for both new scripts. The systemic direction (default-ignore + manual allowlist for a class of file meant to be permanent) is unchanged and worth inverting - default-track scripts/check_*.py and ignore only files matching a genuinely-scratch naming convention (scripts/check_*_scratch.py, or similar) - but that broader change is out of scope of this fix and not attempted here.",
+      "retest_evidence": "3 Sep 2026: both new scripts committed successfully after the negation lines were added (commit 037490fc); `git ls-files scripts/check_*.py | wc -l` -> 72 (70 pre-existing + 2 new), confirming both are now tracked.",
+      "closure_tests": [
+        "git check-ignore -v scripts/check_docs_drift.py scripts/check_unregistered_checks.py must report no match",
+        "git ls-files scripts/check_*.py includes both new scripts"
       ]
     }
   ]
