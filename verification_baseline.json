@@ -20,6 +20,8 @@
     "raw_fetch_sites": 0,
     "ui_contract": 0,
     "nav_verified": 0,
-    "console_reporting": 0
+    "console_reporting": 0,
+    "evidence_contract": 29,
+    "role_gate_coverage": 7
   }
 }

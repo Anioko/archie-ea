@@ -1253,6 +1253,21 @@ def gate_llm_boundary(baseline: int) -> Result:
                   detail, count, baseline)
 
 
+def gate_count_checker(name: str, script: str, baseline: int) -> Result:
+    """Run a checker whose final stdout line is its finding count."""
+    proc = _run([sys.executable, script, "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result(
+            name,
+            FAIL,
+            f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}",
+        )
+    detail = "" if count <= baseline else f"run {script} to list the findings"
+    return Result(name, PASS if count <= baseline else FAIL, detail, count, baseline)
+
+
 # ---------------------------------------------------------------- registry
 
 
@@ -1315,6 +1330,61 @@ def build_gates(baseline: dict) -> list[Gate]:
                          "schema-validated genome edits, never emit artifacts "
                          "(03_integration.md §2). Or append 'llm-boundary-ok: <reason>'",
              tags=["static", "security"]),
+        Gate("evidence-contract",
+             "every behavioural change carries evidence and every checker carries provenance",
+             "ratchet",
+             lambda: gate_count_checker(
+                 "evidence-contract", "scripts/check_evidence_contract.py",
+                 baseline.get("evidence_contract", 29),
+             ),
+             remediation="run scripts/check_evidence_contract.py; add a test or Evidence: "
+                         "trailer, and add Proven-against: to every registered checker",
+             tags=["static", "process", "evidence"]),
+        Gate("role-gate-coverage",
+             "every declared delivery role resolves to at least one verifier gate",
+             "ratchet",
+             lambda: gate_count_checker(
+                 "role-gate-coverage", "scripts/check_role_gate_coverage.py",
+                 baseline.get("role_gate_coverage", 7),
+             ),
+             remediation="run scripts/check_role_gate_coverage.py; add/tag the missing gate "
+                         "or document role-gate-ok: <reason>",
+             tags=["static", "process"]),
+        Gate("ai-evidence-rules", "every AI persona carries evidence/no-fabrication rules",
+             "zero",
+             lambda: gate_count_checker(
+                 "ai-evidence-rules", "scripts/check_ai_evidence_rules.py", 0,
+             ),
+             remediation="run scripts/check_ai_evidence_rules.py; interpolate "
+                         "{_EVIDENCE_RULES} and preserve the live-data source claim",
+             tags=["static", "ai", "evidence"]),
+        Gate("ai-tool-guard",
+             "AI mutating tools cannot bypass permission and approval classification",
+             "zero",
+             lambda: gate_count_checker(
+                 "ai-tool-guard", "scripts/check_ai_tool_guard.py", 0,
+             ),
+             remediation="run scripts/check_ai_tool_guard.py; route calls through "
+                         "ToolExecutor.execute and declare mutates honestly",
+             tags=["static", "ai", "security"]),
+        Gate("ai-untrusted-content",
+             "retrieved AI context is fenced before entering system prompts",
+             "zero",
+             lambda: gate_count_checker(
+                 "ai-untrusted-content", "scripts/check_ai_untrusted_content.py", 0,
+             ),
+             remediation="run scripts/check_ai_untrusted_content.py; wrap retrieved "
+                         "content with fence_untrusted",
+             tags=["static", "ai", "security"]),
+        Gate("ai-approval-honoured",
+             "AgentRunner auto-execution honours the operator approval control",
+             "zero",
+             lambda: gate_count_checker(
+                 "ai-approval-honoured", "scripts/check_ai_approval_honoured.py", 0,
+             ),
+             remediation="run scripts/check_ai_approval_honoured.py; resolve auto_execute "
+                         "through REQUIRE_AI_APPROVAL with a fail-closed default",
+             tags=["static", "ai", "security"]),
         Gate("sidebar-links", "no persona sidebar exceeds its link budget", "ratchet",
              lambda: gate_sidebar_links(baseline.get("sidebar_links", 25)),
              remediation="run scripts/check_sidebar_links.py; trim the offending "
