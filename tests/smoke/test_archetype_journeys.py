@@ -61,7 +61,7 @@ PAGE_STATE = """() => {
 # fields. Mirror such values to console before the browser loses them; the
 # console handler below serializes every argument. This is test instrumentation,
 # installed before application scripts execute, and does not change production.
-STRUCTURED_ERROR_PROBE = """() => {
+STRUCTURED_ERROR_PROBE = """(() => {
   function describe(value) {
     const record = {type: typeof value};
     try { record.tag = Object.prototype.toString.call(value); } catch (_) {}
@@ -73,8 +73,27 @@ STRUCTURED_ERROR_PROBE = """() => {
       } catch (_) {}
     }
     try { record.properties = Object.getOwnPropertyNames(value || {}).slice(0, 30); } catch (_) {}
+    try {
+      if (value && value.el && value.el.outerHTML) {
+        record.element = String(value.el.outerHTML).slice(0, 1000);
+      }
+    } catch (_) {}
     return record;
   }
+  const nativeSetTimeout = window.setTimeout;
+  window.setTimeout = function(callback, delay, ...args) {
+    if (typeof callback !== 'function') {
+      return nativeSetTimeout.call(this, callback, delay, ...args);
+    }
+    return nativeSetTimeout.call(this, function(...callbackArgs) {
+      try {
+        return callback.apply(this, callbackArgs);
+      } catch (error) {
+        console.error('[qualification async callback error]', describe(error));
+        throw error;
+      }
+    }, delay, ...args);
+  };
   window.addEventListener('error', event => {
     console.error('[qualification uncaught error]', {
       message: event.message || '', filename: event.filename || '',
@@ -85,7 +104,7 @@ STRUCTURED_ERROR_PROBE = """() => {
   window.addEventListener('unhandledrejection', event => {
     console.error('[qualification unhandled rejection]', describe(event.reason));
   }, true);
-}"""
+})()"""
 
 
 def _format_console_error(message):

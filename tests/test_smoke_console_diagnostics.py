@@ -1,5 +1,7 @@
 """Regression tests for actionable cross-browser console diagnostics."""
 
+import pytest
+
 from tests.smoke.test_accessibility_audit import _violation_evidence
 from tests.smoke.test_archetype_journeys import (
     STRUCTURED_ERROR_PROBE,
@@ -73,3 +75,44 @@ def test_plain_uncaught_objects_are_mirrored_to_structured_console_capture():
     assert "event.filename" in STRUCTURED_ERROR_PROBE
     assert "event.lineno" in STRUCTURED_ERROR_PROBE
     assert "Object.getOwnPropertyNames" in STRUCTURED_ERROR_PROBE
+
+
+def test_timer_callback_errors_are_serialized_before_being_rethrown():
+    """An async plain-object throw must retain context before Firefox flattens it."""
+    playwright = pytest.importorskip("playwright.sync_api")
+    diagnostics = []
+    page_errors = []
+
+    with playwright.sync_playwright() as pw:
+        try:
+            browser = pw.chromium.launch(headless=True)
+        except Exception as exc:  # pragma: no cover - actionable environment failure
+            pytest.fail("Chromium is required for the diagnostic contract: %s" % exc)
+        context = browser.new_context()
+        context.add_init_script(STRUCTURED_ERROR_PROBE)
+        page = context.new_page()
+
+        def capture(message):
+            if message.type == "error":
+                diagnostics.append(_format_console_error(message))
+
+        page.on("console", capture)
+        page.on("pageerror", lambda error: page_errors.append(str(error)))
+        # Init scripts are not guaranteed to run for the browser-created initial
+        # about:blank document; navigate to a real document boundary first.
+        page.goto("data:text/html,<body>diagnostic target</body>")
+        page.evaluate("""() => setTimeout(() => {
+            throw {code: 'timer-probe', expression: 'broken()', el: document.body};
+        }, 0)""")
+        page.wait_for_timeout(100)
+        context.close()
+        browser.close()
+
+    timer_diagnostics = [
+        item for item in diagnostics if "qualification async callback error" in item
+    ]
+    assert timer_diagnostics, diagnostics
+    assert '"code": "timer-probe"' in timer_diagnostics[0]
+    assert '"expression": "broken()"' in timer_diagnostics[0]
+    assert '"element": "<body' in timer_diagnostics[0]
+    assert page_errors, "the diagnostic wrapper swallowed the original exception"
