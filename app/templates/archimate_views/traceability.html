@@ -1,7 +1,12 @@
 ﻿{% extends "layouts/admin_base.html" %}
 {% from 'components/page_header.html' import page_header %}
 
-{% block title %}Requirements Traceability{% endblock %}
+{# DEF-032, Capgemini dry-run: the browser tab title said "Requirements
+   Traceability" while the page's own H1 (page_header below) and
+   breadcrumb both say "Cross-Layer/Traceability Matrix" — a returning
+   user searching tabs, or a screen-reader user announced the title
+   before the page, saw a different name for the same page. #}
+{% block title %}Cross-Layer Traceability Matrix{% endblock %}
 
 {% block breadcrumb %}
 {% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
