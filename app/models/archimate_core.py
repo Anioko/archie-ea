@@ -403,6 +403,14 @@ class SavedDiagram(TenantMixin, db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     created_by = db.Column(db.String(100), nullable=True)
+    # DEF-007, Capgemini dry-run: nullable FK so reconcile-schema can add it to
+    # existing installs. NULL means a pre-existing row with no known owner —
+    # treated as shared/legacy, never as "owned by nobody in particular".
+    # Used to keep one user's un-named autosave draft ("Unsaved diagram — ...")
+    # out of another user's composer tab list and off their PUT autosave path;
+    # explicitly-named saved viewpoints stay visible/editable org-wide as the
+    # shared collaborative artifacts they already were.
+    created_by_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
     # QA-CMP-002: Optimistic locking — incremented on every save
     version = db.Column(db.Integer, default=1, server_default="1", nullable=False)
 

@@ -1563,6 +1563,17 @@ def api_list_saved_viewpoints():
                 SavedDiagram.solution_id.is_(None),
             )
         )
+    # DEF-007: an un-named autosave draft ("Unsaved diagram — ...") is a
+    # personal in-progress artifact, not a shared one — listing every user's
+    # drafts made them appear (and be editable) as each other's composer tabs.
+    # A named, deliberately-saved viewpoint stays visible org-wide.
+    query = query.filter(
+        db.or_(
+            ~SavedDiagram.name.like("Unsaved diagram%"),
+            SavedDiagram.created_by_id.is_(None),
+            SavedDiagram.created_by_id == current_user.id,
+        )
+    )
     query = query.order_by(SavedDiagram.updated_at.desc())
     viewpoints = query.all()
 
@@ -1812,6 +1823,7 @@ def api_create_saved_viewpoint():
         viewpoint_type=data.get("viewpoint_type"),
         solution_id=data.get("solution_id"),
         description=desc,
+        created_by_id=current_user.id if current_user.is_authenticated else None,
     )
     db.session.add(vp)
     db.session.flush()
@@ -2128,6 +2140,19 @@ def api_update_saved_viewpoint(vp_id):
     vp = _get_saved_diagram_scoped(vp_id)
     if not vp:
         return jsonify({"error": "Diagram not found"}), 404
+
+    # DEF-007: a draft belongs to the user who created it — this is the exact
+    # path that let one user's autosave PUT overwrite another user's unsaved
+    # diagram once their client held a stale currentSavedVpId for it. A
+    # deliberately-named save stays collaboratively editable, matching the
+    # list endpoint's "named viewpoints are shared" rule above.
+    if (
+        vp.name
+        and vp.name.startswith("Unsaved diagram")
+        and vp.created_by_id is not None
+        and vp.created_by_id != current_user.id
+    ):
+        return jsonify({"error": "This draft belongs to another user"}), 403
 
     # CMP-025: RBAC check
     _check_solution_access(vp.solution_id)
