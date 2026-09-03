@@ -61,7 +61,7 @@ echo "  pg_restore exit=$restore_rc, $errs error line(s) (see restore-drill-$TS.
 
 say "4. comparing the restored copy against live"
 mismatch=0
-for t in $(psqlx "SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename" | head -400); do
+while IFS= read -r t; do
     live=$(psqlx "SELECT count(*) FROM \"$t\"" "$DB" 2>/dev/null || echo skip)
     [ "$live" = "skip" ] && continue
     copy=$(psqlx "SELECT count(*) FROM \"$t\"" "$SCRATCH" 2>/dev/null || echo missing)
@@ -69,7 +69,7 @@ for t in $(psqlx "SELECT tablename FROM pg_tables WHERE schemaname='public' ORDE
         printf '  MISMATCH %-42s live=%s restored=%s\n' "$t" "$live" "$copy"
         mismatch=$((mismatch+1))
     fi
-done
+done < <(psqlx "SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename")
 live_tables=$(psqlx "SELECT count(*) FROM pg_tables WHERE schemaname='public'" "$DB")
 copy_tables=$(psqlx "SELECT count(*) FROM pg_tables WHERE schemaname='public'" "$SCRATCH")
 echo "  tables: live=$live_tables restored=$copy_tables"
