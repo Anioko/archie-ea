@@ -254,9 +254,14 @@
                                setStatus(id, undefined) shipped a PATCH body
                                with no status key at all. The route still
                                replied 200 (nothing to update), which read as
-                               "Resolve did nothing" with no error anywhere. #}
+                               "Resolve did nothing" with no error anywhere.
+                               |tojson emits double-quoted JSON, which broke
+                               this double-quoted HTML attribute the first
+                               time (closed it early) — single-quote the
+                               attribute instead, per this codebase's
+                               established fix for that exact class of bug. #}
                             <button type="button"
-                                    @click="setStatus({{ item.id }}, {{ ('resolved' if item.status.value == 'open' else 'closed')|tojson }})"
+                                    @click='setStatus({{ item.id }}, {{ ("resolved" if item.status.value == "open" else "closed")|tojson }})'
                                     :disabled="updatingId === {{ item.id }}"
                                     class="inline-flex items-center rounded-md border border-input bg-background px-2 py-1 text-xs font-medium hover:bg-accent hover:text-accent-foreground disabled:opacity-50">
                                 {{ 'Resolve' if item.status.value == 'open' else 'Close' }}
