@@ -86,3 +86,10 @@ def test_the_slot_exists_and_announces_itself():
     assert 'aria-busy="true"' in tpl, (
         "a panel that populates asynchronously must announce that it is loading"
     )
+
+
+def test_expertise_chips_use_contrast_safe_tint_tokens():
+    """Normal-size blue chip text must clear WCAG AA in both themes."""
+    js = _panels()
+    assert "bg-info/10 text-info-emphasis" in js
+    assert "bg-primary/10 text-primary rounded-full" not in js

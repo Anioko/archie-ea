@@ -1,7 +1,11 @@
 """Regression tests for actionable cross-browser console diagnostics."""
 
 from tests.smoke.test_accessibility_audit import _violation_evidence
-from tests.smoke.test_archetype_journeys import _format_console_error
+from tests.smoke.test_archetype_journeys import (
+    STRUCTURED_ERROR_PROBE,
+    _format_console_error,
+    _format_page_error,
+)
 
 
 class _Handle:
@@ -46,3 +50,23 @@ def test_accessibility_violation_preserves_affected_selectors():
         "count": 2,
         "targets": ["#model-select", ".chat-status > span"],
     }
+
+
+class _PageError:
+    name = "Error"
+    message = "Object"
+    stack = "Object@http://127.0.0.1/static/js/dashboard.js:123:9"
+
+
+def test_page_error_preserves_stack_when_message_is_opaque():
+    diagnostic = _format_page_error(_PageError())
+
+    assert "Object" in diagnostic
+    assert "dashboard.js:123:9" in diagnostic
+
+
+def test_plain_uncaught_objects_are_mirrored_to_structured_console_capture():
+    assert "unhandledrejection" in STRUCTURED_ERROR_PROBE
+    assert "event.error" in STRUCTURED_ERROR_PROBE
+    assert "event.reason" in STRUCTURED_ERROR_PROBE
+    assert "console.error" in STRUCTURED_ERROR_PROBE

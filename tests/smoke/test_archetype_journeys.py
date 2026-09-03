@@ -56,6 +56,22 @@ PAGE_STATE = """() => {
   };
 }"""
 
+# Firefox reports a plain object thrown from page code as the literal word
+# ``Object`` through Playwright's pageerror event and discards the object's
+# fields. Mirror such values to console before the browser loses them; the
+# console handler below serializes every argument. This is test instrumentation,
+# installed before application scripts execute, and does not change production.
+STRUCTURED_ERROR_PROBE = """() => {
+  function mirror(value, channel) {
+    if (value && typeof value === 'object' && !(value instanceof Error)) {
+      console.error('[qualification uncaught ' + channel + ' object]', value);
+    }
+  }
+  window.addEventListener('error', event => mirror(event.error, 'error'), true);
+  window.addEventListener(
+      'unhandledrejection', event => mirror(event.reason, 'unhandledrejection'), true);
+}"""
+
 
 def _format_console_error(message):
     """Preserve structured console arguments and their source across engines.
@@ -82,6 +98,21 @@ def _format_console_error(message):
             location.get("lineNumber", "?"), location.get("columnNumber", "?"))
         return "%s [%s]" % (detail, source)
     return detail
+
+
+def _format_page_error(error):
+    """Retain an exception stack when an engine supplies an opaque message."""
+    name = getattr(error, "name", "") or "PageError"
+    message = getattr(error, "message", "") or str(error)
+    stack = getattr(error, "stack", "") or ""
+    first_useful_frame = ""
+    for line in str(stack).splitlines():
+        if line.strip() and line.strip() != message:
+            first_useful_frame = line.strip()
+            break
+    if first_useful_frame:
+        return "%s: %s [%s]" % (name, message, first_useful_frame)
+    return "%s: %s" % (name, message)
 
 
 def _login(page, base, email):
@@ -136,6 +167,7 @@ def page(browser, request):
     ctx = browser.new_context(viewport={"width": width, "height": 900})
     ctx.set_default_timeout(PAGE_TIMEOUT)
     ctx.set_default_navigation_timeout(PAGE_TIMEOUT)
+    ctx.add_init_script(STRUCTURED_ERROR_PROBE)
     pg = ctx.new_page()
     pg.console_errors = []
     pg.page_errors = []
@@ -147,7 +179,7 @@ def page(browser, request):
     # function it defined is never declared — is NOT delivered as a console
     # event. Every page in the product was throwing
     # "drawerFocusTrap is not defined" on load and this suite saw none of it.
-    pg.on("pageerror", lambda e: pg.page_errors.append(str(e)))
+    pg.on("pageerror", lambda e: pg.page_errors.append(_format_page_error(e)))
     yield pg
     ctx.close()
 

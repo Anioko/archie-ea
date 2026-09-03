@@ -188,10 +188,10 @@
       "area": "accessibility",
       "severity": "high",
       "title": "Linux Chromium reports four serious AI-chat color-contrast failures",
-      "status": "investigating",
+      "status": "ready_for_retest",
       "original_evidence": "Exact-SHA CI run 33804483255: main Chromium completed 155 tests but failed both accessibility ratchets because /ai-chat introduced color-contrast (serious) on four elements. The same eight-page axe audit passed locally on Windows Chromium, establishing a platform/font-rendering-sensitive result rather than a universally reproducible selector.",
       "required_fix": "Capture the exact axe target selectors in CI, correct every affected AI-chat foreground/background token to meet WCAG 2.1 AA under Linux Chromium, and rerun the complete browser matrix on one final SHA.",
-      "retest_evidence": "The accessibility harness now preserves affected selectors; its unit contract and the local eight-page Chromium audit pass. Linux CI selector evidence and remediation are pending.",
+      "retest_evidence": "Static source and token analysis identified the default enterprise architect's exactly four Expertise Areas chips as the four-for-four match: `bg-primary/10 text-primary` computes at approximately 4.26:1 in its nested tint on Linux, below WCAG AA. The implementation now uses DESIGN.md's required `bg-info/10 text-info-emphasis` pairing (approximately 6.14:1), protected by a failing-before/passing-after regression. The local eight-page Chromium audit passes; final Linux CI remains authoritative.",
       "closure_tests": [
         "tests/test_smoke_console_diagnostics.py::test_accessibility_violation_preserves_affected_selectors",
         "tests/smoke/test_accessibility_audit.py on Linux Chromium",
@@ -204,9 +204,9 @@
       "severity": "medium",
       "title": "Firefox console diagnostics collapsed structured errors to the word Object",
       "status": "verified_local",
-      "original_evidence": "Exact-SHA Firefox job in CI run 33804483255 failed the 320px motivation repository check with only `Motivation repository raised JavaScript errors: ['Object']`, losing the structured console arguments and source location needed for root-cause analysis.",
-      "required_fix": "Serialize every console argument and include its source file, line and column consistently across browser engines.",
-      "retest_evidence": "Diagnostic contract passes and the complete local Firefox compatibility slice passed 56/56 after instrumentation. Final Linux Firefox CI remains required because the original intermittent error did not reproduce locally.",
+      "original_evidence": "Exact-SHA Firefox job in CI run 33804483255 failed the 320px motivation repository check with only `Motivation repository raised JavaScript errors: ['Object']`. Diagnostic run 33807384189 reproduced the same opaque plain-object page error at 768px, proving it arrived through Playwright's pageerror channel rather than console and still lost the thrown object's fields.",
+      "required_fix": "Serialize every console argument with source location, preserve page-error stacks, and install a pre-page error/unhandled-rejection probe that mirrors plain uncaught objects to structured console capture before Firefox discards their fields.",
+      "retest_evidence": "Four diagnostic contracts pass, including uncaught-object probe and page-error stack behavior; the exact Firefox 768px checkpoint passes locally with the probe installed. Final Linux Firefox CI must expose the underlying object or pass cleanly.",
       "closure_tests": [
         "tests/test_smoke_console_diagnostics.py::test_console_object_is_serialized_with_source_location",
         "Complete final Firefox compatibility job"

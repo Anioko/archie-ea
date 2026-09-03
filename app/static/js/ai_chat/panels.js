@@ -47,7 +47,7 @@
                 <div class="mt-4 p-3 bg-muted/50 rounded-lg">
                     <h4 class="font-medium text-xs mb-2">Expertise Areas</h4>
                     <div class="flex flex-wrap gap-1">
-                        ${(config.expertise || []).map(e => `<span class="text-xs px-2 py-0.5 bg-primary/10 text-primary rounded-full">${e}</span>`).join('')}
+                        ${(config.expertise || []).map(e => `<span class="text-xs px-2 py-0.5 bg-info/10 text-info-emphasis rounded-full">${e}</span>`).join('')}
                     </div>
                 </div>
             `;
