@@ -84,8 +84,20 @@ Roles are not job titles here: a role **is** its family of gates, and
 [`docs/DELIVERY_CONTRACT.md`](docs/DELIVERY_CONTRACT.md) holds the map from each
 role to the gates enforcing it, alongside the two rules that bind every agent
 (a behavioural change carries its measurement; a gate carries its proof). A role
-with a zero in that table is being claimed, not played — the
-`role-gate-coverage` gate ratchets that count so it cannot grow.
+with a zero in that table is being claimed, not played — `scripts/
+check_role_gate_coverage.py` measures that count.
+
+**Corrected 3 Sep 2026 — this was previously written as enforced and is not.**
+`check_role_gate_coverage.py` exists and is exercised by
+`tests/test_gates_actually_fail.py` (a meta-test that the checker itself can
+detect a regression), but it is **not** registered in `scripts/verify.py`'s
+`build_gates()` and does not run as part of `python scripts/verify.py`, CI's
+static job, or any other gate list checked while auditing this file. Nothing
+currently stops the role-to-gate table in `DELIVERY_CONTRACT.md` from drifting
+the same way this file's own gate table just had to be corrected. Wiring the
+checker in as a registered gate is a `scripts/`-only change — exempt from the
+evidence-contract's trailer requirement per `DELIVERY_CONTRACT.md` itself —
+and is still open.
 
 This explicitly covers **destructive data operations** when they are the correct
 remediation — deduplication, purging corrupt rows, dropping invalid
@@ -254,12 +266,14 @@ skipping.
 
 Several gates are **ratchets**: they compare a measurement against
 `verification_baseline.json` and fail when it gets worse, so the gate is "no worse",
-not "clean". Only two carry real debt now — **88** raw-Tailwind-colour uses
-(`design_tokens`) and **98** raw-SQL statements on tenant tables with no org predicate
-(`raw_sql_tenancy`). `undefined_names`, `redefinitions`, `lint_core` and `air_gap` are
-all at **0**: treat those four as must-be-clean gates that happen to be implemented as
-ratchets. Lowering a baseline is routine — `python scripts/verify.py --update-baseline`
-after a cleanup. Raising one is a regression that must be justified in review.
+not "clean". **Corrected 3 Sep 2026** — this section previously said `design_tokens`
+and `raw_sql_tenancy` carried 88 and 98 of real debt; both measured **0** on the
+candidate SHA checked at correction time (`2f7fdc5c`), and the gate count below had
+drifted from 19 to the 44 gates actually registered in `build_gates()`. Neither
+number nor the table is re-verified by this file automatically — re-measure before
+trusting either. Lowering a baseline is routine — `python scripts/verify.py
+--update-baseline` after a cleanup. Raising one is a regression that must be
+justified in review.
 
 **Read the numbers from `verification_baseline.json`, not from here.** This file is
 prose and drifts; the JSON is what the gate enforces. Note also that `design_tokens`
@@ -268,7 +282,9 @@ counts only the families in `BANNED_FAMILIES` (`scripts/check_design_tokens.py`)
 `orange` or `cyan` class is right per DESIGN.md but moves this number by zero, and a
 line carrying a `token-migration-ok` marker is already excluded from the count.
 
-All 19 gates, in registry order (`scripts/verify.py`, `build_gates`):
+**All 44 gates, in registry order (`scripts/verify.py`, `build_gates`) — this table
+is a snapshot, not generated. Run `grep -oE '^\s*Gate\("[a-z-]+"' scripts/verify.py`
+to reconfirm the count before trusting it:**
 
 | Gate | Catches | Kind |
 |---|---|---|
@@ -277,23 +293,52 @@ All 19 gates, in registry order (`scripts/verify.py`, `build_gates`):
 | `undefined-names` | runtime `NameError` (ruff F821) | ratchet @ 0 |
 | `redefinitions` | shadowed definitions (ruff F811) | ratchet @ 0 |
 | `lint-core` | correctness lint (ruff `F,E4,E7,E9`) | ratchet @ 0 |
-| `design-tokens` | raw Tailwind colours (DESIGN.md rule) | ratchet @ 88 |
+| `design-tokens` | raw Tailwind colours (DESIGN.md rule) | ratchet @ 0 |
+| `raw-fetch-sites` | `fetch()` bypassing `Platform.fetch` | ratchet @ 0 |
+| `design-tokens-extended` | raw colours outside the core banned families | ratchet @ 0 |
+| `shell-conformance` | a page off the platform shell (header macro/width) | ratchet @ 3 |
+| `nav-coverage` | business-architecture output missing from every sidebar | ratchet @ 0 |
 | `air-gap` | a UI asset loaded from a public CDN | ratchet @ 0 |
-| `raw-sql-tenancy` | raw SQL on a tenant table with no `organization_id` predicate | ratchet @ 98 |
+| `raw-sql-tenancy` | raw SQL on a tenant table with no `organization_id` predicate | ratchet @ 0 |
+| `tenant-scoping` | ORM queries on a tenant-owned-but-unmixed model with no org predicate | ratchet @ 0 |
+| `llm-boundary` | a codegen emitter calling an LLM directly | ratchet @ 0 |
+| `sidebar-links` | a persona sidebar exceeding its link budget | ratchet @ 27 |
 | `template-syntax` | a Jinja template that does not parse (500s every page using it) | must be 0 |
 | `template-references` | an `include`/`extends` target that does not exist (TemplateNotFound at render) | must be 0 |
+| `broken-surfaces` | a front-end target that resolves to no real route | ratchet, boot-only |
+| `dynamic-link-prefixes` | a concatenated href/fetch whose literal prefix is a dead route | ratchet @ 0, boot-only |
+| `fetch-guards` | a `fetch()` parsed without checking the response | ratchet @ 0 |
+| `ui-contract` | a native dialog / `onclick=` / typeless button / arbitrary `px` (DESIGN.md) | ratchet @ 0 |
+| `error-signalling` | an API error path that answers `200` | must be 0 |
+| `silent-data` | a server failure returned to the caller as data | must be 0 |
+| `dead-interactions` | a control that silently does nothing | must be 0 |
+| `macro-import-context` | a script-bearing macro imported without `with context` | must be 0 |
+| `asset-urls` | a doubled `?` asset URL, or a stylesheet/script included twice | must be 0 |
+| `qa-register` | an open finding in the QA remediation register | must be 0 |
+| `null-filters` | `default()` feeding a `len()`-calling filter without the boolean arg | must be 0 |
 | `fabricated-data` | invented data reaching the UI (see below) | must be 0 |
-| `deployed-deps` | installed packages below the pinned floors | must be 0 |
+| `breadcrumb-coverage` | a routed page with a header but no breadcrumb | must be 0 |
+| `stale-models` | a retired LLM model id (404s in prod) in shipped code | must be 0 |
+| `deployed-deps` | installed packages below the pinned floors | must be 0 (boot-health job only) |
+| `js-build` | committed `js/bundles/*.js` stale vs a rebuild | must pass |
+| `console-reporting` | `console.*` calls in shipped JS/templates | ratchet @ 0 |
+| `js-syntax` | shipped JS that fails to parse in a real engine | must pass |
 | `css-build` | committed `tailwind-output.css` stale vs a rebuild | must pass (needs Tailwind CLI) |
 | `sri` | `integrity=` hash not matching the file it guards | must be 0 |
 | `vendor-integrity` | a vendored asset not matching `VENDOR_MANIFEST.txt` | must pass |
-| `dependency-cves` | known CVEs in shipped dependencies (`pip-audit`) | must be 0 |
+| `dependency-cves` | known CVEs in shipped dependencies (`pip-audit`) | ratchet |
 | `boot-health` | unregistered blueprints; unresolved `url_for` | must pass |
+| `csrf-coverage` | a write route with no CSRF protection or justified opt-out | must pass |
 | `schema-drift` | ORM/database column drift | must pass (needs DB) |
 | `tests` | behavioural regression | must pass (needs DB) |
+| `nav-verified` | a new sidebar route with no test loading it | ratchet @ 0, carries no tags |
 
 Per-line escape hatches, each of which makes the exception reviewable rather than
-silent: `fabricated-ok: <reason>`, `air-gap-ok`, `tenancy-ok: <reason>`.
+silent — every one greppable as `<name>-ok` in `scripts/verify.py`/`scripts/check_*.py`:
+`fabricated-ok`, `air-gap-ok`, `tenancy-ok`, `tenant-scoping-ok`, `llm-boundary-ok`,
+`raw-fetch-ok`, `shell-ok`, `breadcrumb-ok`, `stale-model-ok`, `error-signalling-ok`,
+`silent-data-ok`, `ui-contract-ok`, `fetch-guard-ok`, `token-migration-ok`
+(design-tokens only), each taking `: <reason>` where the gate requires one.
 
 `pre-commit install` gives the same feedback at commit time on changed files only.
 Rationale for the whole design — and why compiler/type-checker enforcement was
