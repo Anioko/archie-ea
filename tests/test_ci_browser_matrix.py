@@ -35,3 +35,12 @@ def test_ci_fails_when_required_browser_is_missing_and_retains_evidence():
     assert "--junitxml=" in workflow
     assert "retention-days: 30" in workflow
     assert "${{ github.sha }}" in workflow
+
+
+def test_non_smoke_job_installs_chromium_for_collected_csp_browser_tests():
+    workflow = _workflow()
+    tests_job = workflow.split("\n  tests:\n", 1)[1].split(
+        "\n  db-gates:\n", 1
+    )[0]
+
+    assert "playwright install --with-deps chromium" in tests_job

@@ -4,11 +4,15 @@
 {% block title %}Governance Gates{% endblock %}
 
 {% block content %}
-<div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8" x-data="governanceGates()">
+<div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8"
+     data-governance-mode="{{ 'manage' if can_manage_governance_gates else 'read-only' }}"
+     x-data="governanceGates()">
 
     {{ page_header(
         title='Governance Gates',
-        description='Configure hard gates that block solution progression until completeness thresholds are met.',
+        description=('Configure hard gates that block solution progression until completeness thresholds are met.'
+                     if can_manage_governance_gates else
+                     'Review the hard gates that block solution progression until completeness thresholds are met.'),
         breadcrumbs=[
             {'label': 'Admin', 'href': url_for('admin.index')},
             {'label': 'Governance Gates'}
@@ -29,6 +33,7 @@
             DB-configured gates override system defaults.
             <span x-show="dbGates.length === 0" x-cloak>No overrides — system defaults are active.</span>
         </p>
+        {% if can_manage_governance_gates %}
         <button
             type="button"
             @click="openCreate()"
@@ -36,6 +41,7 @@
             <i data-lucide="plus" class="h-4 w-4"></i>
             Add Gate
         </button>
+        {% endif %}
     </div>
 
     <!-- System Defaults section -->
@@ -103,11 +109,13 @@
              class="rounded-xl border border-dashed p-8 text-center text-muted-foreground">
             <i data-lucide="shield-off" class="h-8 w-8 mx-auto mb-3 opacity-40"></i>
             <p class="text-sm">No configured overrides. System defaults are active.</p>
+            {% if can_manage_governance_gates %}
             <button type="button" @click="openCreate()"
                     class="mt-3 inline-flex items-center gap-1.5 text-sm text-primary hover:underline">
                 <i data-lucide="plus" class="h-3.5 w-3.5"></i>
                 Add your first gate
             </button>
+            {% endif %}
         </div>
 
         <!-- Gates table -->
@@ -119,7 +127,7 @@
                         <th class="text-left px-4 py-3 font-medium text-muted-foreground">Completeness</th>
                         <th class="text-left px-4 py-3 font-medium text-muted-foreground">Sections</th>
                         <th class="text-left px-4 py-3 font-medium text-muted-foreground">Status</th>
-                        <th class="text-right px-4 py-3 font-medium text-muted-foreground">Actions</th>
+                        {% if can_manage_governance_gates %}<th class="text-right px-4 py-3 font-medium text-muted-foreground">Actions</th>{% endif %}
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-border">
@@ -147,6 +155,7 @@
                                     <span x-text="gate.enabled ? 'Enabled' : 'Disabled'"></span>
                                 </span>
                             </td>
+                            {% if can_manage_governance_gates %}
                             <td class="px-4 py-3 text-right">
                                 <div class="flex items-center justify-end gap-1">
                                     <button type="button"
@@ -165,6 +174,7 @@
                                     </button>
                                 </div>
                             </td>
+                            {% endif %}
                         </tr>
                     </template>
                 </tbody>
@@ -172,6 +182,7 @@
         </div>
     </div>
 
+    {% if can_manage_governance_gates %}
     <!-- Create / Edit Modal -->
     <div x-show="showModal" x-cloak
          class="fixed inset-0 z-50"
@@ -326,6 +337,7 @@
             </div>
         </div>
     </div>
+    {% endif %}
 
 </div>
 

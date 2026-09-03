@@ -70,3 +70,6 @@ def test_plain_uncaught_objects_are_mirrored_to_structured_console_capture():
     assert "event.error" in STRUCTURED_ERROR_PROBE
     assert "event.reason" in STRUCTURED_ERROR_PROBE
     assert "console.error" in STRUCTURED_ERROR_PROBE
+    assert "event.filename" in STRUCTURED_ERROR_PROBE
+    assert "event.lineno" in STRUCTURED_ERROR_PROBE
+    assert "Object.getOwnPropertyNames" in STRUCTURED_ERROR_PROBE

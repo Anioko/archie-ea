@@ -662,7 +662,7 @@ _MY_WORK_LINKS = {
               "unified_low_priority.policy_monitoring_dashboard", "shield-alert"),
         # Security architects have read-only access to the page and list API;
         # mutation endpoints remain ADMINISTER-only.
-        _link("Governance Gates", "admin.governance_gates", "shield-check", requires="admin"),
+        _link("Governance Gates", "admin.governance_gates", "shield-check"),
         _link("Risk Register", "risk.risk_register", "alert-triangle"),
         # G6 (register close, 1 Sep 2026): was procurement.compliance_dashboard,
         # which is the LICENSE-compliance page and is guarded by

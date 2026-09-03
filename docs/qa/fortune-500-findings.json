@@ -188,10 +188,10 @@
       "area": "accessibility",
       "severity": "high",
       "title": "Linux Chromium reports four serious AI-chat color-contrast failures",
-      "status": "ready_for_retest",
+      "status": "verified_ci",
       "original_evidence": "Exact-SHA CI run 33804483255: main Chromium completed 155 tests but failed both accessibility ratchets because /ai-chat introduced color-contrast (serious) on four elements. The same eight-page axe audit passed locally on Windows Chromium, establishing a platform/font-rendering-sensitive result rather than a universally reproducible selector.",
       "required_fix": "Capture the exact axe target selectors in CI, correct every affected AI-chat foreground/background token to meet WCAG 2.1 AA under Linux Chromium, and rerun the complete browser matrix on one final SHA.",
-      "retest_evidence": "Static source and token analysis identified the default enterprise architect's exactly four Expertise Areas chips as the four-for-four match: `bg-primary/10 text-primary` computes at approximately 4.26:1 in its nested tint on Linux, below WCAG AA. The implementation now uses DESIGN.md's required `bg-info/10 text-info-emphasis` pairing (approximately 6.14:1), protected by a failing-before/passing-after regression. The local eight-page Chromium audit passes; final Linux CI remains authoritative.",
+      "retest_evidence": "Static source and token analysis identified the default enterprise architect's exactly four Expertise Areas chips as the four-for-four match: `bg-primary/10 text-primary` computes at approximately 4.26:1 in its nested tint on Linux, below WCAG AA. The implementation now uses DESIGN.md's required `bg-info/10 text-info-emphasis` pairing (approximately 6.14:1), protected by a failing-before/passing-after regression. The local eight-page Chromium audit passes. Exact-SHA Linux CI run 33808606132 at commit 774b47be8ac83f5ec7c02885fbd2478a50d31783 completed the main Chromium browser job green, including both accessibility ratchets; this closes the automated Linux contrast finding. Manual assistive-technology evidence remains separately open under F500-005.",
       "closure_tests": [
         "tests/test_smoke_console_diagnostics.py::test_accessibility_violation_preserves_affected_selectors",
         "tests/smoke/test_accessibility_audit.py on Linux Chromium",
@@ -203,13 +203,58 @@
       "area": "browser_harness",
       "severity": "medium",
       "title": "Firefox console diagnostics collapsed structured errors to the word Object",
-      "status": "verified_local",
+      "status": "ready_for_retest",
       "original_evidence": "Exact-SHA Firefox job in CI run 33804483255 failed the 320px motivation repository check with only `Motivation repository raised JavaScript errors: ['Object']`. Diagnostic run 33807384189 reproduced the same opaque plain-object page error at 768px, proving it arrived through Playwright's pageerror channel rather than console and still lost the thrown object's fields.",
-      "required_fix": "Serialize every console argument with source location, preserve page-error stacks, and install a pre-page error/unhandled-rejection probe that mirrors plain uncaught objects to structured console capture before Firefox discards their fields.",
-      "retest_evidence": "Four diagnostic contracts pass, including uncaught-object probe and page-error stack behavior; the exact Firefox 768px checkpoint passes locally with the probe installed. Final Linux Firefox CI must expose the underlying object or pass cleanly.",
+      "required_fix": "Serialize every console argument with source location, preserve page-error stacks, and install a pre-page error/unhandled-rejection probe that copies every exception into a fresh serializable diagnostic record before Firefox discards its fields.",
+      "retest_evidence": "Exact-SHA run 33808606132 again failed Linux Firefox with three opaque Object page errors, while its Chromium and WebKit jobs passed. The next diagnostic revision records event message, filename, line/column, constructor, tag, name, message, stack, code, Alpine expression and own properties for every error/rejection. Four diagnostic contracts pass locally, and the full local Firefox command previously passed 56/56; a fresh Linux run is required to attribute or clear the race.",
       "closure_tests": [
         "tests/test_smoke_console_diagnostics.py::test_console_object_is_serialized_with_source_location",
         "Complete final Firefox compatibility job"
+      ]
+    },
+    {
+      "id": "F500-016",
+      "area": "authorization_and_test_integrity",
+      "severity": "high",
+      "title": "Full CI exposed broken persona authorization evidence and a navigation false positive",
+      "status": "verified_local",
+      "original_evidence": "Exact-SHA CI run 33804483255: two platform-admin journey tests could not build URLs without a request context; the security-architect journey expected Governance Gates but the admin-only route returned 403; and the API-settings navigation test matched a URL embedded in JavaScript rather than a rendered link.",
+      "required_fix": "Build journey URLs under a request context, give security architects explicit read-only Governance Gates page/list access while preserving administrator-only mutations, hide mutation controls from readers, and assert navigation against rendered href attributes.",
+      "retest_evidence": "3 Sep 2026: the combined root-owned qualification cohort passed 26/26, including both platform-admin tests, six security/data-architect journeys, five navigation authorization cases, and the new read-only/mutation-denial regression. Static verification passed 42/42 with zero skips. Final PostgreSQL 16 CI remains authoritative.",
+      "closure_tests": [
+        "tests/journeys/test_journey_platform_admin.py",
+        "tests/journeys/test_journey_security_and_data_architect.py",
+        "tests/test_admin_nav_offers_only_permitted_links.py",
+        "Full non-smoke CI suite on final SHA"
+      ]
+    },
+    {
+      "id": "F500-017",
+      "area": "test_environment",
+      "severity": "medium",
+      "title": "SSE production-header contract depended on an undeclared test server",
+      "status": "verified_local",
+      "original_evidence": "Exact-SHA CI run 33804483255: tests/test_sse_headers.py failed during collection because Waitress was not installed by the tests job.",
+      "required_fix": "Declare the server used by the cross-server WSGI header contract as a test-only dependency; keep the production runtime on Gunicorn.",
+      "retest_evidence": "3 Sep 2026: dependency resolution selected Waitress 3.0.2 and tests/test_sse_headers.py passed 2/2 inside the 26-test combined root retest.",
+      "closure_tests": [
+        "tests/test_sse_headers.py",
+        "Full non-smoke CI suite on final SHA"
+      ]
+    },
+    {
+      "id": "F500-018",
+      "area": "skip_hygiene",
+      "severity": "high",
+      "title": "Four applicable CSP browser tests skipped in the main CI suite",
+      "status": "verified_local",
+      "original_evidence": "Exact-SHA CI run 33804483255: all four tests/csp/test_csp_evaluator.py browser assertions skipped because the non-smoke tests job installed the Playwright package but no Chromium binary.",
+      "required_fix": "Install Chromium in the non-smoke tests job and retain a workflow contract proving that the collected CSP browser checks have their required runtime.",
+      "retest_evidence": "3 Sep 2026: tests/csp/test_csp_evaluator.py passed 4/4 against the explicit isolated PostgreSQL database; the CI workflow contract passed; combined root retest passed 26/26 with no skips; static verification passed 42/42 with no skips. Final Linux CI remains authoritative.",
+      "closure_tests": [
+        "tests/csp/test_csp_evaluator.py with zero skips",
+        "tests/test_ci_browser_matrix.py::test_non_smoke_job_installs_chromium_for_collected_csp_browser_tests",
+        "Full non-smoke CI suite on final SHA with zero applicable skips"
       ]
     }
   ]

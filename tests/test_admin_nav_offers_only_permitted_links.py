@@ -24,10 +24,15 @@ direction by breaking the other.
 from __future__ import annotations
 
 import uuid
+import re
 
 import pytest
 
 pytestmark = pytest.mark.usefixtures("db_session")
+
+
+def _rendered_hrefs(response):
+    return set(re.findall(r'href="([^"]+)"', response.get_data(as_text=True)))
 
 
 def _make_admin(db_session, make_org, *, org_admin: bool, platform_admin: bool):
@@ -82,7 +87,7 @@ def test_link_is_absent_when_the_guard_would_refuse(
 
     index = client.get("/admin/")
     assert index.status_code == 200, index.get_data(as_text=True)[:400]
-    assert href not in index.get_data(as_text=True), (
+    assert href not in _rendered_hrefs(index), (
         f"/admin/ offers {href} to a user the route will 403"
     )
 
@@ -105,7 +110,7 @@ def test_link_is_present_when_the_guard_would_admit(
 
     index = client.get("/admin/")
     assert index.status_code == 200, index.get_data(as_text=True)[:400]
-    assert href in index.get_data(as_text=True), (
+    assert href in _rendered_hrefs(index), (
         f"/admin/ hides {href} from a user the route will admit"
     )
     assert client.get(href).status_code != 403
@@ -119,8 +124,6 @@ def test_no_admin_index_link_answers_403(app, db_session, make_org, client, logi
     later behind a narrower guard fails here without anyone remembering to
     extend GUARDED.
     """
-    import re
-
     user = _make_admin(db_session, make_org, org_admin=False, platform_admin=False)
     login_as(client, user)
 

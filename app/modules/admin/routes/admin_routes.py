@@ -50,8 +50,8 @@ from ..forms.admin_forms import (
     NewUserForm,
 )
 from app.modules.account.forms.account_forms import CreatePasswordForm
-from app.decorators import admin_required, audit_log
-from app.models import APISettings, EditableHTML, Role, User
+from app.decorators import admin_required, audit_log, governance_gate_reader_required
+from app.models import APISettings, EditableHTML, Permission, Role, User
 from app.models.organization import Organization
 from app.models.feature_flags import FeatureFlag, FeatureState, FeatureType
 from app.services.llm_service import test_api_key
@@ -1616,7 +1616,7 @@ def abacus_stats():
 
 @admin_bp.route("/governance-gates")
 @login_required
-@admin_required
+@governance_gate_reader_required
 def governance_gates():
     """Governance gates configuration page."""
     from app.modules.solutions_strategic.v2.services.governance_gate_service import (
@@ -1626,12 +1626,13 @@ def governance_gates():
     return render_template(
         "admin/governance_gates.html",
         default_gates=DEFAULT_GATES,
+        can_manage_governance_gates=current_user.can(Permission.ADMINISTER),
     )
 
 
 @admin_bp.route("/api/governance-gates", methods=["GET"])
 @login_required
-@admin_required
+@governance_gate_reader_required
 def governance_gates_list():
     """List all governance gates from DB."""
     from app.models.governance_gates import GovernanceGate

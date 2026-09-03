@@ -28,6 +28,22 @@ def admin_required(f):
     return permission_required(Permission.ADMINISTER)(f)
 
 
+def governance_gate_reader_required(f):
+    """Allow gate-policy readers without granting configuration authority."""
+
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        may_administer = current_user.can(Permission.ADMINISTER)
+        is_security_architect = (
+            getattr(current_user, "enterprise_role", None) == "security_architect"
+        )
+        if not (may_administer or is_security_architect):
+            abort(403)
+        return f(*args, **kwargs)
+
+    return decorated_function
+
+
 def require_auth(f):
     """Require user authentication"""
 

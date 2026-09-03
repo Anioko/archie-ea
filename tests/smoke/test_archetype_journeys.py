@@ -62,14 +62,29 @@ PAGE_STATE = """() => {
 # console handler below serializes every argument. This is test instrumentation,
 # installed before application scripts execute, and does not change production.
 STRUCTURED_ERROR_PROBE = """() => {
-  function mirror(value, channel) {
-    if (value && typeof value === 'object' && !(value instanceof Error)) {
-      console.error('[qualification uncaught ' + channel + ' object]', value);
+  function describe(value) {
+    const record = {type: typeof value};
+    try { record.tag = Object.prototype.toString.call(value); } catch (_) {}
+    try { record.constructor = value && value.constructor && value.constructor.name; } catch (_) {}
+    for (const field of ['name', 'message', 'stack', 'code', 'expression']) {
+      try {
+        const fieldValue = value && value[field];
+        if (fieldValue !== undefined) record[field] = String(fieldValue).slice(0, 2000);
+      } catch (_) {}
     }
+    try { record.properties = Object.getOwnPropertyNames(value || {}).slice(0, 30); } catch (_) {}
+    return record;
   }
-  window.addEventListener('error', event => mirror(event.error, 'error'), true);
-  window.addEventListener(
-      'unhandledrejection', event => mirror(event.reason, 'unhandledrejection'), true);
+  window.addEventListener('error', event => {
+    console.error('[qualification uncaught error]', {
+      message: event.message || '', filename: event.filename || '',
+      line: event.lineno || 0, column: event.colno || 0,
+      value: describe(event.error)
+    });
+  }, true);
+  window.addEventListener('unhandledrejection', event => {
+    console.error('[qualification unhandled rejection]', describe(event.reason));
+  }, true);
 }"""
 
 

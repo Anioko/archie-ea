@@ -43,8 +43,9 @@ def test_platform_admin_can_change_another_users_enterprise_role(app, client):
 
     login(client, admin_id)
 
-    # Use url_for inside an app context
-    with app.app_context():
+    # URL building needs a request context when SERVER_NAME is deliberately
+    # unset (the production-like configuration used by CI).
+    with app.test_request_context():
         from flask import url_for
         update_url = url_for('user_role.update_user_role', user_id=subject_id)
 
@@ -90,7 +91,7 @@ def test_platform_admin_cannot_change_role_of_user_in_another_org(app, client):
 
     login(client, admin_id)
 
-    with app.app_context():
+    with app.test_request_context():
         from flask import url_for
         update_url = url_for('user_role.update_user_role', user_id=subject_id)
 

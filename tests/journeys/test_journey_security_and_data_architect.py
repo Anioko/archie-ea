@@ -98,6 +98,41 @@ def test_the_security_architect_sidebar_reaches_their_own_surfaces(app, client):
         )
 
 
+def test_security_architect_can_inspect_but_not_change_governance_gates(app, client):
+    """Gate policy is part of security review, while mutation stays admin-only."""
+    from app import db
+
+    with app.app_context():
+        org_id = make_org(db, "SecGateRead")
+        architect_id = make_user(
+            db,
+            org_id,
+            "secgateread",
+            enterprise_role="security_architect",
+            role_name="Architect",
+        )
+
+    login(client, architect_id)
+
+    page = client.get("/admin/governance-gates")
+    assert page.status_code == 200
+    body = page.get_data(as_text=True)
+    assert "Governance Gates" in body
+    assert 'data-governance-mode="read-only"' in body
+    assert '@click="openCreate()"' not in body
+    assert '@click="openEdit(gate)"' not in body
+
+    listing = client.get("/admin/api/governance-gates")
+    assert listing.status_code == 200
+    assert listing.get_json()["success"] is True
+
+    forbidden = client.post(
+        "/admin/api/governance-gates",
+        json={"gate_name": "security_architect_must_not_create"},
+    )
+    assert forbidden.status_code == 403
+
+
 def test_a_data_architect_can_reach_the_data_layer_they_steward(app, client):
     """Data architecture, lineage and stewardship are this persona's remit."""
     from app import db
