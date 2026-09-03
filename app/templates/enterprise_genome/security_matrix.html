@@ -42,7 +42,7 @@
   </div>
 
   {% if rendered_matrix %}
-    {{ rendered_matrix | safe }}
+    {{ rendered_matrix }}
   {% elif org_id is none %}
     <div class="rounded-lg border border-border bg-card p-6 text-sm text-muted-foreground">
       No organisation in context. Append <span class="font-mono">?org_id=&lt;id&gt;</span> to scope the matrix.
