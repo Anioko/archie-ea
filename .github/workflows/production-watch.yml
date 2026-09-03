@@ -32,6 +32,10 @@ jobs:
     name: Is production actually working?
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      # GitHub does not permit the secrets context directly in an if: clause.
+      # Materialise it at job scope, then test the env context on the step.
+      DROPLET_SSH_KEY: ${{ secrets.DROPLET_SSH_KEY }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -47,9 +51,7 @@ jobs:
       # absent, so a fork without access still gets the page checks rather than
       # a permanently red job that everyone learns to ignore.
       - name: Check container logs for errors
-        if: ${{ secrets.DROPLET_SSH_KEY != '' }}
-        env:
-          DROPLET_SSH_KEY: ${{ secrets.DROPLET_SSH_KEY }}
+        if: ${{ env.DROPLET_SSH_KEY != '' }}
         run: |
           mkdir -p ~/.ssh
           echo "$DROPLET_SSH_KEY" > ~/.ssh/id_ed25519
