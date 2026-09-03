@@ -119,7 +119,14 @@
                                 {% endif %}
                             {% endif %}
                         </div>
-                        <h3 class="font-semibold text-foreground">{{ session.title or ('Review Item' if is_reviews_view else 'ARB Session') }}</h3>
+                        {# DEF-055, Capgemini dry-run: ArchitectureReviewBoard's
+                           real name column is `name`, not `title` — reading
+                           `session.title` here always returned None (that
+                           model has no such column), so every session's own
+                           name was silently discarded in favour of the
+                           generic "ARB Session" fallback. Reviews (ARBReviewItem)
+                           genuinely do use `title`. #}
+                        <h3 class="font-semibold text-foreground">{{ (session.title if is_reviews_view else session.name) or ('Review Item' if is_reviews_view else 'ARB Session') }}</h3>
                         <p class="text-sm text-muted-foreground mt-1">{{ session.description | truncate(150) if session.description else 'No description' }}</p>
                         <div class="flex items-center gap-4 mt-3 text-sm text-muted-foreground">
                             {% if is_reviews_view %}
