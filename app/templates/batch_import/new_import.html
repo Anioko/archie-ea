@@ -94,8 +94,12 @@
                                 <select id="programme-target" x-model="form.programme_initiative_id"
                                         class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm mt-1">
                                     <option value="">— None — import without programme linkage —</option>
+                                    {# DEF-042, Capgemini dry-run: p.initiative_type is nullable
+                                       (StrategicInitiative), and this always interpolated it
+                                       even when null, rendering the option text literally as
+                                       "Constellation (null)". #}
                                     <template x-for="p in programmes" :key="p.id">
-                                        <option :value="p.id" x-text="p.name + ' (' + p.initiative_type + ')'"></option>
+                                        <option :value="p.id" x-text="p.initiative_type ? (p.name + ' (' + p.initiative_type + ')') : p.name"></option>
                                     </template>
                                 </select>
                                 <p x-show="programmesError" x-cloak class="text-xs text-destructive-emphasis mt-1" x-text="programmesError + ' — this list is not empty, it is unread.'"></p>

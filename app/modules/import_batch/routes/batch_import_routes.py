@@ -67,10 +67,30 @@ def create_job():
     - auto_approve_high_confidence: (optional) Boolean
     """
     try:
-        if "file" not in request.files:
-            return jsonify({"success": False, "error": "No file provided"}), 400
+        # DEF-042, Capgemini dry-run: the "Paste Data" tab never sends a
+        # `file` part at all — it posts raw text as the `paste_data` form
+        # field (see app/templates/batch_import/new_import.html) — so this
+        # unconditionally required `file` and every paste-path submission
+        # failed with "No file provided" after the preview and cost estimate
+        # had already rendered (client-side, from the same pasted text).
+        # Build an in-memory file from the pasted text so the paste path
+        # reaches the same import pipeline as an uploaded file.
+        if "file" in request.files and request.files["file"].filename:
+            file = request.files["file"]
+        else:
+            paste_data = request.form.get("paste_data", "").strip()
+            if not paste_data:
+                return jsonify({"success": False, "error": "No file provided"}), 400
+            from io import BytesIO
 
-        file = request.files["file"]
+            from werkzeug.datastructures import FileStorage
+
+            file = FileStorage(
+                stream=BytesIO(paste_data.encode("utf-8")),
+                filename="pasted_data.csv",
+                content_type="text/csv",
+            )
+
         if file.filename == "":
             return jsonify({"success": False, "error": "No file selected"}), 400
 

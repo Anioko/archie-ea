@@ -63,6 +63,35 @@ class BatchImportService:
     # Default batch size
     DEFAULT_BATCH_SIZE = 20
 
+    # DEF-042, Capgemini dry-run: estimate_cost() (called from every
+    # create_job(), file-upload path included) read
+    # self.cost_per_app_base/cost_capability_mapping/cost_process_classification
+    # — none of which were ever set anywhere, so every import job creation
+    # raised AttributeError. The paste path was simply the first one this
+    # audit could reach past the separate "No file provided" bug. These read
+    # the Flask-config overrides the class docstring already promised
+    # (falling back to the _DEFAULT_* constants) lazily, as properties: the
+    # module-level `import_service = BatchImportService()` singleton is
+    # constructed at import time, outside any app context, so reading
+    # current_app.config in __init__ would break app boot.
+    @property
+    def cost_per_app_base(self) -> Decimal:
+        return Decimal(str(current_app.config.get(
+            "IMPORT_COST_PER_APP_BASE", self._DEFAULT_COST_PER_APP_BASE
+        )))
+
+    @property
+    def cost_capability_mapping(self) -> Decimal:
+        return Decimal(str(current_app.config.get(
+            "IMPORT_COST_CAPABILITY_MAPPING", self._DEFAULT_COST_CAPABILITY_MAPPING
+        )))
+
+    @property
+    def cost_process_classification(self) -> Decimal:
+        return Decimal(str(current_app.config.get(
+            "IMPORT_COST_PROCESS_CLASSIFICATION", self._DEFAULT_COST_PROCESS_CLASSIFICATION
+        )))
+
     def create_job(
         self,
         user_id: int,
