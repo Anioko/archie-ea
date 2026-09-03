@@ -1763,7 +1763,29 @@ function composerApp() {
                     self.statusText = 'Pick relationship type…';
 
                     let ALL_REL = ['composition','aggregation','assignment','realization','serving','access','influence','triggering','flow','specialization','association'];
-                    Platform.fetch('/archimate/api/valid-relationship-types?source_id=' + srcElementId + '&target_id=' + tgtElementId, { silent: true })
+                    /* DEF-006, Capgemini dry-run (browser-verified live): this is
+                       the keyboard 'C' connect-mode gesture (click source, click
+                       target) — a SEPARATE code path from the drag-a-link
+                       'link:connect' handler above, which F-05(c) already fixed.
+                       This one still sent template placeholder ids
+                       ("__builtin__ba1") straight to valid-relationship-types,
+                       confirmed live: 400, "Failed to load relationship types".
+                       Reuse the same _materializeConnectEnds helper before the
+                       lookup, updating srcElementId/tgtElementId and the picker's
+                       stored ids to the real, materialized ones so the
+                       subsequent POST /api/relationships (on picking a type)
+                       also gets real integer ids. */
+                    self._materializeConnectEnds(sourceCell, targetCell, srcElementId, tgtElementId)
+                    .catch(function() {
+                        return { srcElementId: srcElementId, tgtElementId: tgtElementId };
+                    })
+                    .then(function(resolved) {
+                        srcElementId = resolved.srcElementId;
+                        tgtElementId = resolved.tgtElementId;
+                        self.relPickerSourceId = srcElementId;
+                        self.relPickerTargetId = tgtElementId;
+                        return Platform.fetch('/archimate/api/valid-relationship-types?source_id=' + srcElementId + '&target_id=' + tgtElementId, { silent: true });
+                    })
                     .then(function(data) {
                         let validDetailed = data.valid_types_detailed || [];
                         self.relPickerTypes = validDetailed.length > 0 ? validDetailed
@@ -4062,7 +4084,22 @@ function composerApp() {
             self.statusText = 'Pick relationship type\u2026';
 
             let ALL_REL = ['composition','aggregation','assignment','realization','serving','access','influence','triggering','flow','specialization','association'];
-            Platform.fetch('/archimate/api/valid-relationship-types?source_id=' + srcElementId + '&target_id=' + tgtElementId, { silent: true })
+            /* DEF-006, Capgemini dry-run (browser-verified live): third
+               unfixed call site sending template placeholder ids straight to
+               valid-relationship-types — this one backs both the R-shortcut
+               and connect-mode via _openRelPickerForPair. Same materialize-
+               first fix as the other two call sites. */
+            self._materializeConnectEnds(sourceCell, targetCell, srcElementId, tgtElementId)
+            .catch(function() {
+                return { srcElementId: srcElementId, tgtElementId: tgtElementId };
+            })
+            .then(function(resolved) {
+                srcElementId = resolved.srcElementId;
+                tgtElementId = resolved.tgtElementId;
+                self.relPickerSourceId = srcElementId;
+                self.relPickerTargetId = tgtElementId;
+                return Platform.fetch('/archimate/api/valid-relationship-types?source_id=' + srcElementId + '&target_id=' + tgtElementId, { silent: true });
+            })
             .then(function(data) {
                 let validDetailed = data.valid_types_detailed || [];
                 self.relPickerTypes = validDetailed.length > 0 ? validDetailed
