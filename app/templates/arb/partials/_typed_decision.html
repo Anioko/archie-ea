@@ -130,7 +130,7 @@
 ) %}
 <form method="post" action="{{ decision_action_url }}" data-arb-decision-form class="space-y-4">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <input type="hidden" name="outcome" value="{{ outcome }}">
+    <input type="hidden" name="decision" value="{{ outcome }}">
     <input type="hidden" name="command_key" value="{{ _keys.get('decision') or '' }}">
 
     <div>

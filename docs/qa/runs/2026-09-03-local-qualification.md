@@ -20,6 +20,9 @@ Authority: diagnostic only; final acceptance requires the final Git SHA in CI.
 | Adversarial smoke cohort | 11 passed | Nonexistent IDs, hostile pagination, and nine persona route sweeps green on explicit database |
 | Main Chromium smoke suite | 144 passed, 3 failed, 4 skipped, 6 xfailed, 21 deselected | Product candidate remains red; F500-006/F500-007 opened and non-passes under audit |
 | Non-browser full diagnostic | 3,956 collected; four failures observed before remediation | Original failure evidence retained; full final rerun still required |
+| Isolated Chromium remediation retest | 12 passed, 0 failed, 0 skipped | Platform-admin sidebar (1), transformation responsive flow (2), journey home/screenshots (8), and tenant-leak assertion (1) verified against dedicated PostgreSQL on port 55432 |
+| Typed ARB remediation slice | 4 browser cases + 1 template contract passed | Architecture Model canonical submission, Return for Evidence and cycle-2 resubmission, historical lock, corrupt-evidence HTTP 503/no-zero state, and decision form/server field contract verified |
+| Full typed ARB Chromium retest | 24 passed, 2 xfailed, 0 failed, 0 skipped | Expected failures reduced from six to two; F500-010 remains open and the suite is not release-green |
 
 ## Invalidated run
 
@@ -39,4 +42,6 @@ Not ready. Static and focused regression evidence is green, but the complete
 browser suite, full database verifier, Linux/PostgreSQL 16 CI, security jobs,
 browser matrix, performance/soak, recovery/rollback, manual accessibility,
 usability research, penetration testing, and production deployment evidence are
-not yet complete for one immutable release commit.
+not yet complete for one immutable release commit. Typed ARB expected failures
+have fallen from six to two; Solution response normalization and a real frozen
+Decision Brief browser fixture remain open under F500-010.

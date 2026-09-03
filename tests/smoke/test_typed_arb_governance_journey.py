@@ -248,8 +248,8 @@ def governed(_app, seeded, live_server):
 
         # Two home-tenant ADRs: one for journey A/F, one for the condition
         # lifecycle so journeys do not fight over one cycle's state.
-        for key in ("adr_a", "adr_conditions", "adr_b", "adr_waiver",
-                    "adr_f", "adr_f2"):
+        for key in ("adr_a", "adr_conditions", "adr_b", "adr_return", "adr_historical",
+                     "adr_failed", "adr_waiver", "adr_f", "adr_f2"):
             adr = ArchitectureDecisionRecord(
                 organization_id=org_id,
                 adr_number=int(uuid.uuid4().hex[:7], 16),
@@ -268,16 +268,94 @@ def governed(_app, seeded, live_server):
         # An Architecture Model subject, so journey A can exercise a second
         # subject type through the same typed ingress (ARB-UI-3 partially
         # fixed by lane 2: the ingress now accepts architecture_model).
-        from app.models.models import ArchitectureModel
+        from app.models.models import ArchiMateElement, ArchitectureModel
 
         model = ArchitectureModel(
             name="Typed ARB journey model %s" % suffix,
+            version="1.0",
             organization_id=org_id,
             user_id=submitter.id,
         )
         db.session.add(model)
+        db.session.flush()
+        db.session.add(ArchiMateElement(
+            organization_id=org_id,
+            architecture_id=model.id,
+            name="Typed ARB application component %s" % suffix,
+            type="ApplicationComponent",
+            layer="application",
+        ))
         db.session.commit()
         out["architecture_model"] = model.id
+
+        # Two deliberately non-happy read states. These are persisted because
+        # the browser server runs in a separate process and must observe the
+        # same real governance graph as production code.
+        from app.models.architecture_review_board import ARBReviewCycle, ARBReviewItem
+        from app.models.transformation_decision import ARBSubjectEvidenceSnapshot
+
+        db.session.execute(db.text("SET LOCAL session_replication_role = replica"))
+
+        def _read_state_graph(adr_key, *, historical=False):
+            adr_id = out[adr_key]
+            snapshot = None
+            if not historical:
+                snapshot = ARBSubjectEvidenceSnapshot(
+                    organization_id=org_id,
+                    subject_type="adr",
+                    subject_id=adr_id,
+                    adr_id=adr_id,
+                    schema_version=1,
+                    policy_version="adr-arb-r2",
+                    captured_by_id=submitter.id,
+                    captured_at=_now(),
+                    payload={"title": "Corrupt evidence fixture"},
+                    citations={"linked_resources": []},
+                    content_hash="0" * 64,
+                )
+                db.session.add(snapshot)
+                db.session.flush()
+            state = "historical_unverified" if historical else "submitted"
+            cycle = ARBReviewCycle(
+                organization_id=org_id,
+                subject_type="adr",
+                subject_id=adr_id,
+                adr_id=adr_id,
+                subject_evidence_snapshot_id=None if historical else snapshot.id,
+                review_number="READ-%s-%s" % (adr_key, suffix),
+                cycle_number=1,
+                status=state,
+                opened_at=_now(),
+                closed_at=_now() if historical else None,
+                terminal_outcome="historical_unverified" if historical else None,
+                migration_gap_reason="No provable immutable evidence." if historical else None,
+                legacy_source_type="arb_review_items" if historical else None,
+                legacy_source_id=1 if historical else None,
+            )
+            db.session.add(cycle)
+            db.session.flush()
+            review = ARBReviewItem(
+                organization_id=org_id,
+                review_number="READ-ITEM-%s-%s" % (adr_key, suffix),
+                title="Typed ARB %s state" % adr_key,
+                review_type="architecture_change",
+                subject_type="adr",
+                subject_id=adr_id,
+                adr_id=adr_id,
+                subject_evidence_snapshot_id=None if historical else snapshot.id,
+                review_cycle_id=cycle.id,
+                status=state,
+                submitter_id=submitter.id,
+                submitted_at=_now(),
+            )
+            db.session.add(review)
+            db.session.flush()
+            out[adr_key + "_review_item_id"] = review.id
+
+        _read_state_graph("adr_historical", historical=True)
+        _read_state_graph("adr_failed")
+        db.session.execute(db.text("SET LOCAL session_replication_role = origin"))
+        db.session.commit()
 
         out["org_id"] = org_id
 
@@ -419,6 +497,7 @@ def _cleanup(db, out):
                     )
                 # Home-tenant rows: keyed off the ADRs this module created.
                 adr_ids = [out[k] for k in ("adr_a", "adr_conditions", "adr_b",
+                                            "adr_return", "adr_historical", "adr_failed",
                                             "adr_waiver", "adr_f", "adr_f2")
                            if out.get(k)]
                 if adr_ids:
@@ -489,8 +568,24 @@ def test_journey_f_cross_tenant_ids_are_404_and_reveal_nothing(
         assert payload["reason_codes"] == ["arb_condition_not_found"], path
         serialised = json.dumps(payload)
         assert secret not in serialised, "%s leaked the foreign title" % path
-        assert foreign_org not in serialised, "%s leaked the foreign tenant id" % path
-        assert str(governed["foreign_review_cycle_id"]) not in serialised
+        # Compare structured values, not arbitrary substrings.  A small integer
+        # such as organisation id ``5`` can legitimately occur inside the
+        # random request/correlation id and is not a tenant-data disclosure.
+        scalar_values = []
+
+        def _collect_scalars(value):
+            if isinstance(value, dict):
+                for child in value.values():
+                    _collect_scalars(child)
+            elif isinstance(value, list):
+                for child in value:
+                    _collect_scalars(child)
+            else:
+                scalar_values.append(str(value))
+
+        _collect_scalars(payload)
+        assert foreign_org not in scalar_values, "%s leaked the foreign tenant id" % path
+        assert str(governed["foreign_review_cycle_id"]) not in scalar_values
 
     # A foreign ADR cannot be submitted from this tenant either.
     status, payload = _api(
@@ -827,52 +922,6 @@ def test_journey_a_typed_submission_is_canonical_and_idempotent(
 
     page = actor(SUBMITTER)
 
-    if subject_type == "architecture_model":
-        # ARB-UI-3 is fixed: the ingress accepts architecture_model. A bare
-        # model is correctly REFUSED, so what is assertable end to end here is
-        # §13's 422 blocker contract rather than §15 A's success frame.
-        status, blocked = _api(
-            page, live_server,
-            "/api/arb/subjects/architecture_model/%d/submit"
-            % governed["architecture_model"],
-            body={"human_reviewed": True},
-            idempotency_key="journey-a-am-%s" % uuid.uuid4().hex[:8],
-        )
-        assert status == 422, blocked
-        assert blocked["success"] is False
-        codes = set(blocked["reason_codes"])
-        assert {"architecture_model_version_required",
-                "architecture_model_elements_required"} <= codes, blocked
-        for blocker in blocked["missing_evidence"]:
-            assert blocker.get("code"), "a blocker with no stable code: %r" % blocker
-        assert blocked["request_id"], blocked
-        assert "Traceback" not in json.dumps(blocked)
-
-        # §13: a 422 blocker never creates or links a review.
-        from app import db
-        from app.models.architecture_review_board import ARBReviewCycle
-
-        with _app.app_context():
-            cycles = db.session.execute(
-                db.select(db.func.count(ARBReviewCycle.id)).where(
-                    ARBReviewCycle.subject_type == "architecture_model",
-                    ARBReviewCycle.subject_id == governed["architecture_model"],
-                )
-            ).scalar_one()
-        assert cycles == 0, (
-            "a 422 evidence blocker still created %d review cycle(s) - §13 "
-            "forbids it: the subject must stay unlinked until it is ready"
-            % cycles
-        )
-        pytest.xfail(
-            "ARB-UI-3 is FIXED (lane 2) and the 422 blocker contract above is "
-            "asserted for real. The SUCCESS half of §15 A stays unreached for "
-            "FIXTURE COST, not a missing ingress: a submittable Architecture "
-            "Model needs a version plus real ArchiMate elements, which is a "
-            "modelling fixture rather than a row. Success path is covered at "
-            "route level by tests/test_typed_arb_submission_routes.py."
-        )
-
     key = "journey-a-%s-%s" % (subject_type, uuid.uuid4().hex[:8])
     subject_id = (governed["architecture_model"]
                   if subject_type == "architecture_model"
@@ -1049,16 +1098,61 @@ def test_journey_b_conditional_decision_records_conditions_without_inventing_dat
 
 
 def test_journey_b_return_for_evidence_opens_a_second_cycle(
-    actor, live_server, governed
+    actor, live_server, governed, _app
 ):
     """§15 B.1-4: returned is terminal for cycle 1; resubmission is cycle 2."""
-    pytest.xfail(
-        "ARB-UI-1: 'Return for evidence' is a typed decision outcome offered "
-        "only by arb/partials/_typed_decision.html, which never renders. The "
-        "legacy decision form exposes approve / approve-with-conditions / "
-        "reject only, so the return-and-new-version half of journey B has no "
-        "browser ingress."
+    submitter = actor(SUBMITTER)
+    key = "journey-b-return-%s" % uuid.uuid4().hex[:8]
+    status, first = _api(
+        submitter,
+        live_server,
+        "/api/arb/subjects/adr/%d/submit" % governed["adr_return"],
+        body={"human_reviewed": True},
+        idempotency_key=key,
     )
+    assert status == 201, first
+
+    authority = actor(AUTHORITY)
+    authority.goto(
+        live_server + first["redirect_url"],
+        wait_until="domcontentloaded",
+        timeout=PAGE_TIMEOUT,
+    )
+    authority.locator(
+        '[data-modal-open="arb-decision-returned_for_evidence"]'
+    ).click()
+    form = authority.locator(
+        '#arb-decision-returned_for_evidence form[data-arb-decision-form]'
+    )
+    form.locator('textarea[name="rationale"]').fill(
+        "Return this submission until its operational evidence is complete."
+    )
+    with authority.expect_navigation(wait_until="domcontentloaded"):
+        form.locator('button[type="submit"]').click()
+
+    from app import db
+    from app.models.architecture_review_board import ARBReviewCycle
+
+    with _app.app_context():
+        first_cycle = db.session.get(ARBReviewCycle, first["review_cycle_id"])
+        assert first_cycle.status == "returned_for_evidence"
+        assert first_cycle.terminal_outcome == "returned_for_evidence"
+        assert first_cycle.closed_at is not None
+
+    status, second = _api(
+        submitter,
+        live_server,
+        "/api/arb/subjects/adr/%d/submit" % governed["adr_return"],
+        body={"human_reviewed": True},
+        idempotency_key="journey-b-resubmit-%s" % uuid.uuid4().hex[:8],
+    )
+    assert status == 201, second
+    assert second["cycle_number"] == 2
+    assert second["review_cycle_id"] != first["review_cycle_id"]
+
+    with _app.app_context():
+        second_cycle = db.session.get(ARBReviewCycle, second["review_cycle_id"])
+        assert second_cycle.predecessor_cycle_id == first["review_cycle_id"]
 
 
 # ---------------------------------------------------------------------------
@@ -1208,32 +1302,40 @@ def test_journey_d_the_page_states_a_waiver_does_not_remove_the_condition(
 # ---------------------------------------------------------------------------
 
 
-def test_journey_e_historical_unverified_is_a_locked_state(actor, live_server):
+def test_journey_e_historical_unverified_is_a_locked_state(actor, live_server, governed):
     """§15 E.1-3."""
-    pytest.xfail(
-        "ARB-UI-1: `historical_unverified` is a state of TypedARBReviewView, "
-        "rendered only by arb/partials/_typed_review_historical.html. No view "
-        "passes typed_review, so a migrated snapshot-less cycle renders the "
-        "legacy body with no warning, no legacy provenance and no lock."
+    page = actor(AUTHORITY)
+    response = page.goto(
+        live_server + "/arb/reviews/%d" % governed["adr_historical_review_item_id"],
+        wait_until="domcontentloaded",
+        timeout=PAGE_TIMEOUT,
     )
+    assert response.status == 200
+    body = page.locator("main").inner_text()
+    assert "Historical review — evidence snapshot could not be verified." in body
+    assert "Legacy provenance" in body
+    assert "No provable immutable evidence." in body
+    assert "no governance action can be taken" in body
+    assert page.locator("main form").count() == 0
+    assert page.locator("main button[type='submit']").count() == 0
 
 
 def test_journey_e_a_failed_read_shows_no_zero_metrics(
-    actor, live_server, home_conditions
+    actor, live_server, governed
 ):
     """§15 E.4: a forced failure must not render fabricated zeros."""
-    pytest.xfail(
-        "L7-HARNESS-1 (my defect, not the product's): §15 E.4 is NOT reachable "
-        "from a browser. The typed queue read model runs SERVER-side during the "
-        "GET, so intercepting XHR from Playwright cannot fail it - the earlier "
-        "version of this test intercepted `**/arb/**` XHR, the server-rendered "
-        "queue was unaffected, and the assertion then fired against a perfectly "
-        "healthy page. Proving E.4 needs server-side fault injection (an env "
-        "flag or a monkeypatched read model behind a test-only hook), which "
-        "does not exist. The failed-state COPY is unit-covered by "
-        "tests/test_typed_arb_templates.py; what is uncovered is that a real "
-        "read failure reaches that partial in a real request."
+    page = actor(AUTHORITY)
+    response = page.goto(
+        live_server + "/arb/reviews/%d" % governed["adr_failed_review_item_id"],
+        wait_until="domcontentloaded",
+        timeout=PAGE_TIMEOUT,
     )
+    assert response.status == 503
+    body = page.locator("main").inner_text()
+    assert "This review could not be read. Retry." in body
+    assert "No review detail is shown" in body
+    assert page.locator("main form").count() == 0
+    assert not re.search(r"\b0\b", body), body
 
 
 # ---------------------------------------------------------------------------

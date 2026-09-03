@@ -1620,11 +1620,13 @@ def review_detail(id):
     except Exception:
         current_app.logger.exception(f"Failed to load audit trail for review {id}")
 
+    typed_review = _typed_review_context(id)
+    response_status = 503 if typed_review and typed_review.get("state") == "failed" else 200
     return render_template(
         "arb/review_detail.html",
         # Same dispatch contract as the queue: typed workspace when the read
         # model resolves this review for the current tenant, legacy otherwise.
-        typed_review=_typed_review_context(id),
+        typed_review=typed_review,
         review=review,
         application_names=application_names,
         canonical_impact=canonical_impact,
@@ -1637,7 +1639,7 @@ def review_detail(id):
         # decision on `pending_info`, which record_decision refuses, and
         # withheld it on `deferred`, which it accepts).
         decidable_statuses=sorted(DECIDABLE_STATUSES),
-    )
+    ), response_status
 
 
 @arb_bp.route("/reviews/<int:id>/audit-trail.csv")

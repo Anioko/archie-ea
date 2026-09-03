@@ -446,6 +446,14 @@ def test_approved_with_conditions_is_never_rendered_green(app):
     assert "Execution remains blocked" in body
 
 
+def test_typed_decision_form_uses_the_server_adapter_field_name(app):
+    """A native form submit must deliver the outcome the adapter consumes."""
+    body = _render_review_body(app, available_review())
+
+    assert 'name="decision" value="returned_for_evidence"' in body
+    assert 'name="outcome"' not in body
+
+
 # --------------------------------------------------------------------------
 # A failed read shows no zeros
 # --------------------------------------------------------------------------
