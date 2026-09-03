@@ -247,8 +247,16 @@
                         </td>
                         <td class="px-4 py-2 text-right whitespace-nowrap">
                             {% if item.status.value != 'closed' %}
+                            {# DEF-068, Capgemini dry-run pass 3: the ternary's
+                               output ('resolved'/'closed') rendered as a bare
+                               JS identifier, not a string literal — Alpine
+                               evaluated it as an undefined variable, so
+                               setStatus(id, undefined) shipped a PATCH body
+                               with no status key at all. The route still
+                               replied 200 (nothing to update), which read as
+                               "Resolve did nothing" with no error anywhere. #}
                             <button type="button"
-                                    @click="setStatus({{ item.id }}, {{ 'resolved' if item.status.value == 'open' else 'closed' }})"
+                                    @click="setStatus({{ item.id }}, {{ ('resolved' if item.status.value == 'open' else 'closed')|tojson }})"
                                     :disabled="updatingId === {{ item.id }}"
                                     class="inline-flex items-center rounded-md border border-input bg-background px-2 py-1 text-xs font-medium hover:bg-accent hover:text-accent-foreground disabled:opacity-50">
                                 {{ 'Resolve' if item.status.value == 'open' else 'Close' }}
