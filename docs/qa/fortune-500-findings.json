@@ -168,6 +168,20 @@
         "tests/test_benchmark_scale_launcher.py",
         "python scripts/benchmark_scale.py --i-know-this-is-not-prod --applications 10000 --elements 50000 --solutions 500 --users 1000 --iterations 20 --cleanup"
       ]
+    },
+    {
+      "id": "F500-013",
+      "area": "production_monitoring",
+      "severity": "high",
+      "title": "Production adversarial monitor invoked an unavailable pytest timeout plugin",
+      "status": "ready_for_retest",
+      "original_evidence": "GitHub production-watch run 33803348625 reached the adversarial test step but exited 4 before collection: pytest: error: unrecognized arguments: --timeout=2400.",
+      "required_fix": "Install the repository's pinned test requirements before invoking pytest and rerun the complete production-watch workflow on the final SHA.",
+      "retest_evidence": "Workflow contract test confirms the adversarial job installs requirements-test.txt; exact-SHA GitHub rerun pending.",
+      "closure_tests": [
+        "tests/test_production_watch_workflow.py",
+        "Production-watch adversarial job collects and passes on final SHA"
+      ]
     }
   ]
 }

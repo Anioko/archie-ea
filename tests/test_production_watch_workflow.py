@@ -27,3 +27,4 @@ def test_adversarial_job_uses_one_explicit_test_database_configuration():
     assert "\n      DATABASE_URL: postgresql" in adversarial
     assert "FLASK_CONFIG: testing" in adversarial
     assert "SECRET_KEY:" in adversarial
+    assert "pip install -r requirements-test.txt" in adversarial

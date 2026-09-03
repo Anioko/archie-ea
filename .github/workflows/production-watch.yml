@@ -94,6 +94,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          pip install -r requirements-test.txt
       - name: Create schema
         run: |
           python -m flask --app manage init-db
