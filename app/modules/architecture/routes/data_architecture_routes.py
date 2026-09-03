@@ -110,7 +110,28 @@ def data_architecture_dashboard():
             conceptual_count = ConceptualDataModel.query.count()
             logical_count = LogicalDataModel.query.count()
             physical_count = PhysicalDataModel.query.count()
+            # DEF-064, Capgemini dry-run: this counted DataLineage rows only,
+            # while /architecture/data-lineage's "Recorded Lineage Edges"
+            # (data_lineage_view below) counts those SAME rows plus
+            # ArchiMateRelationship edges between DataObjects — a real,
+            # already-drawn subset of lineage this tile just never counted.
+            # Match the fuller, more complete definition rather than leave
+            # two different numbers answering "how much lineage exists".
+            from app.models.archimate_core import ArchiMateElement as _ArchiMateElement
+            from app.models.archimate_core import ArchiMateRelationship as _ArchiMateRelationship
+
+            _data_object_ids = [
+                row.id for row in
+                db.session.query(_ArchiMateElement.id).filter(_ArchiMateElement.type == "DataObject").all()
+            ]
             data_lineage_count = DataLineage.query.count()
+            if _data_object_ids:
+                data_lineage_count += _ArchiMateRelationship.query.filter(
+                    db.or_(
+                        _ArchiMateRelationship.source_id.in_(_data_object_ids),
+                        _ArchiMateRelationship.target_id.in_(_data_object_ids),
+                    )
+                ).count()
         except Exception:
             logger.debug(
                 "Failed to query data architecture model counts", exc_info=True
