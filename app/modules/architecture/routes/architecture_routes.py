@@ -686,6 +686,16 @@ def investment_priorities():
     budget data where available (via RoadmapItem.linked_capabilities linkage).
     Canonical URL under /architecture/ for ArchiMate architects.
     """
+    # DEF-051, Capgemini dry-run: this rendered a literal "$" regardless of
+    # tenant currency, while Spend Analytics/Contracts on the same tenant
+    # show £ — use the tenant's real configured currency, matching the
+    # currency_symbol pattern the rest of the codebase already uses.
+    from config import CurrencyConfig
+    try:
+        currency_symbol = CurrencyConfig.get_currency_config().get("symbol", "£")
+    except Exception:
+        currency_symbol = "£"
+
     try:
         analysis, mapping_count = _assemble_investment_priorities_context()
     except Exception as e:
@@ -708,9 +718,10 @@ def investment_priorities():
                 "average_coverage_score": 0,
                 "average_maturity_score": 0,
                 "average_risk_score": 0,
-                "investment_currency": "USD",
+                "investment_currency": currency_symbol,
             },
             recommendations=[],
+            currency_symbol=currency_symbol,
         )
 
     if analysis is None:
@@ -728,6 +739,7 @@ def investment_priorities():
         low_investments=analysis["low_investments"],
         portfolio_metrics=analysis["portfolio_metrics"],
         recommendations=analysis["recommendations"],
+        currency_symbol=currency_symbol,
     )
 
 

@@ -49,7 +49,7 @@ const INVESTMENT_CAPABILITIES = {{ capability_scores | tojson }};
         ) }}
         {{ metrics_card(
             title='Total Investment',
-            value='$' + "%.1f"|format(((portfolio_metrics.total_estimated_investment or 0) | float) / 1000000) + 'M',
+            value=currency_symbol + "%.1f"|format(((portfolio_metrics.total_estimated_investment or 0) | float) / 1000000) + 'M',
             icon='dollar-sign',
             value_class='text-primary'
         ) }}
@@ -208,7 +208,7 @@ const INVESTMENT_CAPABILITIES = {{ capability_scores | tojson }};
                                 </td>
                                 <td class="p-4">
                                     <div class="flex items-center gap-1">
-                                        <span x-text="'$' + (cap.investment_need.estimated_cost / 1000).toFixed(1) + 'k'"></span>
+                                        <span x-text="'{{ currency_symbol }}' + (cap.investment_need.estimated_cost / 1000).toFixed(1) + 'k'"></span>
                                         <span x-show="cap.has_real_budget" x-cloak
                                             class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-success/10 text-success-emphasis border border-success/20"
                                             :title="'From linked initiative: ' + cap.linked_initiative_name">Live</span>
@@ -224,7 +224,7 @@ const INVESTMENT_CAPABILITIES = {{ capability_scores | tojson }};
                                                 :title="cap.linked_initiative_name"
                                                 x-text="cap.linked_initiative_name"></div>
                                             <div class="text-muted-foreground"
-                                                x-text="'$' + (cap.linked_initiative_budget / 1000).toFixed(0) + 'k allocated'"></div>
+                                                x-text="'{{ currency_symbol }}' + (cap.linked_initiative_budget / 1000).toFixed(0) + 'k allocated'"></div>
                                         </div>
                                     </template>
                                     <template x-if="!cap.has_real_budget || !cap.linked_initiative_name">
