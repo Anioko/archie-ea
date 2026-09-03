@@ -89,6 +89,16 @@ function handleDrop(event) {
   }
 }
 
+// Native inline ondrag* attributes are blocked by the strict CSP (Firefox
+// reports each blocked handler as a page error). Bind them from this trusted
+// external script so drag-and-drop behaves consistently in every browser.
+const applicationImportDropZone = document.getElementById('drop-zone');
+if (applicationImportDropZone) {
+  applicationImportDropZone.addEventListener('dragover', handleDragOver);
+  applicationImportDropZone.addEventListener('dragleave', handleDragLeave);
+  applicationImportDropZone.addEventListener('drop', handleDrop);
+}
+
 // Auto-detect field mapping based on column header
 // Uses exact match only to avoid false positives (e.g., "Application Status" matching "name")
 function autoDetectMapping(header) {

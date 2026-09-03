@@ -47,8 +47,7 @@
               <label class="block text-sm font-medium text-muted-foreground mb-2">
                 Upload File (Excel, CSV, or JSON)
               </label>
-              <div id="drop-zone" class="border-2 border-dashed border-input rounded-lg p-8 text-center transition-colors hover:border-primary"
-                   ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event)">
+              <div id="drop-zone" class="border-2 border-dashed border-input rounded-lg p-8 text-center transition-colors hover:border-primary">
                 <label for="excel-file-input" class="block text-sm font-medium text-muted-foreground mb-1">Import file</label>
                 <input type="file" id="excel-file-input" accept=".xlsx,.xls,.csv,.json" class="hidden" @change="handleExcelFileSelect(event)">
                 <button type="button" @click="document.getElementById('excel-file-input').click()" class="inline-flex items-center px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary" aria-label="Choose file to upload">
