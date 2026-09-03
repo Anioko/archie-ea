@@ -466,7 +466,15 @@ function stakeholderMap() {
     },
 
     async submitAdd() {
-      if (!this.form.name.trim()) return;
+      // DEF-041, Capgemini dry-run: this silently no-opped when name was
+      // empty — which happens by default, since the manual-name fallback
+      // input only appears after typing something in the search box first
+      // (search-then-fallback UX). A user who clicked Add Stakeholder
+      // without noticing that saw nothing happen and no error anywhere.
+      if (!this.form.name.trim()) {
+        Platform.toast.error('Search for a person, or type a name in the search box to add one manually.');
+        return;
+      }
       const body = { ...this.form };
       if (this.selectedSolution) body.solution_id = parseInt(this.selectedSolution);
       try {
