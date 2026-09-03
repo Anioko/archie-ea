@@ -282,7 +282,7 @@ counts only the families in `BANNED_FAMILIES` (`scripts/check_design_tokens.py`)
 `orange` or `cyan` class is right per DESIGN.md but moves this number by zero, and a
 line carrying a `token-migration-ok` marker is already excluded from the count.
 
-**All 44 gates, in registry order (`scripts/verify.py`, `build_gates`) — this table
+**All 46 gates, in registry order (`scripts/verify.py`, `build_gates`) — this table
 is a snapshot, not generated. Run `grep -oE '^\s*Gate\("[a-z-]+"' scripts/verify.py`
 to reconfirm the count before trusting it:**
 
@@ -332,6 +332,8 @@ to reconfirm the count before trusting it:**
 | `schema-drift` | ORM/database column drift | must pass (needs DB) |
 | `tests` | behavioural regression | must pass (needs DB) |
 | `nav-verified` | a new sidebar route with no test loading it | ratchet @ 0, carries no tags |
+| `docs-drift` | CLAUDE.md/DELIVERY_CONTRACT.md gate claims disagreeing with build_gates() | must be 0 |
+| `unregistered-checks` | a scripts/check_\*.py with no Gate(...) entry (F500-008) | ratchet @ 41 |
 
 Per-line escape hatches, each of which makes the exception reviewable rather than
 silent — every one greppable as `<name>-ok` in `scripts/verify.py`/`scripts/check_*.py`:

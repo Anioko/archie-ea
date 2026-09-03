@@ -20,6 +20,7 @@
     "raw_fetch_sites": 0,
     "ui_contract": 0,
     "nav_verified": 0,
-    "console_reporting": 0
+    "console_reporting": 0,
+    "unregistered_checks": 41
   }
 }

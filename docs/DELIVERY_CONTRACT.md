@@ -95,14 +95,17 @@ below it) found:
   this very table) — **neither runs as part of `python scripts/verify.py`,
   or anywhere else in this repository, today.** This document's own
   enforcement claim about itself is the least true sentence in it.
-- Only QA / test lead's count (5) came back unchanged, because `qa` and
-  `runtime` are still real tags on real registered gates.
+- Only QA / test lead's count (5, at the time of this correction) came back
+  unchanged from the old table's claim, because `qa` and `runtime` are still
+  real tags on real registered gates. It has since moved to 7 — `docs-drift`
+  and `unregistered-checks` (the two gates this same 3 Sep audit produced,
+  see CLAUDE.md's Verification section) both carry the `qa` tag.
 
-| Role | Gate tags | Gates (re-measured 3 Sep 2026) |
+| Role | Gate tags | Gates (re-measured 3 Sep 2026, `docs-drift` keeps this row honest from here on) |
 |---|---|---|
 | UX / frontend architect (lint only — see note) | `ui`, `a11y` | 23 (no gate carries `a11y`) |
 | security architect | `security`, `airgap` | 9 |
-| QA / test lead | `qa`, `runtime` | 5 |
+| QA / test lead | `qa`, `runtime` | 7 |
 | software / technical architect | `architecture`, `correctness` | 2 (`correctness` only; no gate carries `architecture`) |
 | data architect | `schema`, `db` | 2 (`db` only; no gate carries `schema`) |
 | CTO / delivery lead | `process`, `deps` | 2 (`deps` only; no gate carries `process`) |
