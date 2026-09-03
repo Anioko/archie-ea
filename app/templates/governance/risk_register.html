@@ -195,11 +195,13 @@
             </div>
             <div class="flex items-center gap-2">
                 <div class="inline-flex rounded-md border border-input p-0.5">
+                    {# DEF-002, Capgemini dry-run: naive "k + 's'" pluralised
+                       'dependency' to "dependencys". Real plurals. #}
                     <template x-for="k in kinds" :key="k">
                         <button type="button" @click="kindFilter = (kindFilter === k ? '' : k)"
                                 :class="kindFilter === k ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'"
                                 class="px-2.5 py-1 rounded text-xs font-medium capitalize transition-colors"
-                                x-text="k + 's'"></button>
+                                x-text="k === 'dependency' ? 'Dependencies' : (k + 's')"></button>
                     </template>
                 </div>
                 <button type="button" @click="openCreate()"
