@@ -2,7 +2,9 @@
 
 Status: **qualification in progress**
 
-Current candidate: `e69ebbcf` (superseded when the remediation below is committed)
+Candidate identity: resolved from the full Git SHA at execution time and recorded
+with the OCI digest in CI's retained `release.json`; no mutable branch name or
+short SHA is release evidence.
 
 Qualification date: 3 September 2026
 
@@ -17,16 +19,16 @@ enterprise availability until the named owner supplies it.
 
 | Area | Required evidence and release threshold | Current evidence | Status |
 |---|---|---|---|
-| Build and static correctness | Every `verify.py --tag static` gate passes; no skip | 42/42 static gates passed; candidate-wide verifier passed 49/50 total gates with zero gate skips | Proven locally; repeat after remediation and in final CI |
-| Automated suite integrity | Suite collects with strict markers; no import/collection errors or applicable skips | Candidate-wide run: 3,933 passed, 4 failed, 22 errors and 8 skips; all failures/errors traced to missing pgcrypto in PG12 scratch databases and focused remediation passed 36 tests. Skip hygiene remediation is in progress. | Failed on candidate; corrected candidate pending |
-| Functional workflows | All unit, integration and persona journeys pass against PostgreSQL 16 | Typed ARB regression 439/439; full browser 177 passed/1 maintenance skip; complete unit suite requires post-remediation rerun | Pending corrected candidate and PG16 CI |
+| Build and static correctness | Every `verify.py --tag static` gate passes; no skip | Corrected local candidate: 42/42 static gates passed with zero skips | Proven locally; final CI required |
+| Automated suite integrity | Suite collects with strict markers; no import/collection errors or applicable skips | Skip-producing maintenance/version branches were removed or made explicitly applicable; corrected Chromium suite passed 177/177 with zero non-passes | Proven locally; final PostgreSQL 16 CI required |
+| Functional workflows | All unit, integration and persona journeys pass against PostgreSQL 16 | Typed ARB regression 439/439; typed ARB browser 26/26; corrected full Chromium browser suite 177/177 | Proven locally; final PostgreSQL 16 CI required |
 | Tenant isolation | Cross-tenant read/write/search/export/cache/background paths denied; missing tenant context fails closed | Static SQL and ORM scoping gates pass at zero; extensive tenant tests collected | Pending full test execution and fail-closed design audit |
-| Authorization | Route/API action matrix covers anonymous and every enterprise role | Repeatable failures include business-case delete status, GDPR platform-admin erasure and an unauthorized admin navigation link | Failed; remediation required |
-| Frontend design system | Token, shell, navigation, UI-contract, asset, CSS and console gates pass | Broken-surface defect fixed with regression test; repeatable sidebar, portfolio criticality and data-quality-banner failures remain | Failed; remediation required |
-| Interaction correctness | Critical controls, modals, errors, loading, retry, empty and degraded states exercised | Interaction-reality, adversarial, no-error-banner and console suites collected | Pending browser execution |
+| Authorization | Route/API action matrix covers anonymous and every enterprise role | Corrected Chromium suite, typed-ARB authorization regression and runtime-role module pass; final CI matrix remains authoritative | Proven locally; final CI required |
+| Frontend design system | Token, shell, navigation, UI-contract, asset, CSS and console gates pass | Design/UI static gates pass; full Chromium suite passes; Firefox exposed three CSP-blocked drag handlers and the corrected external-listener regression passes | Proven locally; final cross-browser CI required |
+| Interaction correctness | Critical controls, modals, errors, loading, retry, empty and degraded states exercised | Corrected interaction-reality, adversarial, no-error-banner and console cohorts pass in the 177-test Chromium run | Proven locally; final browser CI required |
 | Responsive design | Critical persona journeys pass at 320/390/768/1024 and desktop widths with no clipping or horizontal overflow | Mobile persona and repository-shell tests collected | Pending browser execution |
 | Visual regression | Reviewed deterministic screenshots for critical pages/states/viewports; unapproved pixel diffs = 0 | Screenshot capture exists for architecture journey only; no broad approved baseline found | Gap—automation required |
-| Browser compatibility | Agreed matrix passes: Edge/Chrome, Firefox ESR, Safari if supported | CI now defines Chromium, Firefox and WebKit jobs with retained JUnit/screenshots; execution evidence is not yet recorded. Edge and real Safari remain external. | Pending CI execution and support-policy decision |
+| Browser compatibility | Agreed matrix passes: Edge/Chrome, Firefox ESR, Safari if supported | Diagnostic WebKit passed 56/56; Firefox passed 55/56 and found a real inline-handler CSP defect now fixed with regression coverage. Final Chromium/Firefox/WebKit CI pending; Edge and real Safari remain external. | Pending final CI and external browsers |
 | Accessibility | WCAG 2.2 AA automated and manual evidence; no critical/serious issue on critical journeys | Axe ratchet, keyboard/focus/legibility tests collected | Automated run pending; manual NVDA/VoiceOver external |
 | Usability and information architecture | Representative personas complete critical tasks; ≥90% completion, no critical usability failure, findings dispositioned | No moderated study evidence in repository | External—product research |
 | Frontend performance | Page-class budgets and Core Web Vitals at p75 on corporate hardware; no memory growth in long sessions | Query-growth tests exist; no browser performance gate found | Gap—automation and test environment required |
@@ -44,7 +46,7 @@ enterprise availability until the named owner supplies it.
 | Observability | Health/readiness, logs, metrics, traces and actionable alerts verified end-to-end with tenant-safe redaction | Boot-health passes; runtime alert evidence absent | Pending staging exercise |
 | Privacy | Export, erasure, retention and audit requirements pass with legal-approved policy | GDPR authorization tests collected | Automated run pending; policy/legal external |
 | Licensing | Deployment model and AGPL/commercial obligations approved | ADR identifies unresolved commercial position | External—owner/legal decision |
-| Deployment provenance | Exact green SHA and artifact digest promoted without rebuild; rollback rehearsal succeeds | No deployment executed. Current `deploy/deploy.sh` rebuilds on the host, conflicting with immutable promotion. | Failed—artifact promotion path required |
+| Deployment provenance | Exact green SHA and artifact digest promoted without rebuild; rollback rehearsal succeeds | CI now builds once only after all gates, emits `release.json`, and validates the image/production Compose contract. Host deployment accepts only digest + full SHA, forbids rebuild/source mounts, verifies running identity and rolls back by prior digest. Execution and rollback evidence remain required. | Implemented; final artifact/deploy rehearsal pending |
 | Production acceptance | Live health plus critical synthetic persona journeys green; monitoring stable through observation window | No candidate deployment | Pending deployment |
 
 ## Final release decision rule

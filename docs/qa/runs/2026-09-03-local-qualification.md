@@ -32,6 +32,9 @@ Authority: diagnostic only; final acceptance requires the final Git SHA in CI.
 | Runtime-role final local retest | 39 passed, 0 skipped | PG12 and PG16 behavior branches now make applicability explicit; complete security-hardening module is locally green |
 | Skip-hygiene focused cohort | 26 passed before approval-summary correction; follow-up AI cohort 4 passed | Maintenance writer removed from normal collection; OEF offline assertion named honestly; navigation and PostgreSQL branches assert applicability; Windows PDF render is collected only on production-like Linux; live-provider AI evaluation remains an explicit external blocker |
 | Full corrected Chromium smoke suite | 177 passed, 0 failed, 0 skipped, 0 xfailed | Accessibility, adversarial probes, persona journeys, authorization, interaction reality, responsive flows, console/error hygiene, transformation and typed ARB all green |
+| Diagnostic WebKit compatibility | 56 passed | Critical cross-browser journeys green on the pre-final candidate |
+| Diagnostic Firefox compatibility | 55 passed, 1 failed | Exposed three CSP-blocked inline drag handlers on application import; corrected with external event listeners and a source-level regression test |
+| Immutable release/deploy contracts | 10 focused tests passed; both deploy scripts parse | CI build-once digest manifest, source-free production Compose overlay, host identity verification and previous-digest rollback implemented; execution evidence awaits final CI artifact and production rehearsal |
 
 ## Invalidated run
 
@@ -47,10 +50,8 @@ environmental, but also exposes a fail-open harness defect tracked as F500-001.
 
 ## Current release position
 
-Not ready. Static and focused regression evidence is green, but the complete
-browser suite, full database verifier, Linux/PostgreSQL 16 CI, security jobs,
-browser matrix, performance/soak, recovery/rollback, manual accessibility,
-usability research, penetration testing, and production deployment evidence are
-not yet complete for one immutable release commit. Typed ARB is now locally
-green with 26/26 browser journeys and 439/439 independent regression tests;
-F500-010 awaits reproduction on the final immutable CI candidate.
+Not ready. Local static and browser evidence is green and the immutable
+artifact path is implemented, but the final Linux/PostgreSQL 16 CI, produced
+image digest, performance/soak, recovery/rollback, manual accessibility,
+usability research, penetration testing and production deployment evidence are
+not yet complete for one immutable release commit.
