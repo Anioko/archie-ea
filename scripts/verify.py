@@ -82,7 +82,7 @@ PASS, FAIL, SKIP = "PASS", "FAIL", "SKIP"
 # Windows development environment.  Keep a bounded subprocess, but do not let
 # the generic 15-minute command timeout turn a fully progressing suite into a
 # false release failure.
-TEST_SUITE_TIMEOUT_SECONDS = 1800
+TEST_SUITE_TIMEOUT_SECONDS = 3600
 
 
 @dataclass
