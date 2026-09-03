@@ -3,12 +3,13 @@
 These are `typed-arb-ui-blueprint.md` §15 journeys A-G, driven against a live
 server, a real database and a real Chromium, as the blueprint requires.
 
-Why some steps are `xfail` rather than assertions
--------------------------------------------------
-Three product defects, all confirmed by grep over the whole tree and by the
-browser assertions below, make part of §15 unreachable *today*. They are
-recorded here as named, imperative `pytest.xfail` calls so they appear in every
-run summary rather than being silently dropped:
+Historical defects and live fail-closed checks
+----------------------------------------------
+The journeys retain the investigation history below so a regression cannot be
+mistaken for an undocumented design choice.  All canonical submission paths
+are now hard assertions.  Conditional ``xfail`` calls remain only where a live
+browser measurement detects a known legacy fallback defect; a green run has no
+expected failures or skips.
 
   ARB-UI-1  FIXED at integration ce104eb3 - the coordinator wired
             typed_arb_queue_view / typed_arb_review_view into arb_routes
@@ -32,11 +33,11 @@ run summary rather than being silently dropped:
             They do not exist. Condition mutation is reachable only through the
             JSON API, which no rendered template calls.
 
-  ARB-UI-3  `decision_brief` has no ARB submission ingress of any kind.
-            `TypedARBSubjectIngress.SUPPORTED_SUBJECT_TYPES` is
-            `{"adr", "architecture_model"}` and `TypedARBSubmissionService.submit`
-            has exactly one caller (that ingress). §15 journey A requires all
-            four subject types to be submittable.
+  ARB-UI-3  FIXED. The typed ingress accepts ADR, Architecture Model, Solution,
+            and Decision Brief. Journey A constructs a real frozen Decision
+            Brief from the production programme, discovery, evidence, option,
+            and human-attestation services; no governance prerequisite is
+            stubbed.
 
 Three further defects were found by the browser itself, in the pages a user
 actually gets today, and are recorded the same way:
@@ -91,6 +92,7 @@ import os
 import re
 import uuid
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 
 import pytest
 
@@ -131,12 +133,39 @@ _CLEANUP_TABLES = (
     "arb_condition_evidence_records",
     "arb_decision_events",
     "arb_submission_events",
+    "arb_submission_evidence_snapshots",
     "operation_results",
     "command_materialisations",
     "command_idempotency_records",
     "arb_review_items",
     "arb_review_cycles",
     "arb_subject_evidence_snapshots",
+    "decision_events",
+    "decision_brief_evidence_citations",
+    "decision_brief_option_citations",
+    "decision_brief_versions",
+    "decision_briefs",
+    "transformation_option_versions",
+    "transformation_options",
+    "measure_definitions",
+    "programme_outcome_commitments",
+    "value_streams",
+    "transformation_outbox_events",
+    "evidence_head_events",
+    "evidence_claim_heads",
+    "evidence_records",
+    "candidate_signals",
+    "candidate_overlap_dispositions",
+    "evidence_requests",
+    "transformation_candidates",
+    "application_dependencies",
+    "application_capability_mapping",
+    "programme_role_assignments",
+    "programme_workstreams",
+    "strategic_initiatives",
+    "application_owners",
+    "application_components",
+    "business_capability",
     "architecture_decision_records",
 )
 
@@ -245,6 +274,7 @@ def governed(_app, seeded, live_server):
 
         org_id = seeded["ids"]["org"]
         submitter = User.query.filter_by(email=seeded["emails"][SUBMITTER]).one()
+        submitter_id = submitter.id
 
         # Two home-tenant ADRs: one for journey A/F, one for the condition
         # lifecycle so journeys do not fight over one cycle's state.
@@ -288,6 +318,296 @@ def governed(_app, seeded, live_server):
         db.session.commit()
         out["architecture_model"] = model.id
 
+        # A fully evidenced Solution subject for the legacy Solution ingress.
+        # All evidence is persisted; the request contributes only the explicit
+        # human-review assertion.
+        from app.models.solution_architect_models import (
+            DriverType,
+            SolutionAnalysisSession,
+            SolutionDriver,
+            SolutionGoal,
+            SolutionProblemDefinition,
+        )
+        from app.models.solution_lifecycle_models import SolutionRisk
+        from app.models.solution_models import Solution
+
+        workspace = SolutionAnalysisSession(
+            organization_id=org_id,
+            name="Typed ARB solution workspace %s" % suffix,
+            created_by_id=submitter.id,
+        )
+        db.session.add(workspace)
+        db.session.flush()
+        solution = Solution(
+            organization_id=org_id,
+            name="Typed ARB solution %s" % suffix,
+            description="A persisted, evidence-ready browser fixture.",
+            created_by_id=submitter.id,
+            analysis_session_id=workspace.id,
+            governance_status="draft",
+            has_acm_domains=True,
+            security_lead="Security Lead",
+            data_protection_officer="Data Protection Officer",
+        )
+        db.session.add(solution)
+        db.session.flush()
+        problem = SolutionProblemDefinition(
+            organization_id=org_id,
+            session_id=workspace.id,
+            problem_description="Replace brittle synchronous integration.",
+        )
+        db.session.add(problem)
+        db.session.flush()
+        driver = SolutionDriver(
+            organization_id=org_id,
+            problem_id=problem.id,
+            name="Operational resilience",
+            driver_type=DriverType.TECHNOLOGY,
+        )
+        db.session.add(driver)
+        db.session.flush()
+        db.session.add_all((
+            SolutionGoal(
+                organization_id=org_id,
+                problem_id=problem.id,
+                driver_id=driver.id,
+                name="Reliable event delivery",
+                priority=1,
+            ),
+            SolutionRisk(
+                organization_id=org_id,
+                solution_id=solution.id,
+                risk_name="Schema drift",
+                risk_description="Consumers may lag schema changes.",
+                impact="medium",
+                probability="medium",
+                mitigation="Use versioned schemas and compatibility checks.",
+                created_by_id=submitter.id,
+            ),
+        ))
+        db.session.commit()
+        out.update({
+            "solution": solution.id,
+            "solution_workspace": workspace.id,
+            "solution_problem": problem.id,
+        })
+
+        # A production-valid frozen Decision Brief.  The ARB ingress is
+        # deliberately fail-closed unless the complete governed chain exists:
+        # programme -> discovery candidate -> accepted evidence -> frozen
+        # alternatives -> human-attested frozen brief.
+        from sqlalchemy import select
+        from sqlalchemy.orm import Session
+
+        from app.models.transformation_evidence import EvidenceRequest
+        from app.models.transformation_programme import (
+            MeasureDefinition,
+            ProgrammeOutcomeCommitment,
+            ProgrammeWorkstream,
+        )
+        from app.models.unified_capability import ValueStream
+        from app.modules.transformation_room.decision_service import (
+            DecisionBriefService,
+            TransformationOptionService,
+        )
+        from app.modules.transformation_room.domain import HumanAssertions
+        from app.modules.transformation_room.evidence_service import (
+            TransformationEvidenceService,
+        )
+        from app.modules.transformation_room.discovery_service import (
+            RationalisationDiscoveryService,
+        )
+        from tests.test_rationalisation_discovery_service import (
+            _discover,
+            _justified_distinct,
+            _seed_scope,
+        )
+
+        prior_steward = _app.config.pop("TRANSFORMATION_PORTFOLIO_STEWARD_ID", None)
+        decision_seed = _seed_scope(
+            db.session, suffix="browser-brief-%s" % suffix, commit=True
+        )
+        out["cleanup_org_ids"].add(decision_seed.organization_id)
+        out["decision_brief_org_id"] = decision_seed.organization_id
+        role = Role.query.filter_by(name="Administrator").first() or Role.query.first()
+        decision_browser_user = User(
+            email="brief.authority.%s@example.com" % suffix,
+            first_name="Brief",
+            last_name="Authority",
+            organization_id=decision_seed.organization_id,
+            enterprise_role="enterprise_architect",
+            confirmed=True,
+        )
+        decision_browser_user.role = role
+        decision_browser_user.password = PASSWORD
+        db.session.add(decision_browser_user)
+        db.session.commit()
+        out["decision_brief_email"] = decision_browser_user.email
+
+        discovered = next(
+            item for item in _discover(decision_seed)
+            if item.application_id == decision_seed.application_id
+        )
+        accepted = RationalisationDiscoveryService.accept_candidate(
+            actor=decision_seed.actor,
+            workstream_id=decision_seed.workstream_id,
+            application_id=decision_seed.application_id,
+            signal_digests=discovered.signal_digests,
+            overlap_disposition=_justified_distinct(decision_seed),
+            inclusion_reason="Govern this canonical browser-test subject",
+            command_key="browser-brief-candidate-%s" % suffix,
+        )
+        candidate_id = accepted.object_ids["candidate_id"]
+        request_id = accepted.object_ids["evidence_request_id"]
+        evidence = TransformationEvidenceService.record_observation(
+            actor=decision_seed.actor,
+            candidate_id=candidate_id,
+            claim_key="application_owner",
+            adapter_key="Application-Inventory",
+            source_key=str(decision_seed.application_id),
+            expected_head_revision=0,
+            command_key="browser-brief-evidence-%s" % suffix,
+        )
+        evidence_id = evidence.object_ids["evidence_record_id"]
+
+        with Session(db.engine) as session, session.begin():
+            workstream = session.scalar(
+                select(ProgrammeWorkstream).where(
+                    ProgrammeWorkstream.id == decision_seed.workstream_id,
+                    ProgrammeWorkstream.organization_id == decision_seed.organization_id,
+                )
+            )
+            workstream.lifecycle_stage = "options"
+            value_stream = ValueStream(
+                organization_id=decision_seed.organization_id,
+                name="Decision brief customer service %s" % suffix,
+                code="BRIEF-%s" % suffix,
+                value_stream_type="customer_facing",
+            )
+            outcome = ProgrammeOutcomeCommitment(
+                organization_id=decision_seed.organization_id,
+                programme_id=workstream.programme_id,
+                workstream_id=workstream.id,
+                statement="Reduce run cost without service disruption",
+                owner_id=decision_seed.actor_id,
+                improvement_direction="decrease",
+                lifecycle="committed",
+            )
+            session.add_all((value_stream, outcome))
+            session.flush()
+            session.add(MeasureDefinition(
+                organization_id=decision_seed.organization_id,
+                outcome_commitment_id=outcome.id,
+                metric_name="Annual run cost",
+                unit="GBP",
+                currency="GBP",
+                aggregation="sum",
+                baseline_amount=125000,
+                target_amount=95000,
+            ))
+            value_stream_id = value_stream.id
+            request = session.scalar(
+                select(EvidenceRequest).where(
+                    EvidenceRequest.id == request_id,
+                    EvidenceRequest.organization_id == decision_seed.organization_id,
+                )
+            )
+            request.status = "accepted"
+            request.submitted_evidence_id = evidence_id
+            request.accepted_evidence_id = evidence_id
+            request.submitted_at = _now()
+            request.accepted_at = _now()
+
+        def _draft(title, action_type, ordinal):
+            return {
+                "title": title,
+                "action_type": action_type,
+                "description": "Governed %s alternative" % action_type,
+                "assumptions": ["Assumption %d is explicitly test-owned" % ordinal],
+                "dependencies": ["Dependency %d is resolved before execution" % ordinal],
+                "impacts": [
+                    {
+                        "impact_type": "capability",
+                        "subject_id": decision_seed.capability_id,
+                        "description": "Capability impact %d" % ordinal,
+                    },
+                    {
+                        "impact_type": "value_stream",
+                        "subject_id": value_stream_id,
+                        "description": "Value-stream impact %d" % ordinal,
+                    },
+                ],
+                "risks": ["Risk %d has an owned mitigation" % ordinal],
+                "reversibility": "Reversible until the governed cutover",
+                "transition_approach": "Transition wave %d" % ordinal,
+                "affected_capability_ids": [decision_seed.capability_id],
+                "affected_value_stream_ids": [value_stream_id],
+                "recommendation_rationale": "Alternative %d rationale" % ordinal,
+                "cost_min": Decimal(10000 * ordinal),
+                "cost_max": Decimal(15000 * ordinal),
+                "benefit_min": Decimal(20000 * ordinal),
+                "benefit_max": Decimal(30000 * ordinal),
+                "risk_min": Decimal("0.10") * ordinal,
+                "risk_max": Decimal("0.20") * ordinal,
+                "currency": "GBP",
+                "technology_required": ordinal % 2 == 0,
+            }
+
+        option_ids = []
+        option_version_ids = []
+        for ordinal, (title, action_type) in enumerate(
+            (("Tolerate", "tolerate"), ("Migrate", "migrate")), start=1
+        ):
+            option = TransformationOptionService.create_draft(
+                actor=decision_seed.actor,
+                workstream_id=decision_seed.workstream_id,
+                candidate_id=candidate_id,
+                draft=_draft(title, action_type, ordinal),
+                command_key="browser-brief-option-%d-%s" % (ordinal, suffix),
+            )
+            option_id = option.object_ids["option_id"]
+            option_ids.append(option_id)
+            frozen = TransformationOptionService.freeze_version(
+                actor=decision_seed.actor,
+                option_id=option_id,
+                expected_revision=1,
+                command_key="browser-brief-option-freeze-%d-%s" % (ordinal, suffix),
+            )
+            option_version_ids.append(frozen.object_ids["option_version_id"])
+
+        brief = DecisionBriefService.create_brief(
+            actor=decision_seed.actor,
+            workstream_id=decision_seed.workstream_id,
+            candidate_id=candidate_id,
+            title="Application rationalisation decision",
+            recommendation_option_id=option_ids[1],
+            decision_authority_id=decision_seed.actor_id,
+            unknown_codes=("cost_source_unknown",),
+            conflicts=("Operational cutover window requires confirmation",),
+            expected_impacts=("Lower run cost after controlled migration",),
+            command_key="browser-brief-create-%s" % suffix,
+        )
+        brief_id = brief.object_ids["decision_brief_id"]
+        DecisionBriefService.freeze(
+            actor=decision_seed.actor,
+            brief_id=brief_id,
+            option_version_ids=tuple(option_version_ids),
+            evidence_ids=(evidence_id,),
+            assertions=HumanAssertions(
+                reviewed_ai_material=True,
+                acknowledged_unknown_codes=("cost_source_unknown",),
+                acknowledged_superseded_evidence_ids=(),
+                rationale="A human reviewed the evidence, unknowns and recommendation.",
+            ),
+            expected_revision=1,
+            command_key="browser-brief-freeze-%s" % suffix,
+        )
+        db.session.commit()
+        db.session.remove()
+        out["decision_brief"] = brief_id
+        if prior_steward is not None:
+            _app.config["TRANSFORMATION_PORTFOLIO_STEWARD_ID"] = prior_steward
+
         # Two deliberately non-happy read states. These are persisted because
         # the browser server runs in a separate process and must observe the
         # same real governance graph as production code.
@@ -307,7 +627,7 @@ def governed(_app, seeded, live_server):
                     adr_id=adr_id,
                     schema_version=1,
                     policy_version="adr-arb-r2",
-                    captured_by_id=submitter.id,
+                captured_by_id=submitter_id,
                     captured_at=_now(),
                     payload={"title": "Corrupt evidence fixture"},
                     citations={"linked_resources": []},
@@ -345,7 +665,7 @@ def governed(_app, seeded, live_server):
                 subject_evidence_snapshot_id=None if historical else snapshot.id,
                 review_cycle_id=cycle.id,
                 status=state,
-                submitter_id=submitter.id,
+                submitter_id=submitter_id,
                 submitted_at=_now(),
             )
             db.session.add(review)
@@ -515,6 +835,40 @@ def _cleanup(db, out):
                     cursor.execute(
                         "DELETE FROM architecture_models WHERE id = %s",
                         (out["architecture_model"],))
+                if out.get("solution"):
+                    cursor.execute(
+                        "SELECT id FROM arb_review_cycles WHERE subject_type = "
+                        "'solution' AND subject_id = %s",
+                        (out["solution"],),
+                    )
+                    cycle_ids = [row[0] for row in cursor.fetchall()]
+                    if cycle_ids:
+                        for table in ("arb_condition_events", "arb_canonical_conditions",
+                                      "arb_condition_evidence_records", "arb_decision_events",
+                                      "arb_submission_events", "arb_review_items"):
+                            cursor.execute(
+                                'DELETE FROM "%s" WHERE review_cycle_id = ANY(%%s)' % table,
+                                (cycle_ids,),
+                            )
+                        cursor.execute(
+                            "DELETE FROM arb_review_cycles WHERE id = ANY(%s)",
+                            (cycle_ids,),
+                        )
+                    cursor.execute(
+                        "DELETE FROM arb_submission_evidence_snapshots WHERE solution_id = %s",
+                        (out["solution"],),
+                    )
+                    cursor.execute("DELETE FROM solution_risks WHERE solution_id = %s",
+                                   (out["solution"],))
+                    cursor.execute("DELETE FROM solutions WHERE id = %s", (out["solution"],))
+                    cursor.execute("DELETE FROM solution_goals WHERE problem_id = %s",
+                                   (out["solution_problem"],))
+                    cursor.execute("DELETE FROM solution_drivers WHERE problem_id = %s",
+                                   (out["solution_problem"],))
+                    cursor.execute("DELETE FROM solution_problem_definitions WHERE id = %s",
+                                   (out["solution_problem"],))
+                    cursor.execute("DELETE FROM solution_analysis_sessions WHERE id = %s",
+                                   (out["solution_workspace"],))
             finally:
                 cursor.execute("SET session_replication_role = %s" % original)
             raw.commit()
@@ -530,7 +884,7 @@ def actor(browser, live_server, seeded):
     def _open(archetype):
         page = browser.new_page()
         pages.append(page)
-        _login(page, live_server, seeded["emails"][archetype])
+        _login(page, live_server, seeded["emails"].get(archetype, archetype))
         # Land on a page that renders the admin layout, so the CSRF meta exists.
         page.goto(live_server + "/arb/", wait_until="domcontentloaded",
                   timeout=PAGE_TIMEOUT)
@@ -899,41 +1253,27 @@ def test_journey_a_typed_submission_is_canonical_and_idempotent(
     actor, live_server, governed, seeded, _app, subject_type
 ):
     """§15 A.1-3 and A.6, for each of the four subject types."""
-    if subject_type == "decision_brief":
-        pytest.xfail(
-            "ARB-UI-3 is FIXED (lane 2): SUPPORTED_SUBJECT_TYPES now includes "
-            "decision_brief. This stays xfail for a different and narrower "
-            "reason - FIXTURE COST, not a missing ingress. A Decision Brief is "
-            "only submittable once a real frozen version exists, which needs "
-            "the whole committed chain (programme -> workstream -> candidate -> "
-            "options -> evidence -> brief, plus freeze_options and "
-            "freeze_brief) spanning three other test modules' fixtures. There "
-            "is nothing to stub. Covered at the route level by "
-            "tests/test_typed_arb_submission_routes.py."
-        )
-
-    if subject_type == "solution":
-        pytest.xfail(
-            "ARB-UI-3 (related): the Solution ingress is evidence-gated through "
-            "the dossier and is already covered end to end by "
-            "tests/smoke/test_arb_submission_journey.py; it does not return the "
-            "canonical typed frame asserted below."
-        )
-
-    page = actor(SUBMITTER)
+    page = actor(
+        governed["decision_brief_email"]
+        if subject_type == "decision_brief" else SUBMITTER
+    )
 
     key = "journey-a-%s-%s" % (subject_type, uuid.uuid4().hex[:8])
-    subject_id = (governed["architecture_model"]
-                  if subject_type == "architecture_model"
-                  else governed["adr_a"])
+    subject_id = {
+        "architecture_model": governed["architecture_model"],
+        "solution": governed["solution"],
+        "decision_brief": governed["decision_brief"],
+    }.get(subject_type, governed["adr_a"])
+    submit_path = (
+        "/api/solutions/%d/arb/submit" % subject_id
+        if subject_type == "solution"
+        else "/api/arb/subjects/%s/%d/submit" % (subject_type, subject_id)
+    )
 
     status, first = _api(
-        page, live_server,
-        "/api/arb/subjects/%s/%d/submit" % (subject_type, subject_id),
+        page, live_server, submit_path,
         body={"human_reviewed": True}, idempotency_key=key,
     )
-    if status == 409:
-        pytest.skip("this ADR already carries an open cycle from an earlier test")
     assert status == 201, first
     for field in ("review_cycle_id", "review_item_id", "evidence_id",
                   "review_number", "cycle_number", "subject_type",
@@ -950,8 +1290,7 @@ def test_journey_a_typed_submission_is_canonical_and_idempotent(
 
     # A.6 - the same key replays to the same identifiers, and creates nothing.
     status, replay = _api(
-        page, live_server,
-        "/api/arb/subjects/%s/%d/submit" % (subject_type, subject_id),
+        page, live_server, submit_path,
         body={"human_reviewed": True}, idempotency_key=key,
     )
     assert status == 200, replay
@@ -964,9 +1303,13 @@ def test_journey_a_typed_submission_is_canonical_and_idempotent(
     from app.models.architecture_review_board import ARBReviewCycle
 
     with _app.app_context():
+        subject_org_id = (
+            governed["decision_brief_org_id"]
+            if subject_type == "decision_brief" else governed["org_id"]
+        )
         rows = db.session.execute(
             db.select(ARBReviewCycle).where(
-                ARBReviewCycle.organization_id == governed["org_id"],
+                ARBReviewCycle.organization_id == subject_org_id,
                 ARBReviewCycle.subject_type == subject_type,
                 ARBReviewCycle.subject_id == subject_id,
             )

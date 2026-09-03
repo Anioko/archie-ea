@@ -69,6 +69,10 @@ def _success(*, idempotent=False):
         review_cycle_id=73,
         canonical_url="/solutions/19?tab=governance",
         http_status=200 if idempotent else 201,
+        cycle_number=2,
+        subject_type="solution",
+        subject_id=19,
+        status="submitted",
     )
 
 
@@ -163,6 +167,12 @@ def test_http_solution_ingresses_use_typed_adapter_and_preserve_success_contract
     assert data["review_cycle_id"] == 73
     assert data["canonical_url"] == "/solutions/19?tab=governance"
     assert data["idempotent"] is False
+    if function_name == "submit_for_arb":
+        assert data["evidence_id"] == 72
+        assert data["cycle_number"] == 2
+        assert data["subject_type"] == "solution"
+        assert data["subject_id"] == 19
+        assert data["status"] == "submitted"
 
 
 def test_v2_governance_replay_keeps_200_status(app, db_session, make_org, monkeypatch):

@@ -115,8 +115,8 @@
       "area": "arb_governance",
       "severity": "high",
       "title": "Typed ARB browser qualification contains expected failures",
-      "status": "open",
-      "original_evidence": "Main Chromium smoke run reported six xfailed typed-ARB cases. Isolated retest found one additional brittle tenant-leak assertion. On 3 Sep the assertion was corrected and passed; successful Architecture Model submission, browser Return for Evidence and cycle-2 resubmission, historical-unverified lock rendering, and corrupt-evidence failed rendering with HTTP 503 were converted to passing browser tests. Two expected failures remain: Solution response normalization and the real frozen Decision Brief fixture.",
+      "status": "verified_local",
+      "original_evidence": "Main Chromium smoke run reported six xfailed typed-ARB cases. All were eliminated on 3 Sep: Architecture Model submission, Return for Evidence and cycle-2 resubmission, historical-unverified lock rendering, corrupt-evidence HTTP 503, normalized Solution submission, and a production-valid frozen Decision Brief submission now pass as real browser assertions. Final evidence: 26 passed, 0 failed, 0 skipped, 0 xfailed in the complete typed ARB Chromium suite; the independent typed ARB service/route/template regression set passed 439/439.",
       "required_fix": "Replace every expected failure with deterministic passing end-to-end evidence or retain the associated behavior as an explicit release blocker; qualification cannot count xfail as green.",
       "closure_tests": [
         "tests/smoke/test_typed_arb_governance_journey.py with zero xfail/skip",

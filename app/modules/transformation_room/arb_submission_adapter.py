@@ -59,6 +59,10 @@ class LegacyARBSubmissionResult:
     review_cycle_id: int | None = None
     canonical_url: str | None = None
     http_status: int = 200
+    cycle_number: int | None = None
+    subject_type: str | None = None
+    subject_id: int | None = None
+    status: str | None = None
 
 
 class TypedARBSubmissionAdapter:
@@ -243,6 +247,10 @@ class TypedARBSubmissionAdapter:
             or object_ids.get("review_cycle_id"),
             canonical_url=response.get("canonical_url"),
             http_status=200 if result.idempotent else 201,
+            cycle_number=response.get("cycle_number"),
+            subject_type=response.get("subject_type"),
+            subject_id=response.get("subject_id"),
+            status=response.get("status"),
         )
 
     @classmethod
@@ -284,6 +292,10 @@ class TypedARBSubmissionAdapter:
             or object_ids.get("review_cycle_id"),
             canonical_url=response.get("canonical_url"),
             http_status=200 if result.idempotent else 201,
+            cycle_number=response.get("cycle_number"),
+            subject_type=response.get("subject_type"),
+            subject_id=response.get("subject_id"),
+            status=response.get("status"),
         )
 
     @staticmethod
