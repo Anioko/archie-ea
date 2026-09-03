@@ -518,21 +518,32 @@ def _vendors_impl(
         now = datetime.utcnow()
         ninety_days = now + timedelta(days=90)
 
+        # DEF-050, Capgemini dry-run: this summed
+        # VendorOrganization.contract_value_annual / read
+        # VendorOrganization.contract_status/contract_end_date — fields
+        # nothing writes to. The real "Add Contract" flow
+        # (app/modules/procurement) creates a VendorContract row (vendor_id
+        # FK, annual_cost, status, end_date), a completely different table.
+        # So "Portfolio ACV" stayed "—" no matter how many real, active
+        # contracts existed. Sum from VendorContract instead.
+        from app.models.application_portfolio import VendorContract
+
         acv_row = db.session.query(
-            db.func.sum(VendorOrganization.contract_value_annual).label("total_acv"),
+            db.func.sum(VendorContract.annual_cost).label("total_acv"),
             db.func.count(
                 db.case(
                     (
                         and_(
-                            VendorOrganization.contract_end_date >= now,
-                            VendorOrganization.contract_end_date <= ninety_days,
+                            VendorContract.end_date >= now,
+                            VendorContract.end_date <= ninety_days,
                         ),
-                        VendorOrganization.id,
+                        VendorContract.id,
                     )
                 )
             ).label("renewals_due"),
         ).filter(
-            VendorOrganization.contract_status.in_(["contracted", "deployed"])
+            VendorContract.status == "active",
+            VendorContract.vendor_id.isnot(None),
         ).one()
 
         total_acv = float(acv_row.total_acv or 0)
