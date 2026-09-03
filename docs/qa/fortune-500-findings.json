@@ -131,9 +131,10 @@
       "area": "browser_harness",
       "severity": "medium",
       "title": "Architecture Journey browser evidence skipped when seed had no journey",
-      "status": "ready_for_retest",
+      "status": "verified_local",
       "original_evidence": "Main Chromium run skipped the journey-home honesty check and two screenshot cases because the smoke tenant contained no ArchitectureJourney.",
       "required_fix": "Seed one real business-architect-owned journey so home, honesty, and screenshot checks always execute.",
+      "retest_evidence": "3 Sep 2026: the complete corrected Chromium smoke suite passed 177/177 with zero skips or xfails, including journey home, honesty and screenshot cases.",
       "closure_tests": [
         "tests/smoke/test_architecture_journey_home_journey.py",
         "tests/smoke/test_architecture_journey_screenshots.py",
@@ -152,6 +153,20 @@
       "closure_tests": [
         "git check-ignore -v scripts/check_docs_drift.py scripts/check_unregistered_checks.py must report no match",
         "git ls-files scripts/check_*.py includes both new scripts"
+      ]
+    },
+    {
+      "id": "F500-012",
+      "area": "performance_harness",
+      "severity": "medium",
+      "title": "Documented scale benchmark could not import the Archie application",
+      "status": "verified_local",
+      "original_evidence": "3 Sep 2026: `python scripts/benchmark_scale.py --i-know-this-is-not-prod ...` exited before any writes with ModuleNotFoundError: No module named 'app' because direct script execution placed scripts/, not the repository root, on sys.path.",
+      "required_fix": "Add the repository root to the benchmark launcher's import path before importing app and prove the documented command reaches a real isolated benchmark run.",
+      "retest_evidence": "Launcher contract passed; isolated PostgreSQL benchmark seeded 10,000 applications, 50,000 ArchiMate elements, 500 solutions and 1,000 users. All three p95 budgets passed (17.4ms, 54.9ms, 4.3ms), cleanup left zero benchmark elements, and the scratch database was dropped.",
+      "closure_tests": [
+        "tests/test_benchmark_scale_launcher.py",
+        "python scripts/benchmark_scale.py --i-know-this-is-not-prod --applications 10000 --elements 50000 --solutions 500 --users 1000 --iterations 20 --cleanup"
       ]
     }
   ]

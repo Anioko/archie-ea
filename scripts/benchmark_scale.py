@@ -48,6 +48,11 @@ import sys
 import time
 import uuid
 
+# Running ``python scripts/benchmark_scale.py`` makes ``scripts/`` Python's
+# import root. Add the repository root so the documented command can import the
+# application package from a clean shell.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 
 def _looks_like_prod(url: str) -> bool:
     if not url:

@@ -35,6 +35,7 @@ Authority: diagnostic only; final acceptance requires the final Git SHA in CI.
 | Diagnostic WebKit compatibility | 56 passed | Critical cross-browser journeys green on the pre-final candidate |
 | Diagnostic Firefox compatibility | 55 passed, 1 failed | Exposed three CSP-blocked inline drag handlers on application import; corrected with external event listeners and a source-level regression test |
 | Immutable release/deploy contracts | 10 focused tests passed; both deploy scripts parse | CI build-once digest manifest, source-free production Compose overlay, host identity verification and previous-digest rollback implemented; execution evidence awaits final CI artifact and production rehearsal |
+| Isolated scale microbenchmark | 10,000 applications, 50,000 ArchiMate elements, 500 solutions, 1,000 users; 20 samples/query; all three budgets passed | p95: applications 17.4ms, elements 54.9ms, solution count 4.3ms. Synthetic rows verified removed and scratch database dropped. Does not substitute for concurrent HTTP/soak testing. |
 
 ## Invalidated run
 
