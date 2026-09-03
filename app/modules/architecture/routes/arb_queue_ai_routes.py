@@ -94,10 +94,13 @@ def ai_session_agenda(session_id):
         agenda = generate_session_agenda(session)
     except ARBQueueAIError as e:
         logger.warning("ARB session agenda unparseable for session %s: %s", session_id, e)
-        return jsonify({"error": f"AI agenda draft failed: {e}"}), 502
-    except Exception as e:
+        # DEF-077: don't prefix a message that's already a complete,
+        # user-facing sentence (the no-review-items case above) with
+        # internal-pipeline framing.
+        return jsonify({"error": str(e)}), 400 if not session.review_items else 502
+    except Exception:
         logger.exception("ARB session agenda generation failed for session %s", session_id)
-        return jsonify({"error": f"AI agenda draft failed: {e}"}), 502
+        return jsonify({"error": "AI agenda draft failed. Please try again."}), 502
 
     return jsonify({"agenda": agenda})
 

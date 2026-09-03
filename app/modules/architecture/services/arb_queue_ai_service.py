@@ -290,6 +290,18 @@ def generate_session_agenda(session) -> Dict[str, Any]:
     agenda without human review.
     """
     review_items = session.review_items or []
+    # DEF-077, Capgemini dry-run: with no review items linked, the LLM
+    # prompt below has nothing to summarise, so it either declines or
+    # invents review numbers not in the (empty) valid set — every one gets
+    # dropped by _parse_agenda, which then raised its generic parse-failure
+    # message. That message describes the internal pipeline ("dropping
+    # invented reviews"), not the user's actual situation. Short-circuit
+    # with the real, actionable reason instead of ever calling the LLM.
+    if not review_items:
+        raise ARBQueueAIError(
+            "This session has no review items assigned yet — assign at least one "
+            "before drafting an agenda."
+        )
     valid_review_numbers = {r.review_number for r in review_items}
     context = _build_agenda_context(session)
     prompt = _build_agenda_prompt(context)
