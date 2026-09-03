@@ -57,6 +57,10 @@ def test_ci_builds_once_after_every_release_gate_and_exports_the_digest():
     assert "VCS_REF=${{ github.sha }}" in image_job
     assert "steps.build.outputs.digest" in image_job
     assert "release.json" in image_job
+    assert "config --format json" in image_job
+    assert 'assert "build" not in service' in image_job
+    assert 'volume.get("target") == "/app"' in image_job
+    assert "docker run --rm --entrypoint python" in image_job
 
 
 def test_static_ci_installs_the_browser_required_by_the_js_syntax_gate():
@@ -68,3 +72,17 @@ def test_static_ci_installs_the_browser_required_by_the_js_syntax_gate():
     )[0]
 
     assert "playwright install --with-deps chromium" in static_job
+
+
+def test_host_deployer_accepts_only_digest_and_full_commit_inputs():
+    script = (ROOT / "deploy" / "deploy.sh").read_text(encoding="utf-8")
+
+    assert "sha256:[0-9a-f]{64}" in script
+    assert "[0-9a-f]{40}" in script
+    assert "org.opencontainers.image.revision" in script
+    assert "--no-build" in script
+    assert "docker compose build" not in script
+    assert "git checkout" not in script
+    assert "PREVIOUS_IMAGE" in script
+    assert "release.env" in script
+    assert "logs --since 15m server" in script

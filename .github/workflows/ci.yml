@@ -533,6 +533,28 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: docker/setup-buildx-action@v3
+      - name: Prove production Compose cannot rebuild or shadow application code
+        shell: bash
+        run: |
+          export ARCHIE_IMAGE="ghcr.io/example/archie@sha256:$(printf '0%.0s' {1..64})"
+          docker compose -f docker-compose.yml -f deploy/docker-compose.production.yml config --format json > /tmp/production-compose.json
+          python - <<'PY'
+          import json
+
+          config = json.load(open("/tmp/production-compose.json", encoding="utf-8"))
+          roles = {"database-bootstrap", "schema-deploy", "database-acl", "server", "worker"}
+          images = set()
+          for role in roles:
+              service = config["services"][role]
+              assert "build" not in service, (role, service.get("build"))
+              assert not any(
+                  volume.get("target") == "/app"
+                  for volume in service.get("volumes", [])
+                  if isinstance(volume, dict)
+              ), role
+              images.add(service["image"])
+          assert images == {config["services"]["server"]["image"]}
+          PY
       - uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -564,6 +586,9 @@ jobs:
         run: |
           test -n "$DIGEST"
           docker buildx imagetools inspect "$IMAGE@$DIGEST"
+          docker pull "$IMAGE@$DIGEST"
+          test "$(docker image inspect --format '{{ index .Config.Labels \"org.opencontainers.image.revision\" }}' "$IMAGE@$DIGEST")" = "$REVISION"
+          docker run --rm --entrypoint python "$IMAGE@$DIGEST" -c "import app, flask; print('release image imports cleanly')"
           python - <<'PY'
           import json, os
           from pathlib import Path

@@ -58,32 +58,35 @@ appeared deployed and were not.
 
     Python code (.py)          -> docker restart archie-ea-server-1   (~180s)
     New blueprints/routes      -> docker restart archie-ea-server-1
-    Templates (.html), static  -> SIGHUP is sufficient; Jinja reads from disk
-                                  and a worker re-fork clears its cache
+    Every application change   -> deploy a new CI-produced image digest
 
-Verify a Python deploy actually landed rather than assuming — compare the master
-process start time against the file you changed:
-
-    docker exec archie-ea-server-1 sh -c 'stat -c %y /proc/<master_pid>'
-    stat -c %y /root/archie-ea/<changed_file>
-
-If the master predates the file, the change is not running.
+Production does not mount the host checkout into `/app`. Templates, static
+assets, Python code and dependencies are all part of the same immutable image.
 
 ## The deploy procedure
 
-`deploy/deploy.sh` does the whole sequence on the application host. Every step in
-it exists because that step has already caught a real failure — see the comments
-at the top of the script.
+The CI `release-image` job runs only after every release gate succeeds. It
+builds once, pushes the image to GHCR, and retains `release.json` containing the
+full commit, registry digest and workflow run. A tag is never a production
+deploy input.
 
-    # from a workstation: put the code on the host, then run the deploy
-    git push ssh://root@10.106.0.6/root/archie-ea HEAD:refs/heads/deploy-$(date +%Y%m%d)
-    ssh -J root@165.22.125.156 root@10.106.0.6 \
-        'cd /root/archie-ea && ./deploy/deploy.sh deploy-YYYYMMDD'
+From a workstation, use those exact values:
 
-It refuses a non-fast-forward unless given `--force`, dumps the database first,
-verifies subresource integrity **before** restarting, restarts rather than
-SIGHUPing, and **rolls itself back if health does not return**. It prints the
-rollback command and the dump path on the way out.
+    ./scripts/deploy.sh \
+      ghcr.io/anioko/archie@sha256:<64-hex-digest> \
+      <40-character-commit> --yes
+
+The host script pre-pulls the digest, checks its OCI revision label against the
+commit, validates the source-free production Compose overlay, dumps the
+database, and recreates the application with `--no-build`. It then proves the
+running container image ID and revision, checks health, public pages and local
+container errors, and atomically records `deploy-releases/release.env`.
+Failure restores and verifies the previously recorded digest.
+
+The host checkout supplies only versioned Compose and deployment-control files;
+`deploy/docker-compose.production.yml` removes every application build context
+and `/app` bind mount. Runtime bytes therefore come only from the recorded
+digest.
 
 Then verify what users actually get, in a browser, from a workstation:
 
@@ -98,14 +101,9 @@ Then verify what users actually get, in a browser, from a workstation:
 good. `deploy/verify_production.py` proves the **deployment** is good — that the
 bytes being served behave in a browser.
 
-Those are not the same thing, and the gap between them is not theoretical. On
-2026-07-31 a Windows checkout rewrote the vendored JavaScript to CRLF, which
-changed every file's SHA-384 and so broke the `integrity=` attributes. The
-templates stayed valid, every test passed, every route returned 200 — and the
-browser refused to execute Alpine, DOMPurify and the icon library, leaving the
-entire interface inert. Nothing server-side can see that. `.gitattributes` now
-pins those files with `-text`, and `deploy.sh` checks the hashes before it
-restarts anything.
+Those are not the same thing. CI verifies SRI before building, and the
+post-deployment browser check proves the exact image still behaves correctly in
+the deployed topology.
 
 ### Topology
 
@@ -119,20 +117,12 @@ The app host has no public address; reach it with
 authorised on the app host, so use ProxyJump from a workstation rather than
 hopping manually.
 
-### Known friction: the host pulls from a repo we cannot push to
+### Registry access
 
-The droplet's `origin` is `Anioko/archie-ea`, and the working credentials get 403
-against it. That is why deploys go over SSH to a `deploy-*` branch instead of
-`git pull`, and why the host sits on a deploy branch rather than `main`.
-
-Fixing it — grant push access to `Anioko`, or repoint `origin` at
-`saint-gobain-archie` — reduces a deploy to `git pull && ./deploy/deploy.sh main`.
-Until then, delete merged deploy branches occasionally:
-
-    git branch --list 'deploy-*' --format='%(refname:short)' | while read b; do
-        [ "$b" = "$(git rev-parse --abbrev-ref HEAD)" ] && continue
-        git merge-base --is-ancestor "$b" HEAD && git branch -D "$b"
-    done
+The application host needs read-only GHCR package access. Authenticate once
+with a narrowly scoped token and retain the current and previous images locally
+so rollback remains available during a registry outage. Never prune those two
+digests before the new release has passed its observation window.
 
 ## Backup restore drill
 
