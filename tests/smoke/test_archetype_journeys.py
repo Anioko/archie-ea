@@ -14,6 +14,8 @@ suite was written after finding in production or on the way to it:
     no overflow       the mobile regression nothing else was watching for
 """
 
+import json
+
 import pytest
 
 from .conftest import ARCHETYPES, PAGE_TIMEOUT, PASSWORD
@@ -53,6 +55,33 @@ PAGE_STATE = """() => {
       unnamed: unnamed.map(e => e.id || e.name || e.tagName.toLowerCase()),
   };
 }"""
+
+
+def _format_console_error(message):
+    """Preserve structured console arguments and their source across engines.
+
+    Firefox renders ``console.error({status: 503, ...})`` as only ``Object`` in
+    ``ConsoleMessage.text``.  That made a release-blocking CI failure impossible
+    to attribute to a request or script.  Chromium often stringifies more, but
+    qualification diagnostics must be equally actionable in every engine.
+    """
+    rendered = []
+    for arg in message.args:
+        try:
+            value = arg.json_value()
+            rendered.append(json.dumps(value, sort_keys=True, default=str))
+        except Exception as exc:
+            rendered.append("<unserializable console argument: %s>" % exc)
+
+    detail = " ".join(rendered) if rendered else message.text
+    location = message.location or {}
+    source = location.get("url", "")
+    if source:
+        source = source.rsplit("/", 1)[-1]
+        source += ":%s:%s" % (
+            location.get("lineNumber", "?"), location.get("columnNumber", "?"))
+        return "%s [%s]" % (detail, source)
+    return detail
 
 
 def _login(page, base, email):
@@ -110,7 +139,8 @@ def page(browser, request):
     pg = ctx.new_page()
     pg.console_errors = []
     pg.page_errors = []
-    pg.on("console", lambda m: pg.console_errors.append(m.text) if m.type == "error" else None)
+    pg.on("console", lambda m: pg.console_errors.append(_format_console_error(m))
+          if m.type == "error" else None)
     # `pageerror` as well as `console`: they carry different failures, and only
     # this suite's sibling (test_ai_chat_journey) was watching both. An uncaught
     # exception — the ReferenceError a CSP-blocked script leaves behind when the

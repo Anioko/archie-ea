@@ -89,9 +89,23 @@ def _load_baseline():
         return json.load(fh).get("accepted", {})
 
 
+def _violation_evidence(violation):
+    """Keep enough axe evidence to make a CI-only violation repairable."""
+    nodes = violation.get("nodes") or []
+    targets = []
+    for node in nodes[:8]:
+        target = node.get("target") or []
+        targets.append(" > ".join(str(part) for part in target))
+    return {
+        "impact": violation.get("impact") or "unknown",
+        "count": len(nodes),
+        "targets": targets,
+    }
+
+
 @pytest.fixture(scope="module")
 def audited(browser, live_server, seeded):
-    """Run axe once per page and return {path: {rule_id: (impact, count)}}."""
+    """Run axe once per page and retain counts plus actionable node selectors."""
     Axe = axe_module.Axe
     axe = Axe()
     results = {}
@@ -114,7 +128,7 @@ def audited(browser, live_server, seeded):
             report = axe.run(page, options={"runOnly": {"type": "tag", "values": TAGS}})
             data = report.response if hasattr(report, "response") else report
             results[path] = {
-                v["id"]: (v.get("impact") or "unknown", len(v.get("nodes") or []))
+                v["id"]: _violation_evidence(v)
                 for v in data.get("violations", [])
             }
         finally:
@@ -137,13 +151,17 @@ def test_no_new_serious_or_critical_violations(audited):
     regressions = []
     for path, violations in sorted(audited.items()):
         known = baseline.get(path, {})
-        for rule, (impact, count) in sorted(violations.items()):
+        for rule, evidence in sorted(violations.items()):
+            impact = evidence["impact"]
+            count = evidence["count"]
+            targets = evidence["targets"]
             if impact not in BLOCKING:
                 continue
             was = known.get(rule)
             if was is None:
-                regressions.append("%s: NEW %s (%s, %d element%s)"
-                                   % (path, rule, impact, count, "" if count == 1 else "s"))
+                regressions.append("%s: NEW %s (%s, %d element%s; targets: %s)"
+                                   % (path, rule, impact, count, "" if count == 1 else "s",
+                                      ", ".join(targets) or "unavailable"))
             elif count > was:
                 regressions.append("%s: %s worsened %d -> %d elements"
                                    % (path, rule, was, count))
@@ -160,10 +178,15 @@ def test_all_violations_do_not_increase(audited):
     regressions = []
     for path, violations in sorted(audited.items()):
         known = baseline.get(path, {})
-        for rule, (impact, count) in sorted(violations.items()):
+        for rule, evidence in sorted(violations.items()):
+            impact = evidence["impact"]
+            count = evidence["count"]
+            targets = evidence["targets"]
             was = known.get(rule)
             if was is None:
-                regressions.append("%s: NEW %s (%s, %d)" % (path, rule, impact, count))
+                regressions.append("%s: NEW %s (%s, %d; targets: %s)"
+                                   % (path, rule, impact, count,
+                                      ", ".join(targets) or "unavailable"))
             elif count > was:
                 regressions.append("%s: %s worsened %d -> %d" % (path, rule, was, count))
     assert not regressions, (
@@ -192,7 +215,10 @@ def test_write_baseline_when_asked(audited):
         # This is a maintenance utility, not a release assertion. Count it as
         # a clean no-op instead of making every qualification run carry a skip.
         return
-    accepted = {p: {r: c for r, (_i, c) in v.items()} for p, v in audited.items()}
+    accepted = {
+        p: {r: evidence["count"] for r, evidence in v.items()}
+        for p, v in audited.items()
+    }
     with open(BASELINE, "w", encoding="utf-8") as fh:
         json.dump({
             "_comment": "Accepted axe-core violations per page. Every entry is a "

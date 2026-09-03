@@ -174,13 +174,42 @@
       "area": "production_monitoring",
       "severity": "high",
       "title": "Production adversarial monitor invoked an unavailable pytest timeout plugin",
-      "status": "ready_for_retest",
+      "status": "verified_ci",
       "original_evidence": "GitHub production-watch run 33803348625 reached the adversarial test step but exited 4 before collection: pytest: error: unrecognized arguments: --timeout=2400.",
       "required_fix": "Install the repository's pinned test requirements before invoking pytest and rerun the complete production-watch workflow on the final SHA.",
-      "retest_evidence": "Workflow contract test confirms the adversarial job installs requirements-test.txt; exact-SHA GitHub rerun pending.",
+      "retest_evidence": "Workflow contract test confirms the adversarial job installs requirements-test.txt; exact-SHA production-watch run 33804486375 completed green and its adversarial probes passed in 6m30s. Container-log inspection was skipped because the optional production SSH secret was absent, so that is not claimed as evidence.",
       "closure_tests": [
         "tests/test_production_watch_workflow.py",
         "Production-watch adversarial job collects and passes on final SHA"
+      ]
+    },
+    {
+      "id": "F500-014",
+      "area": "accessibility",
+      "severity": "high",
+      "title": "Linux Chromium reports four serious AI-chat color-contrast failures",
+      "status": "investigating",
+      "original_evidence": "Exact-SHA CI run 33804483255: main Chromium completed 155 tests but failed both accessibility ratchets because /ai-chat introduced color-contrast (serious) on four elements. The same eight-page axe audit passed locally on Windows Chromium, establishing a platform/font-rendering-sensitive result rather than a universally reproducible selector.",
+      "required_fix": "Capture the exact axe target selectors in CI, correct every affected AI-chat foreground/background token to meet WCAG 2.1 AA under Linux Chromium, and rerun the complete browser matrix on one final SHA.",
+      "retest_evidence": "The accessibility harness now preserves affected selectors; its unit contract and the local eight-page Chromium audit pass. Linux CI selector evidence and remediation are pending.",
+      "closure_tests": [
+        "tests/test_smoke_console_diagnostics.py::test_accessibility_violation_preserves_affected_selectors",
+        "tests/smoke/test_accessibility_audit.py on Linux Chromium",
+        "Complete final Chromium browser job"
+      ]
+    },
+    {
+      "id": "F500-015",
+      "area": "browser_harness",
+      "severity": "medium",
+      "title": "Firefox console diagnostics collapsed structured errors to the word Object",
+      "status": "verified_local",
+      "original_evidence": "Exact-SHA Firefox job in CI run 33804483255 failed the 320px motivation repository check with only `Motivation repository raised JavaScript errors: ['Object']`, losing the structured console arguments and source location needed for root-cause analysis.",
+      "required_fix": "Serialize every console argument and include its source file, line and column consistently across browser engines.",
+      "retest_evidence": "Diagnostic contract passes and the complete local Firefox compatibility slice passed 56/56 after instrumentation. Final Linux Firefox CI remains required because the original intermittent error did not reproduce locally.",
+      "closure_tests": [
+        "tests/test_smoke_console_diagnostics.py::test_console_object_is_serialized_with_source_location",
+        "Complete final Firefox compatibility job"
       ]
     }
   ]
