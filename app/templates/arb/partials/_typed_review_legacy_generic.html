@@ -18,14 +18,32 @@
 {% from 'arb/partials/_typed_macros.html' import dash %}
 {% from 'components/card.html' import card, card_header, card_title, card_content %}
 
+{#
+  DEF-009/DEF-031, Capgemini dry-run: this banner claimed the review was
+  "read-only here" -- browser-verified false. The decision bar included
+  right below (line ~32) is the working, untyped record_decision() path
+  (app/services/arb_governance_service.py), and a board member can and did
+  Approve/Reject/Defer through it. "Read-only" here means only: this row
+  contributes no score/conditions/implementation-status posture to the
+  TYPED governance graph -- not that the review itself cannot be decided.
+#}
 <div class="mb-6 rounded-lg border border-border bg-muted p-4" role="status">
     <p class="flex items-start gap-2 font-medium text-muted-foreground">
         <i data-lucide="archive" class="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true"></i>
-        Legacy review &#8212; not part of the typed governance graph.
+        Not part of the typed governance graph
     </p>
     <p class="mt-2 text-sm text-muted-foreground">
-        This row predates typed ARB submission. It carries no immutable evidence snapshot, so it is
-        read-only here and contributes no verified governance posture.
+        This row predates typed ARB submission, so it carries no immutable evidence
+        snapshot and contributes no verified governance posture (score, conditions,
+        implementation status).
+        {% if _orm_review is defined and _orm_review and _orm_review.status in ('submitted', 'under_review', 'deferred') and not _orm_review.decision %}
+        It can still be approved, rejected or deferred below — that decision is recorded
+        as a stored fact on the review itself.
+        {% elif _orm_review is defined and _orm_review and _orm_review.decision %}
+        A decision has already been recorded on it, shown below.
+        {% elif _orm_review is defined and _orm_review and _orm_review.status == 'draft' %}
+        Submit it for review before it can be decided.
+        {% endif %}
     </p>
 </div>
 
