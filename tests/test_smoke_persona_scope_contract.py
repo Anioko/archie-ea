@@ -54,3 +54,11 @@ def test_each_smoke_archetype_has_a_signature_journey():
 
     assert set(journey) == set(smoke)
     assert all(paths for paths in journey.values())
+
+
+def test_smoke_personas_do_not_all_receive_administrator_permissions():
+    source = (ROOT / "tests/smoke/conftest.py").read_text(encoding="utf-8")
+
+    assert 'architect_role = Role.query.filter_by(name="Architect").one()' in source
+    assert 'administrator_role = Role.query.filter_by(name="Administrator").one()' in source
+    assert 'if archetype == "platform_admin" else architect_role' in source

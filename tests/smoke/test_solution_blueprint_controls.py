@@ -59,3 +59,26 @@ def test_solution_blueprint_modal_and_phase_gate_controls_have_observed_outcomes
         )
     finally:
         page.close()
+
+
+def test_platform_admin_can_open_foreign_solution_code_workbench(
+    browser, live_server, seeded
+):
+    page = browser.new_page()
+    try:
+        _login(page, live_server, seeded["emails"]["platform_admin"])
+        page.goto(
+            live_server + "/solutions/" + str(seeded["ids"]["solution"]),
+            wait_until="domcontentloaded",
+            timeout=PAGE_TIMEOUT,
+        )
+
+        page.get_by_role("button", name="More actions").click()
+        page.get_by_role("menuitem", name="Code Workbench").click()
+        page.wait_for_url(lambda url: url.endswith("/codegen"), timeout=PAGE_TIMEOUT)
+        page.get_by_role("heading", name="Code Workbench").wait_for(
+            state="visible", timeout=PAGE_TIMEOUT
+        )
+        assert page.title() != "403 — Forbidden"
+    finally:
+        page.close()

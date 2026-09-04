@@ -47,13 +47,27 @@ def _snake(name):
     return re.sub(r"_+", "_", s).strip("_").lower()
 
 
-def _check_access(solution):
+def _check_access(solution, user=None):
     """Verify current user can access this solution's workbench."""
-    if not current_user.is_authenticated:
+    user = user if user is not None else current_user
+    if not user.is_authenticated:
         return False
-    if hasattr(current_user, "is_admin") and current_user.is_admin():
+    is_admin = getattr(user, "is_admin", False)
+    if (is_admin() if callable(is_admin) else bool(is_admin)):
         return True
-    return getattr(solution, "created_by_id", None) == current_user.id
+    if getattr(user, "is_platform_admin", False):
+        return True
+    if getattr(solution, "created_by_id", None) == user.id:
+        return True
+    stakeholder_emails = (
+        getattr(solution, "solution_owner", None),
+        getattr(solution, "business_sponsor", None),
+        getattr(solution, "technical_lead", None),
+    )
+    return any(
+        email and user.email and email.strip().lower() == user.email.strip().lower()
+        for email in stakeholder_emails
+    )
 
 
 

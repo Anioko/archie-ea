@@ -240,7 +240,8 @@ def seeded(live_server):
 
         db.create_all()
         Role.insert_roles()
-        role = Role.query.filter_by(name="Administrator").first() or Role.query.first()
+        architect_role = Role.query.filter_by(name="Architect").one()
+        administrator_role = Role.query.filter_by(name="Administrator").one()
 
         org = Organization(name="Smoke Org %s" % suffix, slug="smoke-%s" % suffix)
         db.session.add(org)
@@ -253,7 +254,9 @@ def seeded(live_server):
                 email=email, first_name="Smoke", last_name=archetype[:12],
                 organization_id=org.id, enterprise_role=archetype, confirmed=True,
             )
-            user.role = role
+            user.role = administrator_role if archetype == "platform_admin" else architect_role
+            user.is_platform_admin = archetype == "platform_admin"
+            user.is_org_admin = archetype == "platform_admin"
             user.password = PASSWORD
             db.session.add(user)
             db.session.commit()

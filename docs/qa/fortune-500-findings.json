@@ -423,7 +423,7 @@
       "status": "verified_local",
       "original_evidence": "4 Sep 2026 direct production reproduction on /solutions/32: Link Existing Elements and Codegen did not open dialogs; the phase-gate panel displayed `Error loading gate: Maximum call stack size exceeded`; Save as Template and Export OEF bound listeners before their buttons existed; modal footer Close/Done changed unused local state; PNG export silently did nothing when no renderer was available. Browser logs also reported missing modal roots and an unavailable loader-circle icon.",
       "required_fix": "Give modal roots the IDs required by the modal registry, prevent phase-gate getters from recursively reading their own Alpine properties, bind header actions at interaction time, close modal-store state from footer actions, use a shipped icon, and provide visible failure feedback when PNG export is unavailable.",
-      "retest_evidence": "4 Sep 2026 strict local TDD: seven interaction-contract regressions failed against the defects and pass after repair. Template syntax, template references, and design-token gates pass. First Linux CI correctly rejected the initial Playwright proof because its `Link Existing Elements` locator described only an optional empty state and never reached a control; the test now opens the collapsed Deployment section and clicks its visible Link, Done, Codegen and Close controls, asserting both modal transitions. Final Linux browser and production verification are still required.",
+      "retest_evidence": "4 Sep 2026 strict local TDD: seven interaction-contract regressions failed against the defects and pass after repair. Template syntax, template references, and design-token gates pass. Linux CI browser run 33922010050 passed the corrected Playwright journey, which opens Deployment and clicks Link, Done, Codegen and Close while asserting modal transitions. Direct Chrome production retest on live build c913b7de then expanded Deployment and clicked Link and Codegen: both produced zero visible dialogs and no navigation, confirming production still serves the unfixed older build. Closure requires deployment of the new exact SHA followed by the same direct Chrome outcome checks.",
       "closure_tests": [
         "tests/test_solution_blueprint_interaction_contract.py",
         "tests/smoke/test_solution_blueprint_controls.py",
@@ -558,6 +558,21 @@
         "tests/test_production_readiness_control_outcomes.py",
         "Whole-product L10 matrix completes for all roles/viewports",
         "Every dedicated-seeded-journey classification is mapped to a persistence/authorization/error journey"
+      ]
+    },
+    {
+      "id": "F500-039",
+      "area": "solution_authorization_frontend",
+      "severity": "critical",
+      "title": "Solution page admitted users through a bound-method bug while its visible Code Workbench action rejected them",
+      "status": "verified_local",
+      "original_evidence": "4 Sep 2026 direct Chrome production test on /solutions/32, live build c913b7de: More actions opened, but clicking its visible Code Workbench menu item navigated to a 403 Forbidden page. Source trace found _check_solution_access used `if user.is_admin`, which treats the bound method itself as truthy and admits every authenticated same-tenant user, while codegen _check_access correctly called the method but recognized only creator/admin and omitted named stakeholders and the is_platform_admin flag. Smoke fixtures concealed this disagreement by assigning the Administrator role to all 11 personas.",
+      "required_fix": "Invoke is_admin rather than testing the method object, recognize the explicit platform-admin flag, and make blueprint and Code Workbench access agree for creators, administrators and named stakeholders. Give ordinary smoke personas Architect permissions and only the platform_admin persona Administrator permissions. Prove the visible menu destination in a real browser using a platform administrator who did not create the solution.",
+      "retest_evidence": "4 Sep 2026 strict TDD: focused tests failed because an outsider was admitted by the bound method and codegen accepted no explicit user. Both access checks now agree for denial, creator, named stakeholder and platform administrator; 9/9 access plus blueprint interaction contracts pass locally. A new Playwright journey clicks More actions then Code Workbench as a non-creator platform administrator and requires the real workbench heading rather than a 403. Linux CI, deployment and direct production Chrome retest remain required.",
+      "closure_tests": [
+        "tests/test_solution_codegen_access_agreement.py",
+        "tests/smoke/test_solution_blueprint_controls.py::test_platform_admin_can_open_foreign_solution_code_workbench",
+        "Direct production Chrome click from More actions to a rendered Code Workbench"
       ]
     }
   ]

@@ -79,7 +79,10 @@ def _check_solution_access(solution, user=None) -> bool:
     user = user if user is not None else current_user
     if solution.created_by_id == user.id:
         return True
-    if user.is_admin:
+    is_admin = getattr(user, "is_admin", False)
+    if (is_admin() if callable(is_admin) else bool(is_admin)):
+        return True
+    if getattr(user, "is_platform_admin", False):
         return True
     _stakeholder_emails = [
         solution.solution_owner,
