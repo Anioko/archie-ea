@@ -16,9 +16,9 @@ to assertions and is deliberately NOT claimed here; it stays a periodic,
 human-triggered activity. What IS automatable is the regression: every class the
 sweep found is now a probe that runs on a schedule.
 
-Deliberately marked `adversarial` and excluded from the ordinary smoke run
-(see pytest.ini). It walks the whole url_map several times over and takes
-minutes, which is right for a weekly job and wrong for every push.
+Marked `adversarial` and executed in a separate CI step after ordinary smoke.
+It walks the url_map repeatedly against the isolated test database. Identity-
+changing routes require dedicated tests rather than ending a traversal's session.
 
     pytest tests/smoke/test_adversarial_probes.py -m adversarial
 """
@@ -74,6 +74,14 @@ def _api_session(live_server, email):
     return session
 
 
+def _keeps_probe_identity(path):
+    normalized = path.lower().replace("_", "-")
+    return not any(token in normalized for token in (
+        "logout", "log-out", "signout", "sign-out", "impersonat", "switch-org",
+        "switch-tenant", "switch-user",
+    ))
+
+
 def _rules():
     """The url_map, built once. The smoke harness exposes a live server but
     no app object, and importing the factory here is cheaper than adding a
@@ -81,7 +89,8 @@ def _rules():
     from app import create_app
 
     application = create_app("testing")
-    return list(application.url_map.iter_rules())
+    return [rule for rule in application.url_map.iter_rules()
+            if _keeps_probe_identity(str(rule))]
 
 
 def _int_arg_routes(rules):
@@ -112,7 +121,8 @@ def test_a_nonexistent_entity_is_never_rendered_as_a_real_one(live_server, seede
         try:
             response = session.get(live_server + path, timeout=20,
                                    allow_redirects=False)
-        except Exception:
+        except Exception as exc:
+            offenders.append("%s -> request failed (%s)" % (path, type(exc).__name__))
             continue
         if 200 <= response.status_code < 300:
             offenders.append("%s -> %d" % (path, response.status_code))
@@ -138,7 +148,8 @@ def test_hostile_pagination_never_reaches_a_500(live_server, seeded):
             try:
                 response = session.get(live_server + path, params=params,
                                        timeout=20, allow_redirects=False)
-            except Exception:
+            except Exception as exc:
+                offenders.append("%s %s -> request failed (%s)" % (path, params, type(exc).__name__))
                 continue
             # 501 excluded for the same reason as the persona probe: "Not
             # Implemented" is a deliberate statement that a feature does not
@@ -173,7 +184,8 @@ def test_no_persona_can_reach_a_5xx_on_their_own_pages(archetype, live_server, s
         try:
             response = session.get(live_server + path, timeout=25,
                                    allow_redirects=False)
-        except Exception:
+        except Exception as exc:
+            offenders.append("%s -> request failed (%s)" % (path, type(exc).__name__))
             continue
         # 501 is excluded deliberately, and only 501. "Not Implemented" is
         # never an accident -- it is a server stating that a feature does not

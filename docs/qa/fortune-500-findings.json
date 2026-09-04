@@ -706,6 +706,28 @@
       "required_fix": "Use an accurate Accessing elements heading, display the modelled endpoint type, and declare table column headers explicitly. Preserve access mode, source provenance and escaping.",
       "retest_evidence": "Changed the emitter label, displayed normalized modelled types and added scope=col to all six headers. Chromium rendered-table test plus six HTML injection regressions pass. This verifies the real emitter in a browser, not the deployed page. Full-page CI and production retest remain pending. The current live Generate RoPA action succeeds, while F500-046's old public layout remains visible.",
       "closure_tests": ["tests/test_ropa_relationship_labels.py", "tests/test_genome_emitter_xss.py", "tests/smoke/test_ropa_generation.py", "Deployed RoPA table labels and generation verification"]
+    },
+    {
+      "id": "F500-052",
+      "area": "sso_configuration_validation",
+      "severity": "high",
+      "title": "Organisation federation settings can report save success for an unsupported enabled SAML protocol",
+      "status": "in_progress",
+      "original_evidence": "SSOConfig save accepted any protocol and enabled SAML although SSOService.initiate_saml_flow unconditionally raises unsupported. Seven route/browser regressions failed before validation. This is the organisation federation path, distinct from account-level SAML endpoints.",
+      "required_fix": "Reject unusable enabled protocols before mutating existing settings and retain truthful feedback. Qualify the full application save path and deployed behavior. Organisation SAML implementation and configured federation qualification remain outstanding enterprise scope; blocking invalid configuration does not implement SAML.",
+      "retest_evidence": "Main-agent independent rerun passed nine configuration tests, including real Chromium Save Configuration and reload with CSRF enabled, actual registered blueprint/form, and isolated storage boundary. Existing OIDC settings and secret are preserved on rejected saves; OIDC saves and disabled SAML drafts remain allowed. Full PostgreSQL, IdP and production verification are not claimed.",
+      "closure_tests": ["tests/test_sso_configuration_validation.py", "Full application and deployed SSO configuration regression", "Configured organisation federation qualification"]
+    },
+    {
+      "id": "F500-053",
+      "area": "adversarial_qualification_coverage",
+      "severity": "high",
+      "title": "CI excludes adversarial probes and those probes silently ignore request failures",
+      "status": "in_progress",
+      "original_evidence": "Main browser command deselects adversarial tests; CI had no subsequent adversarial step. Source review also found three exception handlers continuing silently and route traversal allowing logout/impersonation to invalidate later persona requests.",
+      "required_fix": "Run adversarial regressions against isolated test data with retained evidence; count request failures rather than ignoring them; keep traversal identity stable and test identity-changing routes separately. Inspect resulting failures rather than treating wiring as execution.",
+      "retest_evidence": "Added explicit CI adversarial step and JUnit artifact. Request exceptions now append failures. Identity-changing routes are excluded from these traversals and remain dedicated-journey scope. Three guard regressions pass after reproducing missing execution, silent handlers and absent identity filter. Actual adversarial execution remains pending; existing success reports do not include it.",
+      "closure_tests": ["tests/test_adversarial_ci_execution.py", "tests/smoke/test_adversarial_probes.py", "Dedicated sign-out and tenant/identity transition browser journeys"]
     }
   ]
 }

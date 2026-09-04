@@ -357,6 +357,8 @@ jobs:
         run: pytest tests/smoke -q -p no:randomly --timeout=900 -W ignore::DeprecationWarning -m "not adversarial and not census" --junitxml=tests/smoke/_artifacts/chromium-main.xml
       - name: Interaction-reality census (dead controls, junk modals, silent forms)
         run: pytest tests/smoke/test_interaction_reality.py -q -p no:randomly -m census --timeout=1200 -W ignore::DeprecationWarning --junitxml=tests/smoke/_artifacts/chromium-census.xml
+      - name: Adversarial regression probes (isolated test database)
+        run: pytest tests/smoke/test_adversarial_probes.py -q -p no:randomly -m adversarial --timeout=3600 -W ignore::DeprecationWarning --junitxml=tests/smoke/_artifacts/chromium-adversarial.xml
       - name: Upload browser qualification evidence
         if: always()
         uses: actions/upload-artifact@v6

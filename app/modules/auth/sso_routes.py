@@ -171,6 +171,19 @@ def admin_sso():
         client_secret_raw = request.form.get("client_secret", "").strip()
         enabled = request.form.get("enabled") == "on"
 
+        # Validate before creating or changing a record: a rejected save must
+        # leave the organisation's existing login configuration intact.
+        if protocol not in {"oidc", "saml"}:
+            flash("This SSO protocol is not supported. Choose OIDC or SAML.", "error")
+            return redirect(url_for("sso.admin_sso"))
+        if protocol == "saml" and enabled:
+            flash(
+                "SAML federation is not supported by this configuration. "
+                "Use OIDC or save SAML with SSO disabled.",
+                "error",
+            )
+            return redirect(url_for("sso.admin_sso"))
+
         if config is None:
             if not org_id:
                 flash("Cannot save SSO config: no organisation associated.", "error")
