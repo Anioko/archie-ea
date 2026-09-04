@@ -270,6 +270,21 @@
         "tests/test_transformation_execution_service.py::test_premature_export_recovery_remains_retryable_after_database_lease_expiry",
         "Full non-smoke CI suite on final SHA"
       ]
+    },
+    {
+      "id": "F500-020",
+      "area": "frontend_runtime",
+      "severity": "high",
+      "title": "Default ArchiMate viewpoint performs a duplicate initial render",
+      "status": "verified_local",
+      "original_evidence": "Exact-SHA Linux Firefox run 33830528607 failed three motivation-responsive viewports with an opaque object exception. Prior diagnostic reproduction retained Alpine's `{isFromCancelledTransition: true}` sentinel, and request evidence repeatedly showed two identical initial layer-element calls. Source tracing found dashboard init loads elements immediately, then reloads after the default Basic/All Elements viewpoint resolves even though its intentionally empty element_types array adds no filter.",
+      "required_fix": "Do not repeat the initial element request when the resolved viewpoint has no type filter; retain the refresh when a non-empty viewpoint filter changes the requested data.",
+      "retest_evidence": "4 Sep 2026 strict runtime TDD: the real dashboard.js component factory produced two unfiltered requests before the fix (`[null, null]`, test red) while the non-empty viewpoint case produced the required filtered refresh. After requiring a non-empty element_types array, the runtime test observes one default request and two requests only for the filtered case. The focused dashboard/repository suite passed 11/11. Complete Linux Firefox CI remains authoritative.",
+      "closure_tests": [
+        "tests/test_archimate_dashboard_init_runtime.py",
+        "tests/smoke/test_archetype_journeys.py::test_motivation_repository_shell_is_accessible_and_responsive on Firefox",
+        "Complete final Firefox compatibility job"
+      ]
     }
   ]
 }

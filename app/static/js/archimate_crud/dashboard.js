@@ -393,7 +393,10 @@ document.addEventListener('alpine:init', function() {
                 this.loadAllLayerCounts();
                 this.loadViewpoints().then(function() {
                     let viewpoint = self.availableViewpoints[self.viewpointKey];
-                    if (viewpoint && Array.isArray(viewpoint.element_types)) {
+                    // Basic/All Elements has no type filter. Reloading the same
+                    // data after it resolves caused overlapping Alpine renders
+                    // and cancelled transitions in Firefox.
+                    if (viewpoint && Array.isArray(viewpoint.element_types) && viewpoint.element_types.length > 0) {
                         self.viewpointTypeFilter = viewpoint.element_types;
                         self.loadElements(false);
                     }
