@@ -116,3 +116,53 @@ def test_timer_callback_errors_are_serialized_before_being_rethrown():
     assert '"expression": "broken()"' in timer_diagnostics[0]
     assert '"element": "<body' in timer_diagnostics[0]
     assert page_errors, "the diagnostic wrapper swallowed the original exception"
+
+
+def _run_unhandled_rejection(reason):
+    playwright = pytest.importorskip("playwright.sync_api")
+    diagnostics = []
+    page_errors = []
+
+    with playwright.sync_playwright() as pw:
+        try:
+            browser = pw.chromium.launch(headless=True)
+        except Exception as exc:  # pragma: no cover - actionable environment failure
+            pytest.fail("Chromium is required for the diagnostic contract: %s" % exc)
+        context = browser.new_context()
+        context.add_init_script(STRUCTURED_ERROR_PROBE)
+        page = context.new_page()
+        page.on(
+            "console",
+            lambda message: diagnostics.append(_format_console_error(message))
+            if message.type == "error" else None,
+        )
+        page.on("pageerror", lambda error: page_errors.append(str(error)))
+        page.goto("data:text/html,<body>rejection target</body>")
+        page.evaluate("reason => { void Promise.reject(reason); }", reason)
+        page.wait_for_timeout(100)
+        context.close()
+        browser.close()
+
+    return diagnostics, page_errors
+
+
+def test_cancelled_alpine_transition_rejection_is_suppressed():
+    diagnostics, page_errors = _run_unhandled_rejection(
+        {"isFromCancelledTransition": True}
+    )
+
+    assert not diagnostics
+    assert not page_errors
+
+
+def test_non_transition_plain_object_rejection_remains_diagnostic():
+    diagnostics, _ = _run_unhandled_rejection(
+        {"code": "real-failure", "expression": "loadElements()"}
+    )
+
+    assert any(
+        "qualification unhandled rejection" in item
+        and '"code": "real-failure"' in item
+        and '"expression": "loadElements()"' in item
+        for item in diagnostics
+    ), diagnostics

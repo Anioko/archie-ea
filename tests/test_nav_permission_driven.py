@@ -31,7 +31,7 @@ def _admin_role(db_session):
 
 
 @pytest.mark.usefixtures("db_session")
-def test_security_architect_never_sees_admin_only_governance_gates(db_session, make_org, tenant_ctx):
+def test_security_architect_sees_read_only_governance_gates(db_session, make_org, tenant_ctx):
     org = make_org("nav")
     with tenant_ctx(org.id):
         user = User(email=f"sec-{uuid.uuid4().hex[:8]}@example.com", organization_id=org.id,
@@ -39,8 +39,10 @@ def test_security_architect_never_sees_admin_only_governance_gates(db_session, m
         db_session.add(user)
         db_session.flush()
         eps = _endpoints(get_sidebar_zones(user))
-        # the route is @admin_required; a non-admin must not be sent there
-        assert "admin.governance_gates" not in eps
+        # Security architects inspect gate policy through an explicitly
+        # read-only page/list contract. Mutation remains ADMINISTER-only and is
+        # exercised independently by the persona journey regression.
+        assert "admin.governance_gates" in eps
 
 
 @pytest.mark.usefixtures("db_session")

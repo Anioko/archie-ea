@@ -1366,7 +1366,7 @@ def test_premature_export_recovery_remains_retryable_after_database_lease_expiry
 ):
     scope = committed_execution_scope
     monkeypatch.setitem(
-        app.config, "TRANSFORMATION_EXPORT_DISPATCH_LEASE_SECONDS", 0.15
+        app.config, "TRANSFORMATION_EXPORT_DISPATCH_LEASE_SECONDS", 30.0
     )
     with app.app_context():
         materialised = TransformationExecutionService.materialise(
@@ -1434,8 +1434,21 @@ def test_premature_export_recovery_remains_retryable_after_database_lease_expiry
         )
         assert recovery_receipt.status == "retryable_failure"
 
+    # Move the durable lease across its boundary explicitly. Sleeping for a
+    # 150ms lease made the preceding "still owned" assertion depend on CI host
+    # speed: session setup alone could consume the entire lease.
     with db.engine.begin() as connection:
-        connection.execute(text("SELECT pg_sleep(0.2)"))
+        connection.execute(
+            text(
+                "UPDATE delivery_export_attempts "
+                "SET dispatch_lease_expires_at = clock_timestamp() - INTERVAL '1 second' "
+                "WHERE id = :attempt_id AND organization_id = :organization_id"
+            ),
+            {
+                "attempt_id": predecessor.id,
+                "organization_id": scope.actor.organization_id,
+            },
+        )
     with app.app_context():
         recovered = TransformationExecutionService.export_work_package(
             actor=replace(scope.actor, request_id=f"recovered-{uuid4().hex}"),

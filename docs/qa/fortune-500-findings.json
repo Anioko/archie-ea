@@ -206,7 +206,7 @@
       "status": "ready_for_retest",
       "original_evidence": "Exact-SHA Firefox job in CI run 33804483255 failed the 320px motivation repository check with only `Motivation repository raised JavaScript errors: ['Object']`. Diagnostic run 33807384189 reproduced the same opaque plain-object page error at 768px, proving it arrived through Playwright's pageerror channel rather than console and still lost the thrown object's fields.",
       "required_fix": "Serialize every console argument with source location, preserve page-error stacks, and install a pre-page error/unhandled-rejection probe that copies every exception into a fresh serializable diagnostic record before Firefox discards its fields.",
-      "retest_evidence": "Exact-SHA run 33808606132 again failed Linux Firefox with three opaque Object page errors, while its Chromium and WebKit jobs passed. Run 33810262875 then passed 55/56: the failure moved to BusinessProcess while all motivation viewports passed, and every page/API request returned 200. The first enhanced probe emitted nothing because Playwright had been given an uninvoked arrow expression; a runtime contract reproduced that absence before the probe was corrected to an IIFE. The next diagnostic revision now records every global error/rejection and wraps deferred setTimeout callbacks—the path used by Alpine and the CSP adapter to surface evaluator failures—capturing constructor, tag, name, message, stack, code, Alpine expression, own properties and a bounded element excerpt before rethrowing unchanged. Five diagnostic contracts pass locally, including proof the original exception still reaches pageerror. A fresh Linux run is required to attribute or clear the race.",
+      "retest_evidence": "Exact-SHA run 33808606132 again failed Linux Firefox with three opaque Object page errors, while its Chromium and WebKit jobs passed. Run 33810262875 then passed 55/56: the failure moved to BusinessProcess while all motivation viewports passed, and every page/API request returned 200. The first enhanced probe emitted nothing because Playwright had been given an uninvoked arrow expression; a runtime contract reproduced that absence before the probe was corrected to an IIFE. The corrected probe reproduced the failure locally on Equipment and retained the exact object: `{isFromCancelledTransition: true}`, Alpine's documented internal sentinel when one visual transition supersedes another. Archie's production error handler already prevents and ignores that exact benign signal; Playwright Firefox surfaced it before the later handler could prevent the harness pageerror. A failing-before/passing-after browser contract now makes the earliest qualification listener prevent only that exact sentinel, while an independent contract proves other plain-object rejections remain serialized and release-blocking. Seven diagnostic contracts pass locally. A fresh complete Linux Firefox run remains required.",
       "closure_tests": [
         "tests/test_smoke_console_diagnostics.py::test_console_object_is_serialized_with_source_location",
         "Complete final Firefox compatibility job"
@@ -220,7 +220,7 @@
       "status": "verified_local",
       "original_evidence": "Exact-SHA CI run 33804483255: two platform-admin journey tests could not build URLs without a request context; the security-architect journey expected Governance Gates but the admin-only route returned 403; and the API-settings navigation test matched a URL embedded in JavaScript rather than a rendered link.",
       "required_fix": "Build journey URLs under a request context, give security architects explicit read-only Governance Gates page/list access while preserving administrator-only mutations, hide mutation controls from readers, and assert navigation against rendered href attributes.",
-      "retest_evidence": "3 Sep 2026: the combined root-owned qualification cohort passed 26/26, including both platform-admin tests, six security/data-architect journeys, five navigation authorization cases, and the new read-only/mutation-denial regression. Static verification passed 42/42 with zero skips. Final PostgreSQL 16 CI remains authoritative.",
+      "retest_evidence": "3 Sep 2026: the combined root-owned qualification cohort passed 26/26, including both platform-admin tests, six security/data-architect journeys, five navigation authorization cases, and the new read-only/mutation-denial regression. Static verification passed 42/42 with zero skips. Exact-SHA CI run 33810262875 then collected 3,987 tests and passed 3,985 with zero skips; its only authorization failure was one older contradictory test that still asserted security architects must never see the now-explicit read-only Governance Gates link. That stale assertion has been aligned with the page/list-read, mutation-denied policy and passed in a 13/13 combined root retest. Final CI remains authoritative.",
       "closure_tests": [
         "tests/journeys/test_journey_platform_admin.py",
         "tests/journeys/test_journey_security_and_data_architect.py",
@@ -233,10 +233,10 @@
       "area": "test_environment",
       "severity": "medium",
       "title": "SSE production-header contract depended on an undeclared test server",
-      "status": "verified_local",
+      "status": "verified_ci",
       "original_evidence": "Exact-SHA CI run 33804483255: tests/test_sse_headers.py failed during collection because Waitress was not installed by the tests job.",
       "required_fix": "Declare the server used by the cross-server WSGI header contract as a test-only dependency; keep the production runtime on Gunicorn.",
-      "retest_evidence": "3 Sep 2026: dependency resolution selected Waitress 3.0.2 and tests/test_sse_headers.py passed 2/2 inside the 26-test combined root retest.",
+      "retest_evidence": "3 Sep 2026: dependency resolution selected Waitress 3.0.2 and tests/test_sse_headers.py passed 2/2 inside the 26-test combined root retest. Exact-SHA PostgreSQL 16 CI run 33810262875 collected this module successfully and its complete 3,987-test run reported only two unrelated assertion failures, confirming the dependency gap is closed in CI.",
       "closure_tests": [
         "tests/test_sse_headers.py",
         "Full non-smoke CI suite on final SHA"
@@ -247,14 +247,28 @@
       "area": "skip_hygiene",
       "severity": "high",
       "title": "Four applicable CSP browser tests skipped in the main CI suite",
-      "status": "verified_local",
+      "status": "verified_ci",
       "original_evidence": "Exact-SHA CI run 33804483255: all four tests/csp/test_csp_evaluator.py browser assertions skipped because the non-smoke tests job installed the Playwright package but no Chromium binary.",
       "required_fix": "Install Chromium in the non-smoke tests job and retain a workflow contract proving that the collected CSP browser checks have their required runtime.",
-      "retest_evidence": "3 Sep 2026: tests/csp/test_csp_evaluator.py passed 4/4 against the explicit isolated PostgreSQL database; the CI workflow contract passed; combined root retest passed 26/26 with no skips; static verification passed 42/42 with no skips. Final Linux CI remains authoritative.",
+      "retest_evidence": "3 Sep 2026: tests/csp/test_csp_evaluator.py passed 4/4 against the explicit isolated PostgreSQL database; the CI workflow contract passed; combined root retest passed 26/26 with no skips; static verification passed 42/42 with no skips. Exact-SHA PostgreSQL 16 CI run 33810262875 collected 3,987 tests and reported zero skips, independently proving the four browser-backed CSP assertions executed rather than silently skipping.",
       "closure_tests": [
         "tests/csp/test_csp_evaluator.py with zero skips",
         "tests/test_ci_browser_matrix.py::test_non_smoke_job_installs_chromium_for_collected_csp_browser_tests",
         "Full non-smoke CI suite on final SHA with zero applicable skips"
+      ]
+    },
+    {
+      "id": "F500-019",
+      "area": "test_determinism",
+      "severity": "medium",
+      "title": "Export-recovery contract raced a 150-millisecond database lease",
+      "status": "verified_local",
+      "original_evidence": "Exact-SHA PostgreSQL 16 CI run 33810262875: test_premature_export_recovery_remains_retryable_after_database_lease_expiry expected a pre-expiry RuntimeError, but setup and session work consumed its 150ms lease, so production correctly treated the already-expired lease as recoverable.",
+      "required_fix": "Use a comfortably long initial lease for the pre-expiry ownership assertion, then cross the durable boundary explicitly by updating dispatch_lease_expires_at relative to the database clock before testing recovery; do not use wall-clock sleeps.",
+      "retest_evidence": "4 Sep 2026: the corrected test passed inside a 13/13 combined root retest. The implementation uses a 30-second initial lease and an organization-scoped SQL update to set the persisted expiry to clock_timestamp() minus one second. No production code changed. Final PostgreSQL 16 CI remains authoritative.",
+      "closure_tests": [
+        "tests/test_transformation_execution_service.py::test_premature_export_recovery_remains_retryable_after_database_lease_expiry",
+        "Full non-smoke CI suite on final SHA"
       ]
     }
   ]

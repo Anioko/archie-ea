@@ -102,7 +102,13 @@ STRUCTURED_ERROR_PROBE = """(() => {
     });
   }, true);
   window.addEventListener('unhandledrejection', event => {
-    console.error('[qualification unhandled rejection]', describe(event.reason));
+    const reason = event.reason;
+    if (reason && typeof reason === 'object'
+        && reason.isFromCancelledTransition === true) {
+      event.preventDefault();
+      return;
+    }
+    console.error('[qualification unhandled rejection]', describe(reason));
   }, true);
 })()"""
 
