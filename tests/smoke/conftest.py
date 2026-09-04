@@ -236,6 +236,7 @@ def seeded(live_server):
         from app.models.architecture_journey import ArchitectureJourney
         from app.models.organization import Organization
         from app.models.solution_models import Solution
+        from app.models.technology_layer import Node
         from app.models.user import Role, User
 
         db.create_all()
@@ -300,6 +301,15 @@ def seeded(live_server):
         db.session.add(component)
         db.session.commit()
         out["ids"]["application"] = component.id
+
+        radar_node = Node(
+            name="Smoke radar node %s" % suffix, organization_id=org.id,
+            description="Isolated technology classification browser fixture.",
+        )
+        db.session.add(radar_node)
+        db.session.commit()
+        assert radar_node.archimate_element_id is not None
+        out["ids"]["radar_element"] = radar_node.archimate_element_id
 
         db.session.add(ApplicationOwner(
             user_id=out["ids"]["app_manager_user"], application_id=component.id,

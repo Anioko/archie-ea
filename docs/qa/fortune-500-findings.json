@@ -673,6 +673,17 @@
       "required_fix": "Enable CSRF in the audit-only server entrypoint while retaining the isolated test database. Do not assert submission failure from hidden-token absence alone: JavaScript header handling requires actual submission verification.",
       "retest_evidence": "Added scripts.audit_server:create_app and wired audit boot to it. Real Chromium regression against that factory with Flask-WTF accepts a valid-token form and rejects a missing-token form with HTTP 400. Twenty focused audit tests pass without skips. This tests audit configuration, not every application form; full application audit rerun with enforcement remains outstanding. Product production configuration is unchanged.",
       "closure_tests": ["tests/test_audit_server_security.py", "Full application form submissions in the CSRF-enforcing audit environment"]
+    },
+    {
+      "id": "F500-049",
+      "area": "technology_archimate_tenancy_and_radar",
+      "severity": "high",
+      "title": "Nine technology insert hooks omit organisation ownership from generated ArchiMate records",
+      "status": "in_progress",
+      "original_evidence": "While adding a real CTO classify/reclassify/persistence browser journey, source tracing showed technology Node and eight related model hooks insert ArchiMateElement rows through a raw connection without organization_id. All nine executed insert-statement regressions reproduced an absent organisation value for a tenant-owned source. The tenant-scoped radar reads ArchiMateElement, not the source technology table.",
+      "required_fix": "Copy source organisation into every generated technology ArchiMate insert. Verify database ownership, own-tenant radar visibility and other-tenant exclusion. Exercise classification and reclassification through actual browser controls, reload and a new session. Measure existing production ownership gaps before any narrowly scoped, reversible data repair; do not infer ownership where sources disagree.",
+      "retest_evidence": "All nine insert-hook tests failed before repair and pass after adding organization_id=target.organization_id. Added a shared-fixture database isolation regression and a full application browser journey moving an isolated node from unclassified to Trial to Hold, including reloads and a fresh session. Those database/browser cases remain pending CI. Production data measurement and deployed retest are outstanding; no closure claimed.",
+      "closure_tests": ["tests/test_technology_backbone_tenancy.py", "tests/smoke/test_radar_persistence.py", "Production ownership-gap before/after measurements and live radar persistence verification"]
     }
   ]
 }

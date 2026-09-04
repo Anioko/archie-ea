@@ -927,6 +927,7 @@ def create_node_archimate_element(mapper, connection, target):
             insert(ArchiMateElement.__table__).values(
                 name=target.name,
                 type="Node",
+                organization_id=target.organization_id,
                 layer="Technology",
                 description=target.description or f"{target.node_type} node",
             )
@@ -946,6 +947,7 @@ def create_device_archimate_element(mapper, connection, target):
             insert(ArchiMateElement.__table__).values(
                 name=target.name,
                 type="Device",
+                organization_id=target.organization_id,
                 layer="Technology",
                 description=target.description or f"{target.device_type} device",
             )
@@ -965,6 +967,7 @@ def create_systemsoftware_archimate_element(mapper, connection, target):
             insert(ArchiMateElement.__table__).values(
                 name=target.name,
                 type="SystemSoftware",
+                organization_id=target.organization_id,
                 layer="Technology",
                 description=target.description or f"{target.software_type}",
             )
@@ -984,6 +987,7 @@ def create_technologyinterface_archimate_element(mapper, connection, target):
             insert(ArchiMateElement.__table__).values(
                 name=target.name,
                 type="TechnologyInterface",
+                organization_id=target.organization_id,
                 layer="Technology",
                 description=target.description or "Technology interface",
             )
@@ -1003,6 +1007,7 @@ def create_path_archimate_element(mapper, connection, target):
             insert(ArchiMateElement.__table__).values(
                 name=target.name,
                 type="Path",
+                organization_id=target.organization_id,
                 layer="Technology",
                 description=target.description or "Communication path",
             )
@@ -1022,6 +1027,7 @@ def create_communicationnetwork_archimate_element(mapper, connection, target):
             insert(ArchiMateElement.__table__).values(
                 name=target.name,
                 type="CommunicationNetwork",
+                organization_id=target.organization_id,
                 layer="Technology",
                 description=target.description or f"{target.network_type} network",
             )
@@ -1041,6 +1047,7 @@ def create_technologyservice_archimate_element(mapper, connection, target):
             insert(ArchiMateElement.__table__).values(
                 name=target.name,
                 type="TechnologyService",
+                organization_id=target.organization_id,
                 layer="Technology",
                 description=target.description or f"{target.service_type} service",
             )
@@ -1112,6 +1119,7 @@ def create_artifact_archimate_element(mapper, connection, target):
             insert(ArchiMateElement.__table__).values(
                 name=target.name,
                 type="Artifact",
+                organization_id=target.organization_id,
                 layer="Technology",
                 description=target.description or f"Artifact: {target.name}",
             )
@@ -1172,6 +1180,7 @@ def create_collaboration_archimate_element(mapper, connection, target):
             insert(ArchiMateElement.__table__).values(
                 name=target.name,
                 type="TechnologyCollaboration",
+                organization_id=target.organization_id,
                 layer="Technology",
                 description=target.description or f"Technology Collaboration: {target.name}",
             )
