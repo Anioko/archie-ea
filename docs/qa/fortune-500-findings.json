@@ -291,10 +291,10 @@
       "area": "release_engineering",
       "severity": "high",
       "title": "Immutable-image audit omitted the optional email worker from resolved Compose",
-      "status": "ready_for_retest",
+      "status": "verified_ci",
       "original_evidence": "Exact-SHA CI run 33831735604 passed every application, browser, database, security and dependency job, then release job 100901957263 failed before image publication with KeyError: 'worker'. The worker is intentionally declared under the disabled-by-default email Compose profile, so an ordinary `compose config` omitted it while the audit still attempted to inspect it.",
       "required_fix": "Resolve production Compose with the email profile enabled during the immutable-image audit. This must inspect both active and dormant application services without enabling the worker in production.",
-      "retest_evidence": "4 Sep 2026 strict TDD: the release-artifact contract failed until the CI command explicitly included `--profile email`; the corrected contract passed 5/5, the merged main/release cohort passed 37/37, and the merged static verifier passed 44/44 with zero skips. Exact-SHA release-image execution remains pending.",
+      "retest_evidence": "4 Sep 2026 strict TDD: the release-artifact contract failed until the CI command explicitly included `--profile email`; the corrected contract passed 5/5, the merged main/release cohort passed 37/37, and the merged static verifier passed 44/44 with zero skips. Exact-SHA CI run 33835558111 passed the profile-aware Compose audit and built, pushed, registry-inspected and pulled OCI index sha256:80b5287c448d63d82f2c0dfd4223236d88fc4b1fab9015f530bf6a3717d2b25e before a separate label-template defect stopped manifest issuance.",
       "closure_tests": [
         "tests/test_release_artifact_contract.py::test_ci_builds_once_after_every_release_gate_and_exports_the_digest",
         "CI Build immutable release image job on final SHA",
@@ -315,6 +315,21 @@
         "tests/test_release_artifact_contract.py::test_operator_cutover_records_legacy_identity_before_checkout",
         "Controlled first-cutover failure proves legacy identity and health are restored",
         "Successful exact-digest production cutover records release.env"
+      ]
+    },
+    {
+      "id": "F500-023",
+      "area": "release_engineering",
+      "severity": "high",
+      "title": "OCI revision verification used an invalid escaped Docker template",
+      "status": "ready_for_retest",
+      "original_evidence": "Exact-SHA CI run 33835558111 passed all eleven prerequisite jobs and built/pushed/pulled OCI index sha256:80b5287c448d63d82f2c0dfd4223236d88fc4b1fab9015f530bf6a3717d2b25e, then job 100914170553 failed with `template parsing error: unexpected backslash in operand`. The single-quoted Go template unnecessarily escaped the label key's double quotes, making Docker receive literal backslashes.",
+      "required_fix": "Use an unescaped double-quoted label key inside the shell's single-quoted Docker Go template, and enforce the exact valid expression plus absence of the escaped form in the release workflow contract.",
+      "retest_evidence": "4 Sep 2026 strict TDD: the strengthened release-artifact contract failed against the escaped template before correction. Focused green and exact-SHA manifest issuance remain pending.",
+      "closure_tests": [
+        "tests/test_release_artifact_contract.py::test_ci_builds_once_after_every_release_gate_and_exports_the_digest",
+        "CI OCI revision equality assertion on final SHA",
+        "release.json artifact exists and names the verified digest"
       ]
     }
   ]

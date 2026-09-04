@@ -592,7 +592,7 @@ jobs:
           test -n "$DIGEST"
           docker buildx imagetools inspect "$IMAGE@$DIGEST"
           docker pull "$IMAGE@$DIGEST"
-          test "$(docker image inspect --format '{{ index .Config.Labels \"org.opencontainers.image.revision\" }}' "$IMAGE@$DIGEST")" = "$REVISION"
+          test "$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$IMAGE@$DIGEST")" = "$REVISION"
           docker run --rm --entrypoint python "$IMAGE@$DIGEST" -c "import app, flask; print('release image imports cleanly')"
           python - <<'PY'
           import json, os

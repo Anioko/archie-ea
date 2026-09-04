@@ -61,6 +61,8 @@ def test_ci_builds_once_after_every_release_gate_and_exports_the_digest():
     assert 'assert "build" not in service' in image_job
     assert 'volume.get("target") == "/app"' in image_job
     assert "docker run --rm --entrypoint python" in image_job
+    assert """--format '{{ index .Config.Labels "org.opencontainers.image.revision" }}'""" in image_job
+    assert '\\"org.opencontainers.image.revision\\"' not in image_job
 
 
 def test_static_ci_installs_the_browser_required_by_the_js_syntax_gate():
