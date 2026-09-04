@@ -544,6 +544,21 @@
         "tests/test_whole_product_audit_workflow.py::test_authorization_distinguishes_expected_and_unexpected_admin_access",
         "First exhaustive 11-role artifact set"
       ]
+    },
+    {
+      "id": "F500-038",
+      "area": "frontend_interaction_evidence",
+      "severity": "critical",
+      "title": "Whole-product auditor advertised journey logic without activating controls or proving outcomes",
+      "status": "verified_local",
+      "original_evidence": "4 Sep 2026 independent implementation review: L10 was selectable and included by default but evaluate_findings contained no L10 branch. The crawler inventoried handler attributes and successful page renders without clicking controls, reproducing the exact evidence gap behind F500-028.",
+      "required_fix": "For each safe visible control, start from a fresh authenticated page, activate the real control and accept only an observed navigation, popup, download, meaningful visibility/ARIA/scroll change, or successful request plus visible feedback. Block non-GET discovery traffic and explicitly defer mutation/persistence controls to seeded journeys; never credit handler presence.",
+      "retest_evidence": "4 Sep 2026 strict TDD: the L10 outcome layer records every classified control, activates safe controls on fresh pages, aborts runtime non-GET requests, emits control-no-outcome failures, sanitizes retained URLs, and incrementally flushes long-running evidence. A real Chromium test proves a handler-only button fails, a reveal succeeds, a meaningful fragment scroll succeeds and a missing fragment fails. Identical navigation destinations are deduplicated per role/viewport while page-local controls remain contextual. Focused audit suite passes 12/12 locally. The full matrix must be rerun on this implementation before closure.",
+      "closure_tests": [
+        "tests/test_production_readiness_control_outcomes.py",
+        "Whole-product L10 matrix completes for all roles/viewports",
+        "Every dedicated-seeded-journey classification is mapped to a persistence/authorization/error journey"
+      ]
     }
   ]
 }

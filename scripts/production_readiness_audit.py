@@ -23,7 +23,8 @@ failing area can be re-run in seconds:
   L7  link integrity       every in-app href resolves; no href="#" dead ends
   L8  authorisation        non-admin/admin outcomes on administration routes
   L9  data honesty         a rendered 0/—/placeholder that the API never measured
-  L10 journey logic        reserved; outcome journeys are reported separately
+  L10 interaction outcomes activate safe controls from a fresh page; mutation
+                           controls are classified for seeded journeys
 
 Findings are written incrementally to the report path, so a killed run keeps
 everything measured up to that point. Exit status is the number of
@@ -43,11 +44,13 @@ import argparse
 import json
 import os
 import pathlib
+import re
 import socket
 import subprocess
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import uuid
 
@@ -500,6 +503,7 @@ PAGE_PROBE = r"""() => {
     out.controls.push({
       ordinal: controlOrdinal++,
       tag: el.tagName.toLowerCase(),
+      editable: el.matches('input, select, textarea, [contenteditable="true"]'),
       type: el.getAttribute('type') || '',
       role: el.getAttribute('role') || '',
       label: controlLabel(el),
@@ -679,6 +683,159 @@ def blocking_findings(findings):
     return [finding for finding in findings if finding.get("severity") != "info"]
 
 
+# The selector deliberately matches PAGE_PROBE's control inventory. Outcome
+# ordinals are therefore stable when a fresh page renders the same state.
+CONTROL_SELECTOR = (
+    'a[href], button, input:not([type="hidden"]), select, textarea, summary, '
+    '[role="button"], [role="link"], [contenteditable="true"], '
+    '[tabindex]:not([tabindex="-1"])'
+)
+_FIELD_TAGS = {"input", "select", "textarea"}
+_MUTATION_WORDS = re.compile(
+    r"\b(save|submit|delete|remove|purge|destroy|archive|restore|approve|reject|"
+    r"create|update|import|upload|synchroni[sz]e|sync|execute|generate|provision|"
+    r"publish|send|invite|assign|unassign|revoke|rotate|reset|logout|log\s*out|"
+    r"sign\s*out|impersonate|switch\s+(?:user|tenant|organi[sz]ation))\b",
+    re.IGNORECASE,
+)
+
+
+def classify_control_for_outcome(control):
+    """Return (classification, reason) without pretending unsafe clicks passed."""
+    tag = (control.get("tag") or "").lower()
+    if tag in _FIELD_TAGS or control.get("editable"):
+        return "field", "editable fields require a form-specific seeded journey"
+    if control.get("disabled"):
+        return "disabled", "control is intentionally unavailable in this state"
+
+    method = (control.get("form_method") or "").lower()
+    evidence = " ".join([
+        control.get("label") or "",
+        control.get("href") or "",
+        control.get("form_action") or "",
+        " ".join((control.get("handlers") or {}).values()),
+    ])
+    if method not in ("", "get") or _MUTATION_WORDS.search(evidence):
+        return (
+            "dedicated-seeded-journey",
+            "may mutate data or external state; verify persistence in an isolated fixture",
+        )
+    return "safe", "read-only navigation or client-side interaction"
+
+
+def control_outcome_fingerprint(control, path):
+    """Reuse identical navigation evidence; keep page-local controls contextual."""
+    href = control.get("href") or ""
+    if (control.get("tag") or "").lower() == "a" and href:
+        return ("navigation", href)
+    return (
+        "page-control", path, control.get("tag") or "", control.get("id") or "",
+        control.get("testid") or "", control.get("label") or "",
+        tuple(sorted((control.get("handlers") or {}).items())),
+    )
+
+
+_OUTCOME_SNAPSHOT = r"""() => {
+  const visible = (el) => {
+    const style = getComputedStyle(el);
+    const rect = el.getBoundingClientRect();
+    return style.display !== 'none' && style.visibility !== 'hidden'
+      && !el.hidden && rect.width > 0 && rect.height > 0;
+  };
+  const state = [...document.querySelectorAll(
+      'dialog, [role="dialog"], [aria-expanded], [aria-selected], details, [open], '
+      + '[role="alert"], [role="status"], [aria-live]')]
+    .map((el) => [el.tagName, el.id || '', el.getAttribute('role') || '',
+      el.getAttribute('aria-expanded') || '', el.getAttribute('aria-selected') || '',
+      el.hasAttribute('open'), visible(el), (el.textContent || '').trim().slice(0, 120)]);
+  // Do not compare all page text: clocks and background metric refreshes would
+  // make a dead button look successful. Structural visibility still captures
+  // reveals, collapses, inserted toasts and modal changes without that noise.
+  const structure = [...document.querySelectorAll('body *')]
+    .map((el) => [el.tagName, el.id || '', el.getAttribute('role') || '',
+      (el.className || '').toString().slice(0, 120), el.hidden, visible(el),
+      el.getAttribute('aria-expanded') || '', el.getAttribute('aria-selected') || '',
+      el.hasAttribute('open')]);
+  return {state, structure, scrollX: window.scrollX, scrollY: window.scrollY};
+}"""
+
+
+def _safe_url(raw):
+    """Remove query strings and fragments from retained audit evidence."""
+    parsed = urllib.parse.urlsplit(raw or "")
+    prefix = f"{parsed.scheme}://{parsed.netloc}" if parsed.scheme and parsed.netloc else ""
+    return prefix + parsed.path
+
+
+def probe_control_outcome(page, visible_ordinal, settle_ms=700):
+    """Activate one visible control and report only an observed browser outcome.
+
+    Non-GET requests are aborted before leaving the browser. The caller can then
+    route that control into a seeded persistence journey without changing audit
+    data merely by discovering what the control does.
+    """
+    before_url = page.url
+    before = page.evaluate(_OUTCOME_SNAPSHOT)
+    downloads, popups, requests, blocked = [], [], [], []
+
+    page.on("download", lambda download: downloads.append(download.suggested_filename))
+    page.on("popup", lambda popup: popups.append(_safe_url(popup.url)))
+    page.on("response", lambda response: requests.append({
+        "method": response.request.method,
+        "status": response.status,
+        "url": _safe_url(response.url),
+    }))
+
+    def guard(route, request):
+        if request.method.upper() not in {"GET", "HEAD", "OPTIONS"}:
+            blocked.append({"method": request.method, "url": _safe_url(request.url)})
+            route.abort()
+        else:
+            route.continue_()
+
+    page.route("**/*", guard)
+    try:
+        elements = page.query_selector_all(CONTROL_SELECTOR)
+        visible = [element for element in elements if element.is_visible()]
+        if visible_ordinal >= len(visible):
+            return {"status": "not-found", "outcome": "control-not-reproducible"}
+        visible[visible_ordinal].click(no_wait_after=True, timeout=5000)
+        page.wait_for_timeout(settle_ms)
+    except Exception as exc:
+        if blocked:
+            return {
+                "status": "dedicated-seeded-journey",
+                "outcome": "blocked-non-get-request",
+                "detail": blocked,
+            }
+        return {"status": "activation-failed", "outcome": "exception", "detail": str(exc)[:200]}
+    finally:
+        page.unroute("**/*", guard)
+
+    if blocked:
+        return {
+            "status": "dedicated-seeded-journey",
+            "outcome": "blocked-non-get-request",
+            "detail": blocked,
+        }
+    if downloads:
+        return {"status": "verified", "outcome": "download", "detail": downloads}
+    if popups:
+        return {"status": "verified", "outcome": "popup", "detail": popups}
+    if _safe_url(page.url) != _safe_url(before_url):
+        return {"status": "verified", "outcome": "navigation", "detail": _safe_url(page.url)}
+
+    after = page.evaluate(_OUTCOME_SNAPSHOT)
+    successful_get = any(
+        request["method"] == "GET" and request["status"] < 400 for request in requests
+    )
+    if successful_get and after != before:
+        return {"status": "verified", "outcome": "request-with-feedback"}
+    if after != before:
+        return {"status": "verified", "outcome": "visible-state-change"}
+    return {"status": "no-observable-outcome", "outcome": "none"}
+
+
 # ------------------------------------------------------------------------- driving
 
 def run(args):
@@ -693,7 +850,7 @@ def run(args):
     viewports = [("desktop", DESKTOP)] + ([] if args.desktop_only else [("mobile", MOBILE)])
 
     report_path = pathlib.Path(args.report)
-    findings, control_inventory, audited = [], [], 0
+    findings, control_inventory, control_outcomes, audited = [], [], [], 0
 
     def flush():
         report_path.write_text(json.dumps({
@@ -702,8 +859,17 @@ def run(args):
             "routes_audited": audited,
             "personas": personas,
             "control_inventory": control_inventory,
+            "control_outcomes": control_outcomes,
             "findings": findings,
         }, indent=2), encoding="utf-8")
+
+    def retain_control_outcome(record):
+        control_outcomes.append(record)
+        # A full route can expose hundreds of controls. Persist inside that
+        # route so a timeout retains the completed activations, not merely the
+        # inventory captured before they began.
+        if len(control_outcomes) % 25 == 0:
+            flush()
 
     port = _free_port()
     proc, base = boot(port, REPO / "audit-server.log")
@@ -720,6 +886,7 @@ def run(args):
                 for vp_name, vp in viewports:
                     context = browser.new_context(viewport=vp)
                     page = context.new_page()
+                    tested_outcomes = {}
 
                     console_errors, failed_requests = [], []
                     page.on("console", lambda m: console_errors.append(m.text)
@@ -803,6 +970,81 @@ def run(args):
                                 "status": status,
                                 "controls": probe.get("controls") or [],
                             })
+
+                            # L10 never treats handler presence as proof. Each
+                            # safe non-field control is activated from a fresh
+                            # page; unsafe controls are explicitly assigned to
+                            # isolated persistence journeys without clicking.
+                            if 10 in level_set and (
+                                status < 400 and not route.get("parameterised")
+                            ):
+                                for control in probe.get("controls") or []:
+                                    classification, reason = classify_control_for_outcome(control)
+                                    outcome_record = {
+                                        **ctx,
+                                        "control": control,
+                                        "classification": classification,
+                                        "reason": reason,
+                                    }
+                                    if classification != "safe":
+                                        retain_control_outcome(outcome_record)
+                                        continue
+
+                                    fingerprint = control_outcome_fingerprint(control, path)
+                                    if fingerprint in tested_outcomes:
+                                        outcome_record.update(tested_outcomes[fingerprint])
+                                        outcome_record["evidence_reused"] = True
+                                        retain_control_outcome(outcome_record)
+                                        continue
+
+                                    outcome_page = context.new_page()
+                                    try:
+                                        outcome_page.goto(
+                                            base + path,
+                                            wait_until="domcontentloaded",
+                                            timeout=45000,
+                                        )
+                                        outcome_page.wait_for_timeout(args.settle)
+                                        outcome_page.eval_on_selector_all(
+                                            "[x-show='showOnboarding'], .onboarding-overlay",
+                                            "els => els.forEach(e => e.remove())",
+                                        )
+                                        result = probe_control_outcome(
+                                            outcome_page, control["ordinal"]
+                                        )
+                                    except Exception as exc:
+                                        result = {
+                                            "status": "activation-failed",
+                                            "outcome": "exception",
+                                            "detail": str(exc)[:200],
+                                        }
+                                    finally:
+                                        outcome_page.close()
+
+                                    outcome_record.update(result)
+                                    tested_outcomes[fingerprint] = dict(result)
+                                    if result["status"] == "dedicated-seeded-journey":
+                                        outcome_record["classification"] = result["status"]
+                                        outcome_record["reason"] = (
+                                            "runtime attempted a non-GET request; verify in an "
+                                            "isolated persistence journey"
+                                        )
+                                    retain_control_outcome(outcome_record)
+                                    if result["status"] in {
+                                        "no-observable-outcome", "activation-failed", "not-found"
+                                    }:
+                                        findings.append({
+                                            **ctx,
+                                            "level": 10,
+                                            "kind": "control-no-outcome",
+                                            "severity": "high",
+                                            "detail": (
+                                                f"{control.get('tag')} {control.get('label')!r} "
+                                                f"({control.get('id') or control.get('testid') or control['ordinal']}) "
+                                                f"produced {result['status']}: "
+                                                f"{result.get('detail', result.get('outcome', ''))}"
+                                            )[:500],
+                                        })
                         except Exception as exc:
                             findings.append({**ctx, "level": 1, "kind": "navigation-failed",
                                              "severity": "high", "detail": str(exc)[:200]})
