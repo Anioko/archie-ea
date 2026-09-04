@@ -6,18 +6,9 @@
 <div x-data="enrichmentApp()" x-init="load()">
 
     {# ── Breadcrumbs ──────────────────────────────────────────────── #}
-    <nav class="flex items-center text-sm text-muted-foreground mb-4" aria-label="Breadcrumb">
-        <a href="/dashboard" class="hover:text-foreground">Dashboard</a>
-        <i data-lucide="chevron-right" class="h-3.5 w-3.5 mx-1.5"></i>
-        <a href="/applications" class="hover:text-foreground">Applications</a>
-        <i data-lucide="chevron-right" class="h-3.5 w-3.5 mx-1.5"></i>
-        <a href="/applications/rationalization" class="hover:text-foreground">Rationalization</a>
-        <i data-lucide="chevron-right" class="h-3.5 w-3.5 mx-1.5"></i>
-        <span class="text-foreground font-medium">Data Enrichment</span>
-    </nav>
 
     {# ── Page Header ──────────────────────────────────────────────── #}
-    {{ page_shell(title='Data Enrichment', subtitle='Add cost, ownership, and criticality data to improve rationalization scoring') }}
+    {{ page_shell(title='Data Enrichment', subtitle='Add cost, ownership, and criticality data to improve rationalization scoring', breadcrumb=[('Dashboard', '/dashboard'), ('Applications', '/applications'), ('Rationalization', '/applications/rationalization'), ('Data Enrichment', none)]) }}
 
     {# ── Sub-Navigation ───────────────────────────────────────────── #}
     {% include 'applications/rationalization/_sub_nav.html' %}

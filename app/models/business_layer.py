@@ -920,6 +920,7 @@ def create_actor_archimate_element(mapper, connection, target):
         # Insert ArchiMateElement using connection.execute
         result = connection.execute(
             insert(ArchiMateElement.__table__).values(
+                organization_id=target.organization_id,
                 name=target.name,
                 type="BusinessActor",
                 layer="Business",
@@ -939,6 +940,7 @@ def create_role_archimate_element(mapper, connection, target):
 
         result = connection.execute(
             insert(ArchiMateElement.__table__).values(
+                organization_id=target.organization_id,
                 name=target.name,
                 type="BusinessRole",
                 layer="Business",
@@ -958,6 +960,7 @@ def create_service_archimate_element(mapper, connection, target):
 
         result = connection.execute(
             insert(ArchiMateElement.__table__).values(
+                organization_id=target.organization_id,
                 name=target.name,
                 type="BusinessService",
                 layer="Business",
@@ -977,6 +980,7 @@ def create_object_archimate_element(mapper, connection, target):
 
         result = connection.execute(
             insert(ArchiMateElement.__table__).values(
+                organization_id=target.organization_id,
                 name=target.name,
                 type="BusinessObject",
                 layer="Business",
@@ -1038,6 +1042,7 @@ def create_event_archimate_element(mapper, connection, target):
 
         result = connection.execute(
             insert(ArchiMateElement.__table__).values(
+                organization_id=target.organization_id,
                 name=target.name,
                 type="BusinessEvent",
                 layer="Business",

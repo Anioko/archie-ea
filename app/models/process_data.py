@@ -769,6 +769,7 @@ def create_businessprocess_archimate_element(mapper, connection, target):
 
     result = connection.execute(
         insert(ArchiMateElement.__table__).values(
+            organization_id=target.organization_id,
             name=target.name,
             type="BusinessProcess",
             layer="business",

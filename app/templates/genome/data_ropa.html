@@ -1,15 +1,13 @@
 {% extends "layouts/admin_base.html" %}
+{% from 'macros/page_shell.html' import page_shell %}
 {% block title %}Data Genome — Record of Processing Activities{% endblock %}
 {% block content %}
-<div class="max-w-6xl mx-auto">
-  <div class="mb-6">
-    <h1 class="text-2xl font-semibold">Data Genome — GDPR Article 30</h1>
-    <p class="text-muted-foreground mt-1">
-      Record of Processing Activities, derived deterministically from the modelled
-      data &amp; business objects and their access relationships. Every row traces
-      back to a real ArchiMate element.
-    </p>
-  </div>
+<div class="p-6 space-y-6">
+  {{ page_shell(
+      title='Data Genome — GDPR Article 30',
+      subtitle='Record of Processing Activities, derived from modelled data and business objects and their access relationships. Every row traces back to a real ArchiMate element.',
+      breadcrumb=[('Home', url_for('main.index')), ('Record of Processing Activities', none)]
+  ) }}
 
   <form method="post" action="{{ url_for('genome_data.generate_ropa') }}" class="mb-6">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

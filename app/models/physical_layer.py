@@ -227,6 +227,7 @@ def _create_archimate_listener(model_class, element_type):
 
             result = connection.execute(
                 insert(ArchiMateElement.__table__).values(
+                    organization_id=target.organization_id,
                     name=target.name,
                     type=element_type,
                     layer="Physical",

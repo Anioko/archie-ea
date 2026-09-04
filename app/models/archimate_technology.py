@@ -660,6 +660,7 @@ def create_collaboration_full_archimate_element(mapper, connection, target):
 
         result = connection.execute(
             insert(ArchiMateElement.__table__).values(
+                organization_id=target.organization_id,
                 name=target.name,
                 type="TechnologyCollaboration",
                 layer="Technology",
@@ -679,6 +680,7 @@ def create_function_archimate_element(mapper, connection, target):
 
         result = connection.execute(
             insert(ArchiMateElement.__table__).values(
+                organization_id=target.organization_id,
                 name=target.name,
                 type="TechnologyFunction",
                 layer="Technology",
@@ -698,6 +700,7 @@ def create_process_archimate_element(mapper, connection, target):
 
         result = connection.execute(
             insert(ArchiMateElement.__table__).values(
+                organization_id=target.organization_id,
                 name=target.name,
                 type="TechnologyProcess",
                 layer="Technology",
@@ -717,6 +720,7 @@ def create_interaction_archimate_element(mapper, connection, target):
 
         result = connection.execute(
             insert(ArchiMateElement.__table__).values(
+                organization_id=target.organization_id,
                 name=target.name,
                 type="TechnologyInteraction",
                 layer="Technology",
@@ -736,6 +740,7 @@ def create_event_archimate_element(mapper, connection, target):
 
         result = connection.execute(
             insert(ArchiMateElement.__table__).values(
+                organization_id=target.organization_id,
                 name=target.name,
                 type="TechnologyEvent",
                 layer="Technology",

@@ -6,13 +6,8 @@
 <div x-data="trackingApp()" x-init="loadBenefits(); loadDependencyRisk(); loadRetirementSequence()">
 
     {# ── Breadcrumbs ──────────────────────────────────────────────── #}
-    <nav class="flex items-center text-sm text-muted-foreground mb-4" aria-label="Breadcrumb">
-        <a href="{{ url_for('unified_applications.rationalization_dashboard') }}" class="hover:text-foreground">Rationalization</a>
-        <i data-lucide="chevron-right" class="h-3.5 w-3.5 mx-1.5"></i>
-        <span class="text-foreground font-medium">Tracking</span>
-    </nav>
 
-    {{ page_shell(title='Portfolio Tracking', subtitle='Monitor savings realization, dependency risk, and retirement progress') }}
+    {{ page_shell(title='Portfolio Tracking', subtitle='Monitor savings realization, dependency risk, and retirement progress', breadcrumb=[('Rationalization', url_for('unified_applications.rationalization_dashboard')), ('Tracking', none)]) }}
 
     {% include 'applications/rationalization/_sub_nav.html' %}
 

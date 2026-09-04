@@ -7,13 +7,6 @@
 <div x-data="workbenchApp()" x-init="load()">
 
     {# ── Breadcrumbs ──────────────────────────────────────────────── #}
-    <nav class="flex items-center text-sm text-muted-foreground mb-4" aria-label="Breadcrumb">
-        <a href="/dashboard" class="hover:text-foreground">Dashboard</a>
-        <i data-lucide="chevron-right" class="h-3.5 w-3.5 mx-1.5"></i>
-        <a href="{{ url_for('unified_applications.rationalization_dashboard') }}" class="hover:text-foreground">Rationalization</a>
-        <i data-lucide="chevron-right" class="h-3.5 w-3.5 mx-1.5"></i>
-        <span class="text-foreground font-medium">Workbench</span>
-    </nav>
 
     {# ── Page Header ──────────────────────────────────────────────── #}
     {% macro _ps_actions() %}
@@ -25,7 +18,7 @@
                     class="text-xs text-primary hover:underline font-medium">Load all</button>
         </div>
     {% endmacro %}
-    {{ page_shell(title='Decision Workbench', subtitle='Triage scored applications by readiness, disposition, and confidence', actions_caller=_ps_actions) }}
+    {{ page_shell(title='Decision Workbench', subtitle='Triage scored applications by readiness, disposition, and confidence', actions_caller=_ps_actions, breadcrumb=[('Dashboard', '/dashboard'), ('Rationalization', url_for('unified_applications.rationalization_dashboard')), ('Workbench', none)]) }}
 
     {% include 'applications/rationalization/_sub_nav.html' %}
 

@@ -625,6 +625,7 @@ def create_interface_archimate_element(mapper, connection, target):
 
         result = connection.execute(
             insert(ArchiMateElement.__table__).values(
+                organization_id=target.organization_id,
                 name=target.name,
                 type="ApplicationInterface",
                 layer="Application",
@@ -644,6 +645,7 @@ def create_event_archimate_element(mapper, connection, target):
 
         result = connection.execute(
             insert(ArchiMateElement.__table__).values(
+                organization_id=target.organization_id,
                 name=target.name,
                 type="ApplicationEvent",
                 layer="Application",
@@ -1047,6 +1049,7 @@ def create_applicationfunction_archimate_element(mapper, connection, target):
 
         result = connection.execute(
             insert(ArchiMateElement.__table__).values(
+                organization_id=target.organization_id,
                 name=target.name,
                 type="ApplicationFunction",
                 layer="Application",
@@ -1066,6 +1069,7 @@ def create_applicationprocess_archimate_element(mapper, connection, target):
 
         result = connection.execute(
             insert(ArchiMateElement.__table__).values(
+                organization_id=target.organization_id,
                 name=target.name,
                 type="ApplicationProcess",
                 layer="Application",
@@ -1104,6 +1108,7 @@ def create_dataobject_archimate_element(mapper, connection, target):
 
         result = connection.execute(
             insert(ArchiMateElement.__table__).values(
+                organization_id=target.organization_id,
                 name=target.name,
                 type="DataObject",
                 layer="Application",

@@ -9,20 +9,12 @@
 <div class="space-y-6" x-data="phaseViewpointData()">
 
   <!-- Breadcrumbs -->
-  <nav class="flex items-center gap-2 text-sm text-muted-foreground mb-2" aria-label="Breadcrumb">
-    <a href="{{ url_for('main.index') }}" class="hover:text-foreground transition-colors">Dashboard</a>
-    <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
-    <a href="{{ url_for('main.ea_workflows_dashboard') }}" class="hover:text-foreground transition-colors">EA Workflows</a>
-    <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
-    <span class="text-foreground font-medium">{{ phase_name }} — Viewpoint</span>
-  </nav>
 
   <!-- Page Header -->
   <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
     {{ page_header(
         title=phase_name,
-        description='ArchiMate 3.2 viewpoint detail for this TOGAF ADM phase'
-    ) }}
+        description='ArchiMate 3.2 viewpoint detail for this TOGAF ADM phase', breadcrumbs=[{'label': 'Dashboard', 'href': url_for('main.index')}, {'label': 'EA Workflows', 'href': url_for('main.ea_workflows_dashboard')}, {'label': phase_name ~ ' — Viewpoint'}]) }}
   </div>
 
   <!-- Viewpoint Metadata -->

@@ -284,6 +284,7 @@ def create_collaboration_archimate(mapper, connection, target):
 
         result = connection.execute(
             insert(ArchiMateElement.__table__).values(
+                organization_id=target.organization_id,
                 name=target.name,
                 type="BusinessCollaboration",
                 layer="Business",
@@ -303,6 +304,7 @@ def create_interface_archimate(mapper, connection, target):
 
         result = connection.execute(
             insert(ArchiMateElement.__table__).values(
+                organization_id=target.organization_id,
                 name=target.name,
                 type="BusinessInterface",
                 layer="Business",
@@ -322,6 +324,7 @@ def create_interaction_archimate(mapper, connection, target):
 
         result = connection.execute(
             insert(ArchiMateElement.__table__).values(
+                organization_id=target.organization_id,
                 name=target.name,
                 type="BusinessInteraction",
                 layer="Business",
@@ -341,6 +344,7 @@ def create_product_archimate(mapper, connection, target):
 
         result = connection.execute(
             insert(ArchiMateElement.__table__).values(
+                organization_id=target.organization_id,
                 name=target.name,
                 type="Product",
                 layer="Business",

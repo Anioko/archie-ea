@@ -684,6 +684,17 @@
       "required_fix": "Copy source organisation into every generated technology ArchiMate insert. Verify database ownership, own-tenant radar visibility and other-tenant exclusion. Exercise classification and reclassification through actual browser controls, reload and a new session. Measure existing production ownership gaps before any narrowly scoped, reversible data repair; do not infer ownership where sources disagree.",
       "retest_evidence": "All nine insert-hook tests failed before repair and pass after adding organization_id=target.organization_id. Added a shared-fixture database isolation regression and a full application browser journey moving an isolated node from unclassified to Trial to Hold, including reloads and a fresh session. Those database/browser cases remain pending CI. Production data measurement and deployed retest are outstanding; no closure claimed.",
       "closure_tests": ["tests/test_technology_backbone_tenancy.py", "tests/smoke/test_radar_persistence.py", "Production ownership-gap before/after measurements and live radar persistence verification"]
+    },
+    {
+      "id": "F500-050",
+      "area": "cross_domain_archimate_ownership",
+      "severity": "high",
+      "title": "Additional tenant-scoped application, business and physical model hooks omit backbone ownership",
+      "status": "in_progress",
+      "original_evidence": "Independent follow-up to F500-049 identified 25 raw insert sites serving 28 tenant-bearing model paths across application_layer, archimate_business, archimate_missing_elements, archimate_technology, business_layer, physical_layer and process_data. Fifty-two hook regressions failed on missing organisation ownership before repair.",
+      "required_fix": "Preserve source organisation on generated ArchiMate rows, validate source mappings and existing-link idempotence, qualify database and browser journeys, and measure existing records before attributable repair. Separately investigate raw-insert source models lacking organisation fields; copying a nonexistent attribute is not a valid fix.",
+      "retest_evidence": "Independent main-agent rerun: 61 hook tests pass across these repairs and F500-049; one database test deliberately deselected because no local PostgreSQL is available, so full verification remains pending CI. Read-only production check of technology_nodes found zero source rows and consequently zero missing/conflicting owners; this is not a measurement of the other model tables. No production data changed. Application/browser qualification and remaining production measurements outstanding.",
+      "closure_tests": ["tests/test_backbone_insert_ownership.py", "Database and browser verification of affected model creation paths", "Production source-to-element ownership measurements"]
     }
   ]
 }
