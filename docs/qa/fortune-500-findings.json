@@ -662,6 +662,17 @@
       "required_fix": "Keep navigation evidence specific to the source page and visible control ordinal, rather than transferring success by destination.",
       "retest_evidence": "Fingerprint now includes page, ordinal, destination and control attributes. Eighteen focused audit tests pass, including a real Chromium case with two identical destination/label links: the first opens a panel and the second does nothing, and their evidence remains distinct. The running older audit does not contain this correction; a final-revision full audit is still required. Four completed older role surveys are summarized in docs/qa/runs/2026-09-04-four-role-survey-summary.json with their limitations explicit.",
       "closure_tests": ["tests/test_production_readiness_control_outcomes.py::test_navigation_evidence_is_specific_to_its_page_and_control_instance", "tests/test_production_readiness_control_outcomes.py::test_identical_links_need_independent_browser_evidence", "Full product audit on final release revision"]
+    },
+    {
+      "id": "F500-048",
+      "area": "qa_browser_security_configuration",
+      "severity": "high",
+      "title": "Whole-product browser server disabled CSRF enforcement through TestingConfig",
+      "status": "verified_local",
+      "original_evidence": "Audit boot used manage with FLASK_CONFIG=testing; TestingConfig sets WTF_CSRF_ENABLED=False. The first four role surveys each contain twelve missing-token observations, but that configuration cannot prove production form behavior and bypasses protection on submitted forms.",
+      "required_fix": "Enable CSRF in the audit-only server entrypoint while retaining the isolated test database. Do not assert submission failure from hidden-token absence alone: JavaScript header handling requires actual submission verification.",
+      "retest_evidence": "Added scripts.audit_server:create_app and wired audit boot to it. Real Chromium regression against that factory with Flask-WTF accepts a valid-token form and rejects a missing-token form with HTTP 400. Twenty focused audit tests pass without skips. This tests audit configuration, not every application form; full application audit rerun with enforcement remains outstanding. Product production configuration is unchanged.",
+      "closure_tests": ["tests/test_audit_server_security.py", "Full application form submissions in the CSRF-enforcing audit environment"]
     }
   ]
 }

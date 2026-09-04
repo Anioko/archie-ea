@@ -270,7 +270,7 @@ def boot(port, log_path):
         env["DATABASE_URL"] = env["TEST_DATABASE_URL"] = url
     handle = open(log_path, "w", encoding="utf-8")
     proc = subprocess.Popen(
-        [sys.executable, "-m", "flask", "--app", "manage", "run", "--no-reload",
+        [sys.executable, "-m", "flask", "--app", "scripts.audit_server:create_app", "run", "--no-reload",
          "--port", str(port)],
         cwd=str(REPO), env=env, stdout=handle, stderr=subprocess.STDOUT,
     )
@@ -651,7 +651,7 @@ def evaluate_findings(level_set, ctx, probe, status, console_errors, failed_requ
             add(5, "unnamed-button", f"button with no accessible name: .{cls}")
         for action in probe.get("formsMissingCsrf") or []:
             add(5, "form-missing-csrf",
-                f"POST form to {action} has no csrf_token; submitting it 400s")
+                f"POST form to {action} has no hidden csrf_token; verify submission and header handling")
         if probe.get("checkboxesUnlabelled"):
             add(5, "unlabelled-checkbox",
                 f"{probe['checkboxesUnlabelled']} of {probe['checkboxes']} "
