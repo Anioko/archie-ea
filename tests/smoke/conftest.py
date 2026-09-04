@@ -288,6 +288,7 @@ def seeded(live_server):
             organization_id=org.id,
             created_by_id=out["ids"]["solution_architect_user"],
             governance_status="draft",
+            adm_phase="C",
             has_acm_domains=True,
         )
         db.session.add(solution)
@@ -301,6 +302,15 @@ def seeded(live_server):
         db.session.add(component)
         db.session.commit()
         out["ids"]["application"] = component.id
+
+        # Exercise the populated dashboard, not only its sparse-org onboarding
+        # shell. Five applications is the production threshold for data mode.
+        db.session.add_all([
+            ApplicationComponent(name="Smoke dashboard app %s %s" % (suffix, index),
+                                 organization_id=org.id, lifecycle_status="operational")
+            for index in range(4)
+        ])
+        db.session.commit()
 
         radar_node = Node(
             name="Smoke radar node %s" % suffix, organization_id=org.id,

@@ -81,13 +81,13 @@
     <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         {{ metrics_card(
             title='Avg Solution Maturity',
-            value=(avg_maturity | string) + '%',
+            value=(avg_maturity | string) + '%' if avg_maturity is not none else '—',
             icon='trending-up',
-            description='Derived from ADM phase completion'
+            description='Derived from recorded ADM phases only'
         ) }}
         {{ metrics_card(
             title='Total Solutions',
-            value=total_solutions | string,
+            value=total_solutions | string if total_solutions is not none else '—',
             icon='puzzle',
             description='Solutions tracked in portfolio'
         ) }}
@@ -240,13 +240,16 @@
                    fixed 12/25/…/100 ladder per phase was removed: it read as
                    "Governance 87%" from zero solutions — a fabricated-looking
                    constant. Em dash when there are no solutions to measure. #}
+                {% if adm_distribution is none %}
+                <p class="text-sm text-muted-foreground" role="status">Phase data unavailable. Reload the page to try again.</p>
+                {% else %}
                 <div class="space-y-2">
-                    {% for phase in 'ABCDEFGH' %}
+                    {% for phase, count in adm_distribution.items() %}
                     {% set count = adm_distribution.get(phase, 0) %}
                     {% set phase_share = ((count / total_solutions) * 100) | round(1) if total_solutions > 0 else none %}
                     <div class="flex items-center gap-3">
                         <span class="w-24 text-xs font-medium text-muted-foreground shrink-0">
-                            {{ phase }}: {{ adm_labels.get(phase, '') }}
+                            {% if phase == 'Unclassified' %}Unclassified{% else %}{{ phase }}: {{ adm_labels.get(phase, '') }}{% endif %}
                         </span>
                         <div class="flex-1 bg-muted rounded-full h-2 overflow-hidden">
                             <div class="bg-primary h-full rounded-full transition-all"
@@ -258,12 +261,13 @@
                     </div>
                     {% endfor %}
                 </div>
+                {% endif %}
                 <div class="mt-4 pt-3 border-t border-border flex items-center justify-between">
                     <span class="text-sm text-muted-foreground">Average Maturity</span>
-                    <span class="text-2xl font-bold text-primary">{{ avg_maturity }}%</span>
+                    <span class="text-2xl font-bold text-primary">{% if avg_maturity is not none %}{{ avg_maturity }}%{% else %}&#8212;{% endif %}</span>
                 </div>
                 <p class="mt-2 text-xs text-muted-foreground">
-                    Maturity derived from ADM phase for solutions without explicit maturity scores.
+                    Average derived from recorded ADM phases only; unclassified solutions are excluded.
                     <a href="{{ url_for('solution_design.list_solutions') }}" class="text-primary hover:underline">View all &#8594;</a>
                 </p>
             {% endcall %}

@@ -397,8 +397,12 @@
       "closure_tests": [
         "tests/test_dashboard_capability_coverage_agreement.py",
         "Full static verification",
-        "Unify phase_maturity and risk_posture the same way (not yet attempted)"
-      ]
+        "tests/test_dashboard_health_agreement.py",
+        "tests/test_dashboard_health_integration.py",
+        "tests/smoke/test_dashboard_health_agreement.py",
+        "Deployed browser agreement across Overview and loaded CTO summary"
+      ],
+      "latest_retest_2026_09_05": "Live CTO page still shows 42.9 versus 48 on OCI revision 02bc01c5. Replaced Overview's independent formula with the executive service computation, preserving missing values and decimal precision. No ARB observations now produce unavailable governance rather than invented zero. Independent main-agent combined rerun passed all 16 dashboard regressions, including five for this repair and a Chromium missing-value rendering case. Database endpoint and full-application browser tab/reload cases are added but await CI; deployment and live closure remain outstanding."
     },
     {
       "id": "F500-028",
@@ -728,6 +732,39 @@
       "required_fix": "Run adversarial regressions against isolated test data with retained evidence; count request failures rather than ignoring them; keep traversal identity stable and test identity-changing routes separately. Inspect resulting failures rather than treating wiring as execution.",
       "retest_evidence": "Added explicit CI adversarial step and JUnit artifact. Request exceptions now append failures. Identity-changing routes are excluded from these traversals and remain dedicated-journey scope. Three guard regressions pass after reproducing missing execution, silent handlers and absent identity filter. Actual adversarial execution remains pending; existing success reports do not include it.",
       "closure_tests": ["tests/test_adversarial_ci_execution.py", "tests/smoke/test_adversarial_probes.py", "Dedicated sign-out and tenant/identity transition browser journeys"]
+    },
+    {
+      "id": "F500-054",
+      "area": "dashboard_solution_pipeline",
+      "severity": "high",
+      "title": "Solution Pipeline falsely reports no solutions when existing solutions have no ADM phase",
+      "status": "in_progress",
+      "original_evidence": "5 September direct live browser on OCI revision 02bc01c55f76d9c179b46e64d640fe529ab8d5d9: Overview reports Solutions 4 but Solution Pipeline says No solutions yet. Read-only production aggregate confirms organisation 10 has four solutions with unassigned adm_phase. Source diagnosis shows only A-H groups contribute to the pipeline, dropping unassigned/unrecognised phases; errors can also become an empty list.",
+      "required_fix": "Preserve every tenant-visible solution in the pipeline, represent unassigned phases honestly, distinguish query errors from genuine absence, and verify populated, unclassified, empty and failure states. Do not assign a fabricated phase to existing records.",
+      "retest_evidence": "Retained unclassified counts and distinguished query failure from empty portfolio. Independent main-agent rerun: six focused tests passed, including three Chromium fragment renders; combined dashboard cohort 16 passed. Full-application test verifies actual dashboard, reload, health scorecard and pipeline navigation but awaits CI execution. Live evidence retained in docs/qa/runs/2026-09-05-live-release-check.md. No production records changed; fix not deployed.",
+      "closure_tests": ["Pipeline regression for unassigned and mixed phases", "Full application browser test of counts and nonempty state", "Deployed dashboard retest against existing unassigned solutions"]
+    },
+    {
+      "id": "F500-055",
+      "area": "health_scorecard_phase_honesty",
+      "severity": "high",
+      "title": "Health scorecard invents Vision phase and 12 percent maturity for solutions with no recorded phase",
+      "status": "in_progress",
+      "original_evidence": "5 September direct production browser on /dashboard/health shows Avg Solution Maturity 12%, A: Vision 4 and 100.0%. Independent read-only production query confirms all four solutions for organisation 10 have adm_phase IS NULL. Source diagnosis identifies fallback of unknown phase to A; this is separate from Overview pipeline dropping these rows (F500-054).",
+      "required_fix": "Represent unassigned phases explicitly, calculate maturity only from real recorded inputs and show unavailable values as em dashes. Keep a genuine measured zero distinct from missing data or query failure. Do not mutate records merely to make charts appear complete.",
+      "retest_evidence": "Replaced unknown-phase fallback with explicit Unclassified, excluded missing inputs from maturity calculation and rendered missing/error measurements honestly. Five regressions failed before repair; independent main-agent combined rerun passed all 16 dashboard cases, including these five and three Chromium scorecard renders. Full-application browser test extended for unclassified distribution, unavailable maturity and reload, pending CI. Production defect remains present until deployment and independent retest.",
+      "closure_tests": ["Scorecard unassigned/mixed/empty/error-state regressions", "Full application browser phase distribution and maturity verification", "Production retest against the four existing unassigned solutions"]
+    },
+    {
+      "id": "F500-056",
+      "area": "deployment_disk_capacity",
+      "severity": "high",
+      "title": "Image pull can exhaust production root volume before deployment detects insufficient capacity",
+      "status": "in_progress",
+      "original_evidence": "Interim c87d0d1f deployment pull failed extracting torch library with no space left on device. Free root space fell from 3.1 GB to 133 MB before activation; prior application stayed healthy. Four unused legacy local build images occupied substantial retained storage.",
+      "required_fix": "Reclaim only verified unused artifacts while preserving rollback and data; add a tested capacity preflight and controlled image-retention procedure so future pulls cannot unexpectedly fill the production volume. Do not remove database volumes or current/rollback images.",
+      "retest_evidence": "Verified container references and removed exactly four unused legacy build images without force. Free space recovered to 34 GB, usage 57%; current application and database remained healthy. No data or backups removed. Deployment retry underway. Preventive versioned guard/retention work remains outstanding and is not being mixed into the currently executing deployment script.",
+      "closure_tests": ["Low-disk deployment preflight regression", "Controlled retention preserves current and rollback releases", "Before/after production capacity and healthy service measurements"]
     }
   ]
 }

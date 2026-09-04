@@ -491,14 +491,23 @@ def overview():
             "D": "D: Technology", "E": "E: Options", "F": "F: Migration",
             "G": "G: Governance", "H": "H: Change",
         }
-        phase_map = {r[0]: r[1] for r in phase_rows}
+        phase_map = {}
+        for phase, count in phase_rows:
+            normalized_phase = (phase or "").strip().upper()
+            phase_map[normalized_phase] = phase_map.get(normalized_phase, 0) + count
         for letter in "ABCDEFGH":
             solution_pipeline.append({
                 "phase": letter,
                 "label": _phase_labels.get(letter, letter),
                 "count": phase_map.get(letter, 0),
             })
+        # Legacy rows may have no phase. Keep them in the measured total without
+        # inventing phase A, or an existing portfolio reads as "No solutions".
+        unclassified = sum(count for phase, count in phase_map.items() if phase not in _phase_labels)
+        if unclassified:
+            solution_pipeline.append({"phase": None, "label": "Unclassified", "count": unclassified})
     except Exception as exc:
+        solution_pipeline = None
         logger.warning("ENH-002: solution pipeline unavailable: %s", exc)
         db.session.rollback()
 
@@ -510,67 +519,19 @@ def overview():
     health_score = None
     health_components = {}
     try:
-        # Phase Maturity (avg solution maturity, 0-100)
-        phase_maturity = persona_metrics.get("architect", {}).get("avg_maturity", 0)
-
-        # Risk health: blended score (50% coverage + 50% severity).
-        # Coverage = % of solutions with maturity > 0 that have documented risks.
-        #   Rewards governance completeness — architects who document risks score higher.
-        #   Only mature solutions (mc > 0) are expected to have risk assessments.
-        # Severity = 100 - (critical+high / total) * 100.
-        #   Penalises portfolios where most identified risks are worst-case severity.
-        # Blending ensures a solution set that documents risks AND manages severity is
-        # risk documentation completeness: % of solutions with lifecycle data that have
-        # documented risks. Severity distribution is not used — LLM risk generation
-        # defaults to "high" regardless of context, making severity an unreliable signal.
-        # A portfolio where architects consistently document risks (whatever severity)
-        # is healthier than one with no risk documentation.
-        persona_metrics.get("cto", {}).get("risk_counts", {})
-        sol_ids_with_risks = persona_metrics.get("cto", {}).get("sol_ids_with_risks", set())
-        mature_sols = [s for s in solutions if (getattr(s, "maturity_current", 0) or 0) > 0]
-        # max(len(...), 1) was a fake denominator: with no mature solutions it
-        # divided by a 1 that does not exist and reported a confident 0% risk
-        # health. Nothing to measure is None, which renders as an em dash.
-        risk_health = (
-            round(len([s for s in mature_sols if s.id in sol_ids_with_risks]) / len(mature_sols) * 100)
-            if mature_sols
-            else None
-        )
-
-        # Capability Coverage (% of L1 capabilities with at least 1 app)
-        covered = len([c for c in capability_health if c.get("coverage_status") != "gap"])
-        cap_coverage = round(covered / len(capability_health) * 100) if capability_health else None
-
-        # Governance (% of solutions past draft)
-        total_sols = persona_metrics.get("cto", {}).get("total_solutions", 0)
-        arb = persona_metrics.get("cto", {}).get("arb_pipeline", {})
-        governed = arb.get("approved", 0) + arb.get("pending", 0)
-        # Same fake-denominator problem as risk health: "or 1" turned an empty
-        # portfolio into 0% governed rather than "no portfolio to govern".
-        gov_health = min(100, round(governed / total_sols * 100)) if total_sols else None
-
+        # The executive-summary API uses this same tenant-scoped computation.
+        # Do not derive an identically labelled score from different measures
+        # (maturity_current, risk-documentation coverage, or ARB/solution counts).
+        from app.modules.dashboard.v2.services.executive_dashboard_service import ExecutiveDashboardService
+        health = ExecutiveDashboardService()._get_health_score()
+        components = health["components"]
+        health_score = health["composite_score"]
         health_components = {
-            "phase_maturity": phase_maturity,
-            "risk_health": risk_health,
-            "capability_coverage": cap_coverage,
-            "governance": gov_health,
+            "phase_maturity": components["phase_maturity"],
+            "risk_health": components["risk_posture"],
+            "capability_coverage": components["capability_coverage"],
+            "governance": components["governance"],
         }
-        # Re-weight over whatever could actually be measured, so one unmeasurable
-        # component drags the composite down instead of being scored as zero.
-        # None when nothing at all could be measured.
-        _weights = {
-            "phase_maturity": 0.4,
-            "risk_health": 0.3,
-            "capability_coverage": 0.2,
-            "governance": 0.1,
-        }
-        _available = {k: v for k, v in health_components.items() if v is not None}
-        _total_weight = sum(_weights[k] for k in _available)
-        health_score = (
-            round(sum(_available[k] * _weights[k] for k in _available) / _total_weight)
-            if _total_weight
-            else None
-        )
     except Exception as exc:
         logger.warning("ENH-002: health score computation failed: %s", exc)
         # Leave health_score None. A failed computation must not surface as a
@@ -1028,20 +989,27 @@ def _assemble_health_scorecard_metrics():
     # 4. ADM phase distribution and average maturity
     _adm_phase_pct = {"A": 12, "B": 25, "C": 37, "D": 50, "E": 62, "F": 75, "G": 87, "H": 100}
     adm_distribution = {p: 0 for p in "ABCDEFGH"}
-    avg_maturity = 0
-    total_solutions = 0
+    avg_maturity = None
+    total_solutions = None
     try:
         from app.models.solution_models import Solution as SolutionModel
         solutions_q = SolutionModel.query.with_entities(SolutionModel.adm_phase).all()
         total_solutions = len(solutions_q)
         maturity_scores = []
         for (phase,) in solutions_q:
-            p = (phase or "A").upper()
+            p = (phase or "").strip().upper()
+            if p not in _adm_phase_pct:
+                p = "Unclassified"
             adm_distribution[p] = adm_distribution.get(p, 0) + 1
-            maturity_scores.append(_adm_phase_pct.get(p, 12))
-        avg_maturity = round(sum(maturity_scores) / len(maturity_scores)) if maturity_scores else 0
+            if p in _adm_phase_pct:
+                maturity_scores.append(_adm_phase_pct[p])
+        avg_maturity = round(sum(maturity_scores) / len(maturity_scores)) if maturity_scores else None
     except Exception as exc:
+        adm_distribution = None
+        total_solutions = None
+        avg_maturity = None
         logger.warning("health_scorecard: Solution unavailable: %s", exc)
+        db.session.rollback()
 
     return {
         "risk_counts": risk_counts,

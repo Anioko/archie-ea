@@ -167,8 +167,8 @@ class ExecutiveDashboardService:
         Weighted average of:
         - Phase maturity (40%): % of solutions past Phase B
         - Risk posture (30%): inverse of high/critical risk ratio
-        - Capability coverage (20%): % capabilities with solution mapping
-        - Governance (10%): % ARB items resolved (approved or rejected)
+        - Capability coverage (20%): % L1 capabilities with application mapping
+        - Governance (10%): ARB presence, timeliness and approval rate
 
         A component is ``None`` when it could not be measured — the query failed,
         or there is nothing to measure yet. It is deliberately not zero, and for
@@ -185,18 +185,23 @@ class ExecutiveDashboardService:
         scores = {}
 
         # Phase maturity: % of solutions in Phase C or later.
-        # None rather than 0.0 for an empty portfolio: "0% past Phase B" reads as
-        # a portfolio stalled in Phase A, which is a different fact from having
-        # no solutions recorded at all.
+        # Only recorded, valid phases supply a denominator. NULL/invalid phase
+        # does not mean Phase A, nor a measured failure to progress past Phase B.
+        # Match the scorecard/pipeline's normalization of imported phase values.
         try:
             from app.models.solution_models import Solution
 
-            total = db.session.query(db.func.count(Solution.id)).scalar() or 0
+            phase = db.func.upper(db.func.trim(Solution.adm_phase))
+            total = (
+                db.session.query(db.func.count(Solution.id))
+                .filter(phase.in_(list("ABCDEFGH")))
+                .scalar()
+            ) or 0
             if total > 0:
                 advanced_phases = ["C", "D", "E", "F", "G", "H"]
                 advanced = (
                     db.session.query(db.func.count(Solution.id))
-                    .filter(Solution.adm_phase.in_(advanced_phases))
+                    .filter(phase.in_(advanced_phases))
                     .scalar()
                 ) or 0
                 scores["phase_maturity"] = round((advanced / total) * 100, 1)
@@ -250,14 +255,14 @@ class ExecutiveDashboardService:
         #
         # An organisation with an active, up-to-date ARB queue scores near 100.
         # An organisation with stale unresolved items scores lower.
-        # An organisation with no ARB activity scores 0 (governance not in use).
+        # No ARB activity leaves no denominator to measure governance against.
         try:
             from datetime import datetime, timedelta
             from app.models.architecture_review_board import ARBReviewItem
 
             total_arb = db.session.query(db.func.count(ARBReviewItem.id)).scalar() or 0
             if total_arb == 0:
-                scores["governance"] = 0.0
+                scores["governance"] = None
             else:
                 resolved = (
                     db.session.query(db.func.count(ARBReviewItem.id))
@@ -291,10 +296,6 @@ class ExecutiveDashboardService:
                 gov_score = 40 + round(timeliness * 40) + round(approval_rate * 20)
                 scores["governance"] = min(100.0, float(gov_score))
         except Exception:
-            # The `total_arb == 0 -> 0.0` above is a deliberate modelling choice
-            # documented in the comment block: no ARB activity genuinely means
-            # governance is not in use. A failed *query* is a different thing and
-            # must not borrow that zero.
             logger.exception("health score: governance could not be measured")
             scores["governance"] = None
 

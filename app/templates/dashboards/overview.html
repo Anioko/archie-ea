@@ -373,7 +373,9 @@
                            "Nothing past Vision yet — 70 solutions are in phase A"). #}
                         {% set solution_pipeline_total = solution_pipeline|map(attribute='count')|sum if solution_pipeline else 0 %}
                         {% set nonzero_phases = solution_pipeline|selectattr('count', 'gt', 0)|list if solution_pipeline else [] %}
-                        {% if solution_pipeline_total > 0 and nonzero_phases|length > 1 %}
+                        {% if solution_pipeline is none %}
+                        {{ empty_state('workflow', 'Pipeline unavailable', 'Solution phase data could not be loaded. Reload the page to try again.') }}
+                        {% elif solution_pipeline_total > 0 and nonzero_phases|length > 1 %}
                         {% set max_count = solution_pipeline|map(attribute='count')|max or 1 %}
                         <div class="space-y-2">
                             {% for item in solution_pipeline %}
@@ -390,6 +392,13 @@
                         {% elif solution_pipeline_total > 0 %}
                         {# Concentrated in a single ADM phase — one sentence, not 8 bars. #}
                         {% set concentrated = nonzero_phases[0] %}
+                        {% if concentrated.phase is none %}
+                        {{ empty_state(
+                            'workflow', 'ADM phase not recorded',
+                            solution_pipeline_total ~ ' solution' ~ ('s' if solution_pipeline_total != 1 else '') ~ ' without a recorded ADM phase. Open the pipeline to review them.',
+                            cta_label='Open the pipeline', cta_href=url_for('solution_design.list_solutions')
+                        ) }}
+                        {% else %}
                         {% set phase_letter, phase_name = concentrated.label.split(': ', 1) %}
                         {{ empty_state(
                             'workflow',
@@ -398,6 +407,7 @@
                             cta_label='Open the pipeline',
                             cta_href=url_for('solution_design.list_solutions')
                         ) }}
+                        {% endif %}
                         {% elif current_user.enterprise_role in ('solution_architect', 'enterprise_architect', 'platform_admin') %}
                         {# PLT-040: role-aware empty state #}
                         {{ empty_state('workflow', 'No solutions yet', 'Blueprint your first initiative to start tracking ADM phase progress.', cta_label='Create your first solution', cta_href='/solutions/') }}
@@ -469,7 +479,7 @@
                         <template x-for="(val, key) in execData" :key="key">
                             <div class="rounded-lg border border-border bg-background p-3">
                                 <p class="text-xs text-muted-foreground capitalize" x-text="key.replace(/_/g, ' ')"></p>
-                                <p class="text-lg font-bold text-foreground" x-text="typeof val === 'number' ? val.toLocaleString() : val"></p>
+                                <p class="text-lg font-bold text-foreground" x-text="typeof val === 'number' ? val.toLocaleString() : (val ?? '—')"></p>
                             </div>
                         </template>
                     </div>
