@@ -105,7 +105,8 @@ SCREENS = {a: list(dict.fromkeys(paths)) for a, paths in JOURNEY.items()}
 # than redirecting away and censusing nothing. A path that still 404s or 3xxs is
 # skipped by the same guard as the journey screens -- it is another test's find.
 EXTRA_SCREENS = {
-    "solution_architect":   ["/solutions/create",
+    "solution_architect":   ["/solutions/{solution}",
+                             "/solutions/create",
                              "/solutions/architect/workspace"],
     "enterprise_architect": ["/architecture/strategy/capability/new",
                              "/capability-map/hierarchy"],

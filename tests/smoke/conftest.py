@@ -235,6 +235,7 @@ def seeded(live_server):
         from app.models.application_portfolio import ApplicationComponent, VendorContract
         from app.models.architecture_journey import ArchitectureJourney
         from app.models.organization import Organization
+        from app.models.solution_models import Solution
         from app.models.user import Role, User
 
         db.create_all()
@@ -261,6 +262,8 @@ def seeded(live_server):
                 out["ids"]["app_manager_user"] = user.id
             if archetype == "business_architect":
                 out["ids"]["business_architect_user"] = user.id
+            if archetype == "solution_architect":
+                out["ids"]["solution_architect_user"] = user.id
 
         journey = ArchitectureJourney(
             owner_id=out["ids"]["business_architect_user"],
@@ -274,6 +277,18 @@ def seeded(live_server):
         db.session.add(journey)
         db.session.commit()
         out["ids"]["architecture_journey"] = journey.id
+
+        solution = Solution(
+            name="Smoke solution blueprint %s" % suffix,
+            description="Outcome-test fixture for solution blueprint controls.",
+            organization_id=org.id,
+            created_by_id=out["ids"]["solution_architect_user"],
+            governance_status="draft",
+            has_acm_domains=True,
+        )
+        db.session.add(solution)
+        db.session.commit()
+        out["ids"]["solution"] = solution.id
 
         component = ApplicationComponent(
             name="Smoke Payroll %s" % suffix, organization_id=org.id,

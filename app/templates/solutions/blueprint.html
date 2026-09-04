@@ -154,21 +154,12 @@
                 Manage Entities
             </a>
 <script>
-(function() {
-    const btn = document.getElementById('bp-header-save-template-btn');
-    if (btn) {
-        btn.addEventListener('click', function() {
-            const modal = document.getElementById('save-as-template-modal');
-            if (modal) modal.classList.remove('hidden');
-        });
-    }
-})();
+function openSaveAsTemplate() {
+    const modal = document.getElementById('save-as-template-modal');
+    if (modal) modal.classList.remove('hidden');
+}
 </script>
 <script>
-(function() {
-    let _oefBtn = document.getElementById('btn-export-oef-{{ solution.id }}');
-    if (_oefBtn) _oefBtn.addEventListener('click', function() { archieDownloadOef({{ solution.id }}); });
-})();
 function archieDownloadOef(solutionId) {
     let btn = document.getElementById('btn-export-oef-' + solutionId);
     let lbl = document.getElementById('btn-export-oef-label-' + solutionId);
@@ -270,7 +261,7 @@ function archieShowBanner(msg, type) {
                             role="menuitem"
                             class="w-full flex items-center gap-2 px-3 py-2 text-foreground hover:bg-accent transition-colors text-left"
                             title="Save this solution as a reusable template"
-                            @click="bpHdrMoreOpen = false">
+                            @click="bpHdrMoreOpen = false; openSaveAsTemplate()">
                         <svg class="w-3.5 h-3.5 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"/></svg>
                         Save as Template
                     </button>
@@ -280,7 +271,7 @@ function archieShowBanner(msg, type) {
                             role="menuitem"
                             class="w-full flex items-center gap-2 px-3 py-2 text-foreground hover:bg-accent transition-colors text-left"
                             title="ArchiMate Open Exchange XML for Archi, Sparx EA, BizzDesign"
-                            @click="bpHdrMoreOpen = false">
+                            @click="bpHdrMoreOpen = false; archieDownloadOef({{ solution.id }})">
                         <svg class="w-3.5 h-3.5 text-muted-foreground" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
                         <span id="btn-export-oef-label-{{ solution.id }}">Export OEF</span>
                     </button>
@@ -1575,7 +1566,7 @@ function entityAddModal() {
 
 {# ── Codegen Modal ────────────────────────────────────────────────────── #}
 <!-- modal-a11y-ok: uses $store.modal registry with fixed inset-0 overlay -->
-<div data-modal-key="bp-codegen-modal"
+<div id="bp-codegen-modal" data-modal-key="bp-codegen-modal"
      x-data="codegenModal()"
      x-init="$store.modal.register('bp-codegen-modal')"
      x-show="$store.modal.isOpen('bp-codegen-modal')" x-cloak
@@ -1663,7 +1654,7 @@ function entityAddModal() {
                x-text="elementCount + ' element' + (elementCount === 1 ? '' : 's') + ' used as context'"></p>
             <p class="text-xs text-muted-foreground" x-show="elementCount === 0">No elements linked — generation uses solution description only</p>
             <div class="flex gap-2">
-                <button type="button" @click="open = false"
+                <button type="button" @click="open = false; $store.modal.close('bp-codegen-modal')"
                         class="px-3 py-1.5 text-xs font-medium text-foreground bg-muted hover:bg-muted/70 rounded-md transition-colors">
                     Close
                 </button>
@@ -1778,7 +1769,7 @@ function codegenModal() {
 
 {# ── Link Elements Picker ─────────────────────────────────────────────── #}
 <!-- modal-a11y-ok: uses $store.modal registry with fixed inset-0 overlay -->
-<div data-modal-key="bp-link-modal"
+<div id="bp-link-modal" data-modal-key="bp-link-modal"
      x-data="linkElementsPicker()"
      x-init="$store.modal.register('bp-link-modal')"
      x-show="$store.modal.isOpen('bp-link-modal')" x-cloak
@@ -1901,7 +1892,7 @@ function codegenModal() {
                 <span x-show="results.length > 0" x-text="`${results.length} result${results.length === 1 ? '' : 's'}`"></span>
                 <span x-show="linkedCount > 0" x-text="` · ${linkedCount} linked`"></span>
             </p>
-            <button type="button" @click="open = false"
+            <button type="button" @click="open = false; $store.modal.close('bp-link-modal')"
                     class="px-3 py-1.5 text-xs font-medium text-foreground bg-muted hover:bg-muted/70 rounded-md transition-colors">
                 Done
             </button>

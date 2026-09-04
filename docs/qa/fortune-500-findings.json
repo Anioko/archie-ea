@@ -399,6 +399,50 @@
         "Full static verification",
         "Unify phase_maturity and risk_posture the same way (not yet attempted)"
       ]
+    },
+    {
+      "id": "F500-028",
+      "area": "frontend_interactions",
+      "severity": "critical",
+      "title": "Interaction census treated wired-looking controls and rendered pages as proof that user actions worked",
+      "status": "open",
+      "original_evidence": "4 Sep 2026: production /solutions/32 rendered successfully and its buttons carried click-like markup, yet Link Existing Elements and Codegen produced no usable dialog. The existing tests/smoke/test_interaction_reality.py checked structural wiring and successful navigation, not the promised outcome of each visible control, allowing broken modal targets, early listener binding, recursive Alpine getters, and silent export no-ops to pass.",
+      "required_fix": "Place the entire authenticated product in active defect scope. Inventory every reachable visible interactive control for every supported role and verify the intended navigation, modal, download, mutation, feedback, persistence, authorization, accessibility, and failure behavior in a real browser. A handler attribute, DOM presence, HTTP 200, or developer claim is not closure evidence.",
+      "retest_evidence": "Not yet closed. The solution detail page has been added to the interaction census and a first outcome-based Playwright journey has been added; product-wide control/outcome coverage and Linux browser execution remain outstanding.",
+      "closure_tests": [
+        "tests/smoke/test_interaction_reality.py",
+        "Outcome-based browser journeys for every inventoried control and supported role",
+        "Complete Chromium and Firefox interaction census on the final exact release"
+      ]
+    },
+    {
+      "id": "F500-029",
+      "area": "solution_blueprint_frontend",
+      "severity": "high",
+      "title": "Solution blueprint shipped multiple visible controls whose promised outcomes did not occur",
+      "status": "verified_local",
+      "original_evidence": "4 Sep 2026 direct production reproduction on /solutions/32: Link Existing Elements and Codegen did not open dialogs; the phase-gate panel displayed `Error loading gate: Maximum call stack size exceeded`; Save as Template and Export OEF bound listeners before their buttons existed; modal footer Close/Done changed unused local state; PNG export silently did nothing when no renderer was available. Browser logs also reported missing modal roots and an unavailable loader-circle icon.",
+      "required_fix": "Give modal roots the IDs required by the modal registry, prevent phase-gate getters from recursively reading their own Alpine properties, bind header actions at interaction time, close modal-store state from footer actions, use a shipped icon, and provide visible failure feedback when PNG export is unavailable.",
+      "retest_evidence": "4 Sep 2026 strict local TDD: seven interaction-contract regressions failed against the defects and pass after repair. Template syntax, template references, and design-token gates pass. A Playwright outcome journey now exercises the seeded solution page, but final Linux browser and production verification are still required.",
+      "closure_tests": [
+        "tests/test_solution_blueprint_interaction_contract.py",
+        "tests/smoke/test_solution_blueprint_controls.py",
+        "Production outcome retest of every visible /solutions/<id> control"
+      ]
+    },
+    {
+      "id": "F500-030",
+      "area": "visual_design",
+      "severity": "medium",
+      "title": "Dashboard card cleanup left colored side accents in role-specific panels",
+      "status": "verified_local",
+      "original_evidence": "4 Sep 2026 after main commit aa973d60 claimed the dashboard health cards matched the flat pattern, app/templates/dashboards/overview.html still contained fourteen border-l-4 colored card accents across Overview, CTO, and CFO panels, contrary to the owner's explicit no-colored-sides-or-corners requirement.",
+      "required_fix": "Remove every colored side accent from dashboard cards and enforce the flat neutral card contract across all role-specific panels.",
+      "retest_evidence": "4 Sep 2026: a regression assertion failed with fourteen occurrences before repair and now passes with zero border-l-4 occurrences in the dashboard template; design-token and template gates pass. Final rendered multi-role visual verification remains required.",
+      "closure_tests": [
+        "tests/test_solution_blueprint_interaction_contract.py::test_dashboard_cards_have_no_colored_side_accents",
+        "Rendered dashboard visual checks for every supported role"
+      ]
     }
   ]
 }

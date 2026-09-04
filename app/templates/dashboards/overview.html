@@ -263,32 +263,28 @@
                     value=(metrics.applications or 0)|string,
                     icon='package',
                     description='Active applications in portfolio',
-                    href='/applications/',
-                    class='border-l-4 border-l-blue-500'
+                    href='/applications/'
                 ) }}
                 {{ metrics_card(
                     title='Vendors',
                     value=(metrics.vendors or 0)|string,
                     icon='building',
                     description='Registered vendor organizations',
-                    href='/applications/vendors',
-                    class='border-l-4 border-l-success'
+                    href='/applications/vendors'
                 ) }}
                 {{ metrics_card(
                     title='Solutions',
                     value=(nav_stats.solutions or 0)|string,
                     icon='puzzle',
                     description='Solution designs in portfolio',
-                    href='/solutions/',
-                    class='border-l-4 border-l-violet-500'
+                    href='/solutions/'
                 ) }}
                 {{ metrics_card(
                     title='ArchiMate Elements',
                     value=(nav_stats.elements or 0)|string,
                     icon='boxes',
                     description='Architecture elements catalogued',
-                    href='/architecture/dashboard',
-                    class='border-l-4 border-l-sky-500'
+                    href='/architecture/dashboard'
                 ) }}
             </div>
 
@@ -482,12 +478,12 @@
             </div>
 
 <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                {{ metrics_card(title='Applications', value=(metrics.applications or 0)|string, icon='package', description='In portfolio', href='/applications/', class='border-l-4 border-l-blue-500') }}
-                {{ metrics_card(title='Health Score', value=(health_score|string ~ '/100') if health_score is not none else '—', icon='heart-pulse', description='Architecture health', href='/dashboard/health', class='border-l-4 border-l-red-500') }}
-                {{ metrics_card(title='Solutions', value=(nav_stats.solutions or 0)|string, icon='puzzle', description='Active designs', href='/solutions/', class='border-l-4 border-l-violet-500') }}
-                {{ metrics_card(title='ArchiMate', value=(nav_stats.elements or 0)|string, icon='boxes', description='Elements catalogued', href='/architecture/dashboard', class='border-l-4 border-l-sky-500') }}
+                {{ metrics_card(title='Applications', value=(metrics.applications or 0)|string, icon='package', description='In portfolio', href='/applications/') }}
+                {{ metrics_card(title='Health Score', value=(health_score|string ~ '/100') if health_score is not none else '—', icon='heart-pulse', description='Architecture health', href='/dashboard/health') }}
+                {{ metrics_card(title='Solutions', value=(nav_stats.solutions or 0)|string, icon='puzzle', description='Active designs', href='/solutions/') }}
+                {{ metrics_card(title='ArchiMate', value=(nav_stats.elements or 0)|string, icon='boxes', description='Elements catalogued', href='/architecture/dashboard') }}
             </div>
-            {% call card.card(class='border-l-4 border-l-red-500') %}
+            {% call card.card() %}
                 {% call card.card_header(class='pb-3') %}
                     {% call card.card_title(class='text-lg') %}Portfolio Risk &amp; ARB Pipeline{% endcall %}
                 {% endcall %}
@@ -532,12 +528,12 @@
     <div x-show="activeRole === 'cfo'" x-cloak>
         <div class="space-y-6">
             <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                {{ metrics_card(title='Applications', value=(metrics.applications or 0)|string, icon='package', description='In portfolio', href='/applications/', class='border-l-4 border-l-blue-500') }}
-                {{ metrics_card(title='Vendors', value=(metrics.vendors or 0)|string, icon='building', description='Vendor organizations', href='/applications/vendors', class='border-l-4 border-l-success') }}
-                {{ metrics_card(title='Health Score', value=(health_score|string ~ '/100') if health_score is not none else '—', icon='heart-pulse', description='Architecture health', href='/dashboard/health', class='border-l-4 border-l-red-500') }}
-                {{ metrics_card(title='Solutions', value=(nav_stats.solutions or 0)|string, icon='puzzle', description='Active designs', href='/solutions/', class='border-l-4 border-l-violet-500') }}
+                {{ metrics_card(title='Applications', value=(metrics.applications or 0)|string, icon='package', description='In portfolio', href='/applications/') }}
+                {{ metrics_card(title='Vendors', value=(metrics.vendors or 0)|string, icon='building', description='Vendor organizations', href='/applications/vendors') }}
+                {{ metrics_card(title='Health Score', value=(health_score|string ~ '/100') if health_score is not none else '—', icon='heart-pulse', description='Architecture health', href='/dashboard/health') }}
+                {{ metrics_card(title='Solutions', value=(nav_stats.solutions or 0)|string, icon='puzzle', description='Active designs', href='/solutions/') }}
             </div>
-            {% call card.card(class='border-l-4 border-l-success') %}
+            {% call card.card() %}
                 {% call card.card_header(class='pb-3') %}
                     {% call card.card_title(class='text-lg') %}Total Cost of Ownership{% endcall %}
                 {% endcall %}

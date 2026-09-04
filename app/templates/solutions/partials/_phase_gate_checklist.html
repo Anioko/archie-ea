@@ -152,7 +152,10 @@ document.addEventListener('alpine:init', function() {
 
         get apiBase() {
           // Walk up to find the solutionDetail x-data context
-          let el = this.$el;
+          // Start at the parent. This component itself defines apiBase as a
+          // getter, so reading d.apiBase from its own Alpine data stack would
+          // re-enter this getter until the browser exhausts the call stack.
+          let el = this.$el.parentElement;
           while (el && !el.__x_phase_gate_api) {
             if (el._x_dataStack) {
               for (let i = 0; i < el._x_dataStack.length; i++) {
@@ -170,7 +173,8 @@ document.addEventListener('alpine:init', function() {
         },
 
         get csrfToken() {
-          let el = this.$el;
+          // As above, do not inspect this component's own csrfToken getter.
+          let el = this.$el.parentElement;
           while (el && !el.__x_phase_gate_csrf) {
             if (el._x_dataStack) {
               for (let i = 0; i < el._x_dataStack.length; i++) {

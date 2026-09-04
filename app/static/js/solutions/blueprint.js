@@ -332,6 +332,8 @@ function blueprintPage() {
             let renderer = self.renderers[sectionId];
             if (renderer && typeof renderer.exportPng === 'function') {
                 renderer.exportPng();
+            } else if (window.Platform && Platform.toast) {
+                Platform.toast.error('No diagram is available to export for this section.');
             }
         },
 
