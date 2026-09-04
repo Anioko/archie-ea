@@ -220,6 +220,8 @@ scripts/check_*.py
 !scripts/check_qa_register.py
 !scripts/check_csrf_coverage.py
 !scripts/check_alpine_csp_compat.py
+!scripts/check_docs_drift.py
+!scripts/check_unregistered_checks.py
 scripts/patch_*.py
 scripts/find_*.py
 scripts/delete_*.py

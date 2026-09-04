@@ -269,7 +269,7 @@ Several gates are **ratchets**: they compare a measurement against
 not "clean". **Corrected 3 Sep 2026** — this section previously said `design_tokens`
 and `raw_sql_tenancy` carried 88 and 98 of real debt; both measured **0** on the
 candidate SHA checked at correction time (`2f7fdc5c`), and the gate count below had
-drifted from 19 to the 44 gates actually registered in `build_gates()`. Neither
+drifted from 19 to the 52 gates actually registered in `build_gates()`. Neither
 number nor the table is re-verified by this file automatically — re-measure before
 trusting either. Lowering a baseline is routine — `python scripts/verify.py
 --update-baseline` after a cleanup. Raising one is a regression that must be
@@ -282,7 +282,7 @@ counts only the families in `BANNED_FAMILIES` (`scripts/check_design_tokens.py`)
 `orange` or `cyan` class is right per DESIGN.md but moves this number by zero, and a
 line carrying a `token-migration-ok` marker is already excluded from the count.
 
-**All 44 gates, in registry order (`scripts/verify.py`, `build_gates`) — this table
+**All 52 gates, in registry order (`scripts/verify.py`, `build_gates`) — this table
 is a snapshot, not generated. Run `grep -oE '^\s*Gate\("[a-z-]+"' scripts/verify.py`
 to reconfirm the count before trusting it:**
 
@@ -302,6 +302,12 @@ to reconfirm the count before trusting it:**
 | `raw-sql-tenancy` | raw SQL on a tenant table with no `organization_id` predicate | ratchet @ 0 |
 | `tenant-scoping` | ORM queries on a tenant-owned-but-unmixed model with no org predicate | ratchet @ 0 |
 | `llm-boundary` | a codegen emitter calling an LLM directly | ratchet @ 0 |
+| `evidence-contract` | behavioural changes/checkers missing evidence or provenance | ratchet @ 29 |
+| `role-gate-coverage` | a declared delivery role resolving to no verifier gate | ratchet @ 7 |
+| `ai-evidence-rules` | an AI persona missing evidence/no-fabrication rules | must be 0 |
+| `ai-tool-guard` | an AI mutating tool bypassing permission/approval classification | must be 0 |
+| `ai-untrusted-content` | retrieved AI context entering a system prompt without fencing | must be 0 |
+| `ai-approval-honoured` | agent auto-execution bypassing the operator approval control | must be 0 |
 | `sidebar-links` | a persona sidebar exceeding its link budget | ratchet @ 27 |
 | `template-syntax` | a Jinja template that does not parse (500s every page using it) | must be 0 |
 | `template-references` | an `include`/`extends` target that does not exist (TemplateNotFound at render) | must be 0 |
@@ -332,6 +338,8 @@ to reconfirm the count before trusting it:**
 | `schema-drift` | ORM/database column drift | must pass (needs DB) |
 | `tests` | behavioural regression | must pass (needs DB) |
 | `nav-verified` | a new sidebar route with no test loading it | ratchet @ 0, carries no tags |
+| `docs-drift` | CLAUDE.md/DELIVERY_CONTRACT.md gate claims disagreeing with build_gates() | must be 0 |
+| `unregistered-checks` | a scripts/check_\*.py with no Gate(...) entry (F500-008) | ratchet @ 41 |
 
 Per-line escape hatches, each of which makes the exception reviewable rather than
 silent — every one greppable as `<name>-ok` in `scripts/verify.py`/`scripts/check_*.py`:

@@ -1922,6 +1922,47 @@ def render_application_detail(id):
         )
         capabilities = [cap for _, cap in cap_pairs]
         capability_mappings = cap_pairs  # Keep (mapping, cap) pairs for table
+
+        # DEF-003 follow-up (3 Sep 2026): the "Map Capability" modal's create
+        # handler (application_capability_mapping_create,
+        # detail_layer_routes.py) writes UnifiedApplicationCapabilityMapping —
+        # the canonical store per ADR-0008 — but this display only ever read
+        # the legacy ApplicationCapabilityMapping table above. A capability
+        # mapped through the modal therefore persisted correctly (confirmed
+        # in the DB) yet never appeared here: silent, not a crash. Rather than
+        # migrate the legacy rows into the unified table (a locked, checksum-
+        # verified data operation matching project_capabilities.py's rigor
+        # that this fix does not attempt), the display unions both sources,
+        # de-duplicated by the underlying BusinessCapability identity so an
+        # already-legacy-linked capability cannot render twice.
+        from app.models.unified_application_capability_mapping import (
+            UnifiedApplicationCapabilityMapping,
+        )
+        from app.models.unified_capability import UnifiedCapability
+
+        legacy_capability_ids = {cap.id for cap in capabilities}
+        unified_pairs = (
+            db.session.query(UnifiedApplicationCapabilityMapping, UnifiedCapability)
+            .join(
+                UnifiedCapability,
+                UnifiedApplicationCapabilityMapping.unified_capability_id == UnifiedCapability.id,
+            )
+            .filter(
+                UnifiedApplicationCapabilityMapping.application_component_id == id,
+                UnifiedCapability.source_table == "business_capability",
+            )
+            .all()
+        )
+        for u_mapping, u_cap in unified_pairs:
+            try:
+                source_bc_id = int(u_cap.source_id)
+            except (TypeError, ValueError):
+                continue
+            if source_bc_id in legacy_capability_ids:
+                continue
+            legacy_capability_ids.add(source_bc_id)
+            capability_mappings.append((u_mapping, u_cap))
+            capabilities.append(u_cap)
     except Exception:
         db.session.rollback()
 
@@ -2131,12 +2172,23 @@ def render_application_detail(id):
         cap_table["columns"] = ["Capability", "Category", "Support", "Coverage", "Maturity", "Strategic", "Compliance"]
         cap_rows = []
         for mapping, cap in capability_mappings:
+            # DEF-003 follow-up: `mapping` is either an ApplicationCapabilityMapping
+            # (legacy) or a UnifiedApplicationCapabilityMapping (canonical, from the
+            # union added above) \u2014 they share support_level/coverage_percentage but
+            # not maturity_contribution_score, compliance_level, or is_primary_enabler.
+            # getattr(..., None/False) rather than a plain attribute access, so a
+            # unified-sourced row renders with an honest \u2014 em dash instead of a 500.
             support = mapping.support_level or ""
             coverage_pct = mapping.coverage_percentage
             maturity = cap.current_maturity_level
             if maturity is None:
-                maturity = mapping.maturity_contribution_score
-            compliance = mapping.compliance_level or ""
+                maturity = getattr(mapping, "maturity_contribution_score", None)
+            if maturity is None:
+                maturity = getattr(mapping, "maturity_level", None)
+            compliance = getattr(mapping, "compliance_level", None) or ""
+            is_strategic = getattr(mapping, "is_primary_enabler", None)
+            if is_strategic is None:
+                is_strategic = getattr(mapping, "is_strategic", False)
             cap_rows.append({
                 "name": cap.name,
                 "detail_url": None,
@@ -2144,7 +2196,7 @@ def render_application_detail(id):
                 "support_level": support.replace("_", " ").title() if support else "",
                 "coverage": f"{coverage_pct}%" if coverage_pct is not None else "",
                 "maturity": f"L{maturity}" if maturity is not None else "",
-                "strategic": "Yes" if mapping.is_primary_enabler else "No",
+                "strategic": "Yes" if is_strategic else "No",
                 "compliance": compliance.replace("_", " ").title() if compliance else "\u2014",
             })
         cap_table["rows"] = cap_rows

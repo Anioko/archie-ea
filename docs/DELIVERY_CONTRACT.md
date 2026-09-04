@@ -70,63 +70,39 @@ played. A role is therefore defined here as a family of gates in
 "did we act as the security architect?" is a question with an answer, not an
 assertion in a report.
 
-**Corrected 3 Sep 2026 — the table below was wrong for every row but one.**
+**Corrected 4 Sep 2026 — the table below is measured from the registry.**
 The 31 Aug re-measurement claimed 67 gates; `build_gates()` in `scripts/
-verify.py` registers **44** on candidate `2f7fdc5c`, and re-deriving each
-role's count from those 44 gates' actual `tags=[...]` (not from the prose
-below it) found:
+verify.py` now registers **52**, and `docs-drift` re-derives each role's count
+from those gates' actual `tags=[...]` rather than trusting this prose.
 
-- `ai`, `architecture`, `process`, `product`, `journey`, `business`,
-  `handoff`, `evidence`, `integration`, `rendered`, `wayfinding`, and
-  `content` are not carried by **any** currently-registered gate. Every role
-  keyed to one of those tags — AI/ML architect, software/technical architect
-  (partially), CTO/delivery lead (partially), product architect, business
-  architect, service designer, data/evidence analyst, integration architect
-  — measures **0**, not the 1–8 this table previously claimed.
-- The paragraph below the old table said the four `ai-*` gates "exist
-  because of" the AI/ML architect's zero. They exist as standalone scripts
-  (`scripts/check_ai_evidence_rules.py`, `check_ai_tool_guard.py`,
-  `check_ai_untrusted_content.py`, `check_ai_approval_honoured.py`) but were
-  never added to `build_gates()` — so that zero was never actually closed,
-  it was narrated as closed. Same story for `scripts/
-  check_evidence_contract.py` (the gate this whole file claims enforces
-  Rules 1 and 2, header of this document) and `scripts/
-  check_role_gate_coverage.py` (the gate the next paragraph claims ratchets
-  this very table) — **neither runs as part of `python scripts/verify.py`,
-  or anywhere else in this repository, today.** This document's own
-  enforcement claim about itself is the least true sentence in it.
-- Only QA / test lead's count (5) came back unchanged, because `qa` and
-  `runtime` are still real tags on real registered gates.
+The four `ai-*` checkers, `evidence-contract`, and `role-gate-coverage` are
+registered and execute in the normal verifier. Seven declared roles still
+resolve to no gate and remain visible ratcheted debt; a zero in the table is
+not represented as qualification evidence.
 
-| Role | Gate tags | Gates (re-measured 3 Sep 2026) |
+| Role | Gate tags | Gates (re-measured 3 Sep 2026, `docs-drift` keeps this row honest from here on) |
 |---|---|---|
 | UX / frontend architect (lint only — see note) | `ui`, `a11y` | 23 (no gate carries `a11y`) |
-| security architect | `security`, `airgap` | 9 |
-| QA / test lead | `qa`, `runtime` | 5 |
+| security architect | `security`, `airgap` | 12 |
+| QA / test lead | `qa`, `runtime` | 7 |
 | software / technical architect | `architecture`, `correctness` | 2 (`correctness` only; no gate carries `architecture`) |
 | data architect | `schema`, `db` | 2 (`db` only; no gate carries `schema`) |
 | CTO / delivery lead | `process`, `deps` | 2 (`deps` only; no gate carries `process`) |
-| AI / ML architect | `ai` | 0 — four scripts exist, none registered |
+| AI / ML architect | `ai` | 4 |
 | product architect | `product`, `journey` | 0 |
 | business architect | `business` | 0 |
 | service designer | `handoff` | 0 |
-| data / evidence analyst | `evidence` | 0 |
+| data / evidence analyst | `evidence` | 2 |
 | integration architect | `integration` | 0 |
 | UI / interaction architect | `rendered` | 0 |
 | information architect | `wayfinding` | 0 |
 | content designer | `content` | 0 |
 
-Twelve of fifteen roles now read zero. That is not this file reporting a new
-regression — the underlying gates were never registered, or the tag they were
-supposed to carry was never applied to a real gate; only the prose claimed
-otherwise. Closing this needs, in order: (1) register the six already-written
-scripts above as `Gate(...)` entries in `build_gates()` with their proving
-input per Rule 2, (2) apply the missing tags to the gates that already cover
-each role's real concern where one exists, (3) write the machinery for a role
-with no gate at all, or explicitly accept the gap with `role-gate-ok:
-<reason>` once `role-gate-coverage` is actually running. None of that
-happened in this correction pass — this pass only stopped the table from
-lying about the current state.
+Seven of fifteen roles still read zero. Closing them requires applying a
+missing tag to a gate that already covers the role's real concern, building
+the missing machinery, or recording a reviewable `role-gate-ok: <reason>`
+exception. The running `role-gate-coverage` ratchet prevents that debt from
+growing silently.
 
 Re-run the map when adding a role or a gate. A zero here is a coverage hole,
 and it is worth more than any amount of deliberation about whether coverage is

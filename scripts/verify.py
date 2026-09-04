@@ -708,6 +708,50 @@ def gate_qa_register() -> Result:
     return Result("qa-register", PASS if count == 0 else FAIL, detail, count, 0)
 
 
+def gate_docs_drift() -> Result:
+    """CLAUDE.md's gate table and DELIVERY_CONTRACT.md's role table must agree
+    with the live scripts/verify.py registry they each describe. Gated at ZERO.
+
+    3 Sep 2026: CLAUDE.md documented "All 19 gates" against the 44 actually
+    registered, and 88/98 units of ratchet debt where both measured 0.
+    docs/DELIVERY_CONTRACT.md's role table claimed 67 gates and per-role counts
+    from tags that resolved to 0 gates for 12 of 15 roles. Both were corrected
+    once by hand; nothing stopped either from drifting back. This gate is that
+    something. See scripts/check_docs_drift.py.
+    """
+    proc = _run([sys.executable, "scripts/check_docs_drift.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("docs-drift", FAIL,
+                      f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    detail = ""
+    if count:
+        detail = _run([sys.executable, "scripts/check_docs_drift.py"]).stdout[-1800:]
+    return Result("docs-drift", PASS if count == 0 else FAIL, detail, count, 0)
+
+
+def gate_unregistered_checks(baseline: int) -> Result:
+    """A scripts/check_*.py file with no Gate(...) entry in build_gates() never
+    runs, regardless of what any doc says it enforces. See F500-008 and
+    scripts/check_unregistered_checks.py: six governance/AI-safety scripts,
+    including the one this codebase's own docs cite as enforcing capability
+    store agreement, existed unregistered for weeks. Baselined at the true
+    current count (see the module docstring for why 0 would be dishonest);
+    the number can only go down.
+    """
+    proc = _run([sys.executable, "scripts/check_unregistered_checks.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("unregistered-checks", FAIL,
+                      f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    detail = ""
+    if count > baseline:
+        detail = _run([sys.executable, "scripts/check_unregistered_checks.py"]).stdout[-1800:]
+    return Result("unregistered-checks", PASS if count <= baseline else FAIL, detail, count, baseline)
+
+
 def gate_null_filters() -> Result:
     """No `|default(...)` feeds a filter that calls len(). Gated at ZERO.
 
@@ -1462,6 +1506,19 @@ def build_gates(baseline: dict) -> list[Gate]:
              remediation="run scripts/check_qa_register.py to list what is still open; "
                          "close the finding and record its commit in "
                          "qa_findings_status.json - do not relax this gate to enable a deploy",
+             tags=["static", "qa"]),
+        Gate("docs-drift", "CLAUDE.md/DELIVERY_CONTRACT.md gate claims match build_gates()",
+             "zero", gate_docs_drift,
+             remediation="run scripts/check_docs_drift.py; update the doc's number "
+                         "to match verify.py, or mark the line 'docs-drift-ok: <reason>'",
+             tags=["static", "qa"]),
+        Gate("unregistered-checks",
+             "no scripts/check_*.py exists with no Gate(...) entry in build_gates()",
+             "ratchet", lambda: gate_unregistered_checks(baseline.get("unregistered_checks", 41)),
+             remediation="run scripts/check_unregistered_checks.py; register the "
+                         "checker as a Gate(...) with a Proven-against case "
+                         "(DELIVERY_CONTRACT.md Rule 2), or mark its first line "
+                         "'unregistered-check-ok: <reason>'",
              tags=["static", "qa"]),
         Gate("null-filters", "default() never feeds a len()-calling filter", "zero",
              gate_null_filters,

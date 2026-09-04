@@ -317,6 +317,52 @@ def _role_gate_coverage(root, defective):
 CASES.append(("check_role_gate_coverage.py", _role_gate_coverage))
 
 
+def _docs_drift(root, defective):
+    """CLAUDE.md's stated gate count disagreeing with build_gates()."""
+    _write(root, "scripts/verify.py",
+           "def build_gates(baseline):\n"
+           "    return [\n"
+           "        Gate('compile', 'd', 'command', f, tags=['static']),\n"
+           "        Gate('tests', 'd', 'command', f, tags=['runtime']),\n"
+           "    ]\n")
+    claimed = 1 if defective else 2
+    _write(root, "CLAUDE.md",
+           "## Verification\n\n"
+           "All %d gates, in registry order (`scripts/verify.py`, `build_gates`):\n\n"
+           "| Gate | Catches | Kind |\n"
+           "|---|---|---|\n"
+           "| `compile` | d | must pass |\n"
+           "| `tests` | d | must pass (needs DB) |\n" % claimed)
+    # No docs/DELIVERY_CONTRACT.md in this synthetic tree: check_docs_drift's
+    # _read() returns [] on a missing file, so that half of the checker is a
+    # silent no-op here and only the CLAUDE.md half is under test.
+
+
+CASES.append(("check_docs_drift.py", _docs_drift))
+
+
+def _unregistered_checks(root, defective):
+    """A scripts/check_*.py file absent from verify.py's build_gates() registry."""
+    _write(root, "scripts/verify.py",
+           "def build_gates(baseline):\n"
+           "    return [\n"
+           "        Gate('compile', 'd', 'command', f, tags=['static']),\n"
+           "    ]\n")
+    _write(root, "scripts/check_probe_thing.py", "\"\"\"A probe checker.\"\"\"\n")
+    if not defective:
+        # "Registering" it is nothing more than the filename appearing as a
+        # string literal somewhere in verify.py, matching every real Gate().
+        _write(root, "scripts/verify.py",
+               "def build_gates(baseline):\n"
+               "    return [\n"
+               "        Gate('compile', 'd', 'command', f, tags=['static']),\n"
+               "        Gate('probe', 'd', 'zero', lambda: _run(['scripts/check_probe_thing.py'])),\n"
+               "    ]\n")
+
+
+CASES.append(("check_unregistered_checks.py", _unregistered_checks))
+
+
 CASES.append(("check_empty_state_cta.py", _empty_state_cta))
 
 
