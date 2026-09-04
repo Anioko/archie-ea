@@ -17,6 +17,7 @@ from flask import Blueprint, flash, jsonify, redirect, render_template, request,
 from flask_login import current_user, login_required
 
 from app.extensions import csrf, db
+from app.decorators import admin_required
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +43,7 @@ def _get_or_create_subscription(org):
 
 @billing_bp.route("/")
 @login_required
+@admin_required
 def billing_index():
     from app.models.user import User
 
@@ -68,6 +70,7 @@ def billing_index():
 
 @billing_bp.route("/upgrade", methods=["POST"])
 @login_required
+@admin_required
 def billing_upgrade():
     """Initiate a Stripe Checkout session for an upgrade."""
     plan = request.form.get("plan", "pro")
@@ -95,6 +98,7 @@ def billing_upgrade():
 
 @billing_bp.route("/portal")
 @login_required
+@admin_required
 def billing_portal():
     """Redirect to the Stripe customer portal for self-service billing."""
     org = getattr(current_user, "organization", None)

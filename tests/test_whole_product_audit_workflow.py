@@ -118,3 +118,22 @@ def test_control_inventory_never_serializes_editable_values():
     assert {control["label"] for control in probe["controls"]} == {
         "Email address", "Notes", "Comment"
     }
+
+
+def test_button_name_probe_resolves_label_references_in_chromium():
+    from playwright.sync_api import sync_playwright
+    from scripts import production_readiness_audit as audit
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        try:
+            page = browser.new_page()
+            page.set_content('''
+                <span id="preference">Weekly digest</span>
+                <button role="switch" aria-labelledby="preference"></button>
+                <button class="broken-reference" aria-labelledby="missing"></button>
+            ''')
+            probe = page.evaluate(audit.PAGE_PROBE)
+            assert probe["unnamedButtons"] == ["broken-reference"]
+        finally:
+            browser.close()

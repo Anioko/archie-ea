@@ -430,8 +430,10 @@ PAGE_PROBE = r"""() => {
   out.unlabelledInputs = out.unlabelledInputs.slice(0, 10);
   out.unnamedButtons = [];
   document.querySelectorAll('button, [role="button"]').forEach((el) => {
+    const labelledText = (el.getAttribute('aria-labelledby') || '').split(/\s+/)
+      .map(id => document.getElementById(id)?.textContent || '').join(' ').trim();
     const label = (el.textContent || '').trim() || el.getAttribute('aria-label')
-                  || el.getAttribute('title') || '';
+                  || labelledText || el.getAttribute('title') || '';
     if (!label) out.unnamedButtons.push((el.className || '').toString().slice(0, 60));
   });
   out.unnamedButtons = out.unnamedButtons.slice(0, 10);

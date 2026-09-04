@@ -596,6 +596,28 @@
       "required_fix": "Triage every recorded observation, split validated defects into actionable fixes, and repeat the browser journeys on the repaired release. Investigate account toggle names, duplicate breadcrumbs, missing implementation destinations and administration access. TestingConfig disables CSRF, so absent token findings require production-equivalent configuration before drawing a conclusion. Redirected pages and synthetic IDs require explicit disposition.",
       "retest_evidence": "Initial evidence imported and retained. Investigation confirmed billing handlers use only login_required and testing configuration disables CSRF; neither all route-based authorization flags nor token observations are yet independently validated. Remaining role jobs are still running.",
       "closure_tests": ["All observations in docs/qa/runs/2026-09-04-whole-product-first-results.json dispositioned with evidence", "Full browser survey and control outcome rerun"]
+    },
+    {
+      "id": "F500-042",
+      "area": "billing_authorization",
+      "severity": "high",
+      "title": "Billing page, upgrade and customer portal required login but no administrator permission",
+      "status": "verified_local",
+      "original_evidence": "Browser survey 33923515022 found billing reachable by ordinary architects. Real route tests confirmed all three handlers admitted non-administrators: index returned 200, upgrade reached organization validation and portal redirected, instead of rejecting access before billing operations.",
+      "required_fix": "Apply the existing administrator permission guard to billing index, upgrade and portal. Preserve the separately authenticated Stripe webhook. Verify ordinary-user denial and administrator access with browser navigation.",
+      "retest_evidence": "Three unauthorized-request cases failed before the fix. All eight tests now pass, including Chromium clicks to the real billing route in an isolated Flask test application for ordinary and administrator accounts. Billing data rendering is stubbed in that test; complete application CI and production verification remain outstanding.",
+      "closure_tests": ["tests/test_billing_access_control.py", "Browser matrix billing authorization on the deployed revision"]
+    },
+    {
+      "id": "F500-043",
+      "area": "qa_accessible_name_detection",
+      "severity": "medium",
+      "title": "Browser audit falsely reported named account switches as unnamed",
+      "status": "verified_local",
+      "original_evidence": "The account template labels each notification switch using aria-labelledby. PAGE_PROBE ignored those references when inspecting buttons, yielding twenty false unnamed-button observations per completed role across two account routes and viewports.",
+      "required_fix": "Resolve aria-labelledby text when testing button names and continue reporting missing or empty references.",
+      "retest_evidence": "Chromium regression confirms a correctly referenced switch is accepted while a missing label reference remains a finding. Combined billing and audit suite passes 15 tests. Original observations remain retained for traceability.",
+      "closure_tests": ["tests/test_whole_product_audit_workflow.py::test_button_name_probe_resolves_label_references_in_chromium", "Repeat account page browser audit"]
     }
   ]
 }
