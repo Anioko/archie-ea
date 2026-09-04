@@ -86,3 +86,12 @@ def test_host_deployer_accepts_only_digest_and_full_commit_inputs():
     assert "PREVIOUS_IMAGE" in script
     assert "release.env" in script
     assert "logs --since 15m server" in script
+
+
+def test_operator_cutover_records_legacy_identity_before_checkout():
+    script = (ROOT / "scripts" / "deploy.sh").read_text(encoding="utf-8")
+
+    record = script.index("LEGACY_COMMIT=$(git rev-parse HEAD)")
+    checkout = script.index('git checkout --detach "$EXPECTED_COMMIT"')
+    invoke = script.index("./deploy/remote-cutover.sh")
+    assert record < checkout < invoke

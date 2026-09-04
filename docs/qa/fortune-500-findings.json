@@ -300,6 +300,22 @@
         "CI Build immutable release image job on final SHA",
         "Published release.json digest and OCI revision verification"
       ]
+    },
+    {
+      "id": "F500-022",
+      "area": "release_engineering",
+      "severity": "high",
+      "title": "First immutable production cutover had no automatic rollback target",
+      "status": "ready_for_retest",
+      "original_evidence": "4 Sep 2026 read-only production preflight: the live service was healthy on legacy commit e74bd8ecd8db0e8c6430350b35f4ab1bce9c474b with a source bind mount and local image archie-ea-server, while /root/deploy-releases/release.env was absent. The digest deployer's failure path required a previously recorded digest and would otherwise terminate without restoring the legacy server.",
+      "required_fix": "Capture the healthy legacy commit before checkout and provide a first-cutover-only controller that restores that exact checkout, recreates the existing server without a build, and verifies health when the immutable deploy fails before any release record exists. Preserve digest-to-digest rollback after the first successful release.",
+      "retest_evidence": "4 Sep 2026 strict TDD: three deployment contract assertions failed before the controller existed. After implementation, the combined deploy/release contract suite passed 8/8 and scripts/deploy.sh, deploy/deploy.sh and deploy/remote-cutover.sh all passed Bash syntax validation. Exact-SHA CI and a controlled production cutover/rollback rehearsal remain pending.",
+      "closure_tests": [
+        "tests/test_deploy_script_contract.py::test_first_immutable_cutover_has_a_verified_legacy_rollback",
+        "tests/test_release_artifact_contract.py::test_operator_cutover_records_legacy_identity_before_checkout",
+        "Controlled first-cutover failure proves legacy identity and health are restored",
+        "Successful exact-digest production cutover records release.env"
+      ]
     }
   ]
 }

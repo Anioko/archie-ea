@@ -27,5 +27,15 @@ fi
 # The checkout supplies only the versioned Compose/control-plane files. The
 # production overlay removes all /app source mounts, and deploy/deploy.sh uses
 # --no-build, so runtime bytes still come exclusively from IMAGE_REF.
-ssh "${SSH_OPTS[@]}" "$DROPLET" \
-    "cd '$APP_DIR' && git fetch --prune origin && git checkout --detach '$EXPECTED_COMMIT' && ./deploy/deploy.sh '$IMAGE_REF' '$EXPECTED_COMMIT'"
+ssh "${SSH_OPTS[@]}" "$DROPLET" bash -s -- "$APP_DIR" "$IMAGE_REF" "$EXPECTED_COMMIT" <<'REMOTE'
+set -euo pipefail
+APP_DIR=$1
+IMAGE_REF=$2
+EXPECTED_COMMIT=$3
+
+cd "$APP_DIR"
+git fetch --prune origin
+LEGACY_COMMIT=$(git rev-parse HEAD)
+git checkout --detach "$EXPECTED_COMMIT"
+./deploy/remote-cutover.sh "$IMAGE_REF" "$EXPECTED_COMMIT" "$LEGACY_COMMIT"
+REMOTE

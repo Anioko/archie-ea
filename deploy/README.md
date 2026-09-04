@@ -83,6 +83,14 @@ running container image ID and revision, checks health, public pages and local
 container errors, and atomically records `deploy-releases/release.env`.
 Failure restores and verifies the previously recorded digest.
 
+The first immutable cutover has no previous digest yet. The operator wrapper
+therefore records the healthy pre-cutover Git commit before checkout and runs
+`deploy/remote-cutover.sh`. If that first digest fails before a release record
+exists, the controller restores the recorded legacy checkout, recreates the
+existing source-mounted server with `--no-build`, and requires health to return
+before reporting the failed deployment. After the first successful cutover,
+rollback is digest-to-digest through `deploy/deploy.sh` as normal.
+
 The host checkout supplies only versioned Compose and deployment-control files;
 `deploy/docker-compose.production.yml` removes every application build context
 and `/app` bind mount. Runtime bytes therefore come only from the recorded
