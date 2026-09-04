@@ -784,6 +784,8 @@ def probe_control_outcome(page, visible_ordinal, settle_ms=700):
         "method": response.request.method,
         "status": response.status,
         "url": _safe_url(response.url),
+        "main_navigation": (response.request.is_navigation_request()
+                            and response.frame == page.main_frame),
     }))
 
     def guard(route, request):
@@ -823,6 +825,15 @@ def probe_control_outcome(page, visible_ordinal, settle_ms=700):
     if popups:
         return {"status": "verified", "outcome": "popup", "detail": popups}
     if _safe_url(page.url) != _safe_url(before_url):
+        navigation_responses = [item for item in requests if item["main_navigation"]]
+        if not navigation_responses:
+            return {"status": "activation-failed", "outcome": "navigation-unconfirmed"}
+        destination_status = navigation_responses[-1]["status"]
+        if destination_status >= 400:
+            return {
+                "status": "activation-failed", "outcome": "navigation-http-error",
+                "http_status": destination_status, "detail": _safe_url(page.url),
+            }
         return {"status": "verified", "outcome": "navigation", "detail": _safe_url(page.url)}
 
     after = page.evaluate(_OUTCOME_SNAPSHOT)

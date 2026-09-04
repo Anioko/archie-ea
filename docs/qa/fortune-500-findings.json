@@ -574,6 +574,28 @@
         "tests/smoke/test_solution_blueprint_controls.py::test_platform_admin_can_open_foreign_solution_code_workbench",
         "Direct production Chrome click from More actions to a rendered Code Workbench"
       ]
+    },
+    {
+      "id": "F500-040",
+      "area": "qa_navigation_evidence",
+      "severity": "critical",
+      "title": "Click auditor marked navigation to HTTP error pages as verified",
+      "status": "verified_local",
+      "original_evidence": "Chromium regression against a local HTTP server proved that clicks to 403, 404 and 500 pages were all classified as verified navigation by the new L10 probe. Only the URL change was checked. This would conceal the same workbench failure observed directly in production.",
+      "required_fix": "Require a captured main-frame destination response and reject HTTP errors before accepting navigation evidence. Exercise successful and failed destinations in Chromium.",
+      "retest_evidence": "The regression first failed for all three error statuses while the 200 case passed. After the correction all four navigation cases and the complete focused audit suite passed, 16 tests total. CI and application-level outcome qualification remain outstanding.",
+      "closure_tests": ["tests/test_production_readiness_control_outcomes.py::test_navigation_requires_successful_destination_response"]
+    },
+    {
+      "id": "F500-041",
+      "area": "whole_product_browser_findings",
+      "severity": "high",
+      "title": "First completed role surveys report unresolved account, navigation, layout and authorization observations",
+      "status": "in_progress",
+      "original_evidence": "Run 33923515022 at 09c2c675 completed business_architect and solution_architect: each surveyed 1232 route candidates at two viewports, 2464 requests, 934 HTML inventory records, and 364 observations including 94 non-informational observations. All 728 observations are grouped with every role/viewport occurrence retained in docs/qa/runs/2026-09-04-whole-product-first-results.json. These numbers are survey coverage, not verified interaction coverage.",
+      "required_fix": "Triage every recorded observation, split validated defects into actionable fixes, and repeat the browser journeys on the repaired release. Investigate account toggle names, duplicate breadcrumbs, missing implementation destinations and administration access. TestingConfig disables CSRF, so absent token findings require production-equivalent configuration before drawing a conclusion. Redirected pages and synthetic IDs require explicit disposition.",
+      "retest_evidence": "Initial evidence imported and retained. Investigation confirmed billing handlers use only login_required and testing configuration disables CSRF; neither all route-based authorization flags nor token observations are yet independently validated. Remaining role jobs are still running.",
+      "closure_tests": ["All observations in docs/qa/runs/2026-09-04-whole-product-first-results.json dispositioned with evidence", "Full browser survey and control outcome rerun"]
     }
   ]
 }

@@ -1,8 +1,52 @@
 """Outcome-level checks for the exhaustive browser control census."""
 
 from playwright.sync_api import sync_playwright
+import pytest
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from threading import Thread
 
 from scripts import production_readiness_audit as audit
+
+
+@pytest.mark.parametrize("destination_status", [200, 403, 404, 500])
+def test_navigation_requires_successful_destination_response(destination_status):
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            status = destination_status if self.path == "/destination" else 200
+            body = (b'<h1>Destination</h1>' if self.path == "/destination"
+                    else b'<a href="/destination">Open workbench</a>')
+            self.send_response(status)
+            self.send_header("Content-Type", "text/html")
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *args):
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch()
+            try:
+                page = browser.new_page()
+                page.goto(f"http://127.0.0.1:{server.server_port}/")
+                result = audit.probe_control_outcome(page, 0)
+            finally:
+                browser.close()
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join()
+
+    if destination_status == 200:
+        assert result["status"] == "verified"
+        assert result["outcome"] == "navigation"
+    else:
+        assert result["status"] == "activation-failed"
+        assert result["outcome"] == "navigation-http-error"
+        assert result["http_status"] == destination_status
 
 
 def test_mutating_controls_are_reserved_for_seeded_journeys():

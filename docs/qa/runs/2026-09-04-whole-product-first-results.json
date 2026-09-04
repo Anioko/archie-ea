@@ -1,0 +1,4462 @@
+{
+  "run": 33923515022,
+  "revision": "09c2c675c01cf076d41bb8b19359e494cf355b8d",
+  "coverage_note": "Route survey only; substituted missing IDs and redirects do not establish page or control coverage. CSRF is disabled in testing configuration; token absence is not production evidence.",
+  "reports": [
+    {
+      "file": "whole-product-audit-business_architect.json",
+      "personas": [
+        "business_architect"
+      ],
+      "route_candidates": 1232,
+      "requests_audited": 2464,
+      "observations": 364,
+      "noninformational": 94
+    },
+    {
+      "file": "whole-product-audit-solution_architect.json",
+      "personas": [
+        "solution_architect"
+      ],
+      "route_candidates": 1232,
+      "requests_audited": 2464,
+      "observations": 364,
+      "noninformational": 94
+    }
+  ],
+  "groups": [
+    {
+      "kind": "form-missing-csrf",
+      "route": "/account/login",
+      "severity": "high",
+      "detail": "POST form to http://127.0.0.1:35301/account/login has no csrf_token; submitting it 400s",
+      "disposition": "needs_triage",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "unnamed-button",
+      "route": "/account/manage",
+      "severity": "high",
+      "detail": "button with no accessible name: .relative inline-flex h-6 w-11 items-center rounded-full tran",
+      "disposition": "needs_triage",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "form-missing-csrf",
+      "route": "/account/manage/change-email",
+      "severity": "high",
+      "detail": "POST form to (no action) has no csrf_token; submitting it 400s",
+      "disposition": "needs_triage",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "form-missing-csrf",
+      "route": "/account/manage/change-password",
+      "severity": "high",
+      "detail": "POST form to (no action) has no csrf_token; submitting it 400s",
+      "disposition": "needs_triage",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "unnamed-button",
+      "route": "/account/manage/info",
+      "severity": "high",
+      "detail": "button with no accessible name: .relative inline-flex h-6 w-11 items-center rounded-full tran",
+      "disposition": "needs_triage",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "form-missing-csrf",
+      "route": "/account/register",
+      "severity": "high",
+      "detail": "POST form to (no action) has no csrf_token; submitting it 400s",
+      "disposition": "needs_triage",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "not-found",
+      "route": "/account/saml/login",
+      "severity": "medium",
+      "detail": "HTTP 404 on a registered route: either a broken page or a feature deliberately hidden while unconfigured",
+      "disposition": "needs_triage",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "not-found",
+      "route": "/account/saml/metadata",
+      "severity": "medium",
+      "detail": "HTTP 404 on a registered route: either a broken page or a feature deliberately hidden while unconfigured",
+      "disposition": "needs_triage",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/admin/",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "expected-forbidden",
+      "route": "/admin/",
+      "severity": "info",
+      "detail": "non-administrator was correctly denied",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/admin/abacus-dashboard",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "expected-forbidden",
+      "route": "/admin/abacus-dashboard",
+      "severity": "info",
+      "detail": "non-administrator was correctly denied",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/admin/abacus-settings",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "expected-forbidden",
+      "route": "/admin/abacus-settings",
+      "severity": "info",
+      "detail": "non-administrator was correctly denied",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/admin/abacus-settings/relationship-mappings",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "expected-forbidden",
+      "route": "/admin/abacus-settings/relationship-mappings",
+      "severity": "info",
+      "detail": "non-administrator was correctly denied",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/admin/abacus-settings/stats",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "expected-forbidden",
+      "route": "/admin/abacus-settings/stats",
+      "severity": "info",
+      "detail": "non-administrator was correctly denied",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/admin/abacus-settings/sync-status",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "expected-forbidden",
+      "route": "/admin/abacus-settings/sync-status",
+      "severity": "info",
+      "detail": "non-administrator was correctly denied",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/admin/abacus/consolidation/",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "expected-forbidden",
+      "route": "/admin/abacus/consolidation/",
+      "severity": "info",
+      "detail": "non-administrator was correctly denied",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/admin/abacus/consolidation/candidates",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "expected-forbidden",
+      "route": "/admin/abacus/consolidation/candidates",
+      "severity": "info",
+      "detail": "non-administrator was correctly denied",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/admin/abacus/consolidation/orphans",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "expected-forbidden",
+      "route": "/admin/abacus/consolidation/orphans",
+      "severity": "info",
+      "detail": "non-administrator was correctly denied",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/admin/ai-confidence",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "expected-forbidden",
+      "route": "/admin/ai-confidence",
+      "severity": "info",
+      "detail": "non-administrator was correctly denied",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/admin/ai-corrections",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "expected-forbidden",
+      "route": "/admin/ai-corrections",
+      "severity": "info",
+      "detail": "non-administrator was correctly denied",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/admin/api-settings",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "expected-forbidden",
+      "route": "/admin/api-settings",
+      "severity": "info",
+      "detail": "non-administrator was correctly denied",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/admin/api-settings/env-keys",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "expected-forbidden",
+      "route": "/admin/api-settings/env-keys",
+      "severity": "info",
+      "detail": "non-administrator was correctly denied",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/admin/api/enterprise-roles",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/admin/api/enterprise-roles/users",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/admin/api/governance-gates",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/admin/api/roles",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/admin/api/seed-status",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/admin/api/users",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/admin/audit-log",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "expected-forbidden",
+      "route": "/admin/audit-log",
+      "severity": "info",
+      "detail": "non-administrator was correctly denied",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "unauthorized-access",
+      "route": "/admin/billing/",
+      "severity": "high",
+      "detail": "non-administrator could render an administration surface",
+      "disposition": "needs_triage",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "unauthorized-access",
+      "route": "/admin/billing/portal",
+      "severity": "high",
+      "detail": "non-administrator could render an administration surface",
+      "disposition": "needs_triage",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/admin/connection-gaps",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "expected-forbidden",
+      "route": "/admin/connection-gaps",
+      "severity": "info",
+      "detail": "non-administrator was correctly denied",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/admin/connectors/jira",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "expected-forbidden",
+      "route": "/admin/connectors/jira",
+      "severity": "info",
+      "detail": "non-administrator was correctly denied",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/admin/connectors/m365",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "expected-forbidden",
+      "route": "/admin/connectors/m365",
+      "severity": "info",
+      "detail": "non-administrator was correctly denied",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/admin/connectors/servicenow",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "expected-forbidden",
+      "route": "/admin/connectors/servicenow",
+      "severity": "info",
+      "detail": "non-administrator was correctly denied",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/admin/connectors/servicenow/status",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "expected-forbidden",
+      "route": "/admin/connectors/servicenow/status",
+      "severity": "info",
+      "detail": "non-administrator was correctly denied",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/admin/consolidation",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "expected-forbidden",
+      "route": "/admin/consolidation",
+      "severity": "info",
+      "detail": "non-administrator was correctly denied",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/admin/dashboard",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "expected-forbidden",
+      "route": "/admin/dashboard",
+      "severity": "info",
+      "detail": "non-administrator was correctly denied",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "unauthorized-access",
+      "route": "/admin/deprecation/",
+      "severity": "high",
+      "detail": "non-administrator could render an administration surface",
+      "disposition": "needs_triage",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/admin/feature-flags",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "expected-forbidden",
+      "route": "/admin/feature-flags",
+      "severity": "info",
+      "detail": "non-administrator was correctly denied",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/admin/feature-flags/discover-sidebar",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "expected-forbidden",
+      "route": "/admin/feature-flags/discover-sidebar",
+      "severity": "info",
+      "detail": "non-administrator was correctly denied",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/admin/feature-flags/new",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "expected-forbidden",
+      "route": "/admin/feature-flags/new",
+      "severity": "info",
+      "detail": "non-administrator was correctly denied",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/admin/governance-gates",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "expected-forbidden",
+      "route": "/admin/governance-gates",
+      "severity": "info",
+      "detail": "non-administrator was correctly denied",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/admin/integrations/power-platform",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "expected-forbidden",
+      "route": "/admin/integrations/power-platform",
+      "severity": "info",
+      "detail": "non-administrator was correctly denied",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/admin/integrations/salesforce",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "expected-forbidden",
+      "route": "/admin/integrations/salesforce",
+      "severity": "info",
+      "detail": "non-administrator was correctly denied",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/admin/integrations/slack",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "expected-forbidden",
+      "route": "/admin/integrations/slack",
+      "severity": "info",
+      "detail": "non-administrator was correctly denied",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/admin/integrations/teams-meetings",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "expected-forbidden",
+      "route": "/admin/integrations/teams-meetings",
+      "severity": "info",
+      "detail": "non-administrator was correctly denied",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/admin/invite-user",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "expected-forbidden",
+      "route": "/admin/invite-user",
+      "severity": "info",
+      "detail": "non-administrator was correctly denied",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/admin/jira-settings",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "expected-forbidden",
+      "route": "/admin/jira-settings",
+      "severity": "info",
+      "detail": "non-administrator was correctly denied",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/admin/jira-settings/field-discovery",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "expected-forbidden",
+      "route": "/admin/jira-settings/field-discovery",
+      "severity": "info",
+      "detail": "non-administrator was correctly denied",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/admin/jira-settings/kanban-push-status",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "expected-forbidden",
+      "route": "/admin/jira-settings/kanban-push-status",
+      "severity": "info",
+      "detail": "non-administrator was correctly denied",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/admin/jira-settings/push-status",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "expected-forbidden",
+      "route": "/admin/jira-settings/push-status",
+      "severity": "info",
+      "detail": "non-administrator was correctly denied",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/admin/manage-users",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "expected-forbidden",
+      "route": "/admin/manage-users",
+      "severity": "info",
+      "detail": "non-administrator was correctly denied",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/admin/new-user",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "expected-forbidden",
+      "route": "/admin/new-user",
+      "severity": "info",
+      "detail": "non-administrator was correctly denied",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/admin/organizations",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "expected-forbidden",
+      "route": "/admin/organizations",
+      "severity": "info",
+      "detail": "non-administrator was correctly denied",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/admin/organizations/new",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "expected-forbidden",
+      "route": "/admin/organizations/new",
+      "severity": "info",
+      "detail": "non-administrator was correctly denied",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/admin/pricing-analytics",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "expected-forbidden",
+      "route": "/admin/pricing-analytics",
+      "severity": "info",
+      "detail": "non-administrator was correctly denied",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/admin/reports",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "expected-forbidden",
+      "route": "/admin/reports",
+      "severity": "info",
+      "detail": "non-administrator was correctly denied",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/admin/sap-clean-core",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "expected-forbidden",
+      "route": "/admin/sap-clean-core",
+      "severity": "info",
+      "detail": "non-administrator was correctly denied",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/admin/security",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "expected-forbidden",
+      "route": "/admin/security",
+      "severity": "info",
+      "detail": "non-administrator was correctly denied",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/admin/seed-management",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "expected-forbidden",
+      "route": "/admin/seed-management",
+      "severity": "info",
+      "detail": "non-administrator was correctly denied",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/admin/solution-prompts",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "expected-forbidden",
+      "route": "/admin/solution-prompts",
+      "severity": "info",
+      "detail": "non-administrator was correctly denied",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/admin/solution-prompts/data",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "expected-forbidden",
+      "route": "/admin/solution-prompts/data",
+      "severity": "info",
+      "detail": "non-administrator was correctly denied",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/admin/sso",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "expected-forbidden",
+      "route": "/admin/sso",
+      "severity": "info",
+      "detail": "non-administrator was correctly denied",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/admin/sso-settings",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "expected-forbidden",
+      "route": "/admin/sso-settings",
+      "severity": "info",
+      "detail": "non-administrator was correctly denied",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/admin/team",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "expected-forbidden",
+      "route": "/admin/team",
+      "severity": "info",
+      "detail": "non-administrator was correctly denied",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/admin/users",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "expected-forbidden",
+      "route": "/admin/users",
+      "severity": "info",
+      "detail": "non-administrator was correctly denied",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/admin/vendor-pricing/import",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "expected-forbidden",
+      "route": "/admin/vendor-pricing/import",
+      "severity": "info",
+      "detail": "non-administrator was correctly denied",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/admin/webhook-settings",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "expected-forbidden",
+      "route": "/admin/webhook-settings",
+      "severity": "info",
+      "detail": "non-administrator was correctly denied",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "service-unavailable",
+      "route": "/ai-chat/api/health/llm",
+      "severity": "info",
+      "detail": "HTTP 503",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "service-unavailable",
+      "route": "/ai-chat/guide/history",
+      "severity": "info",
+      "detail": "HTTP 503",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "duplicate-breadcrumbs",
+      "route": "/applications/rationalization/enrich",
+      "severity": "medium",
+      "detail": "2 breadcrumb navs: [{'cls': 'flex items-center text-sm text-muted-foreground mb', 'text': 'Dashboard Applications Rationalization Data Enrichment'}, {'cls': 'mb-3', 'text': 'Home Data Enrichment'}]",
+      "disposition": "needs_triage",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "duplicate-breadcrumbs",
+      "route": "/applications/rationalization/tracking",
+      "severity": "medium",
+      "detail": "2 breadcrumb navs: [{'cls': 'flex items-center text-sm text-muted-foreground mb', 'text': 'Rationalization Tracking'}, {'cls': 'mb-3', 'text': 'Home Portfolio Tracking'}]",
+      "disposition": "needs_triage",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "duplicate-breadcrumbs",
+      "route": "/applications/rationalization/workbench",
+      "severity": "medium",
+      "detail": "2 breadcrumb navs: [{'cls': 'flex items-center text-sm text-muted-foreground mb', 'text': 'Dashboard Rationalization Workbench'}, {'cls': 'mb-3', 'text': 'Home Decision Workbench'}]",
+      "disposition": "needs_triage",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "not-found",
+      "route": "/archimate/api/lucidchart/auth/start",
+      "severity": "medium",
+      "detail": "HTTP 404 on a registered route: either a broken page or a feature deliberately hidden while unconfigured",
+      "disposition": "needs_triage",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/architecture/import",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "form-missing-csrf",
+      "route": "/auth/sso/callback/oidc",
+      "severity": "high",
+      "detail": "POST form to http://127.0.0.1:35301/account/login has no csrf_token; submitting it 400s",
+      "disposition": "needs_triage",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "server-error",
+      "route": "/auth/sso/callback/saml",
+      "severity": "high",
+      "detail": "HTTP 501",
+      "disposition": "needs_triage",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/dashboard/admin/custom-fields",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/dashboard/admin/custom-fields/create",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "service-unavailable",
+      "route": "/dashboard/api/templates/frameworks",
+      "severity": "info",
+      "detail": "HTTP 503",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "not-found",
+      "route": "/dashboard/api/value-streams",
+      "severity": "medium",
+      "detail": "HTTP 404 on a registered route: either a broken page or a feature deliberately hidden while unconfigured",
+      "disposition": "needs_triage",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "duplicate-breadcrumbs",
+      "route": "/ea-workflows/definitions",
+      "severity": "medium",
+      "detail": "2 breadcrumb navs: [{'cls': 'flex items-center gap-2 text-sm text-muted-foregro', 'text': 'Dashboard EA Workflows Definitions'}, {'cls': 'mb-3', 'text': 'Home Workflow Definitions'}]",
+      "disposition": "needs_triage",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "not-found",
+      "route": "/ea-workflows/deliverables/vision",
+      "severity": "medium",
+      "detail": "HTTP 404 on a registered route: either a broken page or a feature deliberately hidden while unconfigured",
+      "disposition": "needs_triage",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "duplicate-breadcrumbs",
+      "route": "/ea-workflows/phase/1/viewpoint",
+      "severity": "medium",
+      "detail": "2 breadcrumb navs: [{'cls': 'flex items-center gap-2 text-sm text-muted-foregro', 'text': 'Dashboard EA Workflows Phase 1 Viewpoint — Viewpoint'}, {'cls': 'mb-3', 'text': 'Home Phase 1 Viewpoint'}]",
+      "disposition": "needs_triage",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "no-main-landmark",
+      "route": "/genome/data/ropa",
+      "severity": "medium",
+      "detail": "no <main>; keyboard users cannot skip nav",
+      "disposition": "needs_triage",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "dead-link",
+      "route": "/genome/data/ropa",
+      "severity": "medium",
+      "detail": "anchor 'About' has href='#' and no handler",
+      "disposition": "needs_triage",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "not-found",
+      "route": "/implementation/",
+      "severity": "medium",
+      "detail": "HTTP 404 on a registered route: either a broken page or a feature deliberately hidden while unconfigured",
+      "disposition": "needs_triage",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "not-found",
+      "route": "/implementation/api/dashboard-stats",
+      "severity": "medium",
+      "detail": "HTTP 404 on a registered route: either a broken page or a feature deliberately hidden while unconfigured",
+      "disposition": "needs_triage",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "not-found",
+      "route": "/implementation/api/deliverables",
+      "severity": "medium",
+      "detail": "HTTP 404 on a registered route: either a broken page or a feature deliberately hidden while unconfigured",
+      "disposition": "needs_triage",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "not-found",
+      "route": "/implementation/api/estimation-accuracy",
+      "severity": "medium",
+      "detail": "HTTP 404 on a registered route: either a broken page or a feature deliberately hidden while unconfigured",
+      "disposition": "needs_triage",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "not-found",
+      "route": "/implementation/api/gaps",
+      "severity": "medium",
+      "detail": "HTTP 404 on a registered route: either a broken page or a feature deliberately hidden while unconfigured",
+      "disposition": "needs_triage",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "not-found",
+      "route": "/implementation/api/plateaus",
+      "severity": "medium",
+      "detail": "HTTP 404 on a registered route: either a broken page or a feature deliberately hidden while unconfigured",
+      "disposition": "needs_triage",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "not-found",
+      "route": "/implementation/api/roadmap-data",
+      "severity": "medium",
+      "detail": "HTTP 404 on a registered route: either a broken page or a feature deliberately hidden while unconfigured",
+      "disposition": "needs_triage",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "not-found",
+      "route": "/implementation/api/work-packages",
+      "severity": "medium",
+      "detail": "HTTP 404 on a registered route: either a broken page or a feature deliberately hidden while unconfigured",
+      "disposition": "needs_triage",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "not-found",
+      "route": "/implementation/deliverables",
+      "severity": "medium",
+      "detail": "HTTP 404 on a registered route: either a broken page or a feature deliberately hidden while unconfigured",
+      "disposition": "needs_triage",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "not-found",
+      "route": "/implementation/gaps",
+      "severity": "medium",
+      "detail": "HTTP 404 on a registered route: either a broken page or a feature deliberately hidden while unconfigured",
+      "disposition": "needs_triage",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "not-found",
+      "route": "/implementation/plateaus",
+      "severity": "medium",
+      "detail": "HTTP 404 on a registered route: either a broken page or a feature deliberately hidden while unconfigured",
+      "disposition": "needs_triage",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "not-found",
+      "route": "/implementation/reports/generate",
+      "severity": "medium",
+      "detail": "HTTP 404 on a registered route: either a broken page or a feature deliberately hidden while unconfigured",
+      "disposition": "needs_triage",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "not-found",
+      "route": "/implementation/work-packages",
+      "severity": "medium",
+      "detail": "HTTP 404 on a registered route: either a broken page or a feature deliberately hidden while unconfigured",
+      "disposition": "needs_triage",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "not-found",
+      "route": "/implementation/work-packages/create",
+      "severity": "medium",
+      "detail": "HTTP 404 on a registered route: either a broken page or a feature deliberately hidden while unconfigured",
+      "disposition": "needs_triage",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "form-missing-csrf",
+      "route": "/login",
+      "severity": "high",
+      "detail": "POST form to http://127.0.0.1:35301/account/login has no csrf_token; submitting it 400s",
+      "disposition": "needs_triage",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/my-applications/",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/my-applications/health",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/my-applications/list",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/my-applications/roadmap",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/policy-monitoring/health",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/procurement/",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/procurement/compliance",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/procurement/contracts",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/procurement/contracts/new",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/procurement/licenses",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/procurement/licenses/new",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/procurement/renewals",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/procurement/spend",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/settings",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/strategic/api/health",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/vendor-management/import",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    },
+    {
+      "kind": "forbidden",
+      "route": "/vendors/import",
+      "severity": "info",
+      "detail": "HTTP 403",
+      "disposition": "informational_observation",
+      "occurrences": [
+        {
+          "persona": "business_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "business_architect",
+          "viewport": "mobile"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "desktop"
+        },
+        {
+          "persona": "solution_architect",
+          "viewport": "mobile"
+        }
+      ]
+    }
+  ]
+}
