@@ -629,6 +629,17 @@
       "required_fix": "Require existing administrator permission before rendering monitoring pages, reading metrics or invoking alert delivery in both implementations.",
       "retest_evidence": "Both dashboard denial regressions failed before repair. After repair, 16 deprecation tests pass, including Chromium clicks through the real registered routes for ordinary/admin accounts in both implementations, plus API tests proving denied requests do not call metrics services. Combined billing/deprecation suite passes 24 tests. Rendered data is stubbed in these isolated permission tests; full application CI and production verification remain outstanding.",
       "closure_tests": ["tests/test_deprecation_access_control.py", "Full application role matrix and production administration access retest"]
+    },
+    {
+      "id": "F500-045",
+      "area": "navigation_design",
+      "severity": "medium",
+      "title": "Five rationalization and workflow pages render duplicate breadcrumb trails",
+      "status": "in_progress",
+      "original_evidence": "Browser survey 33923515022 recorded duplicate-breadcrumbs on rationalization enrich, tracking, workbench, workflow definitions and phase viewpoint pages in both desktop and mobile. Source confirms each template renders an explicit contextual trail plus a second trail through page_shell or page_header.",
+      "required_fix": "Render only the contextual trail and verify the visible parent link navigates successfully in the application browser.",
+      "retest_evidence": "Removed redundant breadcrumb arguments from the five header calls, preserving contextual parent navigation. Template syntax gate passes. Added five full-application Playwright cases requiring one visible breadcrumb and successful parent navigation; those browser cases still require CI execution. No browser-verified closure is claimed.",
+      "closure_tests": ["tests/smoke/test_breadcrumb_navigation.py", "Production visual and breadcrumb navigation checks"]
     }
   ]
 }
