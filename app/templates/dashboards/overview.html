@@ -173,44 +173,44 @@
         <div class="space-y-6">
 
             {# ── Architecture Health Score ────────────────────────────────────
-               4 Sep 2026: replaced the bespoke "hero" card (giant 7xl number,
-               rainbow progress bars) with the same flat metrics_card pattern
-               used everywhere else on this page and on the CTO tab's
-               Executive Summary — a second, differently-styled treatment of
-               the identical metric was exactly the kind of inconsistency a
-               user flagged directly, and its bg-{{ color }}-500 construction
-               was also shipping DESIGN.md-banned raw colours (red, blue)
-               that the design-tokens gate cannot see because the class name
-               is never a literal string in this template's source. #}
-            <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
-                {% set _health_class = 'text-muted-foreground' if health_score is none else ('text-success-emphasis' if health_score >= 70 else ('text-warning-emphasis' if health_score >= 40 else 'text-destructive')) %}
-                {{ metrics_card(
-                    title='Health Score',
-                    value=(health_score if health_score is not none else "—")|string,
-                    value_id='health-score-value',
-                    value_testid='health-score-value',
-                    value_class=_health_class,
-                    icon='heart-pulse',
-                    description='Weighted composite — see breakdown',
-                    href='/dashboard/health',
-                    class='border-l-4 border-l-primary'
-                ) }}
-                {% for key, label, weight, border in [
-                    ('phase_maturity', 'Phase Maturity', '40', 'border-l-primary'),
-                    ('risk_health', 'Risk Posture', '30', 'border-l-destructive'),
-                    ('capability_coverage', 'Capability Coverage', '20', 'border-l-success'),
-                    ('governance', 'Governance', '10', 'border-l-info'),
-                ] %}
-                {# .get(key, 0) reported "not measured" as a confident 0%. #}
-                {% set val = (health_components or {}).get(key) %}
-                {{ metrics_card(
-                    title=label,
-                    value=(val ~ '%') if val is not none else '—',
-                    description='Weight: ' ~ weight ~ '%',
-                    class='border-l-4 ' ~ border
-                ) }}
-                {% endfor %}
-            </div>
+               4 Sep 2026, corrected same day: the first pass replaced the
+               bespoke hero (giant 7xl number, rainbow bars) with metrics_card
+               boxes, but kept coloured left-border accents, icons and a
+               description line — still a distinct visual language from the
+               one true flat pattern the user pointed at explicitly (the CTO
+               tab's Executive Summary fragment). This now uses that fragment's
+               EXACT markup (rounded-lg border border-border bg-background p-3,
+               text-xs muted label, text-lg font-bold value, nothing else — no
+               colour, no icon, no bar) so there is one pattern, not a second
+               approximation of it. Also fixes the bg-{{ color }}-500 dynamic-
+               class construction that shipped DESIGN.md-banned raw colours
+               invisible to the design-tokens gate. #}
+            {% call card.card() %}
+                {% call card.card_header(class='pb-2') %}
+                    {% call card.card_title() %}Architecture Health{% endcall %}
+                {% endcall %}
+                {% call card.card_content() %}
+                    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+                        <div class="rounded-lg border border-border bg-background p-3">
+                            <p class="text-xs text-muted-foreground">Health Score</p>
+                            <p class="text-lg font-bold text-foreground" data-testid="health-score-value">{{ health_score if health_score is not none else "—" }}</p>
+                        </div>
+                        {% for key, label in [
+                            ('phase_maturity', 'Phase Maturity'),
+                            ('risk_health', 'Risk Posture'),
+                            ('capability_coverage', 'Capability Coverage'),
+                            ('governance', 'Governance'),
+                        ] %}
+                        {# .get(key, 0) reported "not measured" as a confident 0%. #}
+                        {% set val = (health_components or {}).get(key) %}
+                        <div class="rounded-lg border border-border bg-background p-3">
+                            <p class="text-xs text-muted-foreground">{{ label }}</p>
+                            <p class="text-lg font-bold text-foreground">{{ (val ~ "%") if val is not none else "—" }}</p>
+                        </div>
+                        {% endfor %}
+                    </div>
+                {% endcall %}
+            {% endcall %}
 
             {# ── Data Coverage ───────────────────────────────────────────── #}
             {% call card.card() %}
@@ -221,13 +221,12 @@
                     {% if data_coverage is defined and data_coverage.query_error is defined %}
                     <p class="text-xs text-destructive-emphasis mb-2">Coverage error: {{ data_coverage.query_error }}</p>
                     {% endif %}
-                    <div class="grid grid-cols-2 sm:grid-cols-5 gap-4">
+                    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
                         {% for field, label in [('owner', 'Owner'), ('vendor', 'Vendor'), ('cost', 'Cost'), ('risk', 'Risk'), ('criticality', 'Criticality')] %}
                         {% set pct = data_coverage[field] if data_coverage is defined and data_coverage[field] is defined else 0 %}
-                        {% set pct_int = pct|int %}
-                        <div>
+                        <div class="rounded-lg border border-border bg-background p-3">
                             <p class="text-xs text-muted-foreground">{{ label }}</p>
-                            <p class="text-lg font-bold {% if pct_int >= 50 %}text-success-emphasis{% elif pct_int >= 20 %}text-warning-emphasis{% else %}text-destructive-emphasis{% endif %}">{{ pct }}%</p>
+                            <p class="text-lg font-bold text-foreground">{{ pct }}%</p>
                         </div>
                         {% endfor %}
                     </div>
