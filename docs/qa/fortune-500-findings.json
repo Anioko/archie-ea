@@ -294,7 +294,7 @@
       "status": "ready_for_retest",
       "original_evidence": "Exact-SHA CI run 33831735604 passed every application, browser, database, security and dependency job, then release job 100901957263 failed before image publication with KeyError: 'worker'. The worker is intentionally declared under the disabled-by-default email Compose profile, so an ordinary `compose config` omitted it while the audit still attempted to inspect it.",
       "required_fix": "Resolve production Compose with the email profile enabled during the immutable-image audit. This must inspect both active and dormant application services without enabling the worker in production.",
-      "retest_evidence": "4 Sep 2026 strict TDD: the release-artifact contract failed until the CI command explicitly included `--profile email`; focused local retest and exact-SHA release-image execution remain pending.",
+      "retest_evidence": "4 Sep 2026 strict TDD: the release-artifact contract failed until the CI command explicitly included `--profile email`; the corrected contract passed 5/5, the merged main/release cohort passed 37/37, and the merged static verifier passed 44/44 with zero skips. Exact-SHA release-image execution remains pending.",
       "closure_tests": [
         "tests/test_release_artifact_contract.py::test_ci_builds_once_after_every_release_gate_and_exports_the_digest",
         "CI Build immutable release image job on final SHA",
