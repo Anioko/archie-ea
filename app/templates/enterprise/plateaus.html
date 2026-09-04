@@ -34,13 +34,13 @@
                     {% if plateau.status == 'Active' %}bg-success/20 text-success-emphasis
                     {% elif plateau.status == 'Planned' %}bg-primary/20 text-primary
                     {% else %}bg-muted text-muted-foreground{% endif %}">
-                    {{ plateau.status|default('Draft') }}
+                    {{ plateau.status|default('—', true) }}
                 </span>
             </div>
-            <h3 class="font-semibold mb-2">{{ plateau.name|default('Unnamed Plateau') }}</h3>
-            <p class="text-sm text-muted-foreground mb-4">{{ plateau.description|default('No description', true)|truncate(100) }}</p>
+            <h3 class="font-semibold mb-2">{{ plateau.name|default('—', true) }}</h3>
+            <p class="text-sm text-muted-foreground mb-4">{{ plateau.description|default('—', true)|truncate(100) }}</p>
             <div class="text-sm">
-                <span class="text-muted-foreground">Target: {{ plateau.target_date|default('TBD') }}</span>
+                <span class="text-muted-foreground">Target: {{ plateau.target_date|default('—', true) }}</span>
             </div>
         </div>
         {% else %}

@@ -19,15 +19,16 @@ failing area can be re-run in seconds:
   L3  runtime errors       console errors and failed network requests
   L4  layout geometry      dead vertical space, horizontal overflow, offscreen content
   L5  forms and controls   every input labelled, every form has CSRF, controls named
-  L6  accessibility        axe-core violations, focus visibility, landmark structure
+  L6  accessibility        landmark structure (axe/focus remain in smoke CI)
   L7  link integrity       every in-app href resolves; no href="#" dead ends
-  L8  authorisation        a persona that should not see a surface gets 403, not 200
+  L8  authorisation        non-admin/admin outcomes on administration routes
   L9  data honesty         a rendered 0/—/placeholder that the API never measured
-  L10 journey logic        the documented next action on a page actually exists
+  L10 journey logic        reserved; outcome journeys are reported separately
 
 Findings are written incrementally to the report path, so a killed run keeps
-everything measured up to that point. Exit status is the number of findings,
-capped at 250, so CI and shells can gate on it.
+everything measured up to that point. Exit status is the number of
+non-informational findings, capped at 250, so expected denials remain evidence
+without making a clean audit permanently red.
 
     python scripts/production_readiness_audit.py
     python scripts/production_readiness_audit.py --level 4 --level 5
@@ -151,6 +152,8 @@ def seed_personas():
         org = Organization(name=f"Audit {suffix}", slug=f"audit-{suffix}")
         db.session.add(org)
         db.session.flush()
+        architect_role = Role.query.filter_by(name="Architect").one()
+        administrator_role = Role.query.filter_by(name="Administrator").one()
         emails = {}
         for role in PERSONAS:
             email = f"{role.replace('_', '-')}-{suffix}@example.com"
@@ -158,6 +161,9 @@ def seed_personas():
                 email=email, first_name=role.split("_")[0].title(),
                 last_name="Auditor", confirmed=True,
                 organization_id=org.id, enterprise_role=role,
+                role=administrator_role if role == "platform_admin" else architect_role,
+                is_platform_admin=role == "platform_admin",
+                is_org_admin=role == "platform_admin",
             )
             user.password = PASSWORD
             db.session.add(user)
@@ -440,6 +446,73 @@ PAGE_PROBE = r"""() => {
   out.checkboxesUnlabelled = [...document.querySelectorAll('input[type=checkbox], input[type=radio]')]
       .filter(el => !named(el)).length;
 
+  // Full visible-control inventory. This is evidence, not a claim that the
+  // action works: outcome journeys consume the inventory and prove navigation,
+  // modal, download, mutation, feedback and persistence separately. Never
+  // capture input values; reports may be retained as CI artifacts.
+  const controlVisible = (el) => {
+    const cs = getComputedStyle(el);
+    if (cs.display === 'none' || cs.visibility === 'hidden') return false;
+    if (el.hidden || el.getAttribute('aria-hidden') === 'true') return false;
+    const r = el.getBoundingClientRect();
+    return r.width > 0 && r.height > 0;
+  };
+  const controlLabel = (el) => {
+    const labelledBy = el.getAttribute('aria-labelledby');
+    const labelled = labelledBy && document.getElementById(labelledBy);
+    const associated = el.labels && el.labels.length
+      ? [...el.labels].map(label => label.textContent || '').join(' ')
+      : '';
+    const editable = el.matches('input, textarea, [contenteditable="true"]');
+    return (el.getAttribute('aria-label')
+      || (labelled && labelled.textContent)
+      || associated
+      || (!editable && el.textContent)
+      || el.getAttribute('title')
+      || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+  };
+  const safePath = (raw) => {
+    if (!raw) return '';
+    try {
+      const parsed = new URL(raw, document.baseURI);
+      return parsed.origin === location.origin
+        ? parsed.pathname
+        : parsed.origin + parsed.pathname;
+    } catch (_) {
+      return String(raw).split(/[?#]/, 1)[0];
+    }
+  };
+  out.controls = [];
+  const controlNodes = new Set(document.querySelectorAll(
+    'a[href], button, input:not([type="hidden"]), select, textarea, summary, '
+    + '[role="button"], [role="link"], [contenteditable="true"], '
+    + '[tabindex]:not([tabindex="-1"])'));
+  let controlOrdinal = 0;
+  for (const el of controlNodes) {
+    if (!controlVisible(el)) continue;
+    const handlers = {};
+    for (const attr of el.attributes || []) {
+      if (/^(?:@click(?:\.[\w-]+)*|x-on:click(?:\.[\w-]+)*|onclick|data-(?:action|.*-action|modal-.*|confirm|autosubmit|toggle|dismiss.*))$/.test(attr.name)) {
+        handlers[attr.name] = String(attr.value || '').slice(0, 160);
+      }
+    }
+    const form = el.closest('form');
+    out.controls.push({
+      ordinal: controlOrdinal++,
+      tag: el.tagName.toLowerCase(),
+      type: el.getAttribute('type') || '',
+      role: el.getAttribute('role') || '',
+      label: controlLabel(el),
+      id: el.id || '',
+      testid: el.getAttribute('data-testid') || '',
+      href: safePath(el.getAttribute('href') || ''),
+      disabled: Boolean(el.disabled || el.getAttribute('aria-disabled') === 'true'),
+      form_method: form ? (form.getAttribute('method') || 'get').toLowerCase() : '',
+      form_action: form ? safePath(form.getAttribute('action') || '') : '',
+      handlers,
+    });
+  }
+
   // ---- L7 link integrity
   out.deadLinks = [];
   document.querySelectorAll('a').forEach((a) => {
@@ -501,6 +574,23 @@ def evaluate_findings(level_set, ctx, probe, status, console_errors, failed_requ
                 severity="medium")
         elif status in (401, 403):
             add(1, "forbidden", f"HTTP {status}", severity="info")
+
+    if 8 in level_set:
+        is_admin_surface = (
+            ctx.get("route", "").startswith("/admin")
+            or ctx.get("endpoint", "").startswith("admin.")
+        )
+        if is_admin_surface:
+            is_platform_admin = ctx.get("persona") == "platform_admin"
+            if status in (401, 403) and is_platform_admin:
+                add(8, "unexpected-forbidden",
+                    "platform administrator was denied an administration surface")
+            elif status < 400 and not is_platform_admin:
+                add(8, "unauthorized-access",
+                    "non-administrator could render an administration surface")
+            elif status in (401, 403):
+                add(8, "expected-forbidden",
+                    "non-administrator was correctly denied", severity="info")
 
     if 2 in level_set and status < 400:
         n = len(probe.get("h1") or [])
@@ -584,6 +674,11 @@ def evaluate_findings(level_set, ctx, probe, status, console_errors, failed_requ
     return f
 
 
+def blocking_findings(findings):
+    """Return only actionable defects; retain informational evidence in reports."""
+    return [finding for finding in findings if finding.get("severity") != "info"]
+
+
 # ------------------------------------------------------------------------- driving
 
 def run(args):
@@ -598,7 +693,7 @@ def run(args):
     viewports = [("desktop", DESKTOP)] + ([] if args.desktop_only else [("mobile", MOBILE)])
 
     report_path = pathlib.Path(args.report)
-    findings, audited = [], 0
+    findings, control_inventory, audited = [], [], 0
 
     def flush():
         report_path.write_text(json.dumps({
@@ -606,6 +701,7 @@ def run(args):
             "routes_total": len(routes),
             "routes_audited": audited,
             "personas": personas,
+            "control_inventory": control_inventory,
             "findings": findings,
         }, indent=2), encoding="utf-8")
 
@@ -702,6 +798,11 @@ def run(args):
                                 "[x-show='showOnboarding'], .onboarding-overlay",
                                 "els => els.forEach(e => e.remove())")
                             probe = page.evaluate(PAGE_PROBE)
+                            control_inventory.append({
+                                **ctx,
+                                "status": status,
+                                "controls": probe.get("controls") or [],
+                            })
                         except Exception as exc:
                             findings.append({**ctx, "level": 1, "kind": "navigation-failed",
                                              "severity": "high", "detail": str(exc)[:200]})
@@ -735,7 +836,7 @@ def run(args):
             proc.kill()
 
     summarise(findings, audited, len(routes))
-    return min(len(findings), 250)
+    return min(len(blocking_findings(findings)), 250)
 
 
 def summarise(findings, audited, total):

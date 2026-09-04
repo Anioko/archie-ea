@@ -70,3 +70,20 @@ def test_plateau_register_does_not_advertise_unimplemented_create_or_detail_acti
 
     assert "New Plateau" not in html
     assert 'data-lucide="arrow-right"' not in html
+
+
+def test_plateau_register_does_not_fabricate_missing_values(app):
+    plateau = SimpleNamespace(
+        id=18,
+        name=None,
+        description=None,
+        status=None,
+        target_date=None,
+    )
+
+    html = _render(app, "enterprise/plateaus.html", plateaus=[plateau])
+
+    assert "TBD" not in html
+    assert "Unnamed Plateau" not in html
+    assert "No description" not in html
+    assert "Target: —" in html

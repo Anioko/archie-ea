@@ -493,12 +493,56 @@
       "severity": "high",
       "title": "Capability and plateau registers presented controls with no valid same-model workflow",
       "status": "verified_local",
-      "original_evidence": "4 Sep 2026 strict TDD: the unmapped UnifiedCapability view rendered Map Application and View Details controls even though only BusinessCapability mapping/detail workflows exist, risking cross-model IDs or not-found outcomes. The enterprise plateau register rendered New Plateau and per-row arrow buttons with no matching enterprise create/detail route. Both regressions failed before repair.",
+      "original_evidence": "4 Sep 2026 strict TDD: the unmapped UnifiedCapability view rendered Map Application and View Details controls even though only BusinessCapability mapping/detail workflows exist, risking cross-model IDs or not-found outcomes. The enterprise plateau register rendered New Plateau and per-row arrow buttons with no matching enterprise create/detail route. It also rendered invented Draft, Unnamed Plateau, No description and TBD values when stored fields were null. All three regressions failed before repair.",
       "required_fix": "Remove cross-model and unimplemented action affordances; retain honest register content and explain that roadmap-registered plateaus appear in the register.",
-      "retest_evidence": "4 Sep 2026: both rendered contracts pass after removing the misleading controls; template syntax, references and design-token gates pass. Final browser census remains required.",
+      "retest_evidence": "4 Sep 2026: all three rendered contracts pass after removing the misleading controls and rendering missing plateau fields as an em dash; template syntax, references and design-token gates pass. Final browser census remains required.",
       "closure_tests": [
         "tests/test_capability_enterprise_actionability.py",
         "Final browser interaction census on capability analysis and enterprise plateaus"
+      ]
+    },
+    {
+      "id": "F500-035",
+      "area": "whole_product_audit_execution",
+      "severity": "critical",
+      "title": "Exhaustive eleven-role page auditor existed but was absent from the release workflow",
+      "status": "in_progress",
+      "original_evidence": "4 Sep 2026: scripts/production_readiness_audit.py can enumerate every registered GET surface for every role at desktop and mobile widths, but no CI workflow invoked it. The release evidence instead relied on a 20-path journey map, a nine-case structural interaction census and a four-persona walkthrough while describing the result as whole-product qualification. Independent review also established that advertised L8/L10 behavior was incomplete and L6 was narrower than its documentation, so page surveying must not be represented as outcome proof.",
+      "required_fix": "Provide a manually dispatchable, exact-SHA CI matrix over all valid roles. Each role must run every audit level at both viewports against its own PostgreSQL 16 environment and retain its complete JSON/server-log evidence even when findings fail the job. Execute the matrix, import every finding into the active ledger, repair, and repeat until clean.",
+      "retest_evidence": "4 Sep 2026 strict TDD: the workflow contract failed because the workflow was absent, then passed after adding an eleven-role, two-viewport matrix with failure evidence retained for 30 days. The audit report inventories every visible link, button, input, select, textarea, summary and button/link role per successfully rendered page. A privacy regression then proved the first implementation captured textarea/contenteditable contents; the recorder was corrected to use associated labels and strip URL query strings. The platform-admin seed now carries real administrator permissions, expected denials are retained without failing the run, and basic admin-route allow/deny outcomes are evaluated. Six audit contract tests pass. The first exhaustive run has not yet executed, and page inventory still does not close F500-028's per-control outcome requirement.",
+      "closure_tests": [
+        "tests/test_whole_product_audit_workflow.py",
+        "Whole-product active defect audit workflow green for all 11 roles on the final SHA",
+        "All per-role JSON findings imported and dispositioned in this ledger"
+      ]
+    },
+    {
+      "id": "F500-036",
+      "area": "qa_evidence_privacy",
+      "severity": "high",
+      "title": "Whole-product control inventory leaked editable field contents into retained CI evidence",
+      "status": "verified_local",
+      "original_evidence": "4 Sep 2026 independent browser reproduction against the exact PAGE_PROBE: a textarea containing 'private field contents' was serialized with that content as its label, while a normal input's associated label was missed. Contenteditable values and URL query strings could likewise enter artifacts retained for 30 days despite the recorder's no-values claim.",
+      "required_fix": "Resolve accessible labels without using editable text, retain no input values, and remove URL queries/fragments from recorded destinations. Enforce the guarantee in a real browser regression.",
+      "retest_evidence": "4 Sep 2026: a Chromium regression proves input, textarea and contenteditable values are absent while aria-label and associated label text are retained. Recorded href/form actions are reduced to origin/path. Audit contract suite passes 6/6 locally.",
+      "closure_tests": [
+        "tests/test_whole_product_audit_workflow.py::test_control_inventory_never_serializes_editable_values",
+        "Final whole-product artifacts inspected for absence of field values and URL secrets"
+      ]
+    },
+    {
+      "id": "F500-037",
+      "area": "qa_authorization_evidence",
+      "severity": "high",
+      "title": "Whole-product matrix used a platform-admin label without administrator permissions and treated expected denials as defects",
+      "status": "verified_local",
+      "original_evidence": "4 Sep 2026 review of seed_personas and evaluate_findings: every seeded persona inherited the default Architect role and is_platform_admin=False, so the platform_admin matrix entry could not exercise admin pages. Every correct 401/403 was stored as an informational finding but still counted in the process exit status, making ordinary role isolation permanently fail the workflow.",
+      "required_fix": "Seed the platform administrator with the authoritative Administrator role and platform/org administrator flags; explicitly verify allow/deny outcomes; retain expected denial evidence without counting it as a release-blocking defect.",
+      "retest_evidence": "4 Sep 2026: platform-admin seeding now assigns the Administrator role and admin flags. Behavioral tests distinguish expected denial, unexpected administrator denial and unauthorized non-admin access; information-only evidence is excluded from the failure count. Audit contract suite passes 6/6 locally.",
+      "closure_tests": [
+        "tests/test_whole_product_audit_workflow.py::test_information_only_observations_do_not_fail_the_audit",
+        "tests/test_whole_product_audit_workflow.py::test_authorization_distinguishes_expected_and_unexpected_admin_access",
+        "First exhaustive 11-role artifact set"
       ]
     }
   ]
