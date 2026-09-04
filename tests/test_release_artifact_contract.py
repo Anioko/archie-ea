@@ -57,7 +57,7 @@ def test_ci_builds_once_after_every_release_gate_and_exports_the_digest():
     assert "VCS_REF=${{ github.sha }}" in image_job
     assert "steps.build.outputs.digest" in image_job
     assert "release.json" in image_job
-    assert "config --format json" in image_job
+    assert "--profile email config --format json" in image_job
     assert 'assert "build" not in service' in image_job
     assert 'volume.get("target") == "/app"' in image_job
     assert "docker run --rm --entrypoint python" in image_job

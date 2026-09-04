@@ -542,7 +542,7 @@ jobs:
         shell: bash
         run: |
           export ARCHIE_IMAGE="ghcr.io/example/archie@sha256:$(printf '0%.0s' {1..64})"
-          docker compose -f docker-compose.yml -f deploy/docker-compose.production.yml config --format json > /tmp/production-compose.json
+          docker compose -f docker-compose.yml -f deploy/docker-compose.production.yml --profile email config --format json > /tmp/production-compose.json
           python - <<'PY'
           import json
 

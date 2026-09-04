@@ -262,10 +262,10 @@
       "area": "test_determinism",
       "severity": "medium",
       "title": "Export-recovery contract raced a 150-millisecond database lease",
-      "status": "verified_local",
+      "status": "verified_ci",
       "original_evidence": "Exact-SHA PostgreSQL 16 CI run 33810262875: test_premature_export_recovery_remains_retryable_after_database_lease_expiry expected a pre-expiry RuntimeError, but setup and session work consumed its 150ms lease, so production correctly treated the already-expired lease as recoverable.",
       "required_fix": "Use a comfortably long initial lease for the pre-expiry ownership assertion, then cross the durable boundary explicitly by updating dispatch_lease_expires_at relative to the database clock before testing recovery; do not use wall-clock sleeps.",
-      "retest_evidence": "4 Sep 2026: the corrected test passed inside a 13/13 combined root retest. The implementation uses a 30-second initial lease and an organization-scoped SQL update to set the persisted expiry to clock_timestamp() minus one second. No production code changed. Final PostgreSQL 16 CI remains authoritative.",
+      "retest_evidence": "4 Sep 2026: the corrected test passed inside a 13/13 combined root retest. The implementation uses a 30-second initial lease and an organization-scoped SQL update to set the persisted expiry to clock_timestamp() minus one second. No production code changed. Exact-SHA PostgreSQL 16 CI run 33831735604 then passed all 3,992 tests with zero skips or expected failures.",
       "closure_tests": [
         "tests/test_transformation_execution_service.py::test_premature_export_recovery_remains_retryable_after_database_lease_expiry",
         "Full non-smoke CI suite on final SHA"
@@ -276,14 +276,29 @@
       "area": "frontend_runtime",
       "severity": "high",
       "title": "Default ArchiMate viewpoint performs a duplicate initial render",
-      "status": "verified_local",
+      "status": "verified_ci",
       "original_evidence": "Exact-SHA Linux Firefox run 33830528607 failed three motivation-responsive viewports with an opaque object exception. Prior diagnostic reproduction retained Alpine's `{isFromCancelledTransition: true}` sentinel, and request evidence repeatedly showed two identical initial layer-element calls. Source tracing found dashboard init loads elements immediately, then reloads after the default Basic/All Elements viewpoint resolves even though its intentionally empty element_types array adds no filter.",
       "required_fix": "Do not repeat the initial element request when the resolved viewpoint has no type filter; retain the refresh when a non-empty viewpoint filter changes the requested data.",
-      "retest_evidence": "4 Sep 2026 strict runtime TDD: the real dashboard.js component factory produced two unfiltered requests before the fix (`[null, null]`, test red) while the non-empty viewpoint case produced the required filtered refresh. After requiring a non-empty element_types array, the runtime test observes one default request and two requests only for the filtered case. The focused dashboard/repository suite passed 11/11. Complete Linux Firefox CI remains authoritative.",
+      "retest_evidence": "4 Sep 2026 strict runtime TDD: the real dashboard.js component factory produced two unfiltered requests before the fix (`[null, null]`, test red) while the non-empty viewpoint case produced the required filtered refresh. After requiring a non-empty element_types array, the runtime test observes one default request and two requests only for the filtered case. The focused dashboard/repository suite passed 11/11. Exact-SHA Linux CI run 33831735604 then passed all 56 Firefox checks, including all three formerly failing responsive viewports.",
       "closure_tests": [
         "tests/test_archimate_dashboard_init_runtime.py",
         "tests/smoke/test_archetype_journeys.py::test_motivation_repository_shell_is_accessible_and_responsive on Firefox",
         "Complete final Firefox compatibility job"
+      ]
+    },
+    {
+      "id": "F500-021",
+      "area": "release_engineering",
+      "severity": "high",
+      "title": "Immutable-image audit omitted the optional email worker from resolved Compose",
+      "status": "ready_for_retest",
+      "original_evidence": "Exact-SHA CI run 33831735604 passed every application, browser, database, security and dependency job, then release job 100901957263 failed before image publication with KeyError: 'worker'. The worker is intentionally declared under the disabled-by-default email Compose profile, so an ordinary `compose config` omitted it while the audit still attempted to inspect it.",
+      "required_fix": "Resolve production Compose with the email profile enabled during the immutable-image audit. This must inspect both active and dormant application services without enabling the worker in production.",
+      "retest_evidence": "4 Sep 2026 strict TDD: the release-artifact contract failed until the CI command explicitly included `--profile email`; focused local retest and exact-SHA release-image execution remain pending.",
+      "closure_tests": [
+        "tests/test_release_artifact_contract.py::test_ci_builds_once_after_every_release_gate_and_exports_the_digest",
+        "CI Build immutable release image job on final SHA",
+        "Published release.json digest and OCI revision verification"
       ]
     }
   ]
