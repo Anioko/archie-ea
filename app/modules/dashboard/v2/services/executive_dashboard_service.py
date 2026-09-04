@@ -105,22 +105,22 @@ class ExecutiveDashboardService:
             return {"pending": None, "approved": None, "rejected": None, "total": None}  # honest: ARB counts not computed on error
 
     def _get_capability_coverage(self):
-        """Percentage of business capabilities with at least one solution mapping."""
+        """Percentage of L1 business capabilities with at least one mapped
+        application.
+
+        4 Sep 2026: this used to independently count capabilities with a
+        SolutionCapabilityMapping row (a much sparser relationship than
+        applications), disagreeing live with the CTO-tab hero panel's
+        identically-labelled, identically-weighted "Capability Coverage"
+        component (100% vs 0% observed on the same page). Now calls the same
+        shared computation the hero uses — see capability_coverage.py.
+        """
         try:
-            from app.models.business_capabilities import BusinessCapability
-            from app.models.solution_models import SolutionCapabilityMapping
+            from app.modules.dashboard.v2.services.capability_coverage import (
+                compute_l1_capability_coverage,
+            )
 
-            total_caps = db.session.query(db.func.count(BusinessCapability.id)).scalar() or 0
-            if total_caps == 0:
-                # 0 of 0 capabilities covered is undefined, not 0% coverage.
-                return {"total": 0, "covered": 0, "percentage": None}
-
-            covered = (
-                db.session.query(db.func.count(db.distinct(SolutionCapabilityMapping.capability_id)))
-                .scalar()
-            ) or 0
-            pct = round((covered / total_caps) * 100, 1)
-            return {"total": total_caps, "covered": covered, "percentage": pct}
+            return compute_l1_capability_coverage()
         except Exception as exc:
             # Counts are None, not 0: the query failed, so nothing is known about
             # the capability set. Returning zeros would render as a measured
