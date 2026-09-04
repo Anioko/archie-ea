@@ -29,7 +29,8 @@ _ENV = Environment(autoescape=True, trim_blocks=True, lstrip_blocks=True)
 EM_DASH = "—"
 
 # Column order is the Article 30(1) skeleton: processing activity, categories of
-# data, systems/applications involved, lawful basis, retention.
+# data, accessing elements, lawful basis, retention. Access edges can originate
+# from business processes as well as applications; preserve their modelled type.
 _ROPA_TEMPLATE = _ENV.from_string(
     """
 <table class="w-full text-sm border-collapse" data-genome-slice="data"
@@ -37,12 +38,12 @@ _ROPA_TEMPLATE = _ENV.from_string(
   <caption class="sr-only">GDPR Article 30 Record of Processing Activities</caption>
   <thead>
     <tr class="text-left border-b border-border">
-      <th class="py-2 pr-4 font-semibold">Processing activity</th>
-      <th class="py-2 pr-4 font-semibold">Data categories</th>
-      <th class="py-2 pr-4 font-semibold">Systems / applications</th>
-      <th class="py-2 pr-4 font-semibold">Lawful basis</th>
-      <th class="py-2 pr-4 font-semibold">Retention</th>
-      <th class="py-2 font-semibold">Source element</th>
+      <th scope="col" class="py-2 pr-4 font-semibold">Processing activity</th>
+      <th scope="col" class="py-2 pr-4 font-semibold">Data categories</th>
+      <th scope="col" class="py-2 pr-4 font-semibold">Accessing elements</th>
+      <th scope="col" class="py-2 pr-4 font-semibold">Lawful basis</th>
+      <th scope="col" class="py-2 pr-4 font-semibold">Retention</th>
+      <th scope="col" class="py-2 font-semibold">Source element</th>
     </tr>
   </thead>
   <tbody>
@@ -55,7 +56,7 @@ _ROPA_TEMPLATE = _ENV.from_string(
       <td class="py-2 pr-4">
         {% if a.systems %}
           {% for s in a.systems %}<span class="inline-block">{{ s.name }}
-            <span class="text-muted-foreground">({{ s.access_mode }})</span>{% if not loop.last %}; {% endif %}</span>{% endfor %}
+            <span class="text-muted-foreground">({{ s.archimate_type | replace('_', ' ') if s.archimate_type else dash }} · {{ s.access_mode }})</span>{% if not loop.last %}; {% endif %}</span>{% endfor %}
         {% else %}{{ dash }}{% endif %}
       </td>
       <td class="py-2 pr-4">{{ a.lawful_basis if a.lawful_basis else dash }}</td>

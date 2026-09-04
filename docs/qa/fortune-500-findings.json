@@ -695,6 +695,17 @@
       "required_fix": "Preserve source organisation on generated ArchiMate rows, validate source mappings and existing-link idempotence, qualify database and browser journeys, and measure existing records before attributable repair. Separately investigate raw-insert source models lacking organisation fields; copying a nonexistent attribute is not a valid fix.",
       "retest_evidence": "Independent main-agent rerun: 61 hook tests pass across these repairs and F500-049; one database test deliberately deselected because no local PostgreSQL is available, so full verification remains pending CI. Read-only production check of technology_nodes found zero source rows and consequently zero missing/conflicting owners; this is not a measurement of the other model tables. No production data changed. Application/browser qualification and remaining production measurements outstanding.",
       "closure_tests": ["tests/test_backbone_insert_ownership.py", "Database and browser verification of affected model creation paths", "Production source-to-element ownership measurements"]
+    },
+    {
+      "id": "F500-051",
+      "area": "ropa_data_labels_and_table_semantics",
+      "severity": "medium",
+      "title": "RoPA labels mixed business-process/application access endpoints as systems and omits explicit column scope",
+      "status": "verified_local",
+      "original_evidence": "Direct production browser click on Generate RoPA rendered eleven activities. The Systems / applications column included business-process names. Source tracing confirmed the builder retains archimate_type for every access endpoint but the emitter discarded it and applied a systems-only heading. A Chromium regression reproduced the misleading header; with the corrected wording alone its columnheader lookup still failed until column scope was explicit.",
+      "required_fix": "Use an accurate Accessing elements heading, display the modelled endpoint type, and declare table column headers explicitly. Preserve access mode, source provenance and escaping.",
+      "retest_evidence": "Changed the emitter label, displayed normalized modelled types and added scope=col to all six headers. Chromium rendered-table test plus six HTML injection regressions pass. This verifies the real emitter in a browser, not the deployed page. Full-page CI and production retest remain pending. The current live Generate RoPA action succeeds, while F500-046's old public layout remains visible.",
+      "closure_tests": ["tests/test_ropa_relationship_labels.py", "tests/test_genome_emitter_xss.py", "tests/smoke/test_ropa_generation.py", "Deployed RoPA table labels and generation verification"]
     }
   ]
 }

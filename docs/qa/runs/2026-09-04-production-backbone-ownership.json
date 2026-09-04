@@ -1,0 +1,341 @@
+{
+  "observed_at_utc": "2026-09-04 22:47:13 UTC",
+  "environment": "production PostgreSQL archie on app host 10.106.0.6",
+  "method": "Read-only aggregate LEFT JOIN of each source table to archimate_elements by archimate_element_id. No rows changed.",
+  "scope": "37 tenant-bearing source tables repaired in F500-049 and F500-050; not an all-model or all-tenant security audit.",
+  "results": [
+    {
+      "table": "technology_nodes",
+      "source_rows": 0,
+      "missing_link": 0,
+      "broken_link": 0,
+      "missing_element_owner": 0,
+      "conflicting_owner": 0,
+      "missing_source_owner": 0
+    },
+    {
+      "table": "technology_devices",
+      "source_rows": 0,
+      "missing_link": 0,
+      "broken_link": 0,
+      "missing_element_owner": 0,
+      "conflicting_owner": 0,
+      "missing_source_owner": 0
+    },
+    {
+      "table": "technology_system_software",
+      "source_rows": 0,
+      "missing_link": 0,
+      "broken_link": 0,
+      "missing_element_owner": 0,
+      "conflicting_owner": 0,
+      "missing_source_owner": 0
+    },
+    {
+      "table": "technology_interfaces",
+      "source_rows": 0,
+      "missing_link": 0,
+      "broken_link": 0,
+      "missing_element_owner": 0,
+      "conflicting_owner": 0,
+      "missing_source_owner": 0
+    },
+    {
+      "table": "technology_paths",
+      "source_rows": 0,
+      "missing_link": 0,
+      "broken_link": 0,
+      "missing_element_owner": 0,
+      "conflicting_owner": 0,
+      "missing_source_owner": 0
+    },
+    {
+      "table": "technology_communication_networks",
+      "source_rows": 0,
+      "missing_link": 0,
+      "broken_link": 0,
+      "missing_element_owner": 0,
+      "conflicting_owner": 0,
+      "missing_source_owner": 0
+    },
+    {
+      "table": "technology_services",
+      "source_rows": 0,
+      "missing_link": 0,
+      "broken_link": 0,
+      "missing_element_owner": 0,
+      "conflicting_owner": 0,
+      "missing_source_owner": 0
+    },
+    {
+      "table": "technology_artifacts",
+      "source_rows": 0,
+      "missing_link": 0,
+      "broken_link": 0,
+      "missing_element_owner": 0,
+      "conflicting_owner": 0,
+      "missing_source_owner": 0
+    },
+    {
+      "table": "technology_collaborations",
+      "source_rows": 0,
+      "missing_link": 0,
+      "broken_link": 0,
+      "missing_element_owner": 0,
+      "conflicting_owner": 0,
+      "missing_source_owner": 0
+    },
+    {
+      "table": "application_interfaces",
+      "source_rows": 0,
+      "missing_link": 0,
+      "broken_link": 0,
+      "missing_element_owner": 0,
+      "conflicting_owner": 0,
+      "missing_source_owner": 0
+    },
+    {
+      "table": "application_events",
+      "source_rows": 0,
+      "missing_link": 0,
+      "broken_link": 0,
+      "missing_element_owner": 0,
+      "conflicting_owner": 0,
+      "missing_source_owner": 0
+    },
+    {
+      "table": "application_functions",
+      "source_rows": 0,
+      "missing_link": 0,
+      "broken_link": 0,
+      "missing_element_owner": 0,
+      "conflicting_owner": 0,
+      "missing_source_owner": 0
+    },
+    {
+      "table": "application_processes",
+      "source_rows": 0,
+      "missing_link": 0,
+      "broken_link": 0,
+      "missing_element_owner": 0,
+      "conflicting_owner": 0,
+      "missing_source_owner": 0
+    },
+    {
+      "table": "application_data_objects",
+      "source_rows": 0,
+      "missing_link": 0,
+      "broken_link": 0,
+      "missing_element_owner": 0,
+      "conflicting_owner": 0,
+      "missing_source_owner": 0
+    },
+    {
+      "table": "business_collaborations",
+      "source_rows": 0,
+      "missing_link": 0,
+      "broken_link": 0,
+      "missing_element_owner": 0,
+      "conflicting_owner": 0,
+      "missing_source_owner": 0
+    },
+    {
+      "table": "business_interfaces",
+      "source_rows": 0,
+      "missing_link": 0,
+      "broken_link": 0,
+      "missing_element_owner": 0,
+      "conflicting_owner": 0,
+      "missing_source_owner": 0
+    },
+    {
+      "table": "archimate_contracts",
+      "source_rows": 0,
+      "missing_link": 0,
+      "broken_link": 0,
+      "missing_element_owner": 0,
+      "conflicting_owner": 0,
+      "missing_source_owner": 0
+    },
+    {
+      "table": "archimate_representations",
+      "source_rows": 0,
+      "missing_link": 0,
+      "broken_link": 0,
+      "missing_element_owner": 0,
+      "conflicting_owner": 0,
+      "missing_source_owner": 0
+    },
+    {
+      "table": "missing_business_collaborations",
+      "source_rows": 0,
+      "missing_link": 0,
+      "broken_link": 0,
+      "missing_element_owner": 0,
+      "conflicting_owner": 0,
+      "missing_source_owner": 0
+    },
+    {
+      "table": "missing_business_interfaces",
+      "source_rows": 0,
+      "missing_link": 0,
+      "broken_link": 0,
+      "missing_element_owner": 0,
+      "conflicting_owner": 0,
+      "missing_source_owner": 0
+    },
+    {
+      "table": "missing_business_interactions",
+      "source_rows": 0,
+      "missing_link": 0,
+      "broken_link": 0,
+      "missing_element_owner": 0,
+      "conflicting_owner": 0,
+      "missing_source_owner": 0
+    },
+    {
+      "table": "products",
+      "source_rows": 0,
+      "missing_link": 0,
+      "broken_link": 0,
+      "missing_element_owner": 0,
+      "conflicting_owner": 0,
+      "missing_source_owner": 0
+    },
+    {
+      "table": "technology_collaborations_full",
+      "source_rows": 0,
+      "missing_link": 0,
+      "broken_link": 0,
+      "missing_element_owner": 0,
+      "conflicting_owner": 0,
+      "missing_source_owner": 0
+    },
+    {
+      "table": "technology_functions",
+      "source_rows": 0,
+      "missing_link": 0,
+      "broken_link": 0,
+      "missing_element_owner": 0,
+      "conflicting_owner": 0,
+      "missing_source_owner": 0
+    },
+    {
+      "table": "technology_processes",
+      "source_rows": 0,
+      "missing_link": 0,
+      "broken_link": 0,
+      "missing_element_owner": 0,
+      "conflicting_owner": 0,
+      "missing_source_owner": 0
+    },
+    {
+      "table": "technology_interactions",
+      "source_rows": 0,
+      "missing_link": 0,
+      "broken_link": 0,
+      "missing_element_owner": 0,
+      "conflicting_owner": 0,
+      "missing_source_owner": 0
+    },
+    {
+      "table": "technology_events",
+      "source_rows": 0,
+      "missing_link": 0,
+      "broken_link": 0,
+      "missing_element_owner": 0,
+      "conflicting_owner": 0,
+      "missing_source_owner": 0
+    },
+    {
+      "table": "business_actors",
+      "source_rows": 0,
+      "missing_link": 0,
+      "broken_link": 0,
+      "missing_element_owner": 0,
+      "conflicting_owner": 0,
+      "missing_source_owner": 0
+    },
+    {
+      "table": "business_roles",
+      "source_rows": 6,
+      "missing_link": 0,
+      "broken_link": 0,
+      "missing_element_owner": 0,
+      "conflicting_owner": 0,
+      "missing_source_owner": 0
+    },
+    {
+      "table": "business_services",
+      "source_rows": 0,
+      "missing_link": 0,
+      "broken_link": 0,
+      "missing_element_owner": 0,
+      "conflicting_owner": 0,
+      "missing_source_owner": 0
+    },
+    {
+      "table": "business_objects",
+      "source_rows": 0,
+      "missing_link": 0,
+      "broken_link": 0,
+      "missing_element_owner": 0,
+      "conflicting_owner": 0,
+      "missing_source_owner": 0
+    },
+    {
+      "table": "business_events",
+      "source_rows": 0,
+      "missing_link": 0,
+      "broken_link": 0,
+      "missing_element_owner": 0,
+      "conflicting_owner": 0,
+      "missing_source_owner": 0
+    },
+    {
+      "table": "physical_equipment",
+      "source_rows": 1,
+      "missing_link": 0,
+      "broken_link": 0,
+      "missing_element_owner": 0,
+      "conflicting_owner": 0,
+      "missing_source_owner": 0
+    },
+    {
+      "table": "physical_facilities",
+      "source_rows": 0,
+      "missing_link": 0,
+      "broken_link": 0,
+      "missing_element_owner": 0,
+      "conflicting_owner": 0,
+      "missing_source_owner": 0
+    },
+    {
+      "table": "physical_distribution_networks",
+      "source_rows": 0,
+      "missing_link": 0,
+      "broken_link": 0,
+      "missing_element_owner": 0,
+      "conflicting_owner": 0,
+      "missing_source_owner": 0
+    },
+    {
+      "table": "physical_materials",
+      "source_rows": 0,
+      "missing_link": 0,
+      "broken_link": 0,
+      "missing_element_owner": 0,
+      "conflicting_owner": 0,
+      "missing_source_owner": 0
+    },
+    {
+      "table": "business_processes",
+      "source_rows": 0,
+      "missing_link": 0,
+      "broken_link": 0,
+      "missing_element_owner": 0,
+      "conflicting_owner": 0,
+      "missing_source_owner": 0
+    }
+  ]
+}
