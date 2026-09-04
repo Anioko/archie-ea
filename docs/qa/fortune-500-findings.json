@@ -353,14 +353,29 @@
       "area": "release_engineering",
       "severity": "high",
       "title": "Post-deploy verification raced external load-balancer health convergence",
-      "status": "ready_for_retest",
+      "status": "verified_production",
       "original_evidence": "4 Sep 2026 exact-digest cutover of 1b8fad54 passed local /health with status=healthy and environment=production, then the first public /health request immediately returned HTTP 503. Production logs show the external load balancer probing at approximately 15-second intervals; the backend had been unavailable during the long schema phase and needed new successful probes before routing resumed. The one-shot public verifier therefore rejected a locally healthy candidate. The first-cutover controller restored exact legacy commit e74bd8ec and independently verified healthy production service.",
       "required_fix": "After local exact-image health succeeds, wait for a bounded external /health response that reports both healthy and production before running the broader public-page verifier. Retain rollback on timeout or any persistent application failure.",
-      "retest_evidence": "4 Sep 2026 strict TDD: the deployment contract failed before a public readiness wait existed, then the complete six-test release-artifact contract passed after implementation; deploy/deploy.sh also passed Bash syntax validation. Exact-SHA CI and successful production cutover remain required.",
+      "retest_evidence": "4 Sep 2026 strict TDD: the deployment contract failed before a public readiness wait existed, then the complete six-test release-artifact contract passed after implementation; deploy/deploy.sh also passed Bash syntax validation. Exact-SHA CI run 33849959515 passed 12/12 jobs and published digest sha256:68ebd67cc97217846feaa1daa667d03303e433a9e214036c7edb8636d357127e. The protected production cutover of exact commit 0a17761d waited through external routing convergence, passed local and public production health, served all three anonymous product surfaces with no error copy, recorded the exact digest/revision only after checks passed, and retained backup db-20260904-082746.sql.gz.",
       "closure_tests": [
         "tests/test_release_artifact_contract.py::test_host_deployer_accepts_only_digest_and_full_commit_inputs",
         "deploy/deploy.sh passes Bash syntax validation",
         "Exact-digest production cutover waits through load-balancer convergence and all public product checks pass"
+      ]
+    },
+    {
+      "id": "F500-026",
+      "area": "ai_safety",
+      "severity": "high",
+      "title": "fence_untrusted() did not neutralize its own delimiter syntax inside untrusted content, allowing a forged fence-close/fence-open pair",
+      "status": "verified_local",
+      "original_evidence": "4 Sep 2026, worktree security/ai-red-team, base 0a17761d: dynamic red-team pass against ToolExecutor/fence_untrusted (not the static ai-* gates, which check shape, not runtime escape resistance). Crafted body containing a literal \"=== END <label> ===\" line followed by forged instruction text and a fake \"=== BEGIN <label> ===\" round-tripped through fence_untrusted() byte-for-byte unchanged: python repro showed the output contained the exact forged end-marker string appearing before the real one, i.e. untrusted content could manufacture what looks like the end of its own fenced block followed by fresh apparently-trusted text - a delimiter/fence-escape prompt injection, same class as an un-escaped </script> breaking a fenced HTML context.",
+      "required_fix": "app/modules/ai_chat/services/architect_persona_charters.py: fence_untrusted() must neutralize byte-identical copies of its delimiter inside untrusted bodies without deleting the payload, while preserving fixed server-controlled labels and the no-fabrication preamble.",
+      "retest_evidence": "4 Sep 2026, commit a7b04f85 (merged to main): Claude's five focused adversarial tests passed. Codex independently inspected both production call sites (both use fixed server-controlled labels), reran tests/test_ai_red_team_fence_escape.py (5/5 passed), and ran the complete local static verifier (44/44 passed, zero skips), including all AI boundary, approval, evidence and untrusted-content gates. The same red-team pass traced ToolExecutor user/organization identity to current_user.id at every call site and recorded cross-tenant IDOR through client-supplied executor identity as a verified negative result in docs/qa/runs/2026-09-04-ai-red-team.md. Exact-SHA Linux CI and deployment remain required before this fix is the active production artifact.",
+      "closure_tests": [
+        "tests/test_ai_red_team_fence_escape.py",
+        "Full static verification",
+        "A live conversational red-team pass through the actual chat endpoint (not yet attempted - see docs/qa/runs/2026-09-04-ai-red-team.md \"Not yet attempted\" section)"
       ]
     }
   ]
