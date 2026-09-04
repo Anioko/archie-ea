@@ -726,12 +726,15 @@ def classify_control_for_outcome(control):
 
 
 def control_outcome_fingerprint(control, path):
-    """Reuse identical navigation evidence; keep page-local controls contextual."""
-    href = control.get("href") or ""
-    if (control.get("tag") or "").lower() == "a" and href:
-        return ("navigation", href)
+    """Identify an instance, never transfer success between pages or controls.
+
+    Identical destinations do not imply identical click handlers or overlays.
+    Ordinals distinguish repeated links even when privacy sanitization removes
+    the query or fragment that made their destinations different.
+    """
     return (
-        "page-control", path, control.get("tag") or "", control.get("id") or "",
+        "page-control", path, control.get("ordinal"), control.get("href") or "",
+        control.get("tag") or "", control.get("id") or "",
         control.get("testid") or "", control.get("label") or "",
         tuple(sorted((control.get("handlers") or {}).items())),
     )

@@ -1,0 +1,227 @@
+{
+  "run": 33923515022,
+  "revision": "09c2c675c01cf076d41bb8b19359e494cf355b8d",
+  "coverage_note": "Four completed page surveys only. These observations are not unique confirmed defects or interaction passes. This revision predates corrected role privilege seeding and L10 click-outcome auditing. Remaining seven roles not represented.",
+  "reports": [
+    {
+      "role": [
+        "arb_member"
+      ],
+      "route_candidates": 1232,
+      "requests": 2464,
+      "findings": 364,
+      "noninformational": 94,
+      "kinds": [
+        {
+          "kind": "dead-link",
+          "count": 4
+        },
+        {
+          "kind": "duplicate-breadcrumbs",
+          "count": 10
+        },
+        {
+          "kind": "expected-forbidden",
+          "count": 106
+        },
+        {
+          "kind": "forbidden",
+          "count": 158
+        },
+        {
+          "kind": "form-missing-csrf",
+          "count": 12
+        },
+        {
+          "kind": "no-main-landmark",
+          "count": 2
+        },
+        {
+          "kind": "not-found",
+          "count": 38
+        },
+        {
+          "kind": "server-error",
+          "count": 2
+        },
+        {
+          "kind": "service-unavailable",
+          "count": 6
+        },
+        {
+          "kind": "unauthorized-access",
+          "count": 6
+        },
+        {
+          "kind": "unnamed-button",
+          "count": 20
+        }
+      ]
+    },
+    {
+      "role": [
+        "business_architect"
+      ],
+      "route_candidates": 1232,
+      "requests": 2464,
+      "findings": 364,
+      "noninformational": 94,
+      "kinds": [
+        {
+          "kind": "dead-link",
+          "count": 4
+        },
+        {
+          "kind": "duplicate-breadcrumbs",
+          "count": 10
+        },
+        {
+          "kind": "expected-forbidden",
+          "count": 106
+        },
+        {
+          "kind": "forbidden",
+          "count": 158
+        },
+        {
+          "kind": "form-missing-csrf",
+          "count": 12
+        },
+        {
+          "kind": "no-main-landmark",
+          "count": 2
+        },
+        {
+          "kind": "not-found",
+          "count": 38
+        },
+        {
+          "kind": "server-error",
+          "count": 2
+        },
+        {
+          "kind": "service-unavailable",
+          "count": 6
+        },
+        {
+          "kind": "unauthorized-access",
+          "count": 6
+        },
+        {
+          "kind": "unnamed-button",
+          "count": 20
+        }
+      ]
+    },
+    {
+      "role": [
+        "enterprise_architect"
+      ],
+      "route_candidates": 1232,
+      "requests": 2464,
+      "findings": 364,
+      "noninformational": 94,
+      "kinds": [
+        {
+          "kind": "dead-link",
+          "count": 4
+        },
+        {
+          "kind": "duplicate-breadcrumbs",
+          "count": 10
+        },
+        {
+          "kind": "expected-forbidden",
+          "count": 106
+        },
+        {
+          "kind": "forbidden",
+          "count": 158
+        },
+        {
+          "kind": "form-missing-csrf",
+          "count": 12
+        },
+        {
+          "kind": "no-main-landmark",
+          "count": 2
+        },
+        {
+          "kind": "not-found",
+          "count": 38
+        },
+        {
+          "kind": "server-error",
+          "count": 2
+        },
+        {
+          "kind": "service-unavailable",
+          "count": 6
+        },
+        {
+          "kind": "unauthorized-access",
+          "count": 6
+        },
+        {
+          "kind": "unnamed-button",
+          "count": 20
+        }
+      ]
+    },
+    {
+      "role": [
+        "solution_architect"
+      ],
+      "route_candidates": 1232,
+      "requests": 2464,
+      "findings": 364,
+      "noninformational": 94,
+      "kinds": [
+        {
+          "kind": "dead-link",
+          "count": 4
+        },
+        {
+          "kind": "duplicate-breadcrumbs",
+          "count": 10
+        },
+        {
+          "kind": "expected-forbidden",
+          "count": 106
+        },
+        {
+          "kind": "forbidden",
+          "count": 158
+        },
+        {
+          "kind": "form-missing-csrf",
+          "count": 12
+        },
+        {
+          "kind": "no-main-landmark",
+          "count": 2
+        },
+        {
+          "kind": "not-found",
+          "count": 38
+        },
+        {
+          "kind": "server-error",
+          "count": 2
+        },
+        {
+          "kind": "service-unavailable",
+          "count": 6
+        },
+        {
+          "kind": "unauthorized-access",
+          "count": 6
+        },
+        {
+          "kind": "unnamed-button",
+          "count": 20
+        }
+      ]
+    }
+  ]
+}

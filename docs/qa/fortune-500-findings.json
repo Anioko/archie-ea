@@ -651,6 +651,17 @@
       "required_fix": "Use the application shell and verify a real browser can generate the register and display its result within the main landmark.",
       "retest_evidence": "Changed the shell to layouts/admin_base.html. Template syntax and CSS freshness checks pass. Added a full-application browser journey that clicks Generate RoPA and checks the response and rendered register; execution is still pending. Not browser verified or deployed.",
       "closure_tests": ["tests/smoke/test_ropa_generation.py", "Production RoPA generation and navigation retest"]
+    },
+    {
+      "id": "F500-047",
+      "area": "qa_control_evidence_integrity",
+      "severity": "high",
+      "title": "Whole-product auditor reused navigation success across different pages and link instances",
+      "status": "verified_local",
+      "original_evidence": "The L10 evidence fingerprint returned only the sanitized href for anchors. A successful link on one page could therefore qualify another page's broken link, or a different fragment/query link whose destination was sanitized to the same path. A regression requiring independent page/control identities failed against this implementation.",
+      "required_fix": "Keep navigation evidence specific to the source page and visible control ordinal, rather than transferring success by destination.",
+      "retest_evidence": "Fingerprint now includes page, ordinal, destination and control attributes. Eighteen focused audit tests pass, including a real Chromium case with two identical destination/label links: the first opens a panel and the second does nothing, and their evidence remains distinct. The running older audit does not contain this correction; a final-revision full audit is still required. Four completed older role surveys are summarized in docs/qa/runs/2026-09-04-four-role-survey-summary.json with their limitations explicit.",
+      "closure_tests": ["tests/test_production_readiness_control_outcomes.py::test_navigation_evidence_is_specific_to_its_page_and_control_instance", "tests/test_production_readiness_control_outcomes.py::test_identical_links_need_independent_browser_evidence", "Full product audit on final release revision"]
     }
   ]
 }

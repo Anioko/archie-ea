@@ -78,16 +78,40 @@ def test_safe_control_classification_excludes_fields_and_disabled_controls():
     })[0] == "safe"
 
 
-def test_repeated_navigation_is_deduplicated_but_page_controls_are_not():
-    navigation = {"tag": "a", "href": "/portfolio", "label": "Portfolio"}
+def test_navigation_evidence_is_specific_to_its_page_and_control_instance():
+    navigation = {"tag": "a", "href": "/portfolio", "label": "Portfolio", "ordinal": 0}
     button = {"tag": "button", "href": "", "label": "Open", "handlers": {"@click": "open"}}
 
-    assert audit.control_outcome_fingerprint(navigation, "/one") == (
+    assert audit.control_outcome_fingerprint(navigation, "/one") != (
         audit.control_outcome_fingerprint(navigation, "/two")
+    )
+    assert audit.control_outcome_fingerprint(navigation, "/one") != (
+        audit.control_outcome_fingerprint({**navigation, "ordinal": 1}, "/one")
     )
     assert audit.control_outcome_fingerprint(button, "/one") != (
         audit.control_outcome_fingerprint(button, "/two")
     )
+
+
+def test_identical_links_need_independent_browser_evidence():
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        try:
+            page = browser.new_page()
+            page.set_content(
+                '<a href="#panel" onclick="event.preventDefault(); '
+                'document.getElementById(\'panel\').hidden=false">Open</a>'
+                '<a href="#panel" onclick="event.preventDefault()">Open</a>'
+                '<section id="panel" hidden>Panel content</section>'
+            )
+            controls = page.evaluate(audit.PAGE_PROBE)["controls"]
+            assert audit.control_outcome_fingerprint(controls[0], "/same") != (
+                audit.control_outcome_fingerprint(controls[1], "/same")
+            )
+            assert audit.probe_control_outcome(page, 0)["status"] == "verified"
+            assert audit.probe_control_outcome(page, 1)["status"] == "no-observable-outcome"
+        finally:
+            browser.close()
 
 
 def test_real_browser_probe_requires_an_observable_outcome_not_a_handler():
