@@ -384,6 +384,21 @@
         "Full static verification",
         "A live conversational red-team pass through the actual chat endpoint (not yet attempted - see docs/qa/runs/2026-09-04-ai-red-team.md \"Not yet attempted\" section)"
       ]
+    },
+    {
+      "id": "F500-027",
+      "area": "data_integrity",
+      "severity": "high",
+      "title": "CTO-tab hero Health Score and lazy-loaded Executive Summary fragment reported different values for the same metrics on the same page",
+      "status": "verified_local",
+      "original_evidence": "4 Sep 2026: user-supplied screenshots of the CTO dashboard tab, same page load, taken moments apart. Hero panel: Health Score 48, Capability Coverage 100%. Executive Summary fragment (lazy-loaded via GET /dashboard/api/executive-summary): Health Score 14.3, Capability Coverage % 0. Traced: dashboard_views.py::overview computes capability coverage from ApplicationCapabilityMapping (L1 capabilities with >=1 mapped application, subtree-rolled-up); ExecutiveDashboardService._get_capability_coverage computed it from SolutionCapabilityMapping (capabilities with >=1 mapped solution - a much sparser relationship). Same label, same 20% weight in an identically-shaped 40/30/20/10 health-score composite, two different tables - an ADR-0008 violation for a computed metric rather than a stored one.",
+      "proposed_fix": "app/modules/dashboard/v2/services/capability_coverage.py: new compute_l1_capability_coverage(), the single shared computation (ports the hero panel exact logic). ExecutiveDashboardService._get_capability_coverage now calls it instead of reimplementing.",
+      "retest_evidence": "4 Sep 2026, commit c2c3867a (merged to main): pytest tests/test_dashboard_capability_coverage_agreement.py -> 1 passed (seeds a capability mapped to an application but not a solution; asserts the shared function and the service call return identical dicts, not just non-conflicting numbers). pytest tests/test_dashboard_health_score_honesty.py tests/test_executive_briefing_ai.py -> 17 passed, no regression. python scripts/verify.py --tag static -> 43 passed, 0 failed, 1 skipped (pre-existing, unrelated). NOT fully closed: phase_maturity and risk_posture sub-components remain genuinely different formulas between the hero and the fragment (Phase-C+ percentage vs persona avg-maturity; risk severity vs risk-documentation coverage) - flagged as remaining scope, not silently left.",
+      "closure_tests": [
+        "tests/test_dashboard_capability_coverage_agreement.py",
+        "Full static verification",
+        "Unify phase_maturity and risk_posture the same way (not yet attempted)"
+      ]
     }
   ]
 }
