@@ -356,9 +356,11 @@ def browser():
         b.close()
 
 
-# The nine archetypes ENTERPRISE_ROLE_SECTION_MAP defines.
+# Every enterprise role the product defines. The scope contract below prevents
+# a new or promoted persona from silently disappearing from browser coverage.
 ARCHETYPES = [
     "solution_architect", "enterprise_architect", "business_architect",
     "arb_member", "portfolio_manager", "cto", "procurement",
-    "application_manager", "platform_admin",
+    "application_manager", "platform_admin", "security_architect",
+    "data_architect",
 ]

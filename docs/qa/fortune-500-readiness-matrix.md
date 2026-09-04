@@ -1,7 +1,7 @@
 # Archie EA Fortune 500 readiness matrix
 
-Status: **repository-controlled qualification green; general Fortune 500
-approval blocked by the external/manual and production-scale rows below**
+Status: **qualification reopened; whole-product interaction coverage and active
+frontend defects block repository-controlled approval**
 
 Candidate identity: resolved from the full Git SHA at execution time and recorded
 with the OCI digest in CI's retained `release.json`; no mutable branch name or
@@ -22,11 +22,11 @@ enterprise availability until the named owner supplies it.
 |---|---|---|---|
 | Build and static correctness | Every `verify.py --tag static` gate passes; no skip | Final exact-SHA CI: 45 static checks passed; independent local rerun: 44/44 with zero skips | Proven—exact SHA |
 | Automated suite integrity | Suite collects with strict markers; no import/collection errors or applicable skips | Final CI collected and passed 4,003/4,003 backend tests with zero failed/skipped/xfail/xpass; 2,398 endpoints exercised | Proven—exact SHA |
-| Functional workflows | All unit, integration and persona journeys pass against PostgreSQL 16 | Backend 4,003/4,003; Chromium archetype journeys 157/157; interaction census 9/9; Level 10 walkthrough green | Proven—exact SHA |
+| Functional workflows | All unit, integration and persona journeys pass against PostgreSQL 16 | Historical candidate passed 4,003 backend tests and the sampled browser suites, but the journey map covers only 20 unique paths across 9 personas and the separately named Level 10 walkthrough covers only 4 personas. Those samples did not prevent multiple broken production controls. | Gap—whole-product outcome inventory active |
 | Tenant isolation | Cross-tenant read/write/search/export/cache/background paths denied; missing tenant context fails closed | Static SQL/ORM scoping gates measure zero; full PostgreSQL suite and authorization matrix pass; AI tool-executor identity call sites traced to server-trusted `current_user.id` | Proven automated/code audit; independent DAST remains external |
 | Authorization | Route/API action matrix covers anonymous and every enterprise role | Complete backend and browser matrices pass; typed ARB and Governance Gates role boundaries included | Proven—exact SHA |
-| Frontend design system | Token, shell, navigation, UI-contract, asset, CSS and console gates pass | All static design/UI/CSS/asset/console gates pass; Chromium, Firefox and WebKit suites green | Proven—exact SHA |
-| Interaction correctness | Critical controls, modals, errors, loading, retry, empty and degraded states exercised | Chromium 157 journeys plus 9 interaction-reality cases pass; production public error-banner checks and 11 adversarial probes pass | Proven automated—exact SHA |
+| Frontend design system | Token, shell, navigation, UI-contract, asset, CSS and console gates pass | Static gates passed historically, but role-specific dashboard panels still shipped fourteen colored side accents after a claimed flat-card correction (F500-030). The current repair requires rendered multi-role verification. | Reopened—active visual defect |
+| Interaction correctness | Every reachable visible control has an observed navigation, modal, download, mutation, feedback, persistence, authorization and failure outcome | The structural census passed while production solution controls did nothing. The repository has 564 templates, 476 containing button/link-like controls, versus only 20 unique archetype journey paths and 9 structural census cases. F500-028/F500-029 reopen this row; product-wide outcome coverage is not yet present. | Blocked—active critical coverage gap |
 | Responsive design | Critical persona journeys pass at 320/390/768/1024 and desktop widths with no clipping or horizontal overflow | Exact-SHA Chromium responsive persona/repository coverage passes; Firefox/WebKit critical journeys pass | Proven automated; real-device evidence external |
 | Visual regression | Reviewed deterministic screenshots for critical pages/states/viewports; unapproved pixel diffs = 0 | Screenshot capture exists for architecture journey only; no broad approved baseline found | Gap—automation required |
 | Browser compatibility | Agreed matrix passes: Edge/Chrome, Firefox ESR, Safari if supported | Final exact-SHA CI: Chromium 157+9, Firefox 56/56 and WebKit 56/56, all with zero nonpasses | Proven engine-level; real Edge and Safari hardware external |

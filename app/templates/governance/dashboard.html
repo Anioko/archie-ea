@@ -186,7 +186,7 @@
                             </td>
                             <td class="p-3 text-sm" x-text="std.version"></td>
                             <td class="p-3">
-                                <button type="button" class="text-sm text-primary hover:underline">Edit</button>
+                                <span class="text-sm text-muted-foreground">Editing unavailable</span>
                             </td>
                         </tr>
                     </template>
@@ -226,7 +226,7 @@
                             </td>
                             <td class="p-3 text-sm" x-text="review.reviewer"></td>
                             <td class="p-3">
-                                <button type="button" class="text-sm text-primary hover:underline">View</button>
+                                <a :href="review.solution_url" class="text-sm text-primary hover:underline">View solution</a>
                             </td>
                         </tr>
                     </template>

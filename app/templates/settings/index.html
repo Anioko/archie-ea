@@ -113,20 +113,6 @@ input:checked + .slider:before {
 .security-medium { background: hsl(var(--warning) / 0.15); color: hsl(var(--warning)); }
 .security-weak { background: hsl(var(--destructive) / 0.1); color: hsl(var(--destructive)); }
 
-.backup-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 1rem;
-    border: 1px solid hsl(var(--border));
-    border-radius: 6px;
-    margin-bottom: 0.5rem;
-}
-
-.backup-item:hover {
-    border-color: hsl(var(--primary));
-}
-
 .notification-item {
     display: flex;
     justify-content: space-between;
@@ -561,66 +547,9 @@ input:checked + .slider:before {
                 <h2 class="text-xl font-semibold text-foreground">Backup & Restore</h2>
             </div>
             <div class="settings-content">
-                <div class="mb-6">
-                    <h3 class="text-lg font-medium text-foreground mb-4">Automated Backups</h3>
-                    <div class="form-grid">
-                        <div>
-                            <label for="backup-frequency" class="block text-sm font-medium text-foreground/80 mb-1">Backup Frequency</label>
-                            <select id="backup-frequency" class="w-full px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary" data-testid="backup-frequency">
-                                <option value="daily">Daily</option>
-                                <option value="weekly" selected>Weekly</option>
-                                <option value="monthly">Monthly</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label for="retention-period" class="block text-sm font-medium text-foreground/80 mb-1">Retention Period</label>
-                            <select id="retention-period" class="w-full px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary" data-testid="retention-period">
-                                <option value="30">30 days</option>
-                                <option value="90" selected>90 days</option>
-                                <option value="365">1 year</option>
-                            </select>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="mb-6">
-                    <h3 class="text-lg font-medium text-foreground mb-4">Manual Backup</h3>
-                    <div class="flex gap-3">
-                        <button type="button" id="btn-create-backup" class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 h-10 px-4 py-2 bg-primary text-primary-foreground hover:bg-primary/90" data-testid="btn-create-backup" aria-label="Create a new backup">Create Backup Now</button>
-                        <button type="button" class="btn-export" data-testid="btn-download-backup">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-                            </svg>
-                            Download Latest Backup
-                        </button>
-                    </div>
-                </div>
-
-                <div>
-                    <h3 class="text-lg font-medium text-foreground mb-4">Available Backups</h3>
-                    <div id="backup-list" data-testid="backup-list">
-                        <div class="backup-item">
-                            <div>
-                                <div class="font-medium">backup_2024_02_20_1000.zip</div>
-                                <div class="text-sm text-muted-foreground">Created: Feb 20, 2024 10:00 AM • Size: 2.4 MB</div>
-                            </div>
-                            <div class="flex gap-2">
-                                <button type="button" class="inline-flex items-center justify-center whitespace-nowrap rounded-md font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 h-9 px-3 text-sm bg-secondary text-secondary-foreground hover:bg-secondary/80" data-testid="btn-restore-1" aria-label="Restore from this backup">Restore</button>
-                                <button type="button" class="inline-flex items-center justify-center whitespace-nowrap rounded-md font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 h-9 px-3 text-sm bg-destructive text-destructive-foreground hover:bg-destructive/90" data-testid="btn-delete-backup-1" aria-label="Delete this backup">Delete</button>
-                            </div>
-                        </div>
-
-                        <div class="backup-item">
-                            <div>
-                                <div class="font-medium">backup_2024_02_13_1000.zip</div>
-                                <div class="text-sm text-muted-foreground">Created: Feb 13, 2024 10:00 AM • Size: 2.1 MB</div>
-                            </div>
-                            <div class="flex gap-2">
-                                <button type="button" class="inline-flex items-center justify-center whitespace-nowrap rounded-md font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 h-9 px-3 text-sm bg-secondary text-secondary-foreground hover:bg-secondary/80" data-testid="btn-restore-2" aria-label="Restore from this backup">Restore</button>
-                                <button type="button" class="inline-flex items-center justify-center whitespace-nowrap rounded-md font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 h-9 px-3 text-sm bg-destructive text-destructive-foreground hover:bg-destructive/90" data-testid="btn-delete-backup-2" aria-label="Delete this backup">Delete</button>
-                            </div>
-                        </div>
-                    </div>
+                <div class="rounded-lg border border-border bg-muted/30 p-4" data-testid="backup-capability-unavailable">
+                    <p class="text-sm font-medium text-foreground">Backup and restore are not available in this build.</p>
+                    <p class="mt-1 text-sm text-muted-foreground">No archive has been created or can be restored from this page.</p>
                 </div>
             </div>
         </div>
@@ -711,7 +640,6 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('btn-save-all').addEventListener('click', saveAllSettings);
     document.getElementById('btn-export-settings').addEventListener('click', exportSettings);
     document.getElementById('btn-import-settings').addEventListener('click', importSettings);
-    document.getElementById('btn-create-backup').addEventListener('click', createBackup);
     document.getElementById('btn-reset-defaults').addEventListener('click', () => resetModal.classList.remove('hidden'));
     document.getElementById('btn-cancel-reset').addEventListener('click', () => resetModal.classList.add('hidden'));
     document.getElementById('btn-confirm-reset').addEventListener('click', resetToDefaults);
@@ -752,9 +680,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 syncInterval: '15',
                 retryAttempts: '3',
                 rateLimiting: true,
-                webhookSecurity: true,
-                backupFrequency: 'weekly',
-                retentionPeriod: '90'
+                webhookSecurity: true
             };
             settings = Object.assign({}, defaults, saved);
 
@@ -833,14 +759,6 @@ document.addEventListener('DOMContentLoaded', function() {
         showError('Settings import is not available in this build.');
     }
 
-    // No backup API exists yet. Previously this fabricated a backup-list entry
-    // (with an invented "2.3 MB" size) and reported success — an admin would
-    // believe a backup existed that had never been written. Report honestly
-    // instead; a backup that lies about succeeding is only discovered at restore.
-    async function createBackup() {
-        showError('Backups are not available in this build. No backup was created.');
-    }
-
     async function resetToDefaults() {
         try {
             // Reset all form elements to defaults
@@ -865,8 +783,6 @@ document.addEventListener('DOMContentLoaded', function() {
             document.getElementById('retry-attempts').value = '3';
             document.getElementById('rate-limiting').checked = true;
             document.getElementById('webhook-security').checked = true;
-            document.getElementById('backup-frequency').value = 'weekly';
-            document.getElementById('retention-period').value = '90';
 
             // NOT loadSettings(): that re-reads the SAVED settings and writes them
             // back over the defaults just applied, so the reset visibly undid itself

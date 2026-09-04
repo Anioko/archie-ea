@@ -34,15 +34,28 @@ def test_solution_blueprint_modal_and_phase_gate_controls_have_observed_outcomes
             state="hidden", timeout=PAGE_TIMEOUT
         )
 
-        page.get_by_role("button", name="Link Existing Elements").first.click()
+        # Blueprint sections intentionally start collapsed. Open a supported
+        # section exactly as a user must, then exercise its visible toolbar;
+        # the empty-state-only "Link Existing Elements" label is not guaranteed
+        # when server data says the section is populated.
+        section = page.locator("#deployment_view")
+        section.locator(":scope > div").first.get_by_role("button").click()
+        section.get_by_role("button", name="Link", exact=True).click()
         page.get_by_role("heading", name="Link Elements").wait_for(
             state="visible", timeout=PAGE_TIMEOUT
         )
-        page.get_by_role("button", name="Close link dialog").click()
+        page.get_by_role("button", name="Done", exact=True).click()
+        page.get_by_role("heading", name="Link Elements").wait_for(
+            state="hidden", timeout=PAGE_TIMEOUT
+        )
 
-        page.get_by_role("button", name="Codegen").first.click()
+        section.get_by_role("button", name="Codegen", exact=True).click()
         page.get_by_role("heading", name="Code Generation").wait_for(
             state="visible", timeout=PAGE_TIMEOUT
+        )
+        page.get_by_role("button", name="Close", exact=True).click()
+        page.get_by_role("heading", name="Code Generation").wait_for(
+            state="hidden", timeout=PAGE_TIMEOUT
         )
     finally:
         page.close()

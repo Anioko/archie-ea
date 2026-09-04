@@ -99,9 +99,7 @@
                         <th class="px-4 py-3 text-left font-medium text-muted-foreground">Enterprise</th>
                     </tr>
                 </thead>
-                <tbody class="divide-y divide-border">{# actionable-rows-ok: arb_decision_routes exposes decisions as JSON only -- no per-decision HTML
-                     page exists, so a title link would go nowhere. Decisions are raised and
-                     changed on the change request that carries them. #}
+                <tbody class="divide-y divide-border">
                     {% for d in decisions %}
                     <tr data-row
                         x-show="
@@ -114,12 +112,10 @@
                         <td class="px-4 py-3">
                             <div class="flex items-center gap-2">
                                 <span class="text-xs font-mono text-muted-foreground">{{ d.decision_id }}</span>
-                                {# No per-decision HTML page exists (arb_decision_routes
-                                   exposes JSON only), so the title is text, not a link
-                                   that goes nowhere. #}
-                                <span class="font-medium text-foreground">
+                                <a href="{{ url_for('arch_decisions.view_decision', decision_id=d.id) }}"
+                                   class="font-medium text-foreground hover:text-primary hover:underline">
                                     {{ d.title }}
-                                </span>
+                                </a>
                             </div>
                         </td>
                         <td class="px-4 py-3 text-muted-foreground">

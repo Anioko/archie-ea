@@ -37,6 +37,9 @@ JOURNEY = {
     "application_manager":  ["/my-applications/", "/my-applications/list",
                              "/my-applications/health", "/my-applications/roadmap"],
     "platform_admin":       ["/admin/"],
+    "security_architect":   ["/risks/", "/admin/governance-gates"],
+    "data_architect":       ["/architecture/data-architecture",
+                             "/architecture/data-lineage"],
 }
 
 PAGE_STATE = """() => {

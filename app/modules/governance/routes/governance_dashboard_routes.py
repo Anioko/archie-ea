@@ -5,7 +5,7 @@ Provides central governance oversight, ARB reviews, ADRs, risk register, and ent
 import logging
 from datetime import datetime, timedelta
 
-from flask import Blueprint, jsonify, render_template
+from flask import Blueprint, jsonify, redirect, render_template, url_for
 from flask_login import login_required
 
 from app import db
@@ -175,6 +175,7 @@ def api_recent_reviews():
         return jsonify([{
             'id': gov.id,
             'solution_name': sol.name,
+            'solution_url': url_for('solution_design.view_solution', solution_id=sol.id),
             'review_date': gov.submitted_at.strftime('%Y-%m-%d') if gov.submitted_at else 'N/A',
             'status': gov.arb_decision,
             'reviewer': gov.reviewer_name if hasattr(gov, 'reviewer_name') else 'ARB'
@@ -188,22 +189,22 @@ def api_recent_reviews():
 @governance_bp.route("/arb-reviews")
 @login_required
 def arb_reviews():
-    """ARB Reviews page."""
-    return render_template("governance/arb_reviews.html")
+    """Redirect the legacy dashboard shortcut to the ARB review workflow."""
+    return redirect(url_for("arb.reviews"))
 
 
 @governance_bp.route("/adr-list")
 @login_required
 def adr_list():
-    """Architecture Decision Records list page."""
-    return render_template("governance/adr_list.html")
+    """Redirect the legacy dashboard shortcut to the decision register."""
+    return redirect(url_for("arch_decisions.list_decisions"))
 
 
 @governance_bp.route("/risk-register")
 @login_required
 def risk_register():
-    """Risk Register page."""
-    return render_template("governance/risk_register.html")
+    """Redirect the legacy dashboard shortcut to the risk register."""
+    return redirect(url_for("risk.risk_register"))
 
 
 @governance_bp.route("/principles")
