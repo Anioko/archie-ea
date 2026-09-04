@@ -1,6 +1,7 @@
 """Outcome tests for controls the wiring-only census cannot validate."""
 
 import pytest
+from playwright.sync_api import expect
 
 from .conftest import PAGE_TIMEOUT, PASSWORD
 
@@ -33,6 +34,25 @@ def test_solution_blueprint_modal_and_phase_gate_controls_have_observed_outcomes
         page.get_by_text("Error loading gate:").wait_for(
             state="hidden", timeout=PAGE_TIMEOUT
         )
+        # Absence of an error alone can pass before the request even starts.
+        # Exercise refresh and compare the rendered checklist with its response.
+        with page.expect_response(
+            lambda response: response.url.endswith("/phase-gate")
+            and response.request.method == "GET",
+            timeout=PAGE_TIMEOUT,
+        ) as refreshed:
+            page.get_by_role("button", name="Refresh checklist", exact=True).click()
+        assert refreshed.value.status == 200
+        gate_data = refreshed.value.json()
+        assert gate_data["success"] is True
+        gate_panel = page.locator('[x-data="phaseGateChecklist()"]')
+        expect(gate_panel.locator('[x-text="gate.summary.total"]')).to_have_text(
+            str(gate_data["summary"]["total"]), timeout=PAGE_TIMEOUT
+        )
+        expect(gate_panel.locator('[x-text="gate.phase"]')).to_have_text(
+            str(gate_data["phase"]), timeout=PAGE_TIMEOUT
+        )
+        expect(gate_panel.locator('[x-show="error"]')).to_be_hidden()
 
         # Blueprint sections intentionally start collapsed. Open a supported
         # section exactly as a user must, then exercise its visible toolbar;

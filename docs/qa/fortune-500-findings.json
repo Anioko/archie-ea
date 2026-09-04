@@ -640,6 +640,17 @@
       "required_fix": "Render only the contextual trail and verify the visible parent link navigates successfully in the application browser.",
       "retest_evidence": "Removed redundant breadcrumb arguments from the five header calls, preserving contextual parent navigation. Template syntax gate passes. Added five full-application Playwright cases requiring one visible breadcrumb and successful parent navigation; those browser cases still require CI execution. No browser-verified closure is claimed.",
       "closure_tests": ["tests/smoke/test_breadcrumb_navigation.py", "Production visual and breadcrumb navigation checks"]
+    },
+    {
+      "id": "F500-046",
+      "area": "data_governance_application_shell",
+      "severity": "medium",
+      "title": "RoPA register uses public-site layout with dead navigation and no application main landmark",
+      "status": "in_progress",
+      "original_evidence": "Whole-product browser survey 33923515022 recorded missing main landmarks and dead About links on /genome/data/ropa. The template extends layouts/base.html instead of the authenticated application shell.",
+      "required_fix": "Use the application shell and verify a real browser can generate the register and display its result within the main landmark.",
+      "retest_evidence": "Changed the shell to layouts/admin_base.html. Template syntax and CSS freshness checks pass. Added a full-application browser journey that clicks Generate RoPA and checks the response and rendered register; execution is still pending. Not browser verified or deployed.",
+      "closure_tests": ["tests/smoke/test_ropa_generation.py", "Production RoPA generation and navigation retest"]
     }
   ]
 }
