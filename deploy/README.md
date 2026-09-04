@@ -144,7 +144,8 @@ It checks every archive decompresses, takes a fresh single-database dump,
 restores it into a scratch database, compares row counts table by table against
 live, and drops the scratch copy. **The live database is only ever read.**
 
-Last run: 733 tables restored, 0 row-count mismatches, 0 restore errors.
+Last run (4 Sep 2026): 789 tables restored, 0 row-count mismatches, 0 restore
+errors; all 75 retained archives passed decompression checks.
 
 Run it after any change to the schema or the backup mechanism, and on a schedule
 if nothing else forces it — the failure mode is silent until an incident.
