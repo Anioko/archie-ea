@@ -306,10 +306,10 @@
       "area": "release_engineering",
       "severity": "high",
       "title": "First immutable production cutover had no automatic rollback target",
-      "status": "ready_for_retest",
+      "status": "verified_production",
       "original_evidence": "4 Sep 2026 read-only production preflight: the live service was healthy on legacy commit e74bd8ecd8db0e8c6430350b35f4ab1bce9c474b with a source bind mount and local image archie-ea-server, while /root/deploy-releases/release.env was absent. The digest deployer's failure path required a previously recorded digest and would otherwise terminate without restoring the legacy server.",
       "required_fix": "Capture the healthy legacy commit before checkout and provide a first-cutover-only controller that restores that exact checkout, recreates the existing server without a build, and verifies health when the immutable deploy fails before any release record exists. Preserve digest-to-digest rollback after the first successful release.",
-      "retest_evidence": "4 Sep 2026 strict TDD: three deployment contract assertions failed before the controller existed. After implementation, the combined deploy/release contract suite passed 8/8 and scripts/deploy.sh, deploy/deploy.sh and deploy/remote-cutover.sh all passed Bash syntax validation. Exact-SHA CI and a controlled production cutover/rollback rehearsal remain pending.",
+      "retest_evidence": "4 Sep 2026 strict TDD: three deployment contract assertions failed before the controller existed. After implementation, the combined deploy/release contract suite passed 8/8 and all three deploy scripts passed Bash syntax validation. In production, exact digest 8bb328c0 activated and passed health; an intentionally unreachable public check then failed, the controller restored exact legacy commit e74bd8ec without a build, verified HTTP health, preserved a nonzero deploy result and left no false release record.",
       "closure_tests": [
         "tests/test_deploy_script_contract.py::test_first_immutable_cutover_has_a_verified_legacy_rollback",
         "tests/test_release_artifact_contract.py::test_operator_cutover_records_legacy_identity_before_checkout",
@@ -322,14 +322,30 @@
       "area": "release_engineering",
       "severity": "high",
       "title": "OCI revision verification used an invalid escaped Docker template",
-      "status": "ready_for_retest",
+      "status": "verified_ci",
       "original_evidence": "Exact-SHA CI run 33835558111 passed all eleven prerequisite jobs and built/pushed/pulled OCI index sha256:80b5287c448d63d82f2c0dfd4223236d88fc4b1fab9015f530bf6a3717d2b25e, then job 100914170553 failed with `template parsing error: unexpected backslash in operand`. The single-quoted Go template unnecessarily escaped the label key's double quotes, making Docker receive literal backslashes.",
       "required_fix": "Use an unescaped double-quoted label key inside the shell's single-quoted Docker Go template, and enforce the exact valid expression plus absence of the escaped form in the release workflow contract.",
-      "retest_evidence": "4 Sep 2026 strict TDD: the strengthened release-artifact contract failed against the escaped template before correction. Focused green and exact-SHA manifest issuance remain pending.",
+      "retest_evidence": "4 Sep 2026 strict TDD: the strengthened release-artifact contract failed against the escaped template before correction, then passed in the 8/8 release/deploy cohort. Exact-SHA CI run 33838576771 passed all 12 jobs, verified the OCI revision/import and issued release.json for digest sha256:8bb328c022a156f8afad78fc9abb9e240f6ef29be0558babb3ec9905f4e4fd56.",
       "closure_tests": [
         "tests/test_release_artifact_contract.py::test_ci_builds_once_after_every_release_gate_and_exports_the_digest",
         "CI OCI revision equality assertion on final SHA",
         "release.json artifact exists and names the verified digest"
+      ]
+    },
+    {
+      "id": "F500-024",
+      "area": "production_configuration",
+      "severity": "high",
+      "title": "Immutable production Compose booted the default configuration with a random session secret",
+      "status": "ready_for_retest",
+      "original_evidence": "4 Sep 2026 post-deploy health for exact artifact 4ba005ef reported environment `default` instead of `production`; container inspection found no FLASK_CONFIG or SECRET_KEY. The explicit base+production Compose invocation intentionally excludes the host's untracked override, while the versioned base service did not forward those settings. Config.py therefore generated a random SECRET_KEY. The artifact was rejected and production was restored to legacy commit e74bd8ec, independently confirmed healthy in production mode; the active immutable release record was removed and preserved as rejected forensic evidence.",
+      "required_fix": "The production overlay must inject FLASK_CONFIG=production and require the host SECRET_KEY for every application-bearing service. CI must assert the resolved Compose environment, and deployment health must fail closed unless the service reports both healthy status and production environment.",
+      "retest_evidence": "4 Sep 2026 strict TDD: three release-contract assertions failed before the configuration controls existed. After implementation, the combined release/deploy contract cohort passed 8/8 and all deployment scripts passed Bash syntax validation. Exact-SHA Compose resolution, CI and production redeployment remain pending.",
+      "closure_tests": [
+        "tests/test_release_artifact_contract.py::test_production_override_uses_one_immutable_image_without_source_mounts",
+        "tests/test_release_artifact_contract.py::test_ci_builds_once_after_every_release_gate_and_exports_the_digest",
+        "tests/test_release_artifact_contract.py::test_host_deployer_accepts_only_digest_and_full_commit_inputs",
+        "Production /health reports environment=production and exact OCI revision after restart"
       ]
     }
   ]

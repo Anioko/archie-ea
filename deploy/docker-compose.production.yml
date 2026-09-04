@@ -3,30 +3,39 @@
 # from one digest-addressed image produced by CI. Compose v2's !reset tag is
 # intentional: without it, the base build contexts and ./→/app bind mounts
 # would survive merge and silently override the verified image.
+x-production-environment: &production-environment
+  FLASK_CONFIG: production
+  SECRET_KEY: ${SECRET_KEY:?SECRET_KEY must be set for production}
+
 services:
   database-bootstrap:
     build: !reset null
     image: ${ARCHIE_IMAGE:?ARCHIE_IMAGE must be a digest-addressed release image}
     volumes: !reset []
+    environment: *production-environment
 
   schema-deploy:
     build: !reset null
     image: ${ARCHIE_IMAGE:?ARCHIE_IMAGE must be a digest-addressed release image}
     volumes: !reset []
+    environment: *production-environment
 
   database-acl:
     build: !reset null
     image: ${ARCHIE_IMAGE:?ARCHIE_IMAGE must be a digest-addressed release image}
     volumes: !reset []
+    environment: *production-environment
 
   server:
     build: !reset null
     image: ${ARCHIE_IMAGE:?ARCHIE_IMAGE must be a digest-addressed release image}
     volumes: !reset []
+    environment: *production-environment
 
   worker:
     build: !reset null
     image: ${ARCHIE_IMAGE:?ARCHIE_IMAGE must be a digest-addressed release image}
     volumes: !reset []
+    environment: *production-environment
     entrypoint: !reset []
     command: ["flask", "--app", "manage", "run-worker"]

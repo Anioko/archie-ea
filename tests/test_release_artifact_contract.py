@@ -22,6 +22,8 @@ def test_production_override_uses_one_immutable_image_without_source_mounts():
     assert source.count("build: !reset null") == len(APP_SERVICES)
     assert source.count("volumes: !reset []") == len(APP_SERVICES)
     assert "./:/app" not in source
+    assert "FLASK_CONFIG: production" in source
+    assert "SECRET_KEY: ${SECRET_KEY:?SECRET_KEY must be set for production}" in source
 
 
 def test_release_image_records_the_exact_source_revision():
@@ -58,8 +60,12 @@ def test_ci_builds_once_after_every_release_gate_and_exports_the_digest():
     assert "steps.build.outputs.digest" in image_job
     assert "release.json" in image_job
     assert "--profile email config --format json" in image_job
+    assert 'export SECRET_KEY="release-compose-contract-only"' in image_job
     assert 'assert "build" not in service' in image_job
     assert 'volume.get("target") == "/app"' in image_job
+    assert 'service["environment"]["FLASK_CONFIG"] == "production"' in image_job
+    assert 'service["environment"]["SECRET_KEY"] == os.environ["SECRET_KEY"]' in image_job
+    assert 'inherited_environment[role] in service["environment"]' in image_job
     assert "docker run --rm --entrypoint python" in image_job
     assert """--format '{{ index .Config.Labels "org.opencontainers.image.revision" }}'""" in image_job
     assert '\\"org.opencontainers.image.revision\\"' not in image_job
@@ -88,6 +94,7 @@ def test_host_deployer_accepts_only_digest_and_full_commit_inputs():
     assert "PREVIOUS_IMAGE" in script
     assert "release.env" in script
     assert "logs --since 15m server" in script
+    assert 'data.get("environment") == "production"' in script
 
 
 def test_operator_cutover_records_legacy_identity_before_checkout():

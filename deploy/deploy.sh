@@ -59,9 +59,19 @@ verify_running_identity() {
 }
 
 wait_for_health() {
-    local deadline=$(( $(date +%s) + HEALTH_TIMEOUT ))
+    local deadline=$(( $(date +%s) + HEALTH_TIMEOUT )) payload
     while [ "$(date +%s)" -lt "$deadline" ]; do
-        [ "$(curl -s -o /dev/null -m 10 -w '%{http_code}' "$HEALTH_URL" || true)" = 200 ] && return 0
+        payload=$(curl -fsS -m 10 "$HEALTH_URL" 2>/dev/null || true)
+        if printf '%s' "$payload" | python3 -c '
+import json, sys
+try:
+    data = json.load(sys.stdin)
+except (json.JSONDecodeError, UnicodeDecodeError):
+    raise SystemExit(1)
+raise SystemExit(0 if data.get("status") == "healthy" and data.get("environment") == "production" else 1)
+'; then
+            return 0
+        fi
         sleep 10
     done
     return 1
