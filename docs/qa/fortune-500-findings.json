@@ -618,6 +618,17 @@
       "required_fix": "Resolve aria-labelledby text when testing button names and continue reporting missing or empty references.",
       "retest_evidence": "Chromium regression confirms a correctly referenced switch is accepted while a missing label reference remains a finding. Combined billing and audit suite passes 15 tests. Original observations remain retained for traceability.",
       "closure_tests": ["tests/test_whole_product_audit_workflow.py::test_button_name_probe_resolves_label_references_in_chromium", "Repeat account page browser audit"]
+    },
+    {
+      "id": "F500-044",
+      "area": "administration_authorization",
+      "severity": "high",
+      "title": "Deprecation monitoring dashboard and APIs admitted ordinary users in both implementations",
+      "status": "verified_local",
+      "original_evidence": "The first browser surveys flagged /admin/deprecation/ for ordinary architect accounts. Actual route tests reproduced 200 responses in both legacy and v2 implementations. Five monitoring GET routes lacked administrator checks; the legacy alert-sending POST also lacked an administrator guard.",
+      "required_fix": "Require existing administrator permission before rendering monitoring pages, reading metrics or invoking alert delivery in both implementations.",
+      "retest_evidence": "Both dashboard denial regressions failed before repair. After repair, 16 deprecation tests pass, including Chromium clicks through the real registered routes for ordinary/admin accounts in both implementations, plus API tests proving denied requests do not call metrics services. Combined billing/deprecation suite passes 24 tests. Rendered data is stubbed in these isolated permission tests; full application CI and production verification remain outstanding.",
+      "closure_tests": ["tests/test_deprecation_access_control.py", "Full application role matrix and production administration access retest"]
     }
   ]
 }
