@@ -9,6 +9,8 @@ STATE_DIR=${ARCHIE_RELEASE_STATE:-/root/deploy-releases}
 RELEASE_FILE="$STATE_DIR/release.env"
 HEALTH_URL=${HEALTH_URL:-http://127.0.0.1:5000/health}
 HEALTH_TIMEOUT=${HEALTH_TIMEOUT:-900}
+PUBLIC_BASE_URL=${PUBLIC_BASE_URL:-https://165-22-125-156.sslip.io}
+PUBLIC_HEALTH_TIMEOUT=${PUBLIC_HEALTH_TIMEOUT:-300}
 IMAGE_REF=${1:-}
 EXPECTED_COMMIT=${2:-}
 COMPOSE=(docker compose -f docker-compose.yml -f deploy/docker-compose.production.yml)
@@ -77,6 +79,30 @@ raise SystemExit(0 if data.get("status") == "healthy" and data.get("environment"
     return 1
 }
 
+# The external load balancer deliberately needs successful probes after the
+# server is replaced.  During schema deployment it can mark the backend down,
+# so a one-shot public request immediately after local health is a race.  Wait
+# for the public route to serve this exact production-mode application before
+# running the broader page checks.
+wait_for_public_health() {
+    local base=$1 deadline=$(( $(date +%s) + PUBLIC_HEALTH_TIMEOUT )) payload
+    while [ "$(date +%s)" -lt "$deadline" ]; do
+        payload=$(curl -kfsS -m 10 "${base%/}/health" 2>/dev/null || true)
+        if printf '%s' "$payload" | python3 -c '
+import json, sys
+try:
+    data = json.load(sys.stdin)
+except (json.JSONDecodeError, UnicodeDecodeError):
+    raise SystemExit(1)
+raise SystemExit(0 if data.get("status") == "healthy" and data.get("environment") == "production" else 1)
+'; then
+            return 0
+        fi
+        sleep 10
+    done
+    return 1
+}
+
 activate() {
     local ref=$1 expected=$2
     compose_with "$ref" up -d --no-build --force-recreate server
@@ -113,7 +139,12 @@ if ! activate "$IMAGE_REF" "$EXPECTED_COMMIT"; then
 fi
 
 say "running post-deploy product checks"
-if ! python3 scripts/post_deploy_verify.py --base "${PUBLIC_BASE_URL:-https://165-22-125-156.sslip.io}"; then
+if ! wait_for_public_health "$PUBLIC_BASE_URL"; then
+    printf 'public load balancer did not route a healthy production response within %ss\n' \
+        "$PUBLIC_HEALTH_TIMEOUT" >&2
+    rollback
+fi
+if ! python3 scripts/post_deploy_verify.py --base "$PUBLIC_BASE_URL"; then
     rollback
 fi
 log_errors=$(compose_with "$IMAGE_REF" logs --since 15m server 2>/dev/null \

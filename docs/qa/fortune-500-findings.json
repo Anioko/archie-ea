@@ -337,15 +337,30 @@
       "area": "production_configuration",
       "severity": "high",
       "title": "Immutable production Compose booted the default configuration with a random session secret",
-      "status": "ready_for_retest",
+      "status": "verified_production",
       "original_evidence": "4 Sep 2026 post-deploy health for exact artifact 4ba005ef reported environment `default` instead of `production`; container inspection found no FLASK_CONFIG or SECRET_KEY. The explicit base+production Compose invocation intentionally excludes the host's untracked override, while the versioned base service did not forward those settings. Config.py therefore generated a random SECRET_KEY. The artifact was rejected and production was restored to legacy commit e74bd8ec, independently confirmed healthy in production mode; the active immutable release record was removed and preserved as rejected forensic evidence.",
       "required_fix": "The production overlay must inject FLASK_CONFIG=production and require the host SECRET_KEY for every application-bearing service. CI must assert the resolved Compose environment, and deployment health must fail closed unless the service reports both healthy status and production environment.",
-      "retest_evidence": "4 Sep 2026 strict TDD: three release-contract assertions failed before the configuration controls existed. After implementation, the combined release/deploy contract cohort passed 8/8 and all deployment scripts passed Bash syntax validation. Exact-SHA Compose resolution, CI and production redeployment remain pending.",
+      "retest_evidence": "4 Sep 2026 strict TDD: three release-contract assertions failed before the configuration controls existed. After implementation, the combined release/deploy contract cohort passed 8/8 and all deployment scripts passed Bash syntax validation. Host preflight resolved all five application services with FLASK_CONFIG=production, the same non-empty SECRET_KEY and inherited database settings. Exact-SHA CI run 33845512875 passed 12/12 jobs and published digest sha256:db9312fd2e3413c93481abfda5abf36650483384396dc4c72b772506e6ea3fb5. During production cutover the exact image passed local health with status=healthy and environment=production before a separate transient public-load-balancer 503 triggered the verified legacy rollback; this proves the production configuration defect itself is closed.",
       "closure_tests": [
         "tests/test_release_artifact_contract.py::test_production_override_uses_one_immutable_image_without_source_mounts",
         "tests/test_release_artifact_contract.py::test_ci_builds_once_after_every_release_gate_and_exports_the_digest",
         "tests/test_release_artifact_contract.py::test_host_deployer_accepts_only_digest_and_full_commit_inputs",
         "Production /health reports environment=production and exact OCI revision after restart"
+      ]
+    },
+    {
+      "id": "F500-025",
+      "area": "release_engineering",
+      "severity": "high",
+      "title": "Post-deploy verification raced external load-balancer health convergence",
+      "status": "ready_for_retest",
+      "original_evidence": "4 Sep 2026 exact-digest cutover of 1b8fad54 passed local /health with status=healthy and environment=production, then the first public /health request immediately returned HTTP 503. Production logs show the external load balancer probing at approximately 15-second intervals; the backend had been unavailable during the long schema phase and needed new successful probes before routing resumed. The one-shot public verifier therefore rejected a locally healthy candidate. The first-cutover controller restored exact legacy commit e74bd8ec and independently verified healthy production service.",
+      "required_fix": "After local exact-image health succeeds, wait for a bounded external /health response that reports both healthy and production before running the broader public-page verifier. Retain rollback on timeout or any persistent application failure.",
+      "retest_evidence": "4 Sep 2026 strict TDD: the deployment contract failed before a public readiness wait existed, then the complete six-test release-artifact contract passed after implementation; deploy/deploy.sh also passed Bash syntax validation. Exact-SHA CI and successful production cutover remain required.",
+      "closure_tests": [
+        "tests/test_release_artifact_contract.py::test_host_deployer_accepts_only_digest_and_full_commit_inputs",
+        "deploy/deploy.sh passes Bash syntax validation",
+        "Exact-digest production cutover waits through load-balancer convergence and all public product checks pass"
       ]
     }
   ]

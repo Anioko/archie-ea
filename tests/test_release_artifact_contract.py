@@ -95,6 +95,14 @@ def test_host_deployer_accepts_only_digest_and_full_commit_inputs():
     assert "release.env" in script
     assert "logs --since 15m server" in script
     assert 'data.get("environment") == "production"' in script
+    assert "PUBLIC_HEALTH_TIMEOUT" in script
+    assert "wait_for_public_health" in script
+    assert 'data.get("environment") == "production"' in script.split(
+        "wait_for_public_health()", 1
+    )[1]
+    assert script.index('wait_for_public_health "$PUBLIC_BASE_URL"') < script.index(
+        "scripts/post_deploy_verify.py"
+    )
 
 
 def test_operator_cutover_records_legacy_identity_before_checkout():
