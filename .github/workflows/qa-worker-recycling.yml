@@ -1,0 +1,31 @@
+name: QA isolated worker recycling
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/fortune500-readiness]
+    paths:
+      - scripts/qa/check_worker_recycling.py
+      - .github/workflows/qa-worker-recycling.yml
+
+permissions:
+  contents: read
+
+jobs:
+  reproduce:
+    name: Recycling diagnostic (Gunicorn ${{ matrix.gunicorn }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        gunicorn: ['22.0.0', '23.0.0', '26.2.1']
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install isolated server dependency only
+        run: python -m pip install 'gunicorn==${{ matrix.gunicorn }}'
+      - name: Exercise real requests across worker restarts
+        run: python scripts/qa/check_worker_recycling.py
