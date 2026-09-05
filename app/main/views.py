@@ -7,6 +7,7 @@ from flask import (
     redirect,
     render_template,
     request,
+    send_file,
     send_from_directory,
     url_for,
 )
@@ -444,6 +445,78 @@ def save_system_settings():
         db.session.rollback()
         current_app.logger.error(f"Error saving system settings: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
+
+
+def _system_backup_service():
+    from pathlib import Path
+
+    from app.services.system_backup_service import SystemBackupService
+
+    backup_dir = current_app.config.get(
+        "SYSTEM_BACKUP_DIR", Path(current_app.instance_path) / "backups"
+    )
+    return SystemBackupService(backup_dir, current_app.config["SQLALCHEMY_DATABASE_URI"])
+
+
+@main.route("/api/system-backups", methods=["GET", "POST"])
+@login_required
+@admin_required
+def system_backups():
+    from app.services.system_backup_service import BackupError
+
+    service = _system_backup_service()
+    try:
+        if request.method == "POST":
+            return jsonify({"backup": service.create()}), 201
+        return jsonify({"backups": service.list()})
+    except BackupError as exc:
+        current_app.logger.error("System backup failed: %s", exc)
+        return jsonify({"error": str(exc)}), 503
+
+
+@main.route("/api/system-backups/<string:name>/download", methods=["GET"])
+@login_required
+@admin_required
+def download_system_backup(name):
+    from app.services.system_backup_service import BackupError
+
+    try:
+        path = _system_backup_service().path_for(name)
+        if not path.is_file():
+            return jsonify({"error": "Backup not found"}), 404
+        return send_file(path, as_attachment=True, download_name=name)
+    except BackupError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+
+@main.route("/api/system-backups/<string:name>", methods=["DELETE"])
+@login_required
+@admin_required
+def delete_system_backup(name):
+    from app.services.system_backup_service import BackupError
+
+    try:
+        _system_backup_service().delete(name)
+        return ("", 204)
+    except FileNotFoundError:
+        return jsonify({"error": "Backup not found"}), 404
+    except BackupError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+
+@main.route("/api/system-backups/<string:name>/restore", methods=["POST"])
+@login_required
+@admin_required
+def restore_system_backup(name):
+    from app.services.system_backup_service import BackupError
+
+    try:
+        return jsonify(_system_backup_service().restore(name))
+    except FileNotFoundError:
+        return jsonify({"error": "Backup not found"}), 404
+    except BackupError as exc:
+        current_app.logger.error("System restore failed: %s", exc)
+        return jsonify({"error": str(exc)}), 503
 
 
 # Register EA workflow routes (adds routes to main blueprint)
