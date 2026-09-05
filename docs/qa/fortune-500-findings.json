@@ -961,6 +961,7 @@
     },
     {
       "id": "F500-074",
+      "latest_verification": "b77 Firefox providerless journey passed read/clear/reload assertions but failed comparison-page navigation with403. Parent traced view_solution access: seeded solution belongs to solution_architect, while test selected enterprise_architect who is not a stakeholder. Swapped fixture owner/colleague personas to respect existing authorization while preserving both-user/other-scope assertions. No production access policy changed; corrected journey collected only, execution pending.",
       "area": "page_guide_saved_history",
       "severity": "high",
       "title": "Saved guide history read and clear incorrectly require an inference provider",
@@ -1000,15 +1001,16 @@
       "status": "in_progress",
       "original_evidence": "Real Flask route with query/record double containing real BatchJob enums returns500; rendered fixture/source trace confirms dates ignored and page length used as total. No PostgreSQL execution in this reproduction.",
       "required_fix": "Serialize actual enum values, validate statuses/dates, filter before stable pagination, report matching total, preserve current-user ownership.",
-      "retest_evidence": "Next-wave worker reports17focusedpass and20PGcases collectedonly; root independent review pending. Separate from current core candidate."
+      "retest_evidence": "Root independently reviewed route diff and both test files, then reran17 focused cases:17passed,1 existing warning in6.99s.20 PostgreSQL cases collect cleanly but remain unexecuted locally. Separate from b77 core candidate; no CI or deployed closure."
     },
     {
       "id": "F500-078", "area": "application_import_history", "severity": "high",
+      "latest_verification": "Parent independent actual-template/native-loopback browser suite finished108passed3failed in316.62s across Chromium/Firefox/WebKit. All three failures are newly added last-page-disappears Refresh case (expected2 surviving rows, actual0); no other failures. Worker authorized bounded page recovery with filter snapshot and newest-response safeguards, final retest pending. These are synthetic persistence/network boundaries, not real database outcomes. Fullapp history/filter/CSV/rollback journey added to mandatory compatibility command; collected only.",
       "title": "Import history filters, displayed fields and row action IDs are inconsistent",
       "status": "in_progress",
       "original_evidence": "Actual rendered Chromium page with two fixture records reproduces missing status/date query parameters, invalid dates/missing names from mismatched BatchJob response, and duplicate manager hiding loading early. Export URL has no route; application history IDs must not be passed to batch retry/rollback APIs.",
       "required_fix": "Use actual ApplicationImportHistory source with validated filters, honest fields and totals, one race-safe loader, scoped CSV and correctly mapped actions. Explicitly disclose unavailable retry where no verified persistent batch link exists; never invent ID correspondence or previous-value restoration.",
-      "retest_evidence": "Next-wave implementation underway. Rollback wiring held pending independent safety repair. No production writes or closure."
+      "retest_evidence": "Root live Chrome ordinary Export CSV click on /dashboard/import-history opened /applications/export-import-history?date_from=2026-08-06&date_to=2026-09-05 in a new tab displaying404 Page Not Found. No record mutation. Next-wave implementation underway; rollback wiring held pending safety review. No repaired production outcome or closure."
     },
     {
       "id": "F500-079", "area": "application_import_rollback", "severity": "high",
@@ -1016,7 +1018,51 @@
       "status": "in_progress",
       "original_evidence": "Independent security source review plus root tracing: current writers store nested created/updated IDs, but rollback reads legacy application_ids; then references nonexistent capability-mapping application_id field, blocking deletion. is_admin bound method is treated as true without calling it. Raw stored IDs would reach unscoped mapping deletion before tenant-resolving targets if functionality blockers alone were fixed. Current cross-tenant destructive exploit is NOT demonstrated; existing400/AttributeError block that path.",
       "required_fix": "Repair whole boundary before enabling action: actual admin/owner check, fresh tenant-scoped history, strict created-only metadata normalization, complete tenant target validation before deletes, correct mapping field, protected foreign/shared elements, enforced eligibility and truthful rollback semantics.",
-      "retest_evidence": "Security-fix workflow independent investigation completed; bounded repair authorized with malicious and legitimate regressions. No production mutation. Manual import's broad attribute assignment is a separate source-backed concern requiring validation, not silently claimed remediated."
+      "retest_evidence": "Parent reviewed full candidate diff and both new test files, then independently reran34 focused policy/actual-handler cases:34passed in6.92s. Query interactions are observable doubles and decorators are excluded from that harness;11 real PostgreSQL full-route cases remain unexecuted locally. Fresh candidate-review agent could not be created because of thread limit; separate parent review is required before acceptance. No production mutation or closure. Manual import mass assignment tracked separately as F500-080."
+    },
+    {
+      "id": "F500-080", "area": "manual_application_import_boundary", "severity": "high",
+      "latest_verification": "Parent candidate review discovered the actual manual UI posts /applications/import-manual, a second registered handler in import_sophisticated_routes.py. Its clean_import_data only enriches vendor text and preserves arbitrary keys; merge still accepts any attribute and create excludes only five system fields, not organization_id or archimate_element_id. The initial legacy-only candidate therefore does not close the finding. Authorized repair expanded to both manual endpoints with richer date/business-field compatibility preserved. Source-backed surviving path, not a runtime exploit claim. Parent also identified same-batch create/merge provenance overlap, which must not disable safe rollback.",
+      "title": "Manual application import accepts server-owned tenant, identity and mirror fields",
+      "status": "in_progress",
+      "original_evidence": "Fresh read-only investigator and parent independently traced authenticated POST /dashboard/applications/import-manual: request applications flow directly to arbitrary existing-attribute merge or mapped-column construction. organization_id and archimate_element_id are accepted on both paths; id is accepted on merge. Tenant before_flush fills only absent organizations on new rows and does not reject dirty ownership changes. Valid CSRF remains required. Static evidence supports cross-tenant creation/transfer and forged mirror association; no runtime exploit or production mutation has been performed. Foreign mirror deletion is NOT established because its ORM helper remains tenant filtered.",
+      "required_fix": "Enforce the manual import's legitimate editable-field contract before writes; keep tenant, primary key, mirror identity and internal metadata server controlled. Validate supported relationship references, reject unsafe input clearly, preserve legitimate create/merge/skip outcomes and add real database tenant/identity regression tests.",
+      "retest_evidence": "Independent investigation reconciled with parent source review; bounded implementer authorized only manual import and focused new tests/report. Runtime reproduction, candidate review, PostgreSQL verification and deployed acceptance remain pending.",
+      "closure_tests": ["Foreign-tenant create and merge cannot change ownership", "Primary key and same/foreign mirror assignment rejected", "Malformed input cannot partially mutate records", "Legitimate create and merge persist with correct owned mirror", "Full CI and deployed browser import workflow"]
+    },
+    {
+      "id": "F500-081", "area": "manual_import_audit_history", "severity": "high",
+      "latest_verification": "Candidate unified writer now commits application changes, ApplicationImportHistory and correctly constructed ImportSessionLog together; caught row/audit failures roll back. Created/updated provenance remains disjoint. Root independently passed211 focused shared/manual tests after final matching-order change (8warnings22.31s);129 PostgreSQL tests are unexecuted locally. Legacy handler still has per-row commits, so atomic database-failure behavior is NOT claimed for it. Actual fullapp browser journey collects only; no deployed qualification.",
+      "title": "User-facing manual import constructs an invalid audit record after committing applications",
+      "status": "in_progress",
+      "original_evidence": "Worker and parent source trace: unified manual handler constructs ImportSessionLog with nonexistent user_email/import_type/changes/errors fields and omits required session_id/operation_type/import_source. Constructor failure is caught after application commit, so success can lack its audit. Handler also does not write the ApplicationImportHistory consumed by the history page. No runtime reproduction yet.",
+      "required_fix": "Persist valid accountable audit and application history with exact disjoint created/updated IDs; integrate transaction/error behavior so successful imports do not silently lose history. Preserve legitimate manual input and scope.",
+      "retest_evidence": "Bounded manual worker authorized fix with PostgreSQL regressions. Parent added actual UI create/reload/merge journey and mandatory compatibility invocation; one case collects and lints but is not executed. Not deployed."
+    },
+    {
+      "id": "F500-082", "area": "ai_browser_runtime_errors", "severity": "high",
+      "latest_verification": "WebKit b77 compatibility report also has93ordinary passes0skips, but AI Enter teardown logs /ai-chat/context/architecture Load failed. Read-only source review found duplicate startup context requests and no cancellation-signal forwarding; server logs show200 responses, including delayed ones. Navigation/close cancellation remains a hypothesis pending controlled actual-assets reproduction. No runtime error waiver, retry or fix acceptance.",
+      "title": "Firefox enabled-AI journeys record context network failures and an opaque page error",
+      "status": "in_progress",
+      "original_evidence": "b77 CI33971927398 Firefox job101321850301: ordinary journeys93passed0failed0skipped. AI report3tests0failures2teardown errors: Send journey logs two /ai-chat/context/architecture Network errors; guide journey logs Object. Assertions reached persisted outcomes but strict error gate failed. Cause unproven; not assigned to prior worker-recycling or keyboard defect by assumption.",
+      "required_fix": "Diagnose request/navigation/teardown lifecycle and opaque error with precise evidence, correct actual cause and retain all strict console/page/HTTP assertions. No error suppression or retry-based masking.",
+      "retest_evidence": "Controlled actual-template/shipped-assets/native-fetch loopback replay reproduces exact WebKit pending-reload Network error with Load request cancelled; settled control clean. Firefox shows NS_BINDING_ABORTED without local console error, so exact Firefox attribution remains incomplete. Parent independently read caller/core fetch, authorized explicit signal forwarding and owned context cancellation/stale-response protection. Genuine network/HTTP errors must remain strict. Guide Object remains unclassified; no deployed closure."
+    },
+    {
+      "id": "F500-083", "area": "jira_connector_test_control", "severity": "high",
+      "title": "Jira Test Connection script cannot parse and button sends no request",
+      "status": "in_progress",
+      "original_evidence": "Historical platform-admin audit lead independently reproduced against current jira.html and actual core-admin.js in Chromium1440x1000 and390x844: Unexpected token '.', testJiraConnection undefined, ordinary button click sends0requests. Parent source confirms catch chain ends with semicolon before standalone .finally at template142. Synthetic base/config/network boundaries; no Jira requests or credentials.",
+      "required_fix": "Repair promise chain and verify ordinary test button request/feedback/pending/restore/error behavior across engines without contacting real Jira.",
+      "retest_evidence": "Bounded implementation authorized with red/green rendered-browser tests. No fixed or deployed claim."
+    },
+    {
+      "id": "F500-084", "area": "ai_context_response_contract", "severity": "high",
+      "title": "AI context panel reads collections outside the backend response envelope",
+      "status": "in_progress",
+      "original_evidence": "Parent and investigator source trace: multi_domain_chat_service.get_domain_context returns success/context, while panels.loadDomainContext reads data.elements/data.applications at the top level. Populated data can follow the empty/unrecognized branch. Runtime populated-control reproduction still required.",
+      "required_fix": "Honor actual response shape and display real context items, honest empty/error states and selected-item behavior; preserve lifecycle cancellation and stale-response protection.",
+      "retest_evidence": "Context worker authorized focused populated/empty/error regression and contract repair alongside independently tracked F082 lifecycle work. No database/provider/deployed qualification."
     }
   ]
 }
