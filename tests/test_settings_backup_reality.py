@@ -48,7 +48,12 @@ def test_settings_backup_panel_does_not_advertise_unavailable_archives(admin_cli
     panel = html[html.index('id="tab-backup"'):html.index("<!-- Danger Zone -->")]
 
     assert 'data-testid="backup-capability-unavailable"' in panel
-    assert "Backup and restore are not available in this build." in panel
+    # Backups are a real, running capability (deploy/archie-backup.sh: verified
+    # 6-hourly pg_dump) - just not one this page can trigger, because the
+    # application's own database role is deliberately least-privilege. The
+    # panel says that, rather than the earlier "not available in this build",
+    # which read as a missing feature rather than a deliberate boundary.
+    assert "Backup and restore are not available from this page." in panel
     for unavailable_content in (
         "backup_2024_02_20_1000.zip",
         "backup_2024_02_13_1000.zip",
