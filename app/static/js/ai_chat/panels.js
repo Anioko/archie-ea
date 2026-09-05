@@ -135,7 +135,7 @@
                             <div class="rounded-lg border bg-card p-3 shadow-sm cursor-pointer hover:bg-accent transition-colors"
                                  data-action="select-context" data-id="${escape(el.id)}" data-type="archimate_element">
                                 <div class="flex items-center gap-2 mb-1">
-                                    <span class="bg-primary/10 text-primary text-xs px-1.5 py-0.5 rounded font-medium">${escape(el.type)}</span><!-- token-migration-ok -->
+                                    <span class="bg-muted text-foreground text-xs px-1.5 py-0.5 rounded font-medium">${escape(el.type)}</span>
                                     <span class="font-medium text-sm">${escape(el.name)}</span>
                                 </div>
                             </div>

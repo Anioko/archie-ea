@@ -509,6 +509,7 @@
     },
     {
       "id": "F500-035",
+      "latest_coverage_review": "0521450e independent review: currentCI covers11roles/24journey paths,41census path templates and5role walkthrough, not whole product. Historical audit27075/27104loads,301369outcome records including193901reused,17886finding occurrences;13971no-outcome occurrences across410routes. Current browser probe wrongly labels operation-failed text as verified and omits newly revealed controls. Manifest/classification correction assigned; comprehensive qualification remains open.",
       "area": "whole_product_audit_execution",
       "severity": "critical",
       "title": "Exhaustive eleven-role page auditor existed but was absent from the release workflow",
@@ -683,6 +684,7 @@
     },
     {
       "id": "F500-049",
+      "latest_production_measurement": "2026-09-05T15:26:41Z read-only43-table aggregate:37owner-bearing tables contain7rows (6business_roles,1physical_equipment), no measured link/ownership defects. Six ownerless models contain2rows with source-owner comparison NULL/unmeasurable. Nine element claims, no multiple-source claims within scope only. See2026-09-05-production-backbone-ownership.json; no data writes or global tenancy qualification.",
       "area": "technology_archimate_tenancy_and_radar",
       "severity": "high",
       "title": "Nine technology insert hooks omit organisation ownership from generated ArchiMate records",
@@ -694,6 +696,7 @@
     },
     {
       "id": "F500-050",
+      "latest_production_measurement": "Fresh2026-09-05 artifact2026-09-05-production-backbone-ownership.json supersedes narrow technology_nodes-only ledger evidence. All37owner-bearing tables measured:7rows, zero ownership/link defects;35tables empty. Six additional ownerless models contain2rows whose source ownership is unmeasurable. No repair performed; clean existing rows do not prove creation/browser behavior.",
       "area": "cross_domain_archimate_ownership",
       "severity": "high",
       "title": "Additional tenant-scoped application, business and physical model hooks omit backbone ownership",
@@ -1101,6 +1104,23 @@
       "original_evidence": "Exact b77 backend failure PendingRollbackError at parent count and cleanup. Independent investigator setup-plan and parent source review show module usefixtures(db_session) plus unused make_org argument activate one shared Connection/create_savepoint fixture for all thread sessions. That cannot exercise independent-transaction locking. Original worker exception is absent from artifact, so first driver failure remains unknown.",
       "required_fix": "Run real isolated test-database thread sessions/connections without rollback-fixture coupling; assert distinct connection identities, surface worker errors, join all threads, preserve exactly-one-row assertion and remove only exact fixture data.",
       "retest_evidence": "Bounded test-only repair assigned; no production locking change, no concurrency-product-fix claim, no real PostgreSQL rerun yet."
+    },
+    {
+      "id": "F500-089", "area": "manual_import_mapping_feedback", "severity": "high",
+      "title": "Mapping errors disappear on reload and logical failures are reported as complete",
+      "status": "fixed",
+      "original_evidence": "0521450e actual-assets/native-loopback browser replay in three engines: HTTP400 mapping failure disappears after automatic reload; HTTP200 success:false falsely says Auto-mapping complete. Chromium success:true with creation_errors also falsely completes. Exactly one import and mapping request each; no production writes.",
+      "required_fix": "Retain confirmed import counts and separate truthful mapping outcome until acknowledgment; prevent saved-row replay. Validate logical/error/malformed responses without inventing counters.",
+      "retest_evidence": "Fixed: the shared auto-map helper (app/static/js/application_mgmt/application_import.js) no longer navigates away before mapping completes. It returns outcome text instead of reloading; the manual caller shows it in a persistent 'Import saved' modal requiring explicit acknowledgment (Escape/backdrop dismissal disabled), and only reloads after that. HTTP failure, logical failure (success:false) and success-with-creation_errors are each reported distinctly; no counter is invented for a field the response did not supply. Verified: tests/test_manual_import_controls.py and tests/smoke/test_manual_application_import.py (real Chromium browser, real server, real request) both green in the full 299-test wave-2 regression sweep."
+    },
+    {
+      "id": "F500-090", "area": "auto_mapping_write_contract", "severity": "critical",
+      "evidence_correction": "Independent follow-up found active capability writer uses application_id/capability_id and extra fields absent from actual UnifiedApplicationCapabilityMapping (application_component_id/unified_capability_id). Initial permissive mapping doubles demonstrate write attempts/control flow and response arithmetic, not successful real capability persistence. Corrected constructor/query-boundary tests and PostgreSQL proof required. Nested commit calls remain source-confirmed; distinguish category-specific outcomes rather than assuming all writes succeed.",
+      "title": "Mapping ignores target scope and options, writes during preview and misstates persisted counts",
+      "status": "fixed",
+      "original_evidence": "Independent active-service investigation and parent route/bulk source review: application_ids/layer_targets discarded; bulk selects newest imported_capabilities records and commits mappings even with auto_create:false. Route repeats creation and assigns combined count to all three categories. Manual response lacks saved IDs, count zero falls back to100. Nested commits invalidate outer rollback. Accept target scoping is source-supported authorization concern, not demonstrated exploit. Confidence-review signature mismatch raises before insert; no queue-write claim.",
+      "required_fix": "Resolve committed import scope or validated explicit IDs; empty scope no-op. Preview must not write. Honor options, freshly validate all targets including shared-capability rules, establish explicit transaction ownership and truthful persisted counts/errors. Unsupported options cannot be silently ignored.",
+      "retest_evidence": "Fixed at the root: bulk_ai_analyze (app/services/ai_import_service.py) wrote high-confidence mappings to the database unconditionally during 'analysis', regardless of the route's own auto_create/preview_mode/category flags - those flags only ever gated a second, redundant write attempt. Writing is now opt-in via a write_immediately parameter (default False), and the route's explicit create step is the sole write path, gated by auto_create-and-not-preview_mode and the map_capabilities/map_processes/generate_archimate flags. Separately, create_ai_mappings used application_id/capability_id/process_id/confidence_score/mapping_method/rationale/created_by fields that do not exist on UnifiedApplicationCapabilityMapping or ProcessApplicationMapping, so every write it attempted raised TypeError, silently caught - no mapping this endpoint claimed to create had ever actually persisted. Rewritten against the real columns (application_component_id/unified_capability_id, application_id/apqc_process_id). application_ids scoping is now threaded through to source selection instead of being read and discarded. Response counts are per-category and truthful instead of one summed bucket reported as all three categories. Verified: tests/test_auto_mapping_write_contract.py (10 tests, including one against real PostgreSQL with real tenant scoping) and tests/test_reconcile_enum_members.py, both green in the full wave-2 regression sweep. Not yet browser-demonstrated end-to-end (needs a configured LLM provider, unavailable in this environment) - the fix is verified at the service/route boundary and via real ORM writes, not via a clicked-through AI mapping journey."
     }
   ]
 }

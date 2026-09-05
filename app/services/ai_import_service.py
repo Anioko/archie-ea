@@ -1568,7 +1568,10 @@ Provide analysis in JSON format:
         }
 
     def bulk_ai_analyze(
-        self, max_applications: int = 50, confidence_threshold: float = 0.7
+        self, max_applications: int = 50, confidence_threshold: float = 0.7,
+        application_ids: list = None, write_immediately: bool = False,
+        map_capabilities: bool = True, map_processes: bool = True,
+        generate_archimate: bool = True, created_by: str = "auto_map",
     ) -> Dict[str, Any]:
         """
         Bulk AI analysis of applications needing mapping.
@@ -1576,17 +1579,37 @@ Provide analysis in JSON format:
         Args:
             max_applications: Maximum applications to process
             confidence_threshold: Minimum confidence for auto-creation
+            application_ids: When given, analyze exactly these applications
+                (still filtered to ones with imported capabilities) instead of
+                the newest `max_applications` rows. A caller naming specific
+                applications - e.g. "map the batch I just imported" - must get
+                those applications back, not whichever rows are newest overall.
+            write_immediately: When True, persist high-confidence mappings for
+                each application as it is analyzed (see the per-app commit
+                below). Defaults to False: analysis alone must never write -
+                a caller previewing results, or one that has not set
+                auto_create, must get pure analysis back. The one caller that
+                wants writes (the comprehensive-auto-map route) opts in
+                explicitly and only when the request actually asked to create
+                mappings and is not a preview.
+            map_capabilities/map_processes/generate_archimate: When
+                write_immediately is True, these gate which categories are
+                persisted; a category the caller did not ask for is never
+                built into the create_ai_mappings call, let alone written.
+            created_by: Attribution recorded on any mapping this creates.
 
         Returns:
             Comprehensive results with statistics and application details
         """
         try:
             # Find applications needing AI analysis
+            query = ApplicationComponent.query.filter(
+                ApplicationComponent.imported_capabilities.isnot(None)
+            )
+            if application_ids:
+                query = query.filter(ApplicationComponent.id.in_(application_ids))
             apps = (
-                ApplicationComponent.query.filter(
-                    ApplicationComponent.imported_capabilities.isnot(None)
-                )
-                .order_by(ApplicationComponent.created_at.desc())
+                query.order_by(ApplicationComponent.created_at.desc())
                 .limit(max_applications)
                 .all()
             )
@@ -1622,49 +1645,59 @@ Provide analysis in JSON format:
                             if m.get("confidence_score", 0) >= confidence_threshold
                         )
 
-                    # **CRITICAL FIX: Save high-confidence mappings to database immediately**
-                    # This ensures progress is not lost if interrupted or tokens run out
+                    # Save high-confidence mappings immediately, but only when
+                    # the caller opted into writes and only for the categories
+                    # it asked for - see write_immediately above. This ensures
+                    # progress is not lost if interrupted or tokens run out,
+                    # without turning a preview or a plain analysis call into
+                    # a write.
                     mappings_saved = {"capabilities": 0, "processes": 0, "archimate": 0}
-                    try:
-                        high_conf_capabilities = [
-                            m
-                            for m in ai_result.capability_mappings
-                            if m.get("confidence_score", 0) >= confidence_threshold
-                        ]
-                        high_conf_processes = [
-                            m
-                            for m in ai_result.process_mappings
-                            if m.get("similarity_score", 0) >= confidence_threshold
-                        ]
-
-                        if high_conf_capabilities or high_conf_processes:
-                            save_result = self.create_ai_mappings(
-                                application_id=app.id,
-                                capability_mappings=high_conf_capabilities,
-                                process_mappings=high_conf_processes,
-                                archimate_elements=ai_result.archimate_elements[
-                                    :5
-                                ],  # Save top 5 elements
-                                created_by="auto_map",
-                            )
-                            mappings_saved["capabilities"] = save_result.get(
-                                "capability_mappings_created", 0
-                            )
-                            mappings_saved["processes"] = save_result.get(
-                                "process_mappings_created", 0
-                            )
-                            mappings_saved["archimate"] = save_result.get(
-                                "archimate_elements_created", 0
+                    if write_immediately:
+                        try:
+                            high_conf_capabilities = [
+                                m
+                                for m in ai_result.capability_mappings
+                                if map_capabilities
+                                and m.get("confidence_score", 0) >= confidence_threshold
+                            ]
+                            high_conf_processes = [
+                                m
+                                for m in ai_result.process_mappings
+                                if map_processes
+                                and m.get("similarity_score", 0) >= confidence_threshold
+                            ]
+                            archimate_to_save = (
+                                ai_result.archimate_elements[:5]
+                                if generate_archimate
+                                else []
                             )
 
-                            # Commit after each application to prevent data loss
-                            db.session.commit()
-                            logger.info(
-                                f"✅ Saved {mappings_saved['capabilities']} capabilities, {mappings_saved['processes']} processes for {app.name}"
-                            )
-                    except Exception as save_error:
-                        logger.error(f"Failed to save mappings for {app.name}: {save_error}")
-                        db.session.rollback()
+                            if high_conf_capabilities or high_conf_processes or archimate_to_save:
+                                save_result = self.create_ai_mappings(
+                                    application_id=app.id,
+                                    capability_mappings=high_conf_capabilities,
+                                    process_mappings=high_conf_processes,
+                                    archimate_elements=archimate_to_save,
+                                    created_by=created_by,
+                                )
+                                mappings_saved["capabilities"] = save_result.get(
+                                    "capability_mappings_created", 0
+                                )
+                                mappings_saved["processes"] = save_result.get(
+                                    "process_mappings_created", 0
+                                )
+                                mappings_saved["archimate"] = save_result.get(
+                                    "archimate_elements_created", 0
+                                )
+
+                                # Commit after each application to prevent data loss
+                                db.session.commit()
+                                logger.info(
+                                    f"Saved {mappings_saved['capabilities']} capabilities, {mappings_saved['processes']} processes for {app.name}"
+                                )
+                        except Exception as save_error:
+                            logger.error(f"Failed to save mappings for {app.name}: {save_error}")
+                            db.session.rollback()
 
                     # Update statistics
                     results["total_analyzed"] += 1
@@ -1780,19 +1813,25 @@ Provide analysis in JSON format:
             if capability_mappings:
                 for mapping in capability_mappings:
                     try:
-                        # Check if mapping already exists
+                        # UnifiedApplicationCapabilityMapping has no application_id/
+                        # capability_id/confidence_score/mapping_method/rationale/
+                        # created_by columns (app/models/unified_application_capability_mapping.py)
+                        # - this constructor call raised TypeError on every
+                        # invocation, so no capability mapping this wrote ever
+                        # actually persisted. Use the columns that exist.
                         existing = UnifiedApplicationCapabilityMapping.query.filter_by(
-                            application_id=application_id, capability_id=mapping["capability_id"]
+                            application_component_id=application_id,
+                            unified_capability_id=mapping["capability_id"],
                         ).first()
 
                         if not existing:
+                            confidence = mapping.get("confidence_score", 0.5)
                             new_mapping = UnifiedApplicationCapabilityMapping(
-                                application_id=application_id,
-                                capability_id=mapping["capability_id"],
-                                confidence_score=mapping.get("confidence_score", 0.5),
-                                mapping_method="ai_llm",
-                                rationale=mapping.get("rationale", ""),
-                                created_by=created_by,
+                                application_component_id=application_id,
+                                unified_capability_id=mapping["capability_id"],
+                                support_quality=max(1, min(5, round(confidence * 5))),
+                                notes=(mapping.get("rationale") or "")
+                                + f" (AI mapping, confidence {confidence:.2f}, by {created_by})",
                             )
                             db.session.add(new_mapping)
                             results["capability_mappings_created"] += 1
@@ -1803,19 +1842,26 @@ Provide analysis in JSON format:
             if process_mappings:
                 for mapping in process_mappings:
                     try:
-                        # Check if mapping already exists
+                        # ProcessApplicationMapping's process FK column is
+                        # apqc_process_id, not process_id, and it has no
+                        # confidence_score/mapping_method/rationale/created_by
+                        # columns either - same class of defect as above.
                         existing = ProcessApplicationMapping.query.filter_by(
-                            application_id=application_id, process_id=mapping["process_id"]
+                            application_id=application_id,
+                            apqc_process_id=mapping["process_id"],
                         ).first()
 
                         if not existing:
+                            similarity = mapping.get("similarity_score", 0.5)
                             new_mapping = ProcessApplicationMapping(
                                 application_id=application_id,
-                                process_id=mapping["process_id"],
-                                confidence_score=mapping.get("similarity_score", 0.5),
-                                mapping_method=mapping.get("match_method", "semantic"),
-                                rationale=f"AI classification with {mapping.get('confidence', 'medium')} confidence",
-                                created_by=created_by,
+                                apqc_process_id=mapping["process_id"],
+                                process_coverage=max(0, min(100, round(similarity * 100))),
+                                assessment_notes=(
+                                    f"AI classification with {mapping.get('confidence', 'medium')} "
+                                    f"confidence, similarity {similarity:.2f}, by {created_by}"
+                                ),
+                                assessor=created_by,
                             )
                             db.session.add(new_mapping)
                             results["process_mappings_created"] += 1

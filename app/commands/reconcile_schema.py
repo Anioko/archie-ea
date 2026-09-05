@@ -1070,6 +1070,69 @@ def _ensure_condition_evidence_canonical_document(
         failed.append(f"{label}: {str(exc)[:120]}")
 
 
+def _ensure_enum_members(*, dry_run, existing_tables, added, failed):
+    """Add missing labels to native PostgreSQL enum types (ADD VALUE only).
+
+    Two models may share one PG type name with different Python members —
+    `batch_jobs.status` and `batch_import_job.status` both use `batchjobstatus`,
+    and whichever model's `create_all` ran first fixed the label set. Measured in
+    production on 5 Sep 2026: the type lacked RUNNING and RECOVERING, so
+    `BatchProcessingService` could never mark a job running. ADD COLUMN cannot
+    fix a label set; this is the enum counterpart — additive, idempotent, never
+    renames or removes. Runs on an autocommit connection because ADD VALUE is
+    refused inside a transaction block on older servers.
+    """
+    from sqlalchemy import text
+    from sqlalchemy.dialects.postgresql import ENUM as PGEnum
+
+    if db.engine.dialect.name != "postgresql":
+        return
+    wanted: dict[str, list[str]] = {}
+    for table in db.metadata.tables.values():
+        if table.name not in existing_tables:
+            continue
+        for col in table.columns:
+            typ = col.type
+            if not isinstance(typ, (PGEnum, db.Enum)) or not getattr(typ, "name", None):
+                continue
+            labels = wanted.setdefault(typ.name, [])
+            for label in typ.enums:
+                if label not in labels:
+                    labels.append(label)
+    if not wanted:
+        return
+    try:
+        rows = db.session.execute(text(
+            "SELECT t.typname, e.enumlabel FROM pg_type t "
+            "JOIN pg_enum e ON e.enumtypid = t.oid WHERE t.typname = ANY(:names)"
+        ), {"names": list(wanted)}).all()
+    except Exception as exc:  # noqa: BLE001
+        db.session.rollback()
+        failed.append(f"enum_members_inspection: {str(exc)[:120]}")
+        return
+    live: dict[str, set[str]] = {}
+    for typname, label in rows:
+        live.setdefault(typname, set()).add(label)
+    for typname, labels in wanted.items():
+        if typname not in live:
+            continue  # type not created yet; create_all owns that
+        for label in labels:
+            if label in live[typname]:
+                continue
+            item = f"enum {typname} += {label}"
+            if dry_run:
+                added.append(item)
+                continue
+            try:
+                with db.engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+                    conn.execute(text(
+                        f'ALTER TYPE "{typname}" ADD VALUE IF NOT EXISTS ' + "'" + label.replace("'", "''") + "'"
+                    ))
+                added.append(item)
+            except Exception as exc:  # noqa: BLE001
+                failed.append(f"{item}: {str(exc)[:120]}")
+
+
 def _reconcile(dry_run=False):
     """Return (added, failed, missing_tables, blocking) lists of "table.column".
 
@@ -1153,6 +1216,12 @@ def _reconcile(dry_run=False):
         if table.name not in existing_tables
     )
 
+    _ensure_enum_members(
+        dry_run=dry_run,
+        existing_tables=existing_tables,
+        added=added,
+        failed=failed,
+    )
     _backfill_roadmap_organizations(
         dry_run=dry_run,
         existing_tables=existing_tables,

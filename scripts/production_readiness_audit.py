@@ -41,6 +41,7 @@ without making a clean audit permanently red.
 from __future__ import annotations
 
 import argparse
+from collections import Counter
 import json
 import os
 import pathlib
@@ -826,9 +827,11 @@ def probe_control_outcome(page, visible_ordinal, settle_ms=700):
             "detail": blocked,
         }
     if downloads:
-        return {"status": "verified", "outcome": "download", "detail": downloads}
+        return {"status": "verified", "outcome": "download", "detail": downloads,
+                "verification_scope": "browser-event-only", "intended_outcome_confirmed": False}
     if popups:
-        return {"status": "verified", "outcome": "popup", "detail": popups}
+        return {"status": "verified", "outcome": "popup", "detail": popups,
+                "verification_scope": "browser-event-only", "intended_outcome_confirmed": False}
     if _safe_url(page.url) != _safe_url(before_url):
         navigation_responses = [item for item in requests if item["main_navigation"]]
         if not navigation_responses:
@@ -839,34 +842,103 @@ def probe_control_outcome(page, visible_ordinal, settle_ms=700):
                 "status": "activation-failed", "outcome": "navigation-http-error",
                 "http_status": destination_status, "detail": _safe_url(page.url),
             }
-        return {"status": "verified", "outcome": "navigation", "detail": _safe_url(page.url)}
+        return {"status": "verified", "outcome": "navigation", "detail": _safe_url(page.url),
+                "verification_scope": "browser-event-only", "intended_outcome_confirmed": False}
 
     after = page.evaluate(_OUTCOME_SNAPSHOT)
     successful_get = any(
         request["method"] == "GET" and request["status"] < 400 for request in requests
     )
     if successful_get and after != before:
-        return {"status": "verified", "outcome": "request-with-feedback"}
+        return {"status": "observed-unqualified", "outcome": "request-with-feedback",
+                "intended_outcome_confirmed": False}
     if after != before:
-        return {"status": "verified", "outcome": "visible-state-change"}
+        return {"status": "observed-unqualified", "outcome": "visible-state-change",
+                "intended_outcome_confirmed": False}
     return {"status": "no-observable-outcome", "outcome": "none"}
 
 
 # ------------------------------------------------------------------------- driving
 
+def build_coverage_manifest(*, routes, personas, viewports, levels, processed,
+                            inventory, outcomes, execution_state):
+    """Count discovery separately from qualification; no intended contracts exist.
+
+    Slot IDs preserve duplicate selections. Identities contain route paths and
+    registered endpoint names, never URL queries, credentials or page contents.
+    """
+    expected = [
+        {"slot_id": index, **slot}
+        for index, slot in enumerate(
+            {"route": urllib.parse.urlsplit(route["path"]).path,
+             "endpoint": route["endpoint"], "persona": persona, "viewport": viewport,
+             "parameterised": bool(route.get("parameterised"))}
+            for persona in personas for viewport in viewports for route in routes
+        )
+    ]
+    processed_ids = {item["slot_id"] for item in processed}
+    missing = [slot for slot in expected if slot["slot_id"] not in processed_ids]
+    discovered = sum(len(item.get("controls") or []) for item in inventory)
+    fresh = [item for item in outcomes if not item.get("evidence_reused")]
+    gaps = [
+        "initial-visible-controls-only", "recursive-interactions-not-covered",
+        "seeded-route-mappings-not-covered", "intended-outcome-contracts-not-covered",
+        "fields-disabled-and-mutating-controls-require-dedicated-journeys",
+        "primitive-events-do-not-confirm-intended-success",
+        "route-inventory-excludes-api-static-and-destructive-paths",
+        "chromium-only", "onboarding-overlay-removed-before-inventory",
+    ]
+    if 10 not in levels:
+        gaps.append("interaction-level-not-requested")
+    if any(route.get("parameterised") for route in routes):
+        gaps.append("parameterised-route-outcomes-not-probed")
+    if not expected:
+        gaps.append("empty-route-selection")
+    if missing:
+        gaps.append("requested-loads-missing")
+    return {
+        "schema_version": 1, "execution_state": execution_state,
+        "traversal_completed": bool(expected) and execution_state == "completed"
+        and not missing and len(processed) == len(expected),
+        "comprehensive_qualification": False,
+        "requested": {"personas": list(personas), "viewports": list(viewports),
+                      "levels": sorted(levels)},
+        "loads": {"expected": len(expected), "processed": len(processed),
+                  "requested_slots": expected, "processed_slots": list(processed),
+                  "missing": missing,
+                  "results": dict(Counter(item["result"] for item in processed))},
+        "controls": {
+            "discovered": discovered, "outcome_records": len(outcomes),
+            "fresh_probes": sum(bool(item.get("probe_attempted")) for item in fresh),
+            "reused_evidence": len(outcomes) - len(fresh),
+            "primitive_events_confirmed": sum(
+                item.get("status") == "verified"
+                and item.get("outcome") in {"navigation", "download", "popup"}
+                for item in fresh),
+            "intended_outcomes_confirmed": 0, "unqualified": discovered,
+            "without_outcome_record": max(0, discovered - len(outcomes)),
+            "classifications": dict(Counter(item.get("classification", "unclassified")
+                                            for item in outcomes)),
+            "statuses": dict(Counter(item.get("status", "not-probed") for item in outcomes)),
+        },
+        "coverage_gaps": gaps,
+    }
+
+
 def run(args):
     level_set = set(args.level or ALL_LEVELS)
-    emails = seed_personas()
-    routes = collect_routes()
-    if args.route:
-        wanted = set(args.route)
-        routes = [r for r in routes if r["path"] in wanted or
-                  any(r["path"].startswith(w) for w in wanted)]
     personas = args.persona or PERSONAS
     viewports = [("desktop", DESKTOP)] + ([] if args.desktop_only else [("mobile", MOBILE)])
 
     report_path = pathlib.Path(args.report)
     findings, control_inventory, control_outcomes, audited = [], [], [], 0
+    processed = []
+    execution_state = "running"
+    # A safe default so `flush()` (and its coverage manifest, which needs to
+    # report "0 of N routes processed") can run even if persona seeding or
+    # route collection itself fails below - the two setup steps this
+    # function used to run before any report file existed at all.
+    routes = []
 
     def flush():
         report_path.write_text(json.dumps({
@@ -877,6 +949,11 @@ def run(args):
             "control_inventory": control_inventory,
             "control_outcomes": control_outcomes,
             "findings": findings,
+            "coverage_manifest": build_coverage_manifest(
+                routes=routes, personas=personas, viewports=[name for name, _ in viewports],
+                levels=level_set, processed=processed, inventory=control_inventory,
+                outcomes=control_outcomes, execution_state=execution_state,
+            ),
         }, indent=2), encoding="utf-8")
 
     def retain_control_outcome(record):
@@ -888,18 +965,36 @@ def run(args):
             flush()
 
     port = _free_port()
-    proc, base = boot(port, REPO / "audit-server.log")
-    print(f"server up on {base}; {len(routes)} routes x {len(personas)} personas "
-          f"x {len(viewports)} viewports", flush=True)
+    proc = None
+    flush()
 
     try:
+        # Seeding and route collection can fail (fixture DB unavailable, a
+        # broken blueprint) exactly like boot() below can - and previously
+        # ran BEFORE report_path/flush even existed, so a failure here left
+        # no report at all. They now share the same interrupted-manifest
+        # handling as every later stage. Routes are collected first so an
+        # interrupted manifest can still report the intended route coverage
+        # even when persona seeding is what actually failed.
+        routes = collect_routes()
+        if args.route:
+            wanted = set(args.route)
+            routes = [r for r in routes if r["path"] in wanted or
+                      any(r["path"].startswith(w) for w in wanted)]
+        flush()
+        emails = seed_personas()
+        flush()
+
+        proc, base = boot(port, REPO / "audit-server.log")
+        print(f"server up on {base}; {len(routes)} routes x {len(personas)} personas "
+              f"x {len(viewports)} viewports", flush=True)
         from playwright.sync_api import sync_playwright
 
         with sync_playwright() as pw:
             browser = pw.chromium.launch()
-            for role in personas:
+            for role_index, role in enumerate(personas):
                 email = emails[role]
-                for vp_name, vp in viewports:
+                for vp_index, (vp_name, vp) in enumerate(viewports):
                     context = browser.new_context(viewport=vp)
                     page = context.new_page()
                     tested_outcomes = {}
@@ -932,7 +1027,9 @@ def run(args):
                         flush()
                         continue
 
-                    for route in routes:
+                    for route_index, route in enumerate(routes):
+                        slot_id = ((role_index * len(viewports) + vp_index) * len(routes)
+                                   + route_index)
                         path = route["path"]
                         ctx = {"route": path, "endpoint": route["endpoint"],
                                "persona": role, "viewport": vp_name}
@@ -965,6 +1062,7 @@ def run(args):
                                 # before the content-type branch, which otherwise
                                 # reports JSON 404s the suppression would drop.
                                 audited += 1
+                                processed.append({"slot_id": slot_id, "result": "parameterised-denial"})
                                 continue
                             if "html" not in ctype.lower():
                                 # JSON/text endpoint reachable by GET. Not a page:
@@ -973,6 +1071,7 @@ def run(args):
                                 findings.extend(evaluate_findings(
                                     level_set & {1}, ctx, {}, status, [], []))
                                 audited += 1
+                                processed.append({"slot_id": slot_id, "result": "non-html"})
                                 continue
                             page.wait_for_timeout(args.settle)
                             # The onboarding overlay covers content and is not the
@@ -1001,6 +1100,8 @@ def run(args):
                                         "control": control,
                                         "classification": classification,
                                         "reason": reason,
+                                        "probe_attempted": False,
+                                        "intended_outcome_confirmed": False,
                                     }
                                     if classification != "safe":
                                         retain_control_outcome(outcome_record)
@@ -1025,6 +1126,7 @@ def run(args):
                                             "[x-show='showOnboarding'], .onboarding-overlay",
                                             "els => els.forEach(e => e.remove())",
                                         )
+                                        outcome_record["probe_attempted"] = True
                                         result = probe_control_outcome(
                                             outcome_page, control["ordinal"]
                                         )
@@ -1065,6 +1167,7 @@ def run(args):
                             findings.append({**ctx, "level": 1, "kind": "navigation-failed",
                                              "severity": "high", "detail": str(exc)[:200]})
                             audited += 1
+                            processed.append({"slot_id": slot_id, "result": "navigation-failed"})
                             continue
 
                         active_levels = level_set
@@ -1075,6 +1178,10 @@ def run(args):
                             active_levels, ctx, probe, status,
                             list(console_errors), list(failed_requests)))
                         audited += 1
+                        processed.append({"slot_id": slot_id,
+                                          "result": "html-inventoried" if status < 400 else "html-http-error",
+                                          "outcomes_eligible": 10 in level_set and status < 400
+                                          and not route.get("parameterised")})
                         if audited % 25 == 0:
                             flush()
                             print(f"  {audited} audited, {len(findings)} findings",
@@ -1085,13 +1192,17 @@ def run(args):
                     print(f"finished {role}/{vp_name}: {len(findings)} findings so far",
                           flush=True)
             browser.close()
+        execution_state = "completed"
     finally:
+        if execution_state == "running":
+            execution_state = "interrupted"
         flush()
-        proc.terminate()
-        try:
-            proc.wait(timeout=20)
-        except subprocess.TimeoutExpired:
-            proc.kill()
+        if proc is not None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=20)
+            except subprocess.TimeoutExpired:
+                proc.kill()
 
     summarise(findings, audited, len(routes))
     return min(len(blocking_findings(findings)), 250)

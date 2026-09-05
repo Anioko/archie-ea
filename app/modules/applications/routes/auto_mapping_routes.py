@@ -201,28 +201,44 @@ def comprehensive_auto_map():
 
         ai_service = get_ai_import_service()
 
-        # NEW: Support preview mode - analyze without saving
-        data.get("preview_mode", False)
+        # preview_mode: true must never write, whatever auto_create says -
+        # this flag was previously read and discarded, so a preview call
+        # could still commit mappings the caller had not accepted.
+        preview_mode = bool(data.get("preview_mode", False))
 
-        # NEW: Support vendor ArchiMate cloning (P0 CRITICAL FIX)
+        # Vendor ArchiMate cloning happens inside bulk_ai_analyze itself
+        # (see vendor_stats below); nothing here needs the flag directly.
         data.get("clone_vendor_archimate", True)
 
-        # Perform bulk AI analysis
-        _application_ids = data.get("application_ids", None)
+        # Perform bulk AI analysis. application_ids, when given, scopes the
+        # source rows to exactly those applications (see bulk_ai_analyze) -
+        # previously discarded, so a caller naming a specific import batch got
+        # whichever applications were newest overall instead.
+        application_ids = data.get("application_ids") or None
         _layer_targets = data.get("layer_targets", None)
-        # bulk_ai_analyze only accepts max_applications and confidence_threshold.
-        # Passing application_ids / generation_mode / layer_targets raised
-        # TypeError on every request, so this endpoint always 500'd. The service
-        # has no concept of those options, so they are not silently forwarded -
-        # the API still accepts them, but they are not yet implemented.
+        # generation_mode / layer_targets still have no effect: the service
+        # has no concept of them yet. The API accepts them without error, but
+        # they are not implemented.
+        map_capabilities = data.get("map_capabilities", True)
+        map_processes = data.get("map_processes", True)
         analysis_result = ai_service.bulk_ai_analyze(
             max_applications=data.get("max_applications", 50),
             confidence_threshold=data.get("confidence_threshold", 0.7),
+            application_ids=application_ids,
         )
 
-        # Auto-create mappings if requested
-        creation_result = {"created": 0, "errors": [], "applications_processed": 0}
-        if data.get("auto_create", False):
+        # Auto-create mappings if requested. Counts are tracked per category -
+        # previously summed into one "created" bucket and reported as
+        # capability/process/archimate counts simultaneously, so any nonzero
+        # write looked like all three categories had succeeded.
+        creation_result = {
+            "capability_mappings_created": 0,
+            "process_mappings_created": 0,
+            "archimate_elements_created": 0,
+            "errors": [],
+            "applications_processed": 0,
+        }
+        if data.get("auto_create", False) and not preview_mode:
             # NEW: Wrap in transaction with rollback on failure (P0 CRITICAL FIX)
             try:
                 # Find high-confidence mappings to auto-create
@@ -230,18 +246,21 @@ def comprehensive_auto_map():
                     if "error" in app_result:
                         continue  # Skip failed analyses
 
-                    # Only auto-create high-confidence mappings
+                    # Only auto-create high-confidence mappings, and only for
+                    # categories the caller asked for.
                     high_conf_capabilities = [
                         m
                         for m in app_result.get("capability_mappings", [])
-                        if m.get("confidence_score", 0)
+                        if map_capabilities
+                        and m.get("confidence_score", 0)
                         >= data.get("confidence_threshold", 0.7)
                     ]
 
                     high_conf_processes = [
                         m
                         for m in app_result.get("process_mappings", [])
-                        if m.get("similarity_score", 0)
+                        if map_processes
+                        and m.get("similarity_score", 0)
                         >= data.get("confidence_threshold", 0.7)
                     ]
 
@@ -256,11 +275,12 @@ def comprehensive_auto_map():
                             else "ai_auto",
                         )
 
-                        creation_result["created"] += (
-                            creation["capability_mappings_created"]
-                            + creation["process_mappings_created"]
-                            + creation["archimate_elements_created"]
-                        )
+                        creation_result["capability_mappings_created"] += creation[
+                            "capability_mappings_created"
+                        ]
+                        creation_result["process_mappings_created"] += creation[
+                            "process_mappings_created"
+                        ]
                         creation_result["applications_processed"] += 1
 
                         if creation["errors"]:
@@ -278,7 +298,9 @@ def comprehensive_auto_map():
                 creation_result["errors"].append(
                     f"Transaction failed and was rolled back: {str(e)}"
                 )
-                creation_result["created"] = 0
+                creation_result["capability_mappings_created"] = 0
+                creation_result["process_mappings_created"] = 0
+                creation_result["archimate_elements_created"] = 0
                 creation_result["applications_processed"] = 0
 
         # Count vendor shared elements + relationships for statistics
@@ -307,10 +329,10 @@ def comprehensive_auto_map():
             "process_mappings_found": analysis_result["process_mappings_found"],
             "archimate_elements_generated": total_archimate,
             "high_confidence_mappings": analysis_result["high_confidence_mappings"],
-            # Creation results
-            "capability_mappings_created": creation_result["created"],
-            "process_mappings_created": creation_result["created"],
-            "archimate_elements_created": creation_result["created"],
+            # Creation results — per-category, truthful counts (see above)
+            "capability_mappings_created": creation_result["capability_mappings_created"],
+            "process_mappings_created": creation_result["process_mappings_created"],
+            "archimate_elements_created": creation_result["archimate_elements_created"],
             # Processing metadata
             "processing_stats": analysis_result["processing_stats"],
             # Detailed application results (for UI display)

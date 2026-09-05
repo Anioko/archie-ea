@@ -36,7 +36,10 @@ def batch(db_session, make_org):
                                  organization_id=organization.id)
             for index, organization in enumerate((owner, owner, foreign))]
     db_session.add_all(rows)
-    db_session.flush()
+    # Commit (RELEASE SAVEPOINT under the shared fixture) so a handler's
+    # db.session.rollback() unwinds only its own writes, not this fixture's
+    # rows; the outer connection transaction still discards everything.
+    db_session.commit()
     return SimpleNamespace(user=user, org_id=owner.id, foreign_org_id=foreign.id,
                            ids=[row.id for row in rows], names=[row.name for row in rows],
                            mirrors=[row.archimate_element_id for row in rows], suffix=suffix)

@@ -54,14 +54,10 @@ def test_manual_import_create_reload_and_merge(browser, live_server, seeded):
         entry.get_by_placeholder('Type', exact=True).fill(kind)
         entry.locator('select[name="deployment_status"]').select_option('planned')
         expect(dialog.locator('#auto-map-after-import-manual')).not_to_be_checked()
-        dialog.get_by_label('Duplicate Mode:', exact=True).select_option('update')
-        # Observe the application's own post-import reload before requesting an
-        # independent reload; otherwise two navigations can race with ERR_ABORTED.
-        with page.expect_navigation(wait_until='domcontentloaded', timeout=PAGE_TIMEOUT) as refreshed:
-            with page.expect_response(lambda response: response.url == endpoint
-                                      and response.request.method == 'POST') as saved:
-                dialog.get_by_role('button', name='Import manual entries', exact=True).click()
-        assert refreshed.value is not None and refreshed.value.status == 200
+        dialog.locator('#duplicate-mode-manual').select_option('update')
+        with page.expect_response(lambda response: response.url == endpoint
+                                  and response.request.method == 'POST') as saved:
+            dialog.get_by_role('button', name='Import manual entries', exact=True).click()
         response = saved.value
         assert response.status == 200, response.text()
         result = response.json()
@@ -70,6 +66,21 @@ def test_manual_import_create_reload_and_merge(browser, live_server, seeded):
         assert result['updated'] == expected_updated
         assert result['failed'] == 0, result
         assert response.request.headers.get('x-csrftoken') or response.request.headers.get('x-csrf-token')
+        # Saved data and truthful counts must remain available before the user
+        # acknowledges; a transient toast followed by reload is insufficient.
+        outcome = page.get_by_role('dialog', name='Import saved', exact=True)
+        expect(outcome).to_be_visible()
+        expect(outcome.get_by_text(f'Created: {expected_created}', exact=True)).to_be_visible()
+        expect(outcome.get_by_text(f'Updated: {expected_updated}', exact=True)).to_be_visible()
+        expect(outcome.get_by_text('Auto-mapping was not requested.', exact=True)).to_be_visible()
+        expect(page.locator('#application-import-modal [aria-label="Import manual entries"]')).to_be_disabled()
+        assert persisted()['kind'] == kind
+        expect(outcome).to_be_visible()
+        # Observe the application's acknowledged refresh before independently
+        # reloading, so the two navigations cannot race with ERR_ABORTED.
+        with page.expect_navigation(wait_until='domcontentloaded', timeout=PAGE_TIMEOUT) as refreshed:
+            outcome.get_by_role('button', name='Done — refresh applications', exact=True).click()
+        assert refreshed.value is not None and refreshed.value.status == 200
         expect(dialog).not_to_be_visible(timeout=PAGE_TIMEOUT)
         assert page.reload(timeout=PAGE_TIMEOUT).status == 200
 

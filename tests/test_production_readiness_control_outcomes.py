@@ -108,7 +108,7 @@ def test_identical_links_need_independent_browser_evidence():
             assert audit.control_outcome_fingerprint(controls[0], "/same") != (
                 audit.control_outcome_fingerprint(controls[1], "/same")
             )
-            assert audit.probe_control_outcome(page, 0)["status"] == "verified"
+            assert audit.probe_control_outcome(page, 0)["status"] == "observed-unqualified"
             assert audit.probe_control_outcome(page, 1)["status"] == "no-observable-outcome"
         finally:
             browser.close()
@@ -141,9 +141,9 @@ def test_real_browser_probe_requires_an_observable_outcome_not_a_handler():
         browser.close()
 
     assert dead["status"] == "no-observable-outcome"
-    assert changed["status"] == "verified"
+    assert changed["status"] == "observed-unqualified"
     assert changed["outcome"] == "visible-state-change"
-    assert navigated["status"] == "verified"
+    assert navigated["status"] == "observed-unqualified"
     assert navigated["outcome"] == "visible-state-change"
     assert empty_fragment["status"] == "no-observable-outcome"
 

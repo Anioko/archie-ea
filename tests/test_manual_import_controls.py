@@ -52,7 +52,9 @@ def manual_page(manual_browser, request):
     document = manual_html()
     release, started, map_release, map_started = Event(), Event(), Event(), Event()
     state = {'posts': [], 'maps': [], 'errors': [], 'console_errors': [], 'unexpected': [], 'status': 200,
-             'map_status': 200, 'map_response': {'process_mappings_created': 1},
+             'map_status': 200, 'map_response': {'success': True, 'process_mappings_created': 1,
+                                              'archimate_elements_created': 0,
+                                              'vendor_archimate_cloned': 0, 'vendor_matches_found': 0},
              'map_release': map_release, 'map_started': map_started,
              'response': {'success': True, 'created': 1, 'updated': 0, 'skipped': 0, 'failed': 0, 'errors': []},
              'release': release, 'started': started}
@@ -169,6 +171,13 @@ def import_button(dialog):
     return dialog.get_by_role('button', name='Import manual entries', exact=True)
 
 
+def acknowledge_import(page, close=False):
+    result = page.get_by_role('dialog', name='Import saved', exact=True)
+    expect(result).to_be_visible()
+    with page.expect_navigation(wait_until='load'):
+        result.get_by_role('button', name='Close' if close else 'Done — refresh applications', exact=True).click()
+
+
 def test_normal_create_and_merge_payload(manual_page):
     page, state = manual_page
     for index, kind in enumerate(['ERP', 'CRM']):
@@ -180,8 +189,14 @@ def test_normal_create_and_merge_payload(manual_page):
         import_button(dialog).click()
         assert state['started'].wait(3), 'Visible manual import did not send the request'
         expect(import_button(dialog)).to_be_disabled()
-        with page.expect_navigation(wait_until='load'):
-            state['release'].set()
+        state['release'].set()
+        result = page.get_by_role('dialog', name='Import saved', exact=True)
+        expect(result).to_contain_text('Created: 1' if index == 0 else 'Created: 0')
+        expect(result).to_contain_text('Updated: 0' if index == 0 else 'Updated: 1')
+        expect(result).to_contain_text('Auto-mapping was not requested')
+        expect(page.locator('#manual-entry-tbody tr')).to_have_count(1)
+        expect(page.locator('#application-import-modal [aria-label="Import manual entries"]')).to_be_disabled()
+        acknowledge_import(page, close=index == 1)
         assert state['posts'][-1] == {'csrf': 'synthetic-token', 'body': {
             'applications': [{'app_id': 'SYNTHETIC-01', 'name': 'Synthetic import',
                               'component_type': kind, 'deployment_status': 'planned'}],
@@ -253,8 +268,8 @@ def test_partial_batch_keeps_submit_button_after_confirmation(manual_page):
     assert state['started'].wait(3)
     expect(import_button(dialog)).to_be_disabled()
     assert len(state['posts'][0]['body']['applications']) == 1
-    with page.expect_navigation(wait_until='load'):
-        state['release'].set()
+    state['release'].set()
+    acknowledge_import(page)
 
 
 def test_remove_row_button_removes_only_selected_row(manual_page):
@@ -269,8 +284,11 @@ def test_remove_row_button_removes_only_selected_row(manual_page):
     assert state['posts'] == []
 
 
-@pytest.mark.parametrize('mapping_failure', [False, True], ids=['map_success', 'map_http_failure'])
-def test_checked_auto_map_waits_for_result_before_reload(manual_page, mapping_failure):
+@pytest.mark.parametrize('mapping_case', [
+    'success', 'http_failure', 'logical_failure', 'partial_errors', 'rolled_back',
+    'empty_object', 'null', 'negative_count', 'unsafe_error',
+])
+def test_checked_auto_map_retains_saved_result_until_acknowledged(manual_page, mapping_case):
     page, state = manual_page
     dialog = open_manual(page)
     add_row(dialog)
@@ -278,9 +296,30 @@ def test_checked_auto_map_waits_for_result_before_reload(manual_page, mapping_fa
     dialog.locator('#import-map-capabilities-manual').uncheck()
     dialog.locator('#import-generate-archimate-manual').check()
     dialog.locator('#import-clone-vendor-manual').check()
-    state['map_status'] = 400 if mapping_failure else 200
-    if mapping_failure:
+    state['map_status'] = 400 if mapping_case == 'http_failure' else 200
+    expected = 'Auto-mapping completed'
+    if mapping_case == 'http_failure':
         state['map_response'] = {'error': 'Synthetic mapping failure'}
+        expected = 'Auto-mapping failed: Synthetic mapping failure'
+    elif mapping_case == 'logical_failure':
+        state['map_response'] = {'success': False, 'error': 'Synthetic mapping rejection'}
+        expected = 'Auto-mapping failed: Synthetic mapping rejection'
+    elif mapping_case in ['partial_errors', 'rolled_back']:
+        state['map_response'].update(process_mappings_created=2 if mapping_case == 'partial_errors' else 0,
+                                     creation_errors=['Synthetic mapping creation failed'])
+        expected = 'Auto-mapping reported errors'
+    elif mapping_case == 'empty_object':
+        state['map_response'] = {}
+        expected = 'Auto-mapping outcome could not be confirmed'
+    elif mapping_case == 'null':
+        state['map_response'] = None
+        expected = 'Auto-mapping outcome could not be confirmed'
+    elif mapping_case == 'negative_count':
+        state['map_response']['process_mappings_created'] = -1
+        expected = 'Auto-mapping outcome could not be confirmed'
+    elif mapping_case == 'unsafe_error':
+        state['map_response'] = {'success': False, 'error': '<img src=x onerror=alert(1)> rejected'}
+        expected = 'Auto-mapping failed: <img src=x onerror=alert(1)> rejected'
     state['release'].set()
     import_button(dialog).dblclick()
     assert state['map_started'].wait(3)
@@ -290,7 +329,27 @@ def test_checked_auto_map_waits_for_result_before_reload(manual_page, mapping_fa
     assert state['maps'] == [{'csrf': 'synthetic-token', 'body': {
         'max_applications': 1, 'map_capabilities': False, 'map_processes': True,
         'generate_archimate': True, 'clone_vendor_archimate': True, 'auto_create': True}}]
-    with page.expect_navigation(wait_until='load'):
-        state['map_release'].set()
+    state['map_release'].set()
+    result = page.get_by_role('dialog', name='Import saved', exact=True)
+    expect(result).to_be_visible()
+    expect(result).to_contain_text('Created: 1')
+    expect(result).to_contain_text('Updated: 0')
+    expect(result).to_contain_text(expected)
+    expect(page.locator('#application-import-modal [aria-label="Import manual entries"]')).to_be_disabled()
+    expect(result.locator('img')).to_have_count(0)
+    if mapping_case in ['partial_errors', 'rolled_back']:
+        expect(result).to_contain_text('Synthetic mapping creation failed')
+        expect(result).to_contain_text('APQC processes mapped: 2' if mapping_case == 'partial_errors'
+                                       else 'APQC processes mapped: 0')
+    elif mapping_case == 'success':
+        expect(result).to_contain_text('APQC processes mapped: 1')
+    else:
+        expect(result).not_to_contain_text('APQC processes mapped:')
+    if mapping_case != 'success':
+        expect(result).not_to_contain_text('Auto-mapping completed')
+    page.keyboard.press('Escape')
+    expect(result).to_be_visible()
+    assert len(state['posts']) == len(state['maps']) == 1
+    acknowledge_import(page)
     expect(page.get_by_role('button', name='Open Import', exact=True)).to_be_visible()
     assert len(state['posts']) == len(state['maps']) == 1

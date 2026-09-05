@@ -304,14 +304,13 @@ function toggleArchimateMode() {
   }
 }
 
-// Run comprehensive auto-mapping after import
+// Run comprehensive auto-mapping and return its outcome without hiding it by navigating.
 // suffix: '' for Excel tab, '-manual' for Manual tab
 async function runPostImportAutoMap(importedCount, suffix) {
   if (suffix === undefined) suffix = '';
   const autoMapCheckbox = document.getElementById('auto-map-after-import' + suffix);
   if (!autoMapCheckbox || !autoMapCheckbox.checked) {
-    window.location.reload();
-    return;
+    return ['Auto-mapping was not requested.'];
   }
 
   // Get options based on which tab
@@ -336,16 +335,29 @@ async function runPostImportAutoMap(importedCount, suffix) {
       clone_vendor_archimate: cloneVendor,
       auto_create: true
     }, { silent: true });
-    let mapMessage = 'Auto-mapping complete!\n';
-    if (data.process_mappings_created > 0) mapMessage += `APQC Processes mapped: ${data.process_mappings_created}\n`;
-    if (data.archimate_elements_created > 0) mapMessage += `ArchiMate elements: ${data.archimate_elements_created}\n`;
-    if (data.vendor_archimate_cloned > 0) mapMessage += `Vendor elements cloned: ${data.vendor_archimate_cloned}\n`;
-    if (data.vendor_matches_found > 0) mapMessage += `Vendor matches: ${data.vendor_matches_found}\n`;
-    Platform.toast.info(mapMessage);
-    window.location.reload();
+    if (data && (data.success === false || data.error)) {
+      const details = [data.message, data.error].filter(value => typeof value === 'string' && value.trim());
+      return ['Auto-mapping failed: ' + (details.join(': ') || 'The mapping request was rejected.')];
+    }
+    const counters = [
+      ['process_mappings_created', 'APQC processes mapped'],
+      ['archimate_elements_created', 'ArchiMate elements'],
+      ['vendor_archimate_cloned', 'Vendor elements cloned'],
+      ['vendor_matches_found', 'Vendor matches']
+    ];
+    const supplied = data && counters.filter(([field]) => Object.hasOwn(data, field));
+    if (!data || data.success !== true || !supplied.length ||
+        supplied.some(([field]) => !Number.isInteger(data[field]) || data[field] < 0) ||
+        (data.creation_errors !== undefined && (!Array.isArray(data.creation_errors) ||
+          data.creation_errors.some(error => typeof error !== 'string' || !error.trim())))) {
+      return ['Auto-mapping outcome could not be confirmed: invalid server response.'];
+    }
+    const errors = data.creation_errors || [];
+    return [errors.length ? 'Auto-mapping reported errors; some or all mappings may not have been saved.'
+                          : 'Auto-mapping completed.',
+      ...supplied.map(([field, label]) => `${label}: ${data[field]}`), ...errors];
   } catch (error) {
-    Platform.toast.error('Import succeeded but auto-mapping failed: ' + error.message);
-    window.location.reload();
+    return ['Auto-mapping failed: ' + error.message];
   }
 }
 
@@ -509,6 +521,7 @@ async function processManualImport(submitEvent) {
   const originalText = importBtn.textContent;
   importBtn.disabled = true;
   importBtn.textContent = 'Importing...';
+  let importSaved = false;
 
   try {
     const tbody = document.getElementById('manual-entry-tbody');
@@ -567,20 +580,36 @@ async function processManualImport(submitEvent) {
       throw new Error('Import failed: invalid server response');
     }
 
-    let message = `Import complete!\nCreated: ${data.created}\nUpdated: ${data.updated}\nSkipped: ${data.skipped}\nFailed: ${data.failed}`;
+    importSaved = true;
+    const resultLines = [`Created: ${data.created}`, `Updated: ${data.updated}`,
+      `Skipped: ${data.skipped}`, `Failed: ${data.failed}`];
     if (data.errors && data.errors.length > 0) {
-      message += '\n\nErrors:\n' + data.errors.slice(0, 5).join('\n');
+      resultLines.push('Import errors:', ...data.errors.slice(0, 5));
     }
 
-    // Run auto-mapping if enabled, then reload
+    // The import is saved even if the optional mapping step fails.
     const importedCount = (data.created || 0) + (data.updated || 0);
-    Platform.toast.info(message);
-    await runPostImportAutoMap(importedCount, '-manual');
+    importBtn.textContent = 'Import saved — processing result...';
+    const mappingLines = await runPostImportAutoMap(importedCount, '-manual');
+    const resultId = Platform.modal.create({
+      title: 'Import saved',
+      size: 'md',
+      backdrop: false,
+      keyboard: false,
+      content: [...resultLines, ...mappingLines].map(line =>
+        `<p class="text-sm text-foreground">${escapeHtml(String(line))}</p>`).join(''),
+      buttons: [{ label: 'Done — refresh applications', variant: 'primary', resolve: true }]
+    });
+    await Platform.modal.prompt(resultId);
+    Platform.modal.destroy(resultId);
+    tbody.replaceChildren();
+    window.location.reload();
   } catch (error) {
-    Platform.toast.error('Error importing: ' + error.message);
+    Platform.toast.error((importSaved ? 'Import saved, but its result could not be displayed: ' : 'Error importing: ') + error.message);
   } finally {
-    importBtn.disabled = false;
-    importBtn.textContent = originalText;
+    // Never offer to replay a saved batch, including during the pending reload.
+    importBtn.disabled = importSaved;
+    importBtn.textContent = importSaved ? 'Import saved' : originalText;
   }
 }
 

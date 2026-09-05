@@ -70,6 +70,10 @@ def independent_application_race(concurrency_database_guard, app, _schema):
             ArchiMateElement.query.filter(
                 ArchiMateElement.organization_id == org_id,
                 ArchiMateElement.id.in_(mirror_ids)).delete(synchronize_session=False)
+            # Application writes emit SOC2 audit rows keyed to the organisation;
+            # they must go before the organisation or its delete violates the FK.
+            from app.models.audit_log import AuditLog
+            AuditLog.query.filter_by(organization_id=org_id).delete(synchronize_session=False)
             assert Organization.query.filter_by(id=org_id, slug=state['slug']).delete() == 1
             db.session.commit()
             assert ApplicationComponent.query.filter_by(organization_id=org_id).count() == 0

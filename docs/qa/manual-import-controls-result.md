@@ -78,14 +78,56 @@ ordinary flows must have no console errors. While the mapping response is held,
 the import dialog stays visible, the original control remains disabled, and only
 one import plus one mapping request is sent even after a double-click.
 
-The existing shared auto-map helper reloads after either mapping success or
-HTTP failure, after emitting its corresponding toast; that behavior is unchanged.
+At the initial manual-controls candidate, the shared auto-map helper reloaded
+after either mapping success or HTTP failure, after emitting its corresponding
+toast; that behavior was unchanged in that first repair.
 The mapping tests assert sequencing and requests, not that transient feedback
 remains readable after navigation. No live mapping or AI service is exercised.
 The warning is pytest's unused `base_url` option with plugin autoload disabled.
 
 No database, external service, credentials, configuration saves, commits or
 deployments were used by this task.
+
+## F500-089 — retain the saved-import and mapping outcomes
+
+Read-only investigation of immutable `0521450e` reproduced seven native browser
+cases before this follow-up repair. All three engines discarded import totals
+and HTTP mapping-failure feedback on automatic navigation. All three also
+transiently misreported HTTP 200 `success: false` as mapping completion. A seventh
+Chromium case reproduced the actual endpoint-shaped `success: true` plus
+`creation_errors` reporting completion despite errors. A read-only DOM observer
+recorded toast contents, and post-navigation DOM checks found no remaining
+feedback. These observations do not claim those transient toasts were readable
+before navigation. The current Excel caller does not use this helper.
+
+The parent approved a bounded design after DESIGN.md and the debugging,
+test-first and design instructions were read. The automated HTTP mapping-failure
+regression then failed before production edits: 1 failed, 113 deselected, 11.34
+seconds, because the expected persistent saved-import result was absent.
+
+The helper now returns mapping outcome text without navigating. The manual
+caller presents the standard platform-created modal titled **Import saved**.
+It keeps the actual import counters separate from mapping success, reported
+creation errors, explicit rejection, HTTP failure or unconfirmed malformed
+responses. Only supplied valid mapping counters are displayed; absent counters
+are not invented. All result text is escaped and sanitized. No backend mapping
+selection, option implementation or counter calculation is changed here.
+
+The primary acknowledgment is **Done — refresh applications**. The standard
+header **Close** also acknowledges the result. Escape and backdrop dismissal are
+disabled. The original submit remains disabled while mapping and while the
+result is open; the rows stay present until acknowledgment, then are cleared and
+the page refreshes. A saved batch never becomes submit-enabled again, including
+while navigation is pending. No template, generated bundle or shared modal
+implementation changed.
+
+Focused Chromium desktop verification: **19 passed**, 95 deselected, no skips,
+1 configuration warning in 29.30 seconds. The expanded full 114-case matrix is
+running; its terminal result will be recorded before claiming full verification.
+It exercises all three engines and both viewports, with native local requests,
+real controls, retained counts, explicit acknowledgment, no duplicate import,
+error text escaping and console/page-error checks. Syntax, scoped correctness
+lint and whitespace checks passed before the full run.
 
 Parent independent verification: final 72-case matrix passed with no skips in
 216.16 seconds. This confirms the controlled browser scope above, not database
