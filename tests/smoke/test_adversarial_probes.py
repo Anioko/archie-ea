@@ -25,6 +25,7 @@ changing routes require dedicated tests rather than ending a traversal's session
 
 import json
 import os
+import re
 
 import pytest
 
@@ -46,6 +47,38 @@ HOSTILE_PARAMS = [
     {"limit": "-1"}, {"limit": "abc"}, {"limit": "99999999999999999999"},
     {"per_page": "-1"},
 ]
+
+
+def _diagnostic_text(value):
+    """Short single-line detail; never dump request/session objects or bodies."""
+    text = str(value)
+    text = re.sub(r"(?i)([a-z][a-z0-9+.-]*://)[^\s/]*@", r"\1[redacted]@", text)
+    text = re.sub(r"\?[^\s'\"<>)]*", "?[redacted]", text)
+    # Header-like text can occur inside exception messages. Suppress the whole
+    # value rather than trying to guess its cookie/authentication scheme.
+    text = re.sub(r"(?im)\b(?:authorization|proxy-authorization|(?:set-)?cookie)\s*[:=][^\r\n]*",
+                  "[redacted header]", text)
+    text = re.sub(r"(?i)\b(?:password|passwd|token|api[_-]?key|secret)\s*[:=]\s*[^\s,;]+",
+                  "[redacted credential]", text)
+    text = " ".join(text.split())
+    return text if len(text) <= 300 else text[:297] + "..."
+
+
+def _exception_diagnostic(exc):
+    return _diagnostic_text("%s: %s" % (type(exc).__name__, exc))
+
+
+def _response_diagnostic(response):
+    """Only explicit JSON error/message strings from this test-data probe."""
+    try:
+        payload = response.json()
+    except ValueError:
+        return ""
+    if not isinstance(payload, dict):
+        return ""
+    detail = "; ".join("%s=%s" % (key, payload[key]) for key in ("error", "message")
+                       if isinstance(payload.get(key), str) and payload[key].strip())
+    return " (%s)" % _diagnostic_text(detail) if detail else ""
 
 
 def _load_baseline():
@@ -122,7 +155,7 @@ def test_a_nonexistent_entity_is_never_rendered_as_a_real_one(live_server, seede
             response = session.get(live_server + path, timeout=20,
                                    allow_redirects=False)
         except Exception as exc:
-            offenders.append("%s -> request failed (%s)" % (path, type(exc).__name__))
+            offenders.append("%s -> request failed (%s)" % (path, _exception_diagnostic(exc)))
             continue
         if 200 <= response.status_code < 300:
             offenders.append("%s -> %d" % (path, response.status_code))
@@ -149,15 +182,15 @@ def test_hostile_pagination_never_reaches_a_500(live_server, seeded):
                 response = session.get(live_server + path, params=params,
                                        timeout=20, allow_redirects=False)
             except Exception as exc:
-                offenders.append("%s %s -> request failed (%s)" % (path, params, type(exc).__name__))
+                offenders.append("%s %s -> request failed (%s)" % (path, params, _exception_diagnostic(exc)))
                 continue
             # 501 excluded for the same reason as the persona probe: "Not
             # Implemented" is a deliberate statement that a feature does not
             # exist (the SAML callback is a documented stub), not a failure
             # under hostile input.
             if response.status_code >= 500 and response.status_code != 501:
-                offenders.append("%s %s -> %d"
-                                 % (path, params, response.status_code))
+                offenders.append("%s %s -> %d%s"
+                                 % (path, params, response.status_code, _response_diagnostic(response)))
                 break  # one report per route is enough to act on
 
     allowed = _load_baseline().get("hostile_pagination", 0)
@@ -185,7 +218,7 @@ def test_no_persona_can_reach_a_5xx_on_their_own_pages(archetype, live_server, s
             response = session.get(live_server + path, timeout=25,
                                    allow_redirects=False)
         except Exception as exc:
-            offenders.append("%s -> request failed (%s)" % (path, type(exc).__name__))
+            offenders.append("%s -> request failed (%s)" % (path, _exception_diagnostic(exc)))
             continue
         # 501 is excluded deliberately, and only 501. "Not Implemented" is
         # never an accident -- it is a server stating that a feature does not
@@ -194,7 +227,7 @@ def test_no_persona_can_reach_a_5xx_on_their_own_pages(archetype, live_server, s
         # honest 501 as a server error is how a gate earns a reputation for
         # crying wolf and stops being read.
         if response.status_code >= 500 and response.status_code != 501:
-            offenders.append("%s -> %d" % (path, response.status_code))
+            offenders.append("%s -> %d%s" % (path, response.status_code, _response_diagnostic(response)))
 
     allowed = _load_baseline().get("persona_5xx", {}).get(archetype, 0)
     assert len(offenders) <= allowed, (

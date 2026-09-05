@@ -1,5 +1,13 @@
 # QA coordination board
 
+## Current checkpoint — 5 September, candidate 18d52beb
+
+Full CI 33967077472 is running for exact candidate 18d52bebf02d27a72fdbc3e8c4c523d09c0d348b. Previous candidate 64825fe5 run 33966263332 has nine completed successful jobs; its Chromium job has reached adversarial probes and backend coverage is still running. Neither candidate is deployed or release-approved.
+
+Probe diagnostics worker returned; coordinator inspected the diff and independently ran tests/test_probe_error_diagnostics.py: 15 passed. This only improves bounded failure explanations; 503/connection failures still fail and baselines/timeouts are unchanged. No claim that the underlying failures are repaired.
+
+Live settled Chrome check of /solutions/32: + Component under Solution Composition leaves the page unchanged, with focus on the trigger and no editor. Source calls openEntityModal('composition'), which has no editor branch. No production data written. Composition editor worker exclusively owns blueprint.js, blueprint.html insertion, a new composition editor partial, focused Chromium tests and its result report. Coordinator owns ledger, CI, independent review and full-app tests. Other generic editor types remain unqualified.
+
 ## Correction requiring verification
 
 Update: e8e16687 contains the corrected canonical `type` implementation. Independent local runs passed 17 serialization/import contract cases and 4 actual export-response lifecycle cases. Real PostgreSQL import/export and browser download cases are in CI 33965073124, not yet qualified. The false-positive test episode below is retained as history, not the current implementation state.
@@ -18,6 +26,8 @@ Codex coordinates integration, shared ledger updates, independent browser retest
 - Stop after the bounded assignment; do not expand into unrelated refactoring or delegate additional agents.
 
 ## Active assignments
+
+Newest branch checkpoint: **18d52bebf02d27a72fdbc3e8c4c523d09c0d348b**, committed/pushed to QA branch only. Includes F500-064, its nine passing focused/rendered-browser tests, the pending real-DB route case, and stronger procurement/application/roadmap/login clicks. No CI dispatched for this commit yet. Existing run 33966263332 continues to test immutable **64825fe5**, not the new branch tip. Its main journeys passed; census is still running. Main/production unchanged.
 
 CI 33966263332 at 64825fe5: the **Run archetype journeys** step is now explicitly SUCCESS. The broader interaction census is running; adversarial and backend completion still required. Do not equate this step with whole-product qualification. The procurement fix and stronger click tests are being checkpointed separately; their full database/browser run remains pending.
 
