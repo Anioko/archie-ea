@@ -18,6 +18,7 @@ except ImportError:
 from app.extensions import db
 from app.flask_email import send_email
 from app.models import User
+from app.models.org_role import OrgRole
 
 
 def _queue_email(*args, **kwargs):
@@ -92,7 +93,13 @@ class AccountService:
         if hasattr(user, "is_org_admin"):
             user.is_org_admin = True
         db.session.add(user)
-        db.session.commit()
+        try:
+            db.session.flush()
+            OrgRole.set_role(org.id, user.id, "org_admin", granted_by_id=user.id)
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            raise
         # Auto-login after registration
         login_user(user)
         # Email confirmation disabled — re-enable by removing confirmed=True above

@@ -49,6 +49,21 @@ def test_compatibility_requires_ai_and_providerless_history_execution():
         assert report in required['run']
 
 
+def test_import_browser_journeys_are_arguments_to_one_pytest_command():
+    workflow = yaml.safe_load((GATE.parents[2] / '.github/workflows/ci.yml').read_text(encoding='utf-8'))
+    stage = next(step for step in workflow['jobs']['browser-compatibility']['steps']
+                 if step.get('name') == 'Run cross-browser critical journeys')
+    command = stage['run']
+    # Extra indentation inside YAML >- preserves newlines and turns filenames
+    # into separate shell commands instead of pytest arguments.
+    assert len(command.splitlines()) == 1
+    assert command.startswith('pytest ')
+    for path in ('tests/smoke/test_manual_application_import.py',
+                 'tests/smoke/test_application_import_history_journey.py'):
+        assert command.split().count(path) == 1
+    assert '--junitxml=' in command
+
+
 @pytest.mark.parametrize('xml,ok', [
     ('<testsuites><testsuite tests="1"><testcase name="real"/></testsuite></testsuites>', True),
     ('<testsuite><testcase name="xfail"><skipped type="pytest.xfail"/></testcase></testsuite>', False),

@@ -5,10 +5,11 @@
  * app/templates/ai_chat/index.html. The pieces that are easy to lose while
  * moving and are therefore called out here:
  *
- *   - /ai-chat/context/<domain> returns `elements` for architecture and
- *     `applications` for technology, and nothing recognisable otherwise. Each
- *     row is a data-action="select-context" target: the only click-path to
- *     element context.
+ *   - /ai-chat/context/<domain> returns a `context` envelope containing
+ *     `architecture_elements` or `technology_stacks`. ArchiMate elements are
+ *     selectable; stacks are read-only because stack focus is not supported
+ *     by the chat context resolver. Older direct element/application responses
+ *     retain their existing selection behavior.
  *   - switchTab's panel list must contain all four names. 'history' was
  *     missing, so choosing another tab never hid the Chats panel.
  *   - executeNLQuery hands advisory questions to the chat instead of the
@@ -54,44 +55,117 @@
         }
     }
 
-    async function loadDomainContext(domain) {
+    let contextLoad = null;
+    let contextPageHidden = false;
+
+    function cancelDomainContext() {
+        if (contextLoad) {
+            contextLoad.controller.abort();
+            contextLoad = null;
+        }
+    }
+
+    // beforeunload cancels while the old document can still receive fetch
+    // rejections; pagehide also covers history navigation / the back-forward cache.
+    window.addEventListener('beforeunload', cancelDomainContext);
+    window.addEventListener('pagehide', () => {
+        contextPageHidden = true;
+        cancelDomainContext();
+    });
+    window.addEventListener('pageshow', (event) => {
+        contextPageHidden = false;
+        if (event.persisted) loadDomainContext(state.currentDomain);
+    });
+
+    function loadDomainContext(domain) {
+        const target = document.getElementById('domain-context');
+        if (!target || contextPageHidden) {
+            cancelDomainContext();
+            return Promise.resolve();
+        }
+        // Persona initialization and the page initializer can request the same
+        // domain in one turn. Share that operation instead of issuing two loads.
+        if (contextLoad && contextLoad.domain === domain && contextLoad.target === target) {
+            return contextLoad.promise;
+        }
+        cancelDomainContext();
+        const request = { domain, target, controller: new AbortController(), promise: null };
+        contextLoad = request;
+        request.promise = renderDomainContext(domain, request);
+        return request.promise;
+    }
+
+    async function renderDomainContext(domain, request) {
         try {
-            const data = await Platform.fetch(`/ai-chat/context/${domain}`);
+            const payload = await Platform.fetch(`/ai-chat/context/${domain}`, {
+                signal: request.controller.signal
+            });
             // Unchecked, a 500 fell through to the else-branch below and rendered
             // "No specific context available for <domain>" — a load failure dressed
             // up as an empty model.
             // Platform.fetch throws on non-ok responses, so we only reach here on success.
 
             const contextContainer = document.getElementById('domain-context');
+            if (request.controller.signal.aborted || contextLoad !== request ||
+                contextContainer !== request.target || !contextContainer?.isConnected) return;
+            if (!payload || typeof payload !== 'object' || Array.isArray(payload) ||
+                payload.success === false || payload.error) {
+                throw new Error('The context response could not be loaded');
+            }
+            const data = payload.context ?? payload;
+            if (!data || typeof data !== 'object' || Array.isArray(data) || data.error) {
+                throw new Error('The context response could not be loaded');
+            }
+            const elements = 'architecture_elements' in data ? data.architecture_elements : data.elements;
+            const stacks = data.technology_stacks;
+            if ((domain === 'architecture' && !Array.isArray(elements)) ||
+                (domain === 'technology' && ('technology_stacks' in data
+                    ? !Array.isArray(stacks) : !Array.isArray(data.applications))) ||
+                ('applications' in data && !Array.isArray(data.applications))) {
+                throw new Error('The context response has an invalid collection');
+            }
+            const escape = value => Platform.sanitize.escape(String(value ?? '—'));
             contextContainer.innerHTML = '';
 
-            if (domain === 'architecture' && data.elements) {
+            if (domain === 'architecture' && elements.length) {
                 contextContainer.innerHTML = `
                     <h3 class="font-medium text-sm mb-3">ArchiMate Elements</h3>
                     <div class="space-y-2">
-                        ${data.elements.map(el => `
+                        ${elements.map(el => `
                             <div class="rounded-lg border bg-card p-3 shadow-sm cursor-pointer hover:bg-accent transition-colors"
-                                 data-action="select-context" data-id="${el.id}" data-type="archimate_element">
+                                 data-action="select-context" data-id="${escape(el.id)}" data-type="archimate_element">
                                 <div class="flex items-center gap-2 mb-1">
-                                    <span class="bg-primary/10 text-primary text-xs px-1.5 py-0.5 rounded font-medium">${el.type}</span><!-- token-migration-ok -->
-                                    <span class="font-medium text-sm">${el.name}</span>
+                                    <span class="bg-primary/10 text-primary text-xs px-1.5 py-0.5 rounded font-medium">${escape(el.type)}</span><!-- token-migration-ok -->
+                                    <span class="font-medium text-sm">${escape(el.name)}</span>
                                 </div>
                             </div>
                         `).join('')}
                     </div>
                 `;
-            } else if (domain === 'technology' && data.applications) {
+            } else if (domain === 'technology' && stacks?.length) {
+                contextContainer.innerHTML = `
+                    <h3 class="font-medium text-sm mb-3">Technology Stacks</h3>
+                    <div class="space-y-2">
+                        ${stacks.map(stack => `
+                            <div class="rounded-lg border bg-card p-3 shadow-sm">
+                                <h4 class="font-medium text-sm">${escape(stack.name)}</h4>
+                                <p class="text-xs text-muted-foreground">${escape(stack.description || '—')}</p>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            } else if (domain === 'technology' && !('technology_stacks' in data) && data.applications?.length) {
                 contextContainer.innerHTML = `
                     <h3 class="font-medium text-sm mb-3">Applications</h3>
                     <div class="space-y-2">
                         ${data.applications.map(app => `
                             <div class="rounded-lg border bg-card p-3 shadow-sm cursor-pointer hover:bg-accent transition-colors"
-                                 data-action="select-context" data-id="${app.id}" data-type="application">
+                                 data-action="select-context" data-id="${escape(app.id)}" data-type="application">
                                 <div class="flex items-center gap-2 mb-1">
-                                    <span class="bg-emerald-500/10 text-emerald-700 text-xs px-1.5 py-0.5 rounded font-medium">Application</span><!-- token-migration-ok -->
-                                    <span class="font-medium text-sm">${app.name}</span>
+                                    <span class="bg-info/10 text-info-emphasis text-xs px-1.5 py-0.5 rounded font-medium">Application</span>
+                                    <span class="font-medium text-sm">${escape(app.name)}</span>
                                 </div>
-                                <p class="text-xs text-muted-foreground">${app.technology || 'No technology info'}</p>
+                                <p class="text-xs text-muted-foreground">${escape(app.technology || 'No technology info')}</p>
                             </div>
                         `).join('')}
                     </div>
@@ -100,7 +174,7 @@
                 contextContainer.innerHTML = `
                     <div class="text-center py-8 text-muted-foreground">
                         <i data-lucide="inbox" class="h-8 w-8 mx-auto mb-2 opacity-50"></i>
-                        <p class="text-sm">No specific context available for ${domain}</p>
+                        <p class="text-sm">No specific context available for ${escape(domain)}</p>
                     </div>
                 `;
             }
@@ -109,17 +183,22 @@
             lucide.createIcons();
 
         } catch (error) {
+            // Only this request's cancellation/obsolescence is quiet. Real
+            // transport errors were reported by Platform.fetch and remain visible.
+            if (request.controller.signal.aborted || contextLoad !== request) return;
             // Surface the failure — otherwise the panel is left showing whatever the
             // previous domain rendered (or nothing), which reads as "no context" rather
             // than "the load failed".
             const contextContainer = document.getElementById('domain-context');
-            if (contextContainer) {
+            if (contextContainer === request.target && contextContainer?.isConnected) {
                 contextContainer.innerHTML = `
                     <div class="text-center py-8 text-muted-foreground">
-                        <p class="text-sm text-destructive">Couldn't load context for ${domain}.</p>
+                        <p class="text-sm text-destructive">Couldn't load context for ${Platform.sanitize.escape(String(domain))}.</p>
                     </div>
                 `;
             }
+        } finally {
+            if (contextLoad === request) contextLoad = null;
         }
     }
 

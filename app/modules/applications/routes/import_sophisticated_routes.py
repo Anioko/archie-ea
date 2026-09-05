@@ -1406,12 +1406,20 @@ def preview_ai_analysis():
 @audit_log("import_manual_applications")
 def import_manual_applications():
     """Process manual entry applications"""
-    data = request.get_json()
-    applications = data.get("applications", [])
-    duplicate_mode = data.get("duplicate_mode", "merge")
-    date_order = data.get("date_format", "iso")
-    if date_order not in ("iso", "dmy", "mdy"):
-        date_order = "iso"
+    import uuid
+    from datetime import timezone
+    from flask import g
+    from app.models.application_import_history import ApplicationImportHistory
+    from app.utils.manual_application_import import validate_manual_application_import
+
+    if type(getattr(g, "current_org_id", None)) is not int or g.current_org_id <= 0:
+        return jsonify({"success": False, "error": "An active organization is required"}), 403
+    try:
+        applications, duplicate_mode, date_order = validate_manual_application_import(
+            request.get_json(silent=True), rich=True
+        )
+    except ValueError as exc:
+        return jsonify({"success": False, "error": str(exc)}), 400
 
     records_created = 0
     records_updated = 0
@@ -1420,6 +1428,11 @@ def import_manual_applications():
     errors = []
     skipped_fields = []  # Track silently dropped values for user visibility
     audit_changes = []  # Track before/after for audit trail
+    created_by_name = {}
+    created_by_code = {}
+    created_ids = []
+    updated_ids = []
+    started_at = datetime.now(timezone.utc).replace(tzinfo=None)
 
     # Pre-load existing apps for consistent case-insensitive matching
     lookup = DuplicateDetector.preload_existing_apps()  # model-safety-ok: prefetched
@@ -1429,7 +1442,7 @@ def import_manual_applications():
     matched_ids = set()
     for app_entry in applications:
         _name = app_entry.get("name", "").strip()
-        _app_id = app_entry.get("app_id", "").strip() or None
+        _app_id = app_entry.get("application_code")
         if _name:
             _match = DuplicateDetector.find_existing_app(_name, lookup, _app_id)
             if _match:
@@ -1447,7 +1460,7 @@ def import_manual_applications():
     for idx, app_data in enumerate(applications, start=1):
         try:
             name = app_data.get("name", "").strip()
-            app_id = app_data.get("app_id", "").strip() or None
+            app_id = app_data.get("application_code")
 
             if not name:
                 records_failed += 1
@@ -1460,6 +1473,8 @@ def import_manual_applications():
                 existing_apps_by_id.get(match["id"])
                 if match else None
             )
+            if existing_app is None:
+                existing_app = created_by_name.get(name.lower()) or created_by_code.get(app_id)
 
             # Process date fields
             processed_data = {}
@@ -1478,7 +1493,7 @@ def import_manual_applications():
                             "row": idx, "field": key,
                             "value": value_str[:50], "reason": "unparseable date",
                         })
-                elif value:
+                elif value is not None and value != "":
                     processed_data[key] = value
 
             # Clean and enrich data at import time
@@ -1490,11 +1505,8 @@ def import_manual_applications():
                 for key, value in processed_data.items():
                     if key == "name":
                         continue
-                    if not hasattr(existing_app, key):  # model-safety-ok
-                        continue
-                    # Skip empty/falsy values — preserve existing data
-                    # Catches None, empty strings, 0, 0.0, False
-                    if not value and value is not False:
+                    # The shared boundary has authorized and typed these fields.
+                    if value is None or value == "":
                         continue
                     if isinstance(value, str) and not value.strip():
                         continue
@@ -1508,46 +1520,66 @@ def import_manual_applications():
                         "action": "updated", "changed_fields": changed_fields,
                     })
                 records_updated += 1
+                if existing_app.id not in created_ids and existing_app.id not in updated_ids:
+                    updated_ids.append(existing_app.id)
             elif existing_app and duplicate_mode == "skip":
                 records_skipped += 1
                 continue
             else:
-                # Create new - filter to only valid ApplicationComponent fields, exclude system fields
-                SYSTEM_FIELDS = {"id", "created_at", "updated_at", "created_by", "updated_by"}
-                valid_fields = {col.name for col in ApplicationComponent.__table__.columns} - SYSTEM_FIELDS
-                filtered_data = {
-                    k: v for k, v in processed_data.items() if k in valid_fields
-                }
-                app = ApplicationComponent(**filtered_data)
+                # Only explicit business fields survive the shared boundary.
+                app = ApplicationComponent(**processed_data)
                 db.session.add(app)
-                audit_changes.append({"app_name": name, "action": "created"})
+                # Flush assigns the server-owned ID/mirror without committing.
+                db.session.flush()
+                created_ids.append(app.id)
+                audit_changes.append({"app_name": name, "app_id": app.id, "action": "created"})
                 records_created += 1
+                created_by_name[name.lower()] = app
+                if app_id:
+                    created_by_code[app_id] = app
 
         except Exception as e:
-            records_failed += 1
-            current_app.logger.warning(f"Manual import row {idx} failed: {e}")
-            errors.append(f"Row {idx}: Could not process this record")
+            db.session.rollback()
+            current_app.logger.exception("Manual import row %d failed: %s", idx, e)
+            return jsonify({"success": False, "error": "Import failed; no applications were saved"}), 500
 
-    db.session.commit()
-
-    # Write audit trail
+    # Persist applications and both audit representations in one transaction.
     try:
+        completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        linked = {"created_ids": created_ids, "updated_ids": updated_ids,
+                  "total_processed": len(created_ids) + len(updated_ids)}
+        history = ApplicationImportHistory(
+            organization_id=g.current_org_id,
+            imported_by_id=current_user.id, imported_by_name=current_user.email,
+            imported_at=started_at, import_source="manual", duplicate_mode=duplicate_mode,
+            total_records=len(applications), records_created=records_created,
+            records_updated=records_updated, records_skipped=records_skipped,
+            records_failed=records_failed, status="completed",
+            import_settings=json.dumps({"duplicate_mode": duplicate_mode, "date_format": date_order,
+                                        "linked_applications": linked, "skipped_fields": skipped_fields}),
+        )
         audit = ImportSessionLog(
+            session_id=str(uuid.uuid4()), operation_type="import",
             user_id=current_user.id,
-            user_email=current_user.email if hasattr(current_user, "email") else None,  # model-safety-ok
-            import_type="manual",
+            import_source="unified_applications", started_at=started_at, completed_at=completed_at,
+            status="completed", records_processed=len(applications),
             records_created=records_created,
             records_updated=records_updated,
             records_skipped=records_skipped,
             records_failed=records_failed,
             duplicate_mode=duplicate_mode,
-            changes=audit_changes[:500],
-            errors=errors[:50],
+            detailed_changes=audit_changes,
+            changes_summary={"import_type": "manual", "linked_applications": linked,
+                             "skipped_fields": skipped_fields},
+            processing_time_seconds=int((completed_at - started_at).total_seconds()),
         )
+        db.session.add(history)
         db.session.add(audit)
         db.session.commit()
     except Exception as audit_err:
-        current_app.logger.warning("Failed to write import audit log: %s", audit_err)
+        db.session.rollback()
+        current_app.logger.exception("Failed to commit manual import and audit: %s", audit_err)
+        return jsonify({"success": False, "error": "Import failed; no applications were saved"}), 500
 
     return (
         jsonify(

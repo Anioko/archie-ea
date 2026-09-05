@@ -1340,7 +1340,7 @@ function archieShowBanner(msg, type) {
                             <template x-for="(action, ai) in msg.actions" :key="ai">
                                 <div
                                     :class="action.undone ? 'opacity-50' : ''"
-                                    class="flex items-center justify-between border-l-2 border-success bg-success/5 rounded-r px-3 py-1.5">
+                                    class="flex items-center justify-between border border-border bg-card rounded-lg px-3 py-1.5">
                                     <span class="text-xs text-success-emphasis flex items-center gap-1.5">
                                         <template x-if="!action.undone"><span>✓</span></template>
                                         <template x-if="action.undone"><span>↩ Undone</span></template>
@@ -1364,7 +1364,7 @@ function archieShowBanner(msg, type) {
                             <template x-for="(approval, api) in msg.approvals" :key="api">
                                 <div
                                     x-show="!approval.dismissed"
-                                    class="border-l-2 border-warning bg-warning rounded-r px-3 py-2">
+                                    class="border border-border bg-card rounded-lg px-3 py-2">
                                     <p class="text-xs text-warning-emphasis mb-1.5">
                                         ⏳ <span x-text="approval.summary"></span>
                                     </p>

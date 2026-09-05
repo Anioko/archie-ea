@@ -183,9 +183,9 @@ jobs:
           flask --app manage reconcile-schema
       - name: Run non-smoke tests with coverage and route verification
         # route_verification.json is ignored execution evidence. Delete any
-        # stale copy, create it from this job's non-browser pytest run, then
-        # enforce it immediately. The smoke job below remains the sole browser
-        # execution, so this job must explicitly exclude tests/smoke.
+        # stale copy, create it from this job's non-smoke pytest run, then
+        # enforce it immediately. This job includes rendered UI regressions;
+        # the separate smoke jobs own full-app browser journeys.
         # --maxfail keeps the log readable while still surfacing many failures.
         run: |
           rm -f route_verification.json
@@ -463,6 +463,8 @@ jobs:
           tests/smoke/test_blueprint_governance_controls.py
           tests/smoke/test_vendor_dialog_controls.py
           tests/smoke/test_data_entity_lifecycle.py
+          tests/smoke/test_manual_application_import.py
+          tests/smoke/test_application_import_history_journey.py
           tests/smoke/test_brand_home_navigation.py
           tests/smoke/test_model_viewer_navigation.py
           --junitxml=tests/smoke/_artifacts/${{ matrix.browser }}.xml

@@ -6,6 +6,7 @@ environment (see .env.example). Safe to re-run: it is a no-op if the admin exist
 from manage import app, db
 from app.models import Role, User
 from app.models.organization import Organization
+from app.models.org_role import OrgRole
 from config import Config
 
 with app.app_context():
@@ -34,5 +35,11 @@ with app.app_context():
         u.is_org_admin = True
         u.is_platform_admin = True
         db.session.add(u)
-        db.session.commit()
+        try:
+            db.session.flush()
+            OrgRole.set_role(org.id, u.id, "org_admin", granted_by_id=u.id)
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            raise
         print("Admin created:", Config.ADMIN_EMAIL, "(organization:", org.slug + ")")

@@ -7,14 +7,14 @@ Provides API endpoints for the import history and audit trail interface.
 import csv
 import io
 import logging
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 from flask import Blueprint, jsonify, request, send_file
 from flask_login import current_user, login_required
 
 from app.decorators import audit_log
 from app.models.application_import_history import ApplicationImportHistory
-from app.models.batch_processing import BatchJob
+from app.models.batch_processing import BatchJob, BatchJobStatus
 from app.services.batch_processing_service import BatchProcessingService
 from app.services.rate_limiter import rate_limit
 from app.utils.pagination import safe_int_arg
@@ -25,25 +25,54 @@ logger = logging.getLogger(__name__)
 import_history_bp = Blueprint("import_history", __name__, url_prefix="/api/import-history")
 
 
+def _history_day(value, field):
+    """Parse an optional UTC calendar date for the model's naive UTC column."""
+    if not value:
+        return None
+    try:
+        day = date.fromisoformat(value)
+        if day.isoformat() != value:
+            raise ValueError
+    except ValueError:
+        raise ValueError(f"{field} must be a valid date in YYYY-MM-DD format") from None
+    return datetime.combine(day, datetime.min.time())
+
+
 @import_history_bp.route("", methods=["GET"])
 @login_required
 def get_import_history():
-    """Get user's import history with batch job details."""
+    """List the current user's batch jobs, with inclusive UTC date filters."""
+    status_value = request.args.get("status", "").strip().lower()
+    try:
+        status = BatchJobStatus(status_value) if status_value else None
+    except ValueError:
+        return jsonify({"success": False, "error": "Invalid batch job status"}), 400
+
+    try:
+        date_from = _history_day(request.args.get("date_from"), "date_from")
+        date_to = _history_day(request.args.get("date_to"), "date_to")
+        if date_from and date_to and date_from > date_to:
+            raise ValueError("date_from must be on or before date_to")
+        # End of the selected day is inclusive, without dropping fractional
+        # seconds or applying a database-session timezone conversion.
+        date_until = date_to + timedelta(days=1) if date_to else None
+    except (ValueError, OverflowError) as error:
+        message = str(error) if isinstance(error, ValueError) else "date_to is out of range"
+        return jsonify({"success": False, "error": message}), 400
+
     try:
         # Get pagination parameters
         page = safe_int_arg('page', 1, minimum=1)
         per_page = safe_int_arg('per_page', 20, minimum=1, maximum=500)
-        status = request.args.get("status")
-        request.args.get("date_from")
-        request.args.get("date_to")
-
-        BatchProcessingService()
-
         # Query batch jobs for current user with optional filters
         query = BatchJob.query.filter_by(created_by_id=current_user.id)
-        if status:
+        if status is not None:
             query = query.filter_by(status=status)
-        query = query.order_by(BatchJob.created_at.desc())
+        if date_from is not None:
+            query = query.filter(BatchJob.created_at >= date_from)
+        if date_until is not None:
+            query = query.filter(BatchJob.created_at < date_until)
+        query = query.order_by(BatchJob.created_at.desc(), BatchJob.id.desc())
         paginated = query.paginate(page=page, per_page=per_page, error_out=False)
 
         # Convert to dict format
@@ -52,15 +81,16 @@ def get_import_history():
             job_dict = {
                 "id": job.id,
                 "job_name": job.job_name,
-                "job_type": job.job_type,
-                "status": job.status,
+                "job_type": job.job_type.value if job.job_type is not None else None,
+                "status": job.status.value if job.status is not None else None,
                 "total_items": job.total_items,
                 "processed_items": job.processed_items,
                 "successful_items": job.successful_items,
                 "failed_items": job.failed_items,
                 "created_at": job.created_at.isoformat() if job.created_at else None,
                 "completed_at": job.completed_at.isoformat() if job.completed_at else None,
-                "progress": getattr(job, "progress_percentage", 0) or 0,
+                "progress": float(job.progress_percentage)
+                if job.progress_percentage is not None else None,
             }
             job_dicts.append(job_dict)
 
@@ -68,7 +98,7 @@ def get_import_history():
             {
                 "success": True,
                 "jobs": job_dicts,
-                "total": len(job_dicts),
+                "total": paginated.total,
                 "page": page,
                 "per_page": per_page,
             }

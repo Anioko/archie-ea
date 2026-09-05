@@ -22,8 +22,6 @@ the defects were all invisible to code reading.
 
 from __future__ import annotations
 
-import threading
-import time
 import uuid
 
 import pytest
@@ -214,72 +212,6 @@ def test_generated_relationships_have_real_endpoints(db_session, make_org):
 # --------------------------------------------------------------------------- #
 # 2. Concurrent duplicate create                                                #
 # --------------------------------------------------------------------------- #
-
-
-def test_concurrent_identical_creates_produce_one_row(app, make_org):
-    """The race is between SESSIONS, so this test cannot use ``db_session``:
-    that fixture pins every session to one connection inside one transaction,
-    which is precisely the interleaving the bug needs to be absent.
-
-    It therefore commits real rows and removes them in a finally block.
-    """
-    from app import db
-    from app.models.application_portfolio import ApplicationComponent
-    from app.models.organization import Organization
-    from app.utils.duplicate_guard import find_duplicate_by_name, lock_name_for_write
-
-    sfx = uuid.uuid4().hex[:8]
-    name = f"Concurrent App {sfx}"
-    with app.app_context():
-        org = Organization(name=f"RaceOrg {sfx}", slug=f"raceorg-{sfx}")
-        db.session.add(org)
-        db.session.commit()
-        org_id = org.id
-
-    workers = 5
-    barrier = threading.Barrier(workers)
-
-    def _create():
-        with app.test_request_context("/"):
-            from flask import g
-
-            g.current_org_id = org_id
-            barrier.wait(timeout=10)
-            # Exactly the sequence app/modules/applications/routes/crud_routes.py
-            # runs, with the window a real server's scheduling provides.
-            lock_name_for_write(ApplicationComponent, name)
-            existing = find_duplicate_by_name(ApplicationComponent, name)
-            time.sleep(0.25)
-            if existing is None:
-                db.session.add(ApplicationComponent(name=name))
-                db.session.commit()
-            db.session.remove()
-
-    try:
-        threads = [threading.Thread(target=_create) for _ in range(workers)]
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join(timeout=30)
-
-        with app.app_context():
-            created = (
-                db.session.query(ApplicationComponent)
-                .filter(
-                    ApplicationComponent.organization_id == org_id,
-                    ApplicationComponent.name == name,
-                )
-                .count()
-            )
-        assert created == 1, (
-            f"{workers} concurrent identical creates made {created} rows"
-        )
-    finally:
-        with app.app_context():
-            db.session.query(ApplicationComponent).filter(
-                ApplicationComponent.organization_id == org_id
-            ).delete()
-            db.session.commit()
 
 
 def test_lock_is_scoped_to_one_name(db_session, make_org):

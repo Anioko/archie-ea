@@ -29,6 +29,7 @@ never fewer". Nothing here can be satisfied by a change that narrows a result
 set, which is the failure mode a naive "just normalise the data" fix has.
 """
 
+import pytest
 from sqlalchemy import text
 
 
@@ -289,8 +290,18 @@ def test_backfill_command_is_registered(app):
     assert "backfill-archimate-layer-casing" in app.cli.commands
 
 
-def test_backfill_command_dry_run_runs_end_to_end(app):
-    """The click wrapper itself must work, not just the helper underneath it."""
-    result = app.test_cli_runner().invoke(args=["backfill-archimate-layer-casing", "--dry-run"])
+@pytest.mark.parametrize("stored_layer", ["Motivation", "motivation"])
+def test_backfill_command_dry_run_runs_end_to_end(app, db_session, make_org, stored_layer):
+    """Exercise dirty and already-clean inputs without relying on leaked rows."""
+    org = make_org("layer-cli-dry-run")
+    row = _raw_insert(db_session, org.id, "CLI dry-run fixture", stored_layer)
+    result = app.test_cli_runner().invoke(args=[
+        "backfill-archimate-layer-casing", "--dry-run", "--org-id", str(org.id)
+    ])
     assert result.exit_code == 0, result.output
-    assert "dry-run" in result.output
+    assert f"scanned 1 element(s) in organization {org.id}" in result.output
+    if stored_layer == "Motivation":
+        assert "dry-run: would update 1 row(s); no changes committed." in result.output
+    else:
+        assert "no non-canonical layer values" in result.output
+    assert _stored_layer(db_session, row) == stored_layer, "CLI dry-run wrote to the table"

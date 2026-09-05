@@ -138,11 +138,11 @@ function testJiraConnection() {
             // The error's message is already user‑friendly; we display it inline.
             result.textContent = e.message || 'Request failed';
             result.className = 'rounded-md border p-4 text-sm bg-destructive/10 border-destructive/20 text-destructive';
+        })
+        .finally(() => {
+            btn.disabled = false;
+            btn.textContent = 'Test Connection';
         });
-    .finally(() => {
-        btn.disabled = false;
-        btn.textContent = 'Test Connection';
-    });
 }
 (function() {
     let _testBtn = document.getElementById('test-jira-btn');

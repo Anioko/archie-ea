@@ -771,11 +771,11 @@
 
       {# Executive Summary callout #}
       {% if solution.description %}
-      <div class="border-l-4 border-l-info rounded-r-lg bg-card/50 px-5 py-4">
+      <div class="border border-border rounded-lg bg-card px-5 py-4">
         <p class="text-sm text-foreground/90 leading-relaxed">{{ solution.description }}</p>
       </div>
       {% else %}
-      <div class="border-l-4 border-l-info/30 rounded-r-lg bg-card/30 px-5 py-4">
+      <div class="border border-border rounded-lg bg-card px-5 py-4">
         <p class="text-sm text-muted-foreground italic">No executive summary yet &mdash; <a href="{{ url_for('solution_design.edit_solution', solution_id=solution.id) }}" class="text-primary hover:underline">add one</a></p>
       </div>
       {% endif %}

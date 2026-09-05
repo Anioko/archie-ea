@@ -64,7 +64,10 @@ def history_records(providerless_guide_configuration, app, seeded):
             db.session.remove()
             assert APISettings.query.filter_by(enabled=True).count() == 0, (
                 'Providerless journey requires a disposable database without enabled provider records')
-            for persona in ['enterprise_architect', 'solution_architect']:
+            # The same owner must be authorized for BOTH fixture pages. The
+            # seeded solution belongs to solution_architect; enterprise_architect
+            # is neither its creator nor a named stakeholder and correctly gets403.
+            for persona in ['solution_architect', 'enterprise_architect']:
                 user = User.query.filter_by(email=seeded['emails'][persona],
                                             organization_id=seeded['ids']['org']).one()
                 user_ids.append(user.id)
@@ -149,7 +152,7 @@ def test_providerless_saved_guide_can_be_opened_and_cleared_without_affecting_ot
         return page
 
     try:
-        owner = signed_in('enterprise_architect')
+        owner = signed_in('solution_architect')
         # A real read-only diagnostic proves the server has no provider. This
         # expected 503 is asserted narrowly; page HTTP errors are never waived.
         health = owner.request.get(live_server + '/ai-chat/api/health/llm')
@@ -189,7 +192,7 @@ def test_providerless_saved_guide_can_be_opened_and_cleared_without_affecting_ot
         messages = _open_history(owner, 'solutions.detail', fixture['other_scope'])
         assert [message['content'] for message in messages] == [fixture['texts']['other scope']]
         expect(owner.locator('#page-guide-messages')).to_contain_text(fixture['texts']['other scope'])
-        colleague = signed_in('solution_architect')
+        colleague = signed_in('enterprise_architect')
         assert colleague.goto(app_url, wait_until='domcontentloaded').status == 200
         messages = _open_history(colleague, 'applications.detail', fixture['scope'])
         assert [message['content'] for message in messages] == [fixture['texts']['other user']]

@@ -1,573 +1,263 @@
 {% extends "layouts/admin_base.html" %}
 {% from 'components/page_header.html' import page_header %}
 {% from 'components/metrics_card.html' import metrics_card %}
-
+{% from 'components/modal.html' import modal %}
 {% block title %}Import History{% endblock %}
-
-{% block extra_css %}
-<style>
-.import-item {
-    @apply bg-card rounded-lg shadow-md p-6 mb-4 transition-all duration-200;
-}
-
-.import-item:hover {
-    @apply shadow-lg;
-}
-
-.status-completed {
-    @apply bg-success/10 text-success;
-}
-
-.status-partial {
-    @apply bg-warning/10 text-warning;
-}
-
-.status-failed {
-    @apply bg-destructive/10 text-destructive;
-}
-
-.status-pending {
-    @apply bg-primary/10 text-primary;
-}
-
-.status-running {
-    @apply bg-accent text-primary;
-}
-
-.progress-bar {
-    @apply w-full bg-muted rounded-full h-2;
-}
-
-.progress-fill {
-    @apply bg-primary h-2 rounded-full transition-all duration-300;
-}
-
-.stat-card {
-    @apply bg-card rounded-lg shadow p-4;
-}
-
-.stat-value {
-    @apply text-2xl font-bold text-foreground;
-}
-
-.stat-label {
-    @apply text-sm text-muted-foreground;
-}
-</style>
-{% endblock %}
-
 {% block content %}
-<div class="space-y-6">
-    <!-- Header -->
-    {{ page_header(
-        title='Import History', breadcrumbs=[{'label': 'Home', 'href': '/'}, {'label': 'Import History'}],
-        description='View and manage application import history and audit trail',
-        actions=[
+<div class="space-y-6" x-data="applicationImportHistoryPage()">
+    {{ page_header(title='Import History', breadcrumbs=[{'label': 'Home', 'href': '/'}, {'label': 'Import History'}],
+        description='Application import records and audit trail', actions=[
             {'text': 'Export CSV', 'icon': 'download', 'onclick': 'exportHistory()', 'variant': 'default'},
-            {'text': 'Refresh', 'icon': 'refresh-cw', 'onclick': 'refreshHistory()', 'variant': 'outline'}
-        ]
-    ) }}
-
-    <!-- Statistics Overview -->
-    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-        {# Em dash, not 0: nothing has been counted yet, and a 0 here would be
-           indistinguishable from a real "no imports". #}
-        {{ metrics_card(title='Total Imports', value='—', value_id='total-imports', icon='upload') }}
-        {{ metrics_card(title='Applications Created', value='—', value_id='total-created', icon='plus-circle', value_class='text-success') }}
-        {{ metrics_card(title='Applications Updated', value='—', value_id='total-updated', icon='refresh-cw', value_class='text-primary') }}
-        {{ metrics_card(title='Failed Records', value='—', value_id='total-failed', icon='x-circle', value_class='text-destructive') }}
+            {'text': 'Refresh', 'icon': 'refresh-cw', 'onclick': 'refreshHistory()', 'variant': 'outline'}]) }}
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+        {{ metrics_card(title='Matching Imports', value='—', value_id='total-imports', icon='upload') }}
+        {{ metrics_card(title='Created on This Page', value='—', value_id='total-created', icon='plus-circle') }}
+        {{ metrics_card(title='Updated on This Page', value='—', value_id='total-updated', icon='refresh-cw') }}
+        {{ metrics_card(title='Failed on This Page', value='—', value_id='total-failed', icon='x-circle') }}
     </div>
-
-    <!-- Filter Controls -->
-    <div class="bg-card rounded-lg shadow-md p-4 mb-6">
-        <div class="flex flex-wrap items-center gap-4">
-            <div>
-                <label for="status-filter" class="block text-sm font-medium text-foreground/80 mb-1">Status Filter</label>
-                <select id="status-filter" class="border border-border rounded-lg px-3 py-2 focus:ring-primary focus:border-primary">
-                    <option value="">All Statuses</option>
-                    <option value="completed">Completed</option>
-                    <option value="partial">Partial</option>
-                    <option value="failed">Failed</option>
-                    <option value="pending">Pending</option>
-                    <option value="running">Running</option>
+    <div class="bg-card rounded-lg border border-border p-4">
+        <div class="flex flex-wrap items-end gap-4">
+            <div><label for="status-filter" class="block text-sm font-medium mb-1">Status Filter</label>
+                <select id="status-filter" x-model="filters.status" class="h-9 border border-input rounded-md px-3 text-sm">
+                    <option value="">All Statuses</option><option value="completed">Completed</option>
+                    <option value="partial">Partial</option><option value="failed">Failed</option>
+                    <option value="pending">Pending</option><option value="running">Running</option>
+                    <option value="rolled_back">Rolled back</option>
                 </select>
             </div>
-            <div>
-                <label class="block text-sm font-medium text-foreground/80 mb-1">Date Range</label>
-                <label for="date-from" class="sr-only">Date from</label>
-                <input type="date" id="date-from" class="border border-border rounded-lg px-3 py-2 focus:ring-primary focus:border-primary">
-            </div>
-            <div>
-                <label class="block text-sm font-medium text-foreground/80 mb-1">&nbsp;</label>
-                <label for="date-to" class="sr-only">Date to</label>
-                <input type="date" id="date-to" class="border border-border rounded-lg px-3 py-2 focus:ring-primary focus:border-primary">
-            </div>
-            <div>
-                <label class="block text-sm font-medium text-foreground/80 mb-1">&nbsp;</label>
-                <button type="button" @click="applyFilters()" class="bg-primary text-primary-foreground px-4 py-2 rounded-lg hover:bg-primary transition-colors" aria-label="Apply filters to history">
-                    <i data-lucide="filter" class="inline h-4 w-4 mr-2" aria-hidden="true"></i>Apply Filters
-                </button>
-            </div>
+            <div><label for="date-from" class="block text-sm font-medium mb-1">Date from</label>
+                <input id="date-from" type="date" x-model="filters.date_from" class="h-9 border border-input rounded-md px-3 text-sm"></div>
+            <div><label for="date-to" class="block text-sm font-medium mb-1">Date to</label>
+                <input id="date-to" type="date" x-model="filters.date_to" class="h-9 border border-input rounded-md px-3 text-sm"></div>
+            <button type="button" @click="applyFilters()" aria-label="Apply filters to history"
+                class="h-9 px-4 py-2 text-sm rounded-md bg-primary text-primary-foreground disabled:opacity-50 disabled:pointer-events-none">Apply Filters</button>
+            <button type="button" @click="clearFilters()"
+                class="h-9 px-4 py-2 text-sm rounded-md border border-input disabled:opacity-50 disabled:pointer-events-none">Clear Filters</button>
         </div>
+        <p class="text-sm text-muted-foreground mt-2">Dates include the whole selected day in UTC. Apply filters to update the results.</p>
     </div>
-
-    <!-- Import History List -->
-    <div id="import-history-list">
-        <!-- History items will be loaded here -->
+    <div id="loading" x-show="loading" x-cloak role="status" class="text-center py-8">Loading import history...</div>
+    <div id="error-state" x-show="error" x-cloak role="alert" class="text-destructive-emphasis">
+        <p id="error-state-message" x-text="error"></p>
     </div>
-
-    <!-- Loading State -->
-    <div id="loading" class="text-center py-8">
-        <div class="inline-block h-10 w-10 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent"></div>
-        <p class="mt-2 text-muted-foreground">Loading import history...</p>
+    <div id="empty-state" x-show="loaded && !loading && !error && items.length === 0" x-cloak class="text-center py-8">
+        <p x-text="filtered ? 'No imports match these filters.' : 'No import history found.'"></p>
     </div>
-
-    <!-- Empty State -->
-    <div id="empty-state" class="text-center py-8 hidden">
-        <i data-lucide="history" class="h-10 w-10 text-muted-foreground" aria-hidden="true"></i>
-        <p class="mt-2 text-muted-foreground">No import history found</p>
+    <div id="import-history-list" :aria-busy="loading">
+        <template x-for="item in items" :key="item.id">
+            <article class="import-item bg-card rounded-lg border border-border p-4 mb-4">
+                <div class="flex flex-wrap justify-between gap-4">
+                    <div><h2 class="text-lg font-semibold" x-text="display(item.file_name)"></h2>
+                        <p class="text-sm text-muted-foreground" x-text="statusLabel(item.status)"></p></div>
+                    <button type="button" @click="viewDetails(item, $event.currentTarget)" aria-label="View import details"
+                        class="h-8 px-3 text-xs rounded-md border border-input disabled:opacity-50 disabled:pointer-events-none">View</button>
+                </div>
+                <dl class="grid grid-cols-1 md:grid-cols-4 gap-4 my-4 text-sm">
+                    <div><dt class="text-muted-foreground">Imported by</dt><dd x-text="display(item.imported_by_name)"></dd></div>
+                    <div><dt class="text-muted-foreground">Date (UTC)</dt><dd x-text="formatDate(item.imported_at)"></dd></div>
+                    <div><dt class="text-muted-foreground">Source</dt><dd x-text="display(item.import_source)"></dd></div>
+                    <div><dt class="text-muted-foreground">Duration</dt><dd x-text="formatDuration(item.processing_time_seconds)"></dd></div>
+                </dl>
+                <dl class="grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
+                    <div><dt>Created</dt><dd x-text="display(item.records_created)"></dd></div>
+                    <div><dt>Updated</dt><dd x-text="display(item.records_updated)"></dd></div>
+                    <div><dt>Skipped</dt><dd x-text="display(item.records_skipped)"></dd></div>
+                    <div><dt>Failed</dt><dd x-text="display(item.records_failed)"></dd></div>
+                    <div><dt>Total</dt><dd x-text="display(item.total_records)"></dd></div>
+                </dl>
+                <template x-if="item.errors && item.errors.length">
+                    <div class="mt-4 text-sm text-destructive-emphasis"><h3 class="font-semibold">Import errors</h3>
+                        <template x-for="(message, index) in item.errors" :key="index"><p x-text="display(message)"></p></template>
+                    </div>
+                </template>
+                <p class="mt-4 text-sm text-muted-foreground" x-show="item.import_settings_parse_error" x-cloak>Some saved import settings could not be read.</p>
+                <div class="flex flex-wrap items-center gap-2 mt-4">
+                    <button type="button" @click="openRollback(item, $event.currentTarget)" :disabled="rollbackSaving || !item.can_rollback"
+                        aria-label="Rollback import" class="h-8 px-3 text-xs rounded-md border border-input disabled:opacity-50 disabled:pointer-events-none">Rollback</button>
+                    <p class="text-sm text-muted-foreground" x-show="!item.can_rollback" x-cloak x-text="item.rollback_reason || 'Rollback is unavailable for this record.'"></p>
+                </div>
+                <div class="flex flex-wrap items-center gap-2 mt-4">
+                    <button type="button" disabled class="h-8 px-3 text-xs rounded-md border border-input disabled:opacity-50 disabled:pointer-events-none">Retry unavailable</button>
+                    <p class="text-sm text-muted-foreground">This import has no verified saved batch-job link for retry.</p>
+                </div>
+                <div x-show="item.status === 'running'" x-cloak class="mt-4 text-sm text-muted-foreground">Progress is unavailable without a verified saved batch-job link.</div>
+            </article>
+        </template>
     </div>
-
-    <!-- Error State — deliberately distinct from the empty state above, so a
-         failed load can never be read as "you have never imported anything". -->
-    <div id="error-state" class="text-center py-8 hidden">
-        <i data-lucide="alert-triangle" class="h-10 w-10 text-destructive" aria-hidden="true"></i>
-        <p class="mt-2 text-destructive-emphasis" id="error-state-message">Could not load import history.</p>
-    </div>
-</div>
-
-<!-- Import Details Modal -->
-<div id="import-details-modal" hidden class="modal-root overflow-y-auto h-full w-full fixed inset-0 bg-black/50 overflow-y-auto z-50"  role="dialog">
-    <div class="relative top-20 mx-auto p-5 border w-11/12 md:w-3/4 shadow-lg rounded-lg bg-card">
-        <div class="flex justify-between items-center mb-4">
-            <h2 class="text-xl font-bold text-foreground">Import Details</h2>
-            <button type="button" @click="closeDetailsModal()" class="text-muted-foreground hover:text-foreground" aria-label="Close">
-                <i data-lucide="x" class="h-5 w-5" aria-hidden="true"></i>
-            </button>
+    <nav aria-label="Import history pages" class="flex items-center gap-4" x-show="loaded && !error" x-cloak>
+        <button type="button" @click="loadHistory(currentPage - 1)" :disabled="loading || currentPage <= 1"
+            class="h-9 px-4 py-2 text-sm rounded-md border border-input disabled:opacity-50 disabled:pointer-events-none">Previous</button>
+        <span class="text-sm" x-text="pageLabel()"></span>
+        <button type="button" @click="loadHistory(currentPage + 1)" :disabled="loading || currentPage >= pages"
+            class="h-9 px-4 py-2 text-sm rounded-md border border-input disabled:opacity-50 disabled:pointer-events-none">Next</button>
+    </nav>
+    {% call modal(id='import-details-modal', title='Import Details', size='lg') %}
+        <div id="import-modal-content" class="space-y-4">
+            <h3 class="font-semibold" x-text="display(selected.file_name)"></h3>
+            <dl class="grid grid-cols-2 gap-4 text-sm">
+                <div><dt>Import ID</dt><dd x-text="display(selected.id)"></dd></div>
+                <div><dt>Status</dt><dd x-text="statusLabel(selected.status)"></dd></div>
+                <div><dt>Imported by</dt><dd x-text="display(selected.imported_by_name)"></dd></div>
+                <div><dt>Date (UTC)</dt><dd x-text="formatDate(selected.imported_at)"></dd></div>
+            </dl>
+            <h3 class="font-semibold">Saved import settings</h3>
+            <pre class="text-sm whitespace-pre-wrap" x-text="formatSettings(selected.import_settings)"></pre>
+            <h3 class="font-semibold">Recorded application links</h3>
+            <pre class="text-sm whitespace-pre-wrap" x-text="formatSettings(selected.linked_applications)"></pre>
         </div>
-
-        <div id="import-modal-content">
-            <!-- Content will be loaded here -->
-        </div>
-    </div>
-</div>
-
-<!-- Rollback Confirmation Modal -->
-<div id="rollback-modal" hidden class="modal-root overflow-y-auto h-full w-full fixed inset-0 bg-black/50 overflow-y-auto z-50" >
-    <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-lg bg-card">
-        <div class="flex justify-between items-center mb-4">
-            <h2 class="text-xl font-bold text-foreground">Confirm Rollback</h2>
-            <button type="button" @click="closeRollbackModal()" class="text-muted-foreground hover:text-foreground" aria-label="Close">
-                <i data-lucide="x" class="h-5 w-5" aria-hidden="true"></i>
-            </button>
-        </div>
-
+    {% endcall %}
+    {% call modal(id='rollback-modal', title='Confirm Import Rollback', size='default') %}
         <div class="space-y-4">
-            <p class="text-muted-foreground">Are you sure you want to rollback this import? This will:</p>
-            <ul class="list-disc list-inside text-muted-foreground">
-                <li>Delete all applications created by this import</li>
-                <li>Restore previous values for updated applications</li>
-                <li>Remove all AI mappings generated</li>
-                <li>This action cannot be undone</li>
-            </ul>
-
-            <div class="bg-warning/5 border border-warning/20 rounded-lg p-3">
-                <p class="text-sm text-warning-emphasis">
-                    <strong>Warning:</strong> Rollback is only available within 7 days of import.
-                </p>
+            <p x-text="display(rollbackTarget.file_name)"></p>
+            <p>This permanently removes <strong x-text="rollbackTarget.rollback_created_count"></strong> recorded created applications and their eligible mappings and elements.</p>
+            <p>Rollback does not restore previous values of updated applications. Updated applications remain unchanged.</p>
+            <p class="text-sm text-muted-foreground">Only the importer or an administrator can roll back an eligible completed or partial import within seven elapsed days. The server rechecks all targets before changing anything.</p>
+            <p role="alert" x-show="rollbackError" x-cloak class="text-destructive-emphasis" x-text="rollbackError"></p>
+            <div class="flex justify-end gap-2">
+                <button type="button" @click="cancelRollback()" :disabled="rollbackSaving"
+                    class="h-9 px-4 py-2 text-sm rounded-md border border-input disabled:opacity-50 disabled:pointer-events-none">Cancel</button>
+                <button type="button" @click="confirmRollback()" :disabled="rollbackSaving"
+                    class="h-9 px-4 py-2 text-sm rounded-md bg-destructive text-destructive-foreground disabled:opacity-50 disabled:pointer-events-none">Confirm rollback</button>
             </div>
         </div>
-
-        <div class="flex justify-end space-x-3 mt-6">
-            <button type="button" @click="closeRollbackModal()" class="bg-muted text-foreground/80 px-4 py-2 rounded-lg hover:bg-muted-foreground/40 transition-colors" aria-label="Close">
-                Cancel
-            </button>
-            <button type="button" @click="confirmRollback()" class="bg-destructive text-primary-foreground px-4 py-2 rounded-lg hover:bg-destructive transition-colors" aria-label="Confirm rollback of import">
-                <i data-lucide="rotate-ccw" class="inline h-4 w-4 mr-2" aria-hidden="true"></i>Rollback Import
-            </button>
-        </div>
-    </div>
+    {% endcall %}
 </div>
 {% endblock %}
-
 {% block extra_js %}
 <script>
-function escapeHtml(str) {
-    if (str == null) return '';
-    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
-}
-
-let importHistory = [];
-let currentImport = null;
-let rollbackImportId = null;
-
-// Load import history on page load
-document.addEventListener('DOMContentLoaded', function() {
-    loadImportHistory();
-});
-
-async function loadImportHistory() {
-    document.getElementById('error-state').classList.add('hidden');
-    try {
-        const data = await Platform.fetch('/api/import-history', { silent: true });
-        // Platform.fetch already parsed the JSON
-        if (!data.success) throw new Error(data.error || 'import history unavailable');
-        importHistory = data.jobs || [];
-        displayImportHistory();
-        updateStatistics();
-    } catch (error) {
-        showLoadError(error);
-    } finally {
-        document.getElementById('loading').classList.add('hidden');
-    }
-}
-
-// Never fall back to an empty list here: the history stays empty on screen but
-// is labelled as a failure, and the counters go to em dashes rather than 0.
-function showLoadError(error) {
-    importHistory = [];
-    document.getElementById('import-history-list').textContent = '';
-    document.getElementById('empty-state').classList.add('hidden');
-    const errorState = document.getElementById('error-state');
-    const message = document.getElementById('error-state-message');
-    if (message) message.textContent = 'Could not load import history: ' + (error && error.message ? error.message : 'unknown error');
-    if (errorState) errorState.classList.remove('hidden');
-    ['total-imports', 'total-created', 'total-updated', 'total-failed'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.textContent = '—';
-    });
-    Platform.toast.error('Could not load import history.');
-}
-
-function displayImportHistory() {
-    const container = document.getElementById('import-history-list');
-    const emptyState = document.getElementById('empty-state');
-
-    if (importHistory.length === 0) {
-        container.innerHTML = '';
-        emptyState.classList.remove('hidden');
-        return;
-    }
-
-    emptyState.classList.add('hidden');
-
-    container.innerHTML = importHistory.map(item => `
-        <div class="import-item">
-            <div class="flex justify-between items-start">
-                <div class="flex-1">
-                    <div class="flex items-center space-x-3 mb-2">
-                        <h2 class="text-lg font-semibold text-foreground">${escapeHtml(item.file_name)}</h2>
-                        <span class="status-${escapeHtml(item.status)} px-2 py-1 rounded text-xs font-medium">
-                            ${escapeHtml(item.status.charAt(0).toUpperCase() + item.status.slice(1))}
-                        </span>
-                        ${item.batch_job_id ? `
-                        <span class="bg-accent text-primary px-2 py-1 rounded text-xs font-medium">
-                            <i data-lucide="list-checks" class="inline h-3.5 w-3.5 mr-1" aria-hidden="true"></i>Batch Job
-                        </span>
-                        ` : ''}
-                    </div>
-
-                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-3">
-                        <div class="text-sm">
-                            <span class="text-muted-foreground">Imported by:</span>
-                            <span class="font-medium ml-1">${escapeHtml(item.imported_by_name)}</span>
-                        </div>
-                        <div class="text-sm">
-                            <span class="text-muted-foreground">Date:</span>
-                            <span class="font-medium ml-1">${formatDate(item.imported_at)}</span>
-                        </div>
-                        <div class="text-sm">
-                            <span class="text-muted-foreground">Source:</span>
-                            <span class="font-medium ml-1">${escapeHtml(item.import_source)}</span>
-                        </div>
-                        <div class="text-sm">
-                            <span class="text-muted-foreground">Duration:</span>
-                            <span class="font-medium ml-1">${formatDuration(item.processing_time_seconds)}</span>
-                        </div>
-                    </div>
-
-                    <!-- Progress Bar for Running Jobs -->
-                    ${item.status === 'running' ? `
-                    <div class="mb-3">
-                        <div class="flex justify-between text-sm mb-1">
-                            <span>Progress</span>
-                            <span>${item.progress || 0}%</span>
-                        </div>
-                        <div class="progress-bar">
-                            <div class="progress-fill" style="width: ${item.progress || 0}%"></div>  <!-- inline-style-ok -->
-                        </div>
-                    </div>
-                    ` : ''}
-
-                    <!-- Statistics -->
-                    <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-3">
-                        <div class="text-center bg-success/5 rounded p-2">
-                            <div class="text-lg font-bold text-success">${item.records_created || 0}</div>
-                            <div class="text-xs text-muted-foreground">Created</div>
-                        </div>
-                        <div class="text-center bg-primary/5 rounded p-2">
-                            <div class="text-lg font-bold text-primary">${item.records_updated || 0}</div>
-                            <div class="text-xs text-muted-foreground">Updated</div>
-                        </div>
-                        <div class="text-center bg-warning/5 rounded p-2">
-                            <div class="text-lg font-bold text-warning">${item.records_skipped || 0}</div>
-                            <div class="text-xs text-muted-foreground">Skipped</div>
-                        </div>
-                        <div class="text-center bg-destructive/5 rounded p-2">
-                            <div class="text-lg font-bold text-destructive">${item.records_failed || 0}</div>
-                            <div class="text-xs text-muted-foreground">Failed</div>
-                        </div>
-                        <div class="text-center bg-muted rounded p-2">
-                            <div class="text-lg font-bold text-muted-foreground">${item.total_records || 0}</div>
-                            <div class="text-xs text-muted-foreground">Total</div>
-                        </div>
-                    </div>
-
-                    <!-- Error Details -->
-                    ${item.error_details ? `
-                    <div class="bg-destructive/5 border border-destructive/20 rounded-lg p-3 mb-3">
-                        <h3 class="text-sm font-semibold text-destructive-emphasis mb-1">Error Details</h3>
-                        <div class="text-sm text-destructive-emphasis">
-                            ${JSON.parse(item.error_details).slice(0, 3).map(error => `<div>• ${error}</div>`).join('')}
-                            ${JSON.parse(item.error_details).length > 3 ? `<div class="text-xs">... and ${JSON.parse(item.error_details).length - 3} more</div>` : ''}
-                        </div>
-                    </div>
-                    ` : ''}
-
-                    <!-- AI Analysis Stats -->
-                    ${item.ai_analysis_stats ? `
-                    <div class="bg-primary/5 border border-primary/20 rounded-lg p-3 mb-3">
-                        <h3 class="text-sm font-semibold text-primary mb-2">AI Analysis Results</h3>
-                        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
-                            <div>
-                                <span class="text-muted-foreground">Capability Mappings:</span>
-                                <span class="font-medium ml-1">${item.ai_analysis_stats.capability_mappings_found || 0}</span>
-                            </div>
-                            <div>
-                                <span class="text-muted-foreground">Process Mappings:</span>
-                                <span class="font-medium ml-1">${item.ai_analysis_stats.process_mappings_found || 0}</span>
-                            </div>
-                            <div>
-                                <span class="text-muted-foreground">ArchiMate Elements:</span>
-                                <span class="font-medium ml-1">${item.ai_analysis_stats.archimate_elements_generated || 0}</span>
-                            </div>
-                            <div>
-                                <span class="text-muted-foreground">Avg Confidence:</span>
-                                <span class="font-medium ml-1">${Math.round((item.ai_analysis_stats.avg_confidence || 0) * 100)}%</span>
-                            </div>
-                        </div>
-                    </div>
-                    ` : ''}
-                </div>
-
-                <!-- Actions -->
-                <div class="flex space-x-2 ml-4">
-                    <button type="button" data-action="viewDetails" data-id="${item.id}" class="bg-primary text-primary-foreground px-3 py-1 rounded text-sm hover:bg-primary transition-colors" aria-label="View import details">
-                        <i data-lucide="eye" class="inline h-3.5 w-3.5 mr-1" aria-hidden="true"></i>View
-                    </button>
-                    ${item.status === 'running' ? `
-                    <button type="button" data-action="viewProgress" data-id="${item.batch_job_id}" class="bg-primary text-primary-foreground px-3 py-1 rounded text-sm hover:bg-primary transition-colors" aria-label="View import progress">
-                        <i data-lucide="trending-up" class="inline h-3.5 w-3.5 mr-1" aria-hidden="true"></i>Progress
-                    </button>
-                    ` : ''}
-                    ${item.can_rollback ? `
-                    <button type="button" data-action="rollbackImport" data-id="${item.id}" class="bg-warning text-primary-foreground px-3 py-1 rounded text-sm hover:bg-warning transition-colors" aria-label="Rollback import">
-                        <i data-lucide="rotate-ccw" class="inline h-3.5 w-3.5 mr-1" aria-hidden="true"></i>Rollback
-                    </button>
-                    ` : ''}
-                    ${item.status === 'partial' && item.records_failed > 0 ? `
-                    <button type="button" data-action="retryFailed" data-id="${item.id}" class="bg-warning text-primary-foreground px-3 py-1 rounded text-sm hover:bg-warning transition-colors" aria-label="Retry failed records">
-                        <i data-lucide="rotate-cw" class="inline h-3.5 w-3.5 mr-1" aria-hidden="true"></i>Retry Failed
-                    </button>
-                    ` : ''}
-                </div>
-            </div>
-        </div>
-    `).join('');
-}
-
-function updateStatistics() {
-    const totalImports = importHistory.length;
-    const totalCreated = importHistory.reduce((sum, item) => sum + (item.records_created || 0), 0);
-    const totalUpdated = importHistory.reduce((sum, item) => sum + (item.records_updated || 0), 0);
-    const totalFailed = importHistory.reduce((sum, item) => sum + (item.records_failed || 0), 0);
-
-    document.getElementById('total-imports').textContent = totalImports;
-    document.getElementById('total-created').textContent = totalCreated;
-    document.getElementById('total-updated').textContent = totalUpdated;
-    document.getElementById('total-failed').textContent = totalFailed;
-}
-
-function formatDate(dateString) {
-    const date = new Date(dateString);
-    return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
-}
-
-function formatDuration(seconds) {
-    if (!seconds) return 'N/A';
-    if (seconds < 60) return `${Math.round(seconds)}s`;
-    if (seconds < 3600) return `${Math.round(seconds / 60)}m ${Math.round(seconds % 60)}s`;
-    return `${Math.round(seconds / 3600)}h ${Math.round((seconds % 3600) / 60)}m`;
-}
-
-function viewDetails(importId) {
-    currentImport = importHistory.find(item => item.id === importId);
-    if (!currentImport) return;
-
-    const modal = document.getElementById('import-details-modal');
-    const content = document.getElementById('import-modal-content');
-
-    content.innerHTML = `
-        <div class="space-y-6">
-            <!-- Basic Info -->
-            <div>
-                <h3 class="font-semibold text-foreground mb-2">Import Information</h3>
-                <div class="grid grid-cols-2 gap-4 text-sm">
-                    <div>
-                        <span class="text-muted-foreground">File Name:</span>
-                        <span class="font-medium ml-2">${currentImport.file_name}</span>
-                    </div>
-                    <div>
-                        <span class="text-muted-foreground">Import Source:</span>
-                        <span class="font-medium ml-2">${currentImport.import_source}</span>
-                    </div>
-                    <div>
-                        <span class="text-muted-foreground">Imported By:</span>
-                        <span class="font-medium ml-2">${currentImport.imported_by_name}</span>
-                    </div>
-                    <div>
-                        <span class="text-muted-foreground">Import Date:</span>
-                        <span class="font-medium ml-2">${formatDate(currentImport.imported_at)}</span>
-                    </div>
-                    <div>
-                        <span class="text-muted-foreground">Status:</span>
-                        <span class="font-medium ml-2">${currentImport.status}</span>
-                    </div>
-                    <div>
-                        <span class="text-muted-foreground">Duration:</span>
-                        <span class="font-medium ml-2">${formatDuration(currentImport.processing_time_seconds)}</span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Settings -->
-            ${currentImport.import_settings ? `
-            <div>
-                <h3 class="font-semibold text-foreground mb-2">Import Settings</h3>
-                <div class="bg-muted rounded-lg p-3">
-                    <pre class="text-sm text-foreground/80">${JSON.stringify(JSON.parse(currentImport.import_settings), null, 2)}</pre>
-                </div>
-            </div>
-            ` : ''}
-
-            <!-- Linked Applications -->
-            ${currentImport.linked_applications ? `
-            <div>
-                <h3 class="font-semibold text-foreground mb-2">Linked Applications</h3>
-                <div class="grid grid-cols-3 gap-4 text-sm">
-                    <div class="bg-success/5 rounded p-3">
-                        <div class="font-medium text-success-emphasis">${currentImport.linked_applications.created_ids?.length || 0}</div>
-                        <div class="text-muted-foreground">Created</div>
-                    </div>
-                    <div class="bg-primary/5 rounded p-3">
-                        <div class="font-medium text-primary">${currentImport.linked_applications.updated_ids?.length || 0}</div>
-                        <div class="text-muted-foreground">Updated</div>
-                    </div>
-                    <div class="bg-muted rounded p-3">
-                        <div class="font-medium text-foreground">${currentImport.linked_applications.total_processed || 0}</div>
-                        <div class="text-muted-foreground">Total Processed</div>
-                    </div>
-                </div>
-            </div>
-            ` : ''}
-        </div>
-    `;
-
-    modal.classList.remove('hidden');
-}
-
-function closeDetailsModal() {
-    document.getElementById('import-details-modal').classList.add('hidden');
-    currentImport = null;
-}
-
-function viewProgress(batchJobId) {
-    if (!batchJobId) return;
-    window.open(`/api/batch/jobs/${batchJobId}/progress`, '_blank');
-}
-
-function rollbackImport(importId) {
-    rollbackImportId = importId;
-    document.getElementById('rollback-modal').classList.remove('hidden');
-}
-
-function closeRollbackModal() {
-    document.getElementById('rollback-modal').classList.add('hidden');
-    rollbackImportId = null;
-}
-
-async function confirmRollback() {
-    if (!rollbackImportId) return;
-
-    try {
-        const data = await Platform.fetch.post(`/applications/rollback-import/${rollbackImportId}`, null, { silent: true });
-        if (data.success) {
-            Platform.toast.info('Import rolled back successfully');
-            loadImportHistory(); // Refresh the list
-        } else {
-            Platform.toast.error('Failed to rollback import: ' + data.error);
-        }
-    } catch (error) {
-        Platform.toast.error('Error rolling back import');
-    } finally {
-        closeRollbackModal();
-    }
-}
-
-async function retryFailed(importId) {
-    if ((await Platform.modal.confirm('Retry failed records for this import?'))) {
-        try {
-            const data = await Platform.fetch.post(`/api/import-history/${importId}/retry-failed`, null, { silent: true });
-            if (data.success) {
-                Platform.toast.info('Retry started successfully');
-                loadImportHistory(); // Refresh the list
-            } else {
-                Platform.toast.error('Failed to start retry: ' + data.error);
+function applicationImportHistoryPage() {
+    return {
+        items: [], selected: {}, filters: {status: '', date_from: '', date_to: ''},
+        loading: false, loaded: false, error: '', total: null, pages: 0, currentPage: 1,
+        filtered: false, requestRevision: 0,
+        rollbackTarget: {}, rollbackSaving: false, rollbackError: '',
+        init() { this.loadHistory(1); },
+        display(value) { return value === null || value === undefined || value === '' ? '—' : String(value); },
+        statusLabel(value) { return value ? value.replace(/_/g, ' ').replace(/^./, c => c.toUpperCase()) : '—'; },
+        formatSettings(value) { return value ? JSON.stringify(value, null, 2) : '—'; },
+        formatDate(value) {
+            if (!value) return '—';
+            const date = new Date(value);
+            return Number.isNaN(date.getTime()) ? '—' : date.toISOString().replace('T', ' ').replace('Z', ' UTC');
+        },
+        formatDuration(value) { return value === null || value === undefined ? '—' : `${value} seconds`; },
+        pageLabel() { return this.total === 0 ? '0 matching imports' : `Page ${this.currentPage} of ${this.pages} · ${this.total} matching imports`; },
+        query(page, format, filters = this.filters) {
+            const params = new URLSearchParams();
+            Object.entries(filters).forEach(([key, value]) => { if (value) params.set(key, value); });
+            if (format) params.set('format', format);
+            else { params.set('page', page); params.set('per_page', 20); }
+            return params;
+        },
+        validateFilters(filters = this.filters) {
+            if (filters.date_from && filters.date_to && filters.date_from > filters.date_to) {
+                throw new Error('Date from must not be after Date to.');
             }
-        } catch (error) {
-            Platform.toast.error('Error retrying failed records');
+        },
+        validRow(item) {
+            if (!item || typeof item !== 'object' || !Number.isInteger(item.id)) return false;
+            if (['file_name', 'status', 'imported_at', 'imported_by_name', 'import_source'].some(key =>
+                item[key] !== null && item[key] !== undefined && typeof item[key] !== 'string')) return false;
+            if (['records_created', 'records_updated', 'records_failed', 'records_skipped', 'total_records'].some(key =>
+                item[key] !== null && item[key] !== undefined && !Number.isFinite(item[key]))) return false;
+            return item.errors === undefined || (Array.isArray(item.errors) && item.errors.every(value => typeof value === 'string'));
+        },
+        async loadHistory(page = 1, allowRecovery = true, filterSnapshot = null) {
+            const revision = ++this.requestRevision;
+            const filters = filterSnapshot || {...this.filters};
+            this.loading = true;
+            this.error = '';
+            this.items = [];
+            this.total = null;
+            this.updateStatistics();
+            try {
+                this.validateFilters(filters);
+                const params = this.query(page, null, filters);
+                const filtered = ['status', 'date_from', 'date_to'].some(key => params.has(key));
+                const data = await Platform.fetch({{ url_for('application_mgmt.get_import_history')|tojson }} + '?' + params, {silent: true});
+                if (revision !== this.requestRevision) return;
+                if (data.success === false || !Array.isArray(data.history) || !Number.isInteger(data.total) ||
+                    !Number.isInteger(data.pages) || !Number.isInteger(data.page) ||
+                    data.total < 0 || data.pages < 0 || data.page < 1 || !data.history.every(item => this.validRow(item))) {
+                    throw new Error(data.error || 'The history response could not be read.');
+                }
+                if (data.total > 0 && data.page > data.pages) {
+                    if (allowRecovery && data.pages > 0) return await this.loadHistory(data.pages, false, filters);
+                    throw new Error('The requested history page is no longer available. Refresh to try again.');
+                }
+                this.items = data.history;
+                this.total = data.total;
+                this.pages = data.pages;
+                this.currentPage = data.total === 0 ? 1 : data.page;
+                this.filtered = filtered;
+                this.loaded = true;
+                this.updateStatistics();
+            } catch (error) {
+                if (revision !== this.requestRevision) return;
+                this.error = 'Could not load import history: ' + error.message;
+                this.items = [];
+                this.total = null;
+                this.updateStatistics();
+                Platform.toast.error('Could not load import history.');
+            } finally {
+                if (revision === this.requestRevision) this.loading = false;
+            }
+        },
+        updateStatistics() {
+            const values = {'total-imports': this.total};
+            [['total-created', 'records_created'], ['total-updated', 'records_updated'], ['total-failed', 'records_failed']].forEach(([id, key]) => {
+                values[id] = this.total === null || this.items.some(item => !Number.isFinite(item[key])) ? null :
+                    this.items.reduce((sum, item) => sum + item[key], 0);
+            });
+            Object.entries(values).forEach(([id, value]) => { document.getElementById(id).textContent = this.display(value); });
+        },
+        applyFilters() { return this.loadHistory(1); },
+        refreshHistory() { return this.loadHistory(this.currentPage); },
+        clearFilters() { this.filters = {status: '', date_from: '', date_to: ''}; return this.loadHistory(1); },
+        viewDetails(item, invoker) { this.selected = item; Platform.modal.open('import-details-modal', undefined, {returnFocus: invoker}); },
+        openRollback(item, invoker) {
+            if (this.rollbackSaving || !item.can_rollback) return;
+            this.rollbackTarget = item;
+            this.rollbackError = '';
+            Platform.modal.open('rollback-modal', undefined, {returnFocus: invoker});
+        },
+        cancelRollback() { if (!this.rollbackSaving) Platform.modal.close('rollback-modal'); },
+        async confirmRollback() {
+            if (this.rollbackSaving || !this.rollbackTarget.can_rollback || !Number.isInteger(this.rollbackTarget.id)) return;
+            const historyId = this.rollbackTarget.id;
+            this.rollbackSaving = true;
+            this.rollbackError = '';
+            try {
+                const data = await Platform.fetch.post(`/applications/rollback-import/${historyId}`, null, {silent: true});
+                if (!data || data.success !== true) throw new Error(data && data.error || 'Rollback was not completed.');
+                Platform.modal.close('rollback-modal');
+                Platform.toast.success('Import rollback completed.');
+                await this.loadHistory(this.currentPage);
+            } catch (error) {
+                this.rollbackError = error.message;
+                Platform.toast.error(error.message);
+            } finally { this.rollbackSaving = false; }
+        },
+        async exportHistory() {
+            try {
+                this.validateFilters();
+                const response = await Platform.fetch({{ url_for('application_mgmt.get_import_history')|tojson }} + '?' + this.query(1, 'csv'), {silent: true});
+                const header = 'Import ID,File name,Imported at (UTC),Imported by,Source,Status,Total,Created,Updated,Skipped,Failed';
+                if (typeof response !== 'string' || response.replace(/^\uFEFF/, '').split(/\r?\n/, 1)[0] !== header) {
+                    throw new Error('The export response was not a valid history CSV file.');
+                }
+                const blob = new Blob(['\uFEFF', response.replace(/^\uFEFF/, '')], {type: 'text/csv;charset=utf-8'});
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = 'application-import-history.csv';
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+                URL.revokeObjectURL(url);
+            } catch (error) { this.error = error.message; Platform.toast.error(error.message); }
         }
-    }
-}
-
-function exportHistory() {
-    const status = document.getElementById('status-filter').value;
-    const dateFrom = document.getElementById('date-from').value;
-    const dateTo = document.getElementById('date-to').value;
-
-    let url = '/applications/export-import-history?';
-    const params = new URLSearchParams();
-
-    if (status) params.append('status', status);
-    if (dateFrom) params.append('date_from', dateFrom);
-    if (dateTo) params.append('date_to', dateTo);
-
-    url += params.toString();
-
-    window.open(url, '_blank');
-}
-
-function refreshHistory() {
-    loadImportHistory();
-}
-
-function applyFilters() {
-    // This would filter the displayed history
-    // For now, we'll just reload all data
-    loadImportHistory();
+    };
 }
 </script>
-
-<!-- Include Import History JavaScript -->
-<script src="{{ url_for('static', filename='js/import_history.js') }}"></script>
 {% endblock %}

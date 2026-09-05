@@ -4,12 +4,14 @@ Run only with SMOKE_AI_PROTOCOL_STUB=1 and a disposable explicit test database.
 Replies prove protocol/persistence behavior, not model reasoning or tool quality.
 """
 import json
+from urllib.parse import urlparse
 
 import pytest
 from playwright.sync_api import expect
 
 from .ai_protocol_stub import CHAT, GUIDE, MODEL
 from .conftest import PAGE_TIMEOUT, PASSWORD
+from .test_archetype_journeys import _format_console_error, _format_page_error
 
 pytestmark = [pytest.mark.smoke, pytest.mark.journey, pytest.mark.ai_protocol]
 
@@ -43,13 +45,27 @@ def protocol_context(required_protocol, browser, live_server, seeded):
 def protocol_page(protocol_context):
     page = protocol_context.new_page()
     errors = []
-    page.on('pageerror', lambda error: errors.append(str(error)))
-    page.on('console', lambda message: errors.append(message.text) if message.type == 'error' else None)
+    failed_requests = []
+    # Observe original errors without suppressing events or replacing runtime APIs.
+    page.add_init_script("""(() => {
+      const describe = error => ({name: error?.name, message: error?.message,
+        stack: error?.stack, type: typeof error});
+      window.addEventListener('error', event => console.error(
+        '[AI qualification uncaught]', describe(event.error)));
+      window.addEventListener('unhandledrejection', event => console.error(
+        '[AI qualification rejected]', describe(event.reason)));
+    })();""")
+    page.on('pageerror', lambda error: errors.append(_format_page_error(error)))
+    page.on('console', lambda message: errors.append(_format_console_error(message)) if message.type == 'error' else None)
+    page.on('requestfailed', lambda request: failed_requests.append({
+        'method': request.method, 'path': urlparse(request.url).path, 'failure': request.failure,
+    }) if len(failed_requests) < 50 else None)
     page.on('response', lambda response: errors.append(f'HTTP {response.status}: {response.url}')
             if response.status >= 400 else None)
     yield page
     page.close()
-    assert not errors, 'Enabled AI page errors:\n' + '\n'.join(errors)
+    assert not errors, ('Enabled AI page errors:\n' + '\n'.join(errors)
+                        + '\nRequest failures: ' + json.dumps(failed_requests))
 
 
 def _csrf(page):

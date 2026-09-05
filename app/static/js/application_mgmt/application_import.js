@@ -471,7 +471,7 @@ function addManualEntryRow() {
       <input type="text" class="w-full border border-input rounded px-2 py-1 text-sm" name="app_id" placeholder="APP ID">
     </td>
     <td class="px-3 py-2">
-      <input type="text" class="w-full border border-input rounded px-2 py-1 text-sm" name="name" required placeholder="Application Name *">
+      <input type="text" class="w-full border border-input rounded px-2 py-1 text-sm" data-field="name" required placeholder="Application Name *">
     </td>
     <td class="px-3 py-2">
       <input type="text" class="w-full border border-input rounded px-2 py-1 text-sm" name="component_type" placeholder="Type">
@@ -491,6 +491,9 @@ function addManualEntryRow() {
       </button>
     </td>
   `);
+  row.querySelector('[data-action="removeManualEntryRow"]').addEventListener('click', () => {
+    removeManualEntryRow(row.id);
+  });
   tbody.appendChild(row);
   manualEntryRowCount++;
 }
@@ -499,64 +502,69 @@ function removeManualEntryRow(rowId) {
   document.getElementById(rowId).remove();
 }
 
-async function processManualImport() {
-  const tbody = document.getElementById('manual-entry-tbody');
-  const rows = tbody.querySelectorAll('tr');
-
-  if (rows.length === 0) {
-    Platform.toast.warning('Please add at least one application');
-    return;
-  }
-
-  const applications = [];
-  let hasErrors = false;
-
-  rows.forEach((row, index) => {
-    const inputs = row.querySelectorAll('input, select');
-    const appData = {};
-
-    inputs.forEach(input => {
-      if (input.name && input.value) {
-        appData[input.name] = input.value.trim();
-      }
-    });
-
-    if (appData.name) {
-      applications.push(appData);
-    } else if (inputs.length > 0) {
-      hasErrors = true;
-    }
-  });
-
-  if (hasErrors) {
-    if (!(await Platform.modal.confirm('Some rows are missing required fields. Continue with valid rows only?'))) {
-      return;
-    }
-  }
-
-  if (applications.length === 0) {
-    Platform.toast.error('No valid applications to import');
-    return;
-  }
-
-  const duplicateMode = document.getElementById('duplicate-mode-manual')?.value || 'update';
-
-  // Show loading
-  const importBtn = event.target;
+async function processManualImport(submitEvent) {
+  // Capture the original control before a confirmation changes the active event.
+  const importBtn = submitEvent.currentTarget;
+  if (importBtn.disabled) return;
   const originalText = importBtn.textContent;
   importBtn.disabled = true;
   importBtn.textContent = 'Importing...';
 
   try {
+    const tbody = document.getElementById('manual-entry-tbody');
+    const rows = tbody.querySelectorAll('tr');
+
+    if (rows.length === 0) {
+      Platform.toast.warning('Please add at least one application');
+      return;
+    }
+
+    const applications = [];
+    let hasErrors = false;
+
+    rows.forEach(row => {
+      const inputs = row.querySelectorAll('input, select');
+      const appData = {};
+
+      inputs.forEach(input => {
+        const field = input.dataset.field || input.name;
+        if (field && input.value) {
+          appData[field] = input.value.trim();
+        }
+      });
+
+      if (appData.name) {
+        applications.push(appData);
+      } else if (inputs.length > 0) {
+        hasErrors = true;
+      }
+    });
+
+    if (hasErrors) {
+      if (!(await Platform.modal.confirm('Some rows are missing required fields. Continue with valid rows only?'))) {
+        return;
+      }
+    }
+
+    if (applications.length === 0) {
+      Platform.toast.error('No valid applications to import');
+      return;
+    }
+
+    const duplicateMode = document.getElementById('duplicate-mode-manual')?.value || 'update';
+
     const data = await Platform.fetch.post('/applications/import-manual', {
       applications: applications,
       duplicate_mode: duplicateMode
     }, { silent: true });
-    if (data.error) {
-      importBtn.disabled = false;
-      importBtn.textContent = originalText;
-      Platform.toast.error('Error: ' + data.error);
+    if (data && (data.error || data.success === false)) {
+      Platform.toast.error('Error: ' + (data.error || 'Import failed'));
       return;
+    }
+    if (!data || data.success !== true ||
+        !['created', 'updated', 'skipped', 'failed'].every(field =>
+          Number.isInteger(data[field]) && data[field] >= 0)) {
+      throw new Error('Import failed: invalid server response');
     }
 
     let message = `Import complete!\nCreated: ${data.created}\nUpdated: ${data.updated}\nSkipped: ${data.skipped}\nFailed: ${data.failed}`;
@@ -566,17 +574,13 @@ async function processManualImport() {
 
     // Run auto-mapping if enabled, then reload
     const importedCount = (data.created || 0) + (data.updated || 0);
-    runPostImportAutoMap(importedCount, '-manual');
-
-    importBtn.disabled = false;
-    importBtn.textContent = originalText;
     Platform.toast.info(message);
-
-    window.location.reload();
+    await runPostImportAutoMap(importedCount, '-manual');
   } catch (error) {
+    Platform.toast.error('Error importing: ' + error.message);
+  } finally {
     importBtn.disabled = false;
     importBtn.textContent = originalText;
-    Platform.toast.error('Error importing: ' + error.message);
   }
 }
 

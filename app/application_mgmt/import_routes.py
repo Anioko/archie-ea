@@ -10,7 +10,7 @@ import io
 import json
 import os
 import unicodedata
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 from flask import (
     current_app,
@@ -4340,17 +4340,29 @@ def upload_excel_applications():
         return jsonify({"error": "An internal error occurred"}), 500
 
 
+def _manual_import_payload(data):
+    """Validate the legacy grid using the shared manual-write boundary."""
+    from app.utils.manual_application_import import validate_manual_application_import
+
+    applications, mode, _date_format = validate_manual_application_import(data)
+    return applications, mode
+
+
 @application_mgmt.route("/applications/import-manual", methods=["POST"])
 @login_required
 def import_manual_applications():
     """Process manual entry applications"""
     import json
+    from flask import g
 
     from app.models.application_import_history import ApplicationImportHistory
 
-    data = request.get_json()
-    applications = data.get("applications", [])
-    duplicate_mode = data.get("duplicate_mode", "merge")
+    if type(getattr(g, "current_org_id", None)) is not int or g.current_org_id <= 0:
+        return jsonify({"success": False, "error": "An active organization is required"}), 403
+    try:
+        applications, duplicate_mode = _manual_import_payload(request.get_json(silent=True))
+    except ValueError as exc:
+        return jsonify({"success": False, "error": str(exc)}), 400
 
     # Create import history
     import_history = ApplicationImportHistory(
@@ -4394,7 +4406,6 @@ def import_manual_applications():
     for idx, app_data in enumerate(applications, start=1):
         try:
             name = app_data.get("name", "").strip()
-            app_data.get("app_id", "").strip() or None
 
             if not name:
                 records_failed += 1
@@ -4422,8 +4433,6 @@ def import_manual_applications():
                 # Update existing
                 changed_fields = {}
                 for key, value in app_data.items():
-                    if not hasattr(existing_app, key):  # model-safety-ok
-                        continue
                     # Skip empty/falsy values — preserve existing data
                     # Catches None, empty strings, 0, 0.0, False
                     if not value and value is not False:
@@ -4442,24 +4451,22 @@ def import_manual_applications():
                         "Import merge updated %s: %s", existing_app.name, changed_fields
                     )
                 records_updated += 1
-                updated_app_ids.append(existing_app.id)
+                # A second row may merge into an application created by this
+                # same batch. Its provenance remains created-only for rollback.
+                if existing_app not in created_app_objs and existing_app.id not in updated_app_ids:
+                    updated_app_ids.append(existing_app.id)
             elif existing_app and duplicate_mode == "skip":
                 records_skipped += 1
                 continue
             else:
-                # Create new - filter to only valid ApplicationComponent fields
-                valid_fields = {
-                    col.name for col in ApplicationComponent.__table__.columns
-                }
-                filtered_data = {
-                    k: v for k, v in app_data.items() if k in valid_fields and k != "id"
-                }
-                app = ApplicationComponent(**filtered_data)
+                # app_data contains only explicitly validated business fields.
+                app = ApplicationComponent(**app_data)
                 db.session.add(app)
                 records_created += 1
                 # Collect the object, not the id: the PK is not assigned until flush.
                 # Flushed once after the loop rather than per row.
                 created_app_objs.append(app)
+                existing_apps_by_name[name.lower()] = app
 
         except Exception as e:
             records_failed += 1
@@ -4576,28 +4583,82 @@ def import_manual_applications():
 @application_mgmt.route("/applications/import-history", methods=["GET"])
 @login_required
 def get_import_history():
-    """Get comprehensive import history with audit trail"""
-    import json
+    """Read tenant-scoped application audit records, never unrelated batch jobs."""
+    try:
+        status = request.args.get("status", "")
+        if status not in ("", "completed", "partial", "failed", "pending", "running", "rolled_back"):
+            raise ValueError("Choose a valid import status.")
+        bounds = {}
+        for key in ("date_from", "date_to"):
+            value = request.args.get(key, "")
+            if value:
+                if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+                    raise ValueError("Dates must use YYYY-MM-DD.")
+                bounds[key] = datetime.strptime(value, "%Y-%m-%d")
+        if bounds.get("date_from") and bounds.get("date_to") and bounds["date_from"] > bounds["date_to"]:
+            raise ValueError("Date from must not be after Date to.")
+        # Stored import timestamps are naive UTC. The upper bound includes every
+        # instant on the selected day without truncating subsecond precision.
+        until = bounds["date_to"] + timedelta(days=1) if "date_to" in bounds else None
+        page = int(request.args.get("page", "1"))
+        per_page = int(request.args.get("per_page", "50"))
+        if page < 1 or not 1 <= per_page <= 500:
+            raise ValueError("Page must be positive and page size must be between 1 and 500.")
+        export_format = request.args.get("format", "json")
+        if export_format not in ("json", "csv"):
+            raise ValueError("Choose JSON or CSV format.")
+    except (ValueError, OverflowError) as exc:
+        return jsonify({"success": False, "error": str(exc) or "Invalid history filters."}), 400
 
     from app.models.application_import_history import ApplicationImportHistory
 
-    history = (
-        ApplicationImportHistory.query.order_by(
-            ApplicationImportHistory.imported_at.desc()
-        )
-        .limit(50)
-        .all()
-    )
+    try:
+        # TenantMixin applies the current organization's scope mechanically.
+        query = ApplicationImportHistory.query
+        if status:
+            query = query.filter(ApplicationImportHistory.status == status)
+        if "date_from" in bounds:
+            query = query.filter(ApplicationImportHistory.imported_at >= bounds["date_from"])
+        if until is not None:
+            query = query.filter(ApplicationImportHistory.imported_at < until)
+        query = query.order_by(ApplicationImportHistory.imported_at.desc(), ApplicationImportHistory.id.desc())
+        if export_format == "csv":
+            output = io.StringIO(newline="")
+            writer = csv.writer(output)
+            writer.writerow(["Import ID", "File name", "Imported at (UTC)", "Imported by", "Source",
+                             "Status", "Total", "Created", "Updated", "Skipped", "Failed"])
+            for row in query.yield_per(500):
+                cells = [row.id, row.file_name, _import_history_utc(row.imported_at), row.imported_by_name,
+                         row.import_source, row.status, row.total_records, row.records_created,
+                         row.records_updated, row.records_skipped, row.records_failed]
+                # Spreadsheet formula injection: preserve text, never execute it.
+                writer.writerow([_import_history_csv_value(value) for value in cells])
+            payload = io.BytesIO(output.getvalue().encode("utf-8-sig"))
+            return send_file(payload, mimetype="text/csv", as_attachment=True,
+                             download_name="application-import-history.csv")
+        paginated = query.paginate(page=page, per_page=per_page, error_out=False)
+        history = paginated.items
+    except Exception:
+        logger.exception("Could not read application import history")
+        return jsonify({"success": False, "error": "Could not load application import history."}), 500
 
     # Enhanced history with audit data
     enhanced_history = []
     for h in history:
-        history_dict = h.to_dict()
+        history_dict = {key: getattr(h, key) for key in (
+            "id", "imported_by_id", "imported_by_name", "import_source", "file_name", "file_size",
+            "total_records", "records_created", "records_updated", "records_skipped", "records_failed",
+            "duplicate_mode", "status", "error_summary")}
+        history_dict["imported_at"] = _import_history_utc(h.imported_at)
+        history_dict["errors"] = []
 
         # Parse import settings for additional context
         if h.import_settings:
             try:
                 settings = json.loads(h.import_settings)
+                if not isinstance(settings, dict):
+                    raise ValueError("Import settings must be an object")
+                history_dict["import_settings"] = settings
                 history_dict.update(
                     {
                         "processing_time_seconds": settings.get(
@@ -4612,7 +4673,7 @@ def get_import_history():
                         "ai_analysis_stats": settings.get("ai_analysis"),
                     }
                 )
-            except json.JSONDecodeError:
+            except (json.JSONDecodeError, ValueError, TypeError):
                 history_dict["import_settings_parse_error"] = True
 
         # Parse error details to separate errors from linked applications
@@ -4625,21 +4686,45 @@ def get_import_history():
                         "linked_applications",
                         history_dict.get("linked_applications", {}),
                     )
-                else:
+                elif isinstance(details, list):
                     history_dict["errors"] = details
-            except json.JSONDecodeError:
+                else:
+                    history_dict["errors"] = [str(details)]
+            except (json.JSONDecodeError, TypeError):
                 history_dict["errors"] = [h.error_details] if h.error_details else []
+        if not isinstance(history_dict["errors"], list):
+            history_dict["errors"] = [str(history_dict["errors"])]
+        history_dict["errors"] = [error if isinstance(error, str) else json.dumps(error, ensure_ascii=False)
+                                  for error in history_dict["errors"]]
+        history_dict["error_details"] = history_dict["errors"]
 
-        # Add rollback eligibility (within 7 days for completed imports)
-        if h.status == "completed" and h.imported_at:
-            days_since_import = (datetime.utcnow() - h.imported_at).days
-            history_dict["can_rollback"] = days_since_import <= 7
-        else:
-            history_dict["can_rollback"] = False
+        # The mutation endpoint independently rechecks this policy and scope.
+        from app.modules.applications.routes.import_export_routes import rollback_import_eligibility
+        history_dict.update(rollback_import_eligibility(h, current_user))
 
         enhanced_history.append(history_dict)
 
-    return jsonify({"history": enhanced_history}), 200
+    return jsonify({"success": True, "history": enhanced_history, "total": paginated.total,
+                    "page": page, "per_page": per_page, "pages": paginated.pages}), 200
+
+
+def _import_history_utc(value):
+    if value is None:
+        return None
+    aware = value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
+    return aware.isoformat().replace("+00:00", "Z")
+
+
+def _import_history_csv_value(value):
+    """Reuse export protection and cover formula prefixes hidden by whitespace."""
+    from app.modules.applications.routes._helpers import _sanitize_csv_value
+
+    if not isinstance(value, str):
+        return value
+    stripped = value.lstrip()
+    if _sanitize_csv_value(value) != value or _sanitize_csv_value(stripped) != stripped:
+        return "'" + value
+    return value
 
 
 @application_mgmt.route("/applications/download-template", methods=["GET"])

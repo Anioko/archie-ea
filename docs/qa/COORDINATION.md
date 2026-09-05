@@ -1,6 +1,12 @@
 # QA coordination board
 
-## Current checkpoint — 5 September, candidate b77f5262
+## Current checkpoint — 5 September, import and browser repair batch
+
+Root final CSS/style14522 terminal: rebuilt stylesheet de5a7e07 (157.1KB), independent freshness check passed, then48neutral-card browser cases passed69.98s with no skips. Parent reviewed57explicit source/test/report files for this candidate; no artifacts or unrelated main-worktree edits included. Focused/static evidence is green within its recorded scope; full immutable CI including PostgreSQL and live deployment acceptance remain required. Prior b77 run is terminalfailed, not the release candidate.
+
+Static81519 terminal44passed0failed0skipped, including CSS/JS/CSRF checks, after169.7s sidebar and122.7s CSRF. Source changes continued during that run, so it is not immutable final-candidate qualification. Root fresh fast5passed and JS bundle freshness pass after source freeze. Root14522 now owns final stylesheet build/check followed by independent48neutral-card cases; no competing builds.
+
+F088 parent reviewed moved concurrency test, exact cleanup and captured worker errors; fixture-plan root5906 independently1passed10.12s, following27generation/layer/concurrency tests collected1.01s. Actual PostgreSQL race remains unexecuted locally. No production lock changes and no broader concurrency-green claim.
 
 Root manual-browser56126 terminal72passed0skips216.16s against frozen actual assets/native synthetic endpoints. Covers malformed response, single/double submission, confirmation, removal and optional mapping; not DB persistence/deployed acceptance. F030 eight-site/six-template neutral-card source is frozen, worker48-style cases running; stylesheet rebuild awaits current static run's build ownership. Root workflow/no-skip guards6537 terminal15passed25.30s.
 

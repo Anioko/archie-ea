@@ -436,6 +436,7 @@
     },
     {
       "id": "F500-030",
+      "current_candidate": "Rendered review confirms eight further decorative card sites across six active journey/solution/composer templates. Candidate removes strips and uses neutral uniform card borders/backgrounds while preserving status labels/icons/actions. Root reviewed all six diffs, rebuilt CSS de5a7e07 and passed freshness check, then independently passed48actual-fragment style cases69.98s across three engines/light+dark. These are styling/conditional-rendering controls, not backend approval/Undo execution or whole-product visual closure.",
       "latest_verification": "Scope includes the owner's whole-product neutral-card requirement, not only the original dashboard. Root real-template Chromium style regression reproduced business card blue4px left edge versus neutral1px other edges after adding required actual design-token CSS. Removed five layer-specific edge rules in model viewer; six Chromium/Firefox/WebKit navigation/style cases passed within ongoing combined modal run. Each style case clicks all five layers and compares rendered border widths/colors. Synthetic cached model input and shell/network boundaries; no real generation/persistence claim. Other active card/panel accents remain and this umbrella is in progress.",
       "area": "visual_design",
       "severity": "medium",
@@ -1094,6 +1095,7 @@
     },
     {
       "id": "F500-088", "area": "qa_concurrency_fixture_integrity", "severity": "high",
+      "latest_verification": "Moved scenario into dedicated independent-transaction fixture with explicit matching PostgreSQL test URL, five distinct backend connections, captured thread failures, bounded joins and exact org/application/mirror cleanup. Parent reviewed source and independently passed actual pytest fixture-plan guard1case10.12s;27related tests collected. Real database race still requires CI; production guard unchanged.",
       "title": "Concurrent-create regression shares a rollback connection across worker threads",
       "status": "in_progress",
       "original_evidence": "Exact b77 backend failure PendingRollbackError at parent count and cleanup. Independent investigator setup-plan and parent source review show module usefixtures(db_session) plus unused make_org argument activate one shared Connection/create_savepoint fixture for all thread sessions. That cannot exercise independent-transaction locking. Original worker exception is absent from artifact, so first driver failure remains unknown.",

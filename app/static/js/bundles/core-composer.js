@@ -606,6 +606,7 @@
      * @param {string}  [options.method]   - HTTP method (default: GET)
      * @param {object|FormData|string} [options.body] - Request body
      * @param {object}  [options.headers]  - Additional headers
+     * @param {AbortSignal} [options.signal] - Caller-owned request cancellation
      * @param {boolean} [options.silent]   - Suppress toast on error (default: false)
      * @param {string}  [options.errorMsg] - Custom error message for toast
      * @returns {Promise<*>} Parsed JSON, text, or null (204)
@@ -642,6 +643,9 @@
         if (body !== undefined && body !== null) {
             fetchOptions.body = body;
         }
+        if (options.signal !== undefined) {
+            fetchOptions.signal = options.signal;
+        }
 
         log.debug(method, url);
         loadingStart();
@@ -651,6 +655,14 @@
             try {
                 response = await global.fetch(url, fetchOptions); // raw-fetch-ok: core implementation must use native fetch
             } catch (networkErr) {
+                // An explicitly cancelled request is still rejected to its caller,
+                // but is not a network outage. Unrelated failures (including a
+                // generic AbortError with no cancelled caller signal) retain the
+                // normal error reporting below.
+                if (fetchOptions.signal && fetchOptions.signal.aborted &&
+                    (networkErr?.name === 'AbortError' || networkErr === fetchOptions.signal.reason)) {
+                    throw networkErr;
+                }
                 let netMsg = options.errorMsg || ('Network error: ' + (networkErr.message || 'Request failed'));
                 if (!silent && global.Platform.toast) {
                     global.Platform.toast.error(netMsg);
