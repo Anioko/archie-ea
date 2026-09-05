@@ -357,6 +357,16 @@ def seeded(live_server, request, ai_protocol_stub):
         db.session.commit()
         out["ids"]["application"] = component.id
 
+        # Select a real tenant domain in entity journeys rather than triggering
+        # the create form's implicit General-domain side effect.
+        from app.models.process_data import DataDomain
+
+        data_domain = DataDomain(name="Smoke data domain %s" % suffix,
+                                 organization_id=org.id, domain_type="reference")
+        db.session.add(data_domain)
+        db.session.commit()
+        out["ids"]["data_domain"] = data_domain.id
+
         # Exercise the populated dashboard, not only its sparse-org onboarding
         # shell. Five applications is the production threshold for data mode.
         db.session.add_all([

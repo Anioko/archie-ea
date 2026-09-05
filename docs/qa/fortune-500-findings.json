@@ -922,6 +922,17 @@
       "required_fix": "Use the standard accessible confirmation with exact target name, Cancel and Delete. Preserve error feedback, prevent duplicate deletion, distinguish completed deletion from failed refresh, and protect newer editors from late responses.",
       "retest_evidence": "Root independently ran ten rendered Chromium deletion regressions successfully; HTTP boundaries are doubled, not full backend authorization/persistence. Worker additionally reported all27 existing composition/governance regressions passing. Full-app composition smoke now asserts Cancel leaves the row and confirmed DELETE survives reload, but is collected-only pending CI. CSS check passes unchanged. Not deployed.",
       "closure_tests": ["Ordinary Delete opens named confirmation and Cancel performs no write", "Exact-target delete, errors and concurrent lifecycle", "Real authenticated deletion and persisted absence after reload", "Authorization and deployed browser verification"]
+    },
+    {
+      "id": "F500-071",
+      "area": "dashboard_navigation_network_failure",
+      "severity": "high",
+      "title": "Firefox transformation journey records executive-summary network error",
+      "status": "in_progress",
+      "original_evidence": "CI33969038274 at db061b95, Firefox job101314172679:63passed/1failed. At390px transformation creation journey retained Platform fetch Network error /dashboard/api/executive-summary. Cause is unproven; console capture alone does not distinguish server failure from navigation cancellation.",
+      "required_fix": "Diagnose the request lifecycle and preserve genuine failure reporting. Eliminate artificial setup races without ignoring errors; qualify normal dashboard navigation separately. Do not treat a passing worker-recycling microtest as proof of every app request.",
+      "retest_evidence": "Root found transformation test used synthetic login click, immediate dashboard departure, and removed onboarding DOM. Replaced setup with ordinary login click and supported next=/solutions/new-programme return flow, removed DOM deletion and swallowed navigation exceptions; all console assertions retained. Two cases collect/lint only; no root-cause or remediation success claim. Failed run remains failed.",
+      "closure_tests": ["Actual Firefox transformation journey at390/1024", "Dashboard request and navigation lifecycle diagnosis", "Genuine network failures still fail qualification", "Current candidate full CI"]
     }
   ]
 }

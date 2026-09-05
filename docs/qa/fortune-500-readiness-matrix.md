@@ -3,6 +3,36 @@
 Status: **qualification reopened; whole-product interaction coverage and active
 frontend defects block repository-controlled approval**
 
+## Current-candidate override — 5 September 2026
+
+**No row below is currently release-qualified for candidate
+`db061b955fa879a112438d65777b65316655eeac`.** Its full CI run
+[33969038274](https://github.com/Anioko/archie-ea/actions/runs/33969038274)
+is in progress. Earlier candidate `455ec6d8` failed two composition browser
+journeys (194 passed); its downstream census and adversarial steps were skipped,
+not passed. New ordinary section-opening steps require a fresh execution.
+
+The table below is a **historical evidence index**, including the 4 September
+candidate and older CI run 33854737201. Labels such as “Proven—exact SHA” refer
+to that historical evidence only. They must not be carried forward to a new
+commit, interpreted as current production acceptance, or used to close the
+whole-product interaction requirement. The shared finding ledger and current
+coordination board track ongoing repairs; production remains on the restored
+older image. Approval still requires requalification against one final immutable
+commit and artifact, actual browser outcomes, and all external acceptance evidence.
+
+## Historical evidence index
+
+Current source-coverage correction (not executed qualification): the archetype
+map has eleven roles and 24 unique paths, while the keyword-only task locator
+still names nine roles and the Level 10 walkthrough executes four. The browser
+authorization matrix covers seven page paths plus the transformation collection,
+not every route/action. The manual whole-product audit explicitly defers mutation
+and field outcomes to dedicated journeys. See
+[the bounded coverage audit](current-coverage-gap-audit.md) for source references
+and required data, risk, mapping, import and federation journeys. These gaps remain
+open regardless of historical green rows below.
+
 Candidate identity: resolved from the full Git SHA at execution time and recorded
 with the OCI digest in CI's retained `release.json`; no mutable branch name or
 short SHA is release evidence.

@@ -34,6 +34,8 @@ permissions:
 
 env:
   PYTHON_VERSION: "3.12"
+  # Unexpected passes must be resolved, not silently accepted as release proof.
+  PYTEST_ADDOPTS: "-o xfail_strict=true"
   # Pinned deliberately. The ratchet baselines in verification_baseline.json are a
   # measurement made with a specific Ruff version; a floating install can report more
   # findings for the same code and fail the ratchet for a reason unrelated to the
@@ -189,8 +191,12 @@ jobs:
           rm -f route_verification.json
           pytest -q --maxfail=20 --ignore=tests/smoke \
             --cov=app --cov-report=term-missing:skip-covered --cov-report=xml \
+            -o xfail_strict=true --junitxml=backend-tests.xml \
             -p scripts.route_verification_audit
           python scripts/verify.py --gate nav-verified
+      - name: Require executed backend tests without skips
+        if: always()
+        run: python scripts/ci/check_junit_qualification.py backend-tests.xml
       - name: Coverage summary
         # Published, not gated. Establishing the number is step one; a
         # do-not-decrease gate follows once a baseline exists on main.
@@ -212,7 +218,9 @@ jobs:
         if: always()
         with:
           name: coverage-xml
-          path: coverage.xml
+          path: |
+            coverage.xml
+            backend-tests.xml
           if-no-files-found: ignore
 
   # main grew a parallel `verify` job that ran --tag static / boot-health /
@@ -367,6 +375,14 @@ jobs:
         env:
           SMOKE_AI_PROTOCOL_STUB: "1"
         run: pytest tests/smoke/test_ai_protocol_journeys.py -q -p no:randomly -m ai_protocol --timeout=900 -W ignore::DeprecationWarning --junitxml=tests/smoke/_artifacts/chromium-ai-protocol.xml
+      - name: Require all browser reports without skips
+        if: always()
+        run: >-
+          python scripts/ci/check_junit_qualification.py
+          tests/smoke/_artifacts/chromium-main.xml
+          tests/smoke/_artifacts/chromium-census.xml
+          tests/smoke/_artifacts/chromium-adversarial.xml
+          tests/smoke/_artifacts/chromium-ai-protocol.xml
       - name: Upload browser qualification evidence
         if: always()
         uses: actions/upload-artifact@v6
@@ -431,7 +447,14 @@ jobs:
           tests/smoke/test_authorisation_matrix.py
           tests/smoke/test_roadmap_crud_journey.py
           tests/smoke/test_transformation_room_journeys.py
+          tests/smoke/test_blueprint_composition_controls.py
+          tests/smoke/test_blueprint_governance_controls.py
+          tests/smoke/test_vendor_dialog_controls.py
+          tests/smoke/test_data_entity_lifecycle.py
           --junitxml=tests/smoke/_artifacts/${{ matrix.browser }}.xml
+      - name: Require executed compatibility tests without skips
+        if: always()
+        run: python scripts/ci/check_junit_qualification.py tests/smoke/_artifacts/${{ matrix.browser }}.xml
       - name: Upload compatibility evidence
         if: always()
         uses: actions/upload-artifact@v6

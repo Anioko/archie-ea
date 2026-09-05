@@ -1,6 +1,7 @@
 """End-to-end Transformation Room creation, deep-link and honesty proof."""
 
 import pytest
+from urllib.parse import urlsplit
 
 from .conftest import PAGE_TIMEOUT, PASSWORD
 from .test_accessibility_audit import TAGS
@@ -11,27 +12,16 @@ pytestmark = [pytest.mark.smoke, pytest.mark.journey]
 
 
 def _login(page, base, email):
-    page.goto(base + "/account/login", wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
+    destination = "/solutions/new-programme"
+    page.goto(base + "/account/login?next=" + destination,
+              wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
     page.fill("#email", email)
     page.fill("#password", PASSWORD)
-    page.locator("#submit").dispatch_event("click")
-    try:
-        page.wait_for_url(lambda url: "/account/login" not in url, timeout=PAGE_TIMEOUT)
-    except Exception:
-        pass
-    assert "/account/login" not in page.url
-
-
-def _visit(page, base, path):
-    response = page.goto(base + path, wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
-    page.wait_for_timeout(800)
-    try:
-        page.eval_on_selector_all(
-            "[x-show='showOnboarding']", "els => els.forEach(e => e.remove())"
-        )
-    except Exception:
-        pass
-    return response
+    with page.expect_response(lambda response: response.url == base + destination
+                              and response.request.method == "GET") as landing:
+        page.locator("#submit").click()
+    page.wait_for_url(base + destination, timeout=PAGE_TIMEOUT)
+    return landing.value
 
 
 def _assert_no_blocking_axe_violations(page):
@@ -58,6 +48,17 @@ def test_transformation_create_to_objective_deep_link_is_accessible_and_honest(
     page = context.new_page()
     console_errors = []
     page_errors = []
+    network_failures = []
+
+    def record_network_failure(request):
+        if len(network_failures) < 25:
+            # Diagnose navigation cancellation versus transport failure without
+            # retaining query strings, request bodies, cookies or credentials.
+            network_failures.append({"path": urlsplit(request.url).path,
+                                     "method": request.method,
+                                     "failure": request.failure})
+
+    page.on("requestfailed", record_network_failure)
     page.on(
         "console",
         lambda message: console_errors.append(message.text)
@@ -66,8 +67,7 @@ def test_transformation_create_to_objective_deep_link_is_accessible_and_honest(
     )
     page.on("pageerror", lambda error: page_errors.append(str(error)))
     try:
-        _login(page, live_server, seeded["emails"]["enterprise_architect"])
-        response = _visit(page, live_server, "/solutions/new-programme")
+        response = _login(page, live_server, seeded["emails"]["enterprise_architect"])
 
         assert response.status < 400
 
@@ -153,7 +153,7 @@ def test_transformation_create_to_objective_deep_link_is_accessible_and_honest(
         assert page.get_by_text("Ready to advance", exact=True).count() == 0
 
         page.goto(objective_url, wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
-        assert console_errors == []
+        assert console_errors == [], {"console": console_errors, "network": network_failures}
         assert page_errors == []
         page.get_by_test_id("objective-form").locator(
             'input[name="expected_revision"]'
