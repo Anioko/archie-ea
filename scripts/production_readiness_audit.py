@@ -807,7 +807,20 @@ def probe_control_outcome(page, visible_ordinal, settle_ms=700):
         visible = [element for element in elements if element.is_visible()]
         if visible_ordinal >= len(visible):
             return {"status": "not-found", "outcome": "control-not-reproducible"}
-        visible[visible_ordinal].click(no_wait_after=True, timeout=5000)
+        target = visible[visible_ordinal]
+        # A `sr-only focus:not-sr-only` skip link (or any focus-revealed
+        # control) reports is_visible() true - Tailwind's sr-only keeps a
+        # real 1x1px box so screen readers still announce it - but Playwright's
+        # separate click-actionability check then times out waiting for a
+        # genuinely hit-testable target, since the clip only becomes visible
+        # on :focus. A real keyboard user reaches these by Tab (which applies
+        # :focus) before Enter; .focus() here reproduces exactly that, rather
+        # than force-clicking blind through whatever CSS state hid it.
+        try:
+            target.focus(timeout=1000)
+        except Exception:
+            pass
+        target.click(no_wait_after=True, timeout=5000)
         page.wait_for_timeout(settle_ms)
     except Exception as exc:
         if blocked:

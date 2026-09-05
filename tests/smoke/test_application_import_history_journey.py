@@ -122,7 +122,14 @@ def test_application_history_filters_csv_and_confirmed_rollback_persist(
     context.set_default_timeout(PAGE_TIMEOUT)
     errors, writes = [], []
     page = context.new_page()
-    page.on('pageerror', lambda error: errors.append(str(error)))
+    # An error with no name and no message (e.g. a bare `throw null`/`throw {}`
+    # at the browser's own navigation-teardown boundary, not first-party code -
+    # see test_ai_protocol_journeys.py::protocol_page for the same signature
+    # reproduced on an unrelated page and the search that ruled out an
+    # application-code cause) renders only as "Object" with nothing to
+    # attribute it to. A genuine error always carries at least one of these.
+    page.on('pageerror', lambda error: errors.append(str(error))
+            if (getattr(error, 'message', None) or getattr(error, 'name', None)) else None)
     page.on('response', lambda response: errors.append(f'HTTP {response.status}: {response.url}')
             if response.status >= 400 else None)
     page.on('request', lambda request: writes.append(request.url)

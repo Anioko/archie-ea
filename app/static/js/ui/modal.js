@@ -881,6 +881,14 @@
             // would skip both and would re-enter this listener.
             if (typeof form.requestSubmit === 'function') form.requestSubmit();
             else form.submit();
+        }).catch(function (error) {
+            // requestSubmit()/submit() can throw synchronously (constraint
+            // validation, or the form node already gone if the user
+            // navigated away while the confirm dialog was open) - this chain
+            // had no .catch() at all, so that became an unhandled promise
+            // rejection on every page with a data-confirm form, surfacing as
+            // an untraceable page error on completely unrelated journeys.
+            log.debug('confirm-submit failed', error);
         });
     }, true);
 
@@ -905,6 +913,9 @@
         var confirmOptions = Object.assign({ returnFocus: invoker }, options || {});
         confirmDialog(message, confirmOptions).then(function (ok) {
             if (ok && form && typeof form.submit === 'function') form.submit();
+        }).catch(function (error) {
+            // Same unguarded-.then() defect as the data-confirm listener above.
+            log.debug('confirmSubmit failed', error);
         });
         return false;
     }

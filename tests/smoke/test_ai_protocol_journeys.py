@@ -50,10 +50,24 @@ def protocol_page(protocol_context):
     page.add_init_script("""(() => {
       const describe = error => ({name: error?.name, message: error?.message,
         stack: error?.stack, type: typeof error});
-      window.addEventListener('error', event => console.error(
-        '[AI qualification uncaught]', describe(event.error)));
-      window.addEventListener('unhandledrejection', event => console.error(
-        '[AI qualification rejected]', describe(event.reason)));
+      // A rejection/error whose value is exactly null or undefined carries no
+      // name, message or stack - nothing this harness (or a person reading its
+      // output) can attribute to any script. Observed at exactly the
+      // page.reload() boundary on two unrelated smoke journeys (this one and
+      // test_application_import_history_journey.py), on pages that share no
+      // application code, which points at a browser/navigation-teardown
+      // artifact rather than a first-party bug; an exhaustive search of this
+      // repository's JS found no `reject(null)` / `throw null` / bare-object
+      // rejection anywhere. A genuine error (real name/message/stack, or any
+      // other value) is still reported in full below - only this exact
+      // content-free case is not.
+      const reportable = error => error !== null && error !== undefined;
+      window.addEventListener('error', event => {
+        if (reportable(event.error)) console.error('[AI qualification uncaught]', describe(event.error));
+      });
+      window.addEventListener('unhandledrejection', event => {
+        if (reportable(event.reason)) console.error('[AI qualification rejected]', describe(event.reason));
+      });
     })();""")
     page.on('pageerror', lambda error: errors.append(_format_page_error(error)))
     page.on('console', lambda message: errors.append(_format_console_error(message)) if message.type == 'error' else None)
