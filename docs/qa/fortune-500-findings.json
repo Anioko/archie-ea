@@ -1005,7 +1005,7 @@
     },
     {
       "id": "F500-078", "area": "application_import_history", "severity": "high",
-      "latest_verification": "Parent independent actual-template/native-loopback browser suite finished108passed3failed in316.62s across Chromium/Firefox/WebKit. All three failures are newly added last-page-disappears Refresh case (expected2 surviving rows, actual0); no other failures. Worker authorized bounded page recovery with filter snapshot and newest-response safeguards, final retest pending. These are synthetic persistence/network boundaries, not real database outcomes. Fullapp history/filter/CSV/rollback journey added to mandatory compatibility command; collected only.",
+      "latest_verification": "Parent baseline actual-template/native-loopback run108passed3failed316.62s exposed last-page-disappears Refresh in all three engines. After bounded filter-snapshot-preserving one-retry recovery, worker final117browser cases passed306.21s and parent independently reran all9recovery cases:9passed29.96s. Worker route/CSV20passed154.77s with7existing warnings. Synthetic network/query boundaries are not real database outcomes. Fullapp history/filter/CSV/rollback journey is mandatory for all engines but collected only; no deployed closure.",
       "title": "Import history filters, displayed fields and row action IDs are inconsistent",
       "status": "in_progress",
       "original_evidence": "Actual rendered Chromium page with two fixture records reproduces missing status/date query parameters, invalid dates/missing names from mismatched BatchJob response, and duplicate manager hiding loading early. Export URL has no route; application history IDs must not be passed to batch retry/rollback APIs.",
@@ -1041,6 +1041,7 @@
     },
     {
       "id": "F500-082", "area": "ai_browser_runtime_errors", "severity": "high",
+      "candidate_verification": "Root independently ran final expanded actual-assets/native-loopback suite:45passed0skips123.27s. Default/null native cancellation rejects without false outage; real network/HTTP errors remain visible, loading/CSRF contracts preserved, startup deduplication and stale-response protection exercised. Generated core bundles rebuilt and freshness checked. Exact prior Firefox/opaque guide CI signatures still need next immutable full-app CI; no deployed closure.",
       "latest_verification": "WebKit b77 compatibility report also has93ordinary passes0skips, but AI Enter teardown logs /ai-chat/context/architecture Load failed. Read-only source review found duplicate startup context requests and no cancellation-signal forwarding; server logs show200 responses, including delayed ones. Navigation/close cancellation remains a hypothesis pending controlled actual-assets reproduction. No runtime error waiver, retry or fix acceptance.",
       "title": "Firefox enabled-AI journeys record context network failures and an opaque page error",
       "status": "in_progress",
@@ -1050,6 +1051,7 @@
     },
     {
       "id": "F500-083", "area": "jira_connector_test_control", "severity": "high",
+      "latest_verification": "Parent independently reran actual-template/core-assets native-loopback browser matrix:36passed0skips110.49s. Three engines, desktop/mobile, single/double click, success/HTTP/logical failure, exact request and CSRF, pending/restored controls. No external Jira call, full-app database execution or deployed acceptance. Candidate remains in progress pending immutable CI and live verification.",
       "title": "Jira Test Connection script cannot parse and button sends no request",
       "status": "in_progress",
       "original_evidence": "Historical platform-admin audit lead independently reproduced against current jira.html and actual core-admin.js in Chromium1440x1000 and390x844: Unexpected token '.', testJiraConnection undefined, ordinary button click sends0requests. Parent source confirms catch chain ends with semicolon before standalone .finally at template142. Synthetic base/config/network boundaries; no Jira requests or credentials.",
@@ -1062,7 +1064,23 @@
       "status": "in_progress",
       "original_evidence": "Parent and investigator source trace: multi_domain_chat_service.get_domain_context returns success/context, while panels.loadDomainContext reads data.elements/data.applications at the top level. Populated data can follow the empty/unrecognized branch. Runtime populated-control reproduction still required.",
       "required_fix": "Honor actual response shape and display real context items, honest empty/error states and selected-item behavior; preserve lifecycle cancellation and stale-response protection.",
-      "retest_evidence": "Context worker authorized focused populated/empty/error regression and contract repair alongside independently tracked F082 lifecycle work. No database/provider/deployed qualification."
+      "retest_evidence": "Parent review rejected initial technology fixture as noncanonical: real backend returns technology_stacks, not applications. Worker reproduced populated canonical stack being shown as empty, repaired truthful read-only stack rendering, and is retesting canonical populated/empty/malformed responses across engines. No database/provider/deployed qualification."
+    },
+    {
+      "id": "F500-085", "area": "manual_import_browser_controls", "severity": "high",
+      "title": "Manual-entry sanitizer strips the application-name field identity and blocks submission",
+      "status": "in_progress",
+      "original_evidence": "Worker actual-template/core-assets/native-loopback reproduction in Chromium, Firefox and WebKit: normal Add Row and filled Application Name yields input.name empty after safeHTML/DOMPurify, while app_id/type retain names. Ordinary Import then opens missing-required-fields confirmation and sends zero requests. Parent source independently traces safeHTML row generation to collector using input.name. No runtime API replacement, forced attribute restoration or production mutation.",
+      "required_fix": "Preserve safe field identity without disabling sanitizer protections; verify actual create/merge payloads, single submission, validation, errors and restored controls across engines, followed by full-app persistence and live acceptance.",
+      "retest_evidence": "Bounded browser repair assigned. Separate global event.target source concern remains masked by the name-field failure and is not yet dynamically confirmed. No fixed claim."
+    },
+    {
+      "id": "F500-086", "area": "organization_admin_provisioning", "severity": "high",
+      "title": "New organization administrators lack the role assignment required to manage their team",
+      "status": "in_progress",
+      "original_evidence": "Parent and independent investigator traced create_admin.py and AccountService.register_user: both set administrator flags but create no OrgRole. Team guard reads only same-org OrgRole and defaults missing assignment to viewer. Controlled authenticated Chromium actual-team-route request returned403 with all admin flags set and no assignment; real guard positive same-org org_admin returned200, foreign-only and architect remained403. OrgRole persistence reads were doubled; no actual database qualification. Only discovered assignment writers are themselves team-admin protected.",
+      "required_fix": "Persist the intended same-org administrator assignment atomically during new-owner provisioning, retain deny-by-default and existing explicit demotions, verify real database and browser outcomes. Existing-user remediation must be explicit and must not silently promote every missing assignment at request time.",
+      "retest_evidence": "Bounded new-provisioning implementation assigned. Existing-user repair and complete team UI/invite functionality remain unqualified; no authorization broadening or production role writes performed."
     }
   ]
 }
