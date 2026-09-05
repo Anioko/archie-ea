@@ -38,9 +38,33 @@ site returned nothing for six days while the container reported healthy.
 
 Install:
 
+    install -d -m 0700 /root/deploy-releases
     cp archie-watchdog.sh /usr/local/bin/ && chmod +x /usr/local/bin/archie-watchdog.sh
     cp archie-watchdog.service archie-watchdog.timer /etc/systemd/system/
     systemctl daemon-reload && systemctl enable --now archie-watchdog.timer
+
+Create the release directory before enabling the watchdog, even on a host that
+has not deployed an immutable release yet. The directory command is idempotent.
+The watchdog and `deploy/deploy.sh` coordinate through
+`/root/deploy-releases/deploy.lock`; the watchdog deliberately refuses to restart
+when it cannot open that lock. It holds the lock through its health decision,
+forensic capture and restart, and never starts a created or stopped container.
+
+If using a custom directory, create it with `install -d -m 0700 /absolute/path`
+and set **the identical absolute `ARCHIE_RELEASE_STATE` value in both processes**.
+Set it in the host deployment process environment and, before enabling the timer,
+in a systemd drop-in for `archie-watchdog.service` (via
+`systemctl edit archie-watchdog.service`):
+
+    [Service]
+    Environment="ARCHIE_RELEASE_STATE=/absolute/path"
+
+Then run `systemctl daemon-reload`. An interactive shell export does not configure
+the systemd service, and the workstation deploy wrapper does not forward this
+setting. Preserve the shared lock file during operation; deleting it can let the
+two processes lock different files. A busy lock defers the watchdog; if the
+deployment encounters an active watchdog check, its nonblocking lock aborts
+safely and deployment can be retried after that check finishes.
 
 ## Deploying code changes — read this first
 
@@ -82,6 +106,42 @@ database, and recreates the application with `--no-build`. It then proves the
 running container image ID and revision, checks health, public pages and local
 container errors, and atomically records `deploy-releases/release.env`.
 Failure restores and verifies the previously recorded digest.
+
+Before the pull, the host script requires **20 GiB (20480 MiB) free** on the
+filesystem containing the local daemon's `DockerRootDir`, measured with
+`docker info` and `df -Pk`. Missing or invalid measurements abort deployment,
+before pulling, dumping the database or changing services. The script never
+prunes images automatically; retain the running and rollback digests when
+reviewing disk usage.
+
+This is an operational headroom floor, not a computed image-size guarantee.
+A 4.41 GB release pull exhausted a host that began with 3.1 GB free while
+extracting Torch; the 20 GiB floor budgets room for compressed downloads,
+expanded layers and continued live writes. Registry compressed sizes alone
+cannot bound extraction space. Reassess this floor when dependencies grow.
+Set `ARCHIE_DEPLOY_MIN_FREE_MIB` in the **host deploy process environment** to
+an assessed positive decimal MiB budget (1..999999999, without leading zeros);
+an explicitly empty value is invalid. The workstation wrapper does not forward
+this setting. Lowering it reduces the protection.
+
+This check assumes deployment runs beside the local Docker daemon. It does not
+reserve disk, measure inode availability, size database backups, or account for
+concurrent writers or a separately mounted containerd image store. Those layouts
+need their own capacity assessment; a successful check is no guarantee against
+disk exhaustion. Cached releases still require the floor so the host retains
+operating headroom.
+
+The deployment gate saves candidate server logs once to a unique
+`deploy-releases/candidate-<commit>-<random>.log` file (under `ARCHIE_RELEASE_STATE`
+when overridden). The root-run host deployer creates it with mode **0600**.
+The error gate counts that saved evidence, and rollback captures it first even
+when an earlier health or product check fails. Recreating the container therefore
+does not erase the evidence. Failure output includes the path, never log contents.
+Failed retrieval or inspection fails deployment closed; a retrieval failure may
+leave only partial diagnostics. These files are not automatically expired: review
+retention and disk usage, and treat them as sensitive operational records. The
+snapshot covers the existing 15-minute window; it is not continuous log shipping
+and cannot recover logs Docker has already removed.
 
 The first immutable cutover has no previous digest yet. The operator wrapper
 therefore records the healthy pre-cutover Git commit before checkout and runs

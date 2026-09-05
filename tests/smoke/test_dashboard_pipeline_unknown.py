@@ -30,6 +30,9 @@ def test_unclassified_solution_survives_dashboard_reload_and_pipeline_navigation
         for reload in (False, True):
             if reload:
                 assert page.reload(timeout=PAGE_TIMEOUT).status == 200
+            # Solution architects land on the Application layer, not Overview.
+            # Every reload restores that persona default; navigate visibly.
+            page.get_by_role("button", name="Overview", exact=True).click()
             card = page.get_by_role("heading", name="Solution Pipeline", exact=True).locator("../..")
             expect(card).to_contain_text("1 solution without a recorded ADM phase")
             expect(card).not_to_contain_text("No solutions yet")
@@ -44,6 +47,7 @@ def test_unclassified_solution_survives_dashboard_reload_and_pipeline_navigation
         assert page.reload(timeout=PAGE_TIMEOUT).status == 200
         expect(maturity.locator('[data-slot="card-title"]')).to_have_text("—")
         assert page.goto(live_server + "/dashboard/overview", timeout=PAGE_TIMEOUT).status == 200
+        page.get_by_role("button", name="Overview", exact=True).click()
         with page.expect_navigation(timeout=PAGE_TIMEOUT) as navigation:
             card.get_by_role("link", name="Open the pipeline", exact=True).click()
         assert navigation.value.status == 200

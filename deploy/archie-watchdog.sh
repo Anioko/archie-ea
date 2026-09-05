@@ -12,6 +12,9 @@ STATE_DIR="/var/lib/archie-watchdog"
 FAIL_FILE="$STATE_DIR/consecutive_failures"
 LAST_ACTION_FILE="$STATE_DIR/last_restart_epoch"
 LOG="/var/log/archie-watchdog.log"
+# Must match deploy/deploy.sh, including its configurable release directory.
+RELEASE_STATE="${ARCHIE_RELEASE_STATE:-/root/deploy-releases}"
+DEPLOY_LOCK="$RELEASE_STATE/deploy.lock"
 
 FAIL_THRESHOLD=3      # ~3 minutes of unresponsiveness before acting
 COOLDOWN_SECONDS=600  # never restart-loop
@@ -87,6 +90,34 @@ else
         log_and_alert "WARNING: no successful database backup has ever been recorded"
         touch "$STATE_DIR/backup_warned"
     fi
+fi
+
+# Serialize the entire health decision and restart with deploy.sh. Merely
+# checking whether a deployment holds the lock leaves a race before restart.
+# Keep descriptor 8 locked until this process exits, including forensics.
+# Backups/crash-loop observations above remain available during deployments.
+# Do not create a missing release directory: an unknown coordination path must
+# fail closed rather than silently start a server during schema deployment.
+if ! { exec 8>"$DEPLOY_LOCK"; }; then
+    log_and_alert "WARNING: cannot open deployment lock $DEPLOY_LOCK - not checking/restarting server"
+    exit 1
+fi
+flock -n 8
+lock_status=$?
+if [ "$lock_status" -eq 1 ]; then
+    log "deployment/watchdog lock busy ($DEPLOY_LOCK) - deferring server health check and restart"
+    exit 0
+elif [ "$lock_status" -ne 0 ]; then
+    log_and_alert "WARNING: deployment lock $DEPLOY_LOCK failed (status $lock_status) - not checking/restarting server"
+    exit 1
+fi
+
+# A created/exited container is not a wedged running service. In particular,
+# Created has no valid StartedAt, so timestamp grace alone cannot protect it.
+container_status=$(docker inspect -f '{{.State.Status}}' "$CONTAINER" 2>/dev/null || echo "")
+if [ "$container_status" != running ]; then
+    log "container state ${container_status:-unknown} - not starting/restarting $CONTAINER"
+    exit 0
 fi
 
 if curl -sf --max-time 10 -o /dev/null "$URL"; then

@@ -1,7 +1,5 @@
 """Loaded dashboard values must agree across tabs, API fragment and reload."""
 
-import re
-
 import pytest
 from playwright.sync_api import expect
 
@@ -33,6 +31,8 @@ def test_dashboard_health_values_agree_after_tab_switch_and_reload(browser, live
             # the same numeric value in that presentation, not raw spellings.
             summary_score = page.evaluate("score => Number(score).toLocaleString()", score)
             expect(label.locator("..").locator("p").last).to_have_text(summary_score)
-            expect(cto.get_by_text(re.compile(r"^" + re.escape(score) + r"/100$"))).to_be_visible()
+            card_score = cto.locator('a[href="/dashboard/health"] [data-slot="card-title"]')
+            expect(card_score).to_be_visible()
+            expect(card_score).to_have_text(score + "/100")
     finally:
         page.close()

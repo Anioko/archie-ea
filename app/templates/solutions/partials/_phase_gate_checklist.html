@@ -1,12 +1,13 @@
 {# Phase Gate Checklist Panel (ENT-064)
    Rendered inside the solution detail page.
-   Requires Alpine.js context with:
-     - apiBase: solutions API base URL
-     - csrfToken: CSRF token
-     - advancePhase(force): existing advance method
+   API base and CSRF are explicit server-rendered configuration.
+   An ancestor advancePhase(force) method is used when available.
    This partial adds a `phaseGate` Alpine component via x-data.
 #}
-<div x-data="phaseGateChecklist()" x-init="loadGate()" class="rounded-lg border border-border bg-card p-4">
+<div x-data="phaseGateChecklist()" x-init="loadGate()"
+     data-api-base="{{ url_for('solution_design.view_solution', solution_id=solution.id) }}"
+     data-csrf-token="{{ csrf_token() }}"
+     class="rounded-lg border border-border bg-card p-4">
   <div class="flex items-center justify-between mb-3">
     <h3 class="text-sm font-semibold text-foreground">Phase Gate Checklist</h3>
     <button type="button" @click="loadGate()" class="text-xs text-muted-foreground hover:text-foreground transition-colors"
@@ -136,6 +137,14 @@ document.addEventListener('alpine:init', function() {
     Alpine._phase_gate_registered = true;
     Alpine.data('phaseGateChecklist', function() {
       return {
+        apiBase: '',
+        csrfToken: '',
+        init() {
+          // Capture explicit configuration while Alpine's $el is this root.
+          // During a button handler $el is the button, not the panel.
+          this.apiBase = this.$el.dataset.apiBase || '';
+          this.csrfToken = this.$el.dataset.csrfToken || '';
+        },
         loading: false,
         error: null,
         gate: {
@@ -148,46 +157,6 @@ document.addEventListener('alpine:init', function() {
           warnings: [],
           passed: [],
           summary: { total: 0, passed_count: 0, failed_count: 0, warning_count: 0 },
-        },
-
-        get apiBase() {
-          // Walk up to find the solutionDetail x-data context
-          // Start at the parent. This component itself defines apiBase as a
-          // getter, so reading d.apiBase from its own Alpine data stack would
-          // re-enter this getter until the browser exhausts the call stack.
-          let el = this.$el.parentElement;
-          while (el && !el.__x_phase_gate_api) {
-            if (el._x_dataStack) {
-              for (let i = 0; i < el._x_dataStack.length; i++) {
-                let d = el._x_dataStack[i];
-                if (d.apiBase) {
-                  el.__x_phase_gate_api = d.apiBase;
-                  el.__x_phase_gate_csrf = d.csrfToken;
-                  break;
-                }
-              }
-            }
-            el = el.parentElement;
-          }
-          return el ? el.__x_phase_gate_api : '';
-        },
-
-        get csrfToken() {
-          // As above, do not inspect this component's own csrfToken getter.
-          let el = this.$el.parentElement;
-          while (el && !el.__x_phase_gate_csrf) {
-            if (el._x_dataStack) {
-              for (let i = 0; i < el._x_dataStack.length; i++) {
-                let d = el._x_dataStack[i];
-                if (d.csrfToken) {
-                  el.__x_phase_gate_csrf = d.csrfToken;
-                  break;
-                }
-              }
-            }
-            el = el.parentElement;
-          }
-          return el ? el.__x_phase_gate_csrf : '';
         },
 
         async loadGate() {

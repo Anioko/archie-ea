@@ -18,6 +18,21 @@ from app.models.archimate_core import ArchiMateElement as ArchitectureElement, A
 logger = logging.getLogger(__name__)
 
 
+def _import_element_type(record):
+    """Accept legacy interchange keys without inventing or overriding a type."""
+    values = [record[key] for key in ("type", "element_type", "archimate_type")
+              if record.get(key) is not None]
+    for value in values:
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError("Element type must be a non-empty string")
+    if not values:
+        raise ValueError("Missing required element type")
+    normalized = {value.strip() for value in values}
+    if len(normalized) != 1:
+        raise ValueError("Conflicting element type fields")
+    return values[0].strip()
+
+
 class ArchitectureImportExportService:
     """Import and export architecture data."""
     
@@ -45,7 +60,7 @@ class ArchitectureImportExportService:
             writer.writerow({
                 "id": element.id,
                 "name": element.name,
-                "element_type": element.element_type,
+                "element_type": element.type,
                 "layer": element.layer,
                 "description": element.description,
                 "created_at": element.created_at.isoformat() if element.created_at else "",
@@ -123,7 +138,7 @@ class ArchitectureImportExportService:
                     # Create element
                     element = ArchitectureElement(
                         name=row["name"],
-                        element_type=row["element_type"],
+                        type=_import_element_type(row),
                         layer=row.get("layer"),
                         description=row.get("description"),
                     )
@@ -176,7 +191,7 @@ class ArchitectureImportExportService:
 
                     element = ArchitectureElement(
                         name=element_data["name"],
-                        element_type=element_data["element_type"],
+                        type=_import_element_type(element_data),
                         layer=element_data.get("layer"),
                         description=element_data.get("description"),
                     )

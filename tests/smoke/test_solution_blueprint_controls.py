@@ -23,19 +23,32 @@ def test_solution_blueprint_modal_and_phase_gate_controls_have_observed_outcomes
     page = browser.new_page()
     try:
         _login(page, live_server, seeded["emails"]["solution_architect"])
-        page.goto(
-            live_server + "/solutions/" + str(seeded["ids"]["solution"]),
-            wait_until="domcontentloaded",
+        with page.expect_response(
+            lambda response: response.url.endswith("/phase-gate")
+            and response.request.method == "GET",
             timeout=PAGE_TIMEOUT,
-        )
+        ) as initial:
+            page.goto(
+                live_server + "/solutions/" + str(seeded["ids"]["solution"]),
+                wait_until="domcontentloaded",
+                timeout=PAGE_TIMEOUT,
+            )
 
         phase_gate = page.get_by_text("Phase Gate Checklist", exact=True)
         phase_gate.wait_for(state="visible", timeout=PAGE_TIMEOUT)
-        page.get_by_text("Error loading gate:").wait_for(
-            state="hidden", timeout=PAGE_TIMEOUT
+        assert initial.value.status == 200
+        initial_data = initial.value.json()
+        assert initial_data["success"] is True
+        gate_panel = page.locator('[x-data="phaseGateChecklist()"]')
+        expect(gate_panel.locator('[x-text="gate.summary.total"]')).to_have_text(
+            str(initial_data["summary"]["total"]), timeout=PAGE_TIMEOUT
         )
-        # Absence of an error alone can pass before the request even starts.
-        # Exercise refresh and compare the rendered checklist with its response.
+        expect(gate_panel.locator('[x-text="gate.phase"]')).to_have_text(
+            str(initial_data["phase"]), timeout=PAGE_TIMEOUT
+        )
+        expect(gate_panel.locator('[x-show="error"]')).to_be_hidden()
+        # Initial population is mandatory; Refresh cannot repair a cold-load
+        # failure and then be counted as proof the page initialized correctly.
         with page.expect_response(
             lambda response: response.url.endswith("/phase-gate")
             and response.request.method == "GET",

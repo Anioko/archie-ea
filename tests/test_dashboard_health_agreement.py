@@ -44,6 +44,30 @@ def test_overview_preserves_canonical_score_precision_and_missing_components(mon
     }
 
 
+def test_health_card_browser_assertion_uses_rendered_value_element():
+    from jinja2 import Environment, FileSystemLoader
+    from playwright.sync_api import expect, sync_playwright
+
+    root = Path(__file__).resolve().parents[1]
+    env = Environment(loader=FileSystemLoader(root / "app/templates"), autoescape=True)
+    rendered = env.from_string(
+        "{% from 'components/metrics_card.html' import metrics_card %}"
+        "{{ metrics_card(title='Health Score', value='100.0/100', "
+        "description='Architecture health', href='/dashboard/health') }}"
+    ).render()
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        try:
+            page = browser.new_page()
+            page.set_content(rendered)
+            score = page.locator('a[href="/dashboard/health"] [data-slot="card-title"]')
+            expect(score).to_be_visible()
+            expect(score).to_have_text("100.0/100")
+            assert score.inner_text().strip() == "100.0/100"
+        finally:
+            browser.close()
+
+
 def test_empty_portfolio_has_no_measured_health_components(monkeypatch):
     from sqlalchemy import func
     from app.modules.dashboard.v2.services import executive_dashboard_service as module

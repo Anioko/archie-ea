@@ -40,15 +40,15 @@
                       belong to the header but are not actions.
 
    Passing both `subtitle` and `subtitle_caller` renders the caller only. #}
-{% macro page_shell(title, subtitle=None, breadcrumb=[], actions_caller=None, tabs=[], icon=None, subtitle_caller=None, meta_caller=None) %}
+{% macro page_shell(title, subtitle=None, breadcrumb=[], actions_caller=None, tabs=[], icon=None, subtitle_caller=None, meta_caller=None, stack_actions=False) %}
 <div class="mb-6">
     {% if breadcrumb %}
     <nav aria-label="Breadcrumb" class="mb-3">
-        <ol class="flex items-center gap-1.5 text-sm text-muted-foreground">
+        <ol class="flex items-center gap-1.5 text-sm text-muted-foreground{% if stack_actions %} flex-wrap{% endif %}">
             {% for label, href in breadcrumb %}
-            <li class="flex items-center gap-1.5"{% if loop.last %} aria-current="page"{% endif %}>
+            <li class="flex items-center gap-1.5{% if stack_actions %} min-w-0{% endif %}"{% if loop.last %} aria-current="page"{% endif %}>
                 {% if loop.last %}
-                    <span class="text-foreground font-medium">{{ label }}</span>
+                    <span class="text-foreground font-medium{% if stack_actions %} break-words min-w-0{% endif %}">{{ label }}</span>
                 {% elif href %}
                     <a href="{{ href }}" class="hover:text-foreground transition-colors">{{ label }}</a>
                     <i data-lucide="chevron-right" class="w-3.5 h-3.5 shrink-0" aria-hidden="true"></i>
@@ -67,8 +67,10 @@
        (xl+) avoids cramping the title/subtitle and clipping action buttons at
        narrower viewports (confirmed at 1024px with the sidebar open). At
        1280+ this renders identically to the previous side-by-side layout. #}
-    <div class="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-        <div>
+    {# A multi-column document may remain narrow even on an xl viewport.
+       Its actions must follow the available column, not the screen width. #}
+    <div class="flex flex-col gap-4{% if not stack_actions %} xl:flex-row xl:items-start xl:justify-between{% endif %}">
+        <div{% if stack_actions %} class="min-w-0 break-words"{% endif %}>
             {% if icon %}
             <div class="flex items-center gap-3">
                 <i data-lucide="{{ icon }}" class="h-6 w-6 shrink-0 text-primary" aria-hidden="true"></i>
@@ -87,7 +89,7 @@
             {% endif %}
         </div>
         {% if actions_caller %}
-        <div class="flex flex-wrap items-center gap-2 xl:shrink-0">
+        <div class="flex flex-wrap items-center gap-2{% if not stack_actions %} xl:shrink-0{% endif %}">
             {{ actions_caller() }}
         </div>
         {% endif %}

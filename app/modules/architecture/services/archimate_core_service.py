@@ -465,7 +465,7 @@ class ArchiMateService:
         return model
 
     def get_elements_by_type(
-        self, element_type: str, layer: Optional[str] = None
+        self, element_type: str, layer: Optional[str] = None, limit: Optional[int] = None
     ) -> List[ArchiMateElement]:
         """
         Get ArchiMate elements by type and optional layer.
@@ -473,6 +473,7 @@ class ArchiMateService:
         Args:
             element_type: Element type to filter by
             layer: Optional layer filter
+            limit: Optional validated result bound; omitted preserves existing callers
 
         Returns:
             List of matching ArchiMateElement instances
@@ -481,6 +482,9 @@ class ArchiMateService:
 
         if layer:
             query = query.filter_by(layer=layer)
+
+        if limit is not None:
+            query = query.limit(limit)
 
         return query.all()
 

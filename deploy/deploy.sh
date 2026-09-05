@@ -46,6 +46,28 @@ verify_image() {
         die "image revision $revision does not equal requested commit $expected"
 }
 
+check_pull_capacity() {
+    # Operational floor for compressed layers, extraction and live-service
+    # headroom; see deploy/README.md. Never prune images to meet this budget.
+    local minimum=${ARCHIE_DEPLOY_MIN_FREE_MIB-20480} docker_root disk available
+    [[ "$minimum" =~ ^[1-9][0-9]{0,8}$ ]] || \
+        die "ARCHIE_DEPLOY_MIN_FREE_MIB must be a positive decimal integer (1..999999999 MiB, no leading zeros)"
+    docker_root=$(docker info --format '{{.DockerRootDir}}') || \
+        die "cannot determine Docker storage directory"
+    [[ "$docker_root" = /* && "$docker_root" != *$'\n'* ]] || \
+        die "Docker storage directory is missing or not an absolute local path"
+    disk=$(LC_ALL=C df -Pk -- "$docker_root") || \
+        die "cannot measure free space on Docker storage filesystem: $docker_root"
+    available=$(printf '%s\n' "$disk" | awk 'NR == 2 {print $4}')
+    [[ "$available" =~ ^[0-9]{1,18}$ ]] || \
+        die "invalid available-space measurement for Docker storage: $docker_root"
+    # df -Pk reports KiB. Base 10 avoids interpreting a leading zero as octal.
+    available=$((10#$available))
+    say "Docker storage $docker_root: $((available / 1024)) MiB free; require $minimum MiB before pull"
+    (( available >= minimum * 1024 )) || \
+        die "insufficient free space on Docker storage filesystem ($docker_root): $((available / 1024)) MiB available, $minimum MiB required; review disk use and retain current/rollback images before retrying"
+}
+
 compose_with() {
     ARCHIE_IMAGE="$1" "${COMPOSE[@]}" "${@:2}"
 }
@@ -109,7 +131,32 @@ activate() {
     verify_running_identity "$ref" "$expected" && wait_for_health
 }
 
+CANDIDATE_LOG_FILE=""
+CANDIDATE_LOG_ATTEMPTED=0
+CANDIDATE_LOG_STATUS=1
+capture_candidate_logs() {
+    # Capture once: the gate and any rollback must refer to the same evidence.
+    if [ "$CANDIDATE_LOG_ATTEMPTED" -eq 1 ]; then
+        return "$CANDIDATE_LOG_STATUS"
+    fi
+    CANDIDATE_LOG_ATTEMPTED=1
+    CANDIDATE_LOG_FILE=$(umask 077; mktemp "$STATE_DIR/candidate-$EXPECTED_COMMIT-XXXXXX.log" 2>/dev/null) || return 1
+    chmod 600 "$CANDIDATE_LOG_FILE" || return 1
+    if compose_with "$IMAGE_REF" logs --since 15m server > "$CANDIDATE_LOG_FILE" 2>&1; then
+        CANDIDATE_LOG_STATUS=0
+    fi
+    return "$CANDIDATE_LOG_STATUS"
+}
+
 rollback() {
+    # Recreating server can delete the failed container's json-file logs.
+    # Keep diagnostics private; only the artifact path belongs in output.
+    if ! capture_candidate_logs; then
+        printf 'could not capture complete candidate logs; evidence may be partial: %s\n' \
+            "${CANDIDATE_LOG_FILE:-unavailable}" >&2
+    fi
+    printf 'deployment failed; candidate log evidence: %s\n' \
+        "${CANDIDATE_LOG_FILE:-unavailable}" >&2
     [ -n "$PREVIOUS_IMAGE" ] && [ -n "$PREVIOUS_COMMIT" ] || \
         die "deployment failed and no previous digest is recorded for rollback"
     say "rolling back to $PREVIOUS_IMAGE"
@@ -120,6 +167,7 @@ rollback() {
     die "deployment failed; verified rollback to $PREVIOUS_COMMIT is serving"
 }
 
+check_pull_capacity
 say "pre-pulling immutable release"
 docker pull "$IMAGE_REF"
 verify_image "$IMAGE_REF" "$EXPECTED_COMMIT"
@@ -147,10 +195,19 @@ fi
 if ! python3 scripts/post_deploy_verify.py --base "$PUBLIC_BASE_URL"; then
     rollback
 fi
-log_errors=$(compose_with "$IMAGE_REF" logs --since 15m server 2>/dev/null \
-    | grep -cE 'ERROR|CRITICAL|Traceback|safe-query failed|Failed to enrich' || true)
+if ! capture_candidate_logs; then
+    rollback
+fi
+log_scan_status=0
+log_errors=$(grep -cE 'ERROR|CRITICAL|Traceback|safe-query failed|Failed to enrich' \
+    "$CANDIDATE_LOG_FILE" 2>/dev/null) || log_scan_status=$?
+if [ "$log_scan_status" -gt 1 ]; then
+    printf 'could not inspect candidate log evidence: %s\n' "$CANDIDATE_LOG_FILE" >&2
+    rollback
+fi
 if [ "$log_errors" -ne 0 ]; then
-    printf '%s production error signal(s) found in the last 15 minutes\n' "$log_errors" >&2
+    printf '%s production error signal(s) found in the last 15 minutes; evidence: %s\n' \
+        "$log_errors" "$CANDIDATE_LOG_FILE" >&2
     rollback
 fi
 

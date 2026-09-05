@@ -730,7 +730,7 @@
       "status": "in_progress",
       "original_evidence": "Main browser command deselects adversarial tests; CI had no subsequent adversarial step. Source review also found three exception handlers continuing silently and route traversal allowing logout/impersonation to invalidate later persona requests.",
       "required_fix": "Run adversarial regressions against isolated test data with retained evidence; count request failures rather than ignoring them; keep traversal identity stable and test identity-changing routes separately. Inspect resulting failures rather than treating wiring as execution.",
-      "retest_evidence": "Added explicit CI adversarial step and JUnit artifact. Request exceptions now append failures. Identity-changing routes are excluded from these traversals and remain dedicated-journey scope. Three guard regressions pass after reproducing missing execution, silent handlers and absent identity filter. Actual adversarial execution remains pending; existing success reports do not include it.",
+      "retest_evidence": "Added explicit CI adversarial step and JUnit artifact. Request exceptions now append failures. Identity-changing routes are excluded from these traversals and remain dedicated-journey scope. Three guard regressions pass. CI 33927686496 actually executed the adversarial suite: 12 failed, 1 passed. Failures include malformed ArchiMate limit (F500-060), three deliberate configuration-dependent 503 responses needing explicit configured/unconfigured contract coverage, and one unresolved relationship ConnectionError. Subsequent fedac94f CI did not reach this step because ordinary browser tests failed. No adversarial-green or whole-product coverage claim.",
       "closure_tests": ["tests/test_adversarial_ci_execution.py", "tests/smoke/test_adversarial_probes.py", "Dedicated sign-out and tenant/identity transition browser journeys"]
     },
     {
@@ -765,6 +765,61 @@
       "required_fix": "Reclaim only verified unused artifacts while preserving rollback and data; add a tested capacity preflight and controlled image-retention procedure so future pulls cannot unexpectedly fill the production volume. Do not remove database volumes or current/rollback images.",
       "retest_evidence": "Verified container references and removed exactly four unused legacy build images without force. Free space recovered to 34 GB, usage 57%; current application and database remained healthy. No data or backups removed. Deployment retry underway. Preventive versioned guard/retention work remains outstanding and is not being mixed into the currently executing deployment script.",
       "closure_tests": ["Low-disk deployment preflight regression", "Controlled retention preserves current and rollback releases", "Before/after production capacity and healthy service measurements"]
+    },
+    {
+      "id": "F500-057",
+      "area": "solution_blueprint_responsive_controls",
+      "severity": "high",
+      "title": "Blueprint More actions overflows beneath the governance sidebar and cannot be clicked",
+      "status": "in_progress",
+      "original_evidence": "Direct browser on c87d0d1f during interim deployment, viewport 1280x631, solution Legacy CRM Retirement (Lotus Notes → Sales Cloud): central column width 424.667px, governance sidebar starts x960.667. More actions button is x964.75 width28px; elementFromPoint at its centre returns an unrelated DIV, not the button. Repeated ordinary clicks leave aria-expanded=false and menu hidden. Exact geometry and screenshot distinguish occlusion from an absent handler.",
+      "required_fix": "Keep long-title header actions within available central-column width and independently click-test the menu and navigation at constrained widths. Do not rely on viewport-wide breakpoints when side panels consume the page width.",
+      "retest_evidence": "Reproduced exact live title and constrained column in actual Chromium with shipped CSS/fonts/Alpine. Additive stacked page-shell actions enabled for blueprint. Two responsive browser regressions passed independently at 1280 and 1100px, including ordinary More actions click and navigation to an explicitly stubbed destination. Two full-application real Code Workbench journeys added, pending CI. Not deployed. Interim deployment rolled back, so original observations identify the rejected candidate, not current production.",
+      "closure_tests": ["Long-title constrained-column browser hit testing", "Real More actions and Code Workbench navigation", "Deployed retest at 1280px and narrower supported widths"]
+    },
+    {
+      "id": "F500-058",
+      "area": "deployment_failure_evidence",
+      "severity": "medium",
+      "title": "Rollback destroys rejected container logs after reporting only an error count",
+      "status": "in_progress",
+      "original_evidence": "c87d0d1f interim deployment passed health/public checks but reported five production error signals and rolled back. The script printed only a count. It recreated the rejected container; Docker json-file logs had no persistent mount, leaving no captured error details for diagnosis.",
+      "required_fix": "Retain root-only candidate log evidence before rollback, report its path, count errors from that captured evidence and fail closed if retrieval fails. Keep the existing error gate; do not waive unknown errors to obtain a green deployment.",
+      "retest_evidence": "Implemented root-only candidate log capture before rollback, shared evidence for counting, and fail-closed retrieval handling. Independent deployment capacity/log rerun passed 21 tests, including four retained-log regressions. Earlier combined batch failed during local disk exhaustion and is not counted green. Updated script not deployed; root cause of the five candidate error signals remains unknown.",
+      "closure_tests": ["Failed deployment retains candidate logs across rollback", "Log capture errors cannot produce a passing release", "Production rejected-release evidence retained and inspected"]
+    },
+    {
+      "id": "F500-059",
+      "area": "watchdog_deployment_coordination",
+      "severity": "high",
+      "title": "Watchdog starts a created application container before deployment dependencies finish",
+      "status": "in_progress",
+      "original_evidence": "Production watchdog log records restart at 2026-09-04T23:21:10Z after three health failures. At that point schema-deploy was still running and application was created but not started by Compose. The application became healthy before schema/ACL completion. Watchdog checks StartedAt-based grace but does not coordinate with the deployment lock; a never-started container bypasses that grace.",
+      "required_fix": "Coordinate watchdog and deployment through a common lock, do not force-start created containers, preserve normal recovery of genuinely wedged running services and fail safely when coordination cannot be determined.",
+      "retest_evidence": "Temporarily stopped the live watchdog timer while directly supervising rollback, verified recovered production, then restored the timer and confirmed active. Common deployment-lock and created-container guards added. Independent main-agent run passed nine watchdog cases; two Linux-specific real-lock cases skipped on Windows and still require Linux CI. This proves a deployment race but does not prove it caused the five rejected-release error signals. Updated watchdog is not installed on production yet.",
+      "closure_tests": ["Locked deployment excludes watchdog restart", "Created application is not force-started", "Ordinary wedged running service remains recoverable", "Production timer restored and coordination verified"]
+    },
+    {
+      "id": "F500-060",
+      "area": "archimate_picker_pagination",
+      "severity": "high",
+      "title": "ArchiMate element picker accepts negative limits and returns a server error",
+      "status": "in_progress",
+      "original_evidence": "CI 33927686496 adversarial execution reports /api/archimate/elements?limit=-1 returning 500. Route passes negative integers through to query.limit and raises on malformed integer strings. The single-type branch also ignores the requested limit.",
+      "required_fix": "Validate and bound limits consistently across default, search, multi-type and single-type paths while preserving tenant and layer/type predicates. Verify malformed inputs through actual database and browser requests.",
+      "retest_evidence": "Implemented existing safe_int_arg convention: absent/malformed defaults to 25, integer bounds 1..100. Single-type service accepts an optional validated bound without changing other callers. Independent main-agent rerun passed all 28 route regressions. PostgreSQL and full-browser regressions added but not yet executed in CI. Not deployed or closed.",
+      "closure_tests": ["tests/test_archimate_element_limit.py", "tests/test_hostile_input_pagination.py", "tests/smoke/test_archimate_picker_limits.py", "Deployed picker search and malformed-input verification"]
+    },
+    {
+      "id": "F500-061",
+      "area": "architecture_import_export",
+      "severity": "high",
+      "title": "Architecture CSV export reads obsolete element_type attribute and fails for populated portfolios",
+      "status": "in_progress",
+      "original_evidence": "Retained CI 33927686496 Chromium server log smoke-server-41399.log records Architecture export failed: ArchiMateElement object has no attribute element_type. Source inspection corrects earlier redirect wording: the handler returns JSON 400, which the generic 5xx probe did not flag. Service aliases the canonical ArchiMateElement model but CSV serialization reads the obsolete attribute. Import constructors also use the obsolete name and require round-trip qualification.",
+      "required_fix": "Use canonical model fields while preserving a documented interchange schema, validate CSV/JSON round trips and actual browser downloads with populated records, verify authorization and tenant isolation, and inspect downloaded content rather than treating redirects as successful exports.",
+      "retest_evidence": "Aider proposed a bounded patch for $0.00089; coordinator rejected silent blank export fallback and missing conflicting-type validation. Replaced unsuccessful ORM-hydration test setup with explicitly scoped canonical-field row/query/session doubles. Thirteen focused cases reproduced seven failures (CSV export plus valid CSV/JSON imports), with six invalid-input cases passing before repair. Applied canonical field mapping with explicit missing/blank/conflicting type rejection and launched green rerun. Full mapped-model/database, browser download, relationship preservation and route content-type checks remain pending. Not deployed or closed.",
+      "closure_tests": ["tests/test_architecture_export_contract.py", "Populated CSV/JSON import-export round trips", "Real browser download, content and tenant isolation verification"]
     }
   ]
 }

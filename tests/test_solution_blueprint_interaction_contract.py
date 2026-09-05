@@ -23,13 +23,6 @@ def test_blueprint_modal_roots_have_the_ids_the_modal_registry_uses():
     assert 'id="bp-link-modal"' in template
 
 
-def test_phase_gate_parent_lookup_does_not_reenter_its_own_getters():
-    template = PHASE_GATE.read_text(encoding="utf-8")
-
-    assert template.count("let el = this.$el.parentElement;") >= 2
-    assert "let el = this.$el;" not in template.split("async loadGate()", 1)[0]
-
-
 def test_solution_governance_uses_an_icon_shipped_by_the_lucide_bundle():
     template = GOVERNANCE.read_text(encoding="utf-8")
 

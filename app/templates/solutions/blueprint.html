@@ -302,7 +302,8 @@ function archieShowBanner(msg, type) {
             breadcrumb=[('Home', '/'), ('Solutions', url_for('solutions.portfolio') if 'solutions.portfolio' in flask.current_app.view_functions else '/solutions/'), (solution.name, none)],
             meta_caller=_bp_meta,
             subtitle_caller=_bp_sub,
-            actions_caller=_bp_actions
+            actions_caller=_bp_actions,
+            stack_actions=True
         ) }}
 
         {# Completeness strip #}

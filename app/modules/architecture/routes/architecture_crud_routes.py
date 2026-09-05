@@ -15,10 +15,10 @@ from flask import (
     request,
     current_app,
     send_file,
-    after_this_request,
 )
 from flask_login import login_required
 from sqlalchemy import func, or_
+from werkzeug.wsgi import ClosingIterator
 
 from app.decorators import audit_log, require_roles
 from app.extensions import db
@@ -496,30 +496,33 @@ def import_architecture():
 def export_architecture():
     """Export architecture to file."""
     format_type = request.args.get("format", "csv")
+    if format_type not in {"csv", "json"}:
+        return jsonify({"error": "Supported export formats are csv and json"}), 400
 
     try:
         file_path, filename = import_export_service.export_data(format_type)
 
-        # Schedule temp file cleanup after response is sent
-        @after_this_request
-        def _cleanup_export_file(response):
+        # Close the streamed file before unlinking it (required on Windows).
+        logger = current_app.logger
+        def _cleanup_export_file():
             try:
                 if os.path.exists(file_path):
                     os.unlink(file_path)
             except Exception as cleanup_err:
-                current_app.logger.warning(
+                logger.warning(
                     "Failed to clean up export temp file %s: %s",
                     file_path,
                     cleanup_err,
                 )
-            return response
 
-        return send_file(
+        response = send_file(
             file_path,
             as_attachment=True,
             download_name=filename,
-            mimetype="text/csv" if format_type == "csv" else "application/xml",
+            mimetype="text/csv" if format_type == "csv" else "application/json",
         )
+        response.response = ClosingIterator(response.response, _cleanup_export_file)
+        return response
     except Exception as e:
         # O-04: "Export failed. Please try again." told the caller nothing —
         # not the reason, not whether retrying could possibly help, and

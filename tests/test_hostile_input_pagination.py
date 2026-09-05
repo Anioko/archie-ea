@@ -111,6 +111,8 @@ HOSTILE_URLS = [
     "/api/enterprise/systems?limit=abc",
     "/api/acm/capabilities?page=-1",
     "/api/archimate/elements?page=-1",
+    "/api/archimate/elements?limit=-1",
+    "/api/archimate/elements?limit=abc",
     "/architecture/search?page=-1&q=test",
     "/usage-analytics/api/events?page=-1",
     "/api/v2/enterprise/kg/elements?limit=-1",
@@ -186,3 +188,16 @@ def test_user_facing_search_page_survives_page_zero(hostile_client):
     """/architecture/search is a rendered page - a raw 500 is user-visible."""
     response = hostile_client.get("/architecture/search?q=test&page=-1")
     assert response.status_code < 500
+
+
+@pytest.mark.parametrize("raw", ["-1", "0", "abc", "", "1.5", "99999999999999999999"])
+@pytest.mark.parametrize("filters", [{}, {"q": "pagination-fixture"},
+                                     {"types": "ApplicationComponent"},
+                                     {"type": "application_component", "layer": "application"}])
+def test_archimate_picker_limit_executes_successfully_in_postgresql(hostile_client, raw, filters):
+    response = hostile_client.get("/api/archimate/elements", query_string={"limit": raw, **filters})
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["success"] is True
+    assert payload["count"] == len(payload["data"])
+    assert payload["count"] <= 100

@@ -18,6 +18,7 @@ from app.models.solution_archimate_element import SolutionArchiMateElement
 from app.models.solution_models import Solution
 from app.modules.architecture.services.archimate_core_service import ArchiMateService
 from app.utils.rbac import require_role
+from app.utils.pagination import safe_int_arg
 
 logger = logging.getLogger(__name__)
 
@@ -291,6 +292,9 @@ def get_elements():
 
     GET /api/archimate/elements?type=business_actor&layer=business
     GET /api/archimate/elements?q=payment&types=ApplicationComponent,ApplicationService&limit=25
+
+    limit defaults to 25 for absent/malformed values; integers are clamped to
+    1..100 for every filter path, including the legacy single-type filter.
     """
     try:
         element_type = request.args.get('type')
@@ -298,7 +302,7 @@ def get_elements():
         # Text search + multi-type filter (used by blueprint Link Elements picker)
         q = request.args.get('q', '').strip()
         types_param = request.args.get('types', '').strip()
-        limit = min(int(request.args.get('limit', 25)), 100)
+        limit = safe_int_arg('limit', 25, minimum=1, maximum=100)
 
         if q or types_param:
             # Free-text search path
@@ -331,7 +335,7 @@ def get_elements():
                         "error": f"Invalid layer: {layer}"
                     }), 400
 
-            elements = _archimate_service().get_elements_by_type(element_type_enum, layer_enum)
+            elements = _archimate_service().get_elements_by_type(element_type_enum, layer_enum, limit=limit)
         else:
             # No filter — cap to avoid returning all 3k+ elements
             elements = ArchiMateElement.query.order_by(ArchiMateElement.name).limit(limit).all()
