@@ -48,7 +48,7 @@ def _compliance_summary(licenses):
         "total_consumed": total_consumed,
         # Guarded: an empty tenant has nothing entitled, and a ZeroDivisionError
         # on day one is the same class of failure this whole exercise is fixing.
-        "utilization": round(total_consumed / total_entitled * 100, 1) if total_entitled else 0.0,
+        "utilization": round(total_consumed / total_entitled * 100, 1) if total_entitled > 0 else None,
     }
 
 

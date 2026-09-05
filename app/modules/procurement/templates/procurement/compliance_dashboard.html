@@ -47,7 +47,7 @@
         </div>
         <div class="bg-card border border-border rounded-lg p-4">
             <div class="text-sm text-muted-foreground mb-1">Overall Utilization</div>
-            <div class="text-2xl font-bold">{{ "{:.0f}".format(summary.utilization) }}%</div>
+            <div class="text-2xl font-bold">{{ ("{:.0f}".format(summary.utilization) ~ '%') if summary.utilization is not none else '—' }}</div>
         </div>
     </div>
 
@@ -60,6 +60,7 @@
                     <span class="text-muted-foreground">Consumed</span>
                     <span>{{ summary.total_consumed }} / {{ summary.total_entitled }} licenses</span>
                 </div>
+                {% if summary.utilization is not none %}
                 <div class="h-4 bg-muted rounded-full overflow-hidden">
                     {% set util = summary.utilization %}
                     <div class="h-full rounded-full transition-all
@@ -73,6 +74,9 @@
                            Jinja environment for one progress bar. #}
                         style="width: {{ [util, 100]|min }}%"></div>
                 </div>
+                {% else %}
+                <p class="text-sm text-muted-foreground">Utilization unavailable — no positive licence entitlement recorded.</p>
+                {% endif %}
             </div>
         </div>
         <div class="grid grid-cols-3 gap-4 text-center text-sm">

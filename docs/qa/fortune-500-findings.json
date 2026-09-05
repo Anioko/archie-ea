@@ -844,6 +844,18 @@
       "required_fix": "No code repair justified by this observation. Fix the test procedure: separate click from settled-state observation. Creation/persistence, focus management and sibling outcomes remain part of whole-product qualification, not proven by merely opening an editor.",
       "retest_evidence": "Independent settled-state Chrome check showed Add Driver editor with Name, Description, Type, Cancel and Add Driver controls. Add Goal likewise opened. The initial snapshot occurred before rendering; the failure report was withdrawn and correction communicated. No production data changed or repair deployed. Governance controls will also be rechecked after settling.",
       "closure_tests": ["Real browser Add Driver and sibling control outcomes", "Persisted domain and ArchiMate rows", "Role and tenant authorization", "Deployed browser retest"]
+    },
+    {
+      "id": "F500-064",
+      "latest_verification": "Coordinator reproduced four focused failures (three unavailable denominators and rendered false 0 percent), then changed the summary to None for non-positive entitlement and rendered an em dash with an unavailable notice instead of a utilization bar. Nine focused tests pass, including two actual Chromium rendered-template cases distinguishing unavailable from genuine zero usage. These use disclosed shell/URL and row boundaries, not full auth/database execution. Not committed/deployed or closed.",
+      "area": "procurement_compliance_honesty",
+      "severity": "medium",
+      "title": "Empty licence portfolio reports measured zero-percent utilization",
+      "status": "in_progress",
+      "original_evidence": "Settled live Chrome navigation from licence register to /procurement/compliance showed No license data, Consumed 0 / 0 licenses, and Overall Utilization 0%. Source app/modules/procurement/routes.py line 51 substitutes 0.0 when total_entitled is zero; compliance_dashboard.html formats it as a measured percentage.",
+      "required_fix": "Represent utilization with no positive entitlement denominator as unavailable, render an em dash and an appropriate empty utilization graphic, and preserve real zero usage when entitlement is positive. Add boundary and rendered/browser tests. Do not fabricate a ratio or change the underlying licence counts.",
+      "retest_evidence": "Live display and source cause confirmed. No fix or qualifying retest yet; not part of candidate 64825fe5. No production data written.",
+      "closure_tests": ["Zero entitlement versus positive entitlement with zero consumption", "Rendered empty and populated utilization", "Deployed browser confirmation"]
     }
   ]
 }

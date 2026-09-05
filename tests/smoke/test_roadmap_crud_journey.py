@@ -40,7 +40,7 @@ def _login(page, base, email):
     page.goto(base + "/account/login", wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
     page.fill("#email", email)
     page.fill("#password", PASSWORD)
-    page.locator("#submit").dispatch_event("click")
+    page.locator("#submit").click()
     page.wait_for_url(lambda url: "/account/login" not in url, timeout=PAGE_TIMEOUT)
 
 
@@ -78,20 +78,20 @@ def test_roadmap_work_package_create_edit_delete(browser, live_server, seeded):
         _open_roadmap(page, roadmap_url)
 
         # ---- CREATE (POST) ------------------------------------------------
-        page.get_by_role("button", name=re.compile("Add Work Package", re.I)).dispatch_event("click")
+        page.get_by_role("button", name=re.compile("Add Work Package", re.I)).click()
         expect(page.locator(NAME_INPUT).first).to_be_visible(timeout=PAGE_TIMEOUT)
         _fill_required(page, "Smoke CRUD WP")
         with page.expect_response(
             lambda r: bool(WP_API.search(r.url)) and r.request.method == "POST",
             timeout=PAGE_TIMEOUT,
         ) as created:
-            page.get_by_role("button", name=re.compile("Create Work Package", re.I)).dispatch_event("click")
+            page.get_by_role("button", name=re.compile("Create Work Package", re.I)).click()
         assert created.value.status < 400, f"create POST failed: {created.value.status}"
         expect(page.get_by_text("Smoke CRUD WP", exact=False)).to_be_visible(timeout=PAGE_TIMEOUT)
 
         # ---- EDIT (PUT) ---------------------------------------------------
         row = page.locator("tr", has_text="Smoke CRUD WP")
-        row.get_by_role("button", name=re.compile("^Edit$", re.I)).dispatch_event("click")
+        row.get_by_role("button", name=re.compile("^Edit$", re.I)).click()
         name = page.locator(NAME_INPUT).first
         expect(name).to_have_value(re.compile("Smoke CRUD WP"), timeout=PAGE_TIMEOUT)
         name.fill("Smoke CRUD WP EDITED")
@@ -100,7 +100,7 @@ def test_roadmap_work_package_create_edit_delete(browser, live_server, seeded):
             and r.request.method in ("PUT", "PATCH", "POST"),
             timeout=PAGE_TIMEOUT,
         ) as edited:
-            page.get_by_role("button", name=re.compile("Save Changes", re.I)).dispatch_event("click")
+            page.get_by_role("button", name=re.compile("Save Changes", re.I)).click()
         assert edited.value.status < 400, f"edit failed: {edited.value.status}"
         expect(page.get_by_text("Smoke CRUD WP EDITED", exact=False)).to_be_visible(timeout=PAGE_TIMEOUT)
 
@@ -110,12 +110,12 @@ def test_roadmap_work_package_create_edit_delete(browser, live_server, seeded):
             lambda r: bool(WP_API.search(r.url)) and r.request.method == "DELETE",
             timeout=PAGE_TIMEOUT,
         ) as deleted:
-            row.get_by_role("button", name=re.compile("^Delete$", re.I)).dispatch_event("click")
+            row.get_by_role("button", name=re.compile("^Delete$", re.I)).click()
             # an in-page confirm modal, if present
             confirm = page.get_by_role("button", name=re.compile("^(Delete|Confirm|Yes)$", re.I))
             try:
                 if confirm.count() and confirm.last.is_visible():
-                    confirm.last.dispatch_event("click")
+                    confirm.last.click()
             except Exception:
                 pass
         assert deleted.value.status < 400, f"delete failed: {deleted.value.status}"

@@ -161,11 +161,8 @@ def _format_page_error(error):
 def _login(page, base, email):
     """Sign in the way a user does, and wait for the URL to change.
 
-    The login form is Alpine-driven: @submit sets isSubmitting, which disables the
-    button, so Playwright's actionability check blocks an ordinary click. And
-    expect_navigation races the redirect. Force-clicking the real button and then
-    waiting for the URL to stop being the login page is robust to both, and still
-    exercises the actual control a user presses.
+    Use a normal actionable click: forced or synthetic events cannot prove that
+    a user can reach the control. Wait for the resulting URL separately.
     """
     page.goto(base + "/account/login", wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
     page.fill("#email", email)
@@ -173,9 +170,9 @@ def _login(page, base, email):
     # no_wait_after: the click causes a navigation, and without this Playwright
     # waits for the action to "settle" on a page that is being torn down.
     try:
-        page.click("#submit", force=True, no_wait_after=True)
+        page.click("#submit", no_wait_after=True)
     except TypeError:                     # newer Playwright dropped the kwarg
-        page.locator("#submit").dispatch_event("click")
+        page.locator("#submit").click()
     try:
         page.wait_for_url(lambda url: "/account/login" not in url, timeout=PAGE_TIMEOUT)
     except Exception:
@@ -316,7 +313,7 @@ def test_procurement_completes_a_contract_and_licence(page, live_server, seeded)
     page.fill("#start_date", "2026-01-01")
     page.fill("#end_date", "2026-12-31")
     with page.expect_navigation(wait_until="domcontentloaded", timeout=PAGE_TIMEOUT):
-        page.eval_on_selector("form", "f => f.submit()")
+        page.get_by_role("button", name="Create contract", exact=True).click()
     page.wait_for_timeout(1000)
     assert "Smoke Contract %s" % ref in page.inner_text("body"), \
         "contract was not created (still on %s)" % page.url
@@ -332,7 +329,7 @@ def test_procurement_completes_a_contract_and_licence(page, live_server, seeded)
     page.fill("#quantity_entitled", "100")
     page.fill("#quantity_deployed", "150")          # deliberately over-deployed
     with page.expect_navigation(wait_until="domcontentloaded", timeout=PAGE_TIMEOUT):
-        page.eval_on_selector("form", "f => f.submit()")
+        page.get_by_role("button", name="Record licence", exact=True).click()
     page.wait_for_timeout(1000)
     assert "Smoke Licence %s" % ref in page.inner_text("body"), "licence was not created"
 
@@ -359,7 +356,7 @@ def test_application_manager_maintains_an_owned_application(page, live_server, s
     page.select_option("#health_status", "at_risk")
     page.select_option("#lifecycle_status", "operational")
     with page.expect_navigation(wait_until="domcontentloaded", timeout=PAGE_TIMEOUT):
-        page.eval_on_selector("form", "f => f.submit()")
+        page.get_by_role("button", name="Save changes", exact=True).click()
     page.wait_for_timeout(1000)
 
     _visit(page, live_server, "/my-applications/health")
