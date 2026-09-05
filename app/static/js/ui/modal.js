@@ -86,6 +86,13 @@
         return global.document.getElementById(id);
     }
 
+    function _focusOrigin(returnFocus) {
+        if (returnFocus && returnFocus.isConnected && typeof returnFocus.focus === 'function') {
+            return returnFocus;
+        }
+        return global.document.activeElement;
+    }
+
     function _focusableIn(el) {
         const candidates = Array.prototype.slice.call(el.querySelectorAll(
             'button:not([disabled]), [href], area[href], input:not([disabled]), select:not([disabled]), ' +
@@ -103,12 +110,12 @@
         });
     }
 
-    function _trapFocus(el, id) {
+    function _trapFocus(el, id, returnFocus) {
         const focusable = _focusableIn(el);
         if (!focusable.length) return;
         // Store prevFocus per-entry so parallel modals each restore their own trigger
         if (_registry[id]) {
-            _registry[id].prevFocus = global.document.activeElement;
+            _registry[id].prevFocus = _focusOrigin(returnFocus);
         }
         setTimeout(function () { focusable[0].focus(); }, 50);
 
@@ -143,8 +150,11 @@
             delete el._modalFocusTrap;
         }
         const entry = _registry[id];
-        if (entry && entry.prevFocus && typeof entry.prevFocus.focus === 'function') {
-            entry.prevFocus.focus();
+        if (entry && entry.prevFocus) {
+            if (entry.prevFocus.isConnected && !entry.prevFocus.closest('[inert], [hidden]')
+                && typeof entry.prevFocus.focus === 'function') {
+                entry.prevFocus.focus();
+            }
             entry.prevFocus = null;
         }
     }
@@ -200,6 +210,12 @@
                 );
                 const isLiveRegion = child.getAttribute('aria-live') || child.getAttribute('role') === 'status';
                 const isScript = child.tagName === 'SCRIPT' || child.tagName === 'STYLE';
+                // A parent modal may have been made inert by its child. When it
+                // becomes the top modal again, restore it before returning focus.
+                if (isModal && child.getAttribute('data-modal-inert') === '1') {
+                    child.removeAttribute('inert');
+                    child.removeAttribute('data-modal-inert');
+                }
                 if (!isModal && !isLiveRegion && !isScript) {
                     if (inertBackground) {
                         child.setAttribute('inert', '');
@@ -257,7 +273,9 @@
     }
 
     // ── Open ─────────────────────────────────────────────────────────────────
-    function open(id, payload) {
+    // options.returnFocus may name an explicit invoking element, including for
+    // pointer/async callers where activeElement is not the invoking control.
+    function open(id, payload, options) {
         if (!_registry[id]) {
             // Auto-register if element exists
             if (!register(id)) return false;
@@ -277,7 +295,7 @@
         _stack.push(id);
         entry.isOpen = true;
 
-        if (entry.config.focus) _trapFocus(el, id);
+        if (entry.config.focus) _trapFocus(el, id, options && options.returnFocus);
         if (entry.config.keyboard) _bindEscape(id);
 
         _syncAlpine(id, true, payload);
@@ -321,17 +339,15 @@
             global.document.body.classList.remove('overflow-hidden');
         }
 
+        // Focus cannot enter an inert subtree. Restore the remaining top modal
+        // (or the page when the stack is empty) before returning to its opener.
+        _setBackgroundInert(_stack[_stack.length - 1] || null, _stack.length > 0);
         _releaseFocus(el, id);
         _unbindEscape(id);
         _syncAlpine(id, false);
 
         // VIOLATION-8 FIX: Announce modal close to screen readers
         _announceModal(id, false);
-
-        // VIOLATION-10 FIX: Restore inert on background only when no more modals are open
-        if (_stack.length === 0) {
-            _setBackgroundInert(null, false);
-        }
 
         // Resolve promise if awaitResult() is waiting
         if (entry.resolver) {
@@ -353,12 +369,12 @@
     // ── Promise-based result ─────────────────────────────────────────────────
     // Named awaitResult, not prompt: it shadowed the native dialog, so every
     // internal call read as one.
-    function awaitResult(id, payload) {
+    function awaitResult(id, payload, options) {
         return new Promise(function (resolve_) {
             if (!_registry[id]) register(id);
             const entry = _registry[id];
             if (entry) entry.resolver = resolve_;
-            open(id, payload);
+            open(id, payload, options);
         });
     }
 
@@ -518,6 +534,7 @@
      * @param {string}  [options.confirmLabel]  - Confirm button text (default: 'Confirm')
      * @param {string}  [options.cancelLabel]   - Cancel button text (default: 'Cancel')
      * @param {boolean} [options.destructive]   - Use destructive (red) button (default: true)
+     * @param {HTMLElement} [options.returnFocus] - Explicit invoking control for focus return
      * @returns {Promise<boolean>} Resolves true if confirmed, false if cancelled/dismissed
      *
      * @example
@@ -570,7 +587,7 @@
                 }
             ]
         });
-        return awaitResult(id).then(function (result) {
+        return awaitResult(id, undefined, options).then(function (result) {
             setTimeout(function () { destroy(id); }, 300);
             return result === true;
         });
@@ -661,7 +678,7 @@
         const openTrigger = e.target.closest('[data-modal-open]');
         if (openTrigger) {
             const targetId = openTrigger.getAttribute('data-modal-open');
-            if (targetId) { open(targetId); return; }
+            if (targetId) { open(targetId, undefined, { returnFocus: openTrigger }); return; }
         }
 
         // data-modal-close
@@ -762,14 +779,12 @@
             global.document.removeEventListener('keydown', observed.escHandler);
         }
 
-        // Restore focus
-        if (observed.prevFocus && typeof observed.prevFocus.focus === 'function') {
+        // Restore interactivity before focus, keeping any Platform modal isolated.
+        _setBackgroundInert(_stack[_stack.length - 1] || null, _stack.length > 0);
+        if (observed.prevFocus && observed.prevFocus.isConnected
+            && !observed.prevFocus.closest('[inert], [hidden]')
+            && typeof observed.prevFocus.focus === 'function') {
             observed.prevFocus.focus();
-        }
-
-        // Restore background inert if no Platform.modal modals are open either
-        if (_stack.length === 0) {
-            _setBackgroundInert(null, false);
         }
 
         // Announce close
@@ -859,7 +874,7 @@
             return;
         }
         event.preventDefault();
-        confirmDialog(message).then(function (ok) {
+        confirmDialog(message, { returnFocus: event.submitter }).then(function (ok) {
             if (!ok) return;
             form.dataset.confirmed = 'yes';
             // requestSubmit keeps validation and the submitter; form.submit()
@@ -883,7 +898,12 @@
         if (event && typeof event.preventDefault === 'function') event.preventDefault();
         var t = event && event.target;
         var form = t && t.closest ? t.closest('form') : (t && t.tagName === 'FORM' ? t : null);
-        confirmDialog(message, options).then(function (ok) {
+        var invoker = event && event.submitter;
+        if (!invoker && t && t.closest) {
+            invoker = t.closest('button:not(:disabled), input[type="submit"]:not(:disabled), a[href]');
+        }
+        var confirmOptions = Object.assign({ returnFocus: invoker }, options || {});
+        confirmDialog(message, confirmOptions).then(function (ok) {
             if (ok && form && typeof form.submit === 'function') form.submit();
         });
         return false;

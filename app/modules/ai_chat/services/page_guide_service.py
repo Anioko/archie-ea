@@ -7,15 +7,14 @@ from typing import Any, Dict, List, Optional
 
 from flask import current_app
 
-logger = logging.getLogger(__name__)
 from sqlalchemy import text
 
 from app import db
 from app.models.vector_embeddings import ChatMessageEmbedding
 from app.modules.ai_chat.services.llm_service_impl import LLMService
 from app.modules.ai_chat.services.page_guide_registry import get_entry_for_page_key
-from app.services.feature_flag_service import FeatureFlagService
 
+logger = logging.getLogger(__name__)
 
 _PERSONA_PROFILES = {
     "solution_architect": {
@@ -89,8 +88,14 @@ class PageGuideService:
 
     @staticmethod
     def is_enabled() -> bool:
-        return bool(current_app.config.get("AI_PAGE_GUIDE_ENABLED", False)) and FeatureFlagService.is_ai_enabled(
-            FeatureFlagService.FEATURE_CHAT
+        """Guide policy, independent of inference readiness for saved records.
+
+        An absent chat override means automatic provider selection, not an
+        administrator disable. Generation checks provider readiness separately.
+        """
+        chat_override = current_app.config.get("AI_CHAT_ENABLED")
+        return bool(current_app.config.get("AI_PAGE_GUIDE_ENABLED", False)) and (
+            chat_override is None or bool(chat_override)
         )
 
     def get_history(self, page_key: str, scope_key: str) -> List[Dict[str, Any]]:

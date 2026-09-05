@@ -181,26 +181,22 @@ def test_page_guide_history_503_when_flag_off_even_if_llm_configured(
     }
 
 
-def test_page_guide_history_503_when_flag_on_but_llm_unconfigured(
+def test_page_guide_history_validates_request_when_enabled_without_llm(
     bare_app, client, llm_unconfigured, monkeypatch
 ):
-    """``PageGuideService.is_enabled`` already ANDs the flag with the chat
-    feature, so a missing LLM surfaces as the *same* "not enabled" body. The
-    ``require_ai_for_route`` branch in ``_feature_guard`` is therefore not
-    reachable from this handler; this test documents that observed behaviour."""
+    """Saved records require guide policy, not inference configuration.
+
+    Missing context reaches real schema validation without querying any rows;
+    the new policy/database suites cover successful scoped read and clear.
+    """
     _enable_page_guide(bare_app, monkeypatch)
 
-    response = client.get(
-        "/ai-chat/guide/history?page_key=dashboard.overview&scope_key=global"
-    )
+    response = client.get("/ai-chat/guide/history")
 
-    assert response.status_code == 503
+    assert response.status_code == 400
     body = response.get_json()
-    assert body["error"] == "service_unavailable"
-    assert body["message"] == "The page guide is not enabled."
-    assert "feature" not in body, (
-        "require_ai_for_route body reached the client; is_enabled semantics changed"
-    )
+    assert body["success"] is False
+    assert set(body["errors"]) == {"page_key", "scope_key"}
 
 
 def test_page_guide_history_validation_visible_when_enabled_missing_fields(

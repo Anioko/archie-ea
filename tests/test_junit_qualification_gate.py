@@ -5,8 +5,48 @@ import subprocess
 import sys
 
 import pytest
+import yaml
 
 GATE = Path(__file__).resolve().parents[1] / 'scripts/ci/check_junit_qualification.py'
+
+
+def test_independent_browser_stages_run_after_another_journey_fails():
+    workflow = yaml.safe_load((GATE.parents[2] / '.github/workflows/ci.yml').read_text(encoding='utf-8'))
+    steps = workflow['jobs']['smoke']['steps']
+    stages = [step for step in steps if any(name in step.get('name', '')
+              for name in ('Interaction-reality census', 'Adversarial regression probes',
+                           'Enabled AI protocol', 'Providerless saved-guide'))]
+    assert len(stages) == 4
+    for step in stages:
+        assert step.get('if') == "${{ !cancelled() && steps.smoke-schema.outcome == 'success' }}"
+        assert not step.get('continue-on-error', False)
+
+
+def test_provider_modes_and_history_report_are_explicit():
+    workflow = yaml.safe_load((GATE.parents[2] / '.github/workflows/ci.yml').read_text(encoding='utf-8'))
+    steps = workflow['jobs']['smoke']['steps']
+    adversarial = next(step for step in steps if step.get('name', '').startswith('Adversarial regression'))
+    assert adversarial['env']['SMOKE_AI_PROTOCOL_STUB'] == '1'
+    history = next(step for step in steps if step.get('name') == 'Providerless saved-guide history journeys')
+    assert history['env'] == {'AI_PAGE_GUIDE_ENABLED': 'true', 'SMOKE_AI_PROTOCOL_STUB': ''}
+    required = next(step for step in steps if step.get('name') == 'Require all browser reports without skips')
+    assert 'chromium-guide-history.xml' in required['run']
+
+
+def test_compatibility_requires_ai_and_providerless_history_execution():
+    workflow = yaml.safe_load((GATE.parents[2] / '.github/workflows/ci.yml').read_text(encoding='utf-8'))
+    steps = workflow['jobs']['browser-compatibility']['steps']
+    for name, report, env in [
+        ('Cross-browser AI submission and persistence', '-ai-protocol.xml', {'SMOKE_AI_PROTOCOL_STUB': '1'}),
+        ('Cross-browser providerless saved history', '-guide-history.xml',
+         {'AI_PAGE_GUIDE_ENABLED': 'true', 'SMOKE_AI_PROTOCOL_STUB': ''}),
+    ]:
+        stage = next(step for step in steps if step.get('name') == name)
+        assert stage['env'] == env
+        assert stage['if'] == "${{ !cancelled() && steps.compatibility-schema.outcome == 'success' }}"
+        assert report in stage['run']
+        required = next(step for step in steps if step.get('name') == 'Require executed compatibility tests without skips')
+        assert report in required['run']
 
 
 @pytest.mark.parametrize('xml,ok', [

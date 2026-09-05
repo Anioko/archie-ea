@@ -436,12 +436,13 @@
     },
     {
       "id": "F500-030",
+      "latest_verification": "Scope includes the owner's whole-product neutral-card requirement, not only the original dashboard. Root real-template Chromium style regression reproduced business card blue4px left edge versus neutral1px other edges after adding required actual design-token CSS. Removed five layer-specific edge rules in model viewer; six Chromium/Firefox/WebKit navigation/style cases passed within ongoing combined modal run. Each style case clicks all five layers and compares rendered border widths/colors. Synthetic cached model input and shell/network boundaries; no real generation/persistence claim. Other active card/panel accents remain and this umbrella is in progress.",
       "area": "visual_design",
       "severity": "medium",
-      "title": "Dashboard card cleanup left colored side accents in role-specific panels",
-      "status": "verified_local",
+      "title": "Neutral-card design remains inconsistent across dashboards and product panels",
+      "status": "in_progress",
       "original_evidence": "4 Sep 2026 after main commit aa973d60 claimed the dashboard health cards matched the flat pattern, app/templates/dashboards/overview.html still contained fourteen border-l-4 colored card accents across Overview, CTO, and CFO panels, contrary to the owner's explicit no-colored-sides-or-corners requirement.",
-      "required_fix": "Remove every colored side accent from dashboard cards and enforce the flat neutral card contract across all role-specific panels.",
+      "required_fix": "Remove decorative colored sides and corners from cards across Archie-EA, including dashboards and all role-specific panels; verify the rendered flat neutral card contract, not only color-token compliance.",
       "retest_evidence": "4 Sep 2026: a regression assertion failed with fourteen occurrences before repair and now passes with zero border-l-4 occurrences in the dashboard template; design-token and template gates pass. First CI caught the required committed CSS rebuild; the rebuilt stylesheet now passes the css-build gate locally. Final rendered multi-role visual verification remains required.",
       "closure_tests": [
         "tests/test_solution_blueprint_interaction_contract.py::test_dashboard_cards_have_no_colored_side_accents",
@@ -592,6 +593,7 @@
     },
     {
       "id": "F500-041",
+      "latest_verification": "5 September root live Chrome ordinary brand click from /architecture/data-entities navigated to /admin/ and settled on403 Forbidden, confirming the survey lead even for the currently signed-in account named platform.admin. No record mutations. Candidate brand href now dashboard.overview; independent rendered Chromium2passed with explicit synthetic destination boundaries. Eleven real-role cases collected and added across CI browsers; deployment and live repaired-link check pending. Ten historical role reports now available, final platform-admin audit still live at14:06UTC.",
       "area": "whole_product_browser_findings",
       "severity": "high",
       "title": "First completed role surveys report unresolved account, navigation, layout and authorization observations",
@@ -933,6 +935,88 @@
       "required_fix": "Diagnose the request lifecycle and preserve genuine failure reporting. Eliminate artificial setup races without ignoring errors; qualify normal dashboard navigation separately. Do not treat a passing worker-recycling microtest as proof of every app request.",
       "retest_evidence": "Root found transformation test used synthetic login click, immediate dashboard departure, and removed onboarding DOM. Replaced setup with ordinary login click and supported next=/solutions/new-programme return flow, removed DOM deletion and swallowed navigation exceptions; all console assertions retained. Two cases collect/lint only; no root-cause or remediation success claim. Failed run remains failed.",
       "closure_tests": ["Actual Firefox transformation journey at390/1024", "Dashboard request and navigation lifecycle diagnosis", "Genuine network failures still fail qualification", "Current candidate full CI"]
+    },
+    {
+      "id": "F500-072",
+      "area": "model_viewer_navigation",
+      "severity": "high",
+      "title": "Model viewer Back does nothing without a loaded model",
+      "status": "in_progress",
+      "original_evidence": "Live authenticated Chrome /architecture-assistant/model-viewer showed no assistant data; ordinary Back click left URL and page unchanged. Active inline handler requires currentModel before calling a navigation function which already tolerates no model.",
+      "required_fix": "Allow Back with no model; preserve optional cache and qualify desktop/mobile real-app navigation.",
+      "retest_evidence": "Actual-template Chromium test reproduced unchanged destination before removing handler guard. Three rendered-template browser cases passed afterwards (Chromium, Firefox, WebKit;16.54s). Shell, session, viewpoints and destination are explicit HTTP doubles. Two full-app desktop/mobile cases collected only; CI and deployed repair pending.",
+      "closure_tests": ["Empty-state Back in three browsers", "Real authenticated desktop/mobile destination", "Current candidate gates and deployed browser retest"]
+    },
+    {
+      "id": "F500-073",
+      "latest_verification": "Root independently reviewed explicit-only modal diff and reran63 focused modal plus6 model-viewer browser cases:69passed in166.88s, no skips. Worker separately reported46 existing editor/roadmap regressions passing. Interactivity restored before focus; explicit invokers supported in data entity Delete and owned declarative/form-submit handlers. Global event/WeakRef inference rejected and removed. Other direct callers still need audit; full-app data deletion and deployed verification pending.",
+      "area": "standard_modal_focus_restoration",
+      "severity": "high",
+      "title": "Data entity Delete Cancel fails to restore focus in Firefox and WebKit",
+      "status": "in_progress",
+      "original_evidence": "CI33969670461 at2dbeb823:both compatibility reports79passed/1failed/0skips. Data lifecycle opens named delete confirmation and cancels, then fails focus-return assertion. Confirm/deletion assertions not reached; later cleanup request is not user-flow success. Modal source restores focus before releasing background inert.",
+      "required_fix": "Reproduce with real modal assets, correct focus and inert ordering while preserving nested dialog isolation, then rerun complete real-data lifecycle across browsers.",
+      "retest_evidence": "Bounded worker repair assigned; no passing repair evidence yet. Failed candidate remains unqualified.",
+      "closure_tests": ["Pointer and keyboard Cancel focus in three browsers", "Nested-modal background isolation", "Real data entity confirm/deletion persistence", "Deployed browser retest"]
+    },
+    {
+      "id": "F500-074",
+      "area": "page_guide_saved_history",
+      "severity": "high",
+      "title": "Saved guide history read and clear incorrectly require an inference provider",
+      "status": "in_progress",
+      "original_evidence": "History and clear routes share generation feature guard; with guide policy enabled and no provider they return503 before accessing saved records. Worker reproduced provider resolution in record-only routes using real Flask routes with explicit persistence doubles.",
+      "required_fix": "Separate explicit feature policy from provider readiness: saved records remain user/scope isolated and available without inference; generation still requires a configured provider. Preserve authentication, schema, registry, auditing and explicit disables.",
+      "retest_evidence": "Worker reported37 focused policy/availability tests passing and2 real database tests collected only. Root review and independent rerun underway; full-app providerless history browser journey being added. Not deployed or closed.",
+      "closure_tests": ["Explicit policy/provider matrix", "Real user and scope isolated read/clear", "Visible history and clear browser outcomes without provider", "Generation remains truthful and deployed verification"]
+    },
+    {
+      "id": "F500-075",
+      "latest_verification": "Root independently reviewed the three requestSubmit changes and full actual-template harness, then reran30cases:30passed in88.55s, no skips. Two loopback-server ConnectionResetError traces occurred while reading a subsequent keepalive request during browser closure; no test assertions failed, but this is not a clean-log claim. Tests use synthetic HTTP responses and shell, not real persistence. Additional integration-entrypoint and full-app three-browser persistence coverage pending; not deployed.",
+      "area": "ai_chat_keyboard_submission",
+      "severity": "high",
+      "title": "Firefox Enter submission navigates away instead of sending chat",
+      "status": "in_progress",
+      "original_evidence": "Worker isolated real rendered chat/JS against loopback HTTP boundary. Ordinary Send issued one stream POST and displayed answer without navigation; ordinary Enter navigated to /? with zero stream POSTs, then fallback failed. Firefox warned about an untrusted submit event. handleEnter dispatches a synthetic submit Event without cancelable:true, so preventDefault cannot cancel the legacy default navigation. Direct native fetch/Headers/AbortSignal and production transport positive controls succeeded.",
+      "required_fix": "Use normal form submission semantics for chat activation paths; preserve validation, one request, no navigation and error handling. Qualify Enter and Send independently across browsers, with actual persisted full-app outcomes.",
+      "retest_evidence": "Production repair authorized to bounded worker; passing repair not yet established. Root parameterized full-app protocol persistence journey for Enter and Send and added mandatory Firefox/WebKit enabled-AI stages plus providerless-history stages. No external inference or deployed qualification claimed.",
+      "closure_tests": ["Enter and Send three-browser outcomes", "Other chat activation paths and native validation", "Exactly-once response and persisted history reload", "Full candidate gates and deployed real-provider browser retest"]
+    },
+    {
+      "id": "F500-076",
+      "latest_verification": "Root reviewed fixture and both regression files, then independently passed2 real-library binding tests as part of14case run in51.07s. They use a minimal Flask-SQLAlchemy harness and disposable SQLite only to verify binding/transaction ownership, not Archie/PostgreSQL correctness. Mapped/unmapped/named bind, listener, nested context, commit/rollback and restoration checks passed. Two PostgreSQL lifecycle cases remain unexecuted locally and required in CI. No test database cleanup performed.",
+      "area": "qa_database_isolation",
+      "severity": "high",
+      "title": "Shared rollback fixture does not expose its intended connection binding",
+      "status": "in_progress",
+      "original_evidence": "CI33969038274 backend101314172585:4380passed/6setup errors in36m29s. Every framework catalog database case stops at db_session.get_bind().in_transaction(): get_bind returns Engine rather than rollback-owned Connection. Shared fixture sets session bind but Flask-SQLAlchemy session routing may prefer app engines. Actual write/commit isolation implications require diagnosis; do not assume rollback was effective.",
+      "required_fix": "Prove and repair actual mapped/unmapped session connection binding and rollback of committed test rows, preserve cleanup and engine restoration, then rerun affected database tests and full suite. Keep catalog safety assertion.",
+      "retest_evidence": "Dedicated bounded worker assigned fixture/library diagnosis and regression repair. No passing remediation evidence yet; older run terminal failed and newer candidate backend still running.",
+      "closure_tests": ["Actual library connection binding", "Committed test rows absent after outer rollback", "Mapped and unmapped connection consistency", "Framework/history database regressions and full CI"]
+    },
+    {
+      "id": "F500-077", "area": "batch_import_history_api", "severity": "high",
+      "title": "Batch history GET fails enum serialization and ignores date filters",
+      "status": "in_progress",
+      "original_evidence": "Real Flask route with query/record double containing real BatchJob enums returns500; rendered fixture/source trace confirms dates ignored and page length used as total. No PostgreSQL execution in this reproduction.",
+      "required_fix": "Serialize actual enum values, validate statuses/dates, filter before stable pagination, report matching total, preserve current-user ownership.",
+      "retest_evidence": "Next-wave worker reports17focusedpass and20PGcases collectedonly; root independent review pending. Separate from current core candidate."
+    },
+    {
+      "id": "F500-078", "area": "application_import_history", "severity": "high",
+      "title": "Import history filters, displayed fields and row action IDs are inconsistent",
+      "status": "in_progress",
+      "original_evidence": "Actual rendered Chromium page with two fixture records reproduces missing status/date query parameters, invalid dates/missing names from mismatched BatchJob response, and duplicate manager hiding loading early. Export URL has no route; application history IDs must not be passed to batch retry/rollback APIs.",
+      "required_fix": "Use actual ApplicationImportHistory source with validated filters, honest fields and totals, one race-safe loader, scoped CSV and correctly mapped actions. Explicitly disclose unavailable retry where no verified persistent batch link exists; never invent ID correspondence or previous-value restoration.",
+      "retest_evidence": "Next-wave implementation underway. Rollback wiring held pending independent safety repair. No production writes or closure."
+    },
+    {
+      "id": "F500-079", "area": "application_import_rollback", "severity": "high",
+      "title": "Application rollback has broken tracking and unsafe ownership/deletion prerequisites",
+      "status": "in_progress",
+      "original_evidence": "Independent security source review plus root tracing: current writers store nested created/updated IDs, but rollback reads legacy application_ids; then references nonexistent capability-mapping application_id field, blocking deletion. is_admin bound method is treated as true without calling it. Raw stored IDs would reach unscoped mapping deletion before tenant-resolving targets if functionality blockers alone were fixed. Current cross-tenant destructive exploit is NOT demonstrated; existing400/AttributeError block that path.",
+      "required_fix": "Repair whole boundary before enabling action: actual admin/owner check, fresh tenant-scoped history, strict created-only metadata normalization, complete tenant target validation before deletes, correct mapping field, protected foreign/shared elements, enforced eligibility and truthful rollback semantics.",
+      "retest_evidence": "Security-fix workflow independent investigation completed; bounded repair authorized with malicious and legitimate regressions. No production mutation. Manual import's broad attribute assignment is a separate source-backed concern requiring validation, not silently claimed remediated."
     }
   ]
 }

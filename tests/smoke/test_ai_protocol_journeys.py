@@ -56,7 +56,8 @@ def _csrf(page):
     return {'X-CSRFToken': page.locator('meta[name="csrf-token"]').get_attribute('content') or ''}
 
 
-def test_composer_stream_reply_survives_real_history_reload(protocol_page, live_server, required_protocol):
+@pytest.mark.parametrize('activation', ['enter', 'send'])
+def test_composer_stream_reply_survives_real_history_reload(protocol_page, live_server, required_protocol, activation):
     page = protocol_page
     before = len(required_protocol.records)
     with page.expect_response(lambda res: res.url.endswith('/ai-chat/models')) as models:
@@ -71,7 +72,10 @@ def test_composer_stream_reply_survives_real_history_reload(protocol_page, live_
     try:
         with page.expect_response(lambda res: res.url.endswith('/ai-chat/message/stream')
                                   and res.request.method == 'POST') as streamed:
-            page.locator('#user-input').press('Enter')
+            if activation == 'enter':
+                page.locator('#user-input').press('Enter')
+            else:
+                page.locator('#send-btn').click()
         assert streamed.value.status == 200
         assert 'text/event-stream' in streamed.value.headers.get('content-type', '')
         events = [json.loads(line[6:]) for line in streamed.value.text().splitlines()

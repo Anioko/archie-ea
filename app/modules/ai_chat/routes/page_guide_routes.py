@@ -20,7 +20,7 @@ from app.utils.validators import sanitize_html, validation_error_response
 from . import unified_ai_chat_bp
 
 
-def _feature_guard():
+def _feature_guard(require_llm=True):
     if not PageGuideService.is_enabled():
         return (
             jsonify(
@@ -32,9 +32,16 @@ def _feature_guard():
             ),
             503,
         )
-    return FeatureFlagService.require_ai_for_route(
-        FeatureFlagService.FEATURE_CHAT, endpoint_name="page_guide"
-    )
+    # Saved history is a record operation, not inference. Do not resolve a
+    # provider for read/clear. Generation must still check configuration even
+    # when AI_CHAT_ENABLED=True overrides automatic feature detection.
+    if require_llm and not FeatureFlagService._is_llm_configured():
+        return jsonify({
+            "error": "service_unavailable",
+            "message": "AI feature 'chat' is not available. LLM provider must be configured.",
+            "feature": FeatureFlagService.FEATURE_CHAT,
+        }), 503
+    return None
 
 
 def _guide_mode_for_page_key(page_key: str) -> str:
@@ -44,7 +51,7 @@ def _guide_mode_for_page_key(page_key: str) -> str:
 @unified_ai_chat_bp.route("/guide/history", methods=["GET"])
 @login_required
 def get_page_guide_history():
-    feature_guard = _feature_guard()
+    feature_guard = _feature_guard(require_llm=False)
     if feature_guard:
         return feature_guard
 
@@ -75,7 +82,7 @@ def get_page_guide_history():
 @login_required
 @audit_log("clear_page_guide_history")
 def clear_page_guide_history():
-    feature_guard = _feature_guard()
+    feature_guard = _feature_guard(require_llm=False)
     if feature_guard:
         return feature_guard
 

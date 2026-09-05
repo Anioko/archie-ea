@@ -71,7 +71,7 @@ DEPENDENCIES:
     <div class="flex items-center justify-between h-16 px-4 border-b border-border flex-shrink-0">
         {# title: the app-name span beside this icon carries sidebar-app-name,
            which the collapse CSS hides, so collapsed this is a bare glyph. #}
-        <a href="{{ url_for('admin.index') }}" title="{{ config.APP_NAME }} home"
+        <a href="{{ url_for('dashboard.overview') }}" title="{{ config.APP_NAME }} home"
            class="flex items-center space-x-2">
             <div class="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
                 <!-- hexagon, not layout-dashboard: the brand mark shared a glyph with the

@@ -140,7 +140,7 @@
             let btn = document.getElementById('btn-delete-entity');
             if (btn) {
                 btn.addEventListener('click', async function() {
-                    if ((await Platform.modal.confirm('Delete data entity \'' + btn.dataset.entityName + '\'? This cannot be undone.'))) {
+                    if ((await Platform.modal.confirm('Delete data entity \'' + btn.dataset.entityName + '\'? This cannot be undone.', { returnFocus: btn }))) {
                         document.getElementById('delete-entity-form').submit();
                     }
                 });

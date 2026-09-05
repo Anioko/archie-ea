@@ -15,11 +15,6 @@
         transform: translateY(-1px);
         box-shadow: 0 4px 8px rgba(0,0,0,0.1);
     }
-    .layer-business { border-left: 4px solid hsl(var(--primary)); }
-    .layer-application { border-left: 4px solid hsl(var(--success)); }
-    .layer-technology { border-left: 4px solid hsl(var(--warning)); }
-    .layer-motivation { border-left: 4px solid hsl(var(--destructive)); }
-    .layer-strategy { border-left: 4px solid #8b5cf6; }
     .relationship-line {
         stroke: hsl(var(--muted-foreground));
         stroke-width: 2;
@@ -269,9 +264,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Open in Composer
     document.getElementById('btn-open-composer').addEventListener('click', function() {
-        if (currentModel) {
-            openInComposer();
-        }
+        openInComposer();
     });
 
     // Close modal

@@ -89,27 +89,55 @@ def _schema(app):
 def db_session(app, _schema):
     """A database session whose work is always rolled back.
 
-    Binds ``db.session`` to a single connection held open inside an outer
-    transaction. ``join_transaction_mode="create_savepoint"`` means a
+    Routes ``db.session`` to an outer transaction per configured engine.
+    ``join_transaction_mode="create_savepoint"`` means a
     ``session.commit()`` inside the test resolves to a SAVEPOINT release rather
     than a real COMMIT, so committing code under test behaves normally while the
     outer transaction still discards everything at teardown.
+
+    Direct engine connections are not session operations and remain outside this
+    fixture's rollback contract. Engine objects are deliberately left intact.
     """
+    from contextlib import ExitStack
+
     from app import db
 
-    with app.app_context():
-        connection = db.engine.connect()
-        transaction = connection.begin()
-        db.session.configure(bind=connection, join_transaction_mode="create_savepoint")
+    # A dedicated context keeps any caller's existing scoped session untouched.
+    with app.app_context(), ExitStack() as resources:
+        factory = db.session.session_factory
+        original_class = factory.class_
+        original_options = dict(factory.kw)
+        connections = {}
+        for engine in dict.fromkeys(db.engines.values()):
+            connection = resources.enter_context(engine.connect())
+            transaction = connection.begin()
+            resources.callback(transaction.rollback)
+            connections[engine] = connection
+
+        class RollbackSession(original_class):
+            def get_bind(self, mapper=None, clause=None, bind=None, **kwargs):
+                # Flask-SQLAlchemy selects db.engines before Session.bind, even
+                # for mapped writes. Preserve that routing, then substitute the
+                # owned connection. Subclassing preserves registered listeners.
+                resolved = super().get_bind(
+                    mapper=mapper, clause=clause, bind=bind, **kwargs
+                )
+                return connections.get(resolved, resolved)
+
         try:
+            db.session.remove()
+            factory.class_ = RollbackSession
+            db.session.configure(join_transaction_mode="create_savepoint")
+            assert db.session.get_bind() is connections[db.engine]
+            assert db.session.get_bind().in_transaction()
             yield db.session
         finally:
-            db.session.remove()
-            if transaction.is_active:
-                transaction.rollback()
-            connection.close()
-            # Drop the per-test binding so later sessions use the normal engine.
-            db.session.configure(bind=None)
+            try:
+                db.session.remove()
+            finally:
+                factory.class_ = original_class
+                factory.kw.clear()
+                factory.kw.update(original_options)
 
 
 @pytest.fixture

@@ -80,9 +80,8 @@
     // stubbed capability, not as "nothing to configure". Populate it from
     // /ai-chat/models when there is a real choice to make (2+ models); when
     // there are 0 or 1, hide the control and show an honest note instead of
-    // fabricating options. Production with no LLM keys legitimately returns
-    // an empty list — that must render as "auto-selection" text, not as a
-    // broken dropdown.
+    // fabricating options. An empty list and one configured model need
+    // different notes; neither is evidence that a provider is reachable.
     async function loadAvailableModels() {
         const wrap = document.getElementById('model-selector-wrap');
         const emptyNote = document.getElementById('model-selector-empty-note');
@@ -91,7 +90,12 @@
 
             if (!models || models.length < 2) {
                 wrap?.classList.add('hidden');
-                emptyNote?.classList.remove('hidden');
+                if (emptyNote) {
+                    emptyNote.textContent = models?.length === 1
+                        ? 'One AI model is configured — responses use the platform default.'
+                        : 'No AI models are configured.';
+                    emptyNote.classList.remove('hidden');
+                }
                 return;
             }
 
@@ -251,7 +255,9 @@
     function handleEnter(e) {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
-            chatForm.dispatchEvent(new Event('submit'));
+            // Preserve validation and a cancelable submit event. Firefox can
+            // navigate on an untrusted, non-cancelable synthetic submit.
+            chatForm.requestSubmit();
         }
     }
 
@@ -839,7 +845,7 @@
         const prompt = `Analyze "${entityName}" (${entityType}, ID: ${entityId}).\n\nPlease provide:\n1. Overview and current status\n2. Key relationships and dependencies\n3. Risk assessment\n4. Improvement recommendations`;
 
         userInput.value = prompt;
-        chatForm.dispatchEvent(new Event('submit'));
+        chatForm.requestSubmit();
     }
 
     function addToContext(entityType, entityId, entityName) {
@@ -987,7 +993,7 @@ Would you like me to provide more details about the extracted elements or help y
             if (context) {
                 userInput.value += `\n\n[Context: ${context}]`;
             }
-            chatForm.dispatchEvent(new Event('submit'));
+            chatForm.requestSubmit();
         }
     });
 

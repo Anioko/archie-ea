@@ -365,16 +365,26 @@ jobs:
           python -m flask --app manage init-db
           python -m flask --app manage reconcile-schema
       - name: Run archetype journeys
-        run: pytest tests/smoke -q -p no:randomly --timeout=900 -W ignore::DeprecationWarning -m "not adversarial and not census and not ai_protocol" --junitxml=tests/smoke/_artifacts/chromium-main.xml
+        run: pytest tests/smoke -q -p no:randomly --timeout=900 -W ignore::DeprecationWarning -m "not adversarial and not census and not ai_protocol and not guide_history" --junitxml=tests/smoke/_artifacts/chromium-main.xml
       - name: Interaction-reality census (dead controls, junk modals, silent forms)
+        if: ${{ !cancelled() && steps.smoke-schema.outcome == 'success' }}
         run: pytest tests/smoke/test_interaction_reality.py -q -p no:randomly -m census --timeout=1200 -W ignore::DeprecationWarning --junitxml=tests/smoke/_artifacts/chromium-census.xml
       - name: Adversarial regression probes (isolated test database)
+        if: ${{ !cancelled() && steps.smoke-schema.outcome == 'success' }}
+        env:
+          SMOKE_AI_PROTOCOL_STUB: "1"
         run: pytest tests/smoke/test_adversarial_probes.py -q -p no:randomly -m adversarial --timeout=3600 -W ignore::DeprecationWarning --junitxml=tests/smoke/_artifacts/chromium-adversarial.xml
       - name: Enabled AI protocol and persistence journeys (local provider only)
         if: ${{ !cancelled() && steps.smoke-schema.outcome == 'success' }}
         env:
           SMOKE_AI_PROTOCOL_STUB: "1"
         run: pytest tests/smoke/test_ai_protocol_journeys.py -q -p no:randomly -m ai_protocol --timeout=900 -W ignore::DeprecationWarning --junitxml=tests/smoke/_artifacts/chromium-ai-protocol.xml
+      - name: Providerless saved-guide history journeys
+        if: ${{ !cancelled() && steps.smoke-schema.outcome == 'success' }}
+        env:
+          AI_PAGE_GUIDE_ENABLED: "true"
+          SMOKE_AI_PROTOCOL_STUB: ""
+        run: pytest tests/smoke/test_page_guide_history_journey.py -q -p no:randomly -m guide_history --timeout=900 -W ignore::DeprecationWarning --junitxml=tests/smoke/_artifacts/chromium-guide-history.xml
       - name: Require all browser reports without skips
         if: always()
         run: >-
@@ -383,6 +393,7 @@ jobs:
           tests/smoke/_artifacts/chromium-census.xml
           tests/smoke/_artifacts/chromium-adversarial.xml
           tests/smoke/_artifacts/chromium-ai-protocol.xml
+          tests/smoke/_artifacts/chromium-guide-history.xml
       - name: Upload browser qualification evidence
         if: always()
         uses: actions/upload-artifact@v6
@@ -436,6 +447,7 @@ jobs:
       - name: Install ${{ matrix.browser }}
         run: python -m playwright install --with-deps ${{ matrix.browser }}
       - name: Create schema
+        id: compatibility-schema
         run: |
           python -m flask --app manage init-db
           python -m flask --app manage reconcile-schema
@@ -451,10 +463,27 @@ jobs:
           tests/smoke/test_blueprint_governance_controls.py
           tests/smoke/test_vendor_dialog_controls.py
           tests/smoke/test_data_entity_lifecycle.py
+          tests/smoke/test_brand_home_navigation.py
+          tests/smoke/test_model_viewer_navigation.py
           --junitxml=tests/smoke/_artifacts/${{ matrix.browser }}.xml
+      - name: Cross-browser AI submission and persistence
+        if: ${{ !cancelled() && steps.compatibility-schema.outcome == 'success' }}
+        env:
+          SMOKE_AI_PROTOCOL_STUB: "1"
+        run: pytest tests/smoke/test_ai_protocol_journeys.py -q -p no:randomly -m ai_protocol --timeout=900 -W ignore::DeprecationWarning --junitxml=tests/smoke/_artifacts/${{ matrix.browser }}-ai-protocol.xml
+      - name: Cross-browser providerless saved history
+        if: ${{ !cancelled() && steps.compatibility-schema.outcome == 'success' }}
+        env:
+          AI_PAGE_GUIDE_ENABLED: "true"
+          SMOKE_AI_PROTOCOL_STUB: ""
+        run: pytest tests/smoke/test_page_guide_history_journey.py -q -p no:randomly -m guide_history --timeout=900 -W ignore::DeprecationWarning --junitxml=tests/smoke/_artifacts/${{ matrix.browser }}-guide-history.xml
       - name: Require executed compatibility tests without skips
         if: always()
-        run: python scripts/ci/check_junit_qualification.py tests/smoke/_artifacts/${{ matrix.browser }}.xml
+        run: >-
+          python scripts/ci/check_junit_qualification.py
+          tests/smoke/_artifacts/${{ matrix.browser }}.xml
+          tests/smoke/_artifacts/${{ matrix.browser }}-ai-protocol.xml
+          tests/smoke/_artifacts/${{ matrix.browser }}-guide-history.xml
       - name: Upload compatibility evidence
         if: always()
         uses: actions/upload-artifact@v6

@@ -20,7 +20,11 @@ Marked `adversarial` and executed in a separate CI step after ordinary smoke.
 It walks the url_map repeatedly against the isolated test database. Identity-
 changing routes require dedicated tests rather than ending a traversal's session.
 
-    pytest tests/smoke/test_adversarial_probes.py -m adversarial
+    SMOKE_AI_PROTOCOL_STUB=1 pytest tests/smoke/test_adversarial_probes.py -m adversarial
+
+The all-features traversal requires the explicit local protocol provider. This
+does not qualify external inference: it makes enabled routes reachable without
+relaxing the zero-5xx rule. Disabled/providerless contracts run separately.
 """
 
 import json
@@ -113,6 +117,21 @@ def _keeps_probe_identity(path):
         "logout", "log-out", "signout", "sign-out", "impersonat", "switch-org",
         "switch-tenant", "switch-user",
     ))
+
+
+@pytest.fixture(scope='module', autouse=True)
+def configured_feature_preflight(ai_protocol_stub, live_server, seeded):
+    """Fail missing setup rather than counting disabled features as exercised."""
+    assert ai_protocol_stub is not None, 'All-feature probes require SMOKE_AI_PROTOCOL_STUB=1'
+    from .ai_protocol_stub import MODEL
+
+    with _api_session(live_server, seeded['emails']['enterprise_architect']) as session:
+        health = session.get(live_server + '/ai-chat/api/health/llm', timeout=30)
+        assert health.status_code == 200, _response_diagnostic(health)
+        assert health.json()['model'] == MODEL
+        history = session.get(live_server + '/ai-chat/guide/history', params={
+            'page_key': 'applications.detail', 'scope_key': 'applications.detail:32'}, timeout=30)
+        assert history.status_code == 200, _response_diagnostic(history)
 
 
 def _rules():
