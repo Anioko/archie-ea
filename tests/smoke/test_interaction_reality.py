@@ -1,4 +1,4 @@
-"""Does the rendered screen actually DO anything when a persona presses it?
+"""Rendered wiring census, not proof that every control's intended outcome works.
 
 Every gate in scripts/verify.py, and every other smoke test next door, answers a
 narrower question than the owner keeps asking. verify.py reads SOURCE, so it
@@ -23,8 +23,11 @@ persona, per key screen:
   (b) JUNK MODALS.  A modal whose body renders "undefined", "null", "NaN" or an
       unrendered `{{ ... }}` is showing the user a coercion leak, not data.
 
-  (c) SILENT-FAILING FORMS.  Submitting a form must produce a validation message
-      or a real response -- never an HTTP 5xx and never a torn-down blank page.
+  (c) FORM SERVER ERRORS. Attempts one eligible form per screen and records 5xx.
+      It does not yet assert validation, business success or persistence.
+
+Required screens that cannot be navigated to or measured fail this census.
+Wired-but-nonfunctional controls still need dedicated outcome tests.
 
 Why the wiring probe is shaped the way it is -- the part a naive version gets
 wrong
@@ -88,8 +91,8 @@ BASELINE_PATH = os.path.join(os.path.dirname(__file__), "interaction_reality_bas
 WRITE_BASELINE = os.environ.get("SMOKE_WRITE_INTERACTION_BASELINE") == "1"
 
 # The screens each persona actually lands on. Reuses the journey map so the two
-# suites cannot drift onto different URLs, and stays inside pages known to serve
-# (a 404 is a different test's finding). Screens are deduplicated per persona.
+# suites cannot drift onto different URLs. Required pages that fail to serve
+# must not disappear from coverage. Screens are deduplicated per persona.
 SCREENS = {a: list(dict.fromkeys(paths)) for a, paths in JOURNEY.items()}
 
 # Landing/journey screens are only half of where the owner clicks. The controls
@@ -102,8 +105,8 @@ SCREENS = {a: list(dict.fromkeys(paths)) for a, paths in JOURNEY.items()}
 # ids (the only deterministic entity ids we own -- an application and a vendor
 # contract). Screens whose id we do not seed are reached through their /create or
 # /new form instead of a detail page, so every entry here serves for real rather
-# than redirecting away and censusing nothing. A path that still 404s or 3xxs is
-# skipped by the same guard as the journey screens -- it is another test's find.
+# than redirecting away and censusing nothing. An unavailable page or login
+# redirect is incomplete coverage and fails the check.
 EXTRA_SCREENS = {
     "solution_architect":   ["/solutions/{solution}",
                              "/solutions/create",
@@ -380,16 +383,22 @@ def _measure(archetype, live_server, seeded, browser):
     server_errors = []
     page.on("response", lambda r: server_errors.append(r.url) if r.status >= 500 else None)
 
-    result = {"dead": 0, "junk": 0, "suppressed": 0, "form_500": 0, "screens": {}}
+    result = {"dead": 0, "junk": 0, "suppressed": 0, "form_500": 0,
+              "screens": {}, "unmeasured": {}}
     try:
         _login(page, live_server, seeded["emails"][archetype])
         for path in _screens_for(archetype, seeded):
             try:
                 resp = page.goto(live_server + path, wait_until="domcontentloaded",
                                  timeout=PAGE_TIMEOUT)
-            except Exception:
+            except Exception as exc:
+                result["unmeasured"][path] = "navigation failed: " + type(exc).__name__
                 continue
             if resp is None or resp.status >= 400:
+                result["unmeasured"][path] = "no response" if resp is None else "HTTP %s" % resp.status
+                continue
+            if "/account/login" in page.url:
+                result["unmeasured"][path] = "redirected to login"
                 continue
             page.wait_for_timeout(1200)
             # Remove the first-run onboarding overlay so it does not mask the page.
@@ -400,7 +409,8 @@ def _measure(archetype, live_server, seeded, browser):
                 pass
             try:
                 census = page.evaluate(CENSUS)
-            except Exception:
+            except Exception as exc:
+                result["unmeasured"][path] = "measurement failed: " + type(exc).__name__
                 continue
 
             # (c) forms: submit the first non-destructive, non-search form and
@@ -472,6 +482,9 @@ def _try_submit_one_form(page):
 @pytest.mark.parametrize("archetype", sorted(SCREENS))
 def test_controls_are_wired_and_modals_are_clean(archetype, live_server, seeded, browser):
     measured = _measure(archetype, live_server, seeded, browser)
+    assert not measured["unmeasured"] and measured["screens"], (
+        "%s census coverage incomplete: %s" % (
+            archetype, measured["unmeasured"] or "no screens measured"))
 
     if WRITE_BASELINE:
         # Handled by the writer test below; skip assertion in this mode.
@@ -519,6 +532,8 @@ def _write_interaction_baseline(live_server, seeded, browser):
     out = {}
     for archetype in sorted(SCREENS):
         m = _measure(archetype, live_server, seeded, browser)
+        assert not m["unmeasured"] and m["screens"], (
+            "Cannot baseline incomplete census: %s %s" % (archetype, m["unmeasured"]))
         out[archetype] = {"dead": m["dead"], "junk": m["junk"]}
     with open(BASELINE_PATH, "w", encoding="utf-8") as fh:
         json.dump(out, fh, indent=2, sort_keys=True)

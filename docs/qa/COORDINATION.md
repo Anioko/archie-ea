@@ -2,6 +2,10 @@
 
 ## Current checkpoint — 5 September, candidate 18d52beb
 
+Follow-up harness defect F500-066: real Chromium controlled HTTP navigation reproduced three false-green census outcomes (403/404/500 required pages silently skipped). Coordinator changed the actual measurement loop and gate to retain unmeasured paths and fail incomplete coverage, including baseline generation. Four focused cases now pass, including a genuine HTTP 200 positive control. Auth and network responses are disclosed test boundaries; no full-product browser claim. Forced form submission and missing business-outcome assertions remain separate census limitations, explicitly stated in its docstring. Full CI will need to run against the resulting new checkpoint.
+
+Composition full-app tests added at tests/smoke/test_blueprint_composition_controls.py: ordinary-click open/cancel/Escape and real application picker → POST → reload → edit → PUT → reload/persisted API assertions, exact-row cleanup. Two cases collect and lint passes; execution pending test database/CI. Worker still owns the editor implementation and focused tests.
+
 Full CI 33967077472 is running for exact candidate 18d52bebf02d27a72fdbc3e8c4c523d09c0d348b. Previous candidate 64825fe5 run 33966263332 has nine completed successful jobs; its Chromium job has reached adversarial probes and backend coverage is still running. Neither candidate is deployed or release-approved.
 
 Probe diagnostics worker returned; coordinator inspected the diff and independently ran tests/test_probe_error_diagnostics.py: 15 passed. This only improves bounded failure explanations; 503/connection failures still fail and baselines/timeouts are unchanged. No claim that the underlying failures are repaired.

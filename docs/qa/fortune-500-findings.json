@@ -867,6 +867,17 @@
       "required_fix": "Implement the composition add/edit editor with typed entity selection, validation, save/cancel and safe asynchronous behavior. Verify persisted actual backend outcomes and role/tenant access, then deploy and retest.",
       "retest_evidence": "Bounded composition editor assignment started. No repair or qualifying retest yet. Other generic types are not assumed tested from this observation.",
       "closure_tests": ["Real browser composition add/edit/cancel", "Typed component selection and save/reload persistence", "Role and tenant authorization", "Deployed browser confirmation"]
+    },
+    {
+      "id": "F500-066",
+      "area": "qa_census_coverage_integrity",
+      "severity": "high",
+      "title": "Interaction census silently omits unavailable required screens and can report false green",
+      "status": "in_progress",
+      "original_evidence": "Actual census measurement loop catches navigation/evaluation exceptions and continues, and skips missing or error HTTP responses. Three real Chromium controlled-response regressions reproduced false-green results for required pages returning 403, 404 and 500. No database or production mutations.",
+      "required_fix": "Retain and fail unmeasured required paths; reject incomplete baseline generation; execute strengthened census in CI. Keep wiring classification distinct from actual business-outcome proof.",
+      "retest_evidence": "Coordinator repair records unmeasured navigation, HTTP, login redirect and evaluation failures; gate and baseline writer reject incomplete coverage. Four Chromium harness cases pass including the normal 200 positive control. Authentication and HTTP responses are doubled boundaries. Full CI pending; no release qualification or claim that every wired control works.",
+      "closure_tests": ["Required HTTP error pages fail the census", "Valid measured page positive control", "Full strengthened census on immutable release candidate"]
     }
   ]
 }
