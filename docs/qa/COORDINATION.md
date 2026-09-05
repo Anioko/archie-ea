@@ -1,6 +1,18 @@
 # QA coordination board
 
-## Current checkpoint — 5 September, candidate 18d52beb
+## Current checkpoint — 5 September, candidate 455ec6d8
+
+Framework repair independently verified:13 availability cases passed, six deprecation warnings. Six real-PG cases plus two real-browser HTTP cases remain unexecuted. AI responses are unchanged and adversarial baselines remain strict. Test-only enabled-AI protocol implementation is now assigned with separate opt-in child environment and explicit CI invocation; it is not live-provider qualification.
+
+Blueprint Delete follow-up assigned: current confirmDeleteEntity only sets activeModal='delete' and has no matching rendered dialog. Worker owns blueprint.js, blueprint.html insertion, a new standard confirmation partial and focused browser tests/report. Root owns full-app delete outcome coverage. Reproduction and repair remain pending; do not assume a source handler implies a working confirmation.
+
+64825fe5 run33966263332 is terminal failed overall, but backend job101306833211 completed **4308 passed** in37m52s and nav-verified **1 passed / 0 failed / 0 skipped**. It reported171739 warnings; this is not a warning-free claim. Its adversarial failures remain release blockers, and these results do not qualify newer455ec6d8.
+
+Renewed live browser: original QA tab no longer existed; opened a new Chrome Archie tab1453906440 at /ai-chat/. Signed-in platform admin sees explicit no-provider-configured banner. Conversation-panel toggle expanded its controls; Chats tab displayed saved-conversation list. No prompts, uploads, deletes, new conversations or configuration writes. This qualifies those panel transitions only, not AI generation. Requested approved provider/account non-blockingly from owner; API credentials must be entered via the app, never chat.
+
+Framework investigation accepted: newer /applications/api/templates/frameworks already returns200[] for empty active ElementTemplate catalog, no mandatory catalog seed exists, and no exact frontend picker consumer was identified. Assigned legacy endpoint alignment, boundary red/green and shared-transaction real-PG tests; no fabricated standards/seeds or adversarial-baseline changes. Coordinator added two ordinary-login browser HTTP empty-catalog cases (collected/linted, not yet executed).
+
+Committed/pushed candidate **455ec6d815799e1e0fe9439256961009f0bfea7a**. Full CI **33968096525** is confirmed in progress on that exact SHA: https://github.com/Anioko/archie-ea/actions/runs/33968096525. Includes composition/roadmap repairs, explicit incomplete-census failures, ordinary-click journeys and Gunicorn>=26.2.0 with a real recycling gate. Main and production unchanged. Earlier 64825fe5 and18d52beb backend jobs remain confirmed running; their browser failures are terminal. Both bounded workers have returned; no active repair worker or local verification process remains.
 
 Ready for next candidate checkpoint: independent roadmap three-engine run **9 passed**, CSS check green/unchanged. Local static process 77784 completed **44 passed / 0 failed / 0 skipped**; it ran concurrently with edits, so immutable full CI still required. Candidate now also includes composition add/edit (27 local composition/governance cases), strengthened census and real-click journeys.
 

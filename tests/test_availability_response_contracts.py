@@ -1,8 +1,8 @@
-"""Availability response contracts for deliberately-503 endpoints (F500-053).
+"""Availability and empty-collection response contracts (F500-053).
 
 CI adversarial probes flag 503 responses from three handlers. These tests pin
-down *which* conditions legitimately produce 503, what the response body looks
-like, and that request validation stays visible once the feature is enabled.
+down unavailable AI conditions, the successful empty framework collection, and
+request validation once a feature is enabled.
 
 Scope and boundary doubles (read before trusting a green run)
 -------------------------------------------------------------
@@ -20,11 +20,11 @@ Doubles are limited to the boundaries below and are named in each test:
 * ``PageGuideService`` is replaced with an in-memory double for the enabled
   history path; ``current_user`` is replaced with a plain object carrying an
   ``id`` because ``LOGIN_DISABLED`` yields an anonymous user without one.
-* ``ElementTemplate.get_frameworks`` is replaced to simulate an empty seed
-  table, a seeded table, and a database error.
+* ``ElementTemplate.get_frameworks`` is replaced to simulate an empty catalog,
+  a populated catalog, and a database error.
 
 Not covered here: real authentication (``LOGIN_DISABLED`` bypasses
-``@login_required`` except in one test that exercises the guard itself), any
+``@login_required`` except in guard-specific tests), any
 database query, tenant scoping, and browser behaviour. Those remain for the
 configured integration run owned by Codex.
 """
@@ -285,16 +285,13 @@ def _patch_frameworks(monkeypatch, impl):
     monkeypatch.setattr(ElementTemplate, "get_frameworks", staticmethod(impl))
 
 
-def test_frameworks_503_with_empty_list_when_no_seed_rows(client, monkeypatch):
+def test_frameworks_200_empty_array_when_no_active_templates(client, monkeypatch):
     _patch_frameworks(monkeypatch, lambda: [])
 
     response = client.get("/dashboard/api/templates/frameworks")
 
-    assert response.status_code == 503
-    assert response.get_json() == {
-        "error": "No frameworks available. Please seed framework data.",
-        "frameworks": [],
-    }
+    assert response.status_code == 200
+    assert response.get_json() == []
 
 
 def test_frameworks_200_array_when_seeded_double(client, monkeypatch):
@@ -306,14 +303,12 @@ def test_frameworks_200_array_when_seeded_double(client, monkeypatch):
     assert response.get_json() == ["COBIT", "ITIL", "PCF"]
 
 
-def test_frameworks_database_error_is_not_masked_as_503(client, monkeypatch):
-    """A genuine backend failure must NOT look like the expected empty-seed 503.
+def test_frameworks_database_error_is_not_masked_as_empty_collection(client, monkeypatch):
+    """A backend failure must not look like a successful empty collection.
 
     The handler has no try/except. The ``application_mgmt`` blueprint's real
     ``DatabaseError`` errorhandler (app/application_mgmt/routes.py) catches it
-    and returns JSON 500 for XHR requests. Probes should treat
-    503-with-``frameworks: []`` as expected-unavailable and a 500 (or a
-    redirect for non-XHR callers) as a real failure."""
+    and returns JSON 500 for XHR requests."""
 
     def _boom():
         raise OperationalError("SELECT framework", {}, Exception("connection refused"))
@@ -330,3 +325,12 @@ def test_frameworks_database_error_is_not_masked_as_503(client, monkeypatch):
     assert body["success"] is False
     assert "frameworks" not in body
     assert body["error"] == "Database error occurred. Please try again."
+
+
+def test_frameworks_requires_login_when_auth_enabled():
+    auth_app = _bare_app(login_disabled=False)
+    response = auth_app.test_client().get(
+        "/dashboard/api/templates/frameworks",
+        headers={"X-Requested-With": "XMLHttpRequest"},
+    )
+    assert response.status_code == 401

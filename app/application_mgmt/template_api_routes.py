@@ -94,21 +94,11 @@ def get_frameworks():
     Get list of available frameworks.
 
     Returns:
-        JSON array of framework names (or object with 'frameworks' key for backward compatibility)
+        JSON array of active framework names, including [] for an empty catalog.
     """
     frameworks = ElementTemplate.get_frameworks()
 
-    # VALIDATION: Warn if no frameworks in database
-    if not frameworks:
-        current_app.logger.warning("No frameworks found in database. Seed data may be missing.")
-        return (
-            jsonify(
-                {"error": "No frameworks available. Please seed framework data.", "frameworks": []}
-            ),
-            503,
-        )
-
-    # Return as array for direct consumption
+    # Match the applications API: an empty collection is a successful query.
     return jsonify(frameworks)
 
 

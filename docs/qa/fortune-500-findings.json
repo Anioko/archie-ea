@@ -900,6 +900,17 @@
       "required_fix": "Use a verified runtime that drains requests safely while retaining worker recycling. Run isolated recycling regression as a required CI gate plus full application/security/production checks. Do not mask failures with retries or disable memory controls.",
       "retest_evidence": "CI 33967988526 Gunicorn 26.2.0 completed 80/80 requests across nine worker PIDs with zero failures or cleanup errors. Candidate requirement updated to >=26.2.0,<27 and regular CI now runs this regression. Full application compatibility/security and deployment remain pending. Earlier 26.2.1 comparison did not execute because the tagged release was not yet installable; this is not a passing result.",
       "closure_tests": ["Zero dropped requests across real worker recycling", "Full application CI with resolved runtime version", "Dependency security audit", "Deployed runtime and live journeys"]
+    },
+    {
+      "id": "F500-069",
+      "area": "framework_catalog_empty_state",
+      "severity": "medium",
+      "title": "Legacy framework collection misreports a valid empty catalog as unavailable",
+      "status": "in_progress",
+      "original_evidence": "Adversarial CI returns503 for /dashboard/api/templates/frameworks when ElementTemplate has no active rows. Source comparison confirms /applications/api/templates/frameworks returns200[] from the same active catalog. Fresh-install instructions contain no mandatory catalog seed, and no repository-owned ElementTemplate seed was found.",
+      "required_fix": "Return the real empty collection successfully, preserve authentication and genuine query errors, and verify both actual database endpoints. Do not invent framework content or a nonexistent seed command.",
+      "retest_evidence": "Worker reproduced boundary failure before removing the legacy empty-to503 branch. Coordinator independently reran all13 availability cases:13 passed, six deprecation warnings; AI semantics unchanged. Six shared-transaction real-PG cases and two signed-in browser HTTP cases added but unexecuted. No exact frontend picker consumer identified; no picker coverage claimed. Pending immutable fullCI and deployment.",
+      "closure_tests": ["Authenticated empty/inactive/populated real-PG collection queries", "Database errors remain errors", "Browser HTTP empty-catalog response", "Immutable CI and deployed endpoint verification"]
     }
   ]
 }
