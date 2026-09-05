@@ -93,7 +93,7 @@ def test_comprehensive_auto_map_with_llm_mocked_returns_non_500(
     )
 
     class _FakeAIImportService:
-        def bulk_ai_analyze(self, max_applications=50, confidence_threshold=0.7):
+        def bulk_ai_analyze(self, max_applications=50, confidence_threshold=0.7, application_ids=None):
             return {
                 "total_analyzed": 0,
                 "capability_mappings_found": 0,
