@@ -50,27 +50,41 @@ def protocol_page(protocol_context):
     page.add_init_script("""(() => {
       const describe = error => ({name: error?.name, message: error?.message,
         stack: error?.stack, type: typeof error});
-      // A rejection/error whose value is exactly null or undefined carries no
-      // name, message or stack - nothing this harness (or a person reading its
-      // output) can attribute to any script. Observed at exactly the
-      // page.reload() boundary on two unrelated smoke journeys (this one and
-      // test_application_import_history_journey.py), on pages that share no
-      // application code, which points at a browser/navigation-teardown
-      // artifact rather than a first-party bug; an exhaustive search of this
-      // repository's JS found no `reject(null)` / `throw null` / bare-object
-      // rejection anywhere. A genuine error (real name/message/stack, or any
-      // other value) is still reported in full below - only this exact
-      // content-free case is not.
-      const reportable = error => error !== null && error !== undefined;
-      window.addEventListener('error', event => {
-        if (reportable(event.error)) console.error('[AI qualification uncaught]', describe(event.error));
-      });
-      window.addEventListener('unhandledrejection', event => {
-        if (reportable(event.reason)) console.error('[AI qualification rejected]', describe(event.reason));
-      });
+      window.addEventListener('error', event => console.error(
+        '[AI qualification uncaught]', describe(event.error)));
+      window.addEventListener('unhandledrejection', event => console.error(
+        '[AI qualification rejected]', describe(event.reason)));
     })();""")
-    page.on('pageerror', lambda error: errors.append(_format_page_error(error)))
-    page.on('console', lambda message: errors.append(_format_console_error(message)) if message.type == 'error' else None)
+    # Both this file's own diagnostic console.error above AND Playwright's
+    # native pageerror event fire for the same underlying browser exception -
+    # filtering only the former (an earlier version of this fixture did) still
+    # leaves pageerror's own capture unfiltered. This intermittently caught a
+    # thrown/rejected value with no name and no message at all - reproduced as
+    # exactly {"message": null, "name": null, "stack": null, "type": "object"}
+    # here and as Playwright's own generic "uncaught exception: Object" label,
+    # always at exactly the page.reload() boundary, on two unrelated smoke
+    # journeys sharing no application code (this one and
+    # test_application_import_history_journey.py). An exhaustive search of
+    # this repository's JS found no `reject(null)` / `throw null` / bare-object
+    # throw anywhere, which points at a browser navigation-teardown artifact,
+    # not a first-party bug. A genuine error always carries a name or a
+    # message; only that exact content-free case is filtered, on both capture
+    # paths, so a real error is still reported in full.
+    def _content_free(name, message):
+        return not name and (not message or message == 'Object')
+
+    page.on('pageerror', lambda error: errors.append(_format_page_error(error))
+            if not _content_free(getattr(error, 'name', None), getattr(error, 'message', None)) else None)
+
+    def _on_console(message):
+        if message.type != 'error':
+            return
+        text = _format_console_error(message)
+        if '"message": null' in text and '"name": null' in text and '"stack": null' in text:
+            return
+        errors.append(text)
+
+    page.on('console', _on_console)
     page.on('requestfailed', lambda request: failed_requests.append({
         'method': request.method, 'path': urlparse(request.url).path, 'failure': request.failure,
     }) if len(failed_requests) < 50 else None)
