@@ -812,7 +812,7 @@
     },
     {
       "id": "F500-061",
-      "latest_verification": "CI 33965073124 main Chromium: 185 passed, 1 failed, 24 deselected. CSV failed (400) because the actual model lacks created_at; JSON download passed. Retained smoke-server-38789.log proves the cause. Absent/present timestamp cases reproduced one failure before repair. Export now leaves the legacy date field empty when unknown; 22 focused serialization/import/response cases pass locally. Full browser rerun and real database qualification remain required; not deployed. Earlier green row double incorrectly supplied the missing timestamp and is not sufficient evidence.",
+      "latest_verification": "64825fe5 CI 33966263332 retained chromium-main.xml confirms both populated CSV and JSON browser downloads passed, within 194 passing main browser cases. Prior CSV 400/missing created_at failure is repaired in this candidate; 22 local contract cases also passed. Backend database job remains pending; relationships, broader authorization and deployed verification remain open. Earlier incorrect test double is retained as a test-quality failure, not closure evidence.",
       "area": "architecture_import_export",
       "severity": "high",
       "title": "Architecture CSV export reads obsolete element_type attribute and fails for populated portfolios",
@@ -824,7 +824,7 @@
     },
     {
       "id": "F500-062",
-      "latest_verification": "All four production controls rechecked with separate settled Chrome snapshots and still failed to open. Worker repair plus coordinator follow-ups passed 12 Chromium partial tests independently; combined with 12 availability contracts, 24 passed and zero skipped. Follow-ups cover typed principle selection, saved-but-refresh-failed recovery and a delayed save preserving a newer editor. Eight full-application cases (four open/cancel/focus and four real save/reload) remain pending. CSS check and lint pass. No production changes or closure.",
+      "latest_verification": "64825fe5 CI 33966263332 retained chromium-main.xml confirms all eight full-application governance cases passed: four open/cancel/focus and four real save/reload/persistence checks. Latest independent local composition integration rerun also passed all 13 governance partial Chromium cases. Four live controls remain broken on unchanged production. No deployed closure or broader role/tenant qualification claimed.",
       "area": "blueprint_governance_entity_controls",
       "severity": "high",
       "title": "All four blueprint governance Add controls produce no visible editor",
@@ -865,7 +865,7 @@
       "status": "in_progress",
       "original_evidence": "5 September direct live Chrome click on + Component under Solution Composition at /solutions/32, signed-in platform admin. Separate settled accessibility snapshot showed focus on the trigger with no editor. No record mutation. _solution_composition.html calls openEntityModal('composition'); blueprint.js only opens an editor for governance types.",
       "required_fix": "Implement the composition add/edit editor with typed entity selection, validation, save/cancel and safe asynchronous behavior. Verify persisted actual backend outcomes and role/tenant access, then deploy and retest.",
-      "retest_evidence": "Bounded composition editor assignment started. No repair or qualifying retest yet. Other generic types are not assumed tested from this observation.",
+      "retest_evidence": "Worker implemented composition add/edit; coordinator independently ran 14 composition plus 13 governance Chromium cases: 27 passed. Includes keyboard picker, late search/save safety, preserved legacy values, failed save and malformed refresh. CSS check green and unchanged. Network boundaries doubled; two full-app real persistence cases collect but await CI. Delete, role/tenant authorization and deployed checks remain open.",
       "closure_tests": ["Real browser composition add/edit/cancel", "Typed component selection and save/reload persistence", "Role and tenant authorization", "Deployed browser confirmation"]
     },
     {
@@ -878,6 +878,28 @@
       "required_fix": "Retain and fail unmeasured required paths; reject incomplete baseline generation; execute strengthened census in CI. Keep wiring classification distinct from actual business-outcome proof.",
       "retest_evidence": "Coordinator repair records unmeasured navigation, HTTP, login redirect and evaluation failures; gate and baseline writer reject incomplete coverage. Four Chromium harness cases pass including the normal 200 positive control. Authentication and HTTP responses are doubled boundaries. Full CI pending; no release qualification or claim that every wired control works.",
       "closure_tests": ["Required HTTP error pages fail the census", "Valid measured page positive control", "Full strengthened census on immutable release candidate"]
+    },
+    {
+      "id": "F500-067",
+      "area": "application_roadmap_modal_visibility",
+      "severity": "high",
+      "title": "Hidden roadmap dialog intercepts Add Work Package clicks",
+      "status": "in_progress",
+      "original_evidence": "CI 33967077472 at 18d52beb: Firefox job 101308980842 and WebKit job 101308980808 each 63 passed / 1 failed. Ordinary click on Add Work Package times out: div hidden id=roadmap-work-package-modal class=fixed inset-0 z-50 flex intercepts pointer events. Earlier synthetic dispatch bypassed the obstruction.",
+      "required_fix": "Correct roadmap dialog closed/open visibility while preserving accessible focus and real interaction behavior. Keep ordinary clicks; do not bypass overlays or weaken assertions.",
+      "retest_evidence": "Worker replaced handwritten hidden/flex wrapper with existing modal macro. All three local engines reproduced failure before repair. Coordinator independently ran nine tests across Chromium, Firefox and WebKit: nine passed, no skips; CSS check green and unchanged. Full-app CRUD CI and deployed retest still required.",
+      "closure_tests": ["Closed dialog cannot intercept pointer events", "Ordinary Add Work Package opens accessible editor", "Create/edit/delete persistence across supported browsers", "Deployed browser retest"]
+    },
+    {
+      "id": "F500-068",
+      "area": "runtime_worker_recycling",
+      "severity": "high",
+      "title": "Gunicorn 22 drops accepted requests during gthread worker recycling",
+      "status": "in_progress",
+      "original_evidence": "Full-app CI server log correlates a ConnectionError with max_requests recycling. Independent loopback-only CI 33967911740 and 33967988526 reproduced seven failures out of 80 requests on both Gunicorn 22 and 23, across eight responding worker PIDs, without Archie or database imports and without retries.",
+      "required_fix": "Use a verified runtime that drains requests safely while retaining worker recycling. Run isolated recycling regression as a required CI gate plus full application/security/production checks. Do not mask failures with retries or disable memory controls.",
+      "retest_evidence": "CI 33967988526 Gunicorn 26.2.0 completed 80/80 requests across nine worker PIDs with zero failures or cleanup errors. Candidate requirement updated to >=26.2.0,<27 and regular CI now runs this regression. Full application compatibility/security and deployment remain pending. Earlier 26.2.1 comparison did not execute because the tagged release was not yet installable; this is not a passing result.",
+      "closure_tests": ["Zero dropped requests across real worker recycling", "Full application CI with resolved runtime version", "Dependency security audit", "Deployed runtime and live journeys"]
     }
   ]
 }

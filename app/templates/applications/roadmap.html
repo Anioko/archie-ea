@@ -4,6 +4,7 @@
 {% from 'components/button.html' import button %}
 {% from 'components/card.html' import card, card_header, card_title, card_content %}
 {% from 'components/badge.html' import badge %}
+{% from 'components/modal.html' import modal %}
 
 {% block title %}{{ application.name }} Roadmap{% endblock %}
 
@@ -134,16 +135,11 @@
     {% endcall %}
   {% endcall %}
 
-  <div id="roadmap-work-package-modal"
-       hidden
-       class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-       role="dialog" aria-modal="true" aria-labelledby="roadmap-modal-title">
-    <div class="w-full max-w-2xl rounded-xl border bg-card shadow-xl">
-      <div class="flex items-center justify-between border-b px-6 py-4">
-        <h3 id="roadmap-modal-title" class="text-lg font-semibold" x-text="isEditing ? 'Edit Work Package' : 'Create Work Package'"></h3>
-        <button type="button" class="rounded-md border px-2 py-1 text-sm hover:bg-muted" data-modal-close="roadmap-work-package-modal">Close</button>
-      </div>
-      <form class="space-y-4 p-6" @submit.prevent="submitForm()">
+  {# The shared macro keeps display:flex off the closed root: a flex utility
+     overrides native hidden and would intercept the Add button's first click. #}
+  {% call modal(id='roadmap-work-package-modal', size='lg', labelledby='roadmap-modal-title') %}
+      <h3 id="roadmap-modal-title" class="text-lg font-semibold pr-8 mb-4" x-text="isEditing ? 'Edit Work Package' : 'Create Work Package'"></h3>
+      <form class="space-y-4" @submit.prevent="submitForm()">
         <div class="grid gap-4 sm:grid-cols-2">
           <div class="sm:col-span-2">
             <label class="mb-1 block text-sm font-medium">Name</label>
@@ -233,8 +229,7 @@
           </button>
         </div>
       </form>
-    </div>
-  </div>
+  {% endcall %}
 </div>
 {% endblock %}
 

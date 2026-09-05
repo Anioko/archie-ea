@@ -12,6 +12,7 @@
 // (solutions/partials/_blueprint_governance_editor.html). Required fields
 // mirror _register_crud() in solution_sad_routes.py.
 const GOVERNANCE_EDITOR_ID = 'bp-governance-editor';
+const COMPOSITION_EDITOR_ID = 'bp-composition-editor';
 const GOVERNANCE_EDITOR_TYPES = {
     governance_exception: { label: 'Governance Exception', required: [['exception_description', 'Exception description']] },
     compliance_mapping:   { label: 'Compliance Mapping',   required: [['framework', 'Framework'], ['control_id', 'Control ID']] },
@@ -77,6 +78,8 @@ function blueprintPage() {
         entityRevision: 0,
         govPicker: { query: '', results: [], error: '' },
         _govEditorHooked: false,
+        compositionPicker: { query: '', results: [], error: '', loading: false, searched: false },
+        _compositionEditorHooked: false,
         apiBase: '/solutions/' + (cfg.solutionId || ''),
         
         // Compliance gap analysis state
@@ -427,10 +430,11 @@ function blueprintPage() {
             this.formData = entity ? Object.assign({}, entity) : this._defaults(type);
             this.entityError = '';
             this.govPicker = { query: '', results: [], error: '' };
+            this.compositionPicker = { query: '', results: [], error: '', loading: false, searched: false };
             this.activeModal = type;
             // F500-062: the four Governance & Compliance controls render in the
             // Platform.modal editor (_blueprint_governance_editor.html). Other
-            // types still only set activeModal — they have no editor markup yet.
+            // Composition has its own editor below; other types remain unchanged.
             if (GOVERNANCE_EDITOR_TYPES[type]) {
                 if (type === 'feasibility_review') {
                     // <select> models strings; the API returns true/false/null.
@@ -449,6 +453,15 @@ function blueprintPage() {
                     }
                     Platform.modal.open(GOVERNANCE_EDITOR_ID);
                 }
+            } else if (type === 'composition' && window.Platform && Platform.modal) {
+                if (!this._compositionEditorHooked) {
+                    this._compositionEditorHooked = true;
+                    const self = this;
+                    Platform.modal.on(COMPOSITION_EDITOR_ID, 'close', function () {
+                        if (self.activeModal === 'composition') self._resetEntityState();
+                    });
+                }
+                Platform.modal.open(COMPOSITION_EDITOR_ID);
             }
         },
 
@@ -465,15 +478,73 @@ function blueprintPage() {
             this.formData = {};
             this.entityError = '';
             this.govPicker = { query: '', results: [], error: '' };
+            this.compositionPicker = { query: '', results: [], error: '', loading: false, searched: false };
             this.modalSaving = false;
         },
 
         closeModal: function () {
+            if (this.entityType === 'composition' && window.Platform && Platform.modal &&
+                Platform.modal.isOpen(COMPOSITION_EDITOR_ID)) {
+                Platform.modal.close(COMPOSITION_EDITOR_ID);
+            }
             if (GOVERNANCE_EDITOR_TYPES[this.entityType] && window.Platform && Platform.modal &&
                 Platform.modal.isOpen(GOVERNANCE_EDITOR_ID)) {
                 Platform.modal.close(GOVERNANCE_EDITOR_ID); // close hook resets state
             }
             this._resetEntityState();
+        },
+
+        clearCompositionComponent: function () {
+            this.formData.component_id = null;
+            this.formData.component_name = '';
+            this.entityError = '';
+            this.compositionPicker = { query: '', results: [], error: '', loading: false, searched: false };
+        },
+
+        searchCompositionComponents: async function () {
+            const self = this;
+            const picker = self.compositionPicker;
+            const q = picker.query.trim();
+            const revision = self.entityRevision;
+            const type = self.formData.component_type;
+            picker.results = [];
+            picker.error = '';
+            picker.searched = false;
+            if (q.length < 2 || !['application', 'archimate_element'].includes(type)) return;
+            picker.loading = true;
+            const current = function () {
+                return revision === self.entityRevision && picker === self.compositionPicker &&
+                    picker.query.trim() === q && self.formData.component_type === type;
+            };
+            try {
+                // The DESIGN.md decision-search URL was retired; this is the
+                // current ArchiMate search route used by the architecture forms.
+                const url = type === 'application'
+                    ? '/applications/api/list?search=' + encodeURIComponent(q) + '&limit=10&per_page=10'
+                    : '/archimate/api/elements/search?q=' + encodeURIComponent(q) + '&limit=10';
+                const data = await Platform.fetch(url, { silent: true });
+                const items = type === 'application' ? data.applications
+                    : (Array.isArray(data) ? data : data.data);
+                if (!Array.isArray(items) || items.some(function (item) {
+                    return !item || !Number.isInteger(Number(item.id)) || Number(item.id) <= 0 ||
+                        typeof item.name !== 'string' || !item.name.trim();
+                })) throw new Error('Component search returned an invalid response.');
+                if (!current()) return;
+                picker.results = items.map(function (item) { return { id: Number(item.id), name: item.name }; });
+                picker.searched = true;
+            } catch (err) {
+                if (!current()) return;
+                picker.error = (err && err.message) || 'Component search failed. Try again.';
+            } finally {
+                if (current()) picker.loading = false;
+            }
+        },
+
+        pickCompositionComponent: function (item) {
+            this.formData.component_id = item.id;
+            this.formData.component_name = item.name;
+            this.compositionPicker = { query: '', results: [], error: '', loading: false, searched: false };
+            this.entityError = '';
         },
 
         /* ── governance element picker (principle / mapped element) ── */
@@ -629,7 +700,17 @@ function blueprintPage() {
             let self = this;
             let type = self.entityType;
             const govDef = GOVERNANCE_EDITOR_TYPES[type];
+            const hasEditor = !!govDef || type === 'composition';
             const revision = self.entityRevision;
+            if (self.modalSaving) return;
+            if (type === 'composition') {
+                if (!Number.isInteger(Number(self.formData.component_id)) || Number(self.formData.component_id) <= 0 ||
+                    !self.formData.component_name || !self.formData.component_name.trim()) {
+                    self.entityError = 'Select a component from the search results.';
+                    return;
+                }
+                self.entityError = '';
+            }
             if (govDef) {
                 // Mirror the server's required-field check so a blank submit
                 // gets a field-specific message without a round trip.
@@ -661,18 +742,18 @@ function blueprintPage() {
                 }
                 writeSucceeded = true;
                 await self.refreshEntityData(type);
-                if (govDef && revision !== self.entityRevision) return;
-                if (govDef) self.entityNotice = '';
+                if (hasEditor && revision !== self.entityRevision) return;
+                if (hasEditor) self.entityNotice = '';
                 self.closeModal();
             } catch (err) {
-                if (govDef && revision !== self.entityRevision) {
+                if (hasEditor && revision !== self.entityRevision) {
                     self.entityNotice = writeSucceeded
                         ? 'Saved, but the list could not be refreshed — reload the page to see the latest data'
                         : 'The dismissed editor could not save: ' + ((err && err.message) || 'Save failed');
                     return;
                 }
                 self.modalSaving = false;
-                if (govDef) {
+                if (hasEditor) {
                     if (writeSucceeded) {
                         // The POST succeeded. A retry would create a duplicate.
                         self.closeModal();
@@ -725,6 +806,10 @@ function blueprintPage() {
             try {
                 const json = await Platform.fetch(url, { silent: true });
                 const listKey = self._listKey(type);
+                if (type === 'composition' && (!json || json.success === false ||
+                    !Array.isArray(json.data || json.items))) {
+                    throw new Error('Component list returned an invalid response.');
+                }
                 const items = json.data || json.items || [];
                 self[listKey] = items;
             } catch (err) {

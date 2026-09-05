@@ -131,6 +131,8 @@ jobs:
       # dependencies this job installs.
       - name: Deployed dependency floors
         run: python scripts/verify.py --gate deployed-deps
+      - name: Real requests survive worker recycling
+        run: python scripts/qa/check_worker_recycling.py
 
   tests:
     name: Tests (pytest + coverage)
@@ -170,8 +172,8 @@ jobs:
       # tests/csp/test_csp_evaluator.py is part of this job and contains four
       # real-browser assertions. Without the binary pytest reports four skips,
       # which is not valid release evidence.
-      - name: Install Chromium for CSP browser tests
-        run: python -m playwright install --with-deps chromium
+      - name: Install browsers for rendered UI regression tests
+        run: python -m playwright install --with-deps chromium firefox webkit
       - name: Create schema
         run: |
           python -c "import psycopg2" 2>/dev/null || pip install psycopg2-binary

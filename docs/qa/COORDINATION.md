@@ -2,6 +2,20 @@
 
 ## Current checkpoint — 5 September, candidate 18d52beb
 
+Ready for next candidate checkpoint: independent roadmap three-engine run **9 passed**, CSS check green/unchanged. Local static process 77784 completed **44 passed / 0 failed / 0 skipped**; it ran concurrently with edits, so immutable full CI still required. Candidate now also includes composition add/edit (27 local composition/governance cases), strengthened census and real-click journeys.
+
+F500-068 isolated runtime results: CI33967988526 at aa2cebe0 measured Gunicorn22 and23 each **73/80 success, 7 connection failures**; Gunicorn26.2.0 **80/80 success, 9 worker PIDs, zero failures**. Candidate dependency floor is now26.2.0 and regular CI adds the real recycling gate. Production unchanged. Backend CI must install all three browser engines because the new non-smoke roadmap regression actually executes all three.
+
+18d52beb main Chromium is terminal **193 passed / 1 failed / 24 deselected**: same roadmap hidden-overlay interception as Firefox/WebKit. Census/adversarial did not execute after that failure. Backend still under observation; no cancellation/restart inferred from polling.
+
+Latest evidence: 64825fe5 main Chromium completed **194 passed**, and old census **11 passed**. Retained JUnit explicitly includes both populated CSV/JSON downloads and all eight governance open/cancel/save/reload cases without failure. Adversarial **12 failed / 1 passed / 0 skipped**: the same three 503 endpoints plus enterprise-architect ConnectionError now on /strategic/api/compliance-analysis (not the prior relationships route). Cause of the connection failure remains unproven; no retry or waiver applied. Backend still under observation.
+
+Connection-failure lead, not yet proof: retained smoke-server-32813.log lines 11085–11089 show worker 10585 recycling at max_requests nr=10048 immediately after /strategic/compliance-tracking at 12:52:48; the next /strategic/api/compliance-analysis request is the reported failure, while later personas receive 200. Worker replacement boots seven seconds later. Investigate request/keepalive draining during recycling before treating the endpoint itself as faulty. Do not disable recycling or add blind retries to obtain green.
+
+18d52beb Firefox and WebKit each **63 passed / 1 failed**. Ordinary Add Work Package click is intercepted by the hidden roadmap-work-package-modal carrying flex layout. Assigned roadmap-specific template repair, focused real-browser tests and report to worker; no shared modal/CSS ownership. This is newly exposed failure evidence, not permission to revert to synthetic clicks.
+
+Composition independent coordinator run: **27 passed** (14 composition + 13 governance) in Chromium, with disclosed network boundaries. CSS check completed green, unchanged 1ac67799 fingerprint. Real full-app composition cases remain unexecuted pending CI. No deployment or defect closure.
+
 Follow-up harness defect F500-066: real Chromium controlled HTTP navigation reproduced three false-green census outcomes (403/404/500 required pages silently skipped). Coordinator changed the actual measurement loop and gate to retain unmeasured paths and fail incomplete coverage, including baseline generation. Four focused cases now pass, including a genuine HTTP 200 positive control. Auth and network responses are disclosed test boundaries; no full-product browser claim. Forced form submission and missing business-outcome assertions remain separate census limitations, explicitly stated in its docstring. Full CI will need to run against the resulting new checkpoint.
 
 Composition full-app tests added at tests/smoke/test_blueprint_composition_controls.py: ordinary-click open/cancel/Escape and real application picker → POST → reload → edit → PUT → reload/persisted API assertions, exact-row cleanup. Two cases collect and lint passes; execution pending test database/CI. Worker still owns the editor implementation and focused tests.
