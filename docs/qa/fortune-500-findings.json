@@ -812,14 +812,38 @@
     },
     {
       "id": "F500-061",
+      "latest_verification": "CI 33965073124 main Chromium: 185 passed, 1 failed, 24 deselected. CSV failed (400) because the actual model lacks created_at; JSON download passed. Retained smoke-server-38789.log proves the cause. Absent/present timestamp cases reproduced one failure before repair. Export now leaves the legacy date field empty when unknown; 22 focused serialization/import/response cases pass locally. Full browser rerun and real database qualification remain required; not deployed. Earlier green row double incorrectly supplied the missing timestamp and is not sufficient evidence.",
       "area": "architecture_import_export",
       "severity": "high",
       "title": "Architecture CSV export reads obsolete element_type attribute and fails for populated portfolios",
       "status": "in_progress",
       "original_evidence": "Retained CI 33927686496 Chromium server log smoke-server-41399.log records Architecture export failed: ArchiMateElement object has no attribute element_type. Source inspection corrects earlier redirect wording: the handler returns JSON 400, which the generic 5xx probe did not flag. Service aliases the canonical ArchiMateElement model but CSV serialization reads the obsolete attribute. Import constructors also use the obsolete name and require round-trip qualification.",
       "required_fix": "Use canonical model fields while preserving a documented interchange schema, validate CSV/JSON round trips and actual browser downloads with populated records, verify authorization and tenant isolation, and inspect downloaded content rather than treating redirects as successful exports.",
-      "retest_evidence": "Aider proposed a bounded patch for $0.00089; coordinator rejected silent blank export fallback and missing conflicting-type validation. Replaced unsuccessful ORM-hydration test setup with explicitly scoped canonical-field row/query/session doubles. Thirteen focused cases reproduced seven failures (CSV export plus valid CSV/JSON imports), with six invalid-input cases passing before repair. Applied canonical field mapping with explicit missing/blank/conflicting type rejection and launched green rerun. Full mapped-model/database, browser download, relationship preservation and route content-type checks remain pending. Not deployed or closed.",
+      "retest_evidence": "Initial coordinator handoff and 13-case test double incorrectly assumed archimate_type was canonical, producing false confidence. Direct model inspection established type as the mapped column; strengthened tests reproduced nine failures before correction. Candidate e8e16687 corrects CSV/JSON imports and exports with missing/blank/conflicting type rejection. Independent local runs passed 17 serialization/import cases and four actual Flask response/content-type/stream-cleanup cases. Two PostgreSQL cases and two browser download cases are pending CI 33965073124. Relationship preservation, tenant authorization and deployed browser verification remain open. Aider proposal cost was $0.00089; no mistaken repair was deployed.",
       "closure_tests": ["tests/test_architecture_export_contract.py", "Populated CSV/JSON import-export round trips", "Real browser download, content and tenant isolation verification"]
+    },
+    {
+      "id": "F500-062",
+      "latest_verification": "All four production controls rechecked with separate settled Chrome snapshots and still failed to open. Worker repair plus coordinator follow-ups passed 12 Chromium partial tests independently; combined with 12 availability contracts, 24 passed and zero skipped. Follow-ups cover typed principle selection, saved-but-refresh-failed recovery and a delayed save preserving a newer editor. Eight full-application cases (four open/cancel/focus and four real save/reload) remain pending. CSS check and lint pass. No production changes or closure.",
+      "area": "blueprint_governance_entity_controls",
+      "severity": "high",
+      "title": "All four blueprint governance Add controls produce no visible editor",
+      "status": "in_progress",
+      "original_evidence": "5 September renewed direct Chrome test on live /solutions/32, signed-in platform-admin: clicked + Exception under Governance & Compliance; accessibility tree unchanged and no dialog appeared. No submission or record mutation. Source calls openEntityModal('governance_exception'); blueprint.js sets activeModal, but blueprint template has no activeModal editor markup. Compliance/Change/Review share the method and require independent outcome checks; not yet individually tested.",
+      "required_fix": "Provide the intended accessible entity editor for every exposed governance control, with appropriate fields, validation, save/cancel, persisted outcomes and authorization. Test actual first click and saved data after reload. Do not hide the controls or treat a changed JS property as a completed interaction.",
+      "retest_evidence": "Independent follow-up Chrome clicks reproduced unchanged page/no editor for + Compliance, + Change and + Review as well as + Exception. No records changed. Claude assigned four-editor implementation with exclusive file ownership and standard modal/design contract; Codex added four full-application first-click/cancel/Escape/focus browser tests pending execution. Candidate e8e16687 is still in CI and not deployed; it predates this new repair. Save/persistence, authorization and deployed retests remain pending.",
+      "closure_tests": ["Real browser governance editor open/cancel for each control", "Save/reload and validation for each governance entity", "Role and tenant authorization", "Deployed browser retest"]
+    },
+    {
+      "id": "F500-063",
+      "area": "blueprint_motivation_entity_controls",
+      "severity": "high",
+      "title": "Withdrawn premature Add Driver failure report; settled editor opens",
+      "status": "false_positive",
+      "original_evidence": "5 September direct Chrome test on production /solutions/32 as signed-in platform-admin: clicked + Driver in Vision & Motivation. Accessibility tree remained unchanged, focus moved to the trigger, and no dialog appeared. No submission or data mutation. This is outside the four governance editors assigned under F500-062; sibling Goal and Constraint controls have not yet been independently retested.",
+      "required_fix": "No code repair justified by this observation. Fix the test procedure: separate click from settled-state observation. Creation/persistence, focus management and sibling outcomes remain part of whole-product qualification, not proven by merely opening an editor.",
+      "retest_evidence": "Independent settled-state Chrome check showed Add Driver editor with Name, Description, Type, Cancel and Add Driver controls. Add Goal likewise opened. The initial snapshot occurred before rendering; the failure report was withdrawn and correction communicated. No production data changed or repair deployed. Governance controls will also be rechecked after settling.",
+      "closure_tests": ["Real browser Add Driver and sibling control outcomes", "Persisted domain and ArchiMate rows", "Role and tenant authorization", "Deployed browser retest"]
     }
   ]
 }

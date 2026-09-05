@@ -8,6 +8,17 @@
  * Template uses: x-data="blueprintPage()"
  */
 
+// F500-062: the four Governance & Compliance controls that have a real editor
+// (solutions/partials/_blueprint_governance_editor.html). Required fields
+// mirror _register_crud() in solution_sad_routes.py.
+const GOVERNANCE_EDITOR_ID = 'bp-governance-editor';
+const GOVERNANCE_EDITOR_TYPES = {
+    governance_exception: { label: 'Governance Exception', required: [['exception_description', 'Exception description']] },
+    compliance_mapping:   { label: 'Compliance Mapping',   required: [['framework', 'Framework'], ['control_id', 'Control ID']] },
+    change_request:       { label: 'Change Request',       required: [['change_type', 'Change type'], ['title', 'Title']] },
+    feasibility_review:   { label: 'Feasibility Review',   required: [['review_type', 'Review type']] }
+};
+
 function blueprintPage() {
     const cfg = window.__BLUEPRINT_CONFIG__ || {};
 
@@ -61,6 +72,11 @@ function blueprintPage() {
         activeModal: null,
         deleteTarget: null,
         modalSaving: false,
+        entityError: '',
+        entityNotice: '',
+        entityRevision: 0,
+        govPicker: { query: '', results: [], error: '' },
+        _govEditorHooked: false,
         apiBase: '/solutions/' + (cfg.solutionId || ''),
         
         // Compliance gap analysis state
@@ -405,17 +421,112 @@ function blueprintPage() {
         /* ── entity CRUD (ported from detail-phase-crud.js) ─────────── */
 
         openEntityModal: function (type, entity) {
+            this.entityRevision += 1;
             this.entityType = type;
             this.editingEntity = entity || null;
             this.formData = entity ? Object.assign({}, entity) : this._defaults(type);
+            this.entityError = '';
+            this.govPicker = { query: '', results: [], error: '' };
             this.activeModal = type;
+            // F500-062: the four Governance & Compliance controls render in the
+            // Platform.modal editor (_blueprint_governance_editor.html). Other
+            // types still only set activeModal — they have no editor markup yet.
+            if (GOVERNANCE_EDITOR_TYPES[type]) {
+                if (type === 'feasibility_review') {
+                    // <select> models strings; the API returns true/false/null.
+                    this.formData.feasible = this.formData.feasible === true ? 'true'
+                        : this.formData.feasible === false ? 'false' : '';
+                }
+                if (window.Platform && Platform.modal) {
+                    if (!this._govEditorHooked) {
+                        this._govEditorHooked = true;
+                        let self = this;
+                        // Escape / backdrop / × close through Platform.modal, not closeModal():
+                        // reset the shared state so the next click opens clean.
+                        Platform.modal.on(GOVERNANCE_EDITOR_ID, 'close', function () {
+                            if (self.activeModal) self._resetEntityState();
+                        });
+                    }
+                    Platform.modal.open(GOVERNANCE_EDITOR_ID);
+                }
+            }
         },
 
-        closeModal: function () {
+        governanceEditorTitle: function () {
+            const def = GOVERNANCE_EDITOR_TYPES[this.entityType];
+            if (!def) return '';
+            return (this.editingEntity && this.editingEntity.id ? 'Edit ' : 'Add ') + def.label;
+        },
+
+        _resetEntityState: function () {
+            this.entityRevision += 1;
             this.activeModal = null;
             this.editingEntity = null;
             this.formData = {};
+            this.entityError = '';
+            this.govPicker = { query: '', results: [], error: '' };
             this.modalSaving = false;
+        },
+
+        closeModal: function () {
+            if (GOVERNANCE_EDITOR_TYPES[this.entityType] && window.Platform && Platform.modal &&
+                Platform.modal.isOpen(GOVERNANCE_EDITOR_ID)) {
+                Platform.modal.close(GOVERNANCE_EDITOR_ID); // close hook resets state
+            }
+            this._resetEntityState();
+        },
+
+        /* ── governance element picker (principle / mapped element) ── */
+
+        searchGovElements: async function () {
+            let self = this;
+            const q = (self.govPicker.query || '').trim();
+            if (q.length < 2) { self.govPicker.results = []; return; }
+            try {
+                const typeFilter = self.entityType === 'governance_exception' ? '&type=Principle' : '';
+                const data = await Platform.fetch('/archimate/api/elements/search?q=' + encodeURIComponent(q) + '&limit=10' + typeFilter, { silent: true });
+                const payload = Array.isArray(data) ? data : (data && (data.data || data.items));
+                if (!Array.isArray(payload)) throw new Error('Element search returned an invalid response.');
+                self.govPicker.results = payload.map(function (el) {
+                    return { id: el.id, name: el.name, element_type: el.element_type || el.type || '' };
+                });
+                self.govPicker.error = '';
+            } catch (e) {
+                self.govPicker.results = [];
+                self.govPicker.error = (e && e.message) || 'Element search failed';
+            }
+        },
+
+        pickGovElement: function (el) {
+            if (this.entityType === 'governance_exception') {
+                this.formData.principle_id = el.id;
+                this.formData.principle_name = el.name;
+            } else if (this.entityType === 'compliance_mapping') {
+                this.formData.archimate_element_id = el.id;
+                this.formData.element_name = el.name;
+            }
+            this.govPicker = { query: '', results: [], error: '' };
+        },
+
+        clearGovElement: function () {
+            if (this.entityType === 'governance_exception') {
+                this.formData.principle_id = null;
+                this.formData.principle_name = '';
+            } else if (this.entityType === 'compliance_mapping') {
+                this.formData.archimate_element_id = null;
+                this.formData.element_name = '';
+            }
+        },
+
+        _governancePayload: function () {
+            const body = Object.assign({}, this.formData);
+            if (this.entityType === 'feasibility_review') {
+                body.feasible = body.feasible === 'true' ? true : body.feasible === 'false' ? false : null;
+            }
+            ['expiry_date', 'approval_date', 'affected_phase', 'review_phase'].forEach(function (k) {
+                if (body[k] === '') body[k] = null;
+            });
+            return body;
         },
 
         _defaults: function (type) {
@@ -516,23 +627,62 @@ function blueprintPage() {
 
         submitEntity: async function () {
             let self = this;
-            self.modalSaving = true;
             let type = self.entityType;
+            const govDef = GOVERNANCE_EDITOR_TYPES[type];
+            const revision = self.entityRevision;
+            if (govDef) {
+                // Mirror the server's required-field check so a blank submit
+                // gets a field-specific message without a round trip.
+                for (let i = 0; i < govDef.required.length; i++) {
+                    const v = self.formData[govDef.required[i][0]];
+                    if (v === null || v === undefined || (typeof v === 'string' && !v.trim())) {
+                        self.entityError = govDef.required[i][1] + ' is required.';
+                        return;
+                    }
+                }
+                self.entityError = '';
+            }
+            self.modalSaving = true;
             const isEdit = self.editingEntity && self.editingEntity.id;
             let url = self.apiBase + self._apiPath(type) + (isEdit ? '/' + self.editingEntity.id : '');
             const method = isEdit ? 'PUT' : 'POST';
+            let writeSucceeded = false;
 
             try {
                 // Platform.fetch will throw on non-ok responses.
-                await Platform.fetch(url, {
+                const res = await Platform.fetch(url, {
                     method: method,
-                    body: self.formData,
-                    silent: true   // We paint our own error toast below.
+                    body: govDef ? self._governancePayload() : self.formData,
+                    silent: true   // We paint our own error state below.
                 });
+                // A 200 with {success:false} is still a failed save.
+                if (res && typeof res === 'object' && res.success === false) {
+                    throw new Error(res.error || res.message || 'Save failed');
+                }
+                writeSucceeded = true;
                 await self.refreshEntityData(type);
+                if (govDef && revision !== self.entityRevision) return;
+                if (govDef) self.entityNotice = '';
                 self.closeModal();
             } catch (err) {
+                if (govDef && revision !== self.entityRevision) {
+                    self.entityNotice = writeSucceeded
+                        ? 'Saved, but the list could not be refreshed — reload the page to see the latest data'
+                        : 'The dismissed editor could not save: ' + ((err && err.message) || 'Save failed');
+                    return;
+                }
                 self.modalSaving = false;
+                if (govDef) {
+                    if (writeSucceeded) {
+                        // The POST succeeded. A retry would create a duplicate.
+                        self.closeModal();
+                        self.entityNotice = 'Saved, but the list could not be refreshed — reload the page to see the latest data';
+                        return;
+                    }
+                    // Keep the editor open with the user's input; show the server's reason.
+                    self.entityError = (err && err.message) || 'Save failed';
+                    return;
+                }
                 if (window.Platform && Platform.toast) Platform.toast.error('Save failed');
                 // Rethrow to ensure the error is not swallowed.
                 throw err;

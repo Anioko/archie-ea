@@ -1,0 +1,309 @@
+{# F500-062 — Governance editor for the four Governance & Compliance controls
+   (+ Exception, + Compliance, + Change, + Review) in _governance_compliance.html.
+
+   Must be included INSIDE the blueprintPage() Alpine scope: it binds the
+   existing entityType / editingEntity / formData / modalSaving state and the
+   existing submitEntity() / closeModal() handlers in solutions/blueprint.js.
+   Visibility is owned by Platform.modal (components/modal.html macro), which
+   blueprint.js opens/closes by id. Other entity types that call
+   openEntityModal() are NOT handled here — see docs/qa/claude-governance-result.md. #}
+{% from 'components/modal.html' import modal %}
+<p x-show="entityNotice" x-cloak role="status" class="text-sm text-muted-foreground" x-text="entityNotice"></p>
+{% set _gov_input = 'flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50' %}
+{% set _gov_textarea = 'flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 resize-y' %}
+{% set _gov_label = 'block text-xs font-medium text-muted-foreground mb-1.5' %}
+
+{% call modal(id='bp-governance-editor', size='lg', labelledby='bp-governance-editor-heading') %}
+<form data-testid="bp-governance-editor-form" @submit.prevent="submitEntity()" novalidate>
+    <div class="flex flex-col space-y-1.5 pr-8 mb-4">
+        <h2 id="bp-governance-editor-heading" class="text-lg font-semibold leading-none tracking-tight" x-text="governanceEditorTitle()"></h2>
+        <p class="text-sm text-muted-foreground">Fields marked * are required. Saved to this solution's governance record.</p>
+    </div>
+
+    <div class="space-y-4">
+        {# ── Governance Exception ─────────────────────────────────────── #}
+        <template x-if="entityType === 'governance_exception'">
+            <div class="space-y-4">
+                <div>
+                    <label for="gov-principle-search" class="{{ _gov_label }}">Principle (ArchiMate element)</label>
+                    {# Legacy rows may carry a name with no linked element id — still show it. #}
+                    <template x-if="formData.principle_id || formData.principle_name">
+                        <div class="flex items-center justify-between gap-2 h-9 px-3 rounded-md border border-input bg-muted/30 text-sm">
+                            <span class="truncate text-foreground" x-text="formData.principle_name"></span>
+                            <button type="button" @click="clearGovElement()" class="text-xs text-muted-foreground hover:text-foreground">Clear</button>
+                        </div>
+                    </template>
+                    <template x-if="!formData.principle_id && !formData.principle_name">
+                        <div class="relative">
+                            <input id="gov-principle-search" type="text" x-model="govPicker.query" @input.debounce.300ms="searchGovElements()" autocomplete="off" placeholder="Search architecture principles…" class="{{ _gov_input }}">
+                            <p x-show="govPicker.error" x-cloak class="mt-1 text-xs text-destructive-emphasis" x-text="govPicker.error"></p>
+                            <ul x-show="govPicker.results.length > 0" x-cloak role="listbox" class="absolute z-10 mt-1 w-full max-h-48 overflow-y-auto rounded-md border border-border bg-popover shadow-md text-sm">
+                                <template x-for="el in govPicker.results" :key="el.id">
+                                    <li role="option"><button type="button" @click="pickGovElement(el)" class="w-full text-left px-3 py-2 hover:bg-accent hover:text-accent-foreground"><span x-text="el.name"></span> <span class="text-xs text-muted-foreground" x-text="el.element_type"></span></button></li>
+                                </template>
+                            </ul>
+                        </div>
+                    </template>
+                </div>
+                <div>
+                    <label for="gov-exception-description" class="{{ _gov_label }}">Exception description *</label>
+                    <textarea id="gov-exception-description" x-model="formData.exception_description" rows="3" required class="{{ _gov_textarea }}"></textarea>
+                </div>
+                <div>
+                    <label for="gov-exception-justification" class="{{ _gov_label }}">Justification</label>
+                    <textarea id="gov-exception-justification" x-model="formData.justification" rows="2" class="{{ _gov_textarea }}"></textarea>
+                </div>
+                <div>
+                    <label for="gov-exception-risk" class="{{ _gov_label }}">Risk accepted</label>
+                    <textarea id="gov-exception-risk" x-model="formData.risk_accepted" rows="2" class="{{ _gov_textarea }}"></textarea>
+                </div>
+                <div>
+                    <label for="gov-exception-mitigation" class="{{ _gov_label }}">Mitigation plan</label>
+                    <textarea id="gov-exception-mitigation" x-model="formData.mitigation_plan" rows="2" class="{{ _gov_textarea }}"></textarea>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div>
+                        <label for="gov-exception-status" class="{{ _gov_label }}">Status</label>
+                        <select id="gov-exception-status" x-model="formData.status" class="{{ _gov_input }}">
+                            <option value="requested">Requested</option>
+                            <option value="approved">Approved</option>
+                            <option value="rejected">Rejected</option>
+                            <option value="expired">Expired</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="gov-exception-expiry" class="{{ _gov_label }}">Expiry date</label>
+                        <input id="gov-exception-expiry" type="date" x-model="formData.expiry_date" class="{{ _gov_input }}">
+                    </div>
+                    <div class="flex items-end">
+                        <label class="inline-flex items-center gap-2 h-9 text-sm text-foreground">
+                            <input type="checkbox" x-model="formData.approved" class="h-4 w-4 rounded border-input">
+                            Approved
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </template>
+
+        {# ── Compliance Mapping ───────────────────────────────────────── #}
+        <template x-if="entityType === 'compliance_mapping'">
+            <div class="space-y-4">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label for="gov-compliance-framework" class="{{ _gov_label }}">Framework *</label>
+                        <input id="gov-compliance-framework" type="text" x-model="formData.framework" required placeholder="e.g. ISO 27001, GDPR, SOC 2" class="{{ _gov_input }}">
+                    </div>
+                    <div>
+                        <label for="gov-compliance-control" class="{{ _gov_label }}">Control ID *</label>
+                        <input id="gov-compliance-control" type="text" x-model="formData.control_id" required placeholder="e.g. A.9.4.1" class="{{ _gov_input }}">
+                    </div>
+                </div>
+                <div>
+                    <label for="gov-compliance-control-description" class="{{ _gov_label }}">Control description</label>
+                    <textarea id="gov-compliance-control-description" x-model="formData.control_description" rows="2" class="{{ _gov_textarea }}"></textarea>
+                </div>
+                <div>
+                    <label for="gov-element-search" class="{{ _gov_label }}">Mapped element (ArchiMate element)</label>
+                    <template x-if="formData.archimate_element_id || formData.element_name">
+                        <div class="flex items-center justify-between gap-2 h-9 px-3 rounded-md border border-input bg-muted/30 text-sm">
+                            <span class="truncate text-foreground" x-text="formData.element_name"></span>
+                            <button type="button" @click="clearGovElement()" class="text-xs text-muted-foreground hover:text-foreground">Clear</button>
+                        </div>
+                    </template>
+                    <template x-if="!formData.archimate_element_id && !formData.element_name">
+                        <div class="relative">
+                            <input id="gov-element-search" type="text" x-model="govPicker.query" @input.debounce.300ms="searchGovElements()" autocomplete="off" placeholder="Search architecture elements…" class="{{ _gov_input }}">
+                            <p x-show="govPicker.error" x-cloak class="mt-1 text-xs text-destructive-emphasis" x-text="govPicker.error"></p>
+                            <ul x-show="govPicker.results.length > 0" x-cloak role="listbox" class="absolute z-10 mt-1 w-full max-h-48 overflow-y-auto rounded-md border border-border bg-popover shadow-md text-sm">
+                                <template x-for="el in govPicker.results" :key="el.id">
+                                    <li role="option"><button type="button" @click="pickGovElement(el)" class="w-full text-left px-3 py-2 hover:bg-accent hover:text-accent-foreground"><span x-text="el.name"></span> <span class="text-xs text-muted-foreground" x-text="el.element_type"></span></button></li>
+                                </template>
+                            </ul>
+                        </div>
+                    </template>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label for="gov-compliance-status" class="{{ _gov_label }}">Verification status</label>
+                        <select id="gov-compliance-status" x-model="formData.verification_status" class="{{ _gov_input }}">
+                            <option value="not_assessed">Not assessed</option>
+                            <option value="partial">Partial</option>
+                            <option value="verified">Verified</option>
+                            <option value="non_compliant">Non-compliant</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="gov-compliance-evidence" class="{{ _gov_label }}">Evidence link</label>
+                        <input id="gov-compliance-evidence" type="url" x-model="formData.evidence_link" placeholder="https://…" class="{{ _gov_input }}">
+                    </div>
+                </div>
+                <div>
+                    <label for="gov-compliance-notes" class="{{ _gov_label }}">Notes</label>
+                    <textarea id="gov-compliance-notes" x-model="formData.notes" rows="2" class="{{ _gov_textarea }}"></textarea>
+                </div>
+            </div>
+        </template>
+
+        {# ── Change Request ───────────────────────────────────────────── #}
+        <template x-if="entityType === 'change_request'">
+            <div class="space-y-4">
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div>
+                        <label for="gov-change-type" class="{{ _gov_label }}">Change type *</label>
+                        <select id="gov-change-type" x-model="formData.change_type" required class="{{ _gov_input }}">
+                            <option value="scope">Scope</option>
+                            <option value="design">Design</option>
+                            <option value="technology">Technology</option>
+                            <option value="schedule">Schedule</option>
+                            <option value="budget">Budget</option>
+                            <option value="other">Other</option>
+                        </select>
+                    </div>
+                    <div class="sm:col-span-2">
+                        <label for="gov-change-title" class="{{ _gov_label }}">Title *</label>
+                        <input id="gov-change-title" type="text" x-model="formData.title" required class="{{ _gov_input }}">
+                    </div>
+                </div>
+                <div>
+                    <label for="gov-change-description" class="{{ _gov_label }}">Description</label>
+                    <textarea id="gov-change-description" x-model="formData.description" rows="3" class="{{ _gov_textarea }}"></textarea>
+                </div>
+                <div>
+                    <label for="gov-change-justification" class="{{ _gov_label }}">Justification</label>
+                    <textarea id="gov-change-justification" x-model="formData.justification" rows="2" class="{{ _gov_textarea }}"></textarea>
+                </div>
+                <div>
+                    <label for="gov-change-impact" class="{{ _gov_label }}">Impact assessment</label>
+                    <textarea id="gov-change-impact" x-model="formData.impact_assessment" rows="2" class="{{ _gov_textarea }}"></textarea>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div>
+                        <label for="gov-change-phase" class="{{ _gov_label }}">Affected ADM phase</label>
+                        <select id="gov-change-phase" x-model="formData.affected_phase" class="{{ _gov_input }}">
+                            <option value="">Not set</option>
+                            <option value="P">Preliminary</option>
+                            <option value="A">A — Vision</option>
+                            <option value="B">B — Business</option>
+                            <option value="C">C — Information Systems</option>
+                            <option value="D">D — Technology</option>
+                            <option value="E">E — Opportunities</option>
+                            <option value="F">F — Migration</option>
+                            <option value="G">G — Governance</option>
+                            <option value="H">H — Change Mgmt</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="gov-change-priority" class="{{ _gov_label }}">Priority</label>
+                        <select id="gov-change-priority" x-model="formData.priority" class="{{ _gov_input }}">
+                            <option value="low">Low</option>
+                            <option value="medium">Medium</option>
+                            <option value="high">High</option>
+                            <option value="critical">Critical</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="gov-change-decision" class="{{ _gov_label }}">Decision</label>
+                        <select id="gov-change-decision" x-model="formData.decision" class="{{ _gov_input }}">
+                            <option value="pending">Pending</option>
+                            <option value="approved">Approved</option>
+                            <option value="rejected">Rejected</option>
+                            <option value="deferred">Deferred</option>
+                        </select>
+                    </div>
+                </div>
+                <div>
+                    <label for="gov-change-rationale" class="{{ _gov_label }}">Decision rationale</label>
+                    <textarea id="gov-change-rationale" x-model="formData.decision_rationale" rows="2" class="{{ _gov_textarea }}"></textarea>
+                </div>
+            </div>
+        </template>
+
+        {# ── Feasibility Review ───────────────────────────────────────── #}
+        <template x-if="entityType === 'feasibility_review'">
+            <div class="space-y-4">
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div>
+                        <label for="gov-review-type" class="{{ _gov_label }}">Review type *</label>
+                        <select id="gov-review-type" x-model="formData.review_type" required class="{{ _gov_input }}">
+                            <option value="technical">Technical</option>
+                            <option value="financial">Financial</option>
+                            <option value="operational">Operational</option>
+                            <option value="schedule">Schedule</option>
+                            <option value="compliance">Compliance</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="gov-review-phase" class="{{ _gov_label }}">Review phase</label>
+                        <select id="gov-review-phase" x-model="formData.review_phase" class="{{ _gov_input }}">
+                            <option value="">Not set</option>
+                            <option value="P">Preliminary</option>
+                            <option value="A">A — Vision</option>
+                            <option value="B">B — Business</option>
+                            <option value="C">C — Information Systems</option>
+                            <option value="D">D — Technology</option>
+                            <option value="E">E — Opportunities</option>
+                            <option value="F">F — Migration</option>
+                            <option value="G">G — Governance</option>
+                            <option value="H">H — Change Mgmt</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="gov-review-feasible" class="{{ _gov_label }}">Feasible</label>
+                        <select id="gov-review-feasible" x-model="formData.feasible" class="{{ _gov_input }}">
+                            <option value="">To be determined</option>
+                            <option value="true">Yes</option>
+                            <option value="false">No</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label for="gov-review-confidence" class="{{ _gov_label }}">Confidence level</label>
+                        <select id="gov-review-confidence" x-model="formData.confidence_level" class="{{ _gov_input }}">
+                            <option value="low">Low</option>
+                            <option value="medium">Medium</option>
+                            <option value="high">High</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="gov-review-recommendation" class="{{ _gov_label }}">Recommendation</label>
+                        <select id="gov-review-recommendation" x-model="formData.recommendation" class="{{ _gov_input }}">
+                            <option value="proceed">Proceed</option>
+                            <option value="conditional">Conditional</option>
+                            <option value="stop">Stop</option>
+                        </select>
+                    </div>
+                </div>
+                <div>
+                    <label for="gov-review-risks" class="{{ _gov_label }}">Technical risks</label>
+                    <textarea id="gov-review-risks" x-model="formData.technical_risks" rows="2" class="{{ _gov_textarea }}"></textarea>
+                </div>
+                <div>
+                    <label for="gov-review-mitigation" class="{{ _gov_label }}">Mitigation plan</label>
+                    <textarea id="gov-review-mitigation" x-model="formData.mitigation_plan" rows="2" class="{{ _gov_textarea }}"></textarea>
+                </div>
+                <div>
+                    <label for="gov-review-conditions" class="{{ _gov_label }}">Conditions</label>
+                    <textarea id="gov-review-conditions" x-model="formData.conditions" rows="2" class="{{ _gov_textarea }}"></textarea>
+                </div>
+                <div>
+                    <label for="gov-review-notes" class="{{ _gov_label }}">Notes</label>
+                    <textarea id="gov-review-notes" x-model="formData.notes" rows="2" class="{{ _gov_textarea }}"></textarea>
+                </div>
+            </div>
+        </template>
+
+        <p x-show="entityError" x-cloak role="alert" data-testid="bp-governance-editor-error" class="text-sm text-destructive-emphasis" x-text="entityError"></p>
+    </div>
+
+    <div class="flex items-center justify-end gap-2 mt-6">
+        <button type="button" @click="closeModal()" :disabled="modalSaving"
+                class="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 px-4 py-2 disabled:opacity-50 disabled:pointer-events-none">Cancel</button>
+        <button type="submit" :disabled="modalSaving"
+                class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 h-9 px-4 py-2 disabled:opacity-50 disabled:pointer-events-none">
+            <span x-show="modalSaving" x-cloak class="animate-spin h-4 w-4 mr-2 border-2 border-current border-t-transparent rounded-full inline-block"></span>
+            <span x-text="modalSaving ? 'Saving…' : (editingEntity && editingEntity.id ? 'Save changes' : 'Save')"></span>
+        </button>
+    </div>
+</form>
+{% endcall %}

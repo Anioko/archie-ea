@@ -7,14 +7,18 @@ from pathlib import Path
 from types import SimpleNamespace
 
 
-def test_csv_export_serializes_canonical_archimate_type(monkeypatch):
+@pytest.mark.parametrize("has_timestamp", [False, True])
+def test_csv_export_serializes_canonical_archimate_type(monkeypatch, has_timestamp):
     from app.modules.architecture.services import architecture_import_export_service as module
     assert "type" in module.ArchitectureElement.__table__.columns
     assert hasattr(module.ArchitectureElement, "type")
     # Canonical-field row double: this tests serialization, not DB isolation.
     element = SimpleNamespace(id=71, name="QA export application",
                               type="application_component", layer="application",
-                              description=None, created_at=None)
+                              description=None)
+    if has_timestamp:
+        from datetime import datetime
+        element.created_at = datetime(2026, 9, 5, 12, 0)
     monkeypatch.setattr(module, "ArchitectureElement", SimpleNamespace(
         query=SimpleNamespace(all=lambda: [element])))
     path, filename = module.ArchitectureImportExportService.export_to_csv()
@@ -26,6 +30,7 @@ def test_csv_export_serializes_canonical_archimate_type(monkeypatch):
         assert rows[0]["id"] == "71"
         assert rows[0]["name"] == "QA export application"
         assert rows[0]["element_type"] == "application_component"
+        assert rows[0]["created_at"] == ("2026-09-05T12:00:00" if has_timestamp else "")
     finally:
         Path(path).unlink(missing_ok=True)
 

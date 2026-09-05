@@ -1228,6 +1228,10 @@ function archieShowBanner(msg, type) {
         {% include 'solutions/partials/_blueprint_governance.html' %}
     </aside>
 
+    {# F500-062: editor for + Exception / + Compliance / + Change / + Review.
+       Inside the blueprintPage() scope on purpose — it binds formData/submitEntity. #}
+    {% include 'solutions/partials/_blueprint_governance_editor.html' %}
+
 </div>{# end flex container #}
 {% endblock %}
 

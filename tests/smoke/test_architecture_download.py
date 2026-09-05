@@ -21,8 +21,11 @@ def test_populated_architecture_download(browser, live_server, seeded, tmp_path,
         _login(page, live_server, seeded["emails"]["platform_admin"])
         with page.expect_download(timeout=PAGE_TIMEOUT) as pending:
             try:
-                page.goto(live_server + "/architecture/export?format=" + format_type,
-                          timeout=PAGE_TIMEOUT)
+                response = page.goto(live_server + "/architecture/export?format=" + format_type,
+                                     timeout=PAGE_TIMEOUT)
+                if response is not None:
+                    assert response.status == 200, "Export returned HTTP %s: %s" % (response.status, response.text())
+                    assert "attachment" in response.headers.get("content-disposition", ""), "Export rendered a page instead of downloading a file"
             except Error as exc:
                 # Chromium reports attachment navigation as aborted; only that
                 # navigation outcome is allowed, and a completed file is mandatory.

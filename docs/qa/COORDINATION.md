@@ -2,6 +2,8 @@
 
 ## Correction requiring verification
 
+Update: e8e16687 contains the corrected canonical `type` implementation. Independent local runs passed 17 serialization/import contract cases and 4 actual export-response lifecycle cases. Real PostgreSQL import/export and browser download cases are in CI 33965073124, not yet qualified. The false-positive test episode below is retained as history, not the current implementation state.
+
 F500-061 initial handoff incorrectly described the canonical model type field as archimate_type. Direct inspection of app/models/models.py proves the mapped column and constructor field is **type**, and to_dict exports type. Earlier 13 passing tests used an incorrect field double and do not verify the production repair. Codex is correcting the implementation, adding a model-column assertion plus canonical JSON type input cases, and rerunning. No affected repair has been deployed. Preserve this as a test-quality failure rather than reporting the earlier green result as closure.
 
 Codex coordinates integration, shared ledger updates, independent browser retests and release approval. Claude Code and Aider may implement bounded assignments; a worker's passing tests do not close a defect.
@@ -16,6 +18,24 @@ Codex coordinates integration, shared ledger updates, independent browser retest
 - Stop after the bounded assignment; do not expand into unrelated refactoring or delegate additional agents.
 
 ## Active assignments
+
+Latest local results: export serialization/import/response rerun **22 passed, zero skips**. Governance partial Chromium suite **13 passed** after adding malformed-picker-response coverage (red reproduced before fix). The real browser download test now reports an HTTP error/page response directly rather than masking it as a download timeout. Static verification is still executing (session 70851); CI backend at e8e16687 remains in progress while Chromium main is failed. No active repair workers, no checkpoint commit/deployment yet, and no claim that database/full-page tests passed.
+
+Current integration blocker: e8e16687 Chromium main completed 185 passed / 1 failed / 24 deselected. The CSV download failed with actual server AttributeError for absent created_at (400 response); JSON download passed. Census/adversarial steps did not execute. Root added absent/present timestamp regression (one failed, one passed before repair), corrected serialization to leave the unknown date empty without inventing a timestamp, and launched the 22-case export regression rerun. Governance + availability batch is now independently 24 passed, zero skips. No deployment or complete qualification claimed.
+
+Follow-up status correction: resumed Claude session terminated with budget_exhausted after context loading, before completing work. Reported list-price usage $2.64164975 despite a $2 threshold; this flag is not a hard billing cap. Do not resume that large context again. No Claude worker is currently running. Codex took ownership back, reproduced missing principle type filtering, unsafe saved/refresh recovery, and a delayed save closing a newer editor with real Chromium tests and doubled network boundaries. Local repairs are under final focused rerun. CSS check passed without requiring a rebuild change; full-app database tests remain pending.
+
+Latest checkpoint: both initial Claude workers returned. Availability contracts independently passed 12/12 twice (including the tightened exact JSON 401 assertion); no configured-provider or database claim. Governance partial tests independently passed 9/9 in Chromium. That repair is **not yet accepted**: a bounded follow-up owns the same implementation/test files to test successful-save/failed-refresh duplication risk, dismissal while saving, and typed principle search. Follow-up instructions: docs/qa/claude-governance-followup-task.md; $2 reported API budget ceiling. Initial governance worker reported $4.55720575 list-price usage, not additional subscription billing. Codex added eight full-application governance cases (four open/cancel/Escape/focus and four actual save/reload/persisted-list reads); these are not yet run against the test database.
+
+Browser evidence correction: F500-063 Add Driver failure was withdrawn after a settled-state observation showed the editor. Add Goal also opens. No repair was warranted by that premature snapshot. All four governance Add controls were then independently reclicked with separate settled snapshots and still showed no editor; F500-062 remains valid. No records were written on the production solution.
+
+CI 33965073124 at e8e16687 currently has nine successful jobs, with backend coverage/tests and the Chromium journey/census/adversarial job still running. It predates this governance repair; neither that candidate nor this repair is deployed. Production remains the restored 02bc01c5 image.
+
+### Claude Code: availability contracts and governance editor (separate workers)
+
+- Availability worker returned tests/test_availability_response_contracts.py and docs/qa/claude-availability-result.md: 12 passed, no skips, actual Flask handlers with explicitly disclosed provider/database doubles. Codex is independently rerunning and tightened the unauthenticated assertion to exactly JSON 401 (a redirect must not silently pass). No probe/baseline relaxation. Reported model usage cost $2.01354025 on a list-price basis; not a claim of additional subscription charges. Configured integration/browser checks remain open.
+- Governance worker owns blueprint.js, blueprint.html, new _blueprint_governance_editor.html, tests/test_blueprint_governance_editor.py and docs/qa/claude-governance-result.md. Task: docs/qa/claude-governance-task.md; four governance editors only; $5 API ceiling. No deployment or full-suite duplication.
+- Codex owns tests/smoke/test_blueprint_governance_controls.py and full-application/database/live outcome verification. Do not edit worker-owned files while their assignments run. An API ceiling limits a CLI run's reported model budget, not a claim about subscription billing.
 
 ### Claude Code: independent repair review dispatched after account switch
 

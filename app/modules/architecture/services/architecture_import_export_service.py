@@ -57,13 +57,16 @@ class ArchitectureImportExportService:
         
         elements = ArchitectureElement.query.all()
         for element in elements:
+            # The canonical element mapping has no creation timestamp. Keep
+            # the legacy CSV column empty when unknown, never invent a date.
+            created_at = getattr(element, "created_at", None)
             writer.writerow({
                 "id": element.id,
                 "name": element.name,
                 "element_type": element.type,
                 "layer": element.layer,
                 "description": element.description,
-                "created_at": element.created_at.isoformat() if element.created_at else "",
+                "created_at": created_at.isoformat() if created_at is not None else "",
             })
         
         # Save to temp file (use tempfile for cross-platform compatibility)
