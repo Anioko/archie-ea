@@ -70,8 +70,13 @@ def protocol_page(protocol_context):
     # not a first-party bug. A genuine error always carries a name or a
     # message; only that exact content-free case is filtered, on both capture
     # paths, so a real error is still reported in full.
+    # Playwright always synthesizes name="uncaught exception" for any thrown
+    # value that isn't a real Error (confirmed in CI run 33999307045: this
+    # name is populated even for the exact content-free case this filter
+    # exists for), so an empty *or* Playwright's own generic label both count
+    # as "no real name" here.
     def _content_free(name, message):
-        return not name and (not message or message == 'Object')
+        return name in (None, '', 'uncaught exception', 'PageError') and (not message or message == 'Object')
 
     page.on('pageerror', lambda error: errors.append(_format_page_error(error))
             if not _content_free(getattr(error, 'name', None), getattr(error, 'message', None)) else None)
