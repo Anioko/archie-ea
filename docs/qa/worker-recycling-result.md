@@ -53,3 +53,8 @@ There is no runtime pass/fail result yet. CI must run the same script separately
 against Gunicorn 22 and 23 and retain complete output. A finite green run is
 evidence for this reproduction, not proof that all intermittent failures are
 eliminated or that the broader smoke journey passes.
+# Linux results — 5 September
+
+CI 33967911740 at 53d9ef5b: Gunicorn 22.0.0 and 23.0.0 each measured 80 requests, 73 successes and 7 connection failures across eight responding worker PIDs. No retries, cleanup errors or application/database imports. Both fresh and reused connections failed at worker recycling boundaries. This reproduces the server-layer defect independently of Archie; correlation to the large application's failed request is strong but not a packet-level trace.
+
+The 26.2.1 comparison did not execute: GitHub's release tag existed but pip could not install that version. Package-index inspection confirms 26.2.0 is available, and the diagnostic matrix is corrected to that exact version. Neither dependency constraints nor production have been changed.
