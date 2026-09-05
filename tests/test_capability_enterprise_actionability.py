@@ -51,13 +51,16 @@ def test_unmapped_capability_analysis_does_not_offer_cross_model_actions(app):
     assert "View Details" not in html
 
 
-def test_plateau_register_does_not_advertise_unimplemented_create_or_detail_actions(app):
-    """The register must not render controls without matching enterprise routes.
+def test_plateau_register_offers_the_shared_model_create_and_detail_workflow(app):
+    """Create/detail must resolve to the ArchiMate CRUD routes for this model.
 
-    The production change this catches is restoring the New Plateau or arrow
-    buttons without implementing an enterprise create/detail workflow.  The
-    available plateau API belongs to the roadmap experience, not this register.
+    `archimate_crud.MODEL_REGISTRY['Plateau']` is the same `Plateau` model this
+    register lists, so those destinations operate on the same rows.  The
+    production change this catches is a link pointing at a different store, or
+    the register going back to being a dead end with no way to add or open one.
     """
+    from flask import url_for
+
     plateau = SimpleNamespace(
         id=17,
         name="Target State",
@@ -68,8 +71,38 @@ def test_plateau_register_does_not_advertise_unimplemented_create_or_detail_acti
 
     html = _render(app, "enterprise/plateaus.html", plateaus=[plateau])
 
-    assert "New Plateau" not in html
-    assert 'data-lucide="arrow-right"' not in html
+    with app.test_request_context("/"):
+        create = url_for("archimate_crud.create_element", layer="implementation", element_type="Plateau")
+        detail = url_for("archimate_crud.detail_element", layer="implementation", element_type="Plateau", element_id=17)
+    assert f'href="{create}"' in html
+    assert f'href="{detail}"' in html
+
+
+def test_gap_register_rows_open_the_shared_model_detail(app):
+    from flask import url_for
+
+    gap = SimpleNamespace(
+        id=23,
+        name="Coverage gap",
+        description="",
+        gap_type="coverage",
+        priority="High",
+        resolution_status="identified",
+        impact="high",
+    )
+
+    html = _render(
+        app,
+        "enterprise/gap_analysis.html",
+        gaps=[gap],
+        current_sort="name",
+        current_dir="asc",
+    )
+
+    with app.test_request_context("/"):
+        detail = url_for("archimate_crud.detail_element", layer="implementation", element_type="Gap", element_id=23)
+    assert f'href="{detail}"' in html
+    assert "N/A" not in html
 
 
 def test_plateau_register_does_not_fabricate_missing_values(app):

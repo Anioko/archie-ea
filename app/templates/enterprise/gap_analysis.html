@@ -70,7 +70,10 @@
                         {% for gap in gaps|default([]) %}
                         <tr class="border-b hover:bg-muted/50">
                             <td class="p-3">
-                                <div class="font-medium">{{ gap.name|default('N/A') }}</div>
+                                <div class="font-medium">
+                                    <a href="{{ url_for('archimate_crud.detail_element', layer='implementation', element_type='Gap', element_id=gap.id) }}"
+                                       class="hover:underline" data-testid="gap-link-{{ gap.id }}">{{ gap.name|default('—', true) }}</a>
+                                </div>
                                 <div class="text-sm text-muted-foreground">{{ gap.description|default('', true)|truncate(50) }}</div>
                             </td>
                             <td class="p-3">{{ gap.gap_type|default('Unknown') }}</td>

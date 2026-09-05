@@ -20,6 +20,13 @@
         title='Implementation Plateaus',
         description='Define architecture plateaus representing stable states in the transition.'
     ) }}
+        {# The ArchiMate CRUD workflow operates on this same Plateau model
+           (MODEL_REGISTRY['Plateau']), so create and detail are real destinations. #}
+        <a href="{{ url_for('archimate_crud.create_element', layer='implementation', element_type='Plateau') }}"
+           class="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+           data-testid="btn-new-plateau">
+            <i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i> New Plateau
+        </a>
     </div>
 
     <!-- Plateaus Grid -->
@@ -37,7 +44,10 @@
                     {{ plateau.status|default('—', true) }}
                 </span>
             </div>
-            <h3 class="font-semibold mb-2">{{ plateau.name|default('—', true) }}</h3>
+            <h3 class="font-semibold mb-2">
+                <a href="{{ url_for('archimate_crud.detail_element', layer='implementation', element_type='Plateau', element_id=plateau.id) }}"
+                   class="hover:underline" data-testid="plateau-link-{{ plateau.id }}">{{ plateau.name|default('—', true) }}</a>
+            </h3>
             <p class="text-sm text-muted-foreground mb-4">{{ plateau.description|default('—', true)|truncate(100) }}</p>
             <div class="text-sm">
                 <span class="text-muted-foreground">Target: {{ plateau.target_date|default('—', true) }}</span>
