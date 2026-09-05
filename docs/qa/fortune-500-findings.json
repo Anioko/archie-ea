@@ -1068,6 +1068,7 @@
     },
     {
       "id": "F500-085", "area": "manual_import_browser_controls", "severity": "high",
+      "latest_verification": "After safe field mapping, browser tests exposed inert Remove, wrong submit control after confirmation, logical/malformed response treated as success, and duplicate helper/caller reload. Root reviewed candidate and independently reran final72cases:72passed0skips216.16s across three engines and two viewports. Actual assets/native synthetic endpoints exercise exact payload/CSRF, pending/double click, failure/retry, partial valid confirmation, removal, malformed200 and optional mapping; post-close errors checked. Fullapp PostgreSQL persistence/deployed acceptance still required.",
       "title": "Manual-entry sanitizer strips the application-name field identity and blocks submission",
       "status": "in_progress",
       "original_evidence": "Worker actual-template/core-assets/native-loopback reproduction in Chromium, Firefox and WebKit: normal Add Row and filled Application Name yields input.name empty after safeHTML/DOMPurify, while app_id/type retain names. Ordinary Import then opens missing-required-fields confirmation and sends zero requests. Parent source independently traces safeHTML row generation to collector using input.name. No runtime API replacement, forced attribute restoration or production mutation.",
@@ -1076,11 +1077,28 @@
     },
     {
       "id": "F500-086", "area": "organization_admin_provisioning", "severity": "high",
+      "latest_verification": "Parent reviewed new-owner-only role assignment before commit, unchanged existing-user no-op/guards, and independently passed11focused tests4.41s, including role-write and final-commit rollback/no-login. Real PostgreSQL10cases written but not executed locally. Existing-user remediation and full-app browser acceptance remain open.",
       "title": "New organization administrators lack the role assignment required to manage their team",
       "status": "in_progress",
       "original_evidence": "Parent and independent investigator traced create_admin.py and AccountService.register_user: both set administrator flags but create no OrgRole. Team guard reads only same-org OrgRole and defaults missing assignment to viewer. Controlled authenticated Chromium actual-team-route request returned403 with all admin flags set and no assignment; real guard positive same-org org_admin returned200, foreign-only and architect remained403. OrgRole persistence reads were doubled; no actual database qualification. Only discovered assignment writers are themselves team-admin protected.",
       "required_fix": "Persist the intended same-org administrator assignment atomically during new-owner provisioning, retain deny-by-default and existing explicit demotions, verify real database and browser outcomes. Existing-user remediation must be explicit and must not silently promote every missing assignment at request time.",
       "retest_evidence": "Bounded new-provisioning implementation assigned. Existing-user repair and complete team UI/invite functionality remain unqualified; no authorization broadening or production role writes performed."
+    },
+    {
+      "id": "F500-087", "area": "qa_cli_fixture_integrity", "severity": "medium",
+      "title": "Layer backfill dry-run test depends on leaked noncanonical records",
+      "status": "in_progress",
+      "original_evidence": "Exact b77 backend report: CLI returned0 and correctly reported scanned35/no noncanonical values, but test required a dry-run update message without seeding an eligible row. Parent traced actual command: already-clean branch intentionally returns before update summary. This is a test-isolation assumption, not evidence of an incorrect production write.",
+      "required_fix": "Use isolated explicit dirty and clean fixtures, scoped CLI invocation and raw stored-value assertions proving no writes; do not change correct command behavior to satisfy data-dependent output expectations.",
+      "retest_evidence": "Root updated existing test with both scoped cases;14layer tests collect and focused lint passes. PostgreSQL execution remains required; no skip/pass substitution."
+    },
+    {
+      "id": "F500-088", "area": "qa_concurrency_fixture_integrity", "severity": "high",
+      "title": "Concurrent-create regression shares a rollback connection across worker threads",
+      "status": "in_progress",
+      "original_evidence": "Exact b77 backend failure PendingRollbackError at parent count and cleanup. Independent investigator setup-plan and parent source review show module usefixtures(db_session) plus unused make_org argument activate one shared Connection/create_savepoint fixture for all thread sessions. That cannot exercise independent-transaction locking. Original worker exception is absent from artifact, so first driver failure remains unknown.",
+      "required_fix": "Run real isolated test-database thread sessions/connections without rollback-fixture coupling; assert distinct connection identities, surface worker errors, join all threads, preserve exactly-one-row assertion and remove only exact fixture data.",
+      "retest_evidence": "Bounded test-only repair assigned; no production locking change, no concurrency-product-fix claim, no real PostgreSQL rerun yet."
     }
   ]
 }
