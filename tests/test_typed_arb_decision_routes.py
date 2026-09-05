@@ -573,7 +573,22 @@ def test_review_item_id_is_not_used_as_an_idempotency_token(
             conditions=[],
         )
     assert first != second
-    assert str(fixture.review_item_id) not in first
+    # Decimal item IDs can occur by chance inside a SHA-256 hex digest.
+    # Check the actual input boundary instead of forbidding substrings.
+    for item_id in (fixture.review_item_id, fixture.review_item_id + 1):
+        for body in ({"json": {"review_item_id": item_id}},
+                     {"data": {"review_item_id": str(item_id)}}):
+            with app.test_request_context("/", method="POST", **body):
+                supplied = TypedARBDecisionAdapter.supplied_command_key()
+                assert supplied is None
+                assert TypedARBDecisionAdapter.command_key(
+                    supplied,
+                    actor=actor,
+                    cycle_id=fixture.cycle_id,
+                    outcome="approved",
+                    rationale="A",
+                    conditions=[],
+                ) == first
 
 
 # ---------------------------------------------------------------------------

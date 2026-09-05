@@ -911,6 +911,17 @@
       "required_fix": "Return the real empty collection successfully, preserve authentication and genuine query errors, and verify both actual database endpoints. Do not invent framework content or a nonexistent seed command.",
       "retest_evidence": "Worker reproduced boundary failure before removing the legacy empty-to503 branch. Coordinator independently reran all13 availability cases:13 passed, six deprecation warnings; AI semantics unchanged. Six shared-transaction real-PG cases and two signed-in browser HTTP cases added but unexecuted. No exact frontend picker consumer identified; no picker coverage claimed. Pending immutable fullCI and deployment.",
       "closure_tests": ["Authenticated empty/inactive/populated real-PG collection queries", "Database errors remain errors", "Browser HTTP empty-catalog response", "Immutable CI and deployed endpoint verification"]
+    },
+    {
+      "id": "F500-070",
+      "area": "blueprint_delete_confirmation",
+      "severity": "high",
+      "title": "Blueprint Delete control never opens a confirmation dialog",
+      "status": "in_progress",
+      "original_evidence": "Actual rendered composition-row Delete button invokes confirmDeleteEntity but the previous implementation only assigned activeModal=delete; no corresponding dialog existed. Worker reproduced the missing dialog with an ordinary Chromium click before repair.",
+      "required_fix": "Use the standard accessible confirmation with exact target name, Cancel and Delete. Preserve error feedback, prevent duplicate deletion, distinguish completed deletion from failed refresh, and protect newer editors from late responses.",
+      "retest_evidence": "Root independently ran ten rendered Chromium deletion regressions successfully; HTTP boundaries are doubled, not full backend authorization/persistence. Worker additionally reported all27 existing composition/governance regressions passing. Full-app composition smoke now asserts Cancel leaves the row and confirmed DELETE survives reload, but is collected-only pending CI. CSS check passes unchanged. Not deployed.",
+      "closure_tests": ["Ordinary Delete opens named confirmation and Cancel performs no write", "Exact-target delete, errors and concurrent lifecycle", "Real authenticated deletion and persisted absence after reload", "Authorization and deployed browser verification"]
     }
   ]
 }

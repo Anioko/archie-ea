@@ -17,6 +17,9 @@ def test_composition_editor_open_cancel_and_escape(browser, live_server, seeded)
         _login(page, live_server, seeded["emails"]["platform_admin"])
         response = page.goto(live_server + "/solutions/" + str(seeded["ids"]["solution"]), timeout=PAGE_TIMEOUT)
         assert response.status == 200
+        page.locator('#application_cooperation').get_by_role(
+            'button', name=re.compile(r'^5\. Application Cooperation')
+        ).click()
         trigger = page.get_by_role("button", name="+ Component", exact=True)
         trigger.click()
         dialog = page.get_by_role("dialog", name="Add Component", exact=True)
@@ -34,7 +37,7 @@ def test_composition_editor_open_cancel_and_escape(browser, live_server, seeded)
         page.close()
 
 
-def test_composition_add_and_edit_survive_reload(browser, live_server, seeded):
+def test_composition_add_edit_and_delete_survive_reload(browser, live_server, seeded):
     """No network doubles. Clean up only the exact composition created here.
 
     This proves one admin application-component journey, not role restrictions
@@ -48,6 +51,9 @@ def test_composition_add_and_edit_survive_reload(browser, live_server, seeded):
     try:
         _login(page, live_server, seeded["emails"]["platform_admin"])
         assert page.goto(url, timeout=PAGE_TIMEOUT).status == 200
+        page.locator('#application_cooperation').get_by_role(
+            'button', name=re.compile(r'^5\. Application Cooperation')
+        ).click()
         page.get_by_role("button", name="+ Component", exact=True).click()
         dialog = page.get_by_role("dialog", name="Add Component", exact=True)
         expect(dialog).to_be_visible()
@@ -92,6 +98,31 @@ def test_composition_add_and_edit_survive_reload(browser, live_server, seeded):
         assert matches[0]["role"] == "supporting"
         assert matches[0]["component_id"] == seeded["ids"]["application"]
         expect(row.get_by_role("cell", name="supporting", exact=True)).to_be_visible()
+        delete_trigger = row.get_by_role("button", name="Delete", exact=True)
+        delete_trigger.click()
+        confirmation = page.get_by_role("dialog")
+        expect(confirmation).to_be_visible()
+        expect(confirmation.get_by_text(component_name, exact=False)).to_be_visible()
+        confirmation.get_by_role("button", name="Cancel", exact=True).click()
+        expect(confirmation).not_to_be_visible()
+        expect(delete_trigger).to_be_focused()
+        still_present = page.request.get(api_url)
+        assert still_present.status == 200, still_present.text()
+        assert any(item["id"] == created_id for item in still_present.json()["items"])
+        delete_trigger.click()
+        expect(confirmation).to_be_visible()
+        deleted_id = created_id
+        with page.expect_response(lambda r: r.url == item_url and r.request.method == "DELETE") as deleted:
+            confirmation.get_by_role("button", name="Delete", exact=True).click()
+        assert deleted.value.status == 200, deleted.value.text()
+        assert deleted.value.json()["success"] is True
+        created_id = None  # The exact test row is already removed; do not delete twice.
+        expect(confirmation).not_to_be_visible()
+        assert page.reload(timeout=PAGE_TIMEOUT).status == 200
+        after_delete = page.request.get(api_url)
+        assert after_delete.status == 200, after_delete.text()
+        assert not any(item["id"] == deleted_id for item in after_delete.json()["items"])
+        expect(row).to_have_count(0)
     finally:
         try:
             if created_id is not None:

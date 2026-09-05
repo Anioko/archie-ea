@@ -13,6 +13,7 @@
 // mirror _register_crud() in solution_sad_routes.py.
 const GOVERNANCE_EDITOR_ID = 'bp-governance-editor';
 const COMPOSITION_EDITOR_ID = 'bp-composition-editor';
+const DELETE_CONFIRMATION_ID = 'bp-delete-confirmation';
 const GOVERNANCE_EDITOR_TYPES = {
     governance_exception: { label: 'Governance Exception', required: [['exception_description', 'Exception description']] },
     compliance_mapping:   { label: 'Compliance Mapping',   required: [['framework', 'Framework'], ['control_id', 'Control ID']] },
@@ -72,6 +73,13 @@ function blueprintPage() {
         formData: {},
         activeModal: null,
         deleteTarget: null,
+        deleteType: '',
+        deleteError: '',
+        deleteSaving: false,
+        deleteRevision: 0,
+        pendingDeletes: [],
+        completedDeletes: [],
+        _deleteHooked: false,
         modalSaving: false,
         entityError: '',
         entityNotice: '',
@@ -771,42 +779,102 @@ function blueprintPage() {
         },
 
         confirmDeleteEntity: function (type, entity) {
-            this.entityType = type;
-            this.deleteTarget = entity;
-            this.activeModal = 'delete';
+            const path = this._apiPath(type);
+            if (!path || !entity || entity.id === null || entity.id === undefined) return;
+            const key = type + ':' + entity.id;
+            if (this.pendingDeletes.includes(key)) {
+                this.entityNotice = 'Deletion is already in progress for this item.';
+                return;
+            }
+            if (this.completedDeletes.includes(key)) {
+                this.entityNotice = 'This item was already deleted. Reload the page to see the latest data.';
+                return;
+            }
+            this.deleteRevision += 1;
+            this.deleteType = type;
+            this.deleteTarget = Object.assign({}, entity);
+            this.deleteError = '';
+            this.deleteSaving = false;
+            if (!this._deleteHooked) {
+                this._deleteHooked = true;
+                const self = this;
+                Platform.modal.on(DELETE_CONFIRMATION_ID, 'close', function () {
+                    self.deleteRevision += 1;
+                    self.deleteTarget = null;
+                    self.deleteType = '';
+                    self.deleteError = '';
+                    self.deleteSaving = false;
+                });
+            }
+            Platform.modal.open(DELETE_CONFIRMATION_ID);
+        },
+
+        deleteTargetName: function () {
+            const target = this.deleteTarget || {};
+            return target.component_name || target.name || target.title || target.exception_description ||
+                target.control_id || target.review_type || ('Item ' + (target.id || ''));
+        },
+
+        closeDeleteConfirmation: function () {
+            Platform.modal.close(DELETE_CONFIRMATION_ID);
         },
 
         executeDeleteEntity: async function () {
-            let self = this;
-            if (!self.deleteTarget) return;
-            self.modalSaving = true;
-            let type = self.entityType;
-            let url = self.apiBase + self._apiPath(type) + '/' + self.deleteTarget.id;
+            const self = this;
+            if (!self.deleteTarget || self.deleteSaving) return;
+            const type = self.deleteType;
+            const id = self.deleteTarget.id;
+            const key = type + ':' + id;
+            if (self.pendingDeletes.includes(key) || self.completedDeletes.includes(key)) return;
+            const revision = self.deleteRevision;
+            const url = self.apiBase + self._apiPath(type) + '/' + encodeURIComponent(id);
+            self.deleteSaving = true;
+            self.deleteError = '';
+            self.pendingDeletes.push(key);
+            let deleted = false;
 
             try {
-                // Platform.fetch will throw on non-ok responses.
-                await Platform.fetch(url, {
+                const response = await Platform.fetch(url, {
                     method: 'DELETE',
-                    silent: true   // We paint our own error toast below.
+                    silent: true
                 });
-                await self.refreshEntityData(type);
-                self.closeModal();
+                if (response && (response.success === false || response.data?.success === false)) {
+                    throw new Error(response.error || response.message || response.data?.error || 'Delete failed');
+                }
+                deleted = true;
+                self.completedDeletes.push(key);
+                if (self.entityNotice === 'Deletion is already in progress for this item.') self.entityNotice = '';
+                // The DELETE is confirmed. Remove this known-deleted row even
+                // if the following refresh fails, so stale UI cannot repeat it.
+                const listKey = self._listKey(type);
+                if (Array.isArray(self[listKey])) {
+                    self[listKey] = self[listKey].filter(item => String(item.id) !== String(id));
+                }
+                await self.refreshEntityData(type, 'Deleted');
+                if (revision === self.deleteRevision) self.closeDeleteConfirmation();
             } catch (err) {
-                self.modalSaving = false;
-                if (window.Platform && Platform.toast) Platform.toast.error('Delete failed');
-                // Rethrow to ensure the error is not swallowed.
-                throw err;
+                if (deleted) {
+                    if (revision === self.deleteRevision) self.closeDeleteConfirmation();
+                    self.entityNotice = 'Deleted, but the list could not be refreshed — reload the page to see the latest data';
+                } else if (revision === self.deleteRevision) {
+                    self.deleteError = (err && err.message) || 'Delete failed';
+                } else {
+                    self.entityNotice = 'The dismissed confirmation could not delete: ' + ((err && err.message) || 'Delete failed');
+                }
+            } finally {
+                self.pendingDeletes = self.pendingDeletes.filter(item => item !== key);
+                if (revision === self.deleteRevision) self.deleteSaving = false;
             }
         },
 
-        refreshEntityData: async function (type) {
+        refreshEntityData: async function (type, action) {
             let self = this;
             let url = self.apiBase + self._apiPath(type);
 
             try {
                 const json = await Platform.fetch(url, { silent: true });
                 const listKey = self._listKey(type);
-                if (type === 'composition' && (!json || json.success === false ||
+                if ((type === 'composition' || action === 'Deleted') && (!json || json.success === false ||
                     !Array.isArray(json.data || json.items))) {
                     throw new Error('Component list returned an invalid response.');
                 }
@@ -817,7 +885,7 @@ function blueprintPage() {
                 // don't tell the user the save/delete failed. Tell them the
                 // list on screen may be stale instead.
                 if (window.Platform && Platform.toast) {
-                    Platform.toast.error('Saved, but the list could not be refreshed — reload the page to see the latest data');
+                    Platform.toast.error((action || 'Saved') + ', but the list could not be refreshed — reload the page to see the latest data');
                 }
                 // Rethrow to ensure the error is not swallowed.
                 throw err;

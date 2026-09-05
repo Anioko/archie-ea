@@ -107,7 +107,19 @@ def _select_browser_engine(playwright, env):
 
 
 @pytest.fixture(scope="session")
-def live_server(request):
+def ai_protocol_stub():
+    """An explicit test peer, never enabled by ordinary smoke qualification."""
+    if os.environ.get("SMOKE_AI_PROTOCOL_STUB") != "1":
+        yield None
+        return
+    from tests.smoke.ai_protocol_stub import AIProtocolStub
+
+    with AIProtocolStub() as stub:
+        yield stub
+
+
+@pytest.fixture(scope="session")
+def live_server(request, ai_protocol_stub):
     """Boot the real application on a free port and yield its base URL.
 
     Runs the app as a subprocess rather than via the test client, because a test
@@ -118,6 +130,8 @@ def live_server(request):
     port = _free_port()
     env = dict(os.environ)
     _require_explicit_test_database(env)
+    if ai_protocol_stub is not None:
+        env = ai_protocol_stub.child_environment(env)
     env.setdefault("SECRET_KEY", "smoke-only-not-secret-" + "x" * 16)
     env.setdefault("FLASK_CONFIG", "testing")
     env["FLASK_DEBUG"] = "0"
@@ -154,6 +168,20 @@ def live_server(request):
     log_path = os.path.join(tempfile.gettempdir(), "smoke-server-%d.log" % port)
     log_handle = open(log_path, "w+b")
     proc = subprocess.Popen(cmd, env=env, stdout=log_handle, stderr=subprocess.STDOUT)
+
+    def stop_server():
+        # Register before boot checks so an early failure cannot leave the
+        # subprocess using a protocol listener that has already been closed.
+        if proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=20)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait(timeout=5)
+        log_handle.close()
+
+    request.addfinalizer(stop_server)
     base = "http://127.0.0.1:%d" % port
 
     deadline = time.time() + BOOT_TIMEOUT
@@ -206,15 +234,9 @@ def live_server(request):
     if request.session.testsfailed:
         print("\n[smoke] server log after journey failure:\n%s" % server.tail(300))
 
-    proc.terminate()
-    try:
-        proc.wait(timeout=20)
-    except subprocess.TimeoutExpired:
-        proc.kill()
-
 
 @pytest.fixture(scope="session")
-def seeded(live_server):
+def seeded(live_server, request, ai_protocol_stub):
     """One organisation, one user per archetype, and the fixtures they need.
 
     Returns {archetype: email} plus the ids the journeys navigate to.
@@ -240,6 +262,13 @@ def seeded(live_server):
         from app.models.user import Role, User
 
         db.create_all()
+        if ai_protocol_stub is not None:
+            from app.models.models import APISettings
+
+            # This app context is intentionally unscoped: reject ANY existing
+            # enabled provider before exercising AI in a candidate database.
+            if APISettings.query.filter_by(enabled=True).count():
+                pytest.fail("AI protocol qualification requires a candidate database without enabled provider records")
         Role.insert_roles()
         architect_role = Role.query.filter_by(name="Architect").one()
         administrator_role = Role.query.filter_by(name="Administrator").one()
@@ -248,6 +277,31 @@ def seeded(live_server):
         db.session.add(org)
         db.session.commit()
         out["ids"]["org"] = org.id
+
+        if ai_protocol_stub is not None:
+            from tests.smoke.ai_protocol_stub import MODEL, TOKEN
+
+            setting = APISettings(provider="openai", key_label="ci-protocol-stub",
+                                  api_key=TOKEN, enabled=True, default_model=MODEL,
+                                  organization_id=org.id)
+            db.session.add(setting)
+            db.session.commit()
+            provider_id, provider_org = setting.id, org.id
+            out["ids"]["ai_protocol_provider"] = provider_id
+
+            def remove_protocol_provider():
+                with app.app_context():
+                    db.session.remove()
+                    query = APISettings.query.filter_by(
+                        id=provider_id, organization_id=provider_org,
+                        provider="openai", key_label="ci-protocol-stub")
+                    assert query.count() == 1, "Protocol provider fixture was unexpectedly changed"
+                    assert query.delete(synchronize_session=False) == 1
+                    db.session.commit()
+                    assert APISettings.query.filter_by(id=provider_id, organization_id=provider_org).count() == 0
+                    db.session.remove()
+
+            request.addfinalizer(remove_protocol_provider)
 
         for archetype in ARCHETYPES:
             email = "smoke.%s.%s@example.com" % (archetype.replace("_", "-"), suffix)
