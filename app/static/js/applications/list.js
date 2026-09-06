@@ -534,20 +534,21 @@ function appPortfolio() {
           });
         }
 
-        // unified_mapping_modal.js signature: (targetId, targetName, options)
-        // fallback shim signature in ui/modal.js: (payload)
-        if (window.UnifiedMappingModal) {
-          window.openUnifiedMappingModal(id, name, {
-            context: normalizedType,
-            targetType: normalizedType,
-          });
-        } else {
-          window.openUnifiedMappingModal({
-            id,
-            name,
-            type: normalizedType,
-          });
-        }
+        // unified_mapping_modal.js's openUnifiedMappingModal is always
+        // (targetId, targetName, options) — see window.openUnifiedMappingModal
+        // in components/unified_mapping_modal.js, which does
+        // `UnifiedMappingModal.targetId = String(targetId)`. The
+        // window.UnifiedMappingModal-gated else-branch called it with a
+        // single {id, name, type} object instead, so targetId became that
+        // whole object and String(targetId) produced the literal string
+        // "[object Object]", which then flowed straight into the
+        // capability-lookup URL (`/capability-map/api/capability/[object
+        // Object]/applications`, a 400) every time this branch was taken.
+        // There is only one real signature; use it unconditionally.
+        window.openUnifiedMappingModal(id, name, {
+          context: normalizedType,
+          targetType: normalizedType,
+        });
         return;
       }
 

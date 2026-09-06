@@ -18,8 +18,9 @@
             {'label': 'Decision Register'}
         ],
         actions=[
-            {'text': 'New Decision', 'icon': 'plus', 'onclick': "Platform.modal.open('create-decision')", 'variant': 'default'}
-        ]
+            {'text': 'New Decision', 'icon': 'plus', 'variant': 'default',
+             'href': url_for('arch_decisions.create_decision')}
+        ] if 'arch_decisions.create_decision' in flask.current_app.view_functions else []
     ) }}
 
     <!-- Summary Metrics -->
