@@ -679,8 +679,37 @@ def api_archimate_relationship_health():
         total_elements = db.session.query(func.count(ArchiMateElement.id)).scalar() or 0
 
         # Total relationships (legacy + inference)
-        legacy_rels = db.session.query(func.count(ArchiMateRelationship.id)).scalar() or 0
-        inference_rels = db.session.query(func.count(ArchitectureInferenceRelationship.id)).scalar() or 0
+        #
+        # E2E-I: neither ArchiMateRelationship nor
+        # ArchitectureInferenceRelationship carries an organization_id (no
+        # TenantMixin), so a raw count() here summed every tenant's rows,
+        # not this one's -- confirmed live 6 Sep 2026
+        # (Archie-E2E-Workflow-Test-Report.md E2E-I): a from-empty tenant
+        # with 1 element read "34 relationships", a figure close to another
+        # tenant's real total. ArchiMateElement IS tenant-scoped (TenantMixin),
+        # so joining through it and letting the ORM's automatic tenant filter
+        # apply to that side of the join scopes the relationship count
+        # correctly without a schema change. Retrofitting TenantMixin onto
+        # the relationship tables themselves (a real column + backfill) is a
+        # separate, bigger remediation -- this closes the reported leak now.
+        from sqlalchemy import or_
+
+        legacy_rels = (
+            db.session.query(func.count(func.distinct(ArchiMateRelationship.id)))
+            .join(ArchiMateElement, or_(
+                ArchiMateRelationship.source_id == ArchiMateElement.id,
+                ArchiMateRelationship.target_id == ArchiMateElement.id,
+            ))
+            .scalar() or 0
+        )
+        inference_rels = (
+            db.session.query(func.count(func.distinct(ArchitectureInferenceRelationship.id)))
+            .join(ArchiMateElement, or_(
+                ArchitectureInferenceRelationship.source_id == ArchiMateElement.id,
+                ArchitectureInferenceRelationship.target_id == ArchiMateElement.id,
+            ))
+            .scalar() or 0
+        )
         total_relationships = legacy_rels + inference_rels
 
         # Elements with 0 relationships (union both tables)
