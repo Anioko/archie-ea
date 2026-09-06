@@ -1070,7 +1070,7 @@ def _ensure_condition_evidence_canonical_document(
         failed.append(f"{label}: {str(exc)[:120]}")
 
 
-def _ensure_enum_members(*, dry_run, existing_tables, added, failed):
+def _ensure_enum_members(*, dry_run, existing_tables, added, failed, blocking):
     """Add missing labels to native PostgreSQL enum types (ADD VALUE only).
 
     Two models may share one PG type name with different Python members —
@@ -1130,7 +1130,23 @@ def _ensure_enum_members(*, dry_run, existing_tables, added, failed):
                     ))
                 added.append(item)
             except Exception as exc:  # noqa: BLE001
-                failed.append(f"{item}: {str(exc)[:120]}")
+                # Measured in production 6 Sep 2026: the deploy role does not
+                # own every enum type any more than it owns every table (see
+                # the table-ownership gap this same command already tolerates
+                # via `blocking`) - ALTER TYPE then raises InsufficientPrivilege
+                # on a type this role never created. That is an infrastructure
+                # permissions gap to fix by granting ownership, not a schema
+                # defect, and a missing enum label degrades one write path
+                # rather than blocking every INSERT the way a NOT NULL column
+                # gap does - it must not fail the whole deploy.
+                message = str(exc)
+                if "InsufficientPrivilege" in message or "must be owner of type" in message:
+                    blocking.append(
+                        f"{item}: insufficient privilege - grant ownership of \"{typname}\" "
+                        "to the deploy role"
+                    )
+                else:
+                    failed.append(f"{item}: {message[:120]}")
 
 
 def _reconcile(dry_run=False):
@@ -1221,6 +1237,7 @@ def _reconcile(dry_run=False):
         existing_tables=existing_tables,
         added=added,
         failed=failed,
+        blocking=blocking,
     )
     _backfill_roadmap_organizations(
         dry_run=dry_run,
@@ -1397,8 +1414,10 @@ def reconcile_schema(dry_run):
         )
     if blocking:
         click.echo(
-            f"\n{len(blocking)} column(s) present in the DATABASE but absent from the "
-            "models, NOT NULL with no default — INSERTs into these tables will fail:"
+            f"\n{len(blocking)} known, non-fatal drift item(s) - a NOT NULL column "
+            "the models don't declare (INSERTs into that table will fail) or an "
+            "enum label the deploy role lacks ownership to add (that value can't "
+            "be written until ownership is granted):"
         )
         for b in blocking:
             click.echo(f"  ! {b}")

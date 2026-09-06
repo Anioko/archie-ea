@@ -9,7 +9,7 @@ repair a label set; this pins the enum counterpart.
 import uuid
 
 import pytest
-from sqlalchemy import Column, Integer, MetaData, Table, text
+from sqlalchemy import Column, Integer, MetaData, Table, create_engine, text
 from sqlalchemy.dialects.postgresql import ENUM
 
 from app import db
@@ -55,16 +55,16 @@ def test_missing_labels_are_added_and_existing_ones_untouched(app, probe_enum):
     typname, tablename = probe_enum
     with app.app_context():
         assert _labels(typname) == ["PENDING", "DONE"]
-        added, failed = [], []
-        _ensure_enum_members(dry_run=False, existing_tables={tablename}, added=added, failed=failed)
-        assert failed == []
+        added, failed, blocking = [], [], []
+        _ensure_enum_members(dry_run=False, existing_tables={tablename}, added=added, failed=failed, blocking=blocking)
+        assert (failed, blocking) == ([], [])
         assert added == [f"enum {typname} += RUNNING", f"enum {typname} += RE'COVERING"]
         assert set(_labels(typname)) == {"PENDING", "DONE", "RUNNING", "RE'COVERING"}
 
         # Idempotent: a second pass adds nothing and fails nothing.
-        added, failed = [], []
-        _ensure_enum_members(dry_run=False, existing_tables={tablename}, added=added, failed=failed)
-        assert (added, failed) == ([], [])
+        added, failed, blocking = [], [], []
+        _ensure_enum_members(dry_run=False, existing_tables={tablename}, added=added, failed=failed, blocking=blocking)
+        assert (added, failed, blocking) == ([], [], [])
 
 
 def test_dry_run_reports_without_altering(app, probe_enum):
@@ -72,11 +72,67 @@ def test_dry_run_reports_without_altering(app, probe_enum):
 
     typname, tablename = probe_enum
     with app.app_context():
-        added, failed = [], []
-        _ensure_enum_members(dry_run=True, existing_tables={tablename}, added=added, failed=failed)
+        added, failed, blocking = [], [], []
+        _ensure_enum_members(dry_run=True, existing_tables={tablename}, added=added, failed=failed, blocking=blocking)
         assert f"enum {typname} += RUNNING" in added
-        assert failed == []
+        assert (failed, blocking) == ([], [])
         assert _labels(typname) == ["PENDING", "DONE"]
+
+
+def test_insufficient_privilege_is_reported_as_blocking_not_failed(app, probe_enum):
+    """Measured in production 6 Sep 2026: the deploy role doesn't own every
+    enum type any more than it owns every table (the pre-existing table-
+    ownership gap this same command already tolerates via `blocking`).
+    ALTER TYPE then raises InsufficientPrivilege, which previously landed in
+    `failed` and made reconcile-schema - and the whole deploy - exit 1. A
+    missing enum label degrades one write path; it must not block deploying
+    everything else, the same way a missing table's ownership doesn't.
+
+    Uses a real, unprivileged PostgreSQL role rather than a mocked
+    connection, so this proves the actual driver exception (message and
+    all) is classified correctly, not just an exception object this test
+    constructed by hand.
+    """
+    from app.commands.reconcile_schema import _ensure_enum_members
+
+    typname, tablename = probe_enum
+    suffix = uuid.uuid4().hex[:8]
+    role = f"reconcile_probe_role_{suffix}"
+
+    with app.app_context():
+        with db.engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+            conn.execute(text(f"CREATE ROLE {role} LOGIN PASSWORD 'probe'"))
+            conn.execute(text(f"GRANT CONNECT ON DATABASE {conn.engine.url.database} TO {role}"))
+            conn.execute(text(f"GRANT USAGE ON SCHEMA public TO {role}"))
+            conn.execute(text(f"GRANT SELECT ON pg_type, pg_enum TO {role}"))
+        try:
+            restricted_url = db.engine.url.set(username=role, password="probe")
+            restricted_engine = create_engine(restricted_url)
+            real_engine = db.engine
+            db.session.remove()
+            app.extensions["sqlalchemy"].engines[None] = restricted_engine
+            try:
+                added, failed, blocking = [], [], []
+                _ensure_enum_members(
+                    dry_run=False, existing_tables={tablename}, added=added, failed=failed, blocking=blocking,
+                )
+            finally:
+                app.extensions["sqlalchemy"].engines[None] = real_engine
+                db.session.remove()
+                restricted_engine.dispose()
+
+            assert added == []
+            assert failed == []
+            assert len(blocking) == 2
+            assert all("insufficient privilege" in item for item in blocking)
+            assert any(typname in item for item in blocking)
+            # Untouched: the denied ALTER never took effect.
+            assert _labels(typname) == ["PENDING", "DONE"]
+        finally:
+            with db.engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+                conn.execute(text(f"REVOKE ALL PRIVILEGES ON DATABASE {conn.engine.url.database} FROM {role}"))
+                conn.execute(text(f"DROP OWNED BY {role}"))
+                conn.execute(text(f"DROP ROLE IF EXISTS {role}"))
 
 
 def test_batch_job_models_share_one_type_and_the_union_is_declared():
