@@ -1310,7 +1310,7 @@ nav[aria-label="Composer toolbar"] { margin-bottom: 0 !important; }
                  class="flex-1 overflow-auto bg-background border-t border-border">
                 <div class="flex items-center justify-between px-4 py-2.5 border-b border-border bg-muted/30 sticky top-0 z-10">
                     <div class="flex items-center gap-2">
-                        <i data-lucide="grid-3x3" class="w-4 h-4 text-primary"></i>
+                        <i data-lucide="grid" class="w-4 h-4 text-primary"></i>
                         <span class="text-sm font-semibold text-foreground">Relationship Matrix</span>
                         <template x-if="relMatrixData">
                             <span class="text-xs text-muted-foreground"
@@ -1334,7 +1334,7 @@ nav[aria-label="Composer toolbar"] { margin-bottom: 0 !important; }
 
                 <template x-if="relMatrixData && relMatrixData.elements.length === 0">
                     <div class="flex flex-col items-center justify-center py-16 text-muted-foreground">
-                        <i data-lucide="grid-3x3" class="w-10 h-10 mb-3 opacity-30"></i>
+                        <i data-lucide="grid" class="w-10 h-10 mb-3 opacity-30"></i>
                         <p class="text-sm">No elements on the canvas.</p>
                         <p class="text-xs mt-1">Add elements to see the relationship matrix.</p>
                     </div>

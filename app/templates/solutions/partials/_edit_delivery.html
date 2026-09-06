@@ -390,7 +390,7 @@
                         <ul class="space-y-1">
                             {% for condition in review.conditions %}
                             <li class="flex items-start gap-2 text-sm text-foreground">
-                                <i data-lucide="circle-alert" class="w-3.5 h-3.5 mt-0.5 text-warning shrink-0" aria-hidden="true"></i>
+                                <i data-lucide="alert-circle" class="w-3.5 h-3.5 mt-0.5 text-warning shrink-0" aria-hidden="true"></i>
                                 {% if condition is string %}{{ condition }}{% else %}{{ condition.text or condition.description or condition }}{% endif %}
                             </li>
                             {% endfor %}

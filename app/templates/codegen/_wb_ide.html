@@ -372,7 +372,7 @@
                 <!-- Diff preview -->
                 <div x-show="patchDiff" x-cloak class="shrink-0 border-b border-border">
                     <div class="px-3 py-2 bg-muted/30 flex items-center justify-between">
-                        <span class="text-xs font-medium text-foreground flex items-center gap-1.5"><i data-lucide="git-diff" class="h-3.5 w-3.5 text-muted-foreground"></i> Review AI changes before applying</span>
+                        <span class="text-xs font-medium text-foreground flex items-center gap-1.5"><i data-lucide="diff" class="h-3.5 w-3.5 text-muted-foreground"></i> Review AI changes before applying</span>
                         <div class="flex gap-2">
                             <button type="button" @click="confirmPatch()" class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-success text-primary-foreground text-xs font-medium hover:bg-success transition-colors"><i data-lucide="check" class="h-3 w-3"></i> Apply</button>
                             <button type="button" @click="patchDiff = null" class="inline-flex items-center gap-1 px-2.5 py-1 rounded border border-border text-xs text-muted-foreground hover:text-foreground transition-colors">Discard</button>

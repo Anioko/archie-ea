@@ -112,7 +112,7 @@
         {{ metrics_card(
             title='Material open risks',
             value=synthesis.risk_dependency.risks.material_open if synthesis.risk_dependency.risks.material_open is not none else '—',
-            icon='triangle-alert',
+            icon='alert-triangle',
             description=(synthesis.risk_dependency.risks.unowned_material|string ~ ' without an owner') if synthesis.risk_dependency.risks.unowned_material is not none else 'Risk posture unavailable'
         ) }}
     </div>
@@ -309,7 +309,7 @@
         <div class="p-5 sm:p-6 {% if not loop.first %}sm:border-l sm:border-border{% endif %}">
             <div class="flex items-center justify-between gap-3">
                 <p class="text-sm font-semibold text-foreground">{{ domain.label }}</p>
-                <i data-lucide="{{ {'business': 'briefcase-business', 'data': 'database', 'application': 'boxes', 'technology': 'server', 'motivation': 'target'}[domain.key] }}"
+                <i data-lucide="{{ {'business': 'briefcase', 'data': 'database', 'application': 'boxes', 'technology': 'server', 'motivation': 'target'}[domain.key] }}"
                    class="h-4 w-4 text-muted-foreground" aria-hidden="true"></i>
             </div>
             {% if domain.covered is not none %}

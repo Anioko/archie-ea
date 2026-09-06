@@ -155,7 +155,7 @@
     <template x-if="linkedADRs.length === 0">
         {% if solution.complexity_level in ('High', 'Complex', 'Enterprise') %}
         <div class="flex items-start gap-2 p-3 rounded-md bg-warning/10 border border-warning/30 text-warning-emphasis text-sm">
-            <i data-lucide="triangle-alert" class="w-4 h-4 shrink-0 mt-0.5 text-warning" aria-hidden="true"></i>
+            <i data-lucide="alert-triangle" class="w-4 h-4 shrink-0 mt-0.5 text-warning" aria-hidden="true"></i>
             <span><strong>No ADRs linked.</strong> High-complexity solutions should document key technical decisions as Architecture Decision Records. Click <strong>Manage</strong> to add.</span>
         </div>
         {% else %}

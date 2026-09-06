@@ -73,7 +73,7 @@
     </div>
     {% elif review.unassessed or not review.controls_available %}
     <div class="border border-warning/30 bg-warning/5 rounded-xl p-8 text-center">
-        <span class="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-warning/10 text-warning-emphasis mb-3"><i data-lucide="circle-alert" class="h-6 w-6"></i></span>
+        <span class="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-warning/10 text-warning-emphasis mb-3"><i data-lucide="alert-circle" class="h-6 w-6"></i></span>
         <p class="text-sm font-medium text-foreground">{% if review.unassessed %}No architecture content is modelled yet{% else %}One or more required conformance controls are unavailable{% endif %}</p>
         <p class="text-xs text-muted-foreground mt-1">No conformance score has been calculated.</p>
     </div>

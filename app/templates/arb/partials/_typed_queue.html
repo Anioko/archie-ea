@@ -23,7 +23,7 @@
 {% set _options = queue.filter_options or {} %}
 
 {% if queue.state == 'failed' %}
-    {% call alert_box(variant='destructive', icon='triangle-alert', class='mb-6') %}
+    {% call alert_box(variant='destructive', icon='alert-triangle', class='mb-6') %}
         {% call alert_title() %}The review ledger could not be read. Retry.{% endcall %}
         {% call alert_description() %}
             <p>No review counts are shown, because none could be read.</p>

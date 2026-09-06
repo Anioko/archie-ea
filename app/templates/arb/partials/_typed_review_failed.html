@@ -12,7 +12,7 @@
 #}
 {% from 'components/alert.html' import alert as alert_box, alert_title, alert_description %}
 
-{% call alert_box(variant='destructive', icon='triangle-alert', class='mb-6') %}
+{% call alert_box(variant='destructive', icon='alert-triangle', class='mb-6') %}
     {% call alert_title() %}This review could not be read. Retry.{% endcall %}
     {% call alert_description() %}
         <p>No review detail is shown, because none could be read. No governance action was taken.</p>

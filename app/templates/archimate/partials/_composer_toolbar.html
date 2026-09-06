@@ -36,7 +36,7 @@
             </button>
             <button type="button" class="toolbar-btn toolbar-btn-sm" :class="{ 'active': relMatrixOpen }"
                     @click="if (!relMatrixOpen) toggleRelMatrix()" title="Relationship matrix view">
-                <i data-lucide="grid-3x3" class="w-3.5 h-3.5"></i>
+                <i data-lucide="grid" class="w-3.5 h-3.5"></i>
                 <span class="hidden sm:inline">Matrix</span>
             </button>
         </div>
@@ -551,7 +551,7 @@
                     <i data-lucide="table-2" class="w-3.5 h-3.5"></i> Matrix View
                 </button>
                 <button type="button" class="toolbar-dropdown-item" @click="openLandscapeView(); analyzeDropdownOpen = false">
-                    <i data-lucide="grid-3x3" class="w-3.5 h-3.5"></i> Landscape Map
+                    <i data-lucide="grid" class="w-3.5 h-3.5"></i> Landscape Map
                 </button>
                 <button type="button" class="toolbar-dropdown-item" @click="openAuditLog(); analyzeDropdownOpen = false">
                     <i data-lucide="clock" class="w-3.5 h-3.5"></i> Change History
@@ -754,7 +754,7 @@
                     <i data-lucide="table-2" class="w-3.5 h-3.5"></i> Matrix View
                 </button>
                 <button type="button" class="toolbar-dropdown-item" @click="openLandscapeView(); moreDropdownOpen = false">
-                    <i data-lucide="grid-3x3" class="w-3.5 h-3.5"></i> Landscape Map
+                    <i data-lucide="grid" class="w-3.5 h-3.5"></i> Landscape Map
                 </button>
                 <button type="button" class="toolbar-dropdown-item" @click="openAuditLog(); moreDropdownOpen = false">
                     <i data-lucide="clock" class="w-3.5 h-3.5"></i> Change History
