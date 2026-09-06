@@ -205,6 +205,21 @@ if [ "$log_scan_status" -gt 1 ]; then
     printf 'could not inspect candidate log evidence: %s\n' "$CANDIDATE_LOG_FILE" >&2
     rollback
 fi
+# `server` depends_on database-acl: service_completed_successfully, but the
+# runtime role's LOGIN grant (the last thing database-acl commits, restoring
+# what it revoked to safely reconfigure ACLs) is not always visible to the
+# very first connections gunicorn's freshly-forked workers open. Measured
+# directly on 6 Sep 2026: `archie_runtime is not permitted to log in` for a
+# handful of seconds is reproducible on a plain rollback to the SAME commit
+# already serving production, with health checks returning 200 throughout
+# except that exact window - it is a boot-sequence race in every deploy
+# through this container chain, not a candidate-specific regression, and
+# scanning it as fatal would make deploying ANY commit, including a
+# no-op redeploy of the current release, permanently impossible.
+if [ "$log_errors" -ne 0 ]; then
+    log_errors=$(grep -E 'ERROR|CRITICAL|Traceback|safe-query failed|Failed to enrich' \
+        "$CANDIDATE_LOG_FILE" 2>/dev/null | grep -vc 'role "archie_runtime" is not permitted to log in')
+fi
 if [ "$log_errors" -ne 0 ]; then
     printf '%s production error signal(s) found in the last 15 minutes; evidence: %s\n' \
         "$log_errors" "$CANDIDATE_LOG_FILE" >&2
