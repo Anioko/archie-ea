@@ -77,7 +77,12 @@ def test_an_architect_records_a_risk_and_sees_it_on_the_register(app, client):
     assert page.status_code == 200
     body = page.get_data(as_text=True)
     assert title in body
-    assert "Critical" in body
+    # The table is the shared data_table component: rows render client-side
+    # via Alpine from a RISK_ROWS JSON payload, so the severity this risk
+    # scored reaches the page as the row's raw risk_level ("critical"), not
+    # as server-rendered capitalized text -- the capitalization happens in
+    # the browser (confirmed live via Playwright against production).
+    assert '"risk_level": "critical"' in body or '"risk_level":"critical"' in body
     # And the control that creates one is actually wired to something.
     assert "openCreate()" in body
 
