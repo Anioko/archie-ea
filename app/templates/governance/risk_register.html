@@ -36,7 +36,13 @@
     {{ page_shell(title='Risk Register', subtitle='Enterprise architecture risk tracking and mitigation', actions_caller=_ps_actions) }}
 
     {% set _open = risks | selectattr('status.value', 'equalto', 'open') | list | length %}
-    {% set _crit = risks | selectattr('risk_level', 'equalto', 'critical') | list | length %}
+    {# A closed or mitigated risk is not current exposure. This tile is read as
+       "how much critical risk exists right now" - counting risk_level alone,
+       with no status filter, kept a CRITICAL count at 1 for a risk that had
+       already been closed (TOTAL 1, OPEN 0, CRITICAL 1: confirmed live on
+       6 Sep 2026, Archie-E2E-Workflow-Test-Report.md E2E-N). Restrict to open
+       risks, matching what OPEN itself counts. #}
+    {% set _crit = risks | selectattr('status.value', 'equalto', 'open') | selectattr('risk_level', 'equalto', 'critical') | list | length %}
     {% set _mit = risks | selectattr('status.value', 'equalto', 'mitigated') | list | length %}
     <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <div class="rounded-lg border border-border bg-card p-4">
