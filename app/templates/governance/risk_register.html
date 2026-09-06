@@ -1,7 +1,7 @@
 {% extends 'layouts/admin_base.html' %}
 {% from 'macros/page_shell.html' import page_shell %}
 {% from 'components/modal.html' import modal %}
-{% from 'components/status_badge.html' import status_badge_auto %}
+{% from 'components/data_table.html' import data_table, data_table_script with context %}
 
 {% block title %}Risk Register{% endblock %}
 
@@ -63,128 +63,56 @@
         </div>
     </div>
 
-    <div class="rounded-lg border border-border bg-card">
-        <div class="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-border">
-            <h2 class="text-sm font-semibold text-foreground">Risks</h2>
-            <div class="flex items-center gap-2">
-                <label for="risk-search" class="sr-only">Search risks</label>
-                <input id="risk-search" type="text" x-model="query" placeholder="Search title or owner"
-                       class="h-8 w-56 rounded-md border border-input bg-background px-2.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring">
-                <label for="risk-status-filter" class="sr-only">Filter by status</label>
-                <select id="risk-status-filter" x-model="statusFilter"
-                        class="h-8 rounded-md border border-input bg-background px-2 text-xs text-foreground">
-                    <option value="">All statuses</option>
-                    <option value="open">Open</option>
-                    <option value="mitigated">Mitigated</option>
-                    <option value="accepted">Accepted</option>
-                    <option value="closed">Closed</option>
-                </select>
-            </div>
-        </div>
+    <div class="rounded-lg border border-border bg-card p-4">
+        <h2 class="text-sm font-semibold text-foreground mb-3">Risks</h2>
 
-        {% if risks %}
-        <div class="overflow-x-auto">
-            <table class="w-full text-sm">
-                <caption class="sr-only">Enterprise risk register</caption>
-                {# T-14 (2 Sep 2026 audit): one of six tables with no sort at all.
-                   Sort is server-side (risk_routes.py) so it survives a reload/bookmark;
-                   Score and Level stay unsorted since they're derived (likelihood*impact
-                   and its bucketing) rather than real columns. #}
-                {% macro sort_th(key, label, extra_class='') %}
-                {% set next_dir = 'desc' if current_sort == key and current_dir == 'asc' else 'asc' %}
-                <th scope="col" class="px-4 py-2 font-medium {{ extra_class }}">
-                    <a href="{{ request.path }}?sort={{ key }}&dir={{ next_dir }}"
-                       class="inline-flex items-center gap-1 hover:text-foreground transition-colors"
-                       aria-label="Sort by {{ label }}{{ ', currently ' ~ current_dir ~ 'ending' if current_sort == key }}">
-                        {{ label }}
-                        {% if current_sort == key %}
-                        <i data-lucide="{{ 'arrow-up' if current_dir == 'asc' else 'arrow-down' }}" class="h-3 w-3" aria-hidden="true"></i>
-                        {% else %}
-                        <i data-lucide="chevrons-up-down" class="h-3 w-3 opacity-40" aria-hidden="true"></i>
-                        {% endif %}
-                    </a>
-                </th>
-                {% endmacro %}
-                <thead>
-                    <tr class="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
-                        {{ sort_th('title', 'Title') }}
-                        {{ sort_th('owner', 'Owner') }}
-                        {{ sort_th('likelihood', 'Likelihood') }}
-                        {{ sort_th('impact', 'Impact') }}
-                        <th scope="col" class="px-4 py-2 font-medium">Score</th>
-                        <th scope="col" class="px-4 py-2 font-medium">Level</th>
-                        {{ sort_th('status', 'Status') }}
-                        <th scope="col" class="px-4 py-2 font-medium text-right">Action</th>
-                    </tr>
-                </thead>
-                <tbody class="divide-y divide-border">
-                    {% for risk in risks %}
-                    <tr class="hover:bg-accent/40 transition-colors"
-                        x-show='matches({{ risk.title | tojson }}, {{ (risk.owner or "") | tojson }}, {{ risk.status.value | tojson }})'>
-                        <td class="px-4 py-2">
-                            <div class="font-medium text-foreground">{{ risk.title }}</div>
-                            {% if risk.description %}
-                            <div class="text-xs text-muted-foreground">{{ risk.description | truncate(90) }}</div>
-                            {% endif %}
-                        </td>
-                        {# Em dash, never a blank: an unset owner is a fact worth showing. #}
-                        <td class="px-4 py-2 text-muted-foreground">{{ risk.owner or '—' }}</td>
-                        <td class="px-4 py-2 tabular-nums">{{ risk.likelihood }}</td>
-                        <td class="px-4 py-2 tabular-nums">{{ risk.impact }}</td>
-                        <td class="px-4 py-2 tabular-nums font-medium">{{ risk.risk_score }}</td>
-                        <td class="px-4 py-2">
-                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium
-                                {% if risk.risk_level == 'critical' %}bg-destructive/10 text-destructive-emphasis
-                                {% elif risk.risk_level == 'high' %}bg-warning/10 text-warning-emphasis
-                                {% elif risk.risk_level == 'medium' %}bg-info/10 text-info-emphasis
-                                {% else %}bg-muted text-muted-foreground{% endif %}">
-                                {{ risk.risk_level | title }}
-                            </span>
-                        </td>
-                        <td class="px-4 py-2">{{ status_badge_auto(risk.status.value) }}</td>
-                        {# A risk that can only be read is a risk nobody owns. PATCH
-                           /api/risks/<id> is the state change; these are its two next
-                           states, offered only when the risk is not already there. #}
-                        <td class="px-4 py-2 text-right whitespace-nowrap">
-                            {% if risk.status.value != 'mitigated' and risk.status.value != 'closed' %}
-                            <button type="button"
-                                    @click="setStatus({{ risk.id }}, 'mitigated')"
-                                    :disabled="updatingId === {{ risk.id }}"
-                                    class="inline-flex items-center rounded-md border border-input bg-background px-2 py-1 text-xs font-medium hover:bg-accent hover:text-accent-foreground disabled:opacity-50">
-                                Mark mitigated
-                            </button>
-                            {% endif %}
-                            {% if risk.status.value == 'mitigated' %}
-                            <button type="button"
-                                    @click="setStatus({{ risk.id }}, 'open')"
-                                    :disabled="updatingId === {{ risk.id }}"
-                                    aria-label="Reopen risk {{ risk.title | e }}"
-                                    class="inline-flex items-center rounded-md border border-input bg-background px-2 py-1 text-xs font-medium hover:bg-accent hover:text-accent-foreground disabled:opacity-50">
-                                Reopen
-                            </button>
-                            {% endif %}
-                            {% if risk.status.value != 'closed' %}
-                            <button type="button"
-                                    @click="setStatus({{ risk.id }}, 'closed')"
-                                    :disabled="updatingId === {{ risk.id }}"
-                                    class="inline-flex items-center rounded-md border border-input bg-background px-2 py-1 text-xs font-medium hover:bg-accent hover:text-accent-foreground disabled:opacity-50">
-                                Close
-                            </button>
-                            {% else %}
-                            <span class="text-xs text-muted-foreground">Closed</span>
-                            {% endif %}
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-        {% else %}
-        <div class="px-4 py-10 text-center">
-            <p class="text-sm text-muted-foreground">No risks recorded yet.</p>
-            <p class="mt-1 text-xs text-muted-foreground">Use <span class="font-medium">Add Risk</span> to record the first one.</p>
-        </div>
-        {% endif %}
+        {# Migrated onto the shared data_table component (components/data_table.html)
+           instead of a hand-rolled <table> — it already had search, sort, a
+           correct overflow-auto wrapper and a consistent empty state, but had
+           no adopters anywhere in the app, so every list page (including this
+           one's clipped STATUS column, E2E-O) reinvented the same layout with
+           its own bugs. Score/Level stay unsorted: both are derived
+           (likelihood*impact and its bucketing), not real columns. #}
+        <script>const RISK_ROWS = {{ risk_rows | tojson }};</script>
+        {{ data_table(
+            id='risk-register-table',
+            columns=[
+                {'key': 'title', 'label': 'Title', 'sortable': true},
+                {'key': 'owner', 'label': 'Owner', 'sortable': true},
+                {'key': 'likelihood', 'label': 'Likelihood', 'sortable': true, 'class': 'tabular-nums'},
+                {'key': 'impact', 'label': 'Impact', 'sortable': true, 'class': 'tabular-nums'},
+                {'key': 'risk_score', 'label': 'Score', 'class': 'tabular-nums font-medium'},
+                {'key': 'risk_level', 'label': 'Level', 'type': 'risk-level'},
+                {'key': 'status', 'label': 'Status', 'sortable': true, 'type': 'status'},
+                {'key': 'actions', 'label': 'Action', 'type': 'row-actions', 'class': 'text-right', 'else_text': 'Closed',
+                 'actions': [
+                    {'label': 'Mark mitigated', 'click': "setStatus(row.id, 'mitigated')",
+                     'show_when': "row.status !== 'mitigated' && row.status !== 'closed'",
+                     'disabled_when': 'updatingId === row.id'},
+                    {'label': 'Reopen', 'click': "setStatus(row.id, 'open')",
+                     'show_when': "row.status === 'mitigated'",
+                     'disabled_when': 'updatingId === row.id'},
+                    {'label': 'Close', 'click': "setStatus(row.id, 'closed')",
+                     'show_when': "row.status !== 'closed'",
+                     'disabled_when': 'updatingId === row.id'},
+                 ]},
+            ],
+            rows_expr='RISK_ROWS',
+            searchable=true,
+            search_key='title',
+            search_placeholder='Search title or owner',
+            sortable=true,
+            filters=[
+                {'key': 'status', 'label': 'Status', 'options': [
+                    {'value': 'open', 'label': 'Open'},
+                    {'value': 'mitigated', 'label': 'Mitigated'},
+                    {'value': 'accepted', 'label': 'Accepted'},
+                    {'value': 'closed', 'label': 'Closed'},
+                ]},
+            ],
+            empty_icon='shield-alert',
+            empty_text='No risks recorded yet. Use Add Risk to record the first one.'
+        ) }}
     </div>
 
     {# RAID (2 Sep 2026, Capgemini delivery-team dry-run): the register was
@@ -419,27 +347,18 @@
     </div>
     {% endcall %}
 </div>
+{{ data_table_script() }}
 {% endblock %}
 
 {% block extra_js %}
 <script>
 function riskRegister() {
     return {
-        query: '',
-        statusFilter: '',
         saving: false,
         error: '',
         form: {
             title: '', description: '', likelihood: '3', impact: '3',
             owner: '', mitigation_plan: ''
-        },
-
-        matches(title, owner, status) {
-            if (this.statusFilter && status !== this.statusFilter) return false;
-            const q = this.query.trim().toLowerCase();
-            if (!q) return true;
-            return (title || '').toLowerCase().includes(q)
-                || (owner || '').toLowerCase().includes(q);
         },
 
         updatingId: null,

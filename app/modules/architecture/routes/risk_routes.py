@@ -197,6 +197,26 @@ _RISK_SORT_COLUMNS = {
 }
 
 
+def serialize_risk_row(risk):
+    """The one place a Risk becomes a row for the shared data_table component.
+
+    Shared with tests so a test asserting what the table shows builds its
+    expectation from the same serialization the route actually renders,
+    rather than a second, independently-maintained copy that can drift.
+    """
+    return {
+        "id": risk.id,
+        "title": risk.title,
+        "description": risk.description or "",
+        "owner": risk.owner or "—",
+        "likelihood": risk.likelihood,
+        "impact": risk.impact,
+        "risk_score": risk.risk_score,
+        "risk_level": risk.risk_level,
+        "status": risk.status.value,
+    }
+
+
 @risk_bp.route("/risks/")
 @login_required
 def risk_register():
@@ -227,9 +247,11 @@ def risk_register():
         .order_by(StrategicInitiative.name)
         .all()
     )
+    risk_rows = [serialize_risk_row(r) for r in risks]
     return render_template(
         "governance/risk_register.html",
         risks=risks,
+        risk_rows=risk_rows,
         grid=heat_data.get("grid", []),
         total=len(risks),
         current_sort=sort_key if sort_key in _RISK_SORT_COLUMNS else "id",
