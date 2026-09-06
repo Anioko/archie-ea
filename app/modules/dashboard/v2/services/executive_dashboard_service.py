@@ -54,25 +54,29 @@ class ExecutiveDashboardService:
             return {"distribution": {}, "total": None}  # honest: totals not computed on error
 
     def _get_risk_summary(self):
-        """Aggregate open risks by impact severity."""
-        try:
-            from app.models.solution_lifecycle_models import SolutionRisk
+        """Aggregate open risks by impact severity.
 
-            rows = (
-                db.session.query(
-                    SolutionRisk.impact, db.func.count(SolutionRisk.id)
-                )
-                .filter(SolutionRisk.status == "open")
-                .group_by(SolutionRisk.impact)
-                .all()
-            )
+        Was querying SolutionRisk (app.models.solution_lifecycle_models) -
+        a different, essentially unused table from `risks` (app.models.risk.
+        Risk), the model that actually backs the Risk Register UI and
+        /api/risks. Every executive surface fed by this method reported 0
+        open risks while the register itself showed real, open, critical
+        risks: a QA acceptance pass on 6 Sep 2026 caught the Overview tile,
+        CTO tab, Health Scorecard and Solutions "Needs Attention" panel all
+        reading zero against a register with 5 open (4 critical). Risk.impact
+        is an int 1-5 (likelihood x impact), not a stored severity string, so
+        the severity bucket comes from the same `risk_level` property the
+        register itself renders - this is now reading the one system of
+        record with the one severity computation, not a second copy of both.
+        """
+        try:
+            from app.models.risk import Risk, RiskStatus
+
+            open_risks = Risk.query.filter(Risk.status == RiskStatus.OPEN).all()
             counts = {"critical": 0, "high": 0, "medium": 0, "low": 0}
-            total = 0
-            for impact, count in rows:
-                key = (impact or "medium").lower()
-                counts[key] = counts.get(key, 0) + count
-                total += count
-            return {"counts": counts, "total": total}
+            for risk in open_risks:
+                counts[risk.risk_level] = counts.get(risk.risk_level, 0) + 1
+            return {"counts": counts, "total": len(open_risks)}
         except Exception as exc:
             logger.warning("Executive dashboard: risk summary unavailable: %s", exc)
             return {"counts": {"critical": 0, "high": 0, "medium": 0, "low": 0}, "total": 0}
@@ -213,22 +217,15 @@ class ExecutiveDashboardService:
 
         # Risk posture: fewer high/critical is better
         try:
-            from app.models.solution_lifecycle_models import SolutionRisk
+            # Same system-of-record correction as _get_risk_summary below:
+            # SolutionRisk is a different, essentially unused table from the
+            # one the Risk Register and /api/risks actually read.
+            from app.models.risk import Risk, RiskStatus
 
-            total_risks = (
-                db.session.query(db.func.count(SolutionRisk.id))
-                .filter(SolutionRisk.status == "open")
-                .scalar()
-            ) or 0
+            open_risks = Risk.query.filter(Risk.status == RiskStatus.OPEN).all()
+            total_risks = len(open_risks)
             if total_risks > 0:
-                severe = (
-                    db.session.query(db.func.count(SolutionRisk.id))
-                    .filter(
-                        SolutionRisk.status == "open",
-                        SolutionRisk.impact.in_(["critical", "high"]),
-                    )
-                    .scalar()
-                ) or 0
+                severe = sum(1 for r in open_risks if r.risk_level in ("critical", "high"))
                 scores["risk_posture"] = round((1 - severe / total_risks) * 100, 1)
             else:
                 # No open risks recorded is not the same as a clean risk posture.

@@ -248,14 +248,22 @@ def overview():
             risk_counts = {"critical": 0, "high": 0, "medium": 0, "low": 0}
             _sol_ids_with_risks: set = set()
             try:
-                from app.models.solution_lifecycle_models import SolutionRisk
+                # Was querying SolutionRisk, a different, essentially unused
+                # table from the `risks` model the Risk Register and
+                # /api/risks actually read - every open, critical
+                # solution-linked risk in the real register showed here as
+                # zero. Risk.impact is an int 1-5, not a stored severity
+                # string; risk_level derives the same bucket the register
+                # itself renders.
+                from app.models.risk import Risk, RiskStatus
                 _sol_ids = [s.id for s in solutions]
-                for r in SolutionRisk.query.filter(SolutionRisk.solution_id.in_(_sol_ids)).all():
-                    impact = (r.impact or "medium").lower()
-                    risk_counts[impact] = risk_counts.get(impact, 0) + 1
+                for r in Risk.query.filter(
+                    Risk.solution_id.in_(_sol_ids), Risk.status == RiskStatus.OPEN
+                ).all():
+                    risk_counts[r.risk_level] = risk_counts.get(r.risk_level, 0) + 1
                     _sol_ids_with_risks.add(r.solution_id)
             except Exception as exc:
-                logger.warning("ENT-017: SolutionRisk unavailable: %s", exc)
+                logger.warning("ENT-017: Risk unavailable: %s", exc)
                 # Query failed: report unknown (em dash), not a fabricated zero-risk portfolio.
                 risk_counts = {"critical": None, "high": None, "medium": None, "low": None}
             arb_pipeline = {"pending": 0, "approved": 0, "rejected": 0}
@@ -920,14 +928,20 @@ def _assemble_health_scorecard_metrics():
     briefing endpoint can be handed the exact same, already-computed
     metrics dict rather than re-querying (or worse, inventing numbers)."""
     # 1. Solution risk summary by impact level
+    # Was querying SolutionRisk, a different, essentially unused table from
+    # the `risks` model the Risk Register and /api/risks actually read - a
+    # 6 Sep 2026 QA pass caught this labeled "Live from the solution risk
+    # register" while showing zero against a register with real open,
+    # critical, solution-linked risks. Risk.impact is an int 1-5, not a
+    # stored severity string; risk_level derives the same bucket the
+    # register itself renders.
     risk_counts = {"critical": 0, "high": 0, "medium": 0, "low": 0}
     try:
-        from app.models.solution_lifecycle_models import SolutionRisk
-        for r in SolutionRisk.query.with_entities(SolutionRisk.impact).all():
-            level = (r.impact or "medium").lower()
-            risk_counts[level] = risk_counts.get(level, 0) + 1
+        from app.models.risk import Risk, RiskStatus
+        for r in Risk.query.filter(Risk.status == RiskStatus.OPEN).all():
+            risk_counts[r.risk_level] = risk_counts.get(r.risk_level, 0) + 1
     except Exception as exc:
-        logger.warning("health_scorecard: SolutionRisk unavailable: %s", exc)
+        logger.warning("health_scorecard: Risk unavailable: %s", exc)
         # Query failed: report unknown (em dash), not a fabricated zero-risk summary.
         risk_counts = {"critical": None, "high": None, "medium": None, "low": None}
 
