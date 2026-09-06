@@ -309,9 +309,23 @@ class ExecutiveDashboardService:
         }
         available = {k: w for k, w in weights.items() if scores.get(k) is not None}
         total_weight = sum(available.values())
+        # Renormalising over only the measured components is right when most
+        # of the score is measured - it stops one missing input from dragging
+        # the whole composite toward zero. It goes wrong at the other end: if
+        # only the *governance* component (nominal weight 0.1) is measurable,
+        # renormalising gives it 100% of the visible score, so one newly
+        # created, unresolved ARB item can single-handedly report "Health
+        # Score: 90" for a portfolio with zero solutions and zero measured
+        # capability coverage. Confirmed live 6 Sep 2026
+        # (Archie-E2E-Workflow-Test-Report.md E2E-M): "the score behaves as a
+        # near-constant unrelated to its inputs." Require at least half the
+        # total weight to be measurable before presenting a composite; below
+        # that, too little of the score is actually known to state one
+        # number with confidence - report None (em dash) instead, with the
+        # measured components still visible individually.
         composite = (
             round(sum(scores[k] * w for k, w in available.items()) / total_weight, 1)
-            if total_weight
+            if total_weight >= 0.5
             else None
         )
 
