@@ -318,14 +318,22 @@ class ExecutiveDashboardService:
         # Score: 90" for a portfolio with zero solutions and zero measured
         # capability coverage. Confirmed live 6 Sep 2026
         # (Archie-E2E-Workflow-Test-Report.md E2E-M): "the score behaves as a
-        # near-constant unrelated to its inputs." Require at least half the
-        # total weight to be measurable before presenting a composite; below
-        # that, too little of the score is actually known to state one
-        # number with confidence - report None (em dash) instead, with the
-        # measured components still visible individually.
+        # near-constant unrelated to its inputs."
+        #
+        # The threshold is 0.35, not 0.5: phase_maturity alone (0.4) is an
+        # existing, deliberately-tested case
+        # (test_health_phase_denominator_uses_only_recorded_valid_phases)
+        # where a single substantial signal is trusted to stand for the
+        # composite on its own - a portfolio's ADM phase spread is not a
+        # throwaway metric the way one ARB item is. 0.35 sits strictly
+        # between governance/risk_posture/capability_coverage alone (0.1,
+        # 0.3, 0.2 - each still withheld) and phase_maturity alone (0.4 -
+        # still reported), so it draws the line at "was more than the
+        # single largest minor component measured", not at "was most of
+        # the score measured".
         composite = (
             round(sum(scores[k] * w for k, w in available.items()) / total_weight, 1)
-            if total_weight >= 0.5
+            if total_weight >= 0.35
             else None
         )
 
