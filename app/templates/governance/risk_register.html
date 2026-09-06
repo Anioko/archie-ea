@@ -73,7 +73,15 @@
            one's clipped STATUS column, E2E-O) reinvented the same layout with
            its own bugs. Score/Level stay unsorted: both are derived
            (likelihood*impact and its bucketing), not real columns. #}
-        <script>const RISK_ROWS = {{ risk_rows | tojson }};</script>
+        {# window.RISK_ROWS, not const/let: Alpine's expression evaluator
+           under this app's CSP-safe adapter (alpine-csp-adapter.js) does not
+           see plain lexical bindings from another <script> tag -- only
+           globals actually attached to window. A top-level `const` here
+           left `rows_expr='RISK_ROWS'` silently resolving to undefined,
+           so the table always rendered its empty state regardless of real
+           data. Confirmed live 7 Sep 2026 against production: RISK_ROWS
+           held 3 real rows but the Alpine component's own allRows was []. #}
+        <script>window.RISK_ROWS = {{ risk_rows | tojson }};</script>
         {{ data_table(
             id='risk-register-table',
             columns=[
