@@ -71,6 +71,42 @@ def _make_user(db_session, make_org, label, password="Sup3rSecret!23"):
     return user, password
 
 
+def test_header_role_badge_shows_the_persona_not_admin_or_user(app, db_session, make_org):
+    """E2E-7: the header's role badge read current_user.role.name -- the
+    legacy Flask-Base Role/Permission table, which has only a couple of
+    rows -- so all 11 enterprise_role personas collapsed onto whatever text
+    that table happened to hold, usually just "Admin" or "User". It must
+    show the real persona instead (see get_role_display_name /
+    ROLE_DISPLAY_NAMES, the vocabulary the sidebar itself already uses)."""
+    from app.models.user import User
+
+    org = make_org("header-role-badge")
+    suffix = uuid.uuid4().hex[:8]
+    user = User(
+        email=f"header-cto-{suffix}@example.com",
+        first_name="Badge", last_name="Tester",
+        organization_id=org.id, confirmed=True,
+        enterprise_role="cto",
+    )
+    user.password = "Sup3rSecret!23"
+    db_session.add(user)
+    db_session.flush()
+
+    client = app.test_client()
+    _login(client, user.id)
+
+    resp = client.get("/dashboard/overview")
+    assert resp.status_code == 200, resp.get_data(as_text=True)[:2000]
+    html = resp.get_data(as_text=True)
+    assert 'id="user-role-badge"' in html
+    badge_start = html.index('id="user-role-badge"')
+    badge_fragment = html[badge_start:badge_start + 400]
+    assert "CTO" in badge_fragment, (
+        "role badge did not render the cto persona's display name — "
+        f"fragment: {badge_fragment!r}"
+    )
+
+
 def test_dashboard_header_has_no_model_provider_selector(app, db_session, make_org):
     """The global header must not surface LLM provider choice — that belongs
     in AI Chat's own Settings, not on every page in the app."""

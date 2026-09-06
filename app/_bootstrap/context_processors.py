@@ -558,6 +558,16 @@ def init_context_processors(app):
     # app/utils/role_access.py for the single source of truth.
     app.jinja_env.globals["get_sidebar_zones"] = get_sidebar_zones
 
+    # E2E-7: the header's role badge (components/admin_header.html) read
+    # current_user.role.name -- the legacy Flask-Base Role/Permission table,
+    # which has only a couple of rows -- instead of enterprise_role, the
+    # vocabulary that actually distinguishes the 11 personas (see "Three
+    # authz vocabularies" — CLAUDE.md). Registered globally rather than
+    # per-route so the shared header gets it on every page, not just the
+    # one route that happened to pass it into its own render_template call.
+    from app.utils.role_access import get_role_display_name
+    app.jinja_env.globals["get_role_display_name"] = get_role_display_name
+
     # Register HTML sanitizer filter for safe rendering of user-generated rich text
     from app.utils.html_sanitizer import sanitize_html
     app.jinja_env.filters["sanitize_html"] = sanitize_html

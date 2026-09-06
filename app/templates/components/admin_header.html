@@ -137,8 +137,7 @@
                 {% if current_user.is_authenticated %}
                     <span id="user-role-badge"
                           class="hidden sm:inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border">
-                        {% if current_user.is_admin() %}Admin
-                        {% else %}{{ (current_user.role.name | title) if current_user.role else 'User' }}{% endif %}
+                        {{ get_role_display_name(current_user.enterprise_role) if current_user.enterprise_role else ('Admin' if current_user.is_admin() else 'User') }}
                     </span>
                 {% endif %}
                 <i id="user-chevron"
