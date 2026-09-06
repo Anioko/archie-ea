@@ -6057,6 +6057,8 @@
     if (typeof executeBulkDelete !== 'undefined') window.executeBulkDelete = executeBulkDelete;
     
     // Modal Functions
+    if (typeof openQuickAddModal !== 'undefined') window.openQuickAddModal = openQuickAddModal;
+    if (typeof closeQuickAddModal !== 'undefined') window.closeQuickAddModal = closeQuickAddModal;
     if (typeof openConvertModal !== 'undefined') window.openConvertModal = openConvertModal;
     if (typeof closeConvertModal !== 'undefined') window.closeConvertModal = closeConvertModal;
     if (typeof executeConvertGaps !== 'undefined') window.executeConvertGaps = executeConvertGaps;

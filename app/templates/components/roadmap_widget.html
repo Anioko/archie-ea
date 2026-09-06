@@ -94,14 +94,14 @@ Parameters:
 
                     {% if show_add_capability %}
                     <!-- Action Buttons -->
-                    <button type="button" @click="openQuickAddModal{{ container_id }}()" class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary text-sm font-medium transition-all" title="Add a new capability to the roadmap">
+                    <button type="button" @click="openQuickAddModal()" class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary text-sm font-medium transition-all" title="Add a new capability to the roadmap">
                         <i data-lucide="plus" class="w-4 h-4 inline mr-1"></i>
                         Add Capability
                     </button>
                     {% endif %}
 
                     {% if show_convert_button %}
-                    <button type="button" @click="openConvertModal{{ container_id }}()" class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary text-sm font-medium transition-all" title="Convert selected gaps to roadmap items">
+                    <button type="button" @click="openConvertModal()" class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary text-sm font-medium transition-all" title="Convert selected gaps to roadmap items">
                         <i data-lucide="save" class="w-4 h-4 inline mr-1"></i>
                         Convert to Roadmap
                     </button>
