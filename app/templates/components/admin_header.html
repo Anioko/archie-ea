@@ -136,7 +136,7 @@
                 <!-- Role badge for ALL roles, not just admin -->
                 {% if current_user.is_authenticated %}
                     <span id="user-role-badge"
-                          class="hidden sm:inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border">
+                          class="hidden sm:inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border bg-muted/50 text-foreground border-border">
                         {{ get_role_display_name(current_user.enterprise_role) if current_user.enterprise_role else ('Admin' if current_user.is_admin() else 'User') }}
                     </span>
                 {% endif %}
