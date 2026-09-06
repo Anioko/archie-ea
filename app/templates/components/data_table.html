@@ -5,6 +5,13 @@
    Alpine.js implementation of TanStack Table patterns.
 
    Usage:
+     {# rows_expr names a JS identifier this app's CSP-safe Alpine adapter
+        can actually resolve at directive-evaluation time -- that means
+        `window.<name>`, not a bare `const`/`let` from another <script> tag.
+        A plain `const requirements = [...]` is invisible here and silently
+        left the table empty despite real data (confirmed live 7 Sep 2026,
+        Risk Register's first adoption of this component). #}
+     <script>window.requirements = {{ requirements | tojson }};</script>
      {% from 'components/data_table.html' import data_table, data_table_faceted_filter with context %}
 
      {{ data_table(
