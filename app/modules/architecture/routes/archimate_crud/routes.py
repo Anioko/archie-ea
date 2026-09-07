@@ -702,12 +702,36 @@ def api_layer_elements(layer):
                 ]
                 linked_ae_ids = [i for i in linked_ae_ids if i]
                 plateau_by_ae_id = {}
+                # H6: this branch always shipped rel_count=None for every
+                # "portfolio"-sourced element (a Driver/Goal/etc. row synced
+                # to ArchiMateElement per CLAUDE.md's "ArchiMate is the
+                # backbone" rule) -- the "architecture" branch below computes
+                # a real count via the exact same linked ae_id, this one just
+                # never did. That made the dashboard's "Connected" tile read
+                # 'Relationship data unavailable' for every layer whose
+                # elements come from dedicated per-type tables (motivation
+                # included) even when the elements API call itself succeeded.
+                # One batched query per page, same shape as the plateau batch
+                # already here, rather than N+1.
+                rel_count_by_ae_id = {}
                 if linked_ae_ids:
                     plateau_by_ae_id = dict(
                         db.session.query(
                             ArchiMateElement.id, ArchiMateElement.togaf_plateau
                         ).filter(ArchiMateElement.id.in_(linked_ae_ids))
                     )
+                    rel_rows = (
+                        db.session.query(ArchiMateRelationship.source_id)
+                        .filter(ArchiMateRelationship.source_id.in_(linked_ae_ids))
+                        .union_all(
+                            db.session.query(ArchiMateRelationship.target_id).filter(
+                                ArchiMateRelationship.target_id.in_(linked_ae_ids)
+                            )
+                        )
+                        .all()
+                    )
+                    for (ae_id_hit,) in rel_rows:
+                        rel_count_by_ae_id[ae_id_hit] = rel_count_by_ae_id.get(ae_id_hit, 0) + 1
                 # F-08(a), Capgemini dry-run: the edit modal's typedFieldDefaults()
                 # (dashboard.js) reads source[name] for each of this type's
                 # configured fields (goal_type, driver_type, category, ...) —
@@ -739,7 +763,9 @@ def api_layer_elements(layer):
                         "source": "portfolio",
                         "properties": getattr(elem, "properties", None) or "",
                         "plateau": plateau_by_ae_id.get(ae_id) if ae_id else None,
-                        "rel_count": None,
+                        # None (not 0) when there is no linked ArchiMateElement at
+                        # all -- that is genuinely unmeasured, not "zero relationships".
+                        "rel_count": rel_count_by_ae_id.get(ae_id, 0) if ae_id else None,
                     }
                     # architecture_state is the form's name for the plateau
                     # select; the API calls the same value "plateau" — map it
