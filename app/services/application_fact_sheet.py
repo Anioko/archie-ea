@@ -171,6 +171,15 @@ def _diagrams(app: Any) -> List[Dict[str, Any]]:
             for d in q.all()]
 
 
+def _linked_risks(app_id: int) -> List[Dict[str, Any]]:
+    """H1: risks mapped to this application via the Risk Register's
+    "Map to…" picker (RiskEntityLink). Import deferred to avoid a module-load
+    cycle (risk_service imports app.services.archimate_backbone)."""
+    from app.services.risk_service import links_for_entity
+
+    return links_for_entity("application", app_id)
+
+
 def build_fact_sheet(app: Any) -> Dict[str, Any]:
     """Assemble the full fact sheet for one ApplicationComponent instance."""
     org_id = getattr(app, "organization_id", None)
@@ -181,4 +190,5 @@ def build_fact_sheet(app: Any) -> Dict[str, Any]:
         "capabilities": _capabilities(app.id, org_id),
         "dependencies": _dependencies(app),
         "diagrams": _diagrams(app),
+        "linked_risks": _linked_risks(app.id),
     }

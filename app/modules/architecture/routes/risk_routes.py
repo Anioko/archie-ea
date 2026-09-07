@@ -8,6 +8,7 @@ from flask_login import login_required
 from app import db
 from app.models.raid_item import RaidItem, RaidKind, RaidStatus
 from app.models.risk import Risk
+from app.models.risk_entity_link import ENTITY_TYPES
 from app.services import risk_service
 
 logger = logging.getLogger(__name__)
@@ -58,16 +59,123 @@ def create_risk():
 @risk_bp.route("/api/risks/<int:risk_id>", methods=["PATCH"])
 @login_required
 def update_risk(risk_id):
-    """PATCH /api/risks/<id> — update risk status."""
+    """PATCH /api/risks/<id> — update risk status, or a full field edit.
+
+    Kept as one endpoint (status-only vs. full edit) rather than splitting
+    into two routes: the table's inline status actions and the H2 slide-over's
+    Edit form both PATCH here, and a caller sending only `status` gets the
+    original narrow behaviour unchanged.
+    """
     data = request.get_json(force=True) or {}
     status = data.get("status")
-    if not status:
-        return jsonify({"error": "status is required"}), 400
+    other_fields = {k: v for k, v in data.items() if k != "status"}
     try:
-        risk = risk_service.update_risk_status(risk_id, status)
+        if other_fields:
+            risk = risk_service.update_risk(risk_id, **other_fields)
+            if status:
+                risk = risk_service.update_risk_status(risk_id, status)
+        elif status:
+            risk = risk_service.update_risk_status(risk_id, status)
+        else:
+            return jsonify({"error": "status or an editable field is required"}), 400
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
-    return jsonify(risk.to_dict()), 200
+    return jsonify(serialize_risk_row(risk)), 200
+
+
+@risk_bp.route("/api/risks/<int:risk_id>", methods=["GET"])
+@login_required
+def get_risk(risk_id):
+    """GET /api/risks/<id> — single risk, for the H2 detail slide-over."""
+    risk = Risk.query.get_or_404(risk_id)
+    return jsonify(serialize_risk_row(risk)), 200
+
+
+@risk_bp.route("/api/risks/<int:risk_id>", methods=["DELETE"])
+@login_required
+def delete_risk(risk_id):
+    """DELETE /api/risks/<id> — H2: the register could create a risk but
+    never remove one, even a duplicate or a mistake."""
+    Risk.query.get_or_404(risk_id)
+    risk_service.delete_risk(risk_id)
+    return jsonify({"success": True}), 200
+
+
+@risk_bp.route("/api/risks/<int:risk_id>/links", methods=["GET"])
+@login_required
+def list_risk_links(risk_id):
+    """GET /api/risks/<id>/links — H1: entities this risk is mapped to."""
+    Risk.query.get_or_404(risk_id)
+    links = risk_service.list_risk_links(risk_id)
+    return jsonify(
+        [
+            {**link.to_dict(), "entity_label": _entity_label(link.entity_type, link.entity_id)}
+            for link in links
+        ]
+    ), 200
+
+
+@risk_bp.route("/api/risks/<int:risk_id>/links", methods=["POST"])
+@login_required
+def add_risk_link(risk_id):
+    """POST /api/risks/<id>/links — H1: map a risk to an Application, Solution
+    or Programme. {"entity_type": "application"|"solution"|"programme",
+    "entity_id": <int>}"""
+    data = request.get_json(force=True) or {}
+    entity_type = data.get("entity_type")
+    entity_id = data.get("entity_id")
+    if entity_type not in ENTITY_TYPES or not entity_id:
+        return jsonify(
+            {"error": f"entity_type (one of {ENTITY_TYPES}) and entity_id are required"}
+        ), 400
+    try:
+        link = risk_service.add_risk_link(risk_id, entity_type, entity_id)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    return jsonify(
+        {**link.to_dict(), "entity_label": _entity_label(link.entity_type, link.entity_id)}
+    ), 201
+
+
+@risk_bp.route("/api/risks/<int:risk_id>/links/<int:link_id>", methods=["DELETE"])
+@login_required
+def remove_risk_link(risk_id, link_id):
+    """DELETE /api/risks/<id>/links/<link_id> — unmap a risk from an entity."""
+    risk_service.remove_risk_link(risk_id, link_id)
+    return jsonify({"success": True}), 200
+
+
+@risk_bp.route("/api/programmes/search", methods=["GET"])
+@login_required
+def search_programmes():
+    """GET /api/programmes/search?q=... — the H1 entity picker's Programme
+    tab. "Programme" in the product vocabulary is StrategicInitiative in the
+    schema (app/models/transformation_programme.py: ProgrammeWorkstream.programme_id
+    -> strategic_initiatives.id) -- there was no existing search endpoint for
+    it, unlike Applications (DESIGN.md's documented `/applications/api/list`).
+    """
+    from app.models.strategic import StrategicInitiative
+
+    q = (request.args.get("q") or "").strip()
+    query = StrategicInitiative.query
+    if q:
+        query = query.filter(StrategicInitiative.name.ilike(f"%{q}%"))
+    rows = query.order_by(StrategicInitiative.name).limit(10).all()
+    return jsonify([{"id": r.id, "name": r.name} for r in rows]), 200
+
+
+@risk_bp.route("/api/solutions/search", methods=["GET"])
+@login_required
+def search_solutions_for_risk_link():
+    """GET /api/solutions/search?q=... — the H1 entity picker's Solution tab."""
+    from app.models.solution_models import Solution
+
+    q = (request.args.get("q") or "").strip()
+    query = Solution.query
+    if q:
+        query = query.filter(Solution.name.ilike(f"%{q}%"))
+    rows = query.order_by(Solution.name).limit(10).all()
+    return jsonify([{"id": r.id, "name": r.name} for r in rows]), 200
 
 
 @risk_bp.route("/api/raid", methods=["GET"])
@@ -197,6 +305,28 @@ _RISK_SORT_COLUMNS = {
 }
 
 
+def _entity_label(entity_type, entity_id):
+    """Human label for a linked Application/Solution/Programme -- the H2
+    slide-over and H1's parent-side "Linked risks" sections both need a name,
+    not just an id, and each entity type lives in a different model."""
+    try:
+        if entity_type == "application":
+            from app.models.application_portfolio import ApplicationComponent
+            row = ApplicationComponent.query.get(entity_id)
+        elif entity_type == "solution":
+            from app.models.solution_models import Solution
+            row = Solution.query.get(entity_id)
+        elif entity_type == "programme":
+            from app.models.strategic import StrategicInitiative
+            row = StrategicInitiative.query.get(entity_id)
+        else:
+            return None
+        return getattr(row, "name", None) if row else None
+    except Exception:  # noqa: BLE001 -- a stale/orphaned link must not break the page
+        logger.warning("Could not resolve %s #%s for a risk link", entity_type, entity_id, exc_info=True)
+        return None
+
+
 def serialize_risk_row(risk):
     """The one place a Risk becomes a row for the shared data_table component.
 
@@ -204,16 +334,29 @@ def serialize_risk_row(risk):
     expectation from the same serialization the route actually renders,
     rather than a second, independently-maintained copy that can drift.
     """
+    links = risk_service.list_risk_links(risk.id)
     return {
         "id": risk.id,
         "title": risk.title,
         "description": risk.description or "",
+        "mitigation_plan": risk.mitigation_plan or "",
         "owner": risk.owner or "—",
         "likelihood": risk.likelihood,
         "impact": risk.impact,
         "risk_score": risk.risk_score,
         "risk_level": risk.risk_level,
         "status": risk.status.value,
+        "entity_links": [
+            {
+                "id": link.id,
+                "entity_type": link.entity_type,
+                "entity_id": link.entity_id,
+                # None (not a fabricated placeholder) when the linked row is
+                # gone -- the UI shows this distinctly, same rule as M4.
+                "entity_label": _entity_label(link.entity_type, link.entity_id),
+            }
+            for link in links
+        ],
     }
 
 

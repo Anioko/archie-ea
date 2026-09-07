@@ -146,12 +146,40 @@
     {% endcall %}
 
     {% call panel('Risk posture', 'shield-alert') %}
+    {# H1: these four fields are set by hand on this record and are NOT
+       derived from the Risk Register (/risks/) -- without this note the two
+       could read as the same thing disagreeing, the way /applications/{id}
+       vs /applications/{id}/fact-sheet's completeness score used to (M3). #}
+    <p class="text-xs text-muted-foreground mb-2">Manually set — not derived from the Risk Register.</p>
     <dl>
       {{ drow('Business risk', app.business_risk | capitalize if app.business_risk else none) }}
       {{ drow('Technical risk', app.technical_risk | capitalize if app.technical_risk else none) }}
       {{ drow('Vendor risk', app.vendor_risk | capitalize if app.vendor_risk else none) }}
       {{ drow('Obsolescence risk', app.obsolescence_risk | capitalize if app.obsolescence_risk else none) }}
     </dl>
+    {% endcall %}
+
+    {% call panel('Linked risks', 'shield-alert') %}
+    {# H1: risks mapped to this application via the Risk Register's
+       "Map to…" picker (app/models/risk_entity_link.py). #}
+    {% if linked_risks %}
+    <ul class="divide-y divide-border">
+      {% for risk in linked_risks %}
+      <li class="py-2 flex items-center justify-between gap-3">
+        <div class="min-w-0">
+          <a href="{{ url_for('risk.risk_register') }}" class="text-sm font-medium text-foreground hover:underline truncate block">{{ risk.title }}</a>
+          <span class="text-xs text-muted-foreground">{{ risk.status | capitalize }} · Owner: {{ risk.owner or '—' }}</span>
+        </div>
+        <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium shrink-0
+          {% if risk.risk_level == 'critical' %}bg-destructive/10 text-destructive-emphasis
+          {% elif risk.risk_level == 'high' %}bg-warning/10 text-warning-emphasis
+          {% else %}bg-muted text-muted-foreground{% endif %}">{{ risk.risk_level | capitalize }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="text-sm text-muted-foreground">No risks mapped to this application yet. Use "Map to…" on a risk in the <a href="{{ url_for('risk.risk_register') }}" class="text-primary hover:underline">Risk Register</a>.</p>
+    {% endif %}
     {% endcall %}
 
     {% call panel('Business capabilities realised', 'layers') %}
