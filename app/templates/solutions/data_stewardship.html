@@ -5,7 +5,14 @@
 {% block title %}Data Stewardship{% endblock %}
 
 {% block content %}
-<div class="p-6 space-y-6 mx-auto max-w-5xl">
+{# L4: Auto-classify persists correctly but the finding/flagged counters below
+   were plain Jinja text, so they never moved until a reload. A root-level
+   Alpine store holds the live counts; the per-finding fix() handler
+   dispatches an event this root listens for and decrements `flagged` in
+   place, no reload needed. #}
+<div class="p-6 space-y-6 mx-auto max-w-5xl"
+     x-data="{ flaggedCount: {{ review.flagged|default(0, true) }} }"
+     @stewardship-finding-resolved.window="flaggedCount = Math.max(0, flaggedCount - 1)">
     {{ page_header(
         title='Data Architecture Stewardship',
         description='The AI Data Architect reviews the data layer for a coherent canonical model, classified sensitive data, and traceable lineage — read live across the DataObject catalogue, application classifications and integration flows.',
@@ -29,12 +36,15 @@
         </span>
         <div class="min-w-0">
             <h2 class="text-base font-semibold text-foreground">
-                {% if review.flagged %}{{ review.flagged }} item{{ '' if review.flagged == 1 else 's' }} need{{ 's' if review.flagged == 1 else '' }} attention{% else %}Data layer coherent{% endif %}
+                <span x-show="flaggedCount > 0" x-cloak><span x-text="flaggedCount"></span> item<span x-show="flaggedCount !== 1" x-cloak>s</span> need<span x-show="flaggedCount === 1" x-cloak>s</span> attention</span>
+                <span x-show="flaggedCount === 0" x-cloak>Data layer coherent</span>
+                {# Alpine hydrates client-side; keep the server-rendered text visible until then so JS-disabled/slow clients still see a value. #}
+                <noscript>{% if review.flagged %}{{ review.flagged }} item{{ '' if review.flagged == 1 else 's' }} need{{ 's' if review.flagged == 1 else '' }} attention{% else %}Data layer coherent{% endif %}</noscript>
             </h2>
             <p class="text-sm text-muted-foreground mt-1">{{ review.summary }}</p>
             <div class="flex items-center gap-4 mt-3 text-xs">
                 <span class="text-foreground"><strong>{{ review.finding_count }}</strong> finding{{ '' if review.finding_count == 1 else 's' }}</span>
-                <span class="{% if review.flagged %}text-warning-emphasis{% else %}text-muted-foreground{% endif %}"><strong>{{ review.flagged }}</strong> need attention</span>
+                <span :class="flaggedCount > 0 ? 'text-warning-emphasis' : 'text-muted-foreground'"><strong x-text="flaggedCount">{{ review.flagged }}</strong> need attention</span>
             </div>
         </div>
     </div>
@@ -67,6 +77,8 @@
                                         if (d.success) {
                                             self.done=true;
                                             self.msg=d.classified+' classified ('+d.confidential+' confidential, '+d.internal+' internal)';
+                                            // L4: update the page-level flagged counter in place -- no reload.
+                                            self.$dispatch('stewardship-finding-resolved');
                                         } else {
                                             self.msg='';
                                             self.errorMsg = d.error || 'Classification failed';

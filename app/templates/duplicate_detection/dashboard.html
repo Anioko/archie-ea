@@ -36,9 +36,15 @@
          :class="runFeedback.status === 'running' ? 'bg-primary/5 border-primary/30' : (runFeedback.status === 'success' ? 'bg-success/10 border-success/30' : 'bg-destructive/10 border-destructive/30')">
       <div class="flex items-start justify-between gap-4">
         <div class="flex items-start gap-3 min-w-0">
-          <i x-show="runFeedback.status === 'running'" x-cloak data-lucide="loader" class="w-5 h-5 text-primary animate-spin mt-0.5" aria-hidden="true"></i>
-          <i x-show="runFeedback.status === 'success'" x-cloak data-lucide="check-circle-2" class="w-5 h-5 text-success mt-0.5" aria-hidden="true"></i>
-          <i x-show="runFeedback.status === 'error'" x-cloak data-lucide="alert-circle" class="w-5 h-5 text-destructive mt-0.5" aria-hidden="true"></i>
+          {# M7: x-show must live on a wrapper span, not directly on the
+             data-lucide element -- lucide.createIcons() replaces that element
+             with a freshly built <svg> that does not carry Alpine's binding,
+             so the "hidden" running/error icons stopped hiding themselves
+             once lucide re-ran after a completed detection run, leaving all
+             three status icons visible at once. #}
+          <span x-show="runFeedback.status === 'running'" x-cloak><i data-lucide="loader" class="w-5 h-5 text-primary animate-spin mt-0.5" aria-hidden="true"></i></span>
+          <span x-show="runFeedback.status === 'success'" x-cloak><i data-lucide="check-circle-2" class="w-5 h-5 text-success mt-0.5" aria-hidden="true"></i></span>
+          <span x-show="runFeedback.status === 'error'" x-cloak><i data-lucide="alert-circle" class="w-5 h-5 text-destructive mt-0.5" aria-hidden="true"></i></span>
           <div class="min-w-0">
             <p class="text-sm font-semibold text-foreground" x-text="runFeedback.title"></p>
             <p class="text-sm text-muted-foreground mt-0.5" x-text="runFeedback.message"></p>
