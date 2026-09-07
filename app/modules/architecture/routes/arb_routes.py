@@ -2414,16 +2414,23 @@ ARB_IMPACT_TYPES = [
 def api_form_data():
     """API endpoint to get form data for create review modal."""
     try:
-        from app.models.adr import ArchitectureDecisionRecord
+        from app.models.architecture_decision import ArchitectureDecision
         from app.models.application_portfolio import ApplicationComponent
         from app.models.models import ArchitectureModel
         from app.models.truly_missing_models import Solution
         from app.models.unified_capability import UnifiedCapability
 
         solutions = Solution.query.order_by(Solution.name).limit(200).all()
+        # E2E-H: this dropdown read ArchitectureDecisionRecord, a model with
+        # 0 rows in production -- the Decision Register a user actually
+        # reaches (/architecture/decisions/new) writes ArchitectureDecision.
+        # Same class of defect as the risk-rollup fix earlier this session
+        # (029f59a9): two models answering "what is an ADR", one live, one
+        # dead. Confirmed 0 ArchitectureDecisionRecord / 7 ArchitectureDecision
+        # rows in production before switching, so nothing is orphaned.
         adrs = (
-            ArchitectureDecisionRecord.query.order_by(
-                ArchitectureDecisionRecord.created_at.desc()
+            ArchitectureDecision.query.order_by(
+                ArchitectureDecision.created_at.desc()
             )
             .limit(50)
             .all()
@@ -2445,7 +2452,7 @@ def api_form_data():
                 "success": True,
                 "solutions": [{"id": s.id, "name": s.name} for s in solutions],
                 "adrs": [
-                    {"id": a.id, "adr_number": a.adr_number, "title": a.title}
+                    {"id": a.id, "adr_number": a.decision_id, "title": a.title}
                     for a in adrs
                 ],
                 "architecture_models": [
