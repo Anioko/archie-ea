@@ -278,12 +278,17 @@
                             </td>
                             {# Application name #}
                             <td class="px-4 py-3">
-                                <div class="font-medium text-sm" x-text="entry.application_name"></div>
-                                <div class="text-xs text-muted-foreground">
-                                    <span x-text="entry.application_owner || ''"></span>
-                                    <span x-show="entry.business_domain" x-text="' · ' + entry.business_domain" x-cloak></span>
-                                    <span x-show="entry.user_count" x-text="' · ' + entry.user_count + ' users'" x-cloak></span>
+                                <div class="flex items-center gap-1.5">
+                                    <div class="font-medium text-sm" :class="entry.application_orphaned ? 'text-destructive' : ''" x-text="entry.application_name"></div>
+                                    {# M4: an orphaned FK (the source application row was deleted) used to
+                                       read identically to "Unknown" data on a real row -- flag it distinctly. #}
+                                    <span x-show="entry.application_orphaned" x-cloak
+                                          class="inline-flex items-center gap-1 rounded-md bg-destructive/10 px-1.5 py-0.5 text-2xs font-medium text-destructive border border-destructive/30"
+                                          title="The source application record no longer exists">
+                                        <i data-lucide="unlink" class="h-2.5 w-2.5" aria-hidden="true"></i> Orphaned
+                                    </span>
                                 </div>
+                                <div class="text-xs text-muted-foreground" x-text="entryMetaLine(entry)"></div>
                             </td>
                             {# Action badge #}
                             <td class="px-4 py-3">

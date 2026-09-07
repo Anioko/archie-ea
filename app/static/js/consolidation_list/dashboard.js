@@ -137,6 +137,19 @@ document.addEventListener('alpine:init', function() {
                     return score ? label + ' (' + Math.round(score) + ')' : label;
                 },
 
+                // M4: application_owner / business_domain / user_count each used
+                // to render their own leading " · " independently, so a row
+                // missing an earlier field (e.g. no owner set) left a dangling
+                // separator with nothing before it ("· domain"). Join only the
+                // parts that actually have a value.
+                entryMetaLine: function(entry) {
+                    let parts = [];
+                    if (entry.application_owner) parts.push(entry.application_owner);
+                    if (entry.business_domain) parts.push(entry.business_domain);
+                    if (entry.user_count) parts.push(entry.user_count + ' users');
+                    return parts.join(' · ');
+                },
+
                 actionBadgeClass: function(action) {
                     let map = {
                         'consolidate': 'bg-blue-500/10 text-primary border-blue-500/30',
