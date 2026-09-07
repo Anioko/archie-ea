@@ -56,7 +56,10 @@ class ARBConditionEvidenceRecord(TenantMixin, db.Model):
     decision_brief_id = db.Column(db.Integer, db.ForeignKey("decision_briefs.id", ondelete="RESTRICT"))
     solution_id = db.Column(db.Integer, db.ForeignKey("solutions.id", ondelete="RESTRICT"))
     architecture_model_id = db.Column(db.Integer, db.ForeignKey("architecture_models.id", ondelete="RESTRICT"))
-    adr_id = db.Column(db.Integer, db.ForeignKey("architecture_decision_records.id", ondelete="RESTRICT"))
+    # E2E-H: repointed from architecture_decision_records (0 rows in
+    # production, unreachable via any real UI) to architecture_decisions,
+    # the model the real Decision Register writes.
+    adr_id = db.Column(db.Integer, db.ForeignKey("architecture_decisions.id", ondelete="RESTRICT"))
     decision_brief_version_id = db.Column(db.Integer, db.ForeignKey("decision_brief_versions.id", ondelete="RESTRICT"))
     solution_evidence_snapshot_id = db.Column(db.Integer, db.ForeignKey("arb_submission_evidence_snapshots.id", ondelete="RESTRICT"))
     subject_evidence_snapshot_id = db.Column(db.Integer, db.ForeignKey("arb_subject_evidence_snapshots.id", ondelete="RESTRICT"))

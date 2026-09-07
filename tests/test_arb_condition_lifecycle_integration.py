@@ -131,7 +131,7 @@ def test_submit_verify_and_projection_commit_under_real_guards(
         ARBDecisionEvent,
         ensure_arb_decision_guards,
     )
-    from app.models.adr import ArchitectureDecisionRecord
+    from app.models.architecture_decision import ArchitectureDecision
     from app.models.architecture_review_board import (
         ARBReviewCycle,
         ARBReviewItem,
@@ -180,12 +180,12 @@ def test_submit_verify_and_projection_commit_under_real_guards(
     )
     db_session.add_all((submitter, verifier))
     db_session.flush()
-    adr = ArchitectureDecisionRecord(
-        organization_id=org.id, adr_number=int(suffix[:7], 16),
+    adr = ArchitectureDecision(
+        organization_id=org.id, decision_id=f"AD-{suffix[:7]}",
         title=f"C3 lifecycle {suffix}", status="proposed",
         context="A governed choice needs evidence.",
         decision="Adopt the governed option.", rationale="It is testable.",
-        consequences="Conditions must be verified.", created_by=submitter.email,
+        consequences="Conditions must be verified.", created_by_id=submitter.id,
     )
     db_session.add(adr)
     db_session.commit()
@@ -443,7 +443,7 @@ def test_automatic_expiry_is_bounded_tenant_explicit_concurrent_and_retry_safe(
     app, db_session, make_org, monkeypatch
 ):
     from app import db
-    from app.models.adr import ArchitectureDecisionRecord
+    from app.models.architecture_decision import ArchitectureDecision
     from app.models.arb_condition_event import (
         ARBConditionEvent,
         ensure_arb_condition_event_guards,
@@ -510,16 +510,16 @@ def test_automatic_expiry_is_bounded_tenant_explicit_concurrent_and_retry_safe(
         nonlocal serial
         serial += 1
         submitter_id, principal_id = users[organization_id]
-        adr = ArchitectureDecisionRecord(
+        adr = ArchitectureDecision(
             organization_id=organization_id,
-            adr_number=int(suffix[:6], 16) + serial,
+            decision_id=f"AD-{suffix[:6]}{serial}",
             title=f"Automatic expiry {suffix} {serial}",
             status="proposed",
             context="A time-bound waiver needs automatic expiry.",
             decision="Use the governed expiry worker.",
             rationale="The lifecycle must remain auditable.",
             consequences="Expired conditions block execution again.",
-            created_by=f"expiry-submit-{organization_id}-{suffix}@example.test",
+            created_by_id=submitter_id,
         )
         db_session.add(adr)
         db_session.commit()

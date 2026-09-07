@@ -28,7 +28,6 @@ from flask import g
 from flask_login import login_user
 
 from app import db
-from app.models.adr import ArchitectureDecisionRecord
 from app.models.architecture_review_board import ARBReviewCycle, ARBReviewItem
 from app.models.arb_decision_event import ARBCondition, ARBDecisionEvent
 from app.models.organization import Organization
@@ -164,7 +163,7 @@ def _install_guards(db_session):
 
 def _seed_typed_cycle(db_session, make_org, label="l1"):
     """Create a tenant, a submitter, a decider and one open typed ADR cycle."""
-    from app.models.adr import ArchitectureDecisionRecord
+    from app.models.architecture_decision import ArchitectureDecision
     from app.models.architecture_review_board import ARBReviewItem
     from app.models.user import Permission, Role, User
     from app.modules.transformation_room.arb_submission_service import (
@@ -198,16 +197,16 @@ def _seed_typed_cycle(db_session, make_org, label="l1"):
     db_session.flush()
     submitter.role_id = role.id
     decider.role_id = role.id
-    adr = ArchitectureDecisionRecord(
+    adr = ArchitectureDecision(
         organization_id=org.id,
-        adr_number=int(suffix[:7], 16),
+        decision_id=f"AD-{suffix[:7]}",
         title=f"L1 typed decision {suffix}",
         status="proposed",
         context="A governed choice needs a recorded decision.",
         decision="Adopt the governed option.",
         rationale="It is testable.",
         consequences="A decision event must exist.",
-        created_by=submitter.email,
+        created_by_id=submitter.id,
     )
     db_session.add(adr)
     db_session.commit()
@@ -404,7 +403,7 @@ def test_typed_decision_envelope_keeps_legacy_aliases_and_adds_canonical_ids(
     assert body["review_item_id"] == fixture.review_item_id
     assert isinstance(body["decision_event_id"], int)
     assert len(body["condition_ids"]) == 2
-    assert body["canonical_url"] == f"/architecture/adrs/records/{fixture.adr_id}"
+    assert body["canonical_url"] == f"/architecture/decisions/{fixture.adr_id}"
     assert body["outcome"] == "approved_with_conditions"
     assert body["idempotent"] is False
 
@@ -893,16 +892,18 @@ def _user(
 
 
 def _adr(session, org, submitter):
-    record = ArchitectureDecisionRecord(
+    from app.models.architecture_decision import ArchitectureDecision
+
+    record = ArchitectureDecision(
         organization_id=org.id,
-        adr_number=int(uuid.uuid4().hex[:7], 16),
+        decision_id=f"AD-{uuid.uuid4().hex[:7]}",
         title=f"Typed route ADR {uuid.uuid4().hex[:8]}",
         status="proposed",
         context="A governed integration choice is required.",
         decision="Use the enterprise event platform.",
         rationale="It supplies durable delivery and schema governance.",
         consequences="Teams must version event schemas.",
-        created_by=submitter.email,
+        created_by_id=submitter.id,
     )
     session.add(record)
     session.flush()

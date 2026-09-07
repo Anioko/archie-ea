@@ -58,23 +58,23 @@ def _build_adr_cycle(
     predecessor_cycle_id=None,
 ):
     """Create one ADR subject, its pinned snapshot, cycle and review item."""
-    from app.models.adr import ArchitectureDecisionRecord
+    from app.models.architecture_decision import ArchitectureDecision
     from app.models.architecture_review_board import ARBReviewCycle, ARBReviewItem
     from app.models.transformation_decision import ARBSubjectEvidenceSnapshot
 
     suffix = uuid.uuid4().hex[:10]
     _sql(db_session, "SET LOCAL session_replication_role = replica")
     existing_adr = adr
-    adr = existing_adr or ArchitectureDecisionRecord(
+    adr = existing_adr or ArchitectureDecision(
         organization_id=org.id,
-        adr_number=int(suffix[:7], 16),
+        decision_id=f"AD-{suffix[:7]}",
         title=f"Read model ADR {suffix}",
         status="proposed",
         context="A governed choice needs evidence.",
         decision="Adopt the governed option.",
         rationale="It is testable.",
         consequences="Conditions must be verified.",
-        created_by=submitter.email,
+        created_by_id=submitter.id,
     )
     if existing_adr is None:
         db_session.add(adr)
@@ -351,7 +351,7 @@ def test_queue_excludes_other_tenants(db_session, make_org, tenant_ctx):
     )
     assert item["subject_type"] == "adr"
     assert item["subject_title"] == graph.adr.title
-    assert item["canonical_url"] == f"/architecture/adrs/records/{graph.adr.id}"
+    assert item["canonical_url"] == f"/architecture/decisions/{graph.adr.id}"
     assert item["required_action_label"] == "Record a decision"
     assert item["is_historical_unverified"] is False
     assert item["submitter_display"] == submitter.email

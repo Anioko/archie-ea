@@ -32,7 +32,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.exc import SQLAlchemyError
 
 from app import db
-from app.models.adr import ArchitectureDecisionRecord
+from app.models.architecture_decision import ArchitectureDecision
 from app.models.models import ArchitectureModel
 from app.models.arb_condition_event import ARBConditionEvent
 from app.models.arb_condition_evidence import ARBConditionEvidenceRecord
@@ -221,9 +221,9 @@ class TypedARBReadModel:
         if subject_type == "adr":
             row = cls._one(
                 session,
-                ArchitectureDecisionRecord,
-                ArchitectureDecisionRecord.id == subject_id,
-                ArchitectureDecisionRecord.organization_id == actor.organization_id,
+                ArchitectureDecision,
+                ArchitectureDecision.id == subject_id,
+                ArchitectureDecision.organization_id == actor.organization_id,
             )
             return getattr(row, "title", None)
         return None
@@ -240,7 +240,10 @@ class TypedARBReadModel:
         if subject_type == "architecture_model":
             return "/architecture/models"
         if subject_type == "adr":
-            return f"/architecture/adrs/records/{subject_id}"
+            # E2E-H: was /architecture/adrs/records/<id>, a JSON-only
+            # endpoint reading ArchitectureDecisionRecord (0 rows in
+            # production). The real page is arch_decisions.view_decision.
+            return f"/architecture/decisions/{subject_id}"
         if subject_type == "decision_brief":
             version = cls._pinned_decision_brief_version(session, actor, cycle)
             if version is None:

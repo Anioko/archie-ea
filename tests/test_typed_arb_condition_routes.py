@@ -111,7 +111,7 @@ class _Fixture:
 
 def _seed(db_session, make_org, label, *, conditions=2):
     """Seed one tenant with a submitted ADR approved with conditions."""
-    from app.models.adr import ArchitectureDecisionRecord
+    from app.models.architecture_decision import ArchitectureDecision
     from app.models.user import User
     from app.modules.transformation_room.arb_decision_service import (
         TypedARBDecisionService,
@@ -144,16 +144,16 @@ def _seed(db_session, make_org, label, *, conditions=2):
     )
     db_session.add_all((submitter, authority, bystander))
     db_session.flush()
-    adr = ArchitectureDecisionRecord(
+    adr = ArchitectureDecision(
         organization_id=org.id,
-        adr_number=int(suffix[:7], 16),
+        decision_id=f"AD-{suffix[:7]}",
         title=f"Typed condition ingress {suffix}",
         status="proposed",
         context="A governed choice needs evidence.",
         decision="Adopt the governed option.",
         rationale="It is testable.",
         consequences="Conditions must be verified.",
-        created_by=submitter.email,
+        created_by_id=submitter.id,
     )
     db_session.add(adr)
     db_session.commit()

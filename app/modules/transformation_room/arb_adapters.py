@@ -13,7 +13,7 @@ from types import SimpleNamespace
 from typing import Any, Mapping, Protocol, runtime_checkable
 
 from app import db
-from app.models.adr import ArchitectureDecisionRecord
+from app.models.architecture_decision import ArchitectureDecision
 from app.models.architecture_review_board import ARBGovernanceStandard
 from app.models.models import ArchiMateElement, ArchiMateRelationship, ArchitectureModel
 from app.models.solution_models import Solution
@@ -720,23 +720,32 @@ class ArchitectureModelARBAdapter(_SubjectSnapshotAdapter):
 class ADRARBAdapter(_SubjectSnapshotAdapter):
     __slots__ = ()
     subject_type = "adr"
-    model_type = ArchitectureDecisionRecord
+    # E2E-H: this was ArchitectureDecisionRecord (app/models/adr.py), a
+    # model with 0 rows in production -- the real Decision Register a
+    # user reaches at /architecture/decisions/new writes ArchitectureDecision
+    # instead (same defect class as the risk-rollup fix, commit 029f59a9,
+    # and the ARB dropdown fix, commit 73795d4d, which already switched
+    # arb.api_form_data's read side). ArchitectureDecision has no separate
+    # review_status axis -- status alone (proposed/under_review/accepted/
+    # rejected/deprecated/superseded/expired) IS its review state, so the
+    # gate below now checks status alone rather than inventing an
+    # always-null review_status column nothing would ever populate.
+    model_type = ArchitectureDecision
     policy_version = "adr-arb-r2"
     review_type = "architecture_change"
     required_fields = ("title", "context", "decision", "rationale", "consequences")
 
     @staticmethod
     def _canonical_url(subject_id):
-        return f"/architecture/adrs/records/{subject_id}"
+        return f"/architecture/decisions/{subject_id}"
 
     def _server_evidence(self, row, *, lock=False):
         blockers = []
-        if row.status != "proposed" or row.review_status not in {None, "pending", "changes-requested"}:
+        if row.status != "proposed":
             blockers.append(
                 {
                     "code": "adr_state_not_submittable",
                     "status": row.status,
-                    "review_status": row.review_status,
                 }
             )
         for field in (
@@ -754,7 +763,12 @@ class ADRARBAdapter(_SubjectSnapshotAdapter):
                 json.loads(value)
             except (TypeError, ValueError):
                 blockers.append({"code": "adr_json_invalid", "field": field})
-        if row.architecture_model_id is not None:
+        # ArchitectureDecision has no architecture_model_id column -- it
+        # links to a solution and to ArchiMate elements directly, not to a
+        # standalone ArchitectureModel row. getattr (not direct attribute
+        # access) makes this block correctly never trigger for this model
+        # instead of raising AttributeError on every real decision.
+        if getattr(row, "architecture_model_id", None) is not None:
             linked_model_statement = db.select(ArchitectureModel).where(
                     ArchitectureModel.id == row.architecture_model_id,
                     ArchitectureModel.organization_id == row.organization_id,
@@ -788,22 +802,29 @@ class ADRARBAdapter(_SubjectSnapshotAdapter):
                     parsed = []
                 if isinstance(parsed, list):
                     linked_adr_ids.extend(item for item in parsed if isinstance(item, int))
+        # ArchitectureDecision tracks supersession one-directionally
+        # (superseded_by_id only -- no reverse "supersedes" column, unlike
+        # ArchitectureDecisionRecord's pair). getattr keeps this correct
+        # for both directions without inventing a column nothing sets.
         linked_adr_ids.extend(
             item
-            for item in (row.supersedes_adr_id, row.superseded_by_adr_id)
+            for item in (
+                getattr(row, "supersedes_adr_id", None),
+                getattr(row, "superseded_by_id", None),
+            )
             if item is not None
         )
         linked_adr_ids = sorted(set(linked_adr_ids))
         if row.id in linked_adr_ids:
             blockers.append({"code": "adr_self_reference"})
         if linked_adr_ids:
-            linked_adrs_statement = db.select(ArchitectureDecisionRecord).where(
-                        ArchitectureDecisionRecord.id.in_(linked_adr_ids),
-                        ArchitectureDecisionRecord.organization_id == row.organization_id,
+            linked_adrs_statement = db.select(ArchitectureDecision).where(
+                        ArchitectureDecision.id.in_(linked_adr_ids),
+                        ArchitectureDecision.organization_id == row.organization_id,
                     )
             if lock:
                 linked_adrs_statement = linked_adrs_statement.with_for_update(
-                    of=ArchitectureDecisionRecord
+                    of=ArchitectureDecision
                 ).execution_options(populate_existing=True)
             linked_adrs = list(db.session.execute(linked_adrs_statement).scalars())
             resolved = {item.id for item in linked_adrs}

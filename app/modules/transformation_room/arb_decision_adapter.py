@@ -818,7 +818,10 @@ class TypedARBDecisionAdapter:
         if cycle.subject_type == "solution" and cycle.subject_id:
             return f"/solutions/{cycle.subject_id}?tab=governance"
         if cycle.subject_type == "adr" and cycle.subject_id:
-            return f"/architecture/adrs/records/{cycle.subject_id}"
+            # E2E-H: was /architecture/adrs/records/<id>, a JSON-only
+            # endpoint reading ArchitectureDecisionRecord (0 rows in
+            # production). The real page is arch_decisions.view_decision.
+            return f"/architecture/decisions/{cycle.subject_id}"
         if cycle.subject_type == "architecture_model":
             return "/architecture/models"
         return None

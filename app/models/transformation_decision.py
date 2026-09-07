@@ -52,9 +52,12 @@ class ARBSubjectEvidenceSnapshot(TenantMixin, db.Model):
         nullable=True,
         index=True,
     )
+    # E2E-H: repointed from architecture_decision_records (0 rows in
+    # production, unreachable via any real UI) to architecture_decisions,
+    # the model the real Decision Register writes.
     adr_id = db.Column(
         db.Integer,
-        db.ForeignKey("architecture_decision_records.id", ondelete="RESTRICT"),
+        db.ForeignKey("architecture_decisions.id", ondelete="RESTRICT"),
         nullable=True,
         index=True,
     )

@@ -10,6 +10,7 @@ import pytest
 
 from app import db
 from app.models.adr import ArchitectureDecisionRecord
+from app.models.architecture_decision import ArchitectureDecision
 from app.models.architecture_review_board import ARBGovernanceStandard, ARBReviewItem
 from app.models.arb_submission_evidence import ARBSubmissionEvidenceSnapshot
 from app.models.audit_log import AuditLog
@@ -310,34 +311,25 @@ def test_model_adapter_load_evaluate_snapshot_and_url_are_tenant_bound(
 def test_adr_adapter_load_evaluate_snapshot_and_url_are_tenant_bound(
     db_session, make_org
 ):
+    # E2E-H: ADRARBAdapter now resolves ArchitectureDecision (the model the
+    # real Decision Register writes), not ArchitectureDecisionRecord (0 rows
+    # in production). ArchitectureDecision has no architecture_model_id,
+    # alternatives_considered, risks or governance_blob columns -- those
+    # were ArchitectureDecisionRecord-specific, and the adapter's own
+    # architecture_model_id check is getattr-defensive so it correctly
+    # never fires for this model, per its own E2E-H comment.
     org, foreign_org = make_org("adr-adapter"), make_org("adr-adapter-foreign")
     actor_user, foreign_user = _user(db_session, org), _user(db_session, foreign_org)
-    linked_model = ArchitectureModel(
+    adr = ArchitectureDecision(
         organization_id=org.id,
-        name="Linked integration model",
-        version="1.0",
-        user_id=actor_user.id,
-    )
-    db_session.add(linked_model)
-    db_session.flush()
-    adr = ArchitectureDecisionRecord(
-        organization_id=org.id,
-        adr_number=42,
+        decision_id="AD-042",
         title="Adopt event-driven integration",
         status="proposed",
         context="Services need reliable asynchronous integration.",
         decision="Use durable domain events through the enterprise broker.",
         rationale="This isolates producers and consumers while preserving delivery.",
         consequences="Teams must own event schemas and compatibility.",
-        architecture_model_id=linked_model.id,
-        alternatives_considered="[\"point-to-point APIs\"]",
-        risks="[\"schema drift\"]",
-        created_by=actor_user.email,
-        governance_blob={
-            "arb_readiness": _governance_dossier(
-                "adr-arb-r2", "architecture_change", evidence_id=9002
-            )
-        },
+        created_by_id=actor_user.id,
     )
     db_session.add(adr)
     db_session.flush()
@@ -350,12 +342,12 @@ def test_adr_adapter_load_evaluate_snapshot_and_url_are_tenant_bound(
 
     assert subject == GovernedSubject("adr", adr.id, org.id, adr.title, None)
     assert readiness.ready is True
-    assert adapter.canonical_url(subject) == f"/architecture/adrs/records/{adr.id}"
+    assert adapter.canonical_url(subject) == f"/architecture/decisions/{adr.id}"
     assert evidence.content_hash == snapshot.content_hash == snapshot.recompute_content_hash()
     assert snapshot.subject_type == "adr"
     assert snapshot.subject_id == snapshot.adr_id == adr.id
     assert snapshot.policy_version == "adr-arb-r2"
-    assert snapshot.payload["subject"]["adr_number"] == 42
+    assert snapshot.payload["subject"]["decision_id"] == "AD-042"
     assert snapshot.payload["subject"]["context"] == adr.context
     assert snapshot.payload["subject"]["decision"] == adr.decision
     assert snapshot.payload["subject"]["rationale"] == adr.rationale
@@ -365,9 +357,6 @@ def test_adr_adapter_load_evaluate_snapshot_and_url_are_tenant_bound(
     assert snapshot.citations[0]["resource_type"] == "adr"
     assert snapshot.citations[0]["content_hash"] == readiness.checks["subject_hash"]
     assert snapshot.citations[1]["resource_type"] == "arb_policy_catalogue"
-    assert snapshot.citations[2]["resource_type"] == "architecture_model"
-    assert snapshot.citations[2]["resource_id"] == linked_model.id
-    assert all(citation.get("resource_id") != 9002 for citation in snapshot.citations)
 
     with pytest.raises(NotFound, match="arb_subject_not_found"):
         adapter.load(_actor(foreign_user, foreign_org), adr.id)
@@ -420,9 +409,9 @@ def test_adr_record_detail_route_reads_canonical_tenant_table(
         ),
         (
             ADRARBAdapter(),
-            lambda org, user: ArchitectureDecisionRecord(
+            lambda org, user: ArchitectureDecision(
                 organization_id=org.id,
-                adr_number=7,
+                decision_id="AD-007",
                 title="Incomplete ADR",
                 status="proposed",
                 context="Context",
@@ -479,19 +468,20 @@ def test_model_policy_ignores_forged_readiness_and_requires_persisted_graph(
 
 
 def test_adr_policy_rejects_terminal_state_and_ignores_client_policy(db_session, make_org):
+    # E2E-H: governance_blob does not exist on ArchitectureDecision -- the
+    # gate this test pins (an already-decided ADR cannot be resubmitted)
+    # is now status alone, per ADRARBAdapter's own E2E-H comment.
     org = make_org("invalid-adr-policy")
     actor_user = _user(db_session, org)
-    dossier = _governance_dossier("adr-arb-r1", "architecture_change", evidence_id=9101)
-    adr = ArchitectureDecisionRecord(
+    adr = ArchitectureDecision(
         organization_id=org.id,
-        adr_number=92,
+        decision_id="AD-092",
         title="Already accepted ADR",
         status="accepted",
         context="Context",
         decision="Decision",
         rationale="Rationale",
         consequences="Consequences",
-        governance_blob={"arb_readiness": dossier},
     )
     db_session.add(adr)
     db_session.flush()
@@ -568,20 +558,19 @@ def test_subject_snapshot_rejects_forged_and_changed_readiness(
             ),
         )
     else:
+        # E2E-H: governance_blob does not exist on ArchitectureDecision --
+        # the forged/stale-readiness mechanism this test pins is generic
+        # to _SubjectSnapshotAdapter and does not depend on it.
         adapter = ADRARBAdapter()
-        dossier = _governance_dossier(
-            "adr-arb-r2", "architecture_change", evidence_id=9202
-        )
-        row = ArchitectureDecisionRecord(
+        row = ArchitectureDecision(
             organization_id=org.id,
-            adr_number=93,
+            decision_id="AD-093",
             title="Mutable ADR readiness",
             status="proposed",
             context="Context",
             decision="Decision",
             rationale="Rationale",
             consequences="Consequences",
-            governance_blob={"arb_readiness": dossier},
         )
     db_session.add(row)
     db_session.flush()
@@ -792,27 +781,30 @@ def test_server_evidence_never_crosses_a_tenant_boundary(db_session, make_org):
     the server-derived evidence that replaced it, so it is re-pinned here
     against the surviving contract rather than deleted with the old one.
     """
+    # E2E-H: ArchitectureDecision has no architecture_model_id -- its
+    # cross-tenant-linked-resource check is solution_id instead (the
+    # adapter's architecture_model_id block is getattr-defensive and never
+    # fires for this model). Same protective intent, real field.
     org, foreign_org = make_org("server-ev-own"), make_org("server-ev-foreign")
     actor_user = _user(db_session, org)
     foreign_user = _user(db_session, foreign_org)
-    foreign_model = ArchitectureModel(
+    foreign_solution = Solution(
         organization_id=foreign_org.id,
-        name="Foreign tenant model",
-        version="9.9",
-        user_id=foreign_user.id,
+        name="Foreign tenant solution",
+        created_by_id=foreign_user.id,
     )
-    db_session.add(foreign_model)
+    db_session.add(foreign_solution)
     db_session.flush()
-    adr = ArchitectureDecisionRecord(
+    adr = ArchitectureDecision(
         organization_id=org.id,
-        adr_number=77,
+        decision_id="AD-077",
         title="ADR pointing at another tenant",
         status="proposed",
         context="Context",
         decision="Decision",
         rationale="Rationale",
         consequences="Consequences",
-        architecture_model_id=foreign_model.id,
+        solution_id=foreign_solution.id,
     )
     db_session.add(adr)
     db_session.flush()
@@ -822,16 +814,16 @@ def test_server_evidence_never_crosses_a_tenant_boundary(db_session, make_org):
     readiness = adapter.evaluate(actor, adapter.load(actor, adr.id), {"human_reviewed": True})
 
     assert readiness.ready is False
-    assert "adr_architecture_model_outside_tenant" in readiness.reason_codes
+    assert "adr_solution_outside_tenant" in readiness.reason_codes
     citations = readiness.checks["evidence_citations"]
     assert all(
         not (
-            citation.get("resource_type") == "architecture_model"
-            and citation.get("resource_id") == foreign_model.id
+            citation.get("resource_type") == "solution"
+            and citation.get("resource_id") == foreign_solution.id
         )
         for citation in citations
     )
-    assert "Foreign tenant model" not in json.dumps(readiness.checks, default=str)
+    assert "Foreign tenant solution" not in json.dumps(readiness.checks, default=str)
     with pytest.raises(BlockedByEvidence, match="arb_subject_not_ready"):
         adapter.snapshot(actor, adapter.load(actor, adr.id), readiness)
 

@@ -115,19 +115,19 @@ def _make_user(session, org, *, role="enterprise_architect"):
 
 
 def _make_adr(session, org, author):
-    from app.models.adr import ArchitectureDecisionRecord
+    from app.models.architecture_decision import ArchitectureDecision
 
     suffix = uuid.uuid4().hex[:7]
-    adr = ArchitectureDecisionRecord(
+    adr = ArchitectureDecision(
         organization_id=org.id,
-        adr_number=int(suffix, 16) % 2_000_000_000,
+        decision_id=f"AD-{suffix}",
         title=f"Typed route ADR {suffix}",
         status="proposed",
         context="A governed choice needs a record.",
         decision="Adopt the governed option.",
         rationale="It is testable.",
         consequences="The ARB reviews it.",
-        created_by=author.email,
+        created_by_id=author.id,
     )
     session.add(adr)
     session.flush()
@@ -204,7 +204,7 @@ def test_adr_route_creates_exactly_one_canonical_cycle_and_replays(
     assert isinstance(body["review_cycle_id"], int)
     assert isinstance(body["evidence_id"], int)
     assert body["snapshot_id"] == body["evidence_id"]
-    assert body["canonical_url"] == f"/architecture/adrs/records/{adr.id}"
+    assert body["canonical_url"] == f"/architecture/decisions/{adr.id}"
     assert body["redirect_url"] == f"/arb/reviews/{body['review_item_id']}"
     assert body["subject_type"] == "adr"
     assert body["subject_id"] == adr.id

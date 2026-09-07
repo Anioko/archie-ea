@@ -537,9 +537,12 @@ class ARBReviewCycle(TenantMixin, db.Model):
         nullable=True,
         index=True,
     )
+    # E2E-H: repointed from architecture_decision_records (0 rows in
+    # production, unreachable via any real UI) to architecture_decisions,
+    # the model the real Decision Register writes.
     adr_id = db.Column(
         db.Integer,
-        db.ForeignKey("architecture_decision_records.id", ondelete="RESTRICT"),
+        db.ForeignKey("architecture_decisions.id", ondelete="RESTRICT"),
         nullable=True,
         index=True,
     )
@@ -692,7 +695,11 @@ class ARBReviewItem(TenantMixin, db.Model, OptimisticLockMixin):
     # Linkages to existing entities
     solution_id = db.Column(db.Integer, db.ForeignKey("solutions.id"))
     architecture_model_id = db.Column(db.Integer, db.ForeignKey("architecture_models.id"))
-    adr_id = db.Column(db.Integer, db.ForeignKey("architecture_decision_records.id"))
+    # E2E-H: repointed from architecture_decision_records (0 rows in
+    # production, unreachable via any real UI -- and the field arb.
+    # api_form_data's "New Review" ADR dropdown, fixed in 73795d4d, feeds)
+    # to architecture_decisions, the model the real Decision Register writes.
+    adr_id = db.Column(db.Integer, db.ForeignKey("architecture_decisions.id"))
     subject_type = db.Column(db.String(40), nullable=True, index=True)
     subject_id = db.Column(db.Integer, nullable=True, index=True)
     decision_brief_id = db.Column(
@@ -793,7 +800,7 @@ class ARBReviewItem(TenantMixin, db.Model, OptimisticLockMixin):
     arb_session = db.relationship("ArchitectureReviewBoard", back_populates="review_items")
     solution = db.relationship("Solution", foreign_keys=[solution_id], backref="arb_reviews")
     architecture_model = db.relationship("ArchitectureModel", backref="arb_reviews")
-    adr = db.relationship("ArchitectureDecisionRecord", backref="arb_reviews")
+    adr = db.relationship("ArchitectureDecision", backref="arb_reviews")
     submitter = db.relationship("User", foreign_keys=[submitter_id], backref="submitted_arb_items")
     reviewer = db.relationship("User", foreign_keys=[reviewer_id], backref="reviewed_arb_items")
     decided_by = db.relationship("User", foreign_keys=[decided_by_id], backref="arb_decisions")
@@ -941,7 +948,7 @@ def _arb_membership_function_sql(quoted_schema):
                 RAISE EXCEPTION 'ARB snapshot subject is outside its tenant'
                     USING ERRCODE = '23514';
             ELSIF NEW.subject_type = 'adr' AND NOT EXISTS (
-                SELECT 1 FROM architecture_decision_records adr
+                SELECT 1 FROM architecture_decisions adr
                 WHERE adr.id = NEW.adr_id
                   AND adr.organization_id = NEW.organization_id
             ) THEN
@@ -1008,7 +1015,7 @@ def _arb_membership_function_sql(quoted_schema):
                 END IF;
             ELSIF NEW.subject_type = 'adr' THEN
                 IF NOT EXISTS (
-                    SELECT 1 FROM architecture_decision_records adr
+                    SELECT 1 FROM architecture_decisions adr
                     WHERE adr.id = NEW.adr_id
                       AND adr.organization_id = NEW.organization_id
                 ) THEN
@@ -1302,7 +1309,7 @@ def _arb_parent_tenant_function_sql(quoted_schema):
             WHEN 'decision_briefs' THEN 'decision_brief'
             WHEN 'solutions' THEN 'solution'
             WHEN 'architecture_models' THEN 'architecture_model'
-            WHEN 'architecture_decision_records' THEN 'adr'
+            WHEN 'architecture_decisions' THEN 'adr'
             -- Fail closed: a NULL typed_subject would make every EXISTS below
             -- match nothing, so an unlisted table would silently be granted the
             -- tenant change this guard exists to refuse.
@@ -1390,7 +1397,7 @@ _ARB_FK_SPECS = {
     "fk_arb_subject_snapshot_adr": (
         "arb_subject_evidence_snapshots",
         ("adr_id",),
-        "architecture_decision_records",
+        "architecture_decisions",
         ("id",),
     ),
     "fk_arb_subject_snapshot_captured_by": (
@@ -1409,7 +1416,7 @@ _ARB_FK_SPECS = {
         "arb_review_cycles", ("architecture_model_id",), "architecture_models", ("id",)
     ),
     "fk_arb_review_cycle_adr": (
-        "arb_review_cycles", ("adr_id",), "architecture_decision_records", ("id",)
+        "arb_review_cycles", ("adr_id",), "architecture_decisions", ("id",)
     ),
     "fk_arb_review_cycle_decision_brief_version": (
         "arb_review_cycles",
@@ -1486,7 +1493,7 @@ _ARB_TRIGGER_SPECS = {
     ("architecture_models", "trg_arb_architecture_model_tenant_history"):
         ("archie_guard_arb_subject_tenant", 19, False, False, False,
          ("organization_id",), *_ARB_TRIGGER_NO_FILTER),
-    ("architecture_decision_records", "trg_arb_adr_tenant_history"):
+    ("architecture_decisions", "trg_arb_adr_tenant_history"):
         ("archie_guard_arb_subject_tenant", 19, False, False, False,
          ("organization_id",), *_ARB_TRIGGER_NO_FILTER),
 }
@@ -2153,6 +2160,47 @@ def ensure_arb_cycle_constraints(connection):
         _validate_without_aborting_boot(
             connection, qualified_source, quote(name), "foreign key"
         )
+
+    # E2E-H: the ORM-auto-named FK a table got when it was first created
+    # (e.g. arb_subject_evidence_snapshots_adr_id_fkey, generated from the
+    # model's own db.ForeignKey(...) declaration by create_all()) is a
+    # separate constraint object from the custom-named ones above
+    # (fk_arb_subject_snapshot_adr). Changing the Python model's FK target
+    # string, or the spec above, self-heals the custom-named constraint
+    # but never touches this older one -- create_all() does not alter
+    # existing tables. Left in place, both remain active on the same
+    # column: the model source correctly says "architecture_decisions",
+    # the custom guard correctly points there too, and this leftover one
+    # still requires "architecture_decision_records", 0 rows, so every
+    # insert failed a constraint the fix above never reached. Drop it
+    # explicitly wherever it still targets the dead table.
+    stale_auto_fk_tables = (
+        "arb_subject_evidence_snapshots",
+        "arb_review_cycles",
+        "arb_review_items",
+        "arb_submission_events",
+        "arb_decision_events",
+        "arb_condition_evidence_records",
+    )
+    if "architecture_decision_records" in tables:
+        stale_rows = connection.execute(
+            text(
+                """
+                SELECT conrelid::regclass::text AS source_table, conname
+                FROM pg_constraint
+                WHERE confrelid = (
+                    quote_ident(:schema_name) || '.architecture_decision_records'
+                )::regclass
+                  AND conrelid::regclass::text = ANY(:tables)
+                """
+            ),
+            {"schema_name": schema_name, "tables": list(stale_auto_fk_tables)},
+        ).all()
+        for stale in stale_rows:
+            qualified_stale_source = f"{quoted_schema}.{quote(stale.source_table)}"
+            connection.exec_driver_sql(
+                f"ALTER TABLE {qualified_stale_source} DROP CONSTRAINT {quote(stale.conname)}"
+            )
 
     index_state = _arb_index_state(connection, schema_name)
     for name, (table_name, columns, predicate) in _ARB_INDEX_SPECS.items():
