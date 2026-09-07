@@ -416,39 +416,27 @@ class ApplicationComponent(TenantMixin, db.Model, OptimisticLockMixin):
             return "stale"
         return "outdated"
 
-    # Data completeness indicators
-    COMPLETENESS_FIELDS = {
-        "identity": ["name", "description", "business_domain"],
-        "ownership": ["application_owner", "business_owner", "technical_owner"],
-        "technical": ["architecture_style", "deployment_model", "primary_database", "integration_pattern"],
-        "governance": ["lifecycle_status", "criticality", "data_classification", "compliance_requirements"],
-        "integrations": ["vendor_product_id"],
-    }
-
+    # M3: this used to carry its own unweighted 5-category/15-field rubric,
+    # completely independent of app/services/application_fact_sheet.py's
+    # weighted 11-field one -- so /applications/<id> (this property, via
+    # applications/dashboard.html) and /applications/<id>/fact-sheet (the
+    # service, which brands itself "the single source of truth") disagreed
+    # for the same record (20% vs 21%, and any other pair by coincidence).
+    # Both now delegate to the fact sheet's calculation -- lazy import to
+    # avoid a circular import (the service imports app.db at module load).
     @property
     def completeness_score(self):
-        """Data completeness percentage (0-100) across 5 categories, 15 fields."""
-        total = 0
-        populated = 0
-        for fields in self.COMPLETENESS_FIELDS.values():
-            for field_name in fields:
-                total += 1
-                value = self.__dict__.get(field_name)  # model-safety-ok
-                if value is not None and value != "" and value != []:
-                    populated += 1
-        return round((populated / total) * 100) if total > 0 else 0
+        """Data completeness percentage (0-100) -- see
+        app.services.application_fact_sheet.compute_completeness for the rubric."""
+        from app.services.application_fact_sheet import compute_completeness
+        return compute_completeness(self)["pct"]
 
     @property
     def completeness_gaps(self):
-        """List of category names where any field is empty."""
-        gaps = []
-        for category, fields in self.COMPLETENESS_FIELDS.items():
-            for field_name in fields:
-                value = self.__dict__.get(field_name)  # model-safety-ok
-                if value is None or value == "" or value == []:
-                    gaps.append(category)
-                    break
-        return gaps
+        """List of missing field labels -- see
+        app.services.application_fact_sheet.compute_completeness for the rubric."""
+        from app.services.application_fact_sheet import compute_completeness
+        return compute_completeness(self)["missing"]
 
     # Relationships
     capability_mappings = relationship(

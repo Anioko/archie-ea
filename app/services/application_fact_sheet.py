@@ -51,7 +51,7 @@ def _has_value(v: Any) -> bool:
     return True
 
 
-def _completeness(app: Any) -> Dict[str, Any]:
+def compute_completeness(app: Any) -> Dict[str, Any]:
     """Weighted % of key fields populated, plus the list of what is missing."""
     got = 0
     total = 0
@@ -176,7 +176,7 @@ def build_fact_sheet(app: Any) -> Dict[str, Any]:
     org_id = getattr(app, "organization_id", None)
     return {
         "app": app,
-        "completeness": _completeness(app),
+        "completeness": compute_completeness(app),
         "lifecycle": _lifecycle_signal(app),
         "capabilities": _capabilities(app.id, org_id),
         "dependencies": _dependencies(app),
