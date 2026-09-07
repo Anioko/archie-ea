@@ -204,7 +204,20 @@ def api_roadmap_gaps():
             BusinessCapability,
         )
 
-        capability_type_filter = request.args.get("capability_type")
+        # C1 fix: default to "business" when no capability_type is requested.
+        # Technical capabilities and APQC processes are SHARED reference taxonomies
+        # (no organization_id / TenantMixin) with no per-tenant coverage mapping in
+        # most tenants, so leaving this unfiltered counted nearly the entire shared
+        # taxonomy as a "gap" for every tenant regardless of whether that tenant owns
+        # any capabilities at all -- producing a large, tenant-independent number
+        # (e.g. 352) that "Detect Gaps" (which only scans BusinessCapability, see
+        # api_roadmap_detect_gaps below) can never create/update records for. That
+        # mismatch -- a big tile next to "0 gap(s) created/updated" -- is the C1
+        # defect. Business capabilities are the system of record Detect Gaps acts
+        # on, so they are now also the default population this tile counts.
+        # Explicit ?capability_type=technical|process is still honoured for callers
+        # that want to inspect the shared-taxonomy coverage gaps separately.
+        capability_type_filter = request.args.get("capability_type") or "business"
         gap_type_filter = request.args.get("gap_type")
 
         gaps = []
