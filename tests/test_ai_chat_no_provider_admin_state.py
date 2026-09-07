@@ -191,3 +191,32 @@ def test_chat_page_does_not_claim_an_environment_provider_is_unavailable(
 
     assert response.status_code == 200
     assert "AI provider unavailable" not in response.get_data(as_text=True)
+
+
+def test_config_fault_shows_at_most_one_toast_and_prefers_inline():
+    """L3: a missing-provider fault used to appear on three surfaces at once
+    -- the persistent page-level banner (ai_chat/index.html), a toast, and
+    the inline chat message -- for one condition. The banner already covers
+    the whole-session case; a toast on top of the inline message (which
+    carries the admin-link remedy in context) was a redundant third surface.
+    Both call sites in app.js that branch on isConfigFault must render the
+    inline message WITHOUT also firing a toast for that branch.
+    """
+    js = (ROOT / "app/static/js/ai_chat/app.js").read_text(encoding="utf-8")
+
+    # Streaming path: the isConfigFault branch renders appendError only.
+    streaming_branch = js.split("if (_streamErr && _streamErr.isConfigFault) {")[1].split(
+        "return;"
+    )[0]
+    assert "Platform.toast.error" not in streaming_branch
+    assert "appendError(_streamErr.message, null, { adminLink: true })" in streaming_branch
+
+    # Non-streaming fallback path: same rule inside the `if (_isConfigFault)` branch.
+    fallback_branch = js.split("if (_isConfigFault) {")[1].split("} else {")[0]
+    assert "Platform.toast.error" not in fallback_branch
+    assert "appendError(errorMessage || fullError, null, { adminLink: true })" in fallback_branch
+
+    # The non-config (transient/retryable) branch is unaffected -- it still
+    # gets a toast, since no persistent banner covers a one-off failure.
+    else_branch = js.split("} else {")[1].split("}\n", 1)[0]
+    assert "Platform.toast.error(fullError);" in else_branch

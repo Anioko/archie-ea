@@ -394,7 +394,11 @@
                    answer. Show the remedy now. */
                 const _l = document.getElementById(loadingId);
                 if (_l) _l.remove();
-                Platform.toast.error(_streamErr.message);
+                // L3: a missing provider is already announced by the persistent
+                // page-level banner (ai_chat/index.html) for the whole session,
+                // so a toast on top of the inline error below was a third
+                // surface for one fault. Keep the inline message (it carries
+                // the admin-link remedy in context); drop the toast.
                 appendError(_streamErr.message, null, { adminLink: true });
                 return;
             }
@@ -478,10 +482,16 @@
                     ArchieChat.transport.isProviderConfigurationFault(data);
 
                 const fullError = errorMessage ? `${errorTitle}: ${errorMessage}` : errorTitle;
-                Platform.toast.error(fullError);
                 if (_isConfigFault) {
+                    // L3: the persistent page-level banner (ai_chat/index.html)
+                    // already announces "no LLM provider configured" for the
+                    // whole session -- a toast for the same fault made three
+                    // surfaces (banner + toast + inline) say one thing. The
+                    // inline message stays; it carries the admin-link remedy
+                    // in context, which the banner and a toast both lack.
                     appendError(errorMessage || fullError, null, { adminLink: true });
                 } else {
+                    Platform.toast.error(fullError);
                     appendError(fullError, () => _retryTurn(message, timestamp));
                 }
             } else {
