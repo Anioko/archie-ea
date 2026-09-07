@@ -196,6 +196,28 @@ def rationalization_dashboard():
             "roadmap_count": roadmap_count,
         }
 
+        # H7: the pipeline stepper renders every stage as count/total, and every
+        # 'total' here is meant to be >= the count next to it (a subset of the
+        # portfolio, or of the previous stage). "Plan: 2/0" happened because
+        # consolidation_count (ConsolidationListEntry) and time_scored_count
+        # (ApplicationRationalizationScore) are two independent tables with no
+        # subset relationship, so nothing enforced that invariant. The template
+        # was fixed to share total_apps as every stage's denominator, but log
+        # loudly if a genuine data inconsistency would still violate it, rather
+        # than silently rendering (or silently clamping) a fraction that lies.
+        for _label, _count in (
+            ("consolidation_count", consolidation_count),
+            ("time_scored_count", time_scored_count),
+            ("roadmap_count", roadmap_count),
+        ):
+            if _count > total_apps:
+                current_app.logger.warning(
+                    "RATIONALIZATION_STAGE_INVARIANT_VIOLATED: %s=%d exceeds "
+                    "total_applications=%d -- pipeline stepper percentages for "
+                    "this org are not trustworthy until this is investigated",
+                    _label, _count, total_apps,
+                )
+
         # RAT-001: Build data quality report for "What to do next" panel
         data_quality = _build_data_quality_report(total_apps)
 

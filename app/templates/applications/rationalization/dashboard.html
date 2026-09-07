@@ -48,10 +48,17 @@
     {% if stats %}
     <nav class="mb-8 rounded-xl border bg-card p-4" aria-label="Rationalization pipeline">
         <div class="flex items-center justify-between">
+            {# H7: Plan's 'total' used to be stats.time_scored_count -- a count from
+               a different table (ApplicationRationalizationScore) with no subset
+               relationship to consolidation_count (ConsolidationListEntry), so the
+               numerator could exceed the denominator ("2/0 (0%)") whenever
+               consolidation entries existed ahead of TIME scoring. Detect and Score
+               already share total_apps as their denominator; Plan now does too, so
+               every stage answers "how much of the portfolio", one population. #}
             {% set steps = [
                 {'label': 'Detect', 'count': stats.duplicate_groups|default(0), 'total': total_apps, 'unit': 'groups', 'url': url_for('unified_duplicate.duplicate_dashboard'), 'icon': 'search'},
                 {'label': 'Score', 'count': stats.time_scored_count|default(0), 'total': total_apps, 'unit': 'scored', 'url': url_for('unified_applications.rationalization_workbench'), 'icon': 'bar-chart'},
-                {'label': 'Plan', 'count': stats.consolidation_count|default(0), 'total': stats.time_scored_count|default(1), 'unit': 'in plan', 'url': '/consolidation-list', 'icon': 'clipboard-list'},
+                {'label': 'Plan', 'count': stats.consolidation_count|default(0), 'total': total_apps, 'unit': 'in plan', 'url': '/consolidation-list', 'icon': 'clipboard-list'},
                 {'label': 'Roadmap', 'count': stats.roadmap_count|default(0), 'total': stats.consolidation_count|default(1), 'unit': 'items', 'url': url_for('unified_applications.rationalization_tracking'), 'icon': 'map'},
                 {'label': 'Track', 'count': 0, 'total': stats.roadmap_count|default(1), 'unit': 'active', 'url': url_for('unified_applications.rationalization_tracking'), 'icon': 'trending-up'}
             ] %}
