@@ -55,7 +55,8 @@
             <div class="flex items-start justify-between p-4 {% if not loop.last %}border-b{% endif %}">
                 <div class="flex-1 min-w-0">
                     <div class="flex items-center gap-2 mb-1">
-                        <span class="font-mono text-sm font-medium">{{ gate_name }}</span>
+                        <span class="text-sm font-medium">{{ gate_name|humanize_key }}</span>
+                        <span class="font-mono text-xs text-muted-foreground" title="Gate key">{{ gate_name }}</span>
                         <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-muted text-muted-foreground border border-border">
                             system default
                         </span>

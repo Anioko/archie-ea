@@ -80,3 +80,28 @@ def test_banner_never_claims_unconditional_read_only(app):
     for status in ("draft", "submitted", "under_review", "deferred"):
         body = _render(app, _orm_review(status=status))
         assert "read-only here" not in body
+
+
+# H4: a Draft-status legacy review told the user to "submit it for review"
+# with no control anywhere on the page to do so. POST /arb/reviews/<id>/submit
+# (arb_routes.py::submit_review) already handles exactly this case -- it
+# refuses any review carrying solution_id/adr_id/architecture_model_id, so it
+# is safe to wire up unconditionally in this always-untyped partial.
+def test_draft_review_gets_a_working_submit_control(app):
+    body = _render(app, _orm_review(status="draft"))
+    assert 'action="/arb/reviews/15/submit"' in body
+    assert "Submit for review" in body
+
+
+def test_non_draft_reviews_do_not_render_a_submit_control(app):
+    for status in ("submitted", "under_review", "deferred"):
+        body = _render(app, _orm_review(status=status))
+        assert "/reviews/15/submit" not in body
+
+
+# H4/L1: the raw enum reason code must never reach the page beside its own
+# label -- it is mapped through the shared `humanize_key` filter.
+def test_legacy_generic_reason_is_humanized_not_raw_enum(app):
+    body = _render(app, _orm_review(status="submitted"))
+    assert "arb_review_is_legacy_generic" not in body
+    assert "Legacy review (predates typed ARB submission)" in body

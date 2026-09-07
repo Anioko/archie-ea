@@ -45,6 +45,22 @@
         Submit it for review before it can be decided.
         {% endif %}
     </p>
+    {# H4: the copy above used to instruct "Submit it for review" with no
+       control anywhere on the page. POST /arb/reviews/<id>/submit
+       (app/modules/architecture/routes/arb_routes.py::submit_review)
+       already handles exactly this case -- it explicitly refuses typed
+       reviews (solution_id/adr_id/architecture_model_id set) and only
+       transitions an untyped draft, which is what this partial always is. #}
+    {% if _orm_review is defined and _orm_review and _orm_review.status == 'draft' %}
+    <form method="POST" action="{{ url_for('arb.submit_review', id=_orm_review.id) }}" class="mt-3">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+        <button type="submit"
+            class="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors">
+            <i data-lucide="send" class="h-3.5 w-3.5" aria-hidden="true"></i>
+            Submit for review
+        </button>
+    </form>
+    {% endif %}
 </div>
 
 {% with decision_review = _orm_review if _orm_review is defined else none %}{% include 'arb/partials/_decision_bar.html' %}{% endwith %}
@@ -91,7 +107,7 @@
         {% endif %}
         <div class="min-w-0 sm:col-span-2">
             <dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Reason</dt>
-            <dd class="break-words text-sm text-foreground">{{ dash(review.reason) }}</dd>
+            <dd class="break-words text-sm text-foreground">{{ dash(review.reason|humanize_key) }}</dd>
         </div>
     </dl>
     {% endcall %}

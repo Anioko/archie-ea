@@ -168,6 +168,35 @@ def _register(app):
 
     app.jinja_env.globals["safe_ratio"] = safe_ratio
 
+    # H4/L1: a shared enum-to-label mapping so a raw snake_case key (an ARB
+    # review's `reason`, a governance gate's `gate_name`, ...) never reaches
+    # the UI beside its own human label -- one helper instead of the
+    # `|replace('_',' ')|title` one-offs scattered through arb templates.
+    # Known codes get a hand-written label; anything else falls back to the
+    # same title-casing those one-offs already did, so this is a strict
+    # improvement, never a regression.
+    ENUM_LABEL_OVERRIDES = {
+        "arb_review_is_legacy_generic": "Legacy review (predates typed ARB submission)",
+        "arb_queue_empty": "No items in this queue",
+        "arb_submission": "Architecture Review Board submission",
+    }
+
+    @app.template_filter("humanize_key")
+    def humanize_key_filter(value):
+        """Turn a raw snake_case/enum key into a human label.
+
+        Usage: {{ review.reason|humanize_key }}
+               {{ gate_name|humanize_key }}
+        """
+        if value is None:
+            return None
+        text = str(value)
+        if text in ENUM_LABEL_OVERRIDES:
+            return ENUM_LABEL_OVERRIDES[text]
+        return text.replace("_", " ").replace("-", " ").strip().title()
+
+    app.jinja_env.globals["ENUM_LABEL_OVERRIDES"] = ENUM_LABEL_OVERRIDES
+
     def index_for_role(role):
         return url_for(role.index)
 
