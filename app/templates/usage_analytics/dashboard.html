@@ -1,24 +1,12 @@
 {% extends "layouts/admin_base.html" %}
 {% from 'macros/page_shell.html' import page_shell %}
-{% import 'components/breadcrumb.html' as breadcrumb %}
 
 {% block title %}Usage Analytics Dashboard{% endblock %}
 
 {% block content %}
 <div class="space-y-6">
-    <!-- Breadcrumb -->
-    {% call breadcrumb.breadcrumb() %}
-        {% call breadcrumb.breadcrumb_item(href=url_for('admin.dashboard')) %}
-            <i data-lucide="home" class="h-4 w-4"></i>
-        {% endcall %}
-        {{ breadcrumb.breadcrumb_separator() }}
-        {% call breadcrumb.breadcrumb_item(active=true) %}
-            Usage Analytics
-        {% endcall %}
-    {% endcall %}
-
-    <!-- Page Header -->
-    {{ page_shell(title='Usage Analytics Dashboard', breadcrumb=[('Home', '/'), ('Usage Analytics Dashboard', none)], subtitle='Phase 0: Tracking usage of 32 PARTIAL features before committing to 278-hour completion roadmap') }}
+    <!-- Page Header (page_shell renders the single breadcrumb for this page -- M5) -->
+    {{ page_shell(title='Usage Analytics Dashboard', breadcrumb=[('Home', '/'), ('Usage Analytics Dashboard', none)], subtitle='Track page views, feature interactions, and errors across the platform') }}
 
     <!-- Summary Cards -->
     <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">

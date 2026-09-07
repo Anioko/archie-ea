@@ -6,14 +6,7 @@
 
 {% block content %}
 <div class="max-w-5xl mx-auto" x-data="seedManager()">
-    <!-- Breadcrumb -->
-    <nav class="flex items-center gap-2 text-sm text-muted-foreground mb-4">
-        <a href="{{ url_for('admin.index') }}" class="hover:text-foreground transition-colors">Dashboard</a>
-        <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
-        <span class="text-foreground font-medium">Seed Management</span>
-    </nav>
-
-    <!-- Header -->
+    <!-- Header (page_header renders the single breadcrumb for this page -- M5) -->
     <div class="flex items-center justify-between mb-6">
         {{ page_header(
         title='Seed Management', breadcrumbs=[{'label': 'Home', 'href': '/'}, {'label': 'Seed Management'}],
