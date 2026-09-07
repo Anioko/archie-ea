@@ -58,8 +58,14 @@
   {# Main layout: table + side panel #}
   <div class="flex flex-col lg:flex-row gap-6">
 
-    {# LEFT: Table Card — uses workbench_table macro #}
-    <div class="flex-1">
+    {# LEFT: Table Card — uses workbench_table macro.
+       min-w-0 overrides the flex item's default min-width:auto -- without it, a flex
+       child containing a wide table cannot shrink below the table's intrinsic width,
+       so the browser can't compute a correct scroll boundary for the table's own
+       overflow-x-auto container. The visible symptom (H3) was the sticky "Actions"
+       column's right:0 anchor landing mid-table instead of at the real scrolled edge,
+       overlapping Status/Contract. #}
+    <div class="flex-1 min-w-0">
       {% call workbench_table(
           columns=[
               {'key': 'row_number', 'label': '#'},

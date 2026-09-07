@@ -62,6 +62,25 @@
     right: 0;
 }
 
+/* H3 (2 Sep 2026 UI/UX audit): when a table's own overflow-x-auto container sits
+   inside a flex child with no min-width:0, the flex child can't shrink below the
+   table's intrinsic width, so the browser can't compute a correct scroll boundary --
+   the sticky last-column's right:0 anchor then lands mid-table instead of at the real
+   scrolled edge, visually overlapping the columns before it. Fixed at the call sites
+   (min-w-0 added to the flex wrappers). This scroll-shadow affordance is the other
+   half of H3's fix: a visible cue that a table has more columns than fit the
+   viewport, since a plain scrollbar alone reads as decoration until dragged. */
+#main-content .overflow-x-auto {
+    background:
+        linear-gradient(to right, hsl(var(--card)) 30%, transparent) 0 0,
+        linear-gradient(to left, hsl(var(--card)) 30%, transparent) 100% 0,
+        linear-gradient(to right, hsl(var(--foreground) / 0.08), transparent 30%) 0 0,
+        linear-gradient(to left, hsl(var(--foreground) / 0.08), transparent 30%) 100% 0;
+    background-repeat: no-repeat;
+    background-size: 24px 100%, 24px 100%, 12px 100%, 12px 100%;
+    background-attachment: local, local, scroll, scroll;
+}
+
 /* Don't double-border containers that already have border classes */
 #main-content .overflow-x-auto.border,
 #main-content .overflow-x-auto[class*="border-"] {
