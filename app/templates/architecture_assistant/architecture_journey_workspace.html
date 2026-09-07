@@ -34,7 +34,7 @@
 
 {% block content %}
 <div class="flex-1 overflow-auto"
-     x-data='architectureJourneyWorkspace({{ journey.id }}, {{ journey.evidence_manifest|tojson }}, {{ journey.current_stage|tojson }}, {{ home.participants|tojson }}, {{ home.can_manage_members|tojson }})'
+     x-data='architectureJourneyWorkspace({{ journey.id }}, {{ journey.evidence_manifest|tojson }}, {{ journey.current_stage|tojson }}, {{ home.participants|tojson }}, {{ home.can_manage_members|tojson }}, {{ journey.status|tojson }})'
      x-cloak>
 
   {{ page_shell(
@@ -68,34 +68,47 @@
       <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div class="min-w-0">
           <p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Current stage</p>
-          <h2 id="journey-progress-title" class="mt-1 text-lg font-semibold text-foreground">
-            {{ home.stage.label }}
+          {# E2E-1: this used to be server-rendered from home.stage, so a
+             successful PATCH ...state (advance()) updated the client's
+             currentStage/stageIndex but left this text frozen -- a user saw
+             no feedback, clicked again believing nothing had happened, and
+             silently skipped a stage. Bound to the same reactive state the
+             button already uses. #}
+          <h2 id="journey-progress-title" class="mt-1 text-lg font-semibold text-foreground" x-text="stageLabel">
           </h2>
           <p class="mt-1 text-sm text-muted-foreground">
-            {% if home.stage.index is not none %}
-              Stage {{ home.stage.index + 1 }} of {{ home.stage.total }}
-            {% else %}
-              This journey is at an unrecognised stage &mdash; check its state.
-            {% endif %}
+            <span x-text="'Stage ' + (stageIndex + 1) + ' of ' + stages.length"></span>
           </p>
         </div>
 
-        <button type="button" @click="advance" :disabled="saving || currentStage === 'deliver'"
-          class="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-md bg-primary px-6 text-base font-medium text-primary-foreground hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50">
-          <span x-text="currentStage === 'deliver' ? 'Journey ready to close' : 'Complete this stage'"></span>
-          <i data-lucide="arrow-right" class="h-4 w-4" aria-hidden="true"></i>
-        </button>
+        {# E2E-2: this button, once on the deliver stage, was permanently
+           disabled with no other control taking its place -- a journey
+           could reach its last stage and then simply dead-end, with no way
+           to ever mark it done. It now switches to a real closing action. #}
+        <template x-if="currentStage !== 'deliver'">
+          <button type="button" @click="advance" :disabled="saving"
+            class="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-md bg-primary px-6 text-base font-medium text-primary-foreground hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50">
+            <span>Complete this stage</span>
+            <i data-lucide="arrow-right" class="h-4 w-4" aria-hidden="true"></i>
+          </button>
+        </template>
+        <template x-if="currentStage === 'deliver'">
+          <button type="button" @click="closeJourney" :disabled="closingJourney || journeyStatus === 'completed'"
+            class="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-md bg-primary px-6 text-base font-medium text-primary-foreground hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50">
+            <span x-text="journeyStatus === 'completed' ? 'Journey completed' : (closingJourney ? 'Closing…' : 'Mark journey complete')"></span>
+            <i data-lucide="check" class="h-4 w-4" aria-hidden="true"></i>
+          </button>
+        </template>
       </div>
 
       <ol class="mt-6 grid grid-cols-2 gap-2 sm:grid-cols-5" aria-label="Journey progress">
-        {% for stage in home.stage.stages %}
-        <li>
-          <div class="h-1 rounded-full {{ 'bg-primary' if home.stage.index is not none and loop.index0 <= home.stage.index else 'bg-muted' }}"></div>
-          <p class="mt-2 text-xs {{ 'font-semibold text-foreground' if home.stage.index is not none and loop.index0 == home.stage.index else 'text-muted-foreground' }}">
-            {{ stage.label }}
-          </p>
-        </li>
-        {% endfor %}
+        <template x-for="(stage, idx) in stages" :key="stage.key">
+          <li>
+            <div class="h-1 rounded-full" :class="idx <= stageIndex ? 'bg-primary' : 'bg-muted'"></div>
+            <p class="mt-2 text-xs" :class="idx === stageIndex ? 'font-semibold text-foreground' : 'text-muted-foreground'"
+               x-text="stage.label"></p>
+          </li>
+        </template>
       </ol>
 
       {# The next action carries its reason. An instruction without a reason is a
@@ -105,6 +118,27 @@
         <p class="mt-1 text-sm font-semibold text-foreground">{{ home.next_action.label }}</p>
         <p class="mt-1 text-sm text-muted-foreground">{{ home.next_action.reason }}</p>
       </div>
+
+      {# E2E-2: the "Decide" stage had guidance text ("Record trade-offs,
+         assurance and the chosen direction") but no control anywhere to
+         actually record one -- a journey could be driven through all five
+         stages producing zero decisions. Links to the real, working
+         Decision Register create route rather than fabricating a
+         decide-in-place form here. #}
+      {% if 'arch_decisions.create_decision' in flask.current_app.view_functions %}
+      <div x-show="currentStage === 'decide'" x-cloak
+           data-testid="journey-decide-cta"
+           class="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-card p-4">
+        <div>
+          <p class="text-sm font-semibold text-foreground">Record the decision</p>
+          <p class="mt-1 text-sm text-muted-foreground">Capture trade-offs, assurance and the chosen direction in the Decision Register.</p>
+        </div>
+        <a href="{{ url_for('arch_decisions.create_decision') }}"
+           class="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90">
+          <i data-lucide="gavel" class="h-4 w-4" aria-hidden="true"></i>Record a decision
+        </a>
+      </div>
+      {% endif %}
     </section>
 
     {# ── the record panels ───────────────────────────────────────────────── #}

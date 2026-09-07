@@ -708,7 +708,7 @@ def update_architecture_journey(journey_id):
     data = request.get_json(silent=True) or {}
     allowed = {
         "title", "selected_layers", "selected_deliverables", "outcome_type",
-        "evidence_manifest", "journey_state", "current_stage",
+        "evidence_manifest", "journey_state", "current_stage", "status",
     }
     unknown = set(data) - allowed
     if unknown:
@@ -746,6 +746,22 @@ def update_architecture_journey(journey_id):
         return api_error("Choose a valid outcome", 400)
     if "current_stage" in data and data["current_stage"] not in JOURNEY_STAGES:
         return api_error("Choose a valid journey stage", 400)
+    if "status" in data:
+        # E2E-2: the "deliver" stage's "Journey ready to close" button fired
+        # a 200 with no terminal state -- there was no route accepting a
+        # status transition at all, so a journey could never actually be
+        # marked done. Restricted to the one real transition this closes:
+        # only "completed", and only once the journey has genuinely reached
+        # its final stage -- a journey that skipped Decide/Deliver has
+        # nothing to close.
+        target_status = data["status"]
+        if target_status != "completed":
+            return api_error("A journey can only be closed as completed here", 400)
+        if journey.current_stage != "deliver":
+            return api_error(
+                "Complete the Deliver stage before closing this journey", 400,
+            )
+        journey.status = target_status
     if "journey_state" in data:
         state_error = _validate_state(data["journey_state"])
         if state_error:
@@ -755,7 +771,7 @@ def update_architecture_journey(journey_id):
         if evidence_error:
             return api_error(evidence_error, 400)
         journey.evidence_manifest = evidence
-    for field in allowed - {"selected_layers", "selected_deliverables", "evidence_manifest"}:
+    for field in allowed - {"selected_layers", "selected_deliverables", "evidence_manifest", "status"}:
         if field in data:
             setattr(journey, field, str(data[field]).strip() if field == "title" else data[field])
     db.session.commit()

@@ -1,10 +1,12 @@
 document.addEventListener('alpine:init', () => {
-  Alpine.data('architectureJourneyWorkspace', (journeyId, initialEvidence, initialStage, initialParticipants, canManageMembers) => ({
+  Alpine.data('architectureJourneyWorkspace', (journeyId, initialEvidence, initialStage, initialParticipants, canManageMembers, initialStatus) => ({
     journeyId,
     evidence: Array.isArray(initialEvidence) ? initialEvidence : [],
     participants: Array.isArray(initialParticipants) ? initialParticipants : [],
     canManageMembers: Boolean(canManageMembers),
     currentStage: initialStage || 'frame',
+    journeyStatus: initialStatus || 'active',
+    closingJourney: false,
     evidenceName: '',
     evidenceReference: '',
     saving: false,
@@ -180,13 +182,41 @@ document.addEventListener('alpine:init', () => {
       this.saving = true;
       this.error = '';
       const next = this.stages[this.stageIndex + 1].key;
+      const nextLabel = this.stages[this.stageIndex + 1].label;
       try {
         await this.save({ current_stage: next });
         this.currentStage = next;
+        // E2E-1: a PATCH that returned 200 with no toast and a frozen
+        // "Stage 1 of 5" label read as "nothing happened" -- a user clicked
+        // again, and both clicks landed, skipping a stage entirely. The
+        // label is now reactive (stageLabel/stageIndex above); this toast is
+        // the other half of the same fix.
+        Platform.toast.success(`Moved to ${nextLabel}.`);
       } catch (error) {
         this.error = error.message || 'The journey could not be saved.';
+        Platform.toast.error(this.error);
       } finally {
         this.saving = false;
+      }
+    },
+
+    // E2E-2: the final "Journey ready to close" button fired nothing at
+    // all -- it was simply disabled once currentStage reached 'deliver',
+    // with no other control taking its place. There was no route accepting
+    // a status transition, so a journey could never actually be marked
+    // done; PATCH .../state now accepts {status: 'completed'} (only from
+    // the deliver stage) as the one real closing transition.
+    async closeJourney() {
+      if (this.closingJourney || this.journeyStatus === 'completed') return;
+      this.closingJourney = true;
+      try {
+        await this.save({ status: 'completed' });
+        this.journeyStatus = 'completed';
+        Platform.toast.success('Journey marked complete.');
+      } catch (error) {
+        Platform.toast.error(error.message || 'The journey could not be closed.');
+      } finally {
+        this.closingJourney = false;
       }
     },
 
