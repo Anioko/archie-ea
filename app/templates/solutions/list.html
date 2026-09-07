@@ -30,6 +30,19 @@
         class="inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-input bg-background text-sm font-medium hover:bg-accent transition-colors">
         <i data-lucide="layout-template" class="h-4 w-4" aria-hidden="true"></i>New from Template
       </button>
+      {# E2E-4: a fresh workspace had no working way to create its first
+         solution -- New from Template needs one already, /solutions/new
+         404s, and Start Architecture Journey's primary action creates a
+         separate ArchitectureJourney artifact with no Solution at all.
+         This calls the same POST /architecture-journey/start endpoint the
+         journey hub's own "Start solution design" secondary button already
+         uses -- a real Solution, correctly labelled. #}
+      <button type="button" @click="startSolution" :disabled="startingSolution"
+        data-testid="btn-new-solution"
+        class="inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-input bg-background text-sm font-medium hover:bg-accent transition-colors disabled:opacity-50 disabled:pointer-events-none">
+        <i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i>
+        <span x-text="startingSolution ? 'Creating…' : 'New Solution'"></span>
+      </button>
       <a href="{{ url_for('architecture_journey.index') }}" data-testid="btn-start-journey"
          class="inline-flex items-center gap-1.5 h-9 px-4 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors"
          aria-label="Start the guided Architecture Journey to design a new solution">

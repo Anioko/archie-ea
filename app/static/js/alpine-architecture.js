@@ -583,7 +583,32 @@ if (window.__ALPINE_ARCH_LOADED__) {
                 selectedSolution: null,
                 compareIds: [],
                 compareMode: false,
+                startingSolution: false,
                 init() { this._loadItems(); },
+                // E2E-4: a fresh workspace had no working way to create its
+                // first solution. The old plain create form was removed
+                // (a real fix -- it opened a page mislabeled "Architecture
+                // Journey"), but nothing replaced it: /solutions/new 404s,
+                // "New from Template" needs an existing solution to save one
+                // from, and "Start Architecture Journey" creates a separate
+                // ArchitectureJourney artifact with, by that route's own
+                // docstring, no Solution at all. POST /architecture-journey/start
+                // already does the real thing (creates a Solution, redirects
+                // into its design workspace) -- it was just never reachable
+                // from this page. Calling it directly here, honestly labelled
+                // "New Solution", is not the same mistake as before: the
+                // label matches exactly where it goes.
+                async startSolution() {
+                    if (this.startingSolution) return;
+                    this.startingSolution = true;
+                    try {
+                        const payload = await Platform.fetch.post('/architecture-journey/start', {}, { silent: true });
+                        window.location.assign(payload.data.redirect);
+                    } catch (error) {
+                        Platform.toast.error(error.message || 'Could not create a new solution.');
+                        this.startingSolution = false;
+                    }
+                },
                 async _loadItems() {
                     this._startLoading();
                     try {
