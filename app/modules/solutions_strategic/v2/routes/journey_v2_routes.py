@@ -98,13 +98,36 @@ DELIVERABLE_TOOL_ENDPOINTS = {
 }
 
 
-def _available_deliverable_tools():
-    """Build only links whose optional blueprint registered successfully."""
-    return {
+def _available_deliverable_tools(journey=None):
+    """Build only links whose optional blueprint registered successfully.
+
+    E2E-3: "solution_blueprint" was a real, selectable deliverable
+    (JOURNEY_DELIVERABLE_OPTIONS) with a real, working page behind it
+    (solution_design.view_solution -- "Blueprint page ships ON by
+    default") that was simply never added to this map, so every journey
+    reported "Tool unavailable" for it unconditionally. It is not a
+    plain index page like the others here, though -- it needs a
+    solution_id, which an ArchitectureJourney only has once one is
+    linked (see E2E-2's ArchitectureJourney/Solution split). Built
+    separately from the endpoint-existence comprehension below rather
+    than added to DELIVERABLE_TOOL_ENDPOINTS, since url_for() with no
+    solution_id would raise BuildError and take out every other tool's
+    lookup with it.
+    """
+    tools = {
         deliverable: url_for(endpoint)
         for deliverable, endpoint in DELIVERABLE_TOOL_ENDPOINTS.items()
         if endpoint in current_app.view_functions
     }
+    if (
+        journey is not None
+        and journey.solution_id
+        and "solution_design.view_solution" in current_app.view_functions
+    ):
+        tools["solution_blueprint"] = url_for(
+            "solution_design.view_solution", solution_id=journey.solution_id
+        )
+    return tools
 
 
 def _validate_evidence_manifest(value):
@@ -512,7 +535,7 @@ def architecture_journey_workspace(journey_id):
         intent_options=JOURNEY_INTENT_OPTIONS,
         layer_options=JOURNEY_LAYER_OPTIONS,
         deliverable_options=JOURNEY_DELIVERABLE_OPTIONS,
-        deliverable_tool_urls=_available_deliverable_tools(),
+        deliverable_tool_urls=_available_deliverable_tools(journey),
     )
 
 
