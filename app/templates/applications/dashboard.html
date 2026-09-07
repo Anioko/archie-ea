@@ -183,6 +183,13 @@
   <div data-slot="card" class="rounded-xl border bg-card text-card-foreground shadow-sm p-4">
     <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Total Applications</p>
     <p class="mt-1 text-2xl font-bold text-foreground">{{ total_apps or 0 }}</p>
+    {# M2: this counts every ApplicationComponent row regardless of lifecycle_status,
+       so it disagrees with /applications/'s default "active portfolio" view, which
+       excludes "5. decommissioned" unless its include-decommissioned toggle is on.
+       Both counts are correct for what they measure -- label which one this is
+       rather than let the two pages silently disagree. #}
+    <p class="mt-1 text-2xs text-muted-foreground">Includes decommissioned applications</p>
+    <a href="{{ url_for('unified_applications.application_list') }}" class="mt-1 inline-block text-2xs text-primary hover:underline">View active portfolio only &rarr;</a>
   </div>
   <div data-slot="card" class="rounded-xl border bg-card text-card-foreground shadow-sm p-4">
     <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Active Interfaces</p>

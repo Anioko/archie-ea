@@ -5,13 +5,21 @@
 
 {% block content %}
 <div class="space-y-6">
+    {# M2: distinct from License Compliance (/procurement/compliance), which
+       tracks software license entitlement compliance, not regulatory
+       frameworks -- cross-linked so neither page reads as the other. #}
+    {% set _actions = [] %}
+    {% if 'procurement.compliance_dashboard' in flask.current_app.view_functions %}
+    {% set _ = _actions.append({'text': 'License Compliance', 'icon': 'file-check', 'href': url_for('procurement.compliance_dashboard'), 'variant': 'outline'}) %}
+    {% endif %}
     {{ page_header(
         title='Regulatory Compliance',
-        description='Regulatory frameworks and their controls, and how far the estate maps to them.',
+        description='Regulatory frameworks and their controls, and how far the estate maps to them. For software license entitlement compliance, see License Compliance.',
         breadcrumbs=[
             {'label': 'Home', 'href': url_for('dashboard.index') if 'dashboard.index' in flask.current_app.view_functions else '/'},
             {'label': 'Regulatory Compliance'}
-        ]
+        ],
+        actions=_actions
     ) }}
 
     {# Summary tiles — every value is a real query result; — when there is nothing to show. #}

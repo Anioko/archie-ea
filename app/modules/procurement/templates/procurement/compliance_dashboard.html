@@ -5,17 +5,26 @@
 
 {% block content %}
 <div class="p-6 space-y-6">
+    {# M2: distinct from Regulatory Compliance (/dashboard/compliance), which
+       tracks framework/control mappings, not license entitlements -- neither
+       page linked to the other. Cross-module endpoints register non-fatally
+       (CLAUDE.md), so guard the link rather than let a missing blueprint
+       500 this page. #}
+    {% set _actions = [
+        {'text': 'All Licenses', 'icon': 'list', 'href': url_for('procurement.licenses_list'), 'variant': 'outline'}
+    ] %}
+    {% if 'application_mgmt.compliance_frameworks_dashboard' in flask.current_app.view_functions %}
+    {% set _ = _actions.append({'text': 'Regulatory Compliance', 'icon': 'shield-check', 'href': url_for('application_mgmt.compliance_frameworks_dashboard'), 'variant': 'outline'}) %}
+    {% endif %}
     {{ page_header(
         title='License Compliance',
-        description='Monitor license compliance across the organization',
+        description='Monitor software license entitlement compliance across the organization. For regulatory/framework compliance, see Regulatory Compliance.',
         breadcrumbs=[
             {'label': 'Home', 'href': url_for('main.index')},
             {'label': 'License Entitlements', 'href': url_for('procurement.licenses_list')},
             {'label': 'License Compliance'}
         ],
-        actions=[
-            {'text': 'All Licenses', 'icon': 'list', 'href': url_for('procurement.licenses_list'), 'variant': 'outline'}
-        ]
+        actions=_actions
     ) }}
 
     <!-- Summary Cards -->
