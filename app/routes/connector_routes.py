@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 
 from flask import Blueprint, jsonify, render_template, request
 
-from app.decorators import audit_log
+from app.decorators import admin_required, audit_log
 
 from app.services.connector_framework import (
     ConnectorConfig,
@@ -22,13 +22,22 @@ connector_bp = Blueprint("connectors", __name__, url_prefix="/integrations")
 
 @connector_bp.route("/connectors")
 @login_required
+@admin_required
+# H5: this page's own empty state told a user to "Configure connectors in
+# connector_framework.py" -- a source-file reference with no in-product
+# config path, because there is none: connectors are wired in code, not
+# through this UI. Nobody but an operator with repo access could act on
+# that instruction, so the page is internal/admin-only, not a
+# customer-facing surface -- @login_required alone let any signed-in user
+# reach it.
 def dashboard():
-    """Connector health monitoring dashboard."""
+    """Connector health monitoring dashboard (admin-only, no self-serve config)."""
     return render_template("integrations/connector_dashboard.html")
 
 
 @connector_bp.route("/api/connectors", methods=["GET"])
 @login_required
+@admin_required
 def api_list_connectors():
     """List all configured connectors with current status."""
     try:
@@ -67,6 +76,7 @@ def api_list_connectors():
 
 @connector_bp.route("/api/connectors/<string:connector_id>", methods=["GET"])
 @login_required
+@admin_required
 def api_get_connector(connector_id):
     """Get detailed connector information."""
     try:
@@ -123,6 +133,7 @@ def api_get_connector(connector_id):
 
 @connector_bp.route("/api/connectors/<string:connector_id>/sync-logs", methods=["GET"])
 @login_required
+@admin_required
 def api_get_sync_logs(connector_id):
     """Get sync history for a connector."""
     try:
@@ -184,6 +195,7 @@ def api_get_sync_logs(connector_id):
 
 @connector_bp.route("/api/connectors/<string:connector_id>/test", methods=["POST"])
 @login_required
+@admin_required
 @audit_log("connector_test")
 def api_test_connection(connector_id):
     """Test connection to external system."""
@@ -221,6 +233,7 @@ def api_test_connection(connector_id):
 
 @connector_bp.route("/api/connectors/<string:connector_id>/sync", methods=["POST"])
 @login_required
+@admin_required
 @audit_log("connector_sync")
 def api_trigger_sync(connector_id):
     """Manually trigger a sync for a connector."""
