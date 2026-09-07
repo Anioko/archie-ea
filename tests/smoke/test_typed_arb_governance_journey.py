@@ -166,7 +166,7 @@ _CLEANUP_TABLES = (
     "application_owners",
     "application_components",
     "business_capability",
-    "architecture_decision_records",
+    "architecture_decisions",
 )
 
 
@@ -262,7 +262,7 @@ def governed(_app, seeded, live_server):
     a stubbed governance graph proves nothing about the governance graph.
     """
     from app import db
-    from app.models.adr import ArchitectureDecisionRecord
+    from app.models.architecture_decision import ArchitectureDecision
     from app.models.user import Role, User
     from app.models.organization import Organization
 
@@ -280,16 +280,16 @@ def governed(_app, seeded, live_server):
         # lifecycle so journeys do not fight over one cycle's state.
         for key in ("adr_a", "adr_conditions", "adr_b", "adr_return", "adr_historical",
                      "adr_failed", "adr_waiver", "adr_f", "adr_f2"):
-            adr = ArchitectureDecisionRecord(
+            adr = ArchitectureDecision(
                 organization_id=org_id,
-                adr_number=int(uuid.uuid4().hex[:7], 16),
+                decision_id="AD-%s-%s" % (key, uuid.uuid4().hex[:8]),
                 title="Typed ARB journey %s %s" % (key, suffix),
                 status="proposed",
                 context="A governed choice needs evidence.",
                 decision="Adopt the governed option.",
                 rationale="It is testable.",
                 consequences="Conditions must be verified.",
-                created_by=submitter.email,
+                created_by_id=submitter.id,
             )
             db.session.add(adr)
             db.session.commit()
@@ -707,16 +707,16 @@ def governed(_app, seeded, live_server):
             db.session.add(user)
         db.session.commit()
 
-        foreign_adr = ArchitectureDecisionRecord(
+        foreign_adr = ArchitectureDecision(
             organization_id=foreign.id,
-            adr_number=int(uuid.uuid4().hex[:7], 16),
+            decision_id="AD-foreign-%s" % uuid.uuid4().hex[:8],
             title="FOREIGN TENANT SECRET TITLE %s" % suffix,
             status="proposed",
             context="Another organisation's governed choice.",
             decision="Not yours to read.",
             rationale="Tenancy.",
             consequences="A 404 must reveal none of this.",
-            created_by=foreign_submitter.email,
+            created_by_id=foreign_submitter.id,
         )
         db.session.add(foreign_adr)
         db.session.commit()
@@ -825,7 +825,7 @@ def _cleanup(db, out):
                         "DELETE FROM arb_review_cycles WHERE subject_type = 'adr' "
                         "AND subject_id = ANY(%s)", (adr_ids,))
                     cursor.execute(
-                        "DELETE FROM architecture_decision_records WHERE id = ANY(%s)",
+                        "DELETE FROM architecture_decisions WHERE id = ANY(%s)",
                         (adr_ids,))
                 if out.get("architecture_model"):
                     cursor.execute(

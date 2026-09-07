@@ -23,7 +23,7 @@ _C3_CLEANUP_TABLES = (
     "command_materialisations", "command_idempotency_records",
     "arb_review_items", "arb_review_cycles",
     "arb_subject_evidence_snapshots",
-    "architecture_decision_records", "users",
+    "architecture_decisions", "users",
 )
 _C3_CLEANUP_ASSERT_TABLES = _C3_CLEANUP_TABLES
 

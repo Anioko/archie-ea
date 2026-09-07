@@ -66,7 +66,7 @@ _CLEANUP_TABLES = (
     "arb_review_items",
     "arb_review_cycles",
     "arb_subject_evidence_snapshots",
-    "architecture_decision_records",
+    "architecture_decisions",
     "users",
 )
 
@@ -1180,7 +1180,7 @@ def route_scope(app, _schema, request):
                     "solutions",
                     "solution_problem_definitions",
                     "solution_analysis_sessions",
-                    "architecture_decision_records",
+                    "architecture_decisions",
                 ):
                     connection.execute(
                         db.text(

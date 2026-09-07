@@ -87,7 +87,7 @@ def test_typed_cycle_schema_has_real_subject_and_adapter_evidence_foreign_keys()
         "decision_brief_id": "decision_briefs.id",
         "solution_id": "solutions.id",
         "architecture_model_id": "architecture_models.id",
-        "adr_id": "architecture_decision_records.id",
+        "adr_id": "architecture_decisions.id",
         "decision_brief_version_id": "decision_brief_versions.id",
         "solution_evidence_snapshot_id": "arb_submission_evidence_snapshots.id",
         "subject_evidence_snapshot_id": "arb_subject_evidence_snapshots.id",
@@ -485,15 +485,15 @@ def _seed_subject_material(cursor, subject_type, organization_id, user_id, label
     else:
         cursor.execute(
             """
-            INSERT INTO architecture_decision_records (
-                organization_id, adr_number, title, status, context,
-                decision, rationale, consequences
+            INSERT INTO architecture_decisions (
+                organization_id, decision_id, title, status, context,
+                decision, rationale, consequences, enterprise_level
             ) VALUES (
                 %s, %s, %s, 'proposed', 'Typed context', 'Typed decision',
-                'Typed rationale', 'Typed consequences'
+                'Typed rationale', 'Typed consequences', true
             ) RETURNING id
             """,
-            (organization_id, int(uuid.uuid4().hex[:7], 16), f"Typed ADR {label} {suffix}"),
+            (organization_id, f"AD-{uuid.uuid4().hex[:10]}", f"Typed ADR {label} {suffix}"),
         )
     return {
         "subject_type": subject_type,
@@ -1100,7 +1100,7 @@ def test_parent_subject_cannot_be_retenanted_away_from_committed_cycle(
             "decision_brief": "decision_briefs",
             "solution": "solutions",
             "architecture_model": "architecture_models",
-            "adr": "architecture_decision_records",
+            "adr": "architecture_decisions",
         }[subject_type]
         with pytest.raises(psycopg2.Error, match="tenant.*typed ARB|typed ARB.*tenant"):
             cursor.execute(
@@ -1551,7 +1551,7 @@ def test_parent_retenant_and_child_insert_share_subject_concurrency_fence(
             "decision_brief": "decision_briefs",
             "solution": "solutions",
             "architecture_model": "architecture_models",
-            "adr": "architecture_decision_records",
+            "adr": "architecture_decisions",
         }[subject_type]
         parent_cursor.execute(
             f"UPDATE {table} SET organization_id = %s WHERE id = %s",

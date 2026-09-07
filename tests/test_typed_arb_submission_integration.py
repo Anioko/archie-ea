@@ -14,7 +14,7 @@ from sqlalchemy import event, select, text
 from sqlalchemy.orm import Session
 
 from app import db
-from app.models.adr import ArchitectureDecisionRecord
+from app.models.architecture_decision import ArchitectureDecision
 from app.models.architecture_review_board import ARBReviewCycle, ARBReviewItem
 from app.models.arb_submission_event import ARBSubmissionEvent
 from app.models.arb_decision_event import (
@@ -110,16 +110,16 @@ def adr_scope(app, _schema):
         )
         db.session.add_all((user, foreign_user))
         db.session.flush()
-        adr = ArchitectureDecisionRecord(
+        adr = ArchitectureDecision(
             organization_id=organization.id,
-            adr_number=int(suffix[:7], 16),
+            decision_id=f"AD-{suffix}",
             title=f"Adopt governed integration {suffix}",
             status="proposed",
             context="Services require reliable asynchronous integration.",
             decision="Use durable domain events through the enterprise broker.",
             rationale="This isolates producers and consumers.",
             consequences="Teams own schema compatibility.",
-            created_by=user.email,
+            created_by_id=user.id,
         )
         db.session.add(adr)
         db.session.commit()
@@ -158,7 +158,7 @@ def adr_scope(app, _schema):
                     "arb_review_items",
                     "arb_review_cycles",
                     "arb_subject_evidence_snapshots",
-                    "architecture_decision_records",
+                    "architecture_decisions",
                     "users",
                 ):
                     connection.execute(

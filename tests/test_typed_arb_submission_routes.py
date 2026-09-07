@@ -39,7 +39,7 @@ _CLEANUP_TABLES = (
     "arb_review_items",
     "arb_review_cycles",
     "arb_subject_evidence_snapshots",
-    "architecture_decision_records",
+    "architecture_decisions",
     "users",
 )
 

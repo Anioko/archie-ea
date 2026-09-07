@@ -11,7 +11,7 @@ import pytest
 from sqlalchemy import text
 
 from app import db
-from app.models.adr import ArchitectureDecisionRecord
+from app.models.architecture_decision import ArchitectureDecision
 from app.models.architecture_review_board import ARBReviewCycle, ARBReviewItem
 from app.models.models import ArchiMateElement, ArchitectureModel
 from app.models.organization import Organization
@@ -31,9 +31,9 @@ class _RouteScope:
 
 
 def _new_adr(org_id, *, complete=True):
-    return ArchitectureDecisionRecord(
+    return ArchitectureDecision(
         organization_id=org_id,
-        adr_number=int(uuid.uuid4().hex[:7], 16),
+        decision_id=f"AD-{uuid.uuid4().hex[:10]}",
         title="Adopt governed event integration",
         status="proposed",
         context="Services require dependable asynchronous integration.",
@@ -122,7 +122,7 @@ def route_scope(app, _schema):
                     "arb_subject_evidence_snapshots",
                     "archimate_relationships",
                     "archimate_elements",
-                    "architecture_decision_records",
+                    "architecture_decisions",
                     "architecture_models",
                     "users",
                 ):
@@ -346,9 +346,9 @@ def test_stale_evidence_rolls_back_snapshot_and_review(app, route_scope, monkeyp
 
     def mutate_then_snapshot(self, actor, subject, readiness, **kwargs):
         row = db.session.execute(
-            db.select(ArchitectureDecisionRecord).where(
-                ArchitectureDecisionRecord.id == subject.subject_id,
-                ArchitectureDecisionRecord.organization_id == actor.organization_id,
+            db.select(ArchitectureDecision).where(
+                ArchitectureDecision.id == subject.subject_id,
+                ArchitectureDecision.organization_id == actor.organization_id,
             )
         ).scalar_one()
         row.consequences = "Evidence changed after readiness evaluation."
