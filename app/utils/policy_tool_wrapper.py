@@ -291,17 +291,17 @@ def get_policy_compliance_report() -> Dict[str, Any]:
     """Get comprehensive policy compliance report"""
     from app.utils.policy_enforcer import policy_enforcer
 
+    _ops = len(policy_tool_wrapper.operation_history)
+    _violations = len(policy_tool_wrapper.violation_history)
     return {
         "enforcement_status": {
-            "total_operations_checked": len(policy_tool_wrapper.operation_history),
-            "total_violations_detected": len(policy_tool_wrapper.violation_history),
+            "total_operations_checked": _ops,
+            "total_violations_detected": _violations,
             "termination_triggered": policy_enforcer.termination_triggered,
-            "compliance_rate": (
-                len(policy_tool_wrapper.operation_history)
-                - len(policy_tool_wrapper.violation_history)
-            )
-            / max(len(policy_tool_wrapper.operation_history), 1)
-            * 100,
+            # M1: with no operations checked yet, this is "not measured", not
+            # "0% compliant" -- None renders as the em dash the dashboard.html
+            # template already handles (`compliance_rate == null ? '—' : ...`).
+            "compliance_rate": ((_ops - _violations) / _ops * 100) if _ops > 0 else None,
         },
         "violation_breakdown": policy_enforcer.get_violation_summary(),
         "recent_activity": {

@@ -1087,11 +1087,15 @@ class PolicyMonitoringService:
             ).all()
 
             if not app_statuses:
+                # M1: no applications scanned yet is "not measured", not "fully
+                # compliant" -- a fabricated 100% here is indistinguishable from
+                # a real scan finding zero violations. Callers must render this
+                # None as an em dash, never as a number.
                 return {
                     "success": True,
                     "total_policies": 0,
-                    "compliance_percentage": 100.0,
-                    "risk_score": 0,
+                    "compliance_percentage": None,
+                    "risk_score": None,
                 }
 
             total_policies = sum(s.total_policies for s in app_statuses)
@@ -1100,7 +1104,7 @@ class PolicyMonitoringService:
             avg_risk = sum(s.risk_score for s in app_statuses) / len(app_statuses)
 
             compliance_pct = (
-                (total_compliant / total_policies * 100) if total_policies > 0 else 100.0
+                (total_compliant / total_policies * 100) if total_policies > 0 else None
             )
 
             # Update or create enterprise-level status
@@ -1131,7 +1135,7 @@ class PolicyMonitoringService:
                 "total_policies": total_policies,
                 "compliant_count": total_compliant,
                 "violation_count": total_violations,
-                "compliance_percentage": round(compliance_pct, 2),
+                "compliance_percentage": None if compliance_pct is None else round(compliance_pct, 2),
                 "risk_score": round(avg_risk, 2),
                 "applications_evaluated": len(app_statuses),
             }

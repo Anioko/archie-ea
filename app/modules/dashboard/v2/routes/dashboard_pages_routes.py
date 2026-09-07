@@ -1022,7 +1022,7 @@ def get_tco_cost_tiers():
 
             count = query.scalar() or 0
 
-            results.append({**tier, "application_count": count, "percentage": 0})
+            results.append({**tier, "application_count": count, "percentage": None})  # M1: None until computed below
 
         apps_in_tiers = sum(r["application_count"] for r in results)
         if apps_in_tiers > 0:
@@ -1036,7 +1036,7 @@ def get_tco_cost_tiers():
                 "total_portfolio": total_portfolio,
                 "apps_with_tco": apps_with_tco,
                 "apps_without_tco": total_portfolio - apps_with_tco,
-                "coverage_percent": round((apps_with_tco / total_portfolio) * 100, 1) if total_portfolio > 0 else 0,
+                "coverage_percent": round((apps_with_tco / total_portfolio) * 100, 1) if total_portfolio > 0 else None,  # M1: no portfolio yet is unmeasured, not 0%
                 "total_tco": round(float(portfolio_tco), 2),
             },
         })

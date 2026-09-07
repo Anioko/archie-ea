@@ -263,10 +263,10 @@ function renderCostTiers(tiers) {
     <div class="flex items-center gap-3">
       <div class="w-24 text-sm">${escapeHtml(tier.name)}</div>
       <div class="flex-1 bg-muted rounded-full h-4 overflow-hidden">
-        <div class="transition-[width] duration-500 ease-out h-full bg-${tier.color}-500" style="width: ${(tier.application_count / maxCount) * 100}%"></div>  <!-- inline-style-ok -->
+        <div class="transition-[width] duration-500 ease-out h-full bg-${tier.color}-500" style="width: ${maxCount > 0 ? (tier.application_count / maxCount) * 100 : 0}%"></div>  <!-- inline-style-ok -->
       </div>
       <div class="w-16 text-right text-sm font-medium">${tier.application_count}</div>
-      <div class="w-12 text-right text-xs text-muted-foreground">${tier.percentage}%</div>
+      <div class="w-12 text-right text-xs text-muted-foreground">${tier.percentage == null ? '—' : tier.percentage + '%'}</div>
     </div>
   `).join('');
 }

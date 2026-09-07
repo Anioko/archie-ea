@@ -1059,7 +1059,7 @@ def get_tco_cost_tiers():
                 {
                     **tier,
                     "application_count": count,
-                    "percentage": 0,  # Will calculate after getting total
+                    "percentage": None,  # M1: None until computed below; 0 apps stays None, not "0%"
                 }
             )
 
@@ -1076,7 +1076,7 @@ def get_tco_cost_tiers():
                 "total_portfolio": total_portfolio,
                 "apps_with_tco": apps_with_tco,
                 "apps_without_tco": total_portfolio - apps_with_tco,
-                "coverage_percent": round((apps_with_tco / total_portfolio) * 100, 1) if total_portfolio > 0 else 0,
+                "coverage_percent": round((apps_with_tco / total_portfolio) * 100, 1) if total_portfolio > 0 else None,  # M1: no portfolio yet is unmeasured, not 0%
                 "total_tco": round(float(portfolio_tco), 2),
             },
         })

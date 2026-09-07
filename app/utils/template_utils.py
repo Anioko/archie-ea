@@ -140,6 +140,34 @@ def _register(app):
             return "—"
         return "%s%s" % (value, suffix)
 
+    @app.template_filter("safe_ratio_pct")
+    def safe_ratio_pct_filter(numerator, denominator, decimals=1):
+        """Render numerator/denominator as a percentage, or an em dash when
+        denominator is 0/None -- the M1 fix for zero-denominator screens
+        (policy-monitoring, rationalization scorecard, product-roadmap) that
+        previously rendered a misleading 0%/100% for "no records yet".
+
+        Usage: {{ passed|safe_ratio_pct(total) }}  -> "83.3%" or "—"
+        """
+        value = safe_ratio(numerator, denominator, decimals=decimals)
+        return "—" if value is None else f"{value}%"
+
+    def safe_ratio(numerator, denominator, decimals=1):
+        """Python-side counterpart of `safe_ratio_pct` for use outside
+        templates (route/service code building a context dict). Returns
+        None -- never 0 -- when denominator is falsy, so callers pass the
+        None straight to the template and let `dash`/`safe_ratio_pct` render
+        the em dash rather than inventing a percentage over zero records.
+        """
+        if not denominator:
+            return None
+        try:
+            return round((numerator / denominator) * 100, decimals)
+        except (TypeError, ZeroDivisionError):
+            return None
+
+    app.jinja_env.globals["safe_ratio"] = safe_ratio
+
     def index_for_role(role):
         return url_for(role.index)
 
