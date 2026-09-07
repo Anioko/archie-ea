@@ -228,10 +228,17 @@ _TRANSFORMATION_FOREIGN_KEYS = (
         "RESTRICT",
     ),
     (
+        # E2E-H: repointed from architecture_decision_records (0 rows in
+        # production) to architecture_decisions -- this list is a separate
+        # copy of the same spec _ARB_FK_SPECS
+        # (app/models/architecture_review_board.py) declares, and reconcile-
+        # schema's generic "add if missing" here collided with what
+        # ensure_arb_cycle_constraints had already correctly created,
+        # because this copy still named the old target.
         "fk_arb_subject_snapshot_adr",
         "arb_subject_evidence_snapshots",
         "adr_id",
-        "architecture_decision_records",
+        "architecture_decisions",
         "id",
         "RESTRICT",
     ),
@@ -268,10 +275,12 @@ _TRANSFORMATION_FOREIGN_KEYS = (
         "RESTRICT",
     ),
     (
+        # E2E-H: same duplicate-spec collision as fk_arb_subject_snapshot_adr
+        # above -- repointed to match _ARB_FK_SPECS.
         "fk_arb_review_cycle_adr",
         "arb_review_cycles",
         "adr_id",
-        "architecture_decision_records",
+        "architecture_decisions",
         "id",
         "RESTRICT",
     ),
