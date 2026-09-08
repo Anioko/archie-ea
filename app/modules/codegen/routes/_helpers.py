@@ -2514,15 +2514,29 @@ def _build_rbac_config(solution_id: int) -> dict:
         }
     """
     try:
-        from app.models.solution_stakeholder import SolutionStakeholder
-        stakeholders = SolutionStakeholder.query.filter_by(solution_id=solution_id).all()
-        if not stakeholders:
+        # SolutionStakeholder itself carries no solution_id and no role — both
+        # live on the junction (a stakeholder can be mapped to a solution or
+        # to an analysis session, and its role is per-mapping, not per-person).
+        # This used to query SolutionStakeholder.filter_by(solution_id=...),
+        # which raised InvalidRequestError on every call and was silently
+        # swallowed by the except below, so generated code always shipped
+        # with has_rbac=False and no route guards.
+        from app.models.solution_stakeholder import SolutionStakeholder, SolutionStakeholderMapping
+        mappings = (
+            SolutionStakeholderMapping.query
+            .join(SolutionStakeholder, SolutionStakeholderMapping.stakeholder_id == SolutionStakeholder.id)
+            .filter(SolutionStakeholderMapping.solution_id == solution_id)
+            .all()
+        )
+        if not mappings:
             return {"has_rbac": False, "roles": []}
 
         seen = set()
         roles = []
-        for s in stakeholders:
-            role_name = (s.role or "").strip()
+        for m in mappings:
+            s = m.stakeholder
+            role_value = m.role.value if getattr(m, "role", None) is not None else ""
+            role_name = (role_value or "").strip()
             if not role_name or role_name in seen:
                 continue
             seen.add(role_name)
@@ -5407,11 +5421,19 @@ def _generate_adr(solution, config: dict, gen_version: int) -> str:
 
 
 def _notify_tech_lead(solution, file_count, language, completeness):
-    """Notify the solution's technical lead about code generation (GAP-09)."""
-    tech_lead = getattr(solution, "technical_lead", None)
-    if not tech_lead:
-        return
+    """Notify the solution's technical lead about code generation (GAP-09).
+
+    `solution` may be a detached instance by the time a streaming generation
+    finishes (the SSE generator's own db.session gets recycled mid-stream),
+    so any lazy-loaded attribute access — including the getattr below —
+    must be inside the try: an unguarded getattr previously raised
+    DetachedInstanceError and killed the whole generate-stream response
+    after the code bundle had already been produced and persisted.
+    """
     try:
+        tech_lead = getattr(solution, "technical_lead", None)
+        if not tech_lead:
+            return
         from app.models.user import User
         # tenant-scoping-ok: User.email is globally unique, so this cannot
         # match another org's user.

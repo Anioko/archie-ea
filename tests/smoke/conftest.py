@@ -413,6 +413,46 @@ def seeded(live_server, request, ai_protocol_stub):
         db.session.commit()
         out["ids"]["contract"] = contract.id
 
+        # A second solution, separate from the blueprint-controls one above,
+        # with a real ArchiMate element linked to it via the polymorphic
+        # solution_archimate_elements junction. This is what the Code
+        # Workbench's "Quick Generate" one-click path requires
+        # (codegen_routes.workbench_page's linked_elements_count > 0) --
+        # without it the button never renders and codegen is untestable
+        # from a fresh seed.
+        from app.models.solution_models import SolutionArchiMateElement
+
+        codegen_component = ApplicationComponent(
+            name="Smoke Codegen Service %s" % suffix, organization_id=org.id,
+            lifecycle_status="operational", description="Smoke fixture for codegen journey.",
+        )
+        db.session.add(codegen_component)
+        db.session.commit()
+        assert codegen_component.archimate_element_id is not None
+
+        codegen_solution = Solution(
+            name="Smoke codegen solution %s" % suffix,
+            description="Outcome-test fixture for the Code Workbench journey.",
+            organization_id=org.id,
+            created_by_id=out["ids"]["solution_architect_user"],
+            governance_status="draft",
+            adm_phase="C",
+            has_acm_domains=True,
+        )
+        db.session.add(codegen_solution)
+        db.session.commit()
+        out["ids"]["codegen_solution"] = codegen_solution.id
+
+        db.session.add(SolutionArchiMateElement(
+            solution_id=codegen_solution.id,
+            layer_type="application",
+            element_id=codegen_component.archimate_element_id,
+            element_table="archimate_elements",
+            element_name=codegen_component.name,
+            element_role="primary",
+        ))
+        db.session.commit()
+
     return out
 
 
