@@ -408,6 +408,40 @@ flask --app manage acm stats
 `flask --app manage recreate-db` is destructive and requires `--force`. Don't run it without explicit
 human approval — `init-db` + `reconcile-schema` covers every non-destructive case.
 
+## Deploying to production
+
+```bash
+scripts/deploy_verified.sh <ref>                # fetch, checkout <ref>, force-recreate, then PROVE it
+scripts/deploy_verified.sh <ref> --skip-deploy   # verify-only, against whatever is already running
+```
+
+**Never deploy with `docker compose restart`.** On 8 Sep 2026 it was run 6+ times in a
+row and every one was a silent no-op: `restart` only restarts a container with its
+*existing* config, it never re-reads `docker-compose.yml`, so the running server had
+drifted to zero bind mounts while `curl /health` and the host's `git log` both kept
+reporting success. `scripts/deploy_verified.sh` replaces that ad-hoc flow for the
+bind-mount source-checkout topology production actually runs today: it always
+`git fetch`/checks out the target commit and runs
+`docker compose up -d --force-recreate server` (recreation is unconditional, not
+config-diffed), then independently proves — from *outside* the container's own
+self-report — that (a) the container is healthy, (b) the bind mount is genuinely
+present (`docker inspect --format '{{range .Mounts}}...'`), and (c) the code actually
+running is the target commit, via `/version`'s `build_id`
+(`app/_bootstrap/build_info.py`), not just "files exist at the mount point." Optionally
+runs an authenticated Playwright login-and-reach-a-page check when
+`DEPLOY_VERIFY_EMAIL`/`DEPLOY_VERIFY_PASSWORD` are set. Any failed check exits non-zero
+with a diagnostic — a deploy that cannot prove itself is never reported as success.
+
+This is deliberately separate from `deploy/deploy.sh` + `scripts/deploy.sh`
+(the immutable-GHCR-digest pipeline with `deploy/docker-compose.production.yml`
+stripping all bind mounts via `!reset []`): that pipeline is real and committed but,
+as measured on 8 Sep 2026, is **not** what production is actually running — the live
+container still has a real `/root/archie-ea -> /app` bind mount and runs a
+locally-built image, and `/root/deploy-releases/release.env` is stale. Two scripts
+exist because two topologies exist; when the GHCR pipeline becomes the live one,
+`scripts/deploy_verified.sh`'s verification steps should move onto that path and this
+file should retire — don't let both read as "the current answer" at once.
+
 ## Schema management — read this before touching a model
 
 There are **three** overlapping mechanisms, and Alembic is *not* the source of truth:
