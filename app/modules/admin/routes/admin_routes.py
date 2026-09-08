@@ -3677,7 +3677,18 @@ def pricing_analytics():
 # ---------------------------------------------------------------------------
 # Power Platform CoE Integration
 # ---------------------------------------------------------------------------
-
+#
+# Wave 4 nav/security audit (8 Sep 2026): all five routes below carried only
+# @login_required despite living in the platform_admin-only Admin sidebar
+# zone (app/utils/role_access.py, "Power Platform") and writing tenant CoE
+# credentials to api_settings. The sidebar hid the link from non-admins, but
+# the route itself did not check anything beyond an authenticated session, so
+# any logged-in user of any role could GET the page (and its stored
+# tenant/client id) and POST new credentials or trigger discovery/import by
+# calling the URL directly. Added @admin_required (Permission.ADMINISTER) to
+# match the guard the sidebar's own "requires" comment
+# (app/utils/role_access.py:_link, "admin" -> @admin_required) already claims
+# every admin-zone route carries.
 _PP_PROVIDER = "power_platform_coe"
 _PP_LABEL = "default"
 
@@ -3691,6 +3702,7 @@ def _pp_settings_row():
 
 @admin_bp.route("/integrations/power-platform", methods=["GET"])
 @login_required
+@admin_required
 def power_platform_integration():
     """GET /admin/integrations/power-platform — CoE configuration and discovery UI."""
     row = _pp_settings_row()
@@ -3707,6 +3719,7 @@ def power_platform_integration():
 
 @admin_bp.route("/integrations/power-platform/save", methods=["POST"])
 @login_required
+@admin_required
 def power_platform_save_credentials():
     """POST /admin/integrations/power-platform/save — persist credentials to api_settings."""
     data = request.get_json() or request.form
@@ -3727,6 +3740,7 @@ def power_platform_save_credentials():
 
 @admin_bp.route("/integrations/power-platform/test", methods=["POST"])
 @login_required
+@admin_required
 def power_platform_test_connection():
     """POST /admin/integrations/power-platform/test — test credentials."""
     from app.modules.solutions_strategic.v2.services.power_platform_coe_service import (
@@ -3759,6 +3773,7 @@ def power_platform_test_connection():
 
 @admin_bp.route("/integrations/power-platform/discover", methods=["POST"])
 @login_required
+@admin_required
 def power_platform_discover():
     """POST /admin/integrations/power-platform/discover — trigger discovery, return app list."""
     from app.models.application_portfolio import ApplicationComponent
@@ -3799,6 +3814,7 @@ def power_platform_discover():
 
 @admin_bp.route("/integrations/power-platform/import", methods=["POST"])
 @login_required
+@admin_required
 def power_platform_import():
     """POST /admin/integrations/power-platform/import — import selected app_ids."""
     from app.modules.solutions_strategic.v2.services.power_platform_coe_service import (
