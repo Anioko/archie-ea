@@ -50,11 +50,26 @@ class SmokeServer(str):
 
     Subclasses str so every existing `live_server + path` still works, while
     giving a failing test somewhere to look.
+
+    ``app`` is an in-process Flask app (the shared session-scoped fixture from
+    tests/conftest.py) - NOT the app actually serving the browser, which runs
+    in a separate subprocess and has no importable app object. It exists only
+    so pytest-flask's autouse `_push_request_context` fixture
+    (site-packages/pytest_flask/plugin.py) has something to push a request
+    context onto: that fixture activates whenever a test's fixtures include
+    both `app` and `live_server`, and unconditionally does
+    `getfixturevalue(request, "live_server").app` when `live_server` is
+    present - a real attribute pytest-flask's own live_server carries, that
+    ours never did. Without it, any smoke test whose fixtures reference `app`
+    (e.g. application_history_records) errored at setup with
+    `AttributeError: 'SmokeServer' object has no attribute 'app'` before a
+    single line of the test ran.
     """
 
-    def __new__(cls, base, log_path):
+    def __new__(cls, base, log_path, app=None):
         obj = super().__new__(cls, base)
         obj.log_path = log_path
+        obj.app = app
         return obj
 
     def tail(self, lines=40):
@@ -119,7 +134,7 @@ def ai_protocol_stub():
 
 
 @pytest.fixture(scope="session")
-def live_server(request, ai_protocol_stub):
+def live_server(request, ai_protocol_stub, app):
     """Boot the real application on a free port and yield its base URL.
 
     Runs the app as a subprocess rather than via the test client, because a test
@@ -228,7 +243,7 @@ def live_server(request, ai_protocol_stub):
     except Exception as exc:
         print("[smoke] live_server at %s NOT serving: %s" % (base, exc))
 
-    server = SmokeServer(base, log_path)
+    server = SmokeServer(base, log_path, app)
     yield server
 
     if request.session.testsfailed:
