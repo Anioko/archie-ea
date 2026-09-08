@@ -568,6 +568,21 @@
     // ── Mutating methods that require CSRF ───────────────────────────────────
     let MUTATING = { POST: true, PUT: true, PATCH: true, DELETE: true };
 
+    // ── Navigation-in-progress flag ──────────────────────────────────────────
+    // The browser rejects any in-flight fetch with a plain
+    // `TypeError: Failed to fetch` when the document unloads mid-request --
+    // indistinguishable, by error shape alone, from a real connection failure.
+    // A page-level widget that fires a fetch from x-init (e.g. the dashboard's
+    // Executive Summary panel) has no request of its own to cancel and no
+    // caller-owned AbortSignal, so the explicit-cancellation guard below never
+    // catches it: every reload or "click through before it resolves" logged a
+    // false "Network error" that was really just the user leaving the page.
+    // pagehide fires before the request is aborted, so the flag is set in time.
+    let navigatingAway = false;
+    if (global.addEventListener) {
+        global.addEventListener('pagehide', function () { navigatingAway = true; });
+    }
+
     // ── Plain-object detection ───────────────────────────────────────────────
     function isPlainObject(v) {
         return (
@@ -661,6 +676,16 @@
                 if (fetchOptions.signal && fetchOptions.signal.aborted &&
                     (networkErr?.name === 'AbortError' || networkErr === fetchOptions.signal.reason)) {
                     throw networkErr;
+                }
+                // The document is on its way out -- this is a navigation, not a
+                // network outage. Don't toast it and don't count it as a
+                // console-hygiene defect.
+                if (navigatingAway) {
+                    log.debug('Network error (navigating away)', url, networkErr);
+                    const navError = new Error(options.errorMsg || 'Navigated away before request completed');
+                    navError.type = 'NavigationAbort';
+                    navError.originalError = networkErr;
+                    throw navError;
                 }
                 let netMsg = options.errorMsg || ('Network error: ' + (networkErr.message || 'Request failed'));
                 if (!silent && global.Platform.toast) {
