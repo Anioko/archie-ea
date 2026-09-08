@@ -14,13 +14,6 @@
 
 {% block content %}
 <div class="space-y-6" x-data="solutionWorkspace()" x-init="init()">
-    <!-- Breadcrumbs -->
-    <nav class="flex items-center gap-2 text-sm text-muted-foreground">
-        <a href="{{ url_for('main.index') }}" class="hover:text-foreground transition-colors">Dashboard</a>
-        <i data-lucide="chevron-right" class="h-4 w-4"></i>
-        <span class="text-foreground font-medium">Solutions Architecture</span>
-    </nav>
-
     <!-- Page Header -->
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         {{ page_header(
