@@ -282,7 +282,7 @@ counts only the families in `BANNED_FAMILIES` (`scripts/check_design_tokens.py`)
 `orange` or `cyan` class is right per DESIGN.md but moves this number by zero, and a
 line carrying a `token-migration-ok` marker is already excluded from the count.
 
-**All 52 gates, in registry order (`scripts/verify.py`, `build_gates`) — this table
+**All 54 gates, in registry order (`scripts/verify.py`, `build_gates`) — this table
 is a snapshot, not generated. Run `grep -oE '^\s*Gate\("[a-z-]+"' scripts/verify.py`
 to reconfirm the count before trusting it:**
 
@@ -324,6 +324,8 @@ to reconfirm the count before trusting it:**
 | `null-filters` | `default()` feeding a `len()`-calling filter without the boolean arg | must be 0 |
 | `fabricated-data` | invented data reaching the UI (see below) | must be 0 |
 | `breadcrumb-coverage` | a routed page with a header but no breadcrumb | must be 0 |
+| `raw-repr-in-template` | a Python object repr (raw dict/list `str()`) reaching a rendered page | must be 0 |
+| `duplicate-breadcrumb` | a page rendering two independent breadcrumb trails at once | must be 0 |
 | `stale-models` | a retired LLM model id (404s in prod) in shipped code | must be 0 |
 | `deployed-deps` | installed packages below the pinned floors | must be 0 (boot-health job only) |
 | `js-build` | committed `js/bundles/*.js` stale vs a rebuild | must pass |

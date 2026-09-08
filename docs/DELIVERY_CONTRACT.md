@@ -72,7 +72,7 @@ assertion in a report.
 
 **Corrected 4 Sep 2026 — the table below is measured from the registry.**
 The 31 Aug re-measurement claimed 67 gates; `build_gates()` in `scripts/
-verify.py` now registers **52**, and `docs-drift` re-derives each role's count
+verify.py` now registers **54**, and `docs-drift` re-derives each role's count
 from those gates' actual `tags=[...]` rather than trusting this prose.
 
 The four `ai-*` checkers, `evidence-contract`, and `role-gate-coverage` are
@@ -82,7 +82,7 @@ not represented as qualification evidence.
 
 | Role | Gate tags | Gates (re-measured 3 Sep 2026, `docs-drift` keeps this row honest from here on) |
 |---|---|---|
-| UX / frontend architect (lint only — see note) | `ui`, `a11y` | 23 (no gate carries `a11y`) |
+| UX / frontend architect (lint only — see note) | `ui`, `a11y` | 25 (no gate carries `a11y`) |
 | security architect | `security`, `airgap` | 12 |
 | QA / test lead | `qa`, `runtime` | 7 |
 | software / technical architect | `architecture`, `correctness` | 2 (`correctness` only; no gate carries `architecture`) |

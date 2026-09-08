@@ -826,6 +826,32 @@ def gate_breadcrumb_coverage() -> Result:
     return Result("breadcrumb-coverage", PASS if count == 0 else FAIL, detail, count, 0)
 
 
+def gate_raw_repr_in_template() -> Result:
+    """No Python object repr (a raw dict/list str()) reaches a rendered page.
+    Gated at ZERO. Escape hatch is 'raw-repr-ok: <reason>'."""
+    proc = _run([sys.executable, "scripts/check_raw_repr_in_template.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("raw-repr-in-template", FAIL,
+                      f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    detail = "" if count == 0 else "run scripts/check_raw_repr_in_template.py to list them"
+    return Result("raw-repr-in-template", PASS if count == 0 else FAIL, detail, count, 0)
+
+
+def gate_duplicate_breadcrumb() -> Result:
+    """No page renders two independent breadcrumb trails at once. Gated at
+    ZERO. Escape hatch is 'duplicate-breadcrumb-ok: <reason>'."""
+    proc = _run([sys.executable, "scripts/check_duplicate_breadcrumb.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("duplicate-breadcrumb", FAIL,
+                      f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    detail = "" if count == 0 else "run scripts/check_duplicate_breadcrumb.py to list them"
+    return Result("duplicate-breadcrumb", PASS if count == 0 else FAIL, detail, count, 0)
+
+
 def gate_sri() -> Result:
     """Every same-origin integrity= hash matches the file it guards. Gated at ZERO.
 
@@ -1535,6 +1561,16 @@ def build_gates(baseline: dict) -> list[Gate]:
              remediation="add breadcrumb=[('Home','/'), (<title>, none)] to page_shell "
                          "(or breadcrumbs=[{'label':'Home','href':'/'}, {'label': <title>}] "
                          "for page_header); partials are exempt; else mark 'breadcrumb-ok:'",
+             tags=["static", "ui"]),
+        Gate("raw-repr-in-template", "no Python object repr (raw dict/list str()) reaches a rendered page",
+             "zero", gate_raw_repr_in_template,
+             remediation="format dict/list values explicitly instead of str(); "
+                         "run scripts/check_raw_repr_in_template.py; else mark 'raw-repr-ok: <reason>'",
+             tags=["static", "ui"]),
+        Gate("duplicate-breadcrumb", "no page renders two independent breadcrumb trails", "zero",
+             gate_duplicate_breadcrumb,
+             remediation="keep the one wired-up breadcrumb and delete the rest; "
+                         "run scripts/check_duplicate_breadcrumb.py; else mark 'duplicate-breadcrumb-ok: <reason>'",
              tags=["static", "ui"]),
         Gate("stale-models", "no retired LLM model id (404s in prod) in shipped code", "zero",
              gate_stale_models,
