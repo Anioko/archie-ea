@@ -313,3 +313,4 @@ recheck.py
 # reviewed in-session, not committed.
 docs/superpowers/evidence/
 route_verification.json
+route_verification.accum.json
