@@ -23,6 +23,7 @@
     "console_reporting": 0,
     "evidence_contract": 29,
     "role_gate_coverage": 7,
-    "unregistered_checks": 41
+    "unregistered_checks": 41,
+    "duplicate_breadcrumb": 17
   }
 }

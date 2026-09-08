@@ -67,37 +67,59 @@ def _is_partial(path: Path) -> bool:
     return "partials" in path.parts
 
 
+_COMMENT = re.compile(r"\{#.*?#\}|<!--.*?-->", re.S)
+
+
+def _mask_comments(text: str) -> str:
+    """Blank out `{# ... #}` / `<!-- ... -->` comment bodies, preserving every
+    other character (including newlines) so offsets/line numbers still line
+    up with the original text.
+
+    Without this, prose that merely *describes* the pattern -- e.g. a
+    breadcrumb-ok comment explaining "a second breadcrumb_nav() call used to
+    live in a {% block breadcrumb %} above" -- is itself template-shaped text
+    and was matched as a second live source, corrupting the very
+    justification comment the escape hatch relies on.
+    """
+    def _blank(m: re.Match) -> str:
+        s = m.group(0)
+        return "".join(c if c == "\n" else " " for c in s)
+
+    return _COMMENT.sub(_blank, text)
+
+
 def _sources(text: str) -> list[tuple[int, str]]:
+    scan_text = _mask_comments(text)
     hits: list[tuple[int, str]] = []
     block_spans: list[tuple[int, int]] = []
 
-    for m in BLOCK_BC.finditer(text):
+    for m in BLOCK_BC.finditer(scan_text):
         body = m.group(1)
-        if body.strip() and not ALLOW.search(body):
-            idx = text.count("\n", 0, m.start())
+        if body.strip():
+            idx = scan_text.count("\n", 0, m.start())
             hits.append((idx + 1, "block-breadcrumb"))
         block_spans.append((m.start(), m.end()))
 
     def _in_block(pos: int) -> bool:
         return any(a <= pos < b for a, b in block_spans)
 
-    for m in BC_NAV_CALL.finditer(text):
+    for m in BC_NAV_CALL.finditer(scan_text):
         if _in_block(m.start()):
             continue
-        idx = text.count("\n", 0, m.start())
+        idx = scan_text.count("\n", 0, m.start())
         hits.append((idx + 1, "breadcrumb-nav-call"))
 
-    for m in HEADER_CALL.finditer(text):
-        window = text[m.start():m.start() + 800]
+    for m in HEADER_CALL.finditer(scan_text):
+        window = scan_text[m.start():m.start() + 800]
         if HEADER_BC_ARG.search(window):
-            idx = text.count("\n", 0, m.start())
+            idx = scan_text.count("\n", 0, m.start())
             hits.append((idx + 1, "header-arg"))
 
-    for m in INLINE_NAV.finditer(text):
+    for m in INLINE_NAV.finditer(scan_text):
         if _in_block(m.start()):
             continue
         if BREADCRUMB_SHAPED.search(m.group(1)):
-            idx = text.count("\n", 0, m.start())
+            idx = scan_text.count("\n", 0, m.start())
             hits.append((idx + 1, "inline-nav"))
 
     return hits
@@ -116,7 +138,12 @@ def _excused(text: str, lines: list[str], hit_lines: list[int]) -> bool:
 def _scan(root: Path) -> list[tuple[str, list[tuple[int, str]]]]:
     findings = []
     for path in root.rglob("*.html"):
-        if any(part in SKIP_DIRS for part in path.parts):
+        # Check skip-dirs against the path RELATIVE to root -- the absolute
+        # root itself may sit under a dir named in SKIP_DIRS (e.g. a
+        # .worktrees checkout), which would otherwise skip every file in the
+        # tree and make this gate silently scan nothing.
+        rel_parts = path.relative_to(root).parts
+        if any(part in SKIP_DIRS for part in rel_parts):
             continue
         if _is_partial(path):
             continue

@@ -38,7 +38,12 @@ def _is_partial(path: Path) -> bool:
 def _missing(root: Path) -> list[str]:
     hits = []
     for path in root.rglob("*.html"):
-        if any(part in SKIP_DIRS for part in path.parts):
+        # Check skip-dirs against the path RELATIVE to root -- the absolute
+        # root itself may sit under a dir named in SKIP_DIRS (e.g. a
+        # .worktrees checkout), which would otherwise skip every file in the
+        # tree and make this gate silently scan nothing.
+        rel_parts = path.relative_to(root).parts
+        if any(part in SKIP_DIRS for part in rel_parts):
             continue
         if _is_partial(path):
             continue

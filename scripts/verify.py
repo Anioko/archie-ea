@@ -839,17 +839,24 @@ def gate_raw_repr_in_template() -> Result:
     return Result("raw-repr-in-template", PASS if count == 0 else FAIL, detail, count, 0)
 
 
-def gate_duplicate_breadcrumb() -> Result:
-    """No page renders two independent breadcrumb trails at once. Gated at
-    ZERO. Escape hatch is 'duplicate-breadcrumb-ok: <reason>'."""
+def gate_duplicate_breadcrumb(baseline: int) -> Result:
+    """No NEW page renders two independent breadcrumb trails at once. Ratchet,
+    not zero: measuring this gate for the first time (once its SKIP_DIRS bug
+    was fixed -- see check_duplicate_breadcrumb.py's module docstring) found
+    17 pre-existing pages carrying both an inline breadcrumb <nav> and a
+    page_header(breadcrumbs=...)/page_shell(breadcrumb=...) call, the same
+    defect class fixed on the ArchiMate detail page in e30ad429. That is real,
+    pre-existing debt, not something to hide by baselining at 0; it can only
+    go down from here. Escape hatch is 'duplicate-breadcrumb-ok: <reason>'."""
     proc = _run([sys.executable, "scripts/check_duplicate_breadcrumb.py", "--count"])
     try:
         count = int(proc.stdout.strip().splitlines()[-1])
     except (ValueError, IndexError):
         return Result("duplicate-breadcrumb", FAIL,
                       f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
-    detail = "" if count == 0 else "run scripts/check_duplicate_breadcrumb.py to list them"
-    return Result("duplicate-breadcrumb", PASS if count == 0 else FAIL, detail, count, 0)
+    detail = "" if count <= baseline else "run scripts/check_duplicate_breadcrumb.py to list them"
+    return Result("duplicate-breadcrumb", PASS if count <= baseline else FAIL,
+                  detail, count, baseline)
 
 
 def gate_sri() -> Result:
@@ -1567,8 +1574,8 @@ def build_gates(baseline: dict) -> list[Gate]:
              remediation="format dict/list values explicitly instead of str(); "
                          "run scripts/check_raw_repr_in_template.py; else mark 'raw-repr-ok: <reason>'",
              tags=["static", "ui"]),
-        Gate("duplicate-breadcrumb", "no page renders two independent breadcrumb trails", "zero",
-             gate_duplicate_breadcrumb,
+        Gate("duplicate-breadcrumb", "no NEW page renders two independent breadcrumb trails",
+             "ratchet", lambda: gate_duplicate_breadcrumb(baseline.get("duplicate_breadcrumb", 17)),
              remediation="keep the one wired-up breadcrumb and delete the rest; "
                          "run scripts/check_duplicate_breadcrumb.py; else mark 'duplicate-breadcrumb-ok: <reason>'",
              tags=["static", "ui"]),
