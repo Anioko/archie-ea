@@ -106,7 +106,13 @@ def update_canvas(canvas_id):
 
 @business_model_bp.route("/<int:canvas_id>/delete", methods=["POST"])
 @login_required
-@require_roles("admin")
+# Same class of bug as DEF-075 on business_case.delete (Capgemini dry-run):
+# this required "admin" while create/update/save_block above accept
+# admin/architect/business_architect, so the business_architect who created a
+# canvas got a 403 (full-page error, since this route redirects rather than
+# returning JSON) trying to delete their own record. Same roles as
+# create/update/save_block.
+@require_roles("admin", "architect", "business_architect")
 def delete_canvas(canvas_id):
     """Delete a canvas."""
     canvas = service.get_canvas_or_none(canvas_id)
