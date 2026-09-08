@@ -16,6 +16,7 @@
         <i data-lucide="plus" class="w-4 h-4 mr-2" aria-hidden="true"></i>New Review
     </button>
     {% endmacro %}
+    {# duplicate-breadcrumb-ok: this page_shell() and the one in the else branch below are mutually exclusive render paths (is_reviews_view), so exactly one page_shell -- and one breadcrumb -- ever renders per request. #}
     {{ page_shell(
         title='ARB Reviews',
         subtitle='Architecture review items submitted for governance assessment',
