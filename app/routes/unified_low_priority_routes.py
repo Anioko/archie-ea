@@ -168,9 +168,20 @@ def architecture_relationships():
 @login_required
 def capability_map_dashboard():
     """Capability mapping dashboard"""
+    # capability_map/index.html's "Total Capabilities" tile reads
+    # `total_capabilities`, not `capability_count` -- this route passed the
+    # latter, so the tile was Undefined here and always rendered the null-state
+    # em dash regardless of how many capabilities actually existed. Route both
+    # variables through the same counting function `/capability-map/`'s index()
+    # uses (app/modules/capabilities/services/capability_count_service.py) so
+    # this surface cannot drift from that one (ADR 0008 / store-agreement).
+    from app.modules.capabilities.services.capability_count_service import (
+        count_business_capabilities,
+    )
+
     try:
         # Get capability statistics
-        capability_count = BusinessCapability.query.count()
+        capability_count = count_business_capabilities()
         application_count = ApplicationComponent.query.count()
 
         # Get capability categories
@@ -180,6 +191,7 @@ def capability_map_dashboard():
         return render_template(
             "capability_map/index.html",
             capability_count=capability_count,
+            total_capabilities=capability_count,
             application_count=application_count,
             categories=categories,
         )
@@ -191,6 +203,7 @@ def capability_map_dashboard():
         return render_template(
             "capability_map/index.html",
             capability_count=None,
+            total_capabilities=None,
             application_count=None,
             categories=[],
             load_error="Capability map statistics could not be read.",
