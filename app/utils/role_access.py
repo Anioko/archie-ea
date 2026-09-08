@@ -585,6 +585,14 @@ _MY_WORK_LINKS = {
         # Output 10, Products & services: the Product register in the business
         # layer of the ArchiMate element browser.
         _link("Products & Services", "archimate_layers.business_products", "package-open"),
+        # Wave 4 nav audit: organization.routes' own module docstring claims
+        # "linked from the sidebar by the orchestrator post-merge" -- it never
+        # was. Org chart + RACI (capabilities x stakeholders) is a business
+        # architecture output with real CRUD (raci_cell_save/delete) and had no
+        # sidebar entry in ANY persona's zone, reachable only via /modules or a
+        # typed URL. business_architect is the persona whose remit this is and
+        # had headroom (24 -> 25, budget 28).
+        _link("Org Chart & RACI", "organization.index", "users-round"),
     ],
     ROLE_PORTFOLIO_MANAGER: [
         # S-11 / ARCH-122: /portfolio/ is a complete programme-management

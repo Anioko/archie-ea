@@ -253,6 +253,11 @@ def test_business_architect_my_work_membership():
         "Data Lineage",
         "Motivation Model",
         "Products & Services",
+        # Wave 4 nav audit: organization.routes' own docstring claimed this was
+        # "linked from the sidebar by the orchestrator post-merge" and it never
+        # was -- reachable only via /modules or a typed URL. business_architect
+        # is the persona whose remit (org chart + RACI) this is.
+        "Org Chart & RACI",
     ]
 
 
