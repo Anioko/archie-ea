@@ -15,6 +15,18 @@ The newest Claude referenced anywhere was Haiku 4.5, so the Anthropic path was
 either calling a model that no longer exists or routing enterprise-architecture
 reasoning through the cheapest tier in the lineup.
 
+    google/gemini-2.5-flash-preview:free   dead on OpenRouter    was the
+                                                                  openrouter default
+
+Found live, 8 Sep 2026: a real AI-chat verification run against the actual
+OpenRouter API hit "not a valid model ID" on every call. The app's own
+provider fallback silently caught it and fell through to deepseek/deepseek-chat
+every time, so this had zero user-visible impact -- but it meant the documented
+free tier was fiction. OpenRouter's free-tier catalog churns; if this id goes
+stale again, list current free models with `GET
+https://openrouter.ai/api/v1/models` and filter for ids ending `:free` rather
+than guessing.
+
 Operators still choose their own model per provider in Admin -> API Settings
 (APISettings.default_model); this is only the fallback used when nothing is
 configured, and the guidance shown alongside that field.
@@ -38,7 +50,7 @@ DEFAULT_MODELS = {
     "deepseek": "deepseek-chat",
     "azure": "gpt-4o",
     "huggingface": "meta-llama/Llama-2-7b-chat-hf",
-    "openrouter": "google/gemini-2.5-flash-preview:free",
+    "openrouter": "google/gemma-4-31b-it:free",
 }
 
 # A cheaper model for high-volume, low-judgement work (classification, routing,
