@@ -432,12 +432,13 @@
 
                     <div x-show="showMapPicker" x-cloak class="mt-3 rounded-md border border-border p-3 space-y-2">
                         <div class="flex gap-2">
-                            <select x-model="linkType" class="h-8 rounded-md border border-input bg-background px-2 text-xs">
+                            <select x-model="linkType" aria-label="Entity type to link" class="h-8 rounded-md border border-input bg-background px-2 text-xs">
                                 <option value="application">Application</option>
                                 <option value="solution">Solution</option>
                                 <option value="programme">Programme</option>
                             </select>
                             <input type="text" x-model="linkSearch" @input.debounce.300ms="searchLinkEntities()"
+                                   aria-label="Search entities to link"
                                    class="flex-1 h-8 rounded-md border border-input bg-background px-2 text-xs"
                                    :placeholder="'Search ' + linkType + 's…'">
                         </div>
