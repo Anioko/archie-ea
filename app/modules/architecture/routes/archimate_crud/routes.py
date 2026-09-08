@@ -3,6 +3,7 @@ Architecture CRUD Routes
 Unified dashboard for managing Motivation, Strategy, and Business layer elements
 """
 
+import re
 from datetime import datetime
 
 from flask import (
@@ -468,9 +469,18 @@ def _get_display_fields(element, model_class):
         # Skip 0 for numeric types only (not booleans)
         if not isinstance(value, bool) and value == 0:
             continue
+        # An empty JSON dict/list column (e.g. a provenance or config column
+        # with no data yet) has nothing to show -- str({}) rendering as a
+        # literal "{}" on a real screen is worse than omitting the row.
+        if isinstance(value, (dict, list)) and not value:
+            continue
 
-        # Build a human-readable label from snake_case
+        # Build a human-readable label from snake_case, correcting acronyms
+        # that .title() mangles (Acm -> ACM) rather than leaving the wrong
+        # case on a screen a real architect reads.
         label = col_name.replace("_", " ").title()
+        for acronym in ("Acm", "Api", "Id", "Url", "Sap", "Rfc", "Bapi", "Arb"):
+            label = re.sub(rf"\b{acronym}\b", acronym.upper(), label)
 
         # Format special types
         if isinstance(value, bool):
@@ -479,6 +489,13 @@ def _get_display_fields(element, model_class):
             value = value.strftime("%Y-%m-%d %H:%M")
         elif isinstance(value, float):
             value = f"{value:.2f}" if value != int(value) else str(int(value))
+        elif isinstance(value, dict):
+            # A dict column is internal structure, not prose -- render its
+            # entries as "key: value" pairs rather than Python's repr(), which
+            # leaked as a literal {'source_model': 'Risk'} on real screens.
+            value = "; ".join(f"{k}: {v}" for k, v in value.items())
+        elif isinstance(value, list):
+            value = ", ".join(str(v) for v in value)
 
         fields.append({"label": label, "value": str(value)})
 

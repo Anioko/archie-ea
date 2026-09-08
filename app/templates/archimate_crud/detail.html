@@ -3,16 +3,13 @@
 
 {% block title %}{{ element_type }}: {{ element.name if element.name else (element.title if element.title else 'Unnamed') }}{% endblock %}
 
-{% block breadcrumb %}
-{% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
-{{ breadcrumb_nav(items=[
-    {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
-    {'text': 'Architecture Elements', 'href': url_for('archimate_crud.dashboard')},
-    {'text': layer_config[layer].name, 'href': url_for('archimate_crud.dashboard') + '#' + layer},
-    {'text': element_type, 'href': url_for('archimate_crud.list_elements', layer=layer, element_type=element_type)},
-    {'text': element.name, 'current': true}
-]) }}
-{% endblock %}
+{# breadcrumb-ok: this page renders its own breadcrumb inline in {% block
+   content %} (the <nav> right above the page_shell() call below) rather than
+   via {% block breadcrumb %} or page_shell's breadcrumb= arg, because it's
+   the one wired to the Alpine tab-switch (@click="activeTab='details'") the
+   layer crumb needs -- breadcrumb_nav()'s plain (label, href) slot has no
+   way to carry that handler. A second, separate breadcrumb_nav() call used
+   to live in a {% block breadcrumb %} above; removed as a duplicate. #}
 
 {% block content %}
 {% set elem_name = element.name if element.name else (element.title if element.title else 'Unnamed') %}
@@ -186,6 +183,7 @@
         </div>
 
         <!-- Metadata -->
+        {% if element.created_at or element.updated_at or element.last_reviewed_date or element.architecture_review_status %}
         <div class="border rounded-lg p-5">
             <h2 class="text-sm font-semibold uppercase tracking-wide text-muted-foreground mb-3">Audit</h2>
             <dl class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
@@ -215,6 +213,7 @@
                 {% endif %}
             </dl>
         </div>
+        {% endif %}
     </div>
 
     <!-- ── RELATIONSHIPS TAB ── -->
