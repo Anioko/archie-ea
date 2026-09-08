@@ -8,13 +8,6 @@
 <div class="flex-1 overflow-hidden bg-background">
   <div class="h-full overflow-y-auto">
     <div class="space-y-6">
-  <!-- Breadcrumbs -->
-  <nav class="flex items-center gap-2 text-sm text-muted-foreground mb-6">
-    <a href="{{ url_for('main.index') }}" class="hover:text-foreground transition-colors">Dashboard</a>
-    <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
-    <span class="text-foreground font-medium">Application Vendors</span>
-  </nav>
-
   <!-- Page Header -->
   <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
     {{ page_header(

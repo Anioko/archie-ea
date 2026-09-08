@@ -5,19 +5,10 @@
 
 {% block content %}
 <div class="space-y-6">
-    <!-- Breadcrumbs -->
-    <nav class="flex items-center gap-2 text-sm text-muted-foreground mb-6">
-        <a href="{{ url_for('main.index') }}" class="hover:text-foreground transition-colors">Dashboard</a>
-        <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
-        <a href="{{ url_for('industry_apqc.industry_apqc_dashboard') }}" class="hover:text-foreground transition-colors">Industry APQC</a>
-        <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
-        <span class="text-foreground font-medium">{{ framework.industry_name }}</span>
-    </nav>
-
     <!-- Page Header -->
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
         <div>
-            {{ page_header(title=framework.industry_name, breadcrumbs=[{'label': 'Home', 'href': '/'}, {'label': framework.industry_name}]) }}
+            {{ page_header(title=framework.industry_name, breadcrumbs=[{'label': 'Home', 'href': '/'}, {'label': 'Industry APQC', 'href': url_for('industry_apqc.industry_apqc_dashboard')}, {'label': framework.industry_name}]) }}
             <p class="text-muted-foreground mt-2">{{ framework.description or 'Industry-specific APQC process framework' }}</p>
         </div>
     </div>

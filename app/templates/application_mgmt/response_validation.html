@@ -23,13 +23,6 @@
 <div class="space-y-6">
   <!-- Header -->
   <div class="mb-8">
-    <nav class="flex items-center gap-2 text-sm text-muted-foreground mb-4">
-      <a href="{{ url_for('main.index') }}" class="hover:text-foreground">Dashboard</a>
-      <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
-      <a href="{{ url_for('dashboard_pages.rationalization_scorecard') }}" class="hover:text-foreground">Rationalization</a>
-      <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
-      <span class="text-foreground font-medium">Data Validation</span>
-    </nav>
     {% macro _ps_actions() %}
 <div class="flex gap-3">
         <select id="app-selector" class="px-3 py-2 border rounded-lg" @change="loadComparison()" aria-label="Select Application...">
@@ -43,7 +36,7 @@
         </button>
       </div>
     {% endmacro %}
-    {{ page_shell(title='Response Validation', breadcrumb=[('Home', '/'), ('Response Validation', none)], subtitle='Compare and resolve data discrepancies between sources', actions_caller=_ps_actions) }}
+    {{ page_shell(title='Response Validation', breadcrumb=[('Home', '/'), ('Rationalization', url_for('dashboard_pages.rationalization_scorecard')), ('Response Validation', none)], subtitle='Compare and resolve data discrepancies between sources', actions_caller=_ps_actions) }}
   </div>
 
   <!-- Summary Stats -->

@@ -561,6 +561,7 @@
                     <option value="100">100</option>
                 </select>
 
+                {# duplicate-breadcrumb-ok: table-pagination nav, not a breadcrumb -- flagged only because its Prev/Next buttons use chevron icons, the same shape heuristic keys on; real breadcrumb is the header-arg above. #}
                 <nav class="flex items-center gap-1" aria-label="Pagination">
                     <button type="button" class="inline-flex items-center justify-center h-8 px-2.5 rounded-md border border-input bg-background hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed"
                             :disabled="!hasPrev" @click="prevPage()" aria-label="Previous page">
