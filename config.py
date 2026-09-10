@@ -74,6 +74,16 @@ else:
     print("Loaded environment from default location")
 
 # Verify critical API keys are loaded
+#
+# This list must track LLMService's own provider_priority
+# (app/modules/ai_chat/services/llm_service_impl.py) - it previously omitted
+# OPENROUTER_API_KEY and AZURE_OPENAI_API_KEY, so this printed "no LLM API
+# keys found" even when _get_configured_provider() had already found and was
+# using a real OpenRouter key from the environment. Two independent checks
+# disagreeing, with the wrong one printed first and loudest, is what made
+# every session reading this log line report "no provider configured" as
+# fact without verifying against the function that actually gates AI
+# features.
 _api_keys_loaded = []
 for key in [
     "OPENAI_API_KEY",
@@ -81,6 +91,8 @@ for key in [
     "GEMINI_API_KEY",
     "DEEPSEEK_API_KEY",
     "HUGGINGFACE_API_KEY",
+    "OPENROUTER_API_KEY",
+    "AZURE_API_KEY",
 ]:
     if os.getenv(key):
         _api_keys_loaded.append(key)
