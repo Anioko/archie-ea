@@ -7,6 +7,7 @@ Emails degrade gracefully: if SMTP is not configured, content is logged instead.
 
 import logging
 from datetime import datetime, timedelta
+from html import escape
 
 logger = logging.getLogger(__name__)
 
@@ -553,11 +554,18 @@ def _render_error_digest_html(events, since):
     rows = ""
     for e in events[:25]:
         color = "#dc2626" if e.source == "server" else "#d97706"
+        # This is a raw Python f-string, not a Jinja template -- Jinja
+        # autoescapes on /admin/errors, but nothing does here by default, so
+        # message/location (server log text, or attacker-controlled content
+        # via the unauthenticated /api/client-error sink) must be escaped by
+        # hand or it lands as live HTML in whatever renders this email.
+        safe_message = escape((e.message or "")[:160])
+        safe_location = escape(e.location) if e.location else "—"
         rows += (
             f'<tr><td style="padding:4px 8px;border-bottom:1px solid #e5e7eb;color:{color};'
             f'font-weight:600">{e.source}</td>'
-            f'<td style="padding:4px 8px;border-bottom:1px solid #e5e7eb">{(e.message or "")[:160]}</td>'
-            f'<td style="padding:4px 8px;border-bottom:1px solid #e5e7eb">{e.location or "—"}</td>'
+            f'<td style="padding:4px 8px;border-bottom:1px solid #e5e7eb">{safe_message}</td>'
+            f'<td style="padding:4px 8px;border-bottom:1px solid #e5e7eb">{safe_location}</td>'
             f'<td style="padding:4px 8px;border-bottom:1px solid #e5e7eb;text-align:right">{e.occurrence_count}</td></tr>\n'
         )
     return f"""<!DOCTYPE html>

@@ -65,7 +65,7 @@ def test_digest_reports_new_unresolved_events_and_advances_watermark(app, db_ses
 
         # Immediately re-running must not re-report the same event: the
         # watermark should have advanced past it.
-        result2 = send_error_digest(app)
+        send_error_digest(app)
         from app.models.error_event import ErrorEvent
         still_there = ErrorEvent.query.filter_by(fingerprint="digest-unit-a").first()
         assert still_there is not None  # sanity: event itself wasn't touched
@@ -96,3 +96,34 @@ def test_digest_noop_when_nothing_new(app, db_session, _watermark_now):
         assert result["new_events"] == 0
         # No email attempted -> no reason to have moved the watermark either.
         assert _get_watermark() == wm_before
+
+
+def test_digest_html_escapes_message_and_location(app, db_session):
+    """The digest renderer is a raw Python f-string, not a Jinja template --
+    nothing autoescapes it by default. message/location can carry arbitrary
+    text (server log content, or attacker-controlled text via the
+    unauthenticated /api/client-error sink), so unescaped interpolation would
+    inject live HTML into whatever renders this email. Found by actually
+    rendering the HTML and looking at it, not by the earlier count-only tests.
+    """
+    from app._bootstrap._digest_emails import _render_error_digest_html
+    from app.models.error_event import ErrorEvent
+
+    with app.app_context():
+        malicious = ErrorEvent(
+            fingerprint="digest-unit-xss",
+            source="client", level="ERROR",
+            message='<img src=x onerror=alert(1)> & "quoted"',
+            location='<b>bold</b>',
+            occurrence_count=1,
+            first_seen_at=datetime.utcnow(), last_seen_at=datetime.utcnow(),
+            resolved=False,
+        )
+        html = _render_error_digest_html([malicious], datetime.utcnow())
+
+        assert "<img" not in html
+        assert "<b>bold</b>" not in html
+        # The escaped text must still be present -- this proves it's
+        # neutralised, not silently dropped.
+        assert "&lt;img" in html
+        assert "&lt;b&gt;bold&lt;/b&gt;" in html
