@@ -5293,6 +5293,16 @@ function composerApp() {
         },
 
         /* ── Delete element from repository ──────────────── */
+        /* GAP-DEL-001 (10 Sep 2026): this control has never worked. It called
+           DELETE /architecture/elements/<id> -- no such route exists (the
+           real one is archimate_crud's /architecture/api/elements/<id>,
+           missing the /api segment here) -- and read data.viewpoint_count /
+           data.solution_count from /archimate/api/elements/<id>/detail,
+           whose response carries neither key, so the confirmation always
+           read "0 viewpoint(s), 0 solution(s)" regardless of real usage.
+           Both fixed: real usage endpoint, real delete endpoint, and the
+           server (not this client) is the one that decides whether an
+           in-use element may be force-deleted -- only an admin may. */
         deleteFromRepository: function() {
             this.ctxMenuOpen = false;
             if (this.mode === 'view') return;
@@ -5304,39 +5314,61 @@ function composerApp() {
             if (!elId) return;
 
             let self = this;
-            /* Fetch usage count before confirming */
-            Platform.fetch('/archimate/api/elements/' + elId + '/detail', { silent: true })
+            let deleteUrl = '/applications/api/elements/' + elId;
+            // Exclude the diagram currently open: being on THIS diagram is
+            // not "in use elsewhere", it's the normal reason you'd be
+            // right-clicking it at all. Without this every delete looks
+            // in-use and the safe, no-force path is never reachable.
+            let diagramQuery = self.currentSavedVpId ? ('diagram_id=' + self.currentSavedVpId) : '';
+
+            let removeFromCanvas = function() {
+                cell.remove();
+                delete self.canvasElements[elId];
+                self.elementCount = Math.max(0, self.elementCount - 1);
+                self.statusText = 'Deleted from repository: ' + name;
+            };
+
+            let attemptDelete = function(force) {
+                let qs = [diagramQuery, force ? 'force=true' : ''].filter(Boolean).join('&');
+                return fetch(deleteUrl + (qs ? '?' + qs : ''), { // raw-fetch-ok: needs the raw status code (409/403) to branch, Platform.fetch treats non-2xx as a thrown error
+                    method: 'DELETE',
+                    headers: { 'X-CSRFToken': csrfToken() },
+                }).then(function(resp) {
+                    return resp.json().then(function(body) { return { status: resp.status, body: body }; });
+                });
+            };
+
+            Platform.fetch('/applications/api/elements/' + elId + '/usage' + (diagramQuery ? '?' + diagramQuery : ''), { silent: true })
             .then(async function(data) {
-                let vpCount = data.viewpoint_count || 0;
-                let solCount = data.solution_count || 0;
-                let msg = 'DELETE "' + name + '" from the ArchiMate repository?\n\n'
-                    + 'This element is referenced by:\n'
-                    + '  • ' + vpCount + ' viewpoint(s)\n'
-                    + '  • ' + solCount + ' solution(s)\n\n'
-                    + 'This action CANNOT be undone.';
+                let usage = data.usage || { relationships: 0, diagrams: 0 };
+                let inUse = usage.relationships > 0 || usage.diagrams > 0;
+                let msg = inUse
+                    ? ('DELETE "' + name + '" from the ArchiMate repository?\n\n'
+                        + 'This element is referenced by:\n'
+                        + '  • ' + usage.relationships + ' relationship(s)\n'
+                        + '  • ' + usage.diagrams + ' other diagram(s)\n\n'
+                        + 'Deleting it will remove those relationships too. This action CANNOT be undone.')
+                    : ('DELETE "' + name + '" from the ArchiMate repository?\n\n'
+                        + 'Not referenced by any relationship or other diagram.\n\n'
+                        + 'This action CANNOT be undone.');
                 if (!(await Platform.modal.confirm(msg))) return;
 
-                Platform.fetch.delete('/architecture/elements/' + elId, { silent: true })
-                .then(function() {
-                    cell.remove();
-                    delete self.canvasElements[elId];
-                    self.elementCount = Math.max(0, self.elementCount - 1);
-                    self.statusText = 'Deleted from repository: ' + name;
-                })
-                .catch(function(err) { self.statusText = 'Error: ' + (err && err.message); _toast('error', (err && err.message) || 'Operation failed'); });
+                let result = await attemptDelete(inUse);
+                if (result.status === 200) {
+                    removeFromCanvas();
+                    return;
+                }
+                if (result.status === 403) {
+                    _toast('error', 'Only an admin can delete an element still in use elsewhere.');
+                    self.statusText = 'Delete blocked — element in use, admin required';
+                    return;
+                }
+                _toast('error', (result.body && result.body.error) || 'Delete failed');
+                self.statusText = 'Delete failed: ' + name;
             })
-            .catch(async function() {
-                /* Fallback — no usage data available, still allow delete */
-                _toast('warning', 'Could not check element usage — proceeding without usage info');
-                if (!(await Platform.modal.confirm('DELETE "' + name + '" from the ArchiMate repository?\n\nThis action CANNOT be undone.'))) return;
-                Platform.fetch.delete('/architecture/elements/' + elId, { silent: true })
-                .then(function() {
-                    cell.remove();
-                    delete self.canvasElements[elId];
-                    self.elementCount = Math.max(0, self.elementCount - 1);
-                    self.statusText = 'Deleted from repository: ' + name;
-                })
-                .catch(function(err) { self.statusText = 'Error: ' + (err && err.message); _toast('error', 'Delete failed: ' + ((err && err.message) || 'Unknown error')); });
+            .catch(function(err) {
+                self.statusText = 'Error: ' + (err && err.message);
+                _toast('error', (err && err.message) || 'Could not check element usage');
             });
         },
 

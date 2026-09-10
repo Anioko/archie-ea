@@ -383,6 +383,7 @@ _LIBRARY_LINKS = [
     _link("Capabilities", "capability_map.index", "map"),
     _link("Vendors", "unified_applications.vendors", "building"),
     _link("ArchiMate Elements", "archimate_crud.dashboard", "table"),
+    _link("Diagrams", "archimate.diagrams_library", "layout-panel-top"),
 ]
 
 # Fix round: the design's stated long-tail fallback ("Ctrl-K search + one new

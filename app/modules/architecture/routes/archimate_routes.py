@@ -1566,6 +1566,63 @@ def api_delete_relationship(rel_id):
 
 # ── Saved Viewpoint CRUD API ──────────────────────────────────────────────────
 
+@archimate_bp.route("/diagrams", methods=["GET"])
+@login_required
+def diagrams_library():
+    """List every saved diagram the architect's org has, across all solutions.
+
+    Before this the only way to find a diagram was already knowing which
+    solution it belonged to and opening that solution's Composer -- there was
+    no cross-cutting library page the way Applications/Capabilities/Vendors
+    have one, so "what diagrams already exist for this vendor/application"
+    had no answer short of opening every solution one by one.
+    """
+    from app.models.archimate_core import SavedDiagram
+    from app.models.solution_models import Solution
+
+    q = (request.args.get("q") or "").strip()
+    solution_id = request.args.get("solution_id", type=int)
+
+    query = SavedDiagram.query.filter(
+        db.or_(
+            ~SavedDiagram.name.like("Unsaved diagram%"),
+            SavedDiagram.created_by_id.is_(None),
+            SavedDiagram.created_by_id == current_user.id,
+        )
+    )
+    if q:
+        query = query.filter(SavedDiagram.name.ilike(f"%{q}%"))
+    if solution_id:
+        query = query.filter(SavedDiagram.solution_id == solution_id)
+    query = query.order_by(SavedDiagram.updated_at.desc())
+    diagrams = query.limit(200).all()
+
+    solution_ids = {d.solution_id for d in diagrams if d.solution_id}
+    solutions_by_id = {}
+    if solution_ids:
+        for sol in Solution.query.filter(Solution.id.in_(solution_ids)).all():
+            solutions_by_id[sol.id] = sol.name
+
+    rows = []
+    for d in diagrams:
+        row = d.to_dict()
+        row["solution_name"] = solutions_by_id.get(d.solution_id)
+        rows.append(row)
+
+    all_solutions = (
+        Solution.query.filter(Solution.id.in_(solution_ids)).order_by(Solution.name).all()
+        if solution_ids else []
+    )
+
+    return render_template(
+        "archimate/diagrams_library.html",
+        diagrams=rows,
+        solutions=all_solutions,
+        q=q,
+        selected_solution_id=solution_id,
+    )
+
+
 @archimate_bp.route("/api/saved-viewpoints", methods=["GET"])
 @login_required
 def api_list_saved_viewpoints():

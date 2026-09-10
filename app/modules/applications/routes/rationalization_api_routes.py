@@ -615,23 +615,125 @@ def api_get_element(element_id):
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
+def _element_usage(element_id, exclude_diagram_id=None):
+    """How many relationships and OTHER saved diagrams reference this element.
+
+    The Composer's own "Remove from canvas" already unlinks an element from
+    one diagram while leaving it in the repository (composer_graph.js
+    deleteElement: "Element stays in catalog"). This is the check for the
+    other action -- deleting the repository row itself, which other diagrams
+    and every relationship touching it would silently lose data for.
+
+    exclude_diagram_id must be the diagram the delete is being requested
+    from: an element is trivially "on a diagram" -- the one the architect is
+    looking at right now -- and counting that against it would make every
+    single delete look "in use" and require force/admin, which defeats the
+    whole point of the safe, no-force path. What actually matters is whether
+    it is referenced *elsewhere*.
+    """
+    from app.models.archimate_core import SavedDiagramElement
+    from app.models.models import ArchiMateRelationship
+
+    rel_count = ArchiMateRelationship.query.filter(
+        db.or_(
+            ArchiMateRelationship.source_id == element_id,
+            ArchiMateRelationship.target_id == element_id,
+        )
+    ).count()
+    diagram_query = db.session.query(SavedDiagramElement.diagram_id).filter(
+        SavedDiagramElement.element_id == element_id
+    )
+    if exclude_diagram_id:
+        diagram_query = diagram_query.filter(SavedDiagramElement.diagram_id != exclude_diagram_id)
+    diagram_count = diagram_query.distinct().count()
+    return {"relationships": rel_count, "diagrams": diagram_count}
+
+
+@unified_applications_bp.route("/api/elements/<int:element_id>/usage", methods=["GET"])
+@login_required
+def api_element_usage(element_id):
+    """Report how many relationships/other diagrams reference an element.
+
+    Called before offering a repository-level delete so the confirmation the
+    architect sees states the real blast radius rather than a generic warning.
+
+    Query Parameters:
+        diagram_id (int): the diagram the delete is being offered from --
+            excluded from the "other diagrams" count (see _element_usage).
+    """
+    from app.models.models import ArchiMateElement
+
+    element = ArchiMateElement.query.get(element_id)
+    if not element:
+        return jsonify({"success": False, "error": "Element not found"}), 404
+    exclude_diagram_id = request.args.get("diagram_id", type=int)
+    return jsonify({"success": True, "usage": _element_usage(element_id, exclude_diagram_id)})
+
+
 @unified_applications_bp.route("/api/elements/<int:element_id>", methods=["DELETE"])
 @login_required
 @require_roles("admin", "architect")
 @audit_log("element_delete")
 def api_delete_element(element_id):
-    """Delete an ArchiMate element by ID."""
+    """Delete an ArchiMate element from the repository (not just a diagram).
+
+    RAT-114/GAP-DEL-001: this used to delete unconditionally, with no check
+    for other diagrams or relationships depending on the row -- either a
+    foreign-key violation on the next reference, or (if the FK has no
+    protection) a silent orphan elsewhere. Blocked by default when the
+    element is in use; ?force=true overrides it, but only for admins --
+    "I created a duplicate by mistake" is an architect's call, "delete this
+    out from under other diagrams anyway" is not.
+    """
     try:
-        from app.models.models import ArchiMateElement
+        from app.models.archimate_core import SavedDiagramElement
+        from app.models.models import ArchiMateElement, ArchiMateRelationship
 
         element = ArchiMateElement.query.get(element_id)
         if not element:
             return jsonify({"success": False, "error": "Element not found"}), 404
 
+        exclude_diagram_id = request.args.get("diagram_id", type=int)
+        usage = _element_usage(element_id, exclude_diagram_id)
+        force = request.args.get("force", "").lower() == "true"
+
+        if (usage["relationships"] or usage["diagrams"]) and not force:
+            return jsonify({
+                "success": False,
+                "error": "Element is in use elsewhere",
+                "usage": usage,
+            }), 409
+
+        if force and not (current_user.is_platform_admin or getattr(current_user, "is_org_admin", False)):
+            return jsonify({
+                "success": False,
+                "error": "Only an admin can delete an element that is still in use elsewhere",
+                "usage": usage,
+            }), 403
+
+        if force:
+            ArchiMateRelationship.query.filter(
+                db.or_(
+                    ArchiMateRelationship.source_id == element_id,
+                    ArchiMateRelationship.target_id == element_id,
+                )
+            ).delete(synchronize_session=False)
+
+        # Unconditional, not just under force: exclude_diagram_id only kept
+        # the *current* diagram's placement out of the usage count above (so
+        # "in use" means in use elsewhere, not just here) -- but that row
+        # still exists and still foreign-keys to this element, so it must go
+        # regardless of force or the delete 500s on the FK constraint.
+        # force additionally clears every OTHER diagram's placement row.
+        placement_query = SavedDiagramElement.query.filter_by(element_id=element_id)
+        if not force and exclude_diagram_id:
+            placement_query = placement_query.filter_by(diagram_id=exclude_diagram_id)
+        placement_query.delete(synchronize_session=False)
+
         db.session.delete(element)
         db.session.commit()
 
-        return jsonify({"success": True, "message": "Element deleted"})
+        return jsonify({"success": True, "message": "Element deleted", "usage": usage})
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f"Error deleting element {element_id}: {e}")
