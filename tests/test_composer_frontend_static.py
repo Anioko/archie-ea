@@ -49,6 +49,27 @@ def test_cmp02_delete_affordance_and_method_present():
         "must call the DELETE endpoint"
 
 
+def test_bulk_ai_accept_is_rate_limit_safe():
+    """AI-generated diagrams must not fire every create/wire POST at once.
+
+    The global write rate limit is 30/min (app/_bootstrap/rate_limiting.py).
+    Production evidence (10 Sep 2026): a 32-element "Place Full Diagram on
+    Canvas" left one element silently missing -- one create-element call came
+    back 429, and the old code fired all of them in one unthrottled forEach
+    with no retry. Fixed with a bounded-concurrency runner and 429 retry;
+    this guards both call sites still route through it.
+    """
+    src = _read("archimate/composer_ai.js")
+    assert "_postWithRetry:" in src, "retry-on-429 helper must exist"
+    assert "_runLimited:" in src, "bounded-concurrency helper must exist"
+    assert "self._runLimited(factories, 5" in src, \
+        "_doAcceptAllGenerated must create elements through the concurrency limiter"
+    assert "self._postWithRetry('/api/architecture-assistant/create-element'" in src, \
+        "element creation must retry on 429, not drop the element on first failure"
+    assert "self._postWithRetry('/archimate/api/relationships'" in src, \
+        "relationship wiring must retry on 429 too"
+
+
 def test_cmp08_quick_add_avoids_overlap():
     """New elements must cascade off an occupied spot instead of stacking."""
     src = _read("archimate/composer.js")

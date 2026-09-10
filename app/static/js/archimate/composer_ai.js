@@ -630,6 +630,57 @@ let ComposerAI = (function() {
             });
         },
 
+        /* POST with retry on 429 (rate limit): global write limit is 30/min
+           (app/_bootstrap/rate_limiting.py), and a "Place Full Diagram on
+           Canvas" of the size the AI generator routinely produces (30+
+           elements, plus relationships right behind them) fires enough
+           writes in one burst to exceed it. Confirmed in production 10 Sep
+           2026 -- a 32-element diagram left one element silently missing,
+           the only sign a single toast the architect could easily miss.
+           Retries honour Retry-After when the server sends one, else backs
+           off a window past the fixed-window limiter's own reset. */
+        _postWithRetry: function(url, body, attempt) {
+            attempt = attempt || 0;
+            return Platform.fetch.post(url, body, { silent: true })
+                .catch(function(err) {
+                    let status = err && (err.status || (err.response && err.response.status));
+                    if (status !== 429 || attempt >= 3) throw err;
+                    let retryAfter = err && err.response && err.response.headers
+                        && err.response.headers.get && err.response.headers.get('Retry-After');
+                    let waitMs = retryAfter ? parseFloat(retryAfter) * 1000 : (attempt + 1) * 2000;
+                    return new Promise(function(resolve) { setTimeout(resolve, waitMs); })
+                        .then(function() { return this._postWithRetry(url, body, attempt + 1); }.bind(this));
+                }.bind(this));
+        },
+
+        /* Run async factories with limited concurrency instead of firing them
+           all at once -- see _postWithRetry's comment for why unbounded
+           parallelism here silently drops elements once a diagram is larger
+           than the rate limiter's burst window. */
+        _runLimited: function(factories, limit, onEach) {
+            return new Promise(function(resolve) {
+                let idx = 0, active = 0, doneCount = 0;
+                let total = factories.length;
+                if (total === 0) { resolve(); return; }
+                function next() {
+                    while (active < limit && idx < total) {
+                        let i = idx++;
+                        active++;
+                        factories[i]().then(function(result) {
+                            onEach(result, i);
+                        }).catch(function(err) {
+                            onEach({ __error: err }, i);
+                        }).finally(function() {
+                            active--; doneCount++;
+                            if (doneCount === total) resolve();
+                            else next();
+                        });
+                    }
+                }
+                next();
+            });
+        },
+
         _doAcceptAllGenerated: function() {
             let self = this;
             let pending = self.generatedElements.slice();
@@ -648,60 +699,55 @@ let ComposerAI = (function() {
             };
             updateProgress();
 
-            pending.forEach(function(el, idx) {
+            const placeNode = function(id, name, type, layer, idx) {
+                let vp = self.paper.translate();
+                let s = self.paper.scale().sx;
+                let rect = self.paper.el.getBoundingClientRect();
+                let cx = (rect.width / 2 - vp.tx) / s;
+                let cy = (rect.height / 2 - vp.ty) / s;
+                let node = createNode(id, name, type, layer, cx - 90 + idx * 40, cy - 32 + idx * 50);
+                self.graph.addCell(node);
+            };
+
+            let factories = pending.map(function(el, idx) {
                 let layer = el.layer || guessLayer(el.type);
 
                 if (el.category === 'existing' && el.existing_id) {
-                    let vp = self.paper.translate();
-                    let s = self.paper.scale().sx;
-                    let rect = self.paper.el.getBoundingClientRect();
-                    let cx = (rect.width / 2 - vp.tx) / s;
-                    let cy = (rect.height / 2 - vp.ty) / s;
-                    let node = createNode(el.existing_id, el.name, el.type, layer, cx - 90 + idx * 40, cy - 32 + idx * 50);
-                    self.graph.addCell(node);
-                    self.canvasElements[el.existing_id] = el;
-                    self.elementCount++;
-                    nameToElementId[el.name] = el.existing_id;
-                    if (self.solutionId) self.linkElementToSolution(el.existing_id);
-                    created++;
-                    updateProgress();
-                    if (created === total) {
-                        self._finishAcceptAll(pendingRelationships, nameToElementId, total);
-                    }
-                    return;
+                    return function() {
+                        return Promise.resolve().then(function() {
+                            placeNode(el.existing_id, el.name, el.type, layer, idx);
+                            self.canvasElements[el.existing_id] = el;
+                            self.elementCount++;
+                            nameToElementId[el.name] = el.existing_id;
+                            if (self.solutionId) self.linkElementToSolution(el.existing_id);
+                        });
+                    };
                 }
 
-                Platform.fetch.post('/api/architecture-assistant/create-element', { name: el.name, type: el.type, layer: layer }, { silent: true })
-                .then(function(data) {
-                    created++;
-                    let d = data.element || data;
-                    if (d.id) {
-                        let vp = self.paper.translate();
-                        let s = self.paper.scale().sx;
-                        let rect = self.paper.el.getBoundingClientRect();
-                        let cx = (rect.width / 2 - vp.tx) / s;
-                        let cy = (rect.height / 2 - vp.ty) / s;
+                return function() {
+                    return self._postWithRetry('/api/architecture-assistant/create-element',
+                        { name: el.name, type: el.type, layer: layer })
+                        .then(function(data) {
+                            let d = data.element || data;
+                            if (d.id) {
+                                placeNode(d.id, d.name, d.type, d.layer || layer, idx);
+                                self.canvasElements[d.id] = d;
+                                self.elementCount++;
+                                nameToElementId[el.name] = d.id;
+                                if (self.solutionId) self.linkElementToSolution(d.id);
+                            }
+                        });
+                };
+            });
 
-                        let node = createNode(d.id, d.name, d.type, d.layer || layer, cx - 90 + idx * 40, cy - 32 + idx * 50);
-                        self.graph.addCell(node);
-                        self.canvasElements[d.id] = d;
-                        self.elementCount++;
-                        nameToElementId[el.name] = d.id;
-                        if (self.solutionId) self.linkElementToSolution(d.id);
-                    }
-                    updateProgress();
-                    if (created === total) {
-                        self._finishAcceptAll(pendingRelationships, nameToElementId, total);
-                    }
-                })
-                .catch(function() {
-                    created++;
-                    _toast('error', 'Failed to create element');
-                    updateProgress();
-                    if (created === total) {
-                        self._finishAcceptAll(pendingRelationships, nameToElementId, total);
-                    }
-                });
+            /* 5 concurrent, well under the 30/min write bucket even with
+               relationship-wiring writes still to come right after. */
+            self._runLimited(factories, 5, function(result) {
+                created++;
+                if (result && result.__error) _toast('error', 'Failed to create element');
+                updateProgress();
+            }).then(function() {
+                self._finishAcceptAll(pendingRelationships, nameToElementId, total);
             });
         },
 
@@ -725,15 +771,20 @@ let ComposerAI = (function() {
             });
         },
 
-        _wireSingleRelationship: function(rel, sourceId, targetId, onDone, pending) {
+        /* Returns a promise that always resolves (never rejects) once this
+           relationship's create attempt has fully settled, success or
+           failure -- so a caller running many of these under _runLimited can
+           treat "settled" as "safe to start the next one" regardless of
+           outcome. */
+        _wireSingleRelationship: function(rel, sourceId, targetId) {
             let self = this;
             let relType = rel.type || rel.relationship_type || 'association';
-            Platform.fetch.post('/archimate/api/relationships', {
+            return self._postWithRetry('/archimate/api/relationships', {
                 source_element_id: sourceId,
                 target_element_id: targetId,
                 relationship_type: relType,
                 solution_id: self.solutionId || null,
-            }, { silent: true })
+            })
             .then(function(data) {
                 if (data.id) {
                     let sourceCell = null;
@@ -749,11 +800,9 @@ let ComposerAI = (function() {
                         self.statusText = rel.source_name + ' \u2192 ' + rel.target_name + ' (' + relType + ')';
                     }
                 }
-                if (pending) { pending.done++; if (pending.done >= pending.total && onDone) onDone(); }
             })
             .catch(function() {
                 _toast('error', 'Failed to wire: ' + rel.source_name + ' \u2192 ' + rel.target_name);
-                if (pending) { pending.done++; if (pending.done >= pending.total && onDone) onDone(); }
             });
         },
 
@@ -772,11 +821,19 @@ let ComposerAI = (function() {
                 if (onAllDone) onAllDone();
                 return;
             }
-            let pending = { done: 0, total: toWire.length };
-            toWire.forEach(function(rel) {
-                let sourceId = nameToElementId[rel.source_name];
-                let targetId = nameToElementId[rel.target_name];
-                self._wireSingleRelationship(rel, sourceId, targetId, onAllDone, pending);
+            /* Same burst-vs-rate-limit problem as element creation: wire with
+               bounded concurrency instead of firing every relationship POST
+               at once (see _postWithRetry / _runLimited). */
+            let factories = toWire.map(function(rel) {
+                return function() {
+                    let sourceId = nameToElementId[rel.source_name];
+                    let targetId = nameToElementId[rel.target_name];
+                    return self._wireSingleRelationship(rel, sourceId, targetId);
+                };
+            });
+            self._runLimited(factories, 5, function() {}).then(function() {
+                self.statusText = 'Done';
+                if (onAllDone) onAllDone();
             });
         },
 
