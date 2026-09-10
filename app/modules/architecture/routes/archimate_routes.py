@@ -5749,22 +5749,37 @@ def update_element_alignment_score(element_id):
 
 
 # ── CMP-043: Custom element properties (tagged values) ──────────────────────
+# ArchiMate 3.2 Properties mechanism - arbitrary key/value metadata on any
+# element (interface protocol, WRICEF status, T-code, module owner, etc.),
+# surfaced generically rather than requiring a new element type or field per
+# tag. Reads/writes archimate_core.ArchiMateElement.custom_properties - the
+# canonical model's own JSON column - not models.ArchiMateElement.properties,
+# a same-table (extend_existing), different-column duplicate these two routes
+# previously wrote to. That column is real but was never read by anything
+# (not the composer detail panel, not any other route), so every PUT here
+# was silently invisible - the exact defect this fix closes.
+#
+# custom_properties already carries system-managed keys written by other
+# features via PATCH /api/elements/<id> (data_classification, contains_pii,
+# lifecycle_history - see patch_element, GAP-CMP-009/004). A user-facing
+# generic Properties editor must not be able to overwrite those by replacing
+# the whole dict, so user tagged values live under a reserved "tags"
+# sub-object instead of at the top level.
+
+_RESERVED_CUSTOM_PROPERTY_KEYS = {"data_classification", "contains_pii", "lifecycle_history"}
+
 
 @archimate_bp.route("/api/elements/<int:element_id>/properties", methods=["GET"])
 @login_required
 def get_element_properties(element_id):
-    """CMP-043: Get custom properties for an element."""
-    import json
-    from app.models.models import ArchiMateElement as AE
+    """CMP-043: Get user-defined ArchiMate Properties (tagged values) for an element."""
+    from app.models.archimate_core import ArchiMateElement
 
-    el = AE.query.get(element_id)
+    el = db.session.get(ArchiMateElement, element_id)
     if not el:
         return jsonify({"error": "Element not found"}), 404
-    try:
-        props = json.loads(el.properties) if el.properties else {}
-    except (json.JSONDecodeError, TypeError):
-        props = {}
-    return jsonify(props)
+    cp = el.custom_properties or {}
+    return jsonify(cp.get("tags") or {})
 
 
 # CSRF: Protected via X-CSRFToken header sent by Platform.fetch
@@ -5772,10 +5787,15 @@ def get_element_properties(element_id):
 @archimate_bp.route("/api/elements/<int:element_id>/properties", methods=["PUT"])
 @login_required
 def put_element_properties(element_id):
-    """CMP-043: Replace custom properties for an element."""
-    from app.models.models import ArchiMateElement as AE
+    """CMP-043: Replace user-defined ArchiMate Properties (tagged values) for an element.
 
-    el = AE.query.get(element_id)
+    Only the "tags" sub-object is replaced - other custom_properties keys
+    managed by different features (data_classification, contains_pii,
+    lifecycle_history) are left untouched.
+    """
+    from app.models.archimate_core import ArchiMateElement
+
+    el = db.session.get(ArchiMateElement, element_id)
     if not el:
         return jsonify({"error": "Element not found"}), 404
     data = request.get_json(silent=True)
@@ -5783,8 +5803,14 @@ def put_element_properties(element_id):
         return jsonify({"error": "Invalid JSON"}), 400
     if not isinstance(data, dict):
         return jsonify({"error": "Properties must be a JSON object"}), 400
-    import json
-    el.properties = json.dumps(data)
+    if any(k in _RESERVED_CUSTOM_PROPERTY_KEYS for k in data):
+        return jsonify({"error": "Property keys clash with reserved system keys"}), 400
+    if not all(isinstance(k, str) and isinstance(v, str) for k, v in data.items()):
+        return jsonify({"error": "Properties must be string key/value pairs"}), 400
+
+    existing_cp = dict(el.custom_properties or {})
+    existing_cp["tags"] = data
+    el.custom_properties = existing_cp
     db.session.commit()
     return jsonify(data)
 
