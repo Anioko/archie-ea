@@ -632,6 +632,17 @@
     }
 
     document.addEventListener('keydown', function (e) {
+        // Pages with their own Ctrl+K surface (the ArchiMate Composer's quick-add
+        // palette) opt out via this body attribute. Without it, this handler and
+        // the page's own keydown listener both fire on the same keypress -- both
+        // registered on `document`, so stopPropagation in the later (page-level)
+        // listener cannot undo work this earlier one already did. Found 10 Sep
+        // 2026: the Composer's Ctrl+K opened its quick-add palette AND this global
+        // search modal at once, the modal's `hidden` class overridden by this
+        // handler's own `style.display = 'flex'`, leaving an invisible-looking
+        // but fully interactive full-screen overlay stealing every click on the
+        // page until Escape was pressed.
+        if (document.body.hasAttribute('data-suppress-global-search-shortcut')) return;
         if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
             e.preventDefault();
             if (searchModal.style.display === 'flex') closeSearchModal();
