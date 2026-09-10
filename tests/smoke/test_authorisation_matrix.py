@@ -47,6 +47,10 @@ POLICY = {
     "/my-applications/list":   {"application_manager"},
     "/my-applications/health": {"application_manager"},
     "/ai-chat":                set(ARCHETYPES),
+    # Error telemetry (10 Sep 2026): cross-tenant by design -- an error is an
+    # operational fact about the platform, not a per-org one -- so gated by
+    # platform_admin_required rather than the ordinary admin_required.
+    "/admin/errors":           set(),
 }
 for _allowed in POLICY.values():
     _allowed.add("platform_admin")
