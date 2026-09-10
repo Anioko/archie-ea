@@ -2854,6 +2854,136 @@ class ToolExecutor:
         }
 
     # ------------------------------------------------------------------ #
+    # Tool: create_programme (WRITE — G8, transformation programmes)      #
+    # ------------------------------------------------------------------ #
+    def _tool_create_programme(self, args: dict) -> dict:
+        """Create a business-first Transformation Programme.
+
+        Calls the SAME entry point the /solutions/new-programme wizard's POST
+        handler calls — ProgrammeSetupService.create_business_first_programme
+        (app/modules/solutions_strategic/v2/routes/solution_wizard_routes.py) —
+        with an equivalent ActorContext/ProgrammeIntake, so this tool can never
+        create a programme the human wizard would refuse, and can never be more
+        permissive. can_create_programme is checked at the door first (audit
+        F-04: without it, TransformationProgrammeService's own NotAuthorised
+        would only surface after the whole payload was built).
+        """
+        import uuid as uuid_lib
+        from datetime import date
+
+        from app.models.user import User
+        from app.modules.transformation_room.domain import ActorContext, ProgrammeIntake, TransformationError
+        from app.modules.transformation_room.programme_service import TransformationProgrammeService
+        from app.modules.solutions_strategic.v2.services.programme_setup_service import ProgrammeSetupService
+
+        user = _load_acting_user(self.user_id)
+        if user is None:
+            return {"success": False, "error": "Could not load the acting user."}
+        if not TransformationProgrammeService.can_create_programme(user):
+            return {
+                "success": False,
+                "error": (
+                    "Only Enterprise Architects, CTOs and administrators can create "
+                    "programmes. Ask one of them to set the programme up, or to give "
+                    "you that role."
+                ),
+            }
+
+        name = (args.get("name") or "").strip()
+        objective = (args.get("objective") or "").strip()
+        outcome_statement = (args.get("outcome_statement") or "").strip()
+        metric_name = (args.get("metric_name") or "").strip()
+        metric_unit = (args.get("metric_unit") or "").strip()
+        if not (name and objective and outcome_statement and metric_name and metric_unit):
+            return {"success": False, "error": "name, objective, outcome_statement, metric_name and metric_unit are required."}
+
+        owner_id = args.get("owner_id") or self.user_id
+        owner = User.query.filter_by(id=owner_id, organization_id=self._get_organization_id()).first()
+        if owner is None:
+            return {"success": False, "error": "owner_id must be a real user in your organization."}
+
+        target_date_raw = args.get("target_date")
+        target_date_reason = args.get("target_date_unavailable_reason")
+        if target_date_raw:
+            try:
+                target_date = date.fromisoformat(target_date_raw)
+            except ValueError:
+                return {"success": False, "error": "target_date must be YYYY-MM-DD."}
+        elif target_date_reason:
+            target_date = None
+        else:
+            return {"success": False, "error": "Either target_date or target_date_unavailable_reason is required."}
+
+        organization_id = self._get_organization_id()
+        runtime_roles = {
+            role
+            for role in (
+                getattr(user, "enterprise_role", None),
+                "organization_admin" if getattr(user, "is_org_admin", False) else None,
+                "platform_admin" if getattr(user, "is_platform_admin", False) else None,
+            )
+            if role
+        }
+        actor = ActorContext(
+            user_id=user.id,
+            organization_id=organization_id,
+            roles=frozenset(runtime_roles),
+            request_id=str(uuid_lib.uuid4()),
+        )
+        intake = ProgrammeIntake(
+            name=name,
+            objective=objective,
+            owner_id=owner.id,
+            target_date=target_date,
+            target_date_unavailable_reason=target_date_reason,
+            workstream_type=args.get("workstream_type") or "application_rationalisation",
+            scope_expression={"business_units": args.get("business_units") or []},
+            outcome={
+                "statement": outcome_statement,
+                "owner_id": owner.id,
+                "direction": args.get("outcome_direction") or "increase",
+                "measure": {
+                    "metric_name": metric_name,
+                    "unit": metric_unit,
+                    "aggregation": args.get("metric_aggregation") or "sum",
+                    "baseline_value": args.get("baseline_value"),
+                    "unavailable_reason": args.get("baseline_unavailable_reason"),
+                    "target_value": args.get("target_value"),
+                },
+            },
+        )
+
+        try:
+            result = ProgrammeSetupService.create_business_first_programme(
+                actor=actor,
+                command_key=str(uuid_lib.uuid4()),
+                request=intake,
+            )
+        except (TypeError, ValueError) as exc:
+            return {"success": False, "error": str(exc)}
+        except TransformationError as exc:
+            return {"success": False, "error": exc.reason}
+        except Exception as exc:
+            logger.exception("Agent create_programme failed for user=%s: %s", self.user_id, exc)
+            return {"success": False, "error": "An unexpected error occurred creating the programme."}
+
+        programme_id = result.object_ids["programme_id"]
+        workstream_id = result.object_ids["workstream_id"]
+        logger.info(
+            "Agent created programme id=%s name=%r user=%s", programme_id, name, self.user_id,
+        )
+        return {
+            "success": True,
+            "result": {
+                "programme_id": programme_id,
+                "workstream_id": workstream_id,
+                "outcome_commitment_id": result.object_ids["outcome_commitment_id"],
+                "redirect_url": f"/solutions/programmes/{programme_id}/workstreams/{workstream_id}/objective",
+            },
+            "message": "Created programme '%s' (id=%s)." % (name, programme_id),
+        }
+
+    # ------------------------------------------------------------------ #
     # Tool: upsert_license (WRITE — G8, procurement)                      #
     # ------------------------------------------------------------------ #
     def _tool_upsert_license(self, args: dict) -> dict:

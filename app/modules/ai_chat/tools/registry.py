@@ -1416,6 +1416,72 @@ TOOL_SCHEMAS = [
         "tier": "approve",
     },
     {
+        "name": "create_programme",
+        "mutates": True,
+        "description": (
+            "Create a canonical business-first Transformation Programme — the "
+            "same aggregate the /solutions/new-programme wizard creates, "
+            "reached through the exact same authorised, validated command. "
+            "Only Enterprise Architects, CTOs and administrators can create "
+            "programmes; anyone else's call is refused with a clear message. "
+            "Requires a name, an objective, an outcome statement with a "
+            "measurable metric (name/unit/direction/baseline/target), and "
+            "either a target_date or a stated reason none is available yet. "
+            "Do not invent any of these values — ask the user for anything "
+            "not given. REQUIRES USER CONFIRMATION before executing."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "Programme name"},
+                "objective": {"type": "string", "description": "What the programme sets out to achieve"},
+                "owner_id": {
+                    "type": "integer",
+                    "description": "User id of the programme owner (defaults to the requesting user if omitted)",
+                },
+                "workstream_type": {
+                    "type": "string",
+                    "enum": [
+                        "application_rationalisation", "process", "organisation_skills",
+                        "policy_control", "data", "supplier", "technology", "other",
+                    ],
+                    "description": "First workstream's type",
+                },
+                "business_units": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Business units in scope",
+                },
+                "target_date": {"type": "string", "description": "Target completion date YYYY-MM-DD"},
+                "target_date_unavailable_reason": {
+                    "type": "string",
+                    "description": "Required instead of target_date when no date is known yet",
+                },
+                "outcome_statement": {"type": "string", "description": "The outcome the programme commits to"},
+                "outcome_direction": {
+                    "type": "string",
+                    "enum": ["increase", "decrease", "maintain"],
+                    "description": "Direction the outcome metric should move",
+                },
+                "metric_name": {"type": "string", "description": "Name of the metric that proves the outcome"},
+                "metric_unit": {"type": "string", "description": "Unit the metric is measured in"},
+                "metric_aggregation": {
+                    "type": "string",
+                    "enum": ["sum", "average", "minimum", "maximum", "latest", "count"],
+                    "description": "How the metric is aggregated (defaults to 'sum')",
+                },
+                "baseline_value": {"type": "number", "description": "Metric value today"},
+                "baseline_unavailable_reason": {
+                    "type": "string",
+                    "description": "Required instead of baseline_value when today's value isn't known yet",
+                },
+                "target_value": {"type": "number", "description": "Metric value the programme is targeting"},
+            },
+            "required": ["name", "objective", "outcome_statement", "outcome_direction", "metric_name", "metric_unit"],
+        },
+        "tier": "approve",
+    },
+    {
         "name": "upsert_license",
         "mutates": True,
         "description": (
