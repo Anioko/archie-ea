@@ -40,7 +40,13 @@ def reconcile_admin_password(app) -> None:
         with app.app_context():
             user = User.find_by_email(email)
             if user is None:
-                logger.warning(
+                # info, not warning: this fires on every boot whenever ADMIN_EMAIL
+                # doesn't match a seeded user (e.g. a fresh env, or a demo/QA box
+                # intentionally seeded under different emails) and there is
+                # nothing to act on -- the message says so. Flooded /admin/errors
+                # with a 24-occurrence "warning" that explicitly resolves to
+                # "nothing to do" (10 Sep 2026).
+                logger.info(
                     "admin password reconciliation: no user for ADMIN_EMAIL=%s — nothing to do",
                     email,
                 )

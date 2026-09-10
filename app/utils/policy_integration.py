@@ -124,7 +124,12 @@ def patch_tools_with_policy():
     try:
         from app.utils import tools
     except ImportError:
-        logger.warning("Original tools module not found")
+        # info, not warning: app/utils/tools.py does not exist in this
+        # codebase at all (it's an optional monkey-patch target for a module
+        # this extract doesn't carry), so this fires unconditionally on every
+        # boot -- flooding /admin/errors with a permanent, unfixable
+        # "warning" rather than signalling anything actionable (10 Sep 2026).
+        logger.info("Original tools module not found; policy patching skipped")
         return
 
     # Store original functions

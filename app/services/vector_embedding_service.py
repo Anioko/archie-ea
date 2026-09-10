@@ -563,7 +563,12 @@ class PGVectorStore(VectorStore):
             from flask import has_app_context
 
             if not has_app_context():
-                self.logger.warning("Deferring pgvector extension check - no app context")
+                # info, not warning: this service is instantiated at boot,
+                # before any request context exists, so this fires on every
+                # single boot unconditionally and is not actionable -- the
+                # check genuinely is deferred, not skipped or failed
+                # (10 Sep 2026: flooding /admin/errors with 24 occurrences).
+                self.logger.info("Deferring pgvector extension check - no app context")
                 return
 
             db.session.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))  # tenant-exempt: system table
