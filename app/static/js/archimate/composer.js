@@ -3261,9 +3261,18 @@ function composerApp() {
                occupied, cascade at most a few steps, and if it still can't find a
                clear spot, return the ORIGINAL point rather than flinging the
                element far away. */
-            const STEP = 28;      // diagonal cascade step
-            const NEAR = 12;      // near-exact coincidence only (was 24)
-            const MAX_STEPS = 8;  // cap the cascade (was 60 -> ~1900px)
+            // STEP/NEAR must be sized against the actual node footprint (180x64,
+            // see createNode) or the cascade "succeeds" while every element still
+            // visually overlaps. QA (10 Sep 2026) found 3 quick-added elements
+            // landing almost fully stacked with the previous STEP=28/NEAR=12:
+            // occupied() only ever caught an exact-ish coincidence, so a 28px
+            // nudge counted as "clear" while still covering ~85% of the previous
+            // node. STEP now clears a node's width; NEAR is set to catch any
+            // point that would still visually overlap one, not just a near-exact
+            // hit.
+            const STEP = 200;     // diagonal cascade step — clears node width (180)
+            const NEAR = 60;      // treat anything within ~half a node's footprint as occupied
+            const MAX_STEPS = 6;  // cap the cascade (~1200px)
             const els = (this.graph && this.graph.getElements) ? this.graph.getElements() : [];
             const occupied = function(cx, cy) {
                 return els.some(function(el) {
