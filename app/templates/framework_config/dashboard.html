@@ -14,7 +14,8 @@
 {% set configs = configs|default([]) %}
 {% set recent_configs = recent_configs|default([]) %}
 {% set active_config = active_config|default(none) %}
-<div class="p-6 space-y-6 mx-auto max-w-7xl" x-data="frameworkConfigModal()">
+<div class="p-6 space-y-6 mx-auto max-w-7xl" x-data="frameworkConfigModal()"
+     @framework-config-created.window="setTimeout(() => window.location.reload(), 800)">
     {{ page_header(
         title='Framework Configuration',
         description='Configure and manage your capability framework with industry-specific extensions',
@@ -258,10 +259,9 @@
             Framework Configuration v{{ active_config.framework_version if active_config else '1.0' }}
         </div>
     </div>
-</div>
 
 {% call modal(id='create-framework-config', title='New Framework Configuration', description='Create a new capability framework configuration', size='default') %}
-<form @submit.prevent="submitCreateConfig()" class="space-y-4">
+<form @submit.prevent="submit()" class="space-y-4">
     <div>
         <label for="cfc-name" class="block text-sm font-medium mb-1">Configuration Name <span class="text-destructive-emphasis">*</span></label>
         <input type="text" id="cfc-name" x-model="formData.configuration_name" required
@@ -293,33 +293,5 @@
     </div>
 </form>
 {% endcall %}
-
-<script>
-function frameworkConfigModal() {
-    return {
-        formData: { configuration_name: '', configuration_code: '', description: '' },
-        submitting: false,
-        errorMsg: '',
-        async submitCreateConfig() {
-            if (!this.formData.configuration_name.trim()) { this.errorMsg = 'Configuration name is required.'; return; }
-            if (!this.formData.configuration_code.trim()) { this.errorMsg = 'Configuration code is required.'; return; }
-            this.submitting = true;
-            this.errorMsg = '';
-            try {
-                const data = await Platform.fetch.post('/api/framework-config/configurations', this.formData, { silent: true });
-                this.submitting = false;
-                if (!data.success) { this.errorMsg = data.error || 'An error occurred.'; return; }
-                Platform.modal.close('create-framework-config');
-                showToast({ title: 'Configuration created successfully', variant: 'default' });
-                setTimeout(() => window.location.reload(), 800);
-            } catch (error) {
-                this.submitting = false;
-                // Platform.fetch throws on non-ok responses, but we already have inline error handling.
-                // The error object may have a message; we can use it.
-                this.errorMsg = error.message || 'Network error. Please try again.';
-            }
-        }
-    };
-}
-</script>
+</div>
 {% endblock %}

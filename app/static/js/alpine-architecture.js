@@ -772,7 +772,7 @@ if (window.__ALPINE_ARCH_LOADED__) {
                 {}, _asyncMixin(), _modalMixin(),
                 _formMixin({ configuration_name: '', configuration_code: '', description: '' }),
                 {
-                    apiUrl: '/api/framework-config',
+                    apiUrl: '/api/framework-config/configurations',
                     validate() {
                         this.validationErrors = {};
                         if (!this.formData.configuration_name || !this.formData.configuration_name.trim())
