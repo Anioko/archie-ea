@@ -509,6 +509,14 @@ else:
         # been sitting there.
         reviewed_at = db.Column(db.DateTime, nullable=True)
 
+        # Step number for the Composer's Sequence View (a lifeline/message render
+        # of the ArchiMate elements and relationships already on the canvas — no
+        # separate sequence-diagram store; see ADR 0008). NULL means "not
+        # explicitly ordered yet" and the Sequence View falls back to created_at,
+        # so every pre-existing relationship still renders instead of being
+        # dropped for lacking a value reconcile-schema cannot backfill.
+        sequence_order = db.Column(db.Integer, nullable=True)
+
         architecture = db.relationship("ArchitectureModel", backref="archimate_relationships")
         source = db.relationship(
             "ArchiMateElement", foreign_keys=[source_id], backref="outgoing_relationships"

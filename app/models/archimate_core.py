@@ -146,6 +146,14 @@ if _FAST_INIT:
         # was dropped on the way into the database.
         derived_from = db.Column(db.String(40), nullable=True, index=True)
 
+        # Step number for the Composer's Sequence View (a lifeline/message render
+        # of the ArchiMate elements and relationships already on the canvas — no
+        # separate sequence-diagram store; see ADR 0008). NULL means "not
+        # explicitly ordered yet" and the Sequence View falls back to created_at,
+        # so every pre-existing relationship renders (in creation order) instead
+        # of being dropped for lacking a value reconcile-schema cannot backfill.
+        sequence_order = db.Column(db.Integer, nullable=True)
+
         def __repr__(self):
             return f"<ArchiMateRelationship {self.source_id} -> {self.target_id}>"
 

@@ -437,6 +437,7 @@ function composerApp() {
     let createNode = ComposerRenderer.createNode;
     let createContainerNode = ComposerRenderer.createContainerNode;
     let createLink = ComposerRenderer.createLink;
+    let humanizeRelTypeLabel = ComposerRenderer.humanizeRelType;
 
     /* ── Helper: get CSRF token ───────────────────────────── */
     function csrfToken() {
@@ -644,6 +645,14 @@ function composerApp() {
         _autosaveLabel: '',
         _saveFailed: false,
         _saving: false,
+
+        /* Sequence View: a lifeline/message render of the elements + relationships
+           already on the canvas (no separate sequence-diagram store — see
+           layoutSequence()). sequenceMessages holds the ordered list shown in the
+           reorder panel; sequencePanelOpen toggles that panel. */
+        sequenceViewActive: false,
+        sequencePanelOpen: false,
+        sequenceMessages: [],
 
         /* Detail panel */
         selectedNode: null,
@@ -4708,6 +4717,174 @@ function composerApp() {
             this.statusText = 'Hierarchical layout applied (' + direction + ')';
         },
 
+        /* ── Sequence View ──────────────────────────────────────────────
+           A lifeline/message render of the elements + relationships already
+           on the canvas. Deliberately not a new element/table: per ADR 0008
+           (one system of record per concept) the messages ARE the existing
+           ArchiMate relationships, ordered by relationship.sequence_order
+           (a nullable step number persisted on archimate_relationships — see
+           app/models/archimate_core.py). No sequence_order yet falls back to
+           the order the relationships were created in, so every relationship
+           on the canvas renders instead of being dropped for lacking a step.
+           Only ArchiMate-typed elements can ever be lifelines here — there is
+           no free-form UML actor/object, on purpose: it keeps every message
+           traceable back to a real element in the architecture repository,
+           which a Lucidchart sequence diagram cannot offer. */
+        layoutSequence: function() {
+            let self = this;
+            let allLinks = self.graph.getLinks().filter(function(l) { return !l.get('isAnnotation'); });
+            if (!allLinks.length) {
+                self.statusText = 'Sequence View needs at least one relationship between elements';
+                _toast('info', 'Add relationships between elements first, then apply Sequence View.');
+                return;
+            }
+
+            let messages = allLinks.map(function(link, idx) {
+                let src = link.get('source'), tgt = link.get('target');
+                return {
+                    link: link,
+                    srcId: src && src.id,
+                    tgtId: tgt && tgt.id,
+                    relId: link.get('relId'),
+                    relType: link.get('relType'),
+                    seq: (typeof link.get('sequenceOrder') === 'number') ? link.get('sequenceOrder') : null,
+                    createdAt: link.get('createdAt') || 0,
+                    _idx: idx,
+                };
+            }).filter(function(m) { return m.srcId && m.tgtId && self.graph.getCell(m.srcId) && self.graph.getCell(m.tgtId); });
+
+            if (!messages.length) {
+                self.statusText = 'Sequence View needs relationships between two placed elements';
+                return;
+            }
+
+            messages.sort(function(a, b) {
+                if (a.seq != null && b.seq != null) return a.seq - b.seq;
+                if (a.seq != null) return -1;
+                if (b.seq != null) return 1;
+                if (a.createdAt !== b.createdAt) return a.createdAt - b.createdAt;
+                return a._idx - b._idx;
+            });
+
+            let lifelineOrder = [];
+            let seen = {};
+            messages.forEach(function(m) {
+                if (!seen[m.srcId]) { seen[m.srcId] = true; lifelineOrder.push(m.srcId); }
+                if (!seen[m.tgtId]) { seen[m.tgtId] = true; lifelineOrder.push(m.tgtId); }
+            });
+
+            let colGap = 220, rowGap = 70, rowStart = 220, headerY = 90;
+            let xById = {};
+
+            UndoStack.pause();
+
+            /* Drop any guide lines left from a previous Sequence View pass. */
+            self.graph.getCells().filter(function(c) { return c.get('isSequenceGuide'); })
+                .forEach(function(c) { c.remove(); });
+
+            lifelineOrder.forEach(function(id, i) {
+                let cell = self.graph.getCell(id);
+                if (!cell) return;
+                let w = cell.size().width;
+                let x = 60 + i * colGap;
+                xById[id] = x + w / 2;
+                cell.position(x, headerY);
+            });
+
+            let lastRowY = rowStart;
+            messages.forEach(function(m, i) {
+                let rowY = rowStart + i * rowGap;
+                lastRowY = rowY;
+                let sx = xById[m.srcId], tx = xById[m.tgtId];
+                if (sx == null || tx == null) return;
+                m.link.router(null);
+                m.link.connector({ name: 'normal' });
+                m.link.vertices([{ x: sx, y: rowY }, { x: tx, y: rowY }]);
+                let existing = m.link.label(0);
+                let baseText = (existing && existing.attrs && existing.attrs.text && existing.attrs.text.text) || humanizeRelTypeLabel(m.relType);
+                baseText = baseText.replace(/^\d+\.\s*/, '');
+                m.link.label(0, { attrs: { text: { text: (i + 1) + '. ' + baseText } } });
+            });
+
+            lifelineOrder.forEach(function(id) {
+                let cell = self.graph.getCell(id);
+                if (!cell) return;
+                let pos = cell.position(), size = cell.size();
+                let x = pos.x + size.width / 2;
+                let guide = new joint.shapes.standard.Link({
+                    source: { x: x, y: pos.y + size.height },
+                    target: { x: x, y: lastRowY + 40 },
+                    attrs: {
+                        line: { stroke: '#94a3b8', strokeWidth: 1, strokeDasharray: '4,4', targetMarker: { d: '' } },
+                    },
+                    router: null,
+                    connector: { name: 'normal' },
+                });
+                guide.set('isSequenceGuide', true);
+                guide.set('isAnnotation', true);
+                self.graph.addCell(guide);
+                guide.toBack();
+            });
+
+            UndoStack.resume();
+
+            self.sequenceViewActive = true;
+            self.sequencePanelOpen = true;
+            self.sequenceMessages = messages.map(function(m, i) {
+                let srcCell = self.graph.getCell(m.srcId);
+                let tgtCell = self.graph.getCell(m.tgtId);
+                return {
+                    relId: m.relId,
+                    order: i,
+                    label: (i + 1) + '. ' + humanizeRelTypeLabel(m.relType),
+                    srcName: srcCell ? srcCell.get('elName') : '',
+                    tgtName: tgtCell ? tgtCell.get('elName') : '',
+                };
+            });
+
+            self.paper.scaleContentToFit({ padding: 40, maxScale: 1 });
+            self.zoomPercent = Math.round(self.paper.scale().sx * 100);
+            self._scheduleMiniMapUpdate();
+            self.statusText = 'Sequence View — ' + lifelineOrder.length + ' lifelines, ' + messages.length + ' messages';
+        },
+
+        /* Reorder one message in the sequence panel and persist the new step
+           numbers to the owning relationships, then re-run the layout so the
+           canvas reflects the saved order — never a client-only reorder that
+           a reload would silently discard. */
+        moveMessage: function(index, direction) {
+            let self = this;
+            let arr = self.sequenceMessages.slice();
+            let j = index + direction;
+            if (j < 0 || j >= arr.length) return;
+            let tmp = arr[index];
+            arr[index] = arr[j];
+            arr[j] = tmp;
+            self.sequenceMessages = arr;
+
+            let updates = arr.map(function(m, i) { return { relId: m.relId, order: i }; });
+            Promise.all(updates.map(function(u) {
+                if (!u.relId) return Promise.resolve();
+                return Platform.fetch.put('/archimate/api/relationships/' + u.relId,
+                    { sequence_order: u.order }, { silent: true });
+            })).then(function() {
+                updates.forEach(function(u) {
+                    let link = self.graph.getLinks().find(function(l) { return l.get('relId') === u.relId; });
+                    if (link) link.set('sequenceOrder', u.order);
+                });
+                self.layoutSequence();
+            }).catch(function() {
+                _toast('error', 'Failed to save message order — reload and try again');
+            });
+        },
+
+        exitSequenceView: function() {
+            this.sequenceViewActive = false;
+            this.sequencePanelOpen = false;
+            this.graph.getCells().filter(function(c) { return c.get('isSequenceGuide'); })
+                .forEach(function(c) { c.remove(); });
+            this.layoutDagre('TB');
+        },
 
         exportXml: function() {
             if (!this.currentSavedVpId) {

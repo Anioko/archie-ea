@@ -428,6 +428,9 @@
                     <button type="button" class="toolbar-dropdown-item" @click="layoutDagre('LR'); layoutDropdownOpen = false">
                         <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i> Hierarchical (Left→Right)
                     </button>
+                    <button type="button" class="toolbar-dropdown-item" @click="layoutSequence(); layoutDropdownOpen = false">
+                        <i data-lucide="arrow-left-right" class="w-3.5 h-3.5"></i> Sequence View
+                    </button>
                     <div class="toolbar-dropdown-sep"></div>
                     <div class="toolbar-dropdown-label">Align Selected</div>
                     <div class="flex gap-0.5 px-2 py-1">
@@ -715,6 +718,9 @@
                         </button>
                         <button type="button" class="toolbar-dropdown-item" @click="layoutDagre('LR'); moreDropdownOpen = false">
                             <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i> Hierarchical (Left-Right)
+                        </button>
+                        <button type="button" class="toolbar-dropdown-item" @click="layoutSequence(); moreDropdownOpen = false">
+                            <i data-lucide="arrow-left-right" class="w-3.5 h-3.5"></i> Sequence View
                         </button>
                         <button type="button" class="toolbar-dropdown-item" @click="clearCanvas(); moreDropdownOpen = false" style="color: hsl(var(--destructive));">
                             <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> Clear Canvas

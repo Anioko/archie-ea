@@ -755,6 +755,9 @@ let ComposerPersistence = (function() {
                         link.set('customLabel', rel.custom_label);
                         applyCustomLabel(link, rel.custom_label);
                     }
+                    /* Sequence View step number (see composer.js layoutSequence) */
+                    if (rel.sequence_order != null) link.set('sequenceOrder', rel.sequence_order);
+                    if (rel.created_at) link.set('createdAt', Date.parse(rel.created_at) || 0);
                     /* Restore saved routing style if not manhattan (default) */
                     let savedRouting = rel.routing_style || 'manhattan';
                     if (savedRouting === 'smooth' || savedRouting === 'normal') {

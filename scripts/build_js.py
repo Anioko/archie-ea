@@ -15,8 +15,11 @@ Why bundles are defined per base-layout, not one global bundle
 ----------------------------------------------------------------
 ``app/templates/layouts/{admin,composer,public}_base.html`` each load a
 different *prefix* of the numbered ``js/core/NN-*.js`` sequence (public stops
-at 05-error.js, composer adds 06-session-timeout.js, admin adds
-07-dialog.js too). Concatenating a superset into every layout would start
+at 05-error.js; composer and admin both add 06-session-timeout.js and
+07-dialog.js — the composer's own "Generate Architecture" flow calls
+``Platform.confirm()`` before writing AI-generated elements to the model, so
+it needs 07-dialog.js too, not just admin). Concatenating a superset into
+every layout would start
 executing session-timeout/dialog code on pages that never loaded it before
 (e.g. the public login page) — an unintended behaviour change. So each
 layout gets its own bundle containing exactly the files it already loads,
@@ -61,6 +64,7 @@ BUNDLES: dict[str, list[str]] = {
         "04-toast.js",
         "05-error.js",
         "06-session-timeout.js",
+        "07-dialog.js",
     ],
     "core-admin.js": [
         "00-namespace.js",

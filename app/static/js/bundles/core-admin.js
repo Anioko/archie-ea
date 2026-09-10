@@ -1885,7 +1885,16 @@
             var previouslyFocused = doc.activeElement;
 
             var overlay = _el('div',
-                'fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4');
+                'fixed inset-0 flex items-center justify-center bg-black/50 p-4');
+            // Inline z-index, not a Tailwind class: this dialog can open on top of
+            // any page's own modal (composer overlays go up to z-index 9999+), and a
+            // caller-supplied class from the compiled stylesheet can't be guaranteed
+            // to outrank those. A z-50 class here left the dialog rendered but
+            // stacked BEHIND the composer's "Generate Architecture" modal (z-index
+            // 100) — clicks meant for "Create & place" hit the invisible modal
+            // backdrop instead and silently closed it, which is what made
+            // "Place Full Diagram on Canvas" look broken.
+            overlay.style.zIndex = '2147483647';
             var panel = _el('div',
                 'w-full max-w-md rounded-lg border border-border bg-card text-card-foreground shadow-lg p-6');
             panel.setAttribute('role', 'alertdialog');

@@ -1373,6 +1373,7 @@ def api_list_relationships():
             "description": getattr(r, "description", None),
             "solution_id": r.architecture_id,
             "created_at": r.created_at.isoformat() if getattr(r, "created_at", None) else None,
+            "sequence_order": getattr(r, "sequence_order", None),
         }
         for r in pagination.items
     ]
@@ -1451,6 +1452,7 @@ def api_create_relationship():
         custom_label=data.get("custom_label") or None,
         created_by_id=getattr(current_user, "id", None) if hasattr(current_user, "id") else None,
         connection_spec=data.get("connection_spec") or None,
+        sequence_order=data.get("sequence_order"),
     )
 
     db.session.add(rel)
@@ -1468,6 +1470,8 @@ def api_create_relationship():
         "flow_label": rel.flow_label,
         "custom_label": rel.custom_label,
         "connection_spec": rel.connection_spec,
+        "sequence_order": rel.sequence_order,
+        "created_at": rel.created_at.isoformat() if rel.created_at else None,
     }), 201
 
 
@@ -1512,6 +1516,9 @@ def api_update_relationship(rel_id):
     # GAP-INT-001: Connection specification (structured integration metadata)
     if "connection_spec" in data:
         rel.connection_spec = data["connection_spec"] or None
+    # Composer Sequence View: step number on the message arrow (see model comment).
+    if "sequence_order" in data:
+        rel.sequence_order = data["sequence_order"]
 
     db.session.commit()
 
@@ -1526,6 +1533,7 @@ def api_update_relationship(rel_id):
         "flow_label": rel.flow_label,
         "custom_label": rel.custom_label,
         "connection_spec": rel.connection_spec,
+        "sequence_order": rel.sequence_order,
     })
 
 
@@ -1930,6 +1938,8 @@ def api_get_saved_viewpoint(vp_id):
             "name": getattr(r, "name", None),
             "waypoints": _json.loads(waypoints_raw) if waypoints_raw else None,
             "routing_style": rp.routing_style if rp else "manhattan",
+            "sequence_order": r.sequence_order,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
         })
 
     return jsonify({
