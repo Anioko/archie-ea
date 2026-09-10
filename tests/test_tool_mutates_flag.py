@@ -68,7 +68,9 @@ HAND_WRITTEN = {
 # an element, so every one of them mutates. If a generated tool ever stopped
 # being a write, the equality below would fail and someone would have to say so.
 GENERATED_ELEMENT_TOOLS = {
-    "create_%s" % element_type for element_type in ELEMENT_SPECS
+    ("create_archimate_%s" % element_type if "create_%s" % element_type in HAND_WRITTEN
+     else "create_%s" % element_type)
+    for element_type in ELEMENT_SPECS
 }
 
 MUTATING = HAND_WRITTEN | GENERATED_ELEMENT_TOOLS

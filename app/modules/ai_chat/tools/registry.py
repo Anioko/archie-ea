@@ -1494,6 +1494,15 @@ TOOL_SCHEMA_BY_NAME = {s["name"]: s for s in TOOL_SCHEMAS}
 def _archimate_element_schemas() -> list:
     from .archimate_specs import ELEMENT_SPECS, tool_description
 
+    # A duplicate tool name is rejected outright by every provider's tool-calling
+    # API (confirmed in production: DeepSeek returns HTTP 400 "Tool names must be
+    # unique", failing every agentic chat call) - guard against this generator
+    # colliding with an already hand-written tool of the same name, e.g.
+    # create_contract (the commercial VendorContract writer, above) vs the
+    # generic ArchiMate "Contract" business-layer element this loop would
+    # otherwise also name create_contract.
+    _existing_names = {s["name"] for s in TOOL_SCHEMAS}
+
     schemas = []
     for element_type, spec in sorted(ELEMENT_SPECS.items()):
         properties = {
@@ -1515,8 +1524,11 @@ def _archimate_element_schemas() -> list:
                 "description": "%s of this %s"
                                % (extra.replace("_", " "), element_type.replace("_", " ")),
             }
+        candidate_name = "create_%s" % element_type
+        if candidate_name in _existing_names:
+            candidate_name = "create_archimate_%s" % element_type
         schemas.append({
-            "name": "create_%s" % element_type,
+            "name": candidate_name,
             "mutates": True,
             # 'approve', not 'auto'. These write typed elements into the model
             # of record, and REQUIRE_AI_APPROVAL exists so an operator decides
