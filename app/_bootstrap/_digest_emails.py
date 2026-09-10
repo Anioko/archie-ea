@@ -487,3 +487,136 @@ def send_executive_summary(app):
         return {"organization_id": organization_id, "recipients": len(recipients)}
 
     return run_for_each_tenant(app, "executive-summary", _summary_one_tenant)
+
+
+# ---------------------------------------------------------------------------
+# Error digest (10 Sep 2026): read-only notification for /admin/errors.
+#
+# Deliberately NOT run_for_each_tenant -- ErrorEvent is cross-tenant by
+# design (see app/models/error_event.py's docstring), same as the
+# /admin/errors page itself, so recipients are every platform_admin across
+# every organisation, queried once, not per-tenant.
+#
+# This is a READ-ONLY digest: it summarises new unresolved errors and emails
+# them to humans. It does not, and must not, write any fix -- see the
+# discussion in-session about autonomous production changes needing a human
+# in the loop; this is the human-in-the-loop half, not a step toward removing
+# the human.
+# ---------------------------------------------------------------------------
+
+_ERROR_DIGEST_WATERMARK_KEY = "error_digest_last_run_at"
+
+
+def _get_platform_admin_recipients():
+    """Every confirmed platform_admin, across every organisation.
+
+    Deliberately global and unscoped -- error_events itself carries no
+    organisation predicate (an error is a platform fact, not a tenant one),
+    so there is no single organisation_id to scope this by. Matches the
+    /admin/errors route's own tenant-scoping-ok justification.
+    """
+    from app.models import User
+
+    users = User.query.filter(  # tenant-scoping-ok: platform-wide recipient list for platform-wide data, matching /admin/errors itself
+        User.is_platform_admin.is_(True),
+        User.confirmed.is_(True),
+    ).all()
+    return sorted({u.email for u in users if u.email})
+
+
+def _get_watermark():
+    from app.models.system_setting import SystemSetting
+
+    row = SystemSetting.query.get(_ERROR_DIGEST_WATERMARK_KEY)
+    if not row or not row.value:
+        return None
+    try:
+        return datetime.fromisoformat(row.value)
+    except ValueError:
+        return None
+
+
+def _set_watermark(when):
+    from app import db
+    from app.models.system_setting import SystemSetting
+
+    row = SystemSetting.query.get(_ERROR_DIGEST_WATERMARK_KEY)
+    if row is None:
+        row = SystemSetting(key=_ERROR_DIGEST_WATERMARK_KEY)
+        db.session.add(row)
+    row.value = when.isoformat()
+    db.session.commit()
+
+
+def _render_error_digest_html(events, since):
+    since_label = since.strftime("%Y-%m-%d %H:%M UTC") if since else "the beginning"
+    rows = ""
+    for e in events[:25]:
+        color = "#dc2626" if e.source == "server" else "#d97706"
+        rows += (
+            f'<tr><td style="padding:4px 8px;border-bottom:1px solid #e5e7eb;color:{color};'
+            f'font-weight:600">{e.source}</td>'
+            f'<td style="padding:4px 8px;border-bottom:1px solid #e5e7eb">{(e.message or "")[:160]}</td>'
+            f'<td style="padding:4px 8px;border-bottom:1px solid #e5e7eb">{e.location or "—"}</td>'
+            f'<td style="padding:4px 8px;border-bottom:1px solid #e5e7eb;text-align:right">{e.occurrence_count}</td></tr>\n'
+        )
+    return f"""<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1f2937;max-width:640px;margin:0 auto;padding:16px">
+<h2 style="color:#111827;border-bottom:2px solid #dc2626;padding-bottom:8px">
+    New Platform Errors Since {since_label}
+</h2>
+<p style="color:#6b7280;font-size:13px">
+    {len(events)} new unresolved error{"s" if len(events) != 1 else ""} recorded. This is a
+    read-only notification -- nothing has been changed automatically. Review and resolve at
+    /admin/errors.
+</p>
+<table style="width:100%;border-collapse:collapse;margin-bottom:24px">
+<tr><th style="text-align:left;padding:4px 8px;border-bottom:2px solid #e5e7eb">Source</th>
+    <th style="text-align:left;padding:4px 8px;border-bottom:2px solid #e5e7eb">Message</th>
+    <th style="text-align:left;padding:4px 8px;border-bottom:2px solid #e5e7eb">Location</th>
+    <th style="text-align:right;padding:4px 8px;border-bottom:2px solid #e5e7eb">Count</th></tr>
+{rows}
+</table>
+<p style="font-size:12px;color:#9ca3af;border-top:1px solid #e5e7eb;padding-top:8px">
+    Automated error digest from A.R.C.H.I.E. Sent to platform administrators only.
+</p>
+</body>
+</html>"""
+
+
+def send_error_digest(app):
+    """Email platform admins a summary of unresolved errors seen since the
+    last run. No-ops (and does not advance the watermark) when there is
+    nothing new, so a quiet period produces no email at all.
+
+    Returns a small dict for CLI/test reporting: {"new_events", "recipients"}.
+    """
+    from app.models.error_event import ErrorEvent
+
+    since = _get_watermark()
+    query = ErrorEvent.query.filter_by(resolved=False)  # tenant-scoping-ok: platform-wide, see _get_platform_admin_recipients
+    if since:
+        query = query.filter(ErrorEvent.first_seen_at > since)
+    new_events = query.order_by(ErrorEvent.occurrence_count.desc()).all()
+
+    now = datetime.utcnow()
+    if not new_events:
+        logger.info("Error digest: no new unresolved errors since %s", since)
+        return {"new_events": 0, "recipients": 0}
+
+    recipients = _get_platform_admin_recipients()
+    if not recipients:
+        logger.warning("Error digest: %d new error(s) but no platform_admin recipients", len(new_events))
+        _set_watermark(now)
+        return {"new_events": len(new_events), "recipients": 0}
+
+    html = _render_error_digest_html(new_events, since)
+    _safe_send_email(app, "New Platform Errors", recipients, html)
+    _set_watermark(now)
+    logger.info(
+        "Error digest: %d new unresolved error(s) sent to %d recipient(s)",
+        len(new_events), len(recipients),
+    )
+    return {"new_events": len(new_events), "recipients": len(recipients)}

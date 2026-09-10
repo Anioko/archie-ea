@@ -170,6 +170,21 @@ def init_cli(app):
             f"{recipients} recipient(s); {run.failed} failed."
         )
 
+    # Error digest CLI command: read-only, emails platform admins a summary
+    # of new unresolved error_events rows since the last run.
+    @app.cli.command("send-error-digest")
+    def send_error_digest_cmd():
+        """Send the unresolved-error digest email now (read-only)."""
+        from app._bootstrap._digest_emails import send_error_digest
+        from flask import current_app
+
+        click.echo("Checking for new unresolved errors...")
+        result = send_error_digest(current_app._get_current_object())
+        click.echo(
+            f"Done: {result['new_events']} new event(s), "
+            f"{result['recipients']} recipient(s)."
+        )
+
     # ACM-001: Cloud pricing API sync CLI commands
     try:
         from app.commands.cloud_pricing_commands import register_commands as register_cloud_pricing

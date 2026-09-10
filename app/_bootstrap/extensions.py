@@ -301,6 +301,33 @@ def init_scheduler(app):
             max_instances=1,
         )
 
+        # Error digest (10 Sep 2026): read-only notification, not an
+        # autonomous fix -- summarises new unresolved error_events rows and
+        # emails platform admins so a human notices without having to
+        # remember to open /admin/errors. 30 minutes, not weekly like the
+        # other digests here, because catching degradation promptly is the
+        # whole point; _digest_emails.send_error_digest no-ops (and sends
+        # nothing) when there is nothing new since the last run.
+        def run_error_digest():
+            with app.app_context():
+                try:
+                    from app._bootstrap._digest_emails import send_error_digest
+                    send_error_digest(app)
+                except Exception as exc:
+                    import logging
+                    logging.getLogger(__name__).error(
+                        "APScheduler error-digest error: %s", exc
+                    )
+
+        scheduler.add_job(
+            func=run_error_digest,
+            trigger=IntervalTrigger(minutes=30),
+            id="error_digest",
+            name="Unresolved Error Digest",
+            replace_existing=True,
+            max_instances=1,
+        )
+
         # Teams meeting intelligence: Graph callRecords subscriptions expire
         # every 3 days — renew twice daily; renew_if_needed re-creates the
         # subscription if Graph has already dropped it. No-op when the
