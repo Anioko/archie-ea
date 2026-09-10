@@ -105,6 +105,7 @@ function transformationProgrammeIntake() {
         }
       }
     },
+    aiPrefill: { open: false, description: '', loading: false, error: null, applied: false },
     ownerQuery: {{ programme_owner_label|tojson }},
     selectedOwnerName: {{ programme_owner_label|tojson }},
     owners: [], ownerOpen: false, activeOwnerIndex: -1, submitting: false, error: '',
@@ -233,6 +234,43 @@ function transformationProgrammeIntake() {
         so the only thing lost is draft recall across a reload. */ }
       this.restoreDraft();
       this.$watch('form', () => this.persistDraft(), {deep: true});
+    },
+
+    // ---- AI pre-fill (suggests, never auto-submits) ---------------------
+    async generateProgrammePrefill() {
+      const description = this.aiPrefill.description.trim();
+      if (!description) return;
+      this.aiPrefill.loading = true;
+      this.aiPrefill.error = null;
+      this.aiPrefill.applied = false;
+      try {
+        const data = await Platform.fetch.post('/solutions/new-programme/ai-prefill', { description }, { silent: true });
+        const fields = data.fields || {};
+        if (fields.name) this.form.name = fields.name;
+        if (fields.objective) this.form.objective = fields.objective;
+        if (fields.workstream_type) this.form.workstream_type = fields.workstream_type;
+        if (fields.business_units && fields.business_units.length) {
+          this.form.business_units = fields.business_units.join(', ');
+        }
+        if (fields.outcome_statement) this.form.outcome.statement = fields.outcome_statement;
+        if (fields.direction) this.form.outcome.direction = fields.direction;
+        if (fields.metric_name) this.form.outcome.measure.metric_name = fields.metric_name;
+        if (fields.unit) this.form.outcome.measure.unit = fields.unit;
+        if (fields.baseline_value !== null && fields.baseline_value !== undefined) {
+          this.form.outcome.measure.baseline_value = fields.baseline_value;
+        }
+        if (fields.target_value !== null && fields.target_value !== undefined) {
+          this.form.outcome.measure.target_value = fields.target_value;
+        }
+        if (fields.target_date) this.form.target_date = fields.target_date;
+        this.aiPrefill.applied = true;
+        this.persistDraft();
+      } catch (e) {
+        this.aiPrefill.error = e.message || 'Programme prefill failed.';
+        Platform.toast.error(this.aiPrefill.error);
+      } finally {
+        this.aiPrefill.loading = false;
+      }
     },
 
     // ---- owner picker (unchanged contract) ------------------------------

@@ -17,6 +17,40 @@ GUIDE = {
     'reply': 'CI protocol fixture: page guide transport completed. This is a deterministic test response.',
     'stream': False,
 }
+# The marker is embedded verbatim inside the free-text 'description' these two
+# features send to the LLM (app/modules/solutions_strategic/v2/services/
+# programme_setup_service.py::ai_prefill_programme and app/modules/
+# business_case/ai_service.py::generate_case_seed both interpolate the caller's
+# description straight into their prompt), so a test that types PROMPT as the
+# description makes the real outbound request carry this marker with no
+# product-code change needed to support the fixture.
+PROGRAMME_PREFILL = {
+    'marker': 'ARCHIE_CI_PROGRAMME_PREFILL_V1',
+    'prompt': 'ARCHIE_CI_PROGRAMME_PREFILL_V1: consolidate four regional CRM instances into one.',
+    'reply': json.dumps({
+        'name': 'CI Fixture: CRM Consolidation',
+        'objective': 'Consolidate four regional CRM instances onto one platform.',
+        'workstream_type': 'application_rationalisation',
+        'business_units': ['Sales', 'Support'],
+        'outcome_statement': 'One CRM platform serving every region.',
+        'direction': 'decrease',
+        'metric_name': 'Number of CRM instances',
+        'unit': 'instances',
+        'baseline_value': 4,
+        'target_value': 1,
+        'target_date': None,
+    }),
+    'stream': False,
+}
+CASE_SEED = {
+    'marker': 'ARCHIE_CI_CASE_SEED_V1',
+    'prompt': 'ARCHIE_CI_CASE_SEED_V1: four duplicate CRM instances, no shared customer view.',
+    'reply': json.dumps({
+        'title': 'CI Fixture: Consolidate Regional CRM Instances',
+        'description': 'Four regional CRM instances duplicate licence costs with no shared customer view.',
+    }),
+    'stream': False,
+}
 
 
 class AIProtocolStub:
@@ -85,8 +119,10 @@ class AIProtocolStub:
                     return
                 last = messages[-1]
                 content = last.get('content')
-                matches = [(name, scenario) for name, scenario in [('chat', CHAT), ('guide', GUIDE)]
-                           if isinstance(content, str) and scenario['marker'] in content]
+                matches = [(name, scenario) for name, scenario in [
+                    ('chat', CHAT), ('guide', GUIDE),
+                    ('programme_prefill', PROGRAMME_PREFILL), ('case_seed', CASE_SEED),
+                ] if isinstance(content, str) and scenario['marker'] in content]
                 stream = body.get('stream', False)
                 if last.get('role') != 'user' or len(matches) != 1 or type(stream) is not bool:
                     self._reject(400, 'Unknown CI fixture scenario.', model=MODEL)

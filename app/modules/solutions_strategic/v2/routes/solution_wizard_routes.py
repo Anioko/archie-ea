@@ -170,6 +170,52 @@ def programme_templates():
     return jsonify({"templates": service.get_templates()})
 
 
+MAX_PROGRAMME_DESCRIPTION_CHARS = 8000
+
+
+@solution_design_bp.route("/new-programme/ai-prefill", methods=["POST"])
+@login_required
+def programme_ai_prefill():
+    """POST /solutions/new-programme/ai-prefill
+    Body: {"description": "..."}
+    Suggests programme-wizard field values from a free-text description via the
+    LLM. NOT persisted or auto-submitted — the wizard pre-fills its own form
+    fields with the response and the user reviews/edits/submits exactly as if
+    they had typed them, same as the stakeholder map's AI-suggest pattern
+    (app/modules/architecture/routes/stakeholder_map_routes.py::ai_identify_stakeholders).
+    Any field the model is not confident about comes back null and is left
+    blank — never a fabricated value (CLAUDE.md "Never invent data").
+    """
+    from app.services.feature_flag_service import FeatureFlagService
+
+    feature_guard = FeatureFlagService.require_ai_for_route(
+        FeatureFlagService.FEATURE_SUGGESTIONS, endpoint_name="solution_design.programme_ai_prefill"
+    )
+    if feature_guard:
+        return feature_guard
+
+    data = request.get_json(force=True) or {}
+    description = (data.get("description") or "").strip()
+    if not description:
+        return jsonify({"error": "description is required"}), 400
+    if len(description) > MAX_PROGRAMME_DESCRIPTION_CHARS:
+        return jsonify({
+            "error": f"description is too long (max {MAX_PROGRAMME_DESCRIPTION_CHARS} characters)"
+        }), 400
+
+    from app.modules.solutions_strategic.v2.services.programme_setup_service import (
+        ProgrammeSetupService,
+    )
+
+    try:
+        fields = ProgrammeSetupService().ai_prefill_programme(description)
+    except Exception as exc:
+        logger.exception("AI programme prefill failed")
+        return jsonify({"error": f"Programme prefill failed: {exc}"}), 502
+
+    return jsonify({"fields": fields})
+
+
 # =============================================================================
 # CREATE PROGRAMME
 # =============================================================================

@@ -2,6 +2,35 @@
          x-show="currentStep === 0" x-cloak data-testid="step-intent">
   <h2 id="programme-heading" class="text-lg font-semibold text-foreground">Programme intent</h2>
   <p class="mt-1 text-sm text-muted-foreground">Name the programme and state the business objective it exists to achieve.</p>
+
+  <div class="mt-4 rounded-md border border-border bg-muted/30 p-4">
+    <button type="button" data-testid="ai-prefill-open"
+            class="inline-flex items-center gap-2 text-sm font-medium text-primary hover:underline"
+            @click="aiPrefill.open = !aiPrefill.open">
+      <i data-lucide="sparkles" class="h-4 w-4"></i>
+      Generate with AI
+    </button>
+    <div x-show="aiPrefill.open" x-cloak class="mt-3 space-y-2">
+      <label class="grid gap-2 text-sm font-medium text-foreground">
+        Describe the programme in a few sentences
+        <textarea class="min-h-20 rounded-md border border-border bg-background px-3 py-2 text-sm"
+                  x-model="aiPrefill.description" data-testid="ai-prefill-description"
+                  placeholder="e.g. Rationalise our 40 duplicate CRM applications down to one platform by end of 2027, cutting licence spend 30%."></textarea>
+      </label>
+      <button type="button" data-testid="ai-prefill-generate"
+              class="inline-flex h-9 items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
+              :disabled="aiPrefill.loading || !aiPrefill.description.trim()"
+              @click="generateProgrammePrefill()">
+        <span x-text="aiPrefill.loading ? 'Generating…' : 'Generate'"></span>
+      </button>
+      <p class="text-xs text-muted-foreground" x-show="aiPrefill.applied" x-cloak data-testid="ai-prefill-applied">
+        Fields below were pre-filled — review and edit anything before continuing.
+      </p>
+      <div class="rounded-md border border-destructive/30 bg-destructive/10 p-2 text-sm text-destructive-emphasis"
+           x-show="aiPrefill.error" x-cloak x-text="aiPrefill.error" data-testid="ai-prefill-error"></div>
+    </div>
+  </div>
+
   <div class="mt-4 grid gap-4">
     <label class="grid gap-2 text-sm font-medium text-foreground">
       Programme name

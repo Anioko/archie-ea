@@ -18,6 +18,89 @@ logger = logging.getLogger(__name__)
 class ProgrammeSetupService:
     """Orchestrates multi-step programme creation for the wizard UI."""
 
+    _PREFILL_FIELDS = (
+        "name", "objective", "workstream_type", "business_units",
+        "outcome_statement", "direction", "metric_name", "unit",
+        "baseline_value", "target_value", "target_date",
+    )
+
+    def ai_prefill_programme(self, description: str) -> dict:
+        """Suggest programme-wizard field values from free-text via the LLM.
+
+        Returns a dict with exactly the keys in _PREFILL_FIELDS, each either the
+        model's extracted value or None. Never invents a value the description
+        does not support (CLAUDE.md "Never invent data") — the prompt instructs
+        the model to answer null rather than guess, and any key the model
+        omits, or any value that fails a basic type check, is forced to None
+        here rather than passed through.
+        """
+        import json
+
+        from app.services.llm_service import LLMService
+        from app.models.transformation_programme import WORKSTREAM_TYPES, IMPROVEMENT_DIRECTIONS
+
+        prompt = f"""You are helping populate a transformation-programme intake form from a
+free-text description written by an enterprise architect.
+
+Description:
+\"\"\"{description}\"\"\"
+
+Extract ONLY what this description actually supports. If something is not
+stated or cannot be confidently inferred, respond with null for that field —
+never guess or invent a plausible-sounding value.
+
+Return ONLY a JSON object with exactly these keys:
+{{
+  "name": string or null (a short programme name, not the whole description),
+  "objective": string or null (one or two sentences on the business objective),
+  "workstream_type": one of {list(WORKSTREAM_TYPES)} or null,
+  "business_units": array of strings or null (business units in scope),
+  "outcome_statement": string or null (the outcome the programme commits to),
+  "direction": one of {list(IMPROVEMENT_DIRECTIONS)} or null (does the metric increase/decrease/stay the same),
+  "metric_name": string or null (the metric that proves the outcome),
+  "unit": string or null (unit the metric is measured in),
+  "baseline_value": number or null (only if a current/starting value is explicitly stated),
+  "target_value": number or null (only if a target value is explicitly stated),
+  "target_date": string or null (YYYY-MM-DD, only if a date is explicitly stated or unambiguously computable)
+}}"""
+        response = LLMService().generate_from_prompt(prompt)
+        raw = json.loads(response)
+
+        def _clean_str(value):
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+            return None
+
+        def _clean_number(value):
+            return value if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+
+        def _clean_list(value):
+            if isinstance(value, list):
+                cleaned = [v.strip() for v in value if isinstance(v, str) and v.strip()]
+                return cleaned or None
+            return None
+
+        fields = {
+            "name": _clean_str(raw.get("name")),
+            "objective": _clean_str(raw.get("objective")),
+            "workstream_type": raw.get("workstream_type") if raw.get("workstream_type") in WORKSTREAM_TYPES else None,
+            "business_units": _clean_list(raw.get("business_units")),
+            "outcome_statement": _clean_str(raw.get("outcome_statement")),
+            "direction": raw.get("direction") if raw.get("direction") in IMPROVEMENT_DIRECTIONS else None,
+            "metric_name": _clean_str(raw.get("metric_name")),
+            "unit": _clean_str(raw.get("unit")),
+            "baseline_value": _clean_number(raw.get("baseline_value")),
+            "target_value": _clean_number(raw.get("target_value")),
+            "target_date": _clean_str(raw.get("target_date")),
+        }
+        if fields["target_date"]:
+            from datetime import date
+            try:
+                date.fromisoformat(fields["target_date"])
+            except ValueError:
+                fields["target_date"] = None
+        return fields
+
     @staticmethod
     def create_business_first_programme(*, actor, command_key, request):
         """Compatibility boundary for canonical non-Solution programme intake."""
