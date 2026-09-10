@@ -103,6 +103,7 @@ class BatchImportService:
         confidence_threshold: float = 0.85,
         auto_approve_high_confidence: bool = False,
         custom_field_mappings: Dict = None,
+        name: str = None,
     ) -> BatchImportJob:
         """
         Create a new batch import job from an uploaded file.
@@ -180,6 +181,7 @@ class BatchImportService:
             job = BatchImportJob(
                 job_uuid=str(uuid.uuid4()),
                 user_id=user_id,
+                name=name,
                 filename=secure_filename(file.filename) or "upload",
                 file_path=file_path,
                 file_hash=file_hash,

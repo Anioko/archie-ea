@@ -214,6 +214,10 @@ class BatchImportJob(db.Model):
     )
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
 
+    # User-entered job name (distinct from the uploaded/pasted file's filename).
+    # Nullable: reconcile-schema only adds nullable columns to existing installs.
+    name = Column(String(255))
+
     # File info
     filename = Column(String(255), nullable=False)
     file_path = Column(String(500))  # Stored file location
@@ -343,7 +347,7 @@ class BatchImportJob(db.Model):
         return {
             "id": self.id,
             "job_uuid": self.job_uuid,
-            "name": self.filename,  # Frontend expects 'name'
+            "name": self.name or self.filename,  # Frontend expects 'name'
             "filename": self.filename,
             "mode": self.archimate_mode,  # Frontend expects 'mode'
             "total_applications": self.total_applications,

@@ -171,6 +171,7 @@ def create_job():
             budget_limit_usd=budget,
             confidence_threshold=threshold,
             auto_approve_high_confidence=auto_approve,
+            name=request.form.get("name") or None,
         )
 
         # PROG-002: optional Transformation Programme target — committed apps
