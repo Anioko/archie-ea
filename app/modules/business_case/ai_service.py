@@ -158,6 +158,44 @@ def _parse_draft(raw: str, section_key: str) -> Dict[str, Any]:
     }
 
 
+def generate_case_seed(description: str) -> Dict[str, Any]:
+    """Suggest a title and description for a NEW business case, before it
+    exists, from a free-text problem statement.
+
+    Advisory only, like generate_section_draft — the "New Business Case"
+    modal pre-fills its title/description fields with the response; the user
+    reviews and edits before submitting, and nothing is written here. A field
+    the model is not confident about comes back null rather than a guessed
+    value (CLAUDE.md "Never invent data").
+    """
+    prompt = (
+        "You are helping populate the creation form for a new Business Case "
+        "document from a short free-text problem description written by a "
+        "Business Architect.\n\n"
+        f'Description:\n"""{description}"""\n\n'
+        "Extract ONLY what this description actually supports. If something "
+        "is not stated or cannot be confidently inferred, respond with null "
+        "for that field — never guess or invent a plausible-sounding value.\n\n"
+        "Respond ONLY with a JSON object with exactly these keys:\n"
+        '- "title": string or null (a short, specific business-case title, '
+        "not the whole description)\n"
+        '- "description": string or null (one or two sentences of context)\n\n'
+        "Respond with raw JSON only, no markdown fences, no extra prose."
+    )
+    raw = LLMService.generate_from_prompt(prompt, use_cache=False)
+    try:
+        data = json.loads(_strip_fences(raw))
+    except json.JSONDecodeError as exc:
+        raise BusinessCaseAIDraftError(f"LLM response was not valid JSON: {exc}") from exc
+    if not isinstance(data, dict):
+        raise BusinessCaseAIDraftError("LLM response was not a JSON object")
+
+    def _clean(value):
+        return value.strip() if isinstance(value, str) and value.strip() else None
+
+    return {"title": _clean(data.get("title")), "description": _clean(data.get("description"))}
+
+
 def generate_section_draft(business_case, section_key: str) -> Dict[str, Any]:
     """Generate an AI draft for one Business Case document section.
 

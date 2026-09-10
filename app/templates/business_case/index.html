@@ -83,16 +83,33 @@
 </div>
 
 {% call modal(id='bc-create-modal', title='New Business Case', description='Give it a title — you can fill in the rest of the document next.', size='default') %}
-<form method="POST" action="{{ url_for('business_case.create') }}" class="space-y-4" data-testid="bc-create-form">
+<form method="POST" action="{{ url_for('business_case.create') }}" class="space-y-4" data-testid="bc-create-form"
+      x-data="businessCaseSeed('{{ url_for('business_case.ai_prefill_new_case') }}')">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="rounded-md border border-border bg-muted/30 p-3 space-y-2">
+    <label for="bc-seed-description" class="block text-sm font-medium">
+      <i data-lucide="sparkles" class="h-4 w-4 inline-block align-text-bottom"></i>
+      Generate with AI
+    </label>
+    <textarea id="bc-seed-description" x-model="seedDescription" rows="2" maxlength="2000"
+      placeholder="Describe the problem in a sentence or two — e.g. we run four regional CRM instances with duplicate licence costs and no shared customer view"
+      class="flex min-h-[52px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"></textarea>
+    <button type="button" data-testid="bc-seed-generate"
+      class="inline-flex h-8 items-center justify-center rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
+      :disabled="loading || !seedDescription.trim()" @click="generateSeed()">
+      <span x-text="loading ? 'Generating…' : 'Generate'"></span>
+    </button>
+    <p class="text-xs text-muted-foreground" x-show="applied" x-cloak data-testid="bc-seed-applied">Title/description below were pre-filled — review before creating.</p>
+    <div class="rounded-md border border-destructive/30 bg-destructive/10 p-2 text-xs text-destructive-emphasis" x-show="error" x-cloak x-text="error" data-testid="bc-seed-error"></div>
+  </div>
   <div>
     <label for="bc-title" class="block text-sm font-medium mb-1">Title <span class="text-destructive-emphasis" aria-hidden="true">*</span></label>
-    <input id="bc-title" name="title" type="text" required maxlength="256" placeholder="e.g. Consolidate Regional CRM Instances"
+    <input id="bc-title" x-ref="bcTitle" name="title" type="text" required maxlength="256" placeholder="e.g. Consolidate Regional CRM Instances"
       class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
   </div>
   <div>
     <label for="bc-description" class="block text-sm font-medium mb-1">Description</label>
-    <textarea id="bc-description" name="description" rows="2" maxlength="2000" placeholder="Optional context for this business case"
+    <textarea id="bc-description" x-ref="bcDescription" name="description" rows="2" maxlength="2000" placeholder="Optional context for this business case"
       class="flex min-h-[64px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"></textarea>
   </div>
   <div class="flex justify-end gap-3 pt-2 border-t">
@@ -107,4 +124,31 @@
   </div>
 </form>
 {% endcall %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function businessCaseSeed(prefillUrl) {
+  return {
+    seedDescription: '', loading: false, error: null, applied: false,
+    async generateSeed() {
+      const description = this.seedDescription.trim();
+      if (!description) return;
+      this.loading = true; this.error = null; this.applied = false;
+      try {
+        const data = await Platform.fetch.post(prefillUrl, { description }, { silent: true });
+        const fields = data.fields || {};
+        if (fields.title) this.$refs.bcTitle.value = fields.title;
+        if (fields.description) this.$refs.bcDescription.value = fields.description;
+        this.applied = true;
+      } catch (e) {
+        this.error = e.message || 'AI prefill failed.';
+        Platform.toast.error(this.error);
+      } finally {
+        this.loading = false;
+      }
+    }
+  };
+}
+</script>
 {% endblock %}
