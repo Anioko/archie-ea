@@ -1325,6 +1325,18 @@
 
         log.error(label + msg, err);
 
+        // HttpError/NetworkError are server-visible failures already (the
+        // server logged the request); only ship genuinely client-only errors
+        // (a thrown JS bug) to avoid double-recording the same failure twice.
+        const isServerVisible = err && (err.type === 'HttpError' || err.type === 'NetworkError');
+        if (!isServerVisible) {
+            _reportToServer({
+                message: label + msg,
+                location: context || (global.location ? global.location.pathname : 'unknown'),
+                stack: (err instanceof Error) ? err.stack : null
+            });
+        }
+
         // Platform.fetch already shows a toast for HttpError / NetworkError.
         // Avoid double-toasting those.
         const alreadyToasted = (
@@ -1411,6 +1423,46 @@
             && reason.isFromCancelledTransition === true;
     }
 
+    // ── Ship errors to the server so silent client-side breakage is visible
+    // somewhere other than a browser console nobody is watching ─────────────
+    //
+    // Deliberately a bare XHR-free `fetch`, not Platform.fetch: Platform.fetch
+    // itself calls Platform.error.handle on failure, and reporting an error
+    // via the same pipe that can itself throw is the infinite-loop case this
+    // guards against below with _reporting.
+    let _reporting = false;
+    let _reportedFingerprints = Object.create(null);
+
+    function _reportToServer(payload) {
+        if (_reporting) return; // never let a failed report re-enter this function
+        // Client-side dedup mirrors the server's fingerprinting so a tight
+        // error loop (e.g. a broken render firing every animation frame)
+        // sends one report, not thousands, before the server even sees it.
+        let key = (payload.location || '') + ':' + String(payload.message || '').slice(0, 120);
+        if (_reportedFingerprints[key]) return;
+        _reportedFingerprints[key] = true;
+
+        _reporting = true;
+        try {
+            global.fetch('/api/client-error', { // raw-fetch-ok: Platform.fetch itself calls Platform.error.handle on failure; using it here to report an error would be able to re-enter this very function
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    message: payload.message,
+                    location: payload.location,
+                    stack: payload.stack || null,
+                    level: 'ERROR',
+                    url: global.location ? global.location.href : ''
+                }),
+                credentials: 'same-origin',
+                keepalive: true
+            }).catch(function () { /* best-effort telemetry; nothing to do if it fails */ })
+              .finally(function () { _reporting = false; });
+        } catch (e) {
+            _reporting = false;
+        }
+    }
+
     global.window.addEventListener('unhandledrejection', function (event) {
         if (_isCancelledAlpineTransition(event.reason)) {
             // Always prevented, dev included. The usual reason to let a rejection
@@ -1427,6 +1479,11 @@
             'stack=' + (serialised.stack || 'n/a'),
             serialised.detail !== undefined ? serialised.detail : ''
         );
+        _reportToServer({
+            message: 'Unhandled promise rejection: ' + serialised.message,
+            location: global.location ? global.location.pathname : 'unknown',
+            stack: serialised.stack
+        });
         // Prevent the browser from logging a duplicate uncaught error
         // only in development (so devtools still shows it).
         if (!global.Platform.isDev) {
@@ -1439,6 +1496,11 @@
         const loc = source + ':' + lineno + ':' + colno;
         const stack = (error && error.stack) ? error.stack : 'n/a';
         log.error('Uncaught error: ' + message, 'at ' + loc, 'stack=' + stack);
+        _reportToServer({
+            message: 'Uncaught error: ' + message,
+            location: loc,
+            stack: stack !== 'n/a' ? stack : null
+        });
         if (typeof _origOnError === 'function') {
             return _origOnError.apply(this, arguments);
         }

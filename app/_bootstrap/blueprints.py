@@ -528,6 +528,13 @@ def _register_always_on_apis(app, csrf):
     csrf.exempt(health_bp)
     app.logger.info("[BLUEPRINT] Health checks registered at /health, /health/db")
 
+    # Error aggregation: client-error sink + platform-admin /admin/errors page
+    # (app/_bootstrap/error_tracking.py covers the server-side half).
+    from app.modules.monitoring.routes.error_events_routes import error_events_bp
+
+    app.register_blueprint(error_events_bp)
+    app.logger.info("[BLUEPRINT] Error aggregation registered at /api/client-error, /admin/errors")
+
     # Security API
     from app.routes.security_api import security_bp
 

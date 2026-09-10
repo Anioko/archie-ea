@@ -73,6 +73,7 @@ else:
     # default, so an ADD-only reconcile can apply it.
     from .artefact_share import ArtefactShareLink  # noqa: F401
     from .sso_config import *  # noqa
+    from .error_event import ErrorEvent  # noqa: F401 - server + client error telemetry
     from .gdpr_request import *  # noqa
     from .subscription import *  # noqa
     from .ai_chat_document import *  # noqa

@@ -438,6 +438,10 @@ _ADMIN_LINKS = [
     # S-11 remainder (18 Aug 2026): batch import was directory-only, never in
     # a sidebar zone of any role.
     _link("Batch Import", "batch_import_view.dashboard", "upload"),
+    # In-built error telemetry (10 Sep 2026): the owner's "how do we know the
+    # system has silently degraded" question, answered without a paid APM.
+    # Cross-tenant like Organizations above -- the route is @platform_admin_required.
+    _link("Errors", "error_events.errors_dashboard", "alert-triangle", requires="platform_admin"),
 ]
 
 # Per-role "My work" — the persona's primary surface, 3-6 items.

@@ -45,6 +45,11 @@ VIEW_OPT_OUT = {
     "app._bootstrap.routes.csp_report":
         "Browsers POST Content-Security-Policy violation reports "
         "automatically, with no user session or ability to attach a header.",
+    "app.modules.monitoring.routes.error_events_routes.client_error":
+        "Fired from a global window.onerror/unhandledrejection handler, not "
+        "a user-initiated form submission -- same rationale as csp_report, "
+        "and it must still work when the reported error is the CSRF fetch "
+        "itself failing.",
     "app._bootstrap.routes.global_health_check":
         "Unauthenticated monitoring probe, no session to ride.",
     "app._bootstrap.routes.version_endpoint":
