@@ -10,6 +10,7 @@ from sqlalchemy.orm import relationship
 
 from app import db
 from app.models.mixins.core import TenantMixin
+from app.services.sap_activate_mapping import get_activate_stage
 
 VALID_BOARD_TYPES = ['architecture_development', 'change_management']
 VALID_PHASE_H_TRIGGER_TYPES = ['business_event', 'technology_eol', 'regulation', 'org_change', 'market', 'performance']
@@ -489,6 +490,10 @@ ADM_PHASES = [
         "governance_checkpoints": ["Requirements baseline established", "Requirements change control"]
     },
 ]
+
+for _phase_data in ADM_PHASES:
+    _phase_data["activate_stage"] = get_activate_stage(_phase_data["code"])
+del _phase_data
 
 
 def create_adm_phases():

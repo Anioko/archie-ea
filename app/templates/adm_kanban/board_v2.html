@@ -109,6 +109,10 @@
  : 'bg-muted text-muted-foreground hover:bg-muted/80'"
                     class="px-2.5 py-1 text-xs font-medium rounded-md transition-colors">
                 <span x-text="phase.code === 'PRELIM' ? 'Prelim' : phase.code === 'REQ' ? 'Req Mgmt' : phase.label"></span>
+                <template x-if="phase.activate_stage">
+                    <span class="ml-1 opacity-70" x-text="'Activate: ' + phase.activate_stage"
+                          title="SAP Activate stage (Capgemini SAP S/4HANA Assessment, Stage 1 enablement)"></span>
+                </template>
                 <span class="ml-1 opacity-70"
                       x-text="'(' + (phaseCounts[phase.code] || 0) + ')'"></span>
                 <template x-if="phaseDeliverables[phase.code] && phaseDeliverables[phase.code].total > 0">
@@ -443,6 +447,11 @@
                           x-text="phase.code"></span>
                     <span class="text-xs font-semibold flex-1 min-w-0 truncate"
                           x-text="phase.label"></span>
+                    <template x-if="phase.activate_stage">
+                        <span class="text-2xs font-medium shrink-0 px-1.5 py-0.5 rounded bg-secondary/10 text-secondary-foreground border border-secondary/20"
+                              title="SAP Activate stage (Capgemini SAP S/4HANA Assessment, Stage 1 enablement)"
+                              x-text="'Activate: ' + phase.activate_stage"></span>
+                    </template>
                     <span class="text-xs text-muted-foreground ml-auto shrink-0"
                           x-text="phaseTotal(phase.code) + ' cards'"></span>
                     <template x-if="phaseCycleAvg(phase.code) !== null">

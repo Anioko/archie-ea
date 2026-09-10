@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional
 from flask import url_for
 
 from app import db
+from app.services.sap_activate_mapping import get_activate_stage
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +52,10 @@ ADM_PHASES = [
     {"code": "H", "label": "Change Management", "order": 8},
     {"code": "REQ", "label": "Requirements Mgmt", "order": 9},
 ]
+
+for _phase in ADM_PHASES:
+    _phase["activate_stage"] = get_activate_stage(_phase["code"])
+del _phase
 
 # Governance status -> kanban column
 _SOLUTION_COLUMN_MAP = {

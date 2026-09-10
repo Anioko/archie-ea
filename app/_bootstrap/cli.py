@@ -325,6 +325,13 @@ def init_cli(app):
         app.logger.warning(f"\u26a0\ufe0f  Failed to register minimal vendor products seed CLI: {e}")
 
     try:
+        from app.commands.seed_sap_products import seed_sap_products
+        app.cli.add_command(seed_sap_products)
+        app.logger.info("\u2705 SAP products seed CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"\u26a0\ufe0f  Failed to register SAP products seed CLI: {e}")
+
+    try:
         from app.commands.codegen_drift_commands import register_codegen_drift_commands
         register_codegen_drift_commands(app)
         app.logger.info("\u2705 Codegen drift detection CLI command registered")
