@@ -34,7 +34,19 @@ from app.utils.pagination import MAX_PAGE_SIZE, safe_int_arg
 archimate_bp = Blueprint("archimate", __name__, url_prefix="/archimate")
 register_lucidchart_import_routes(archimate_bp)
 
-_LLM_TIMEOUT_SECONDS = 45
+# Must exceed the OpenRouter client's own read timeout (80s, see
+# LLMService._call_openrouter's default) or this outer guard always loses the
+# race on a real, working generation: reproduced directly on 10 Sep 2026 —
+# a genuine deepseek/deepseek-v3.2 call for a 37-element ArchiMate model hit
+# this 45s guard, got reported as "timed out" and silently replaced with the
+# noun-extraction mock fallback, while the real call kept running in the
+# background (ThreadPoolExecutor.cancel() cannot stop an already-running
+# thread) and finished successfully into the cache a request that already
+# received the fake result never re-read. The user saw 3 fabricated elements;
+# the real 37-element/10-relationship result was generated, paid for, and
+# discarded. 100s gives the 80s HTTP call room to finish plus JSON
+# parse/validation overhead.
+_LLM_TIMEOUT_SECONDS = 100
 
 
 # ── CMP-025: RBAC ownership check ─────────────────────────────────────────
@@ -269,10 +281,8 @@ def patch_element(element_id):
             action="element_updated",
             entity_type="ArchiMateElement",
             entity_id=element_id,
-            details=json.dumps({
-                "old_name": old_name, "new_name": name,
-                "old_description": old_desc, "new_description": description,
-            }),
+            old_value={"name": old_name, "description": old_desc},
+            new_value={"name": name, "description": description},
             user_id=current_user.id if hasattr(current_user, "id") else None,
         )
         db.session.add(audit)
