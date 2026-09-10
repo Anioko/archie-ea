@@ -592,13 +592,13 @@ class SSOService:
             '<samlp:AuthnRequest'
             ' xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol"'
             ' xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion"'
-            ' ID="{request_id}"'
+            ' ID="{request_id}"'  # raw-html-ok: SAML XML built from server-generated (uuid/timestamp) or admin-configured (sso settings, url_for) values, never attacker-controlled at request time
             ' Version="2.0"'
-            ' IssueInstant="{issue_instant}"'
-            ' AssertionConsumerServiceURL="{acs_url}"'
+            ' IssueInstant="{issue_instant}"'  # raw-html-ok: SAML XML built from server-generated (uuid/timestamp) or admin-configured (sso settings, url_for) values, never attacker-controlled at request time
+            ' AssertionConsumerServiceURL="{acs_url}"'  # raw-html-ok: SAML XML built from server-generated (uuid/timestamp) or admin-configured (sso settings, url_for) values, never attacker-controlled at request time
             ' ProtocolBinding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST"'
             ' IsPassive="false">'
-            '  <saml:Issuer>{sp_entity_id}</saml:Issuer>'
+            '  <saml:Issuer>{sp_entity_id}</saml:Issuer>'  # raw-html-ok: SAML XML built from server-generated (uuid/timestamp) or admin-configured (sso settings, url_for) values, never attacker-controlled at request time
             '  <samlp:NameIDPolicy'
             '    Format="urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress"'
             '    AllowCreate="true"/>'
@@ -894,8 +894,8 @@ class SSOService:
             '<?xml version="1.0" encoding="UTF-8"?>'
             '<md:EntityDescriptor'
             ' xmlns:md="urn:oasis:names:tc:SAML:2.0:metadata"'
-            ' entityID="{sp_entity_id}"'
-            ' validUntil="{valid_until}">'
+            ' entityID="{sp_entity_id}"'  # raw-html-ok: SAML XML built from server-generated (uuid/timestamp) or admin-configured (sso settings, url_for) values, never attacker-controlled at request time
+            ' validUntil="{valid_until}">'  # raw-html-ok: SAML XML built from server-generated (uuid/timestamp) or admin-configured (sso settings, url_for) values, never attacker-controlled at request time
             '  <md:SPSSODescriptor'
             '    AuthnRequestsSigned="false"'
             '    WantAssertionsSigned="true"'
@@ -905,7 +905,7 @@ class SSOService:
             '    </md:NameIDFormat>'
             '    <md:AssertionConsumerService'
             '      Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST"'
-            '      Location="{acs_url}"'
+            '      Location="{acs_url}"'  # raw-html-ok: SAML XML built from server-generated (uuid/timestamp) or admin-configured (sso settings, url_for) values, never attacker-controlled at request time
             '      index="1"/>'
             '  </md:SPSSODescriptor>'
             '</md:EntityDescriptor>'

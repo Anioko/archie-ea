@@ -736,7 +736,7 @@ def _register_metrics(app, csrf):
         for endpoint, data in summary.get("endpoints", {}).items():
             safe_name = endpoint.replace('"', '\\"') if endpoint else "unknown"
             lines.append(
-                f'app_endpoint_requests_total{{endpoint="{safe_name}"}} {data["requests"]}'
+                f'app_endpoint_requests_total{{endpoint="{safe_name}"}} {data["requests"]}'  # raw-html-ok: Prometheus text exposition format (text/plain), not HTML; safe_name already has its own quote-escaping for this format
             )
         lines.append("")
 
@@ -745,7 +745,7 @@ def _register_metrics(app, csrf):
         for endpoint, data in summary.get("endpoints", {}).items():
             safe_name = endpoint.replace('"', '\\"') if endpoint else "unknown"
             lines.append(
-                f'app_endpoint_errors_total{{endpoint="{safe_name}"}} {data["errors"]}'
+                f'app_endpoint_errors_total{{endpoint="{safe_name}"}} {data["errors"]}'  # raw-html-ok: Prometheus text exposition format (text/plain), not HTML; safe_name already has its own quote-escaping for this format
             )
         lines.append("")
 
@@ -754,7 +754,7 @@ def _register_metrics(app, csrf):
         for endpoint, data in summary.get("endpoints", {}).items():
             safe_name = endpoint.replace('"', '\\"') if endpoint else "unknown"
             lines.append(
-                f'app_endpoint_latency_p50_ms{{endpoint="{safe_name}"}} {data["p50_ms"]}'
+                f'app_endpoint_latency_p50_ms{{endpoint="{safe_name}"}} {data["p50_ms"]}'  # raw-html-ok: Prometheus text exposition format (text/plain), not HTML; safe_name already has its own quote-escaping for this format
             )
         lines.append("")
 
@@ -763,7 +763,7 @@ def _register_metrics(app, csrf):
         for endpoint, data in summary.get("endpoints", {}).items():
             safe_name = endpoint.replace('"', '\\"') if endpoint else "unknown"
             lines.append(
-                f'app_endpoint_latency_p95_ms{{endpoint="{safe_name}"}} {data["p95_ms"]}'
+                f'app_endpoint_latency_p95_ms{{endpoint="{safe_name}"}} {data["p95_ms"]}'  # raw-html-ok: Prometheus text exposition format (text/plain), not HTML; safe_name already has its own quote-escaping for this format
             )
         lines.append("")
 

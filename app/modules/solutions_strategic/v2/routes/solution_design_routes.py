@@ -3747,7 +3747,7 @@ def api_registry_download_openapi(spec_id):
     return Response(
         content,
         mimetype="application/json",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},  # raw-html-ok: filename is built from spec.solution_id (int) + spec.spec_version, never free text
     )
 
 
@@ -9193,7 +9193,7 @@ def generate_adr(solution_id):
 
     response = make_response(markdown_content)
     response.headers["Content-Type"] = "text/markdown; charset=utf-8"
-    response.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
+    response.headers["Content-Disposition"] = f'attachment; filename="{filename}"'  # raw-html-ok: filename built from safe_name, already alnum/dash/underscore-filtered above
     return response
 
 
@@ -11826,7 +11826,7 @@ def solution_deliverable_export(solution_id):
 
         response = make_response(pdf_bytes)
         response.headers["Content-Type"] = "application/pdf"
-        response.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
+        response.headers["Content-Disposition"] = f'attachment; filename="{filename}"'  # raw-html-ok: filename built from solution_id, a route int, never free text
         return response
 
     except ImportError as e:
@@ -11992,7 +11992,7 @@ def export_solution_oef(solution_id: int):
 
     response = make_response(xml_bytes)
     response.headers["Content-Type"] = "application/xml; charset=utf-8"
-    response.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
+    response.headers["Content-Disposition"] = f'attachment; filename="{filename}"'  # raw-html-ok: filename built from slug, already regex-sanitized to [a-z0-9-] above
     return response
 
 

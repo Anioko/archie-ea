@@ -45,6 +45,7 @@ import hmac
 import hashlib
 import json
 from datetime import datetime, timedelta
+from html import escape
 
 from app import csrf
 from app.extensions import db
@@ -4121,9 +4122,9 @@ tr:nth-child(even) { background: #f9fafb; }
 <p class="subtitle">Generated {data['generated_at']} &mdash; CONFIDENTIAL</p>
 
 <div class="kpi-row">
-  <div class="kpi"><div class="value">{data['total_solutions']}</div><div class="label">Total Solutions</div></div>
+  <div class="kpi"><div class="value">{escape(str(data['total_solutions']))}</div><div class="label">Total Solutions</div></div>
   <div class="kpi"><div class="value">{data['avg_completeness']}%</div><div class="label">Avg Completeness</div></div>
-  <div class="kpi"><div class="value">{len(data['solutions_by_status'])}</div><div class="label">Status Categories</div></div>
+  <div class="kpi"><div class="value">{escape(str(len(data['solutions_by_status'])))}</div><div class="label">Status Categories</div></div>
 </div>
 """)
 
@@ -4132,7 +4133,7 @@ tr:nth-child(even) { background: #f9fafb; }
     if data["solutions_by_status"]:
         for status, count in sorted(data["solutions_by_status"].items()):
             label = status.replace("_", " ").title()
-            html_parts.append(f"<tr><td>{label}</td><td>{count}</td></tr>")
+            html_parts.append(f"<tr><td>{escape(label)}</td><td>{escape(str(count))}</td></tr>")
     else:
         html_parts.append("<tr><td colspan='2'>No data available</td></tr>")
     html_parts.append("</table>")
@@ -4141,7 +4142,7 @@ tr:nth-child(even) { background: #f9fafb; }
     html_parts.append("<h2>Top 10 Highest Completeness</h2><table><tr><th>#</th><th>Solution</th><th>Score</th></tr>")
     if data["top10"]:
         for i, s in enumerate(data["top10"], 1):
-            html_parts.append(f"<tr><td>{i}</td><td>{s['name']}</td><td>{s['score']}%</td></tr>")
+            html_parts.append(f"<tr><td>{escape(str(i))}</td><td>{escape(s['name'])}</td><td>{escape(str(s['score']))}%</td></tr>")
     else:
         html_parts.append("<tr><td colspan='3'>No data available</td></tr>")
     html_parts.append("</table>")
@@ -4150,7 +4151,7 @@ tr:nth-child(even) { background: #f9fafb; }
     html_parts.append("<h2>Top 10 Gaps (Lowest Completeness)</h2><table><tr><th>#</th><th>Solution</th><th>Score</th></tr>")
     if data["bottom10"]:
         for i, s in enumerate(data["bottom10"], 1):
-            html_parts.append(f"<tr><td>{i}</td><td>{s['name']}</td><td>{s['score']}%</td></tr>")
+            html_parts.append(f"<tr><td>{escape(str(i))}</td><td>{escape(s['name'])}</td><td>{escape(str(s['score']))}%</td></tr>")
     else:
         html_parts.append("<tr><td colspan='3'>No data available</td></tr>")
     html_parts.append("</table>")
@@ -4160,7 +4161,7 @@ tr:nth-child(even) { background: #f9fafb; }
     if data["junction_coverage"]:
         for jname, jdata in data["junction_coverage"].items():
             label = jname.replace("_", " ").title()
-            html_parts.append(f"<tr><td>{label}</td><td>{jdata['with']}</td><td>{jdata['without']}</td></tr>")
+            html_parts.append(f"<tr><td>{escape(label)}</td><td>{escape(str(jdata['with']))}</td><td>{escape(str(jdata['without']))}</td></tr>")
     else:
         html_parts.append("<tr><td colspan='3'>No data available</td></tr>")
     html_parts.append("</table>")
