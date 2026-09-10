@@ -91,8 +91,12 @@ def seed_sap_products(dry_run: bool) -> None:
     """Expand the SAP vendor record with the real product portfolio (idempotent)."""
     from app.models.vendor.vendor_organization import VendorOrganization, VendorProduct
 
+    # Match against both the short "SAP" name (the pre-existing generic vendor
+    # record this command is meant to expand) and "SAP SE" (in case a future
+    # environment seeds under the full legal name), so this never creates a
+    # second SAP vendor row alongside the real one — see ADR 0008.
     org = VendorOrganization.query.filter(
-        VendorOrganization.name == _SAP_ORG["org_name"]
+        VendorOrganization.name.in_(["SAP", _SAP_ORG["org_name"]])
     ).first()
 
     if org is None:
