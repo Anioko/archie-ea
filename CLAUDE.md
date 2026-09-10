@@ -236,6 +236,53 @@ reversible variant, measure before and after, and report afterwards. The genuine
 now scope-based, not danger-based: another organisation's data, commercial choices, and
 product-direction questions with no technically-correct answer.
 
+## Browser-based role testing standard — mandatory, not optional
+
+**This is the concrete mechanism "Done means DEMONSTRATED" runs on.** `tests/smoke/`
+drives a live Flask server plus real Postgres through Playwright, as real personas,
+and is the only thing in this repo that observes access control and rendered UI
+directly rather than trusting a decorator or a template to have done the right thing.
+
+**The eleven canonical personas** live in `ARCHETYPES` in `tests/smoke/conftest.py`:
+solution architect, enterprise architect, business architect, ARB member, portfolio
+manager, CTO, procurement, application manager, platform admin, security architect,
+data architect. This list is canonical — a new persona-visible feature is checked
+against it, not against an ad hoc login script.
+
+**The canonical checks:**
+- `tests/smoke/test_authorisation_matrix.py` — drives every archetype against every
+  persona-gated route and asserts who actually reaches what. It exists because a
+  decorator scan once reported 1,590 unguarded routes when the real number was 1,
+  and separately missed a route that turned out never to be registered — only
+  driving the browser settles either question. **Any new persona-visible route
+  must add or extend a row here**, stating which archetypes should and should not
+  reach it, not just a bespoke one-off smoke test living outside the matrix.
+- `tests/smoke/test_archetype_journeys.py` — per-persona primary-journey walkthroughs.
+  A new primary journey for an existing persona extends this file.
+- `tests/smoke/test_accessibility_audit.py` — axe-core, WCAG 2.1 AA, ratcheted
+  against `tests/smoke/a11y_baseline.json`.
+- The "reality" gates — `test_no_error_banners.py`, `test_console_hygiene.py`,
+  `test_interaction_reality.py`, `test_task_completion.py`,
+  `test_rendered_legibility.py` — check a screen is honestly usable, not just that
+  it returns 200.
+
+**CI enforcement is real and is blocking.** `.github/workflows/ci.yml` runs this on
+every push: an archetype walkthrough job and a "Browser compatibility (webkit)"
+cross-browser journeys job, in addition to the `smoke` job described under CI above.
+Treat a red run in either as a red deploy — not something to check later. **Verify
+CI status explicitly with `gh run list` / `gh run view` before claiming work is
+done or before deploying** — do not rely on a memory note or an assumption about
+whether Actions is currently working; that assumption has been wrong before and
+CI enforcement has silently rotted for days at a time (green reported locally
+while CI was actually red) without anyone noticing. A single `gh run list --limit 5`
+costs nothing and catches it.
+
+**What this standard is not:** it is not satisfied by `scripts/verify.py` alone —
+the browser/smoke tier is deliberately excluded from that command (see
+Verification below) — and it is not satisfied by a curl check or an API-level
+assertion. Playwright against a real rendered page, logged in as a real persona,
+is the standard itself, not a fallback for a missing browser extension.
+
 ## Verification — run this before claiming anything works
 
 ```bash

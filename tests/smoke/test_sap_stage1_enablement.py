@@ -32,7 +32,14 @@ def sap_vendor_seeded(seeded):
 
     app = create_app("testing")
     with app.app_context():
-        org = VendorOrganization.query.filter_by(name=_SAP_ORG["org_name"]).first()
+        # Match both "SAP" (the pre-existing generic vendor record) and "SAP SE"
+        # (the full legal name), same lookup as app/commands/seed_sap_products.py,
+        # so this fixture reuses the real vendor instead of creating a second one -
+        # a duplicate vendor org was the actual production defect this test exists
+        # to catch, and matching on the full name only would recreate it silently.
+        org = VendorOrganization.query.filter(
+            VendorOrganization.name.in_(["SAP", _SAP_ORG["org_name"]])
+        ).first()
         if org is None:
             org = VendorOrganization(
                 name=_SAP_ORG["org_name"],
@@ -96,7 +103,11 @@ def test_vendor_catalogue_lists_seeded_sap_products(browser, live_server, seeded
         search.fill('SAP')
         page.wait_for_timeout(600)
 
-        sap_row = page.locator('tr', has_text='SAP SE').first
+        # The real pre-existing vendor is named "SAP", not "SAP SE" - matching
+        # the full legal name here previously matched nothing (or a duplicate
+        # vendor created by this same off-by-name-mismatch bug) rather than
+        # the actual seeded row.
+        sap_row = page.locator('tr', has_text='SAP').first
         expect(sap_row).to_be_visible(timeout=PAGE_TIMEOUT)
         sap_row.get_by_label('View vendor details').click()
         page.wait_for_timeout(1000)
