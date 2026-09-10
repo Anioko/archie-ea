@@ -147,9 +147,13 @@ def _render_maturity_digest_html(data):
     """Build HTML email body for the data maturity digest."""
     now = datetime.utcnow().strftime("%Y-%m-%d")
 
+    # Solution names are architect-authored freeform text, not system-generated
+    # -- this is exactly the class of value that must be escaped before it
+    # reaches an HTML email (see the 10 Sep 2026 incident this file's history
+    # now carries in _render_error_digest_html's docstring).
     zero_rows = ""
     for s in data["zero_connections"][:20]:
-        zero_rows += f'<tr><td style="padding:4px 8px;border-bottom:1px solid #e5e7eb">{s["name"]}</td></tr>\n'
+        zero_rows += f'<tr><td style="padding:4px 8px;border-bottom:1px solid #e5e7eb">{escape(s["name"])}</td></tr>\n'
     if not zero_rows:
         zero_rows = '<tr><td style="padding:4px 8px;color:#16a34a">All solutions have at least one connection.</td></tr>'
 
@@ -157,7 +161,7 @@ def _render_maturity_digest_html(data):
     for s in data["top_incomplete"][:10]:
         color = "#dc2626" if s["score"] < 25 else "#d97706" if s["score"] < 50 else "#2563eb"
         incomplete_rows += (
-            f'<tr><td style="padding:4px 8px;border-bottom:1px solid #e5e7eb">{s["name"]}</td>'
+            f'<tr><td style="padding:4px 8px;border-bottom:1px solid #e5e7eb">{escape(s["name"])}</td>'
             f'<td style="padding:4px 8px;border-bottom:1px solid #e5e7eb;color:{color};font-weight:600">'
             f'{s["score"]}%</td></tr>\n'
         )
@@ -166,7 +170,7 @@ def _render_maturity_digest_html(data):
     for jname, rate in sorted(data["junction_fill_rates"].items(), key=lambda x: x[1]):
         bar_color = "#dc2626" if rate < 25 else "#d97706" if rate < 50 else "#2563eb" if rate < 75 else "#16a34a"
         junction_rows += (
-            f'<tr><td style="padding:4px 8px;border-bottom:1px solid #e5e7eb">{jname.replace("_", " ").title()}</td>'
+            f'<tr><td style="padding:4px 8px;border-bottom:1px solid #e5e7eb">{escape(jname.replace("_", " ").title())}</td>'
             f'<td style="padding:4px 8px;border-bottom:1px solid #e5e7eb">'
             f'<div style="background:#e5e7eb;border-radius:4px;height:16px;width:120px;display:inline-block">'
             f'<div style="background:{bar_color};border-radius:4px;height:16px;width:{int(rate * 1.2)}px"></div>'
@@ -184,7 +188,7 @@ def _render_maturity_digest_html(data):
 <table style="width:100%;margin-bottom:24px">
 <tr>
   <td style="background:#eff6ff;padding:16px;border-radius:8px;text-align:center;width:50%">
-    <div style="font-size:32px;font-weight:700;color:#2563eb">{data['total']}</div>
+    <div style="font-size:32px;font-weight:700;color:#2563eb">{escape(str(data['total']))}</div>
     <div style="font-size:13px;color:#6b7280">Total Solutions</div>
   </td>
   <td style="width:16px"></td>
@@ -342,10 +346,14 @@ def _render_executive_summary_html(data):
     """Build HTML email body for the executive summary."""
     week_ending = data["week_ending"]
 
-    # New solutions table
+    # Solution names, ARB titles/review numbers, and risk descriptions are all
+    # user-authored freeform text -- escape() every one of them before they
+    # reach this HTML email (see the 10 Sep 2026 incident referenced in
+    # _render_error_digest_html's docstring; this file had the same bug in
+    # two more places, found only once someone went looking).
     new_sol_rows = ""
     for s in data["new_solutions"][:10]:
-        new_sol_rows += f'<tr><td style="padding:4px 8px;border-bottom:1px solid #e5e7eb">{s["name"]}</td></tr>\n'
+        new_sol_rows += f'<tr><td style="padding:4px 8px;border-bottom:1px solid #e5e7eb">{escape(s["name"])}</td></tr>\n'
     if not new_sol_rows:
         new_sol_rows = '<tr><td style="padding:4px 8px;color:#6b7280;font-style:italic">No new solutions this week.</td></tr>'
 
@@ -354,10 +362,10 @@ def _render_executive_summary_html(data):
     for d in data["arb_decisions"][:10]:
         badge_color = "#16a34a" if "approved" in (d["decision"] or "") else "#dc2626" if d["decision"] == "rejected" else "#d97706"
         arb_rows += (
-            f'<tr><td style="padding:4px 8px;border-bottom:1px solid #e5e7eb">{d["review_number"]}</td>'
-            f'<td style="padding:4px 8px;border-bottom:1px solid #e5e7eb">{d["title"][:60]}</td>'
+            f'<tr><td style="padding:4px 8px;border-bottom:1px solid #e5e7eb">{escape(str(d["review_number"]))}</td>'
+            f'<td style="padding:4px 8px;border-bottom:1px solid #e5e7eb">{escape(d["title"][:60])}</td>'
             f'<td style="padding:4px 8px;border-bottom:1px solid #e5e7eb;color:{badge_color};font-weight:600">'
-            f'{(d["decision"] or "pending").replace("_", " ").title()}</td></tr>\n'
+            f'{escape((d["decision"] or "pending").replace("_", " ").title())}</td></tr>\n'
         )
     if not arb_rows:
         arb_rows = '<tr><td colspan="3" style="padding:4px 8px;color:#6b7280;font-style:italic">No ARB decisions this week.</td></tr>'
@@ -367,10 +375,10 @@ def _render_executive_summary_html(data):
     for r in data["new_risks"]:
         impact_color = "#dc2626" if r["impact"] in ("critical", "high") else "#d97706"
         risk_rows += (
-            f'<tr><td style="padding:4px 8px;border-bottom:1px solid #e5e7eb">{r["solution_name"]}</td>'
-            f'<td style="padding:4px 8px;border-bottom:1px solid #e5e7eb">{r["description"]}</td>'
+            f'<tr><td style="padding:4px 8px;border-bottom:1px solid #e5e7eb">{escape(r["solution_name"])}</td>'
+            f'<td style="padding:4px 8px;border-bottom:1px solid #e5e7eb">{escape(r["description"])}</td>'
             f'<td style="padding:4px 8px;border-bottom:1px solid #e5e7eb;color:{impact_color};font-weight:600">'
-            f'{r["impact"].title()}</td></tr>\n'
+            f'{escape(r["impact"].title())}</td></tr>\n'
         )
     if not risk_rows:
         risk_rows = '<tr><td colspan="3" style="padding:4px 8px;color:#6b7280;font-style:italic">No new risks flagged this week.</td></tr>'
@@ -393,7 +401,7 @@ def _render_executive_summary_html(data):
             phase_rows += (
                 f'<tr><td style="padding:4px 8px;border-bottom:1px solid #e5e7eb">'
                 f'Phase {phase} &mdash; {phase_labels.get(phase, phase)}</td>'
-                f'<td style="padding:4px 8px;border-bottom:1px solid #e5e7eb;font-weight:600">{count}</td></tr>\n'
+                f'<td style="padding:4px 8px;border-bottom:1px solid #e5e7eb;font-weight:600">{escape(str(count))}</td></tr>\n'
             )
 
     return f"""<!DOCTYPE html>
@@ -407,12 +415,12 @@ def _render_executive_summary_html(data):
 <table style="width:100%;margin-bottom:24px">
 <tr>
   <td style="background:#eff6ff;padding:12px;border-radius:8px;text-align:center;width:25%">
-    <div style="font-size:28px;font-weight:700;color:#2563eb">{data['total_solutions']}</div>
+    <div style="font-size:28px;font-weight:700;color:#2563eb">{escape(str(data['total_solutions']))}</div>
     <div style="font-size:11px;color:#6b7280">Total Solutions</div>
   </td>
   <td style="width:8px"></td>
   <td style="background:#f0fdf4;padding:12px;border-radius:8px;text-align:center;width:25%">
-    <div style="font-size:28px;font-weight:700;color:#16a34a">{data['new_solutions_count']}</div>
+    <div style="font-size:28px;font-weight:700;color:#16a34a">{escape(str(data['new_solutions_count']))}</div>
     <div style="font-size:11px;color:#6b7280">New This Week</div>
   </td>
   <td style="width:8px"></td>
@@ -422,7 +430,7 @@ def _render_executive_summary_html(data):
   </td>
   <td style="width:8px"></td>
   <td style="background:#fef2f2;padding:12px;border-radius:8px;text-align:center;width:25%">
-    <div style="font-size:28px;font-weight:700;color:#dc2626">{data['arb_decisions_count']}</div>
+    <div style="font-size:28px;font-weight:700;color:#dc2626">{escape(str(data['arb_decisions_count']))}</div>
     <div style="font-size:11px;color:#6b7280">ARB Decisions</div>
   </td>
 </tr>
@@ -559,14 +567,23 @@ def _render_error_digest_html(events, since):
         # message/location (server log text, or attacker-controlled content
         # via the unauthenticated /api/client-error sink) must be escaped by
         # hand or it lands as live HTML in whatever renders this email.
-        safe_message = escape((e.message or "")[:160])
-        safe_location = escape(e.location) if e.location else "—"
+        #
+        # escape() is called INLINE at each interpolation site, not via a
+        # pre-computed variable two lines above -- a prior version did that,
+        # and check_raw_html_escaping.py's own escape hatch
+        # ("already escape()'d two lines above") could not tell the
+        # difference between that being true and someone later deleting the
+        # upstream call, which would have silently reintroduced this exact
+        # bug with the gate still green. Confirmed by deliberately
+        # reintroducing the original bug and re-running the gate: it passed
+        # right through the stale marker. Inlining the call removes the
+        # class of gap entirely -- there is nothing left to trust.
         rows += (
             f'<tr><td style="padding:4px 8px;border-bottom:1px solid #e5e7eb;color:{color};'
-            f'font-weight:600">{e.source}</td>'
-            f'<td style="padding:4px 8px;border-bottom:1px solid #e5e7eb">{safe_message}</td>'
-            f'<td style="padding:4px 8px;border-bottom:1px solid #e5e7eb">{safe_location}</td>'
-            f'<td style="padding:4px 8px;border-bottom:1px solid #e5e7eb;text-align:right">{e.occurrence_count}</td></tr>\n'
+            f'font-weight:600">{escape(e.source)}</td>'
+            f'<td style="padding:4px 8px;border-bottom:1px solid #e5e7eb">{escape((e.message or "")[:160])}</td>'
+            f'<td style="padding:4px 8px;border-bottom:1px solid #e5e7eb">{escape(e.location) if e.location else "—"}</td>'
+            f'<td style="padding:4px 8px;border-bottom:1px solid #e5e7eb;text-align:right">{escape(str(e.occurrence_count))}</td></tr>\n'
         )
     return f"""<!DOCTYPE html>
 <html>

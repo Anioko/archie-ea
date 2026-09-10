@@ -859,6 +859,41 @@ def gate_duplicate_breadcrumb(baseline: int) -> Result:
                   detail, count, baseline)
 
 
+def gate_raw_html_escaping(baseline: int) -> Result:
+    """No NEW unescaped interpolation into hand-built (non-Jinja) HTML.
+
+    Incident, 10 Sep 2026: app/_bootstrap/_digest_emails.py's error-digest
+    email renderer interpolated ErrorEvent.message -- reachable from an
+    unauthenticated caller via /api/client-error -- directly into an HTML
+    table cell with zero escaping. It shipped verified only by a unit test
+    that asserted a result COUNT and a CLI run whose only visible output was
+    "Done: N new events, M recipients"; nobody, human or gate, ever looked at
+    the HTML string the function actually produced. Jinja autoescapes every
+    `.html` template in this codebase, but nothing protects HTML assembled by
+    hand in a `.py` file via string formatting -- this gate is that missing
+    coverage.
+
+    Ratchet, not zero: writing the checker for the first time found 227 such
+    sites across ~40 files (many in export/codegen services that may be
+    building XML/SVG, not browser-rendered HTML, and need individual triage,
+    not a rushed blanket rewrite). The 17 in _digest_emails.py that were
+    reachable from a real HTML email sent to real inboxes were fixed and
+    verified immediately (browser-loaded, confirmed inert) rather than left
+    in the baseline -- see that file's git history. The remaining count is
+    real, pre-existing debt, not something to hide; it can only go down from
+    here. Escape hatch is 'raw-html-ok: <reason>' on the flagged line.
+    """
+    proc = _run([sys.executable, "scripts/check_raw_html_escaping.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("raw-html-escaping", FAIL,
+                      f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    detail = "" if count <= baseline else "run scripts/check_raw_html_escaping.py to list them"
+    return Result("raw-html-escaping", PASS if count <= baseline else FAIL,
+                  detail, count, baseline)
+
+
 def gate_sri() -> Result:
     """Every same-origin integrity= hash matches the file it guards. Gated at ZERO.
 
@@ -1579,6 +1614,11 @@ def build_gates(baseline: dict) -> list[Gate]:
              remediation="keep the one wired-up breadcrumb and delete the rest; "
                          "run scripts/check_duplicate_breadcrumb.py; else mark 'duplicate-breadcrumb-ok: <reason>'",
              tags=["static", "ui"]),
+        Gate("raw-html-escaping", "no NEW unescaped interpolation into hand-built (non-Jinja) HTML",
+             "ratchet", lambda: gate_raw_html_escaping(baseline.get("raw_html_escaping", 210)),
+             remediation="wrap the interpolated value in escape(...) (from html or markupsafe); "
+                         "run scripts/check_raw_html_escaping.py; else mark 'raw-html-ok: <reason>'",
+             tags=["static", "security"]),
         Gate("stale-models", "no retired LLM model id (404s in prod) in shipped code", "zero",
              gate_stale_models,
              remediation="use a current id from DEFAULT_MODELS (model_defaults.py); "

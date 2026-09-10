@@ -223,6 +223,7 @@ scripts/check_*.py
 !scripts/check_unregistered_checks.py
 !scripts/check_raw_repr_in_template.py
 !scripts/check_duplicate_breadcrumb.py
+!scripts/check_raw_html_escaping.py
 scripts/patch_*.py
 scripts/find_*.py
 scripts/delete_*.py

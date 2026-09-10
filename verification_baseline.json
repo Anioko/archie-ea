@@ -24,6 +24,7 @@
     "evidence_contract": 29,
     "role_gate_coverage": 7,
     "unregistered_checks": 41,
-    "duplicate_breadcrumb": 0
+    "duplicate_breadcrumb": 0,
+    "raw_html_escaping": 210
   }
 }
