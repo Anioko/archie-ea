@@ -674,6 +674,10 @@
                     <i data-lucide="presentation" class="w-3.5 h-3.5"></i> Export PowerPoint
                 </button>
                 <div class="toolbar-dropdown-sep"></div>
+                <button type="button" class="toolbar-dropdown-item" @click="exportFormat('archimate_exchange','xml','ArchiMate XML (OEF)'); exportDropdownOpen = false"
+                        x-show="elementCount > 0" x-cloak title="ArchiMate Exchange Format (.xml) — re-importable into other ArchiMate tools">
+                    <i data-lucide="file-json" class="w-3.5 h-3.5"></i> Export ArchiMate XML
+                </button>
                 <button type="button" class="toolbar-dropdown-item" @click="exportReport(); exportDropdownOpen = false"
                         x-show="elementCount > 0" x-cloak>
                     <i data-lucide="file-bar-chart" class="w-3.5 h-3.5"></i> Export Report (PDF)
