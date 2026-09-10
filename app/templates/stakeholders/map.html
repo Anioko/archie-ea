@@ -178,10 +178,15 @@
   </div>
 
 
-</div>
-{% endblock %}
-
-{% block modals %}
+  {# Modals moved here (instead of the separate {% block modals %}) because they
+     read stakeholderMap()'s own state (selectedPerson, personSearch, aiPanel.*,
+     etc.) - {% block modals %} in admin_base.html renders outside this div, which
+     left every field bound to that state unhydrated (DEF: Add Stakeholder had no
+     working Person-or-Team input at all). Safe to nest here despite the modal
+     macro's "renders outside overflow-hidden" comment: the modal root is
+     position:fixed, which escapes an ancestor's overflow-hidden by CSS spec
+     regardless of DOM nesting depth - confirmed no transform/filter/contain on
+     any ancestor that would change that. #}
 {% call modal(id='ai-identify-modal', title='AI Suggest Stakeholders', size='default') %}
   <div class="space-y-4">
     <div>
@@ -364,6 +369,7 @@
     </div>
   </div>
 {% endcall %}
+</div>
 {% endblock %}
 
 {% block extra_js %}
