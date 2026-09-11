@@ -8,6 +8,7 @@ ent-05 Gantt Chart Enhancement — Export and Advanced Features
 
 import csv
 import io
+from html import escape
 from datetime import datetime
 from typing import List, Dict, Tuple
 import logging
@@ -82,7 +83,7 @@ class GanttExportService:
     def export_to_svg(tasks: List[Dict], gantt_data: Dict, width: int = 1200, height: int = 600) -> str:
         """Export Gantt chart to SVG format."""
         svg_lines = [
-            f'<svg width="{width}" height="{height}" xmlns="http://www.w3.org/2000/svg">',
+            f'<svg width="{width}" height="{height}" xmlns="http://www.w3.org/2000/svg">',  # raw-html-ok: width/height are typed `int` parameters of export_to_svg
             '<defs>',
             '<style>',
             '.task-bar { stroke: #333; stroke-width: 1; }',
@@ -97,7 +98,7 @@ class GanttExportService:
         ]
         
         # Add background
-        svg_lines.append(f'<rect width="{width}" height="{height}" fill="#fff" stroke="#ccc" stroke-width="1"/>')
+        svg_lines.append(f'<rect width="{width}" height="{height}" fill="#fff" stroke="#ccc" stroke-width="1"/>')  # raw-html-ok: width/height are typed `int` parameters of export_to_svg
         
         # Add title
         svg_lines.append('<text x="10" y="25" class="task-label" font-weight="bold">Gantt Chart Export</text>')
@@ -112,17 +113,17 @@ class GanttExportService:
             
             # Task bar
             svg_lines.append(
-                f'<rect x="200" y="{y_pos}" width="300" height="20" class="task-bar {task_class}"/>'
+                f'<rect x="200" y="{y_pos}" width="300" height="20" class="task-bar {escape(str(task_class))}"/>'
             )
             
             # Task label
             svg_lines.append(
-                f'<text x="10" y="{y_pos + 15}" class="task-label">{task.get("name", "")[:40]}</text>'
+                f'<text x="10" y="{y_pos + 15}" class="task-label">{escape(task.get("name", "")[:40])}</text>'
             )
             
             # Status label
             svg_lines.append(
-                f'<text x="520" y="{y_pos + 15}" class="task-label" font-size="10">{task.get("status", "")}</text>'
+                f'<text x="520" y="{y_pos + 15}" class="task-label" font-size="10">{escape(str(task.get("status", "")))}</text>'
             )
             
             y_pos += row_height

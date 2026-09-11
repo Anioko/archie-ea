@@ -186,10 +186,16 @@ class EnterpriseExportService:
         
         # Export elements
         for elem in elements:
-            xml_lines.append(f'    <element identifier="{elem.id}" xsi:type="{elem.layer}:{elem.element_type}">')
-            xml_lines.append(f'      <name>{_escape_xml(elem.name)}</name>')
+            # elem.element_type does not exist on ArchiMateElement (the
+            # column is `type`) -- this line raised AttributeError on every
+            # call before this fix, so this export has never worked. Found
+            # incidentally while escaping this line for the raw-html-escaping
+            # gate (11 Sep 2026); fixing the attribute name since the escaping
+            # fix alone would leave this endpoint permanently broken.
+            xml_lines.append(f'    <element identifier="{elem.id}" xsi:type="{_escape_xml(elem.layer)}:{_escape_xml(elem.type)}">')  # raw-html-ok: elem.id is an int PK; elem.layer/type are _escape_xml()'d inline
+            xml_lines.append(f'      <name>{_escape_xml(elem.name)}</name>')  # raw-html-ok: _escape_xml() call
             if elem.description:
-                xml_lines.append(f'      <documentation>{_escape_xml(elem.description)}</documentation>')
+                xml_lines.append(f'      <documentation>{_escape_xml(elem.description)}</documentation>')  # raw-html-ok: _escape_xml() call
             xml_lines.append('    </element>')
         
         xml_lines.extend(['  </elements>', '  <relationships>'])
@@ -203,9 +209,14 @@ class EnterpriseExportService:
             relationships = ArchiMateRelationship.query.all()
         
         for rel in relationships:
-            xml_lines.append(f'    <relationship identifier="{rel.id}" source="{rel.source_id}" target="{rel.target_id}" xsi:type="{rel.relationship_type}">')
-            if rel.name:
-                xml_lines.append(f'      <name>{_escape_xml(rel.name)}</name>')
+            # Same pre-existing bug as the element loop above:
+            # rel.relationship_type doesn't exist (the column is `type`), and
+            # ArchiMateRelationship has no `name` column at all -- `custom_label`
+            # is its closest equivalent. Both raised AttributeError on every
+            # call before this fix.
+            xml_lines.append(f'    <relationship identifier="{rel.id}" source="{rel.source_id}" target="{rel.target_id}" xsi:type="{_escape_xml(rel.type)}">')  # raw-html-ok: rel.id/source_id/target_id are int PK/FKs; type is _escape_xml()'d inline
+            if rel.custom_label:
+                xml_lines.append(f'      <name>{_escape_xml(rel.custom_label)}</name>')  # raw-html-ok: _escape_xml() call
             xml_lines.append('    </relationship>')
         
         xml_lines.extend(['  </relationships>', '</model>'])
