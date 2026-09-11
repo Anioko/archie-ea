@@ -19,8 +19,16 @@
 {# DQ-06: six tabs at equal weight wrapped to two rows below full desktop
    width, which read as unfinished. The control now scrolls horizontally
    instead — `overflow-x-auto` on the wrapper, `flex-nowrap` + `shrink-0` on
-   each tab so none of them compress or drop to a second line. #}
-<div class="mb-6 overflow-x-auto">
+   each tab so none of them compress or drop to a second line.
+
+   Found 11 Sep 2026 in a visual-design pass: at narrow width the scrolled-off
+   tabs (e.g. Simple/Applications/Capabilities at 400px) gave no visual hint
+   they existed — no fade, no arrow, nothing to scroll toward. The chevron
+   below is a plain CSS::after affordance, shown only while the container
+   actually has more to scroll to (data-has-overflow, kept in sync by the
+   scroll/resize listener) so it never appears once every tab is visible. #}
+<div class="mb-6 relative" data-testid="capability-view-switcher-wrap">
+<div class="overflow-x-auto" id="capability-view-switcher-scroll">
 <div data-testid="capability-view-switcher" class="inline-flex flex-nowrap items-center gap-1 rounded-md border border-input bg-muted/50 p-1" role="navigation" aria-label="Capability Map view">
     {% for key, label, icon, endpoint in _views %}
         {% if key == active_view %}
@@ -36,3 +44,23 @@
     {% endfor %}
 </div>
 </div>
+<div id="capability-view-switcher-fade" hidden aria-hidden="true"
+     class="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-background to-transparent flex items-center justify-end">
+    <i data-lucide="chevron-right" class="w-4 h-4 text-muted-foreground -mr-0.5"></i>
+</div>
+</div>
+<script>
+(function () {
+    var scroller = document.getElementById('capability-view-switcher-scroll');
+    var fade = document.getElementById('capability-view-switcher-fade');
+    if (!scroller || !fade) return;
+    function sync() {
+        var hasOverflow = scroller.scrollWidth - scroller.clientWidth > 2;
+        var atEnd = scroller.scrollLeft + scroller.clientWidth >= scroller.scrollWidth - 2;
+        fade.hidden = !hasOverflow || atEnd;
+    }
+    scroller.addEventListener('scroll', sync, { passive: true });
+    window.addEventListener('resize', sync);
+    sync();
+})();
+</script>

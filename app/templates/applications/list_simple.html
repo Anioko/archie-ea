@@ -134,7 +134,13 @@
     {{ stat_card(label='Strategic', value=stats.strategic, hint='Strategic investments', onclick="setStatusFilter('2.1 strategic')", active=(filters.status == '2.1 strategic')) }}
     {{ stat_card(label='Tactical', value=stats.tactical, hint='Tactical / maintain', onclick="setStatusFilter('2.2 tactical')", active=(filters.status == '2.2 tactical')) }}
     {{ stat_card(label='Sunset/Decom Pipeline', value=stats.sunset_decom_pipeline, hint='Sunset or decommission planned', onclick="setStatusFilter('3. sunset')", active=(filters.status == '3. sunset')) }}
-    {{ stat_card(label='Decommissioned', value=stats.decommissioned, hint='Retired from the estate', onclick="setStatusFilter('5. decommissioned')", active=(filters.status == '5. decommissioned')) }}
+    {# 5 cards in a 2-column mobile grid leaves this one alone in its own
+       row -- found in a visual-design pass on production. Spanning both
+       columns on mobile (full width) instead of a lonely half-width card;
+       lg: reverts to the normal 1-of-5 column at desktop width. #}
+    <div class="col-span-2 lg:col-span-1">
+      {{ stat_card(label='Decommissioned', value=stats.decommissioned, hint='Retired from the estate', onclick="setStatusFilter('5. decommissioned')", active=(filters.status == '5. decommissioned')) }}
+    </div>
   </div>
 
   {# ─ DATA QUALITY BANNER ─ #}
@@ -535,6 +541,15 @@
         <p class="text-sm text-muted-foreground mb-6 max-w-md mx-auto">
           {% if filters.search or filters.type or filters.status or filters.domain or filters.capability_level %}
           No applications match your current filters.
+          {% elif not include_decom and stats.total and stats.total == stats.decommissioned %}
+            {# Found 11 Sep 2026 in a visual-design pass: with every application
+               in the portfolio decommissioned, the "Include decommissioned"
+               toggle defaults off and this branch fell through to "Your
+               application portfolio is empty" -- directly contradicting the
+               Data Quality banner above, which was correctly reporting on
+               those same {{ stats.total }} application(s). Say what's
+               actually true: the portfolio has data, it's just filtered out. #}
+          The portfolio has {{ stats.total }} application{{ 's' if stats.total != 1 else '' }}, all decommissioned. Check "Include decommissioned" above to see them.
           {% else %}
             {# F-03: the empty state used to name a specific third-party product
                (Abacus) as the primary path onto the page — the first thing a new
