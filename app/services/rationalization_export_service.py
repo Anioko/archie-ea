@@ -7,6 +7,7 @@ import csv
 import io
 import logging
 from datetime import datetime
+from html import escape
 
 logger = logging.getLogger(__name__)
 
@@ -206,7 +207,7 @@ td {{ padding: 8px 12px; border: 1px solid #e2e8f0; }}
         for action in ["TOLERATE", "INVEST", "MIGRATE", "ELIMINATE"]:
             count = time_dist.get(action, 0)
             pct = round(count / total * 100, 1) if total > 0 else 0
-            html += f"<tr><td>{action}</td><td>{count}</td><td>{pct}%</td></tr>\n"
+            html += f"<tr><td>{action}</td><td>{count}</td><td>{pct}%</td></tr>\n"  # raw-html-ok: action is one of a fixed 4-item vocabulary list from this loop, count/pct are computed numbers
 
         html += """</table>
 <h2>Top 10 Rationalization Candidates</h2>
@@ -214,7 +215,8 @@ td {{ padding: 8px 12px; border: 1px solid #e2e8f0; }}
 <tr><th>Application</th><th>Score</th><th>Disposition</th><th>Est. Savings</th></tr>
 """
         for score, app in sorted_rows:
-            html += f"<tr><td>{app.name}</td><td>{score.overall_health_score}</td><td>{score.disposition_action or '—'}</td><td>{float(score.estimated_annual_savings or 0):,.0f}</td></tr>\n"
+            # app.name is user-entered freeform text - escape it; other fields are numeric/fixed-vocabulary
+            html += f"<tr><td>{escape(app.name)}</td><td>{score.overall_health_score}</td><td>{score.disposition_action or '—'}</td><td>{float(score.estimated_annual_savings or 0):,.0f}</td></tr>\n"
 
         html += f"""</table>
 <div class="footer">Generated {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')} by A.R.C.H.I.E. Platform</div>
