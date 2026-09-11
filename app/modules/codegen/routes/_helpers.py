@@ -7010,7 +7010,7 @@ def _generate_power_platform_solution(solution, config: dict, uml: dict) -> dict
         f"{prov_xml}\n"
         f"<ImportExportXml version=\"9.0.0.0\">\n"
         f"  <SolutionManifest>\n"
-        f"    <UniqueName>{solution_snake}</UniqueName>\n"
+        f"    <UniqueName>{solution_snake}</UniqueName>\n"  # raw-html-ok: solution_snake is regex-sanitized to [a-z0-9_] a few lines above
         f"    <LocalizedNames>\n"
         f"      <LocalizedName description=\"{sol_name}\" languagecode=\"1033\" />\n"
         f"    </LocalizedNames>\n"
@@ -7857,6 +7857,15 @@ def _generate_refine_frontend(solution_name: str, uml_snapshot: dict) -> dict:
         "}}\n"
     ).format(resource_imports=resource_imports, resource_defs=resource_defs)
 
+    def _tsx_safe(text):
+        """Strip characters that could break out of a JSX string literal or
+        attribute when interpolating an architect-defined field name into
+        generated TSX source: a double-quote breaks the attribute, curly
+        braces open a JS expression. field names carry no character
+        restriction upstream, so this closes a code-generation-injection
+        gap into the generated admin app's own source."""
+        return str(text).replace('"', "").replace("{", "").replace("}", "")
+
     # Per-resource page files
     for r in resources:
         name = r["name"]
@@ -7865,23 +7874,23 @@ def _generate_refine_frontend(solution_name: str, uml_snapshot: dict) -> dict:
         fields = r["fields"]
 
         col_defs = "\n          ".join(
-            '<Table.Column title="{title}" dataIndex="{fname}" key="{fname}" />'.format(
-                title=f["name"].replace("_", " ").title(), fname=f["name"]
+            '<Table.Column title="{title}" dataIndex="{fname}" key="{fname}" />'.format(  # raw-html-ok: title/fname are _tsx_safe()'d inline (defined above), stripping quote/brace characters before interpolation into generated TSX
+                title=_tsx_safe(f["name"]).replace("_", " ").title(), fname=_tsx_safe(f["name"])
             )
             for f in fields
         )
 
         form_items = "\n          ".join(
             (
-                '<Form.Item label="{title}" name="{fname}">'
+                '<Form.Item label="{title}" name="{fname}">'  # raw-html-ok: title/fname are _tsx_safe()'d inline (defined above), stripping quote/brace characters before interpolation into generated TSX
                 "<Input /></Form.Item>"
-            ).format(title=f["name"].replace("_", " ").title(), fname=f["name"])
+            ).format(title=_tsx_safe(f["name"]).replace("_", " ").title(), fname=_tsx_safe(f["name"]))
             for f in fields
         )
 
         show_fields = "\n          ".join(
-            '<TextField label="{title}" value={{record?.["{fname}"]}} />'.format(
-                title=f["name"].replace("_", " ").title(), fname=f["name"]
+            '<TextField label="{title}" value={{record?.["{fname}"]}} />'.format(  # raw-html-ok: title/fname are _tsx_safe()'d inline (defined above), stripping quote/brace characters before interpolation into generated TSX
+                title=_tsx_safe(f["name"]).replace("_", " ").title(), fname=_tsx_safe(f["name"])
             )
             for f in fields
         )

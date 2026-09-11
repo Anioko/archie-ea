@@ -250,7 +250,7 @@ class ArchimateOEFExportService:
             xsi_type = el.get(xsi_type_key) or el.get("xsi:type") or el.get("type")
             if not xsi_type:
                 raise ValueError(
-                    f"<element identifier='{identifier}'> is missing required xsi:type attribute"
+                    f"<element identifier='{identifier}'> is missing required xsi:type attribute"  # raw-html-ok: ValueError exception message during XML import validation, never rendered as HTML/browser output
                 )
 
         rels_el = root.find(_q("relationships"))
@@ -262,15 +262,15 @@ class ArchimateOEFExportService:
                 xsi_type = rel.get(xsi_type_key) or rel.get("xsi:type") or rel.get("type")
                 if not xsi_type:
                     raise ValueError(
-                        f"<relationship identifier='{identifier}'> is missing required xsi:type attribute"
+                        f"<relationship identifier='{identifier}'> is missing required xsi:type attribute"  # raw-html-ok: ValueError exception message during XML import validation, never rendered as HTML/browser output
                     )
                 if not rel.get("source"):
                     raise ValueError(
-                        f"<relationship identifier='{identifier}'> is missing required 'source' attribute"
+                        f"<relationship identifier='{identifier}'> is missing required 'source' attribute"  # raw-html-ok: ValueError exception message during XML import validation, never rendered as HTML/browser output
                     )
                 if not rel.get("target"):
                     raise ValueError(
-                        f"<relationship identifier='{identifier}'> is missing required 'target' attribute"
+                        f"<relationship identifier='{identifier}'> is missing required 'target' attribute"  # raw-html-ok: ValueError exception message during XML import validation, never rendered as HTML/browser output
                     )
 
         return True
