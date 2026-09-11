@@ -10,6 +10,7 @@ Provides:
 """
 import logging
 from dataclasses import dataclass
+from html import escape
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Set, Tuple
 
@@ -604,7 +605,7 @@ class ViewpointBuilder:
         width = max_x + 100
         height = max_y + 100
 
-        svg_parts = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}">']
+        svg_parts = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}">']  # raw-html-ok: width/height are computed ints (max_x/max_y + margin)
 
         # Add defs for markers (arrowheads)
         svg_parts.append(
@@ -631,7 +632,7 @@ class ViewpointBuilder:
                 y2 = target.y + target.height / 2
 
                 svg_parts.append(
-                    f'<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" '
+                    f'<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" '  # raw-html-ok: x1/y1/x2/y2 are computed floats from element x/y/width/height
                     f'stroke="#666" stroke-width="1" marker-end="url(#arrowhead)"/>'
                 )
 
@@ -640,25 +641,27 @@ class ViewpointBuilder:
             color = self.LAYER_COLORS.get(elem.layer.lower(), "#FFFFFF")
 
             svg_parts.append(
-                f'<rect x="{elem.x}" y="{elem.y}" width="{elem.width}" height="{elem.height}" '
-                f'fill="{color}" stroke="#333" stroke-width="1" rx="5"/>'
+                f'<rect x="{elem.x}" y="{elem.y}" width="{elem.width}" height="{elem.height}" '  # raw-html-ok: elem.x/y/width/height are numeric layout fields
+                f'fill="{color}" stroke="#333" stroke-width="1" rx="5"/>'  # raw-html-ok: color is a LAYER_COLORS dict value (fixed hex palette, not user input)
             )
 
-            # Add element name (truncate if too long)
-            name = elem.name[:20] + "..." if len(elem.name) > 20 else elem.name
+            # Add element name (truncate if too long). elem.name is
+            # architect-authored freeform text -- escape() before it reaches
+            # this hand-built SVG string.
+            name = escape(elem.name[:20] + "..." if len(elem.name) > 20 else elem.name)
             text_x = elem.x + elem.width / 2
             text_y = elem.y + elem.height / 2 + 5
 
             svg_parts.append(
-                f'<text x="{text_x}" y="{text_y}" text-anchor="middle" '
-                f'font-family="Arial" font-size="12">{name}</text>'
+                f'<text x="{text_x}" y="{text_y}" text-anchor="middle" '  # raw-html-ok: text_x/text_y are computed floats
+                f'font-family="Arial" font-size="12">{name}</text>'  # raw-html-ok: name is escape()'d 3 lines above
             )
 
             # Add element type
             type_y = text_y + 15
             svg_parts.append(
-                f'<text x="{text_x}" y="{type_y}" text-anchor="middle" '
-                f'font-family="Arial" font-size="10" fill="#666">&lt;&lt;{elem.element_type}&gt;&gt;</text>'
+                f'<text x="{text_x}" y="{type_y}" text-anchor="middle" '  # raw-html-ok: text_x/type_y are computed floats; element_type is escape()'d inline
+                f'font-family="Arial" font-size="10" fill="#666">&lt;&lt;{escape(elem.element_type)}&gt;&gt;</text>'
             )
 
         svg_parts.append("</svg>")
