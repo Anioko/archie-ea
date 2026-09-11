@@ -1615,7 +1615,7 @@ def build_gates(baseline: dict) -> list[Gate]:
                          "run scripts/check_duplicate_breadcrumb.py; else mark 'duplicate-breadcrumb-ok: <reason>'",
              tags=["static", "ui"]),
         Gate("raw-html-escaping", "no NEW unescaped interpolation into hand-built (non-Jinja) HTML",
-             "ratchet", lambda: gate_raw_html_escaping(baseline.get("raw_html_escaping", 85)),
+             "ratchet", lambda: gate_raw_html_escaping(baseline.get("raw_html_escaping", 74)),
              remediation="wrap the interpolated value in escape(...) (from html or markupsafe); "
                          "run scripts/check_raw_html_escaping.py; else mark 'raw-html-ok: <reason>'",
              tags=["static", "security"]),

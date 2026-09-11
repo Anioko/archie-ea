@@ -121,9 +121,9 @@ def _bar_html(w: dict, geom) -> str:
     if w.get("closed_gap_ids"):
         title += f' | closes gaps {w["closed_gap_ids"]}'
     common = (
-        f'data-work-package-id="{w["id"]}" '
+        f'data-work-package-id="{w["id"]}" '  # raw-html-ok: w["id"] is a db.Integer ORM primary key, always an int
         f'data-status="{escape(str(status))}" '
-        f'data-percent-complete="{pct}" '
+        f'data-percent-complete="{pct}" '  # raw-html-ok: pct is a computed number (w.get("percent_complete") or 0)
         f'{_prov_attrs(prov)} '
         f'title="{escape(title)}" aria-label="{escape(title)}"'
     )
@@ -181,8 +181,8 @@ def emit_roadmap_gantt_html(slice_dict: dict) -> str:
         f'<div class="genome-roadmap" '
         f'data-spec-hash="{escape(spec_hash)}" '
         f'data-domain="{escape(domain)}" '
-        f'data-plateau-count="{len(plateaus)}" '
-        f'data-work-package-count="{len(work_packages)}">'
+        f'data-plateau-count="{len(plateaus)}" '  # raw-html-ok: len(...) is always an int
+        f'data-work-package-count="{len(work_packages)}">'  # raw-html-ok: len(...) is always an int
     )
 
     window = (
@@ -230,13 +230,13 @@ def emit_roadmap_gantt_html(slice_dict: dict) -> str:
                 f'&middot; {prov.get("origin")} element '
                 f'#{prov.get("archimate_element_id") if prov.get("archimate_element_id") is not None else "—"}'
             )
-            lane_attrs = f'data-plateau-id="{plateau["id"]}" {_prov_attrs(prov)}'
+            lane_attrs = f'data-plateau-id="{plateau["id"]}" {_prov_attrs(prov)}'  # raw-html-ok: plateau["id"] is a db.Integer ORM primary key, always an int
 
         parts.append(f'<div class="genome-roadmap-lane p-3" {lane_attrs}>')
         parts.append(
             '<div class="flex items-baseline justify-between mb-1">'
             f'<div class="font-medium text-foreground text-sm">{escape(lane_label)}</div>'
-            f'<div class="text-xs text-muted-foreground">{lane_meta}</div>'
+            f'<div class="text-xs text-muted-foreground">{lane_meta}</div>'  # raw-html-ok: lane_meta is built entirely from escape()'d/fixed-vocabulary/int parts a few lines above (origin is a fixed code-literal string, target_date is already an ISO string)
             '</div>'
         )
         if not lane_wps:
