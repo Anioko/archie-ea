@@ -103,25 +103,29 @@ class ScenarioToPlaywrightCompiler:
         # Fill in field
         m = _FILL_RE.search(action_text)
         if m:
-            field = m.group(1).strip()
+            # field is extracted from a QA-authored natural-language step
+            # description with no character restriction; a "'" would break
+            # out of the quoted attribute selector below and corrupt the
+            # generated Playwright script's selector syntax.
+            field = m.group(1).strip().replace("'", "")
             value = m.group(2).strip().strip("'\"")
             return {
                 "step_number": step_number,
                 "original_step": action_text,
                 "playwright_action": "fill",
-                "target": f"input[name='{field}'], input[data-field='{field}'], #{field}",
+                "target": f"input[name='{field}'], input[data-field='{field}'], #{field}",  # raw-html-ok: field has quotes stripped above, so it can't break out of this CSS selector
                 "value": value if "test value" not in value.lower() else f"Test {field} value",
             }
 
         # Leave field empty
         m = _LEAVE_EMPTY_RE.search(action_text)
         if m:
-            field = m.group(1).strip()
+            field = m.group(1).strip().replace("'", "")
             return {
                 "step_number": step_number,
                 "original_step": action_text,
                 "playwright_action": "fill",
-                "target": f"input[name='{field}'], input[data-field='{field}'], #{field}",
+                "target": f"input[name='{field}'], input[data-field='{field}'], #{field}",  # raw-html-ok: field has quotes stripped above, so it can't break out of this CSS selector
                 "value": "",
             }
 

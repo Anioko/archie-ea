@@ -5192,7 +5192,8 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{project_name}</title>
+    <title>
+{project_name}</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>tailwind.config = {{ darkMode: 'class', theme: {{ extend: {{ colors: {{ primary: {{ 600: '#2563eb', 700: '#1d4ed8' }} }} }} }} }};</script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
@@ -5203,7 +5204,8 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
 <div x-data="appShell()" x-init="init()" class="flex h-screen overflow-hidden">
     <aside class="w-60 flex-shrink-0 border-r border-zinc-800 bg-zinc-900/50 flex flex-col">
         <div class="p-4 border-b border-zinc-800">
-            <h1 class="text-sm font-bold tracking-tight truncate">{project_name}</h1>
+            <h1 class="text-sm font-bold tracking-tight truncate">
+{project_name}</h1>
             <p class="text-[10px] text-zinc-500 mt-0.5">Solution #{solution_id}</p>
         </div>
         <nav class="flex-1 overflow-y-auto py-2 px-2 space-y-0.5">
@@ -5231,10 +5233,12 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
                     <span class="flex items-center gap-1"><span x-show="i > 0" class="text-zinc-600">/</span><span :class="i === breadcrumbs.length - 1 ? 'text-zinc-200' : ''" x-text="crumb"></span></span>
                 </template>
             </nav>
-            <span class="text-xs text-zinc-600">{bundle_id}</span>
+            <span class="text-xs text-zinc-600">
+{bundle_id}</span>
         </header>
         <div class="p-6">
-            <div x-show="currentRoute === '/'" x-cloak>{dashboard_html}</div>
+            <div x-show="currentRoute === '/'" x-cloak>
+{dashboard_html}</div>
 {entity_sections}{workflow_sections}
         </div>
     </main>

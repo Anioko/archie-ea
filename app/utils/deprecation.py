@@ -713,11 +713,11 @@ class DeprecationMetrics:
 
         for ep, ep_stats in stats["endpoints"].items():
             metrics_output["by_endpoint"][ep] = {
-                f'deprecated_endpoint_requests{{endpoint="{ep}"}}': ep_stats["count"],
-                f'deprecated_endpoint_rpm{{endpoint="{ep}"}}': ep_stats[
+                f'deprecated_endpoint_requests{{endpoint="{ep}"}}': ep_stats["count"],  # raw-html-ok: Prometheus metric label syntax (dict key), not HTML; ep is an internal Flask route path, not user input
+                f'deprecated_endpoint_rpm{{endpoint="{ep}"}}': ep_stats[  # raw-html-ok: Prometheus metric label syntax (dict key), not HTML; ep is an internal Flask route path, not user input
                     "requests_per_minute"
                 ],
-                f'deprecated_endpoint_unique_ips{{endpoint="{ep}"}}': ep_stats[
+                f'deprecated_endpoint_unique_ips{{endpoint="{ep}"}}': ep_stats[  # raw-html-ok: Prometheus metric label syntax (dict key), not HTML; ep is an internal Flask route path, not user input
                     "unique_ips"
                 ],
             }

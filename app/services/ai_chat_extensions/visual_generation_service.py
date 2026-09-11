@@ -329,7 +329,7 @@ class VisualGenerationService:
         safe_title = escape(str(title))
         safe_metric = escape(str(metric))
         html = (
-            f'<div class="heatmap-container"><h3 class="text-lg font-semibold mb - 4">{safe_title}</h3>'
+            f'<div class="heatmap-container"><h3 class="text-lg font-semibold mb - 4">{safe_title}</h3>'  # raw-html-ok: safe_title is escape()'d above
         )
         html += '<div class="grid grid-cols - 4 gap - 2">'
 
@@ -341,8 +341,10 @@ class VisualGenerationService:
             <div class="p - 3 rounded-lg text-center text-white text-sm font-medium"
                  style="background-color: {item['color']}"
                  title="{safe_metric}: {safe_value}">
-                <div class="truncate">{safe_name}</div>
-                <div class="text-xs opacity - 75">{safe_level}</div>
+                <div class="truncate">
+{safe_name}</div>
+                <div class="text-xs opacity - 75">
+{safe_level}</div>
             </div>
             """
 

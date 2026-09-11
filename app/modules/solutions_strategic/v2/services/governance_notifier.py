@@ -12,6 +12,7 @@ doesn't spam. Fully guarded — a push can never break the pass that triggered i
 
 import logging
 from datetime import datetime, timedelta
+from html import escape
 from typing import Any, Dict, List, Optional, Sequence
 
 from app import db
@@ -142,14 +143,18 @@ class GovernanceNotifier:
             recipients = [u.email for u in _q.all() if getattr(u, "email", None)]
             if not recipients:
                 return False
+            # finding titles come from AI governance analysis of real data
+            # (application/capability names etc.) -- freeform, no character
+            # restriction. source_label/url are caller-supplied strings too;
+            # escape all of it before it reaches this HTML email.
             items = "".join(
-                f"<li><b>{f.get('severity', '').upper()}</b> — {f.get('title', '')}</li>"
+                f"<li><b>{escape(f.get('severity', '').upper())}</b> — {escape(str(f.get('title', '')))}</li>"
                 for f in flagged[:10]
             )
             html = (
-                f"<h2>{source_label}: {len(flagged)} finding(s) need attention</h2>"
-                f"<ul>{items}</ul>"
-                f"<p><a href=\"{url}\">Open in A.R.C.H.I.E.</a></p>"
+                f"<h2>{escape(source_label)}: {len(flagged)} finding(s) need attention</h2>"
+                f"<ul>{items}</ul>"  # raw-html-ok: items is built entirely from escape()'d parts above
+                f"<p><a href=\"{escape(url)}\">Open in A.R.C.H.I.E.</a></p>"
             )
             # degrades to logging if SMTP is unconfigured — never raises
             return bool(_safe_send_email(

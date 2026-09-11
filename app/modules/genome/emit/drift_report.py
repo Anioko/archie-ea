@@ -60,17 +60,17 @@ def emit_drift_report_html(report: Dict[str, Any]) -> str:
     parts.append(
         f'<div class="genome-drift-report" '
         f'data-spec-hash="{escape(spec_hash)}" '
-        f'data-finding-count="{total}">'
+        f'data-finding-count="{total}">'  # raw-html-ok: total is summary.get('total', 0), always an int
     )
 
     # --- Header banner -----------------------------------------------------
     sev_bits = " &middot; ".join(
-        f'<span class="font-medium text-foreground">{by_severity.get(s, 0)}</span> {s}'
+        f'<span class="font-medium text-foreground">{by_severity.get(s, 0)}</span> {s}'  # raw-html-ok: by_severity.get(s, 0) is always an int; s is one of a fixed 3-item literal tuple
         for s in ("high", "medium", "low")
     )
     parts.append(
         '<div class="mb-4 text-sm text-muted-foreground">'
-        f'<span class="font-medium text-foreground">{total}</span> drift findings '
+        f'<span class="font-medium text-foreground">{total}</span> drift findings '  # raw-html-ok: total is summary.get('total', 0), always an int
         f'&middot; {sev_bits} '
         f'&middot; <span class="font-mono text-xs">{escape(spec_hash)}</span>'
         '</div>'

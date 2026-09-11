@@ -89,7 +89,11 @@ class LiveMigrationService:
             elif field_type == "boolean":
                 default_part = f", default={default_value}"
             else:
-                default_part = f', default="{default_value}"'
+                # default_value is architect-supplied with no character
+                # restriction; a literal '"' would break out of this
+                # generated Python string literal and corrupt the patch.
+                safe_default = default_value.replace('"', '\\"')
+                default_part = f', default="{safe_default}"'  # raw-html-ok: safe_default has its quotes escaped above; also generated Python source, not HTML
         return f"    {field_name} = db.Column({sa_type}{default_part})"
 
     def generate_schema_code_patch(

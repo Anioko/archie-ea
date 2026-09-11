@@ -106,8 +106,8 @@ class RelationshipCompletionService:
                 code_block = f"""
     # ArchiMate 3.2 Relationships
     {rel_name} = relationship('{rel_config["target_model"]}',
-                          secondary='{rel_config["secondary"]}',
-                          back_populates='{rel_config["back_populates"]}')
+                          secondary='{rel_config["secondary"]}',  # raw-html-ok: generated Python code snippet (suggested SQLAlchemy relationship), not HTML
+                          back_populates='{rel_config["back_populates"]}')  # raw-html-ok: generated Python code snippet (suggested SQLAlchemy relationship), not HTML
 """
                 code_blocks.append(code_block)
             code_blocks.append("")

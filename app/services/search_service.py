@@ -216,7 +216,7 @@ class TemplateSearchService:
             # Log performance metrics
             elapsed = (datetime.utcnow() - start_time).total_seconds() * 1000
             logger.info(
-                f"Search completed: query='{query}', results={len(results)}, "
+                f"Search completed: query='{query}', results={len(results)}, "  # raw-html-ok: logger.info() call, never rendered as HTML/browser output
                 f"total={total}, elapsed={elapsed:.2f}ms"
             )
 

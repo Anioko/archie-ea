@@ -326,7 +326,7 @@ class NLQueryRouter:
         dashboard_link = ""
         if pattern.get("dashboard_url"):
             dashboard_link = (
-                f'\n\n<a href="{pattern["dashboard_url"]}" '
+                f'\n\n<a href="{pattern["dashboard_url"]}" '  # raw-html-ok: dashboard_url is a hardcoded internal route path from this file's own pattern dict, never user input
                 f'class="inline-flex items-center gap-1 text-sm text-primary hover:underline">'
                 f'View in dashboard &rarr;</a>'
             )

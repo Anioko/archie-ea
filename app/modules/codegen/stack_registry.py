@@ -256,18 +256,18 @@ def validate_language(language: str | None) -> list[str]:
         if suggestion is None:
             # Explicitly non-existent combination
             msg = (
-                f"genome.language='{language}' does not exist in this system. "
+                f"genome.language='{language}' does not exist in this system. "  # raw-html-ok: internal config error message, never rendered as HTML/browser output
                 "Available stacks: " + ", ".join(sorted(STACK_REGISTRY))
             )
         elif suggestion:
             msg = (
-                f"genome.language='{language}' is not a valid slug. "
+                f"genome.language='{language}' is not a valid slug. "  # raw-html-ok: internal config error message, never rendered as HTML/browser output
                 f"Did you mean: {suggestion}? "
                 "Available stacks: " + ", ".join(sorted(STACK_REGISTRY))
             )
         else:
             msg = (
-                f"genome.language='{language}' is not recognised. "
+                f"genome.language='{language}' is not recognised. "  # raw-html-ok: internal config error message, never rendered as HTML/browser output
                 "Available stacks: " + ", ".join(sorted(STACK_REGISTRY))
             )
         return [msg]

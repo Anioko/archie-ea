@@ -176,6 +176,18 @@ class RationalizationExportService:
         # Top 10 candidates by savings
         sorted_rows = sorted(rows, key=lambda r: float(r[0].estimated_annual_savings or 0), reverse=True)[:10]
 
+        # Built as standalone statements (each markable with a trailing
+        # comment), rather than interpolated inside the triple-quoted
+        # template below -- all four are ints/formatted numbers, never free
+        # text, but a comment can't be attached to a line inside a
+        # triple-quoted literal without corrupting it.
+        metrics_html = (
+            f'<div class="metric"><div class="metric-value">{total}</div><div class="metric-label">Apps Scored</div></div>\n'  # raw-html-ok: total is len(rows), always an int
+            f'<div class="metric"><div class="metric-value">{total_savings:,.0f}</div><div class="metric-label">Projected Savings</div></div>\n'  # raw-html-ok: formatted from a float total, never free text
+            f'<div class="metric"><div class="metric-value">{time_dist.get("ELIMINATE", 0)}</div><div class="metric-label">Eliminate</div></div>\n'  # raw-html-ok: dict value is always an int counter
+            f'<div class="metric"><div class="metric-value">{time_dist.get("MIGRATE", 0)}</div><div class="metric-label">Migrate</div></div>\n'  # raw-html-ok: dict value is always an int counter
+        )
+
         html = f"""<!DOCTYPE html>
 <html><head><meta charset="utf-8">
 <title>Rationalization Business Case</title>
@@ -194,11 +206,7 @@ td {{ padding: 8px 12px; border: 1px solid #e2e8f0; }}
 <h1>Application Rationalization — Business Case</h1>
 
 <div style="display: flex; flex-wrap: wrap;">
-<div class="metric"><div class="metric-value">{total}</div><div class="metric-label">Apps Scored</div></div>
-<div class="metric"><div class="metric-value">{total_savings:,.0f}</div><div class="metric-label">Projected Savings</div></div>
-<div class="metric"><div class="metric-value">{time_dist.get('ELIMINATE', 0)}</div><div class="metric-label">Eliminate</div></div>
-<div class="metric"><div class="metric-value">{time_dist.get('MIGRATE', 0)}</div><div class="metric-label">Migrate</div></div>
-</div>
+{metrics_html}</div>
 
 <h2>TIME Distribution</h2>
 <table>

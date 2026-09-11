@@ -809,7 +809,7 @@ class UnifiedDerivationService:
         arch = ArchitectureModel(
             name=f"APQC Derived Model {datetime.utcnow().strftime('%Y%m%d')}",
             version="1.0",
-            model_data='{"source": "APQC PCF derivation", "type": "auto-generated"}',
+            model_data='{"source": "APQC PCF derivation", "type": "auto-generated"}',  # raw-html-ok: literal JSON string, not an f-string -- no interpolation at all
         )
         db.session.add(arch)
         db.session.flush()

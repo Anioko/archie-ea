@@ -141,7 +141,7 @@ class _HTMLSanitizer(HTMLParser):
     def _format_open_tag(tag, attrs, self_closing=False):
         if attrs:
             attr_str = " ".join(
-                f'{n}="{_escape_attr_value(v)}"' if v is not None else n
+                f'{n}="{_escape_attr_value(v)}"' if v is not None else n  # raw-html-ok: value is escaped via _escape_attr_value() inline above
                 for n, v in attrs
             )
             suffix = " />" if self_closing else ">"

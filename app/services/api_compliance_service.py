@@ -60,7 +60,7 @@ class APIComplianceService:
             if url_prefix != expected_prefix:
                 return {
                     "valid": False,
-                    "error": f'Blueprint {blueprint_name} must use url_prefix="{expected_prefix}", not "{url_prefix}"',
+                    "error": f'Blueprint {blueprint_name} must use url_prefix="{expected_prefix}", not "{url_prefix}"',  # raw-html-ok: internal API validation error message, never rendered as HTML/browser output
                     "violation": "BLUEPRINT_PREFIX_MISMATCH",
                 }
 

@@ -5,6 +5,7 @@ All 10 sections degrade gracefully to empty_state strings if no data exists.
 """
 
 import logging
+from html import escape
 
 from app import db
 from app.utils.tenant_sql import org_scope
@@ -262,7 +263,10 @@ def get_sad_html(solution_id: int) -> str:
         return render_template(template_path, sad=sad, standalone=True)
     except Exception as exc:  # noqa: BLE001
         logger.error("SAD HTML render failed: %s", exc)
-        return f"<html><body><h1>SAD generation error</h1><pre>{exc}</pre></body></html>"
+        # A Jinja render failure can echo back template variable content
+        # (including solution data) in its exception message -- escape
+        # before it reaches this HTML error page.
+        return f"<html><body><h1>SAD generation error</h1><pre>{escape(str(exc))}</pre></body></html>"
 
 
 # ---------------------------------------------------------------------------

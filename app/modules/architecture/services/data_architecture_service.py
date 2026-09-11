@@ -97,7 +97,7 @@ class DataArchitectureService:
                 validation_result["warnings"].append(
                     {
                         "rule": "BUSINESS_DOMAIN_CONSISTENCY",
-                        "message": f'Business domain mismatch: conceptual="{conceptual.business_domain}" vs logical="{logical.business_domain}"',
+                        "message": f'Business domain mismatch: conceptual="{conceptual.business_domain}" vs logical="{logical.business_domain}"',  # raw-html-ok: JSON API message field, not an HTML string
                         "severity": "WARNING",
                     }
                 )

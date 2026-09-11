@@ -19,6 +19,7 @@ Routes (all on unified_ai_chat_bp, prefix /ai-chat):
   POST /architect/export-brief
 """
 import logging
+from html import escape
 
 from flask import jsonify, make_response, request
 from flask_login import current_user, login_required
@@ -323,34 +324,45 @@ def architect_export_brief():
 
     export_format = data.get("format", "pdf")
 
-    # Build HTML content from solution data
-    title = solution.name or f"Solution {solution_id}"
+    # Build HTML content from solution data. Every field below is
+    # architect-authored freeform text with no character restriction, so
+    # every one is escape()'d before it reaches this hand-built HTML
+    # document -- found 11 Sep 2026 while triaging the raw-html-escaping
+    # gate: only the <title> line was originally flagged, but every field
+    # in both branches below had the identical bug.
+    title = escape(solution.name or f"Solution {solution_id}")
+    desc = escape(solution.description or "N/A")
+    domain = escape(solution.business_domain or "N/A")
+    sol_type = escape(solution.solution_type or "N/A")
+    biz_value = escape(solution.business_value or "N/A")
     sections = []
 
     if export_format == "arb":
         # ARB submission: focused on review-ready content
         sections.append(f"<h1>ARB Submission: {title}</h1>")
         sections.append(f"<p><strong>Solution ID:</strong> {solution_id}</p>")
-        sections.append(f"<p><strong>Description:</strong> {solution.description or 'N/A'}</p>")
-        sections.append(f"<p><strong>Domain:</strong> {solution.business_domain or 'N/A'}</p>")
-        sections.append(f"<p><strong>Solution Type:</strong> {solution.solution_type or 'N/A'}</p>")
-        sections.append(f"<p><strong>Business Value:</strong> {solution.business_value or 'N/A'}</p>")
+        sections.append(f"<p><strong>Description:</strong> {desc}</p>")
+        sections.append(f"<p><strong>Domain:</strong> {domain}</p>")
+        sections.append(f"<p><strong>Solution Type:</strong> {sol_type}</p>")
+        sections.append(f"<p><strong>Business Value:</strong> {biz_value}</p>")
         filename = f"arb_submission_{solution_id}.html"
     else:
         # Full architecture brief: all phases
+        scope = escape(solution.scope_description or "N/A")
+        status = escape(solution.status or "N/A")
         sections.append(f"<h1>Architecture Brief: {title}</h1>")
         sections.append(f"<p><strong>Solution ID:</strong> {solution_id}</p>")
-        sections.append(f"<p><strong>Description:</strong> {solution.description or 'N/A'}</p>")
-        sections.append(f"<p><strong>Scope:</strong> {solution.scope_description or 'N/A'}</p>")
-        sections.append(f"<p><strong>Domain:</strong> {solution.business_domain or 'N/A'}</p>")
-        sections.append(f"<p><strong>Solution Type:</strong> {solution.solution_type or 'N/A'}</p>")
-        sections.append(f"<p><strong>Business Value:</strong> {solution.business_value or 'N/A'}</p>")
-        sections.append(f"<p><strong>Status:</strong> {solution.status or 'N/A'}</p>")
+        sections.append(f"<p><strong>Description:</strong> {desc}</p>")
+        sections.append(f"<p><strong>Scope:</strong> {scope}</p>")
+        sections.append(f"<p><strong>Domain:</strong> {domain}</p>")
+        sections.append(f"<p><strong>Solution Type:</strong> {sol_type}</p>")
+        sections.append(f"<p><strong>Business Value:</strong> {biz_value}</p>")
+        sections.append(f"<p><strong>Status:</strong> {status}</p>")
         filename = f"architecture_brief_{solution_id}.html"
 
     html_content = (
         "<!DOCTYPE html><html><head><meta charset='utf-8'>"
-        f"<title>{title}</title>"
+        f"<title>{title}</title>"  # raw-html-ok: title is escape()'d above (solution.name or a solution_id-derived default)
         "<style>body{font-family:system-ui,sans-serif;max-width:800px;margin:2rem auto;padding:0 1rem;}"
         "h1{color:#1a1a2e;border-bottom:2px solid #e2e8f0;padding-bottom:0.5rem;}"
         "p{margin:0.5rem 0;line-height:1.6;}"
@@ -362,5 +374,5 @@ def architect_export_brief():
 
     response = make_response(html_content)
     response.headers["Content-Type"] = "text/html; charset=utf-8"
-    response.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
+    response.headers["Content-Disposition"] = f'attachment; filename="{filename}"'  # raw-html-ok: filename is built from solution_id, an already-int()-validated route param, never free text
     return response

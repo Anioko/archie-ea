@@ -703,7 +703,7 @@ def download_tco_file(tco_calculation_id):
             excel_data,
             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             headers={
-                "Content-Disposition": f'attachment; filename="{export_result["filename"]}"',
+                "Content-Disposition": f'attachment; filename="{export_result["filename"]}"',  # raw-html-ok: filename is regex-sanitized to [a-zA-Z0-9_-] in advanced_tco_engine.py before reaching this dict
                 "Content-Length": str(len(excel_data)),
             },
         )

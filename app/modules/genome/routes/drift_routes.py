@@ -83,7 +83,7 @@ def _csrf_input() -> str:
         token = generate_csrf()
     except Exception:  # pragma: no cover - CSRF disabled in some test configs
         return ""
-    return f'<input type="hidden" name="csrf_token" value="{token}">'
+    return f'<input type="hidden" name="csrf_token" value="{token}">'  # raw-html-ok: token is server-generated via flask_wtf's generate_csrf(), never user input
 
 
 @genome_drift_bp.route("/", methods=["GET"])

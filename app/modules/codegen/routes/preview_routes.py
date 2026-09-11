@@ -13,6 +13,7 @@ Imported at the bottom of codegen_routes.py so routes attach automatically.
 import hashlib
 import logging
 import re
+from html import escape
 import secrets
 
 from flask import abort, jsonify, request
@@ -314,14 +315,17 @@ def preview_ui(solution_id):
     _g.allow_framing = True
 
     spec_url = f"/solutions/{solution_id}/codegen/preview/spec"
-    title = f"{(solution.name or f'Solution {solution_id}')} — API Preview"
+    # solution.name is architect-authored freeform text -- escape() before
+    # it reaches the hand-built HTML page below.
+    title = escape(f"{(solution.name or f'Solution {solution_id}')} — API Preview")
 
     html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>{title}</title>
+  <title>
+{title}</title>
   <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css">
   <style>
     body {{ margin: 0; background: #fafafa; }}

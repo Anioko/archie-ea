@@ -302,7 +302,7 @@ class ArchiMateImportService:
                 else:
                     entry["status"] = "conflict"
                     entry["diff"] = (
-                        f"Description differs: existing='{existing_desc[:120]}'"
+                        f"Description differs: existing='{existing_desc[:120]}'"  # raw-html-ok: internal diff-conflict message field, never rendered as HTML/browser output
                     )
                     counts["conflict"] += 1
 

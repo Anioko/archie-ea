@@ -17,6 +17,7 @@ import base64
 import io
 import json
 import logging
+import re
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
@@ -1050,7 +1051,11 @@ class AdvancedTCOEngine:
             return {
                 "success": True,
                 "excel_data": excel_data,
-                "filename": f"tco_analysis_{vendor_product.name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                # vendor_product.name is freeform text with no character
+                # restriction; strip anything that could break out of the
+                # quoted Content-Disposition filename attribute it ends up
+                # in (found 11 Sep 2026, raw-html-escaping gate triage).
+                "filename": f"tco_analysis_{re.sub(r'[^a-zA-Z0-9_-]', '_', vendor_product.name)}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
                 "file_size": len(excel_data),
                 "sheets_created": len(wb.worksheets),
                 "includes_charts": include_charts,

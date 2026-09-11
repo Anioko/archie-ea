@@ -433,7 +433,7 @@ class ArchiMateOEFService:
                     if source_db_id is None or target_db_id is None:
                         result["errors"].append(
                             f"Relationship '{rel_identifier}': could not resolve "
-                            f"source='{source_ref}' or target='{target_ref}'"
+                            f"source='{source_ref}' or target='{target_ref}'"  # raw-html-ok: internal import error message appended to a JSON errors list, never rendered as HTML/browser output
                         )
                         continue
 

@@ -275,7 +275,7 @@ class MetricsService:
                 try:
                     result = db.session.execute(db.text(f"SELECT COUNT(*) FROM {table}"))  # tenant-exempt: metrics monitoring
                     count = result.scalar()
-                    metrics[f'database_table_rows{{table="{table}"}}'] = {
+                    metrics[f'database_table_rows{{table="{table}"}}'] = {  # raw-html-ok: Prometheus metric label syntax (dict key), not HTML; table is from a static allow-list, never user input (see comment above)
                         'type': 'gauge',
                         'value': count,
                         'help': f'Number of rows in {table} table'

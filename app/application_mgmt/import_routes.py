@@ -190,7 +190,7 @@ def application_import():
 
                     # Debug
                     current_app.logger.debug(
-                        f"Row {index}: name='{name}', existing={existing_app is not None}, mode={import_mode}"
+                        f"Row {index}: name='{name}', existing={existing_app is not None}, mode={import_mode}"  # raw-html-ok: logger call, never rendered as HTML/browser output
                     )
 
                     if existing_app and import_mode == "skip":
@@ -1628,7 +1628,7 @@ def analyze_import():
             # Get name
             name = None
             current_app.logger.info(
-                f"Row {row_idx}: Processing row data. name_column='{name_column}', custom_mappings={custom_mappings}"
+                f"Row {row_idx}: Processing row data. name_column='{name_column}', custom_mappings={custom_mappings}"  # raw-html-ok: logger call, never rendered as HTML/browser output
             )
             current_app.logger.info(
                 f"Row {row_idx}: Available row_data keys: {list(row_data.keys())}"

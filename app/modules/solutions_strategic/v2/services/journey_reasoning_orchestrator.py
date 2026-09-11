@@ -887,7 +887,7 @@ class JourneyReasoningOrchestrator:
                             f"'{da['app_name']}' serves capability '{cap['name']}' "
                             f"but has lifecycle status '{da['lifecycle_status']}' (decommissioning)"
                         ),
-                        evidence=f"lifecycle_status='{da['lifecycle_status']}' on app_id={da['app_id']}",
+                        evidence=f"lifecycle_status='{da['lifecycle_status']}' on app_id={da['app_id']}",  # raw-html-ok: internal evidence string field, never rendered as HTML/browser output
                         recommended_mitigation=f"Plan migration from '{da['app_name']}' before decommission date",
                     ))
 

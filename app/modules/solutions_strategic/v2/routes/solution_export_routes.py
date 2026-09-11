@@ -34,14 +34,18 @@ def export_solution_pptx(solution_id: int):
 
     pptx_bytes = PowerPointExportService.generate(solution_id)
 
-    safe_name = (solution.name or "blueprint").replace(" ", "_").replace("/", "-")[:80]
+    # .replace(" "/"/") alone still let a '"' in solution.name break out of
+    # the quoted Content-Disposition filename attribute below -- strip
+    # anything outside a safe filename character set instead.
+    import re as _re
+    safe_name = _re.sub(r'[^a-zA-Z0-9_-]', "_", solution.name or "blueprint")[:80]
     filename = f"{safe_name}_blueprint.pptx"
 
     response = make_response(pptx_bytes)
     response.headers["Content-Type"] = (
         "application/vnd.openxmlformats-officedocument.presentationml.presentation"
     )
-    response.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
+    response.headers["Content-Disposition"] = f'attachment; filename="{filename}"'  # raw-html-ok: filename is regex-sanitized to [a-zA-Z0-9_-] above
     response.headers["Content-Length"] = len(pptx_bytes)
 
     # COM-017: upload to SharePoint if M365 is configured
