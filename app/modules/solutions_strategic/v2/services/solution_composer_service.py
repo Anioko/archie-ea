@@ -2403,15 +2403,15 @@ class SolutionComposerService:
             '       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"',
             '       xsi:schemaLocation="http://www.opengroup.org/xsd/archimate/3.0/ archimate3_Model.xsd"',
             f'       identifier="canvas-{self.current_canvas.canvas_id or 0}"',
-            f'       name="{self._xml_escape(self.current_canvas.name)}">',
+            f'       name="{self._xml_escape(self.current_canvas.name)}">',  # raw-html-ok: _xml_escape() call, defined below in this class
         ]
 
         # Elements
         xml_parts.append("  <elements>")
         for node in self.current_canvas.nodes:
             archimate_type = self._to_archimate_xml_type(node.type)
-            xml_parts.append(f'    <element identifier="{node.id}" type="{archimate_type}">')
-            xml_parts.append(f'      <name xml:lang="en">{self._xml_escape(node.name)}</name>')
+            xml_parts.append(f'    <element identifier="{node.id}" type="{archimate_type}">')  # raw-html-ok: node.id is a db.Integer PK; archimate_type is now escape()'d inside _to_archimate_xml_type
+            xml_parts.append(f'      <name xml:lang="en">{self._xml_escape(node.name)}</name>')  # raw-html-ok: _xml_escape() call, defined below in this class
             xml_parts.append("    </element>")
         xml_parts.append("  </elements>")
 
@@ -2420,8 +2420,8 @@ class SolutionComposerService:
         for conn in self.current_canvas.connections:
             archimate_rel = self._to_archimate_xml_relationship(conn.relationship_type)
             xml_parts.append(
-                f'    <relationship identifier="{conn.id}" type="{archimate_rel}"'
-                f' source="{conn.source_node_id}" target="{conn.target_node_id}"/>'
+                f'    <relationship identifier="{conn.id}" type="{archimate_rel}"'  # raw-html-ok: conn.id is a db.Integer PK; archimate_rel is now escape()'d inside _to_archimate_xml_relationship
+                f' source="{conn.source_node_id}" target="{conn.target_node_id}"/>'  # raw-html-ok: conn.source_node_id/target_node_id are db.Integer FKs
             )
         xml_parts.append("  </relationships>")
 
@@ -2430,18 +2430,18 @@ class SolutionComposerService:
         xml_parts.append("    <diagrams>")
         xml_parts.append(
             f'      <view identifier="view-{self.current_canvas.canvas_id or 0}"'
-            f' name="{self._xml_escape(self.current_canvas.name)}"'
+            f' name="{self._xml_escape(self.current_canvas.name)}"'  # raw-html-ok: _xml_escape() call, defined below in this class
             ' type="Diagram">'
         )
         for node in self.current_canvas.nodes:
             xml_parts.append(
-                f'        <node identifier="vn-{node.id}" elementRef="{node.id}"'
-                f' x="{int(node.position_x)}" y="{int(node.position_y)}"'
-                f' w="{int(node.width)}" h="{int(node.height)}"/>'
+                f'        <node identifier="vn-{node.id}" elementRef="{node.id}"'  # raw-html-ok: node.id is a db.Integer PK
+                f' x="{int(node.position_x)}" y="{int(node.position_y)}"'  # raw-html-ok: int(...) is always an int
+                f' w="{int(node.width)}" h="{int(node.height)}"/>'  # raw-html-ok: int(...) is always an int
             )
         for conn in self.current_canvas.connections:
             xml_parts.append(
-                f'        <connection identifier="vc-{conn.id}" relationshipRef="{conn.id}"'
+                f'        <connection identifier="vc-{conn.id}" relationshipRef="{conn.id}"'  # raw-html-ok: conn.id/conn.source_node_id/target_node_id are db.Integer PK/FKs
                 f' source="vn-{conn.source_node_id}" target="vn-{conn.target_node_id}"/>'
             )
         xml_parts.append("      </view>")
@@ -2529,7 +2529,14 @@ class SolutionComposerService:
             "resource": "Resource",
             "course_of_action": "CourseOfAction",
         }
-        return type_map.get(element_type, element_type.replace("_", " ").title().replace(" ", ""))
+        # Fallback for a type outside the fixed map: the transform above
+        # doesn't strip XML-special characters, and node.type has no DB-level
+        # constraint pinning it to this map's keys -- escape defensively so an
+        # unexpected value can't break out of the identifier="..." attribute
+        # this return value is interpolated into.
+        return self._xml_escape(
+            type_map.get(element_type, element_type.replace("_", " ").title().replace(" ", ""))
+        )
 
     def _to_archimate_xml_relationship(self, rel_type: str) -> str:
         """Convert internal relationship type to ArchiMate XML type name."""
@@ -2546,7 +2553,8 @@ class SolutionComposerService:
             "specialization": "Specialization",
             "association": "Association",
         }
-        return rel_map.get(rel_type, rel_type.title())
+        # Same defensive escape as _to_archimate_xml_type's fallback above.
+        return self._xml_escape(rel_map.get(rel_type, rel_type.title()))
 
     def _get_archimate_element_types(self) -> List[Dict[str, Any]]:
         """Get list of ArchiMate element types for the palette."""

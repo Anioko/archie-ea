@@ -74,9 +74,9 @@ def emit_coverage_matrix_html(slice_dict: dict) -> str:
         f'<div class="genome-coverage-matrix" '
         f'data-spec-hash="{escape(spec_hash)}" '
         f'data-capability-source="{escape(source)}" '
-        f'data-capability-count="{len(capabilities)}" '
-        f'data-application-count="{len(applications)}" '
-        f'data-cell-count="{len(cells)}">'
+        f'data-capability-count="{len(capabilities)}" '  # raw-html-ok: len(...) is always an int
+        f'data-application-count="{len(applications)}" '  # raw-html-ok: len(...) is always an int
+        f'data-cell-count="{len(cells)}">'  # raw-html-ok: len(...) is always an int
     )
 
     # Legend / provenance banner.
@@ -112,9 +112,9 @@ def emit_coverage_matrix_html(slice_dict: dict) -> str:
         cls = "text-foreground" if app_populated else "text-muted-foreground"
         parts.append(
             '<th class="p-2 border-b border-border align-bottom" '
-            f'data-application-id="{app["id"]}" '
+            f'data-application-id="{app["id"]}" '  # raw-html-ok: app["id"] is a db.Integer PK
             f'data-archimate-element-id="{escape(str(app.get("archimate_element_id")))}">'
-            f'<div class="{cls}" style="writing-mode: vertical-rl; transform: rotate(180deg); '
+            f'<div class="{cls}" style="writing-mode: vertical-rl; transform: rotate(180deg); '  # raw-html-ok: cls is one of two fixed CSS-class literals from a ternary above
             'white-space: nowrap; max-height: 12rem;">'
             f'{escape(app["name"])}</div></th>'
         )
@@ -129,7 +129,7 @@ def emit_coverage_matrix_html(slice_dict: dict) -> str:
         parts.append(
             '<th class="sticky left-0 bg-card z-10 p-2 text-left font-normal '
             f'border-r border-b border-border {name_cls}" '
-            f'data-capability-id="{cap["id"]}" '
+            f'data-capability-id="{cap["id"]}" '  # raw-html-ok: cap["id"] is a db.Integer PK
             f'data-archimate-element-id="{escape(str(cap.get("archimate_element_id")))}" '
             'scope="row">'
             f'{escape(cap["name"])}</th>'
@@ -154,10 +154,10 @@ def emit_coverage_matrix_html(slice_dict: dict) -> str:
             parts.append(
                 '<td class="border-b border-border w-6 h-6 genome-cov-cell" '
                 f'style="background-color: rgba({_HEAT_RGB}, {alpha:.2f});" '
-                f'data-capability-id="{cap["id"]}" '
-                f'data-application-id="{app["id"]}" '
-                f'data-cap-element-id="{prov["capability_archimate_element_id"]}" '
-                f'data-app-element-id="{prov["application_archimate_element_id"]}" '
+                f'data-capability-id="{cap["id"]}" '  # raw-html-ok: cap["id"] is a db.Integer PK
+                f'data-application-id="{app["id"]}" '  # raw-html-ok: app["id"] is a db.Integer PK
+                f'data-cap-element-id="{prov["capability_archimate_element_id"]}" '  # raw-html-ok: capability_archimate_element_id is a db.Integer FK
+                f'data-app-element-id="{prov["application_archimate_element_id"]}" '  # raw-html-ok: application_archimate_element_id is a db.Integer FK
                 f'data-support-level="{escape(str(m.get("support_level")))}" '
                 f'data-coverage="{escape(str(m.get("coverage_percentage")))}" '
                 f'title="{escape(title)}" '
