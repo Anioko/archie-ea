@@ -6,6 +6,7 @@ Wave 2: Renders confirmed specs (models, handlers, clients, k8s, helm, migration
 """
 from app.modules.solutions_product.services.product_spec_bundle import InfraContext
 import hashlib
+import html
 import logging
 import os
 import re
@@ -517,6 +518,18 @@ class DeterministicCodeGenerator:
         self._env = Environment(
             loader=ChoiceLoader(_loaders),
             keep_trailing_newline=True,
+            # autoescape only for HTML-suffixed templates: this same
+            # Environment renders every generated file (Go, Python, YAML,
+            # shell, JS as well as the UI's *.html.j2 templates), and a
+            # blanket autoescape=True would HTML-escape '<'/'>'/'&' inside
+            # generated Go generics, Python code, YAML, etc. -- corrupting
+            # every generated backend. Scoped this way, entity/field labels
+            # (architect-authored, unconstrained text) rendered into the
+            # generated app's own UI templates are escaped, while every
+            # non-HTML template is untouched. Found 11 Sep 2026 while
+            # triaging the raw-html-escaping gate: this Environment had no
+            # autoescape configuration at all.
+            autoescape=lambda name: bool(name) and name.endswith((".html.j2", ".htm.j2")),
         )
         # Shared templates (Terraform, seed SQL, Makefile, README, .env) used by both languages
         shared_dir = os.path.join(templates_root, "shared")
@@ -5127,8 +5140,8 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
                 # rewritten mechanically.
                 sn = ent["name_snake"]
                 entity_sections += (
-                    f'\n            <div x-show="currentRoute === \'/{sn}s\'" x-cloak>{list_tpl.render(**ent_ctx)}</div>\n'
-                    f'            <div x-show="currentRoute.match(/^\\/{sn}s\\/\\d+$/)" x-cloak>{detail_tpl.render(**ent_ctx)}</div>\n'
+                    f'\n            <div x-show="currentRoute === \'/{sn}s\'" x-cloak>{list_tpl.render(**ent_ctx)}</div>\n'  # raw-html-ok: list_tpl.render() is a *.html.j2 template, now autoescaped by the Environment configured above
+                    f'            <div x-show="currentRoute.match(/^\\/{sn}s\\/\\d+$/)" x-cloak>{detail_tpl.render(**ent_ctx)}</div>\n'  # raw-html-ok: detail_tpl.render() is a *.html.j2 template, now autoescaped by the Environment configured above
                 )
 
             workflow_sections = ""
@@ -5137,7 +5150,7 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
                 for wf in ui_ctx["workflows"]:
                     wf_ctx = dict(ui_ctx, wf=wf)
                     sn = wf["name_snake"]
-                    workflow_sections += f'\n            <div x-show="currentRoute === \'/workflow/{sn}\'" x-cloak>{wf_tpl.render(**wf_ctx)}</div>\n'
+                    workflow_sections += f'\n            <div x-show="currentRoute === \'/workflow/{sn}\'" x-cloak>{wf_tpl.render(**wf_ctx)}</div>\n'  # raw-html-ok: wf_tpl.render() is a *.html.j2 template, now autoescaped by the Environment configured above
 
             nav_html = self._build_nav_html(ui_ctx.get("navigation", []))
             pn = ui_ctx.get("project_name", "Service")
@@ -5152,7 +5165,12 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
         """Build sidebar navigation HTML."""
         parts = []
         for nav in navigation:
-            p, lbl = nav["path"], nav["label"]
+            p = nav["path"]
+            # label is ent["name_plural"]/wf["name_display"] -- architect-
+            # authored freeform text from the solution design UI, unlike
+            # path (already sanitized via _snake()). Escape it before it
+            # reaches the generated app's own sidebar HTML.
+            lbl = html.escape(nav["label"])
             if nav["type"] == "entity":
                 icon = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"></path></svg>'
                 parts.append(f'<a href="#/{p}" @click="navigate(\'/{p}\')" :class="currentRoute.startsWith(\'/{p}\') ? \'bg-zinc-800 text-zinc-100\' : \'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50\'" class="flex items-center gap-2 px-3 py-2 text-sm rounded-md transition-colors">{icon} {lbl}</a>')
@@ -5164,6 +5182,11 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
     @staticmethod
     def _compose_shell_html(project_name, solution_id, bundle_id, nav_html, dashboard_html, entity_sections, workflow_sections):
         """Compose the final SPA shell HTML."""
+        # project_name is architect-authored freeform text (the same class of
+        # value fixed via autoescape for the *.html.j2 templates above); this
+        # method builds its shell with a raw Python f-string, so it needs its
+        # own explicit escape() -- Jinja's autoescape doesn't apply here.
+        project_name = html.escape(project_name)
         return f'''<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -7279,7 +7302,7 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
                 "    <meta charset=\"UTF-8\" />\n"
                 "    <link rel=\"icon\" type=\"image/svg+xml\" href=\"/vite.svg\" />\n"
                 "    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n"
-                f"    <title>{bundle.solution_name}</title>\n"
+                f"    <title>{html.escape(bundle.solution_name)}</title>\n"
                 "  </head>\n  <body>\n"
                 "    <div id=\"root\"></div>\n"
                 "    <script type=\"module\" src=\"/src/main.tsx\"></script>\n"
@@ -7532,7 +7555,7 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
                 "    <div className=\"min-h-screen bg-background\">\n"
                 "      <header className=\"border-b border-border bg-card\">\n"
                 "        <nav className=\"container mx-auto px-4 py-3 flex items-center gap-6\">\n"
-                f"          <span className=\"font-semibold text-foreground\">{bundle.solution_name}</span>\n"
+                f"          <span className=\"font-semibold text-foreground\">{html.escape(bundle.solution_name)}</span>\n"
                 "          " + nav_links + "\n"
                 "        </nav>\n"
                 "      </header>\n"
