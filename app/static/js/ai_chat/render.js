@@ -353,7 +353,17 @@
     /* Pending approvals, attached to the answer that caused them rather than to
        a badge in the header. Uses the endpoints the live modal already calls —
        approval_modal.js — not approval_gate's 202 payload, which is a different
-       mechanism. The header modal stays as the roll-up. */
+       mechanism. The header modal stays as the roll-up.
+
+       The requester who triggers this card can never be the one who approves
+       it: AIChatApprovalService.get_approver_queue() deliberately excludes the
+       actor's own requests (dual control / segregation of duties), so the
+       modal this card's button opens will always read "No approvals waiting
+       for your review" for the person looking at their own pending card. A
+       "Review" button that always opens an empty modal for the only person
+       who can see this card reads as broken, not as enforcing a control -
+       state whose queue it is and who can act on it instead of offering a
+       dead-looking control. */
     function renderPendingApprovals(pending) {
         if (!Array.isArray(pending) || pending.length === 0) return '';
         var rows = pending.map(function (p) {
@@ -365,12 +375,13 @@
         }).join('');
         return '<div class="mt-3 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-xs" role="status">' +
                  '<div class="font-medium text-warning-emphasis mb-1">' +
-                   pending.length + ' change' + (pending.length === 1 ? '' : 's') + ' awaiting your approval' +
+                   pending.length + ' change' + (pending.length === 1 ? '' : 's') + ' awaiting approval' +
                  '</div>' +
                  '<ul class="list-none p-0 m-0 text-muted-foreground">' + rows + '</ul>' +
-                 '<button type="button" data-modal-open="ai-chat-approvals-modal" ' +
-                   'class="mt-1.5 inline-flex items-center gap-1 rounded-md border border-input bg-background ' +
-                   'px-2.5 py-1 text-xs font-medium hover:bg-accent transition-colors">Review</button>' +
+                 '<p class="mt-1.5 text-muted-foreground">' +
+                   'You requested ' + (pending.length === 1 ? 'this' : 'these') + ' — a different reviewer in your ' +
+                   'organization must approve it from their own Approvals for review menu before it executes.' +
+                 '</p>' +
                '</div>';
     }
 
