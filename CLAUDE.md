@@ -373,7 +373,7 @@ to reconfirm the count before trusting it:**
 | `breadcrumb-coverage` | a routed page with a header but no breadcrumb | must be 0 |
 | `raw-repr-in-template` | a Python object repr (raw dict/list `str()`) reaching a rendered page | must be 0 |
 | `duplicate-breadcrumb` | a page rendering two independent breadcrumb trails at once | ratchet @ 17 |
-| `raw-html-escaping` | unescaped interpolation into hand-built (non-Jinja) HTML | ratchet @ 183 |
+| `raw-html-escaping` | unescaped interpolation into hand-built (non-Jinja) HTML | ratchet @ 152 |
 | `stale-models` | a retired LLM model id (404s in prod) in shipped code | must be 0 |
 | `deployed-deps` | installed packages below the pinned floors | must be 0 (boot-health job only) |
 | `js-build` | committed `js/bundles/*.js` stale vs a rebuild | must pass |

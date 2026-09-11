@@ -241,7 +241,7 @@ def _append_property_xml(lines, properties, indent):
         if isinstance(value, (dict, list)):
             value = json.dumps(value)
         lines.append(
-            f'{indent}<property key="{_xml_attr(key)}" value="{_xml_attr(value)}" />'
+            f'{indent}<property key="{_xml_attr(key)}" value="{_xml_attr(value)}" />'  # raw-html-ok: _xml_attr/_xml_text (defined above in this file) are escape() wrappers -- already safe
         )
 
 
@@ -254,9 +254,9 @@ def _build_archimate_model_xml(model):
     lines = [
         '<?xml version="1.0" encoding="UTF-8"?>',
         (
-            f'<archimate_model id="{_xml_attr(model.get("id"))}" '
-            f'name="{_xml_attr(model.get("name", "ArchiMate Model"))}" '
-            f'version="{_xml_attr(model.get("version", "3.2"))}">'
+            f'<archimate_model id="{_xml_attr(model.get("id"))}" '  # raw-html-ok: _xml_attr/_xml_text (defined above in this file) are escape() wrappers -- already safe
+            f'name="{_xml_attr(model.get("name", "ArchiMate Model"))}" '  # raw-html-ok: _xml_attr/_xml_text (defined above in this file) are escape() wrappers -- already safe
+            f'version="{_xml_attr(model.get("version", "3.2"))}">'  # raw-html-ok: _xml_attr/_xml_text (defined above in this file) are escape() wrappers -- already safe
         ),
         "  <metadata>",
     ]
@@ -264,66 +264,66 @@ def _build_archimate_model_xml(model):
     for key, value in metadata.items():
         if isinstance(value, (dict, list)):
             value = json.dumps(value)
-        lines.append(f'    <entry key="{_xml_attr(key)}">{_xml_text(value)}</entry>')
+        lines.append(f'    <entry key="{_xml_attr(key)}">{_xml_text(value)}</entry>')  # raw-html-ok: _xml_attr/_xml_text (defined above in this file) are escape() wrappers -- already safe
     lines.append("  </metadata>")
 
-    lines.append(f'  <elements count="{len(elements)}">')
+    lines.append(f'  <elements count="{len(elements)}">')  # raw-html-ok: len(...) is always an int
     for element in elements:
         lines.append(
             (
-                f'    <element id="{_xml_attr(element.get("id"))}" '
-                f'type="{_xml_attr(element.get("type"))}" '
-                f'layer="{_xml_attr(element.get("layer"))}" '
-                f'name="{_xml_attr(element.get("name"))}">'
+                f'    <element id="{_xml_attr(element.get("id"))}" '  # raw-html-ok: _xml_attr/_xml_text (defined above in this file) are escape() wrappers -- already safe
+                f'type="{_xml_attr(element.get("type"))}" '  # raw-html-ok: _xml_attr/_xml_text (defined above in this file) are escape() wrappers -- already safe
+                f'layer="{_xml_attr(element.get("layer"))}" '  # raw-html-ok: _xml_attr/_xml_text (defined above in this file) are escape() wrappers -- already safe
+                f'name="{_xml_attr(element.get("name"))}">'  # raw-html-ok: _xml_attr/_xml_text (defined above in this file) are escape() wrappers -- already safe
             )
         )
         if element.get("description"):
-            lines.append(f"      <description>{_xml_text(element.get('description'))}</description>")
+            lines.append(f"      <description>{_xml_text(element.get('description'))}</description>")  # raw-html-ok: _xml_attr/_xml_text (defined above in this file) are escape() wrappers -- already safe
         _append_property_xml(lines, element.get("properties"), "      ")
         lines.append("    </element>")
     lines.append("  </elements>")
 
-    lines.append(f'  <relationships count="{len(relationships)}">')
+    lines.append(f'  <relationships count="{len(relationships)}">')  # raw-html-ok: len(...) is always an int
     for relationship in relationships:
         lines.append(
             (
-                f'    <relationship id="{_xml_attr(relationship.get("id"))}" '
-                f'type="{_xml_attr(relationship.get("type"))}" '
-                f'source="{_xml_attr(relationship.get("source"))}" '
-                f'target="{_xml_attr(relationship.get("target"))}">'
+                f'    <relationship id="{_xml_attr(relationship.get("id"))}" '  # raw-html-ok: _xml_attr/_xml_text (defined above in this file) are escape() wrappers -- already safe
+                f'type="{_xml_attr(relationship.get("type"))}" '  # raw-html-ok: _xml_attr/_xml_text (defined above in this file) are escape() wrappers -- already safe
+                f'source="{_xml_attr(relationship.get("source"))}" '  # raw-html-ok: _xml_attr/_xml_text (defined above in this file) are escape() wrappers -- already safe
+                f'target="{_xml_attr(relationship.get("target"))}">'  # raw-html-ok: _xml_attr/_xml_text (defined above in this file) are escape() wrappers -- already safe
             )
         )
         if relationship.get("description"):
             lines.append(
-                f"      <description>{_xml_text(relationship.get('description'))}</description>"
+                f"      <description>{_xml_text(relationship.get('description'))}</description>"  # raw-html-ok: _xml_attr/_xml_text (defined above in this file) are escape() wrappers -- already safe
             )
         _append_property_xml(lines, relationship.get("properties"), "      ")
         lines.append("    </relationship>")
     lines.append("  </relationships>")
 
-    lines.append(f'  <viewpoints count="{len(viewpoints)}">')
+    lines.append(f'  <viewpoints count="{len(viewpoints)}">')  # raw-html-ok: len(...) is always an int
     for viewpoint in viewpoints:
         viewpoint_elements = viewpoint.get("elements") or []
         viewpoint_relationships = viewpoint.get("relationships") or []
         lines.append(
             (
-                f'    <viewpoint id="{_xml_attr(viewpoint.get("id"))}" '
-                f'name="{_xml_attr(viewpoint.get("name"))}">'
+                f'    <viewpoint id="{_xml_attr(viewpoint.get("id"))}" '  # raw-html-ok: _xml_attr/_xml_text (defined above in this file) are escape() wrappers -- already safe
+                f'name="{_xml_attr(viewpoint.get("name"))}">'  # raw-html-ok: _xml_attr/_xml_text (defined above in this file) are escape() wrappers -- already safe
             )
         )
         if viewpoint.get("description"):
-            lines.append(f"      <description>{_xml_text(viewpoint.get('description'))}</description>")
+            lines.append(f"      <description>{_xml_text(viewpoint.get('description'))}</description>")  # raw-html-ok: _xml_attr/_xml_text (defined above in this file) are escape() wrappers -- already safe
         lines.append("      <elements>")
         for element_id in viewpoint_elements:
             if isinstance(element_id, dict):
                 element_id = element_id.get("id")
-            lines.append(f'        <element_ref id="{_xml_attr(element_id)}" />')
+            lines.append(f'        <element_ref id="{_xml_attr(element_id)}" />')  # raw-html-ok: _xml_attr/_xml_text (defined above in this file) are escape() wrappers -- already safe
         lines.append("      </elements>")
         lines.append("      <relationships>")
         for relationship_id in viewpoint_relationships:
             if isinstance(relationship_id, dict):
                 relationship_id = relationship_id.get("id")
-            lines.append(f'        <relationship_ref id="{_xml_attr(relationship_id)}" />')
+            lines.append(f'        <relationship_ref id="{_xml_attr(relationship_id)}" />')  # raw-html-ok: _xml_attr/_xml_text (defined above in this file) are escape() wrappers -- already safe
         lines.append("      </relationships>")
         lines.append("    </viewpoint>")
     lines.append("  </viewpoints>")
@@ -3629,7 +3629,7 @@ def export_arb_document(solution_id):
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>ARB Submission — {solution.name}</title>
+<title>ARB Submission — {escape(solution.name)}</title>
 <style>
   body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 800px; margin: 40px auto; padding: 0 20px; color: #1a1a1a; line-height: 1.6; }}
   h1 {{ border-bottom: 2px solid #2563eb; padding-bottom: 8px; }}
@@ -3646,36 +3646,41 @@ def export_arb_document(solution_id):
 <body>
 <h1>Architecture Review Board Submission</h1>
 <div class="meta">
-  <strong>Solution:</strong> {solution.name}<br>
-  <strong>Domain:</strong> {solution.business_domain or 'N/A'}<br>
-  <strong>Status:</strong> {solution.governance_status or 'draft'}<br>
+  <strong>Solution:</strong> {escape(solution.name)}<br>
+  <strong>Domain:</strong> {escape(solution.business_domain or 'N/A')}<br>
+  <strong>Status:</strong> {escape(solution.governance_status or 'draft')}<br>
   <strong>Generated:</strong> {__import__('datetime').datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}
 </div>
 """
+    # arb_draft is LLM-generated (AI-drafted ARB submission) and elements/
+    # roadmap entries carry architect-authored freeform text -- escape() every
+    # one of them before they reach this HTML response (same class of bug as
+    # the 10 Sep 2026 digest-email incident, here reaching a browser directly
+    # via Response(html, mimetype="text/html")).
     if arb_draft.get("business_justification"):
-        html += f'<div class="section"><h2>Business Justification</h2><p>{arb_draft["business_justification"]}</p></div>\n'
+        html += f'<div class="section"><h2>Business Justification</h2><p>{escape(str(arb_draft["business_justification"]))}</p></div>\n'
     if arb_draft.get("technical_assessment"):
-        html += f'<div class="section"><h2>Technical Assessment</h2><p>{arb_draft["technical_assessment"]}</p></div>\n'
+        html += f'<div class="section"><h2>Technical Assessment</h2><p>{escape(str(arb_draft["technical_assessment"]))}</p></div>\n'
     if arb_draft.get("risk_analysis"):
-        html += f'<div class="section"><h2>Risk Analysis</h2><p>{arb_draft["risk_analysis"]}</p></div>\n'
+        html += f'<div class="section"><h2>Risk Analysis</h2><p>{escape(str(arb_draft["risk_analysis"]))}</p></div>\n'
     if arb_draft.get("implementation_approach"):
-        html += f'<div class="section"><h2>Implementation Approach</h2><p>{arb_draft["implementation_approach"]}</p></div>\n'
+        html += f'<div class="section"><h2>Implementation Approach</h2><p>{escape(str(arb_draft["implementation_approach"]))}</p></div>\n'
     if arb_draft.get("cost_summary"):
-        html += f'<div class="section"><h2>Cost Summary</h2><p>{arb_draft["cost_summary"]}</p></div>\n'
+        html += f'<div class="section"><h2>Cost Summary</h2><p>{escape(str(arb_draft["cost_summary"]))}</p></div>\n'
 
     if selected_option:
-        html += f'<div class="section"><h2>Selected Option</h2><p><strong>{selected_option.get("name", "N/A")}</strong>: {selected_option.get("description", "")}</p></div>\n'
+        html += f'<div class="section"><h2>Selected Option</h2><p><strong>{escape(str(selected_option.get("name", "N/A")))}</strong>: {escape(str(selected_option.get("description", "")))}</p></div>\n'
 
     if elements:
         html += '<div class="section"><h2>ArchiMate Elements</h2><table><tr><th>Name</th><th>Type</th><th>Layer</th></tr>\n'
         for el in elements:
-            html += f'<tr><td>{el["name"]}</td><td>{el["type"]}</td><td>{el["layer"]}</td></tr>\n'
+            html += f'<tr><td>{escape(str(el["name"]))}</td><td>{escape(str(el["type"]))}</td><td>{escape(str(el["layer"]))}</td></tr>\n'
         html += '</table></div>\n'
 
     if roadmap.get("plateaus"):
         html += '<div class="section"><h2>Implementation Roadmap</h2><table><tr><th>Plateau</th><th>Duration</th></tr>\n'
         for p in roadmap["plateaus"]:
-            html += f'<tr><td>{p.get("name", "")}</td><td>{p.get("duration", "")}</td></tr>\n'
+            html += f'<tr><td>{escape(str(p.get("name", "")))}</td><td>{escape(str(p.get("duration", "")))}</td></tr>\n'
         html += '</table></div>\n'
 
     html += '</body></html>'
