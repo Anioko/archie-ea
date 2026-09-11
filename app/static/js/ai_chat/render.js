@@ -31,9 +31,23 @@
     function messages() { return document.getElementById('messages-container'); }
     function domains() { return window.domainConfig || {}; }
 
+    /* Runs now AND on next frame. Every caller invokes this before
+       lucide.createIcons() swaps <i data-lucide> placeholders for real
+       inline <svg>, which can grow the just-appended element's height by
+       enough to leave scrollTop short of the true bottom -- a system
+       message (e.g. "Persona switched to: ...") then sits with its lower
+       portion clipped by the container's own overflow, only a sliver
+       visible above the always-below "Quick prompts" strip. The immediate
+       call keeps today's no-visible-jump behavior for the common case
+       where nothing grows; the rAF call corrects the rest once the icon
+       swap (and any font-metric settling) has actually landed. */
     function scrollToBottom() {
         var c = messages();
-        if (c) c.scrollTop = c.scrollHeight;
+        if (!c) return;
+        c.scrollTop = c.scrollHeight;
+        window.requestAnimationFrame(function () {
+            if (c) c.scrollTop = c.scrollHeight;
+        });
     }
 
     // Tailwind-safe color class mappings (explicit classes for build-time purging)

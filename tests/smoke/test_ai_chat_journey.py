@@ -238,6 +238,42 @@ def test_persona_storage_denial_keeps_chat_initialized(page, live_server, seeded
     assert not _js_errors(page), _js_errors(page)
 
 
+def test_persona_switch_system_message_is_not_clipped(page, live_server, seeded):
+    """The "Persona switched to: ..." notice must land fully inside the
+    scrollable transcript, not straddle its bottom edge.
+
+    Found 11 Sep 2026 during a visual-design pass on production: switching
+    persona appends a system-message pill to #messages-container and calls
+    scrollToBottom(), but scrollToBottom() ran *before* lucide.createIcons()
+    swapped the pill's <i data-lucide> placeholder for a real inline <svg> --
+    which grows the pill's height enough that the scroll position captured a
+    moment earlier falls short of the true bottom. The result: the pill's
+    lower ~60% renders clipped by the container's own overflow, with only a
+    thin, barely-readable sliver of its top edge visible above the always-
+    below "Quick prompts" strip. Fixed in render.js's scrollToBottom() by
+    re-applying the scroll on the next animation frame as well.
+    """
+    _open_chat(page, live_server, seeded)
+
+    page.locator("#persona-selector").select_option("data_architect")
+    page.wait_for_timeout(400)  # scrollToBottom's rAF follow-up
+
+    pill = page.locator("#messages-container div", has_text="Persona switched to:").last
+    assert pill.count() > 0, "no persona-switch system message was appended"
+
+    box = pill.bounding_box()
+    container_box = page.locator("#messages-container").bounding_box()
+    assert box is not None and container_box is not None
+    container_bottom = container_box["y"] + container_box["height"]
+    assert box["y"] + box["height"] <= container_bottom + 1, (
+        "the persona-switch message extends %.1fpx past the scrollable "
+        "container's bottom edge (message bottom=%.1f, container bottom=%.1f) "
+        "-- it renders visually clipped instead of fully scrolled into view"
+        % (box["y"] + box["height"] - container_bottom, box["y"] + box["height"], container_bottom)
+    )
+    assert not _js_errors(page), _js_errors(page)
+
+
 def test_approval_modal_distinguishes_loading_failure_stale_and_retry(page, live_server, seeded):
     """Reviewers never mistake a failed approval fetch for an empty queue."""
     state_timeout = 10_000
