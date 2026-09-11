@@ -78,18 +78,18 @@ def emit_ai_systems_register(slice_data: dict) -> Markup:
 
         rows.append(
             "<tr class=\"border-b border-border\" "
-            f'data-element-id="{int(s["archimate_element_id"])}" '
+            f'data-element-id="{int(s["archimate_element_id"])}" '  # raw-html-ok: int(...) is always an int
             f'data-currency="{escape(currency)}" '
-            f'data-flagged="{flagged}">'
-            f'<td class="px-3 py-2 text-sm font-medium">{_cell(s.get("name"))}</td>'
-            f'<td class="px-3 py-2 text-sm">{_cell(s.get("provider"))}</td>'
-            f'<td class="px-3 py-2 text-sm font-mono">{_cell(s.get("model_id"))}</td>'
+            f'data-flagged="{flagged}">'  # raw-html-ok: flagged is a literal '1'/'0' string, never free text
+            f'<td class="px-3 py-2 text-sm font-medium">{_cell(s.get("name"))}</td>'  # raw-html-ok: _cell() (defined above) escapes internally
+            f'<td class="px-3 py-2 text-sm">{_cell(s.get("provider"))}</td>'  # raw-html-ok: _cell() (defined above) escapes internally
+            f'<td class="px-3 py-2 text-sm font-mono">{_cell(s.get("model_id"))}</td>'  # raw-html-ok: _cell() (defined above) escapes internally
             f'<td class="px-3 py-2 text-sm" data-currency-cell="{escape(currency)}">{escape(currency_label)}</td>'
-            f'<td class="px-3 py-2 text-sm">{_cell(s.get("autonomy_level"))}</td>'
-            f'<td class="px-3 py-2 text-sm">{_tri_cell(gov.get("approval_gate"))}</td>'
-            f'<td class="px-3 py-2 text-sm">{_tri_cell(gov.get("human_review"))}</td>'
-            f'<td class="px-3 py-2 text-sm">{_cell(s.get("data_sensitivity"))}</td>'
-            f'<td class="px-3 py-2 text-sm text-destructive">{_flags_cell(flags)}</td>'
+            f'<td class="px-3 py-2 text-sm">{_cell(s.get("autonomy_level"))}</td>'  # raw-html-ok: _cell() (defined above) escapes internally
+            f'<td class="px-3 py-2 text-sm">{_tri_cell(gov.get("approval_gate"))}</td>'  # raw-html-ok: _tri_cell() (defined above) returns only 'Yes'/'No'/em-dash literals
+            f'<td class="px-3 py-2 text-sm">{_tri_cell(gov.get("human_review"))}</td>'  # raw-html-ok: _tri_cell() (defined above) returns only 'Yes'/'No'/em-dash literals
+            f'<td class="px-3 py-2 text-sm">{_cell(s.get("data_sensitivity"))}</td>'  # raw-html-ok: _cell() (defined above) escapes internally
+            f'<td class="px-3 py-2 text-sm text-destructive">{_flags_cell(flags)}</td>'  # raw-html-ok: _flags_cell() (defined above) escapes internally
             "</tr>"
         )
 
@@ -136,8 +136,8 @@ def emit_ai_systems_register(slice_data: dict) -> Markup:
         f'<div class="flex items-center justify-between">{summary}{provenance}</div>'
         '<div class="overflow-x-auto rounded-lg border border-border">'
         '<table class="min-w-full divide-y divide-border">'
-        f"<thead><tr>{head}</tr></thead>"
-        f"<tbody>{body}</tbody>"
+        f"<thead><tr>{head}</tr></thead>"  # raw-html-ok: head is built entirely from escape()'d header labels above
+        f"<tbody>{body}</tbody>"  # raw-html-ok: body is built entirely from _cell()/_tri_cell()/_flags_cell()-escaped rows above
         "</table></div></div>"
     )
     # Every database-derived string is escaped above and identifiers/counts are

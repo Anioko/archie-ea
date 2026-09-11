@@ -77,7 +77,7 @@ class DiagramRenderService:
         canvas_h = len(ordered_layers) * self.LAYER_H + self.MARGIN * 2
 
         svg_parts = [
-            f'<svg xmlns="http://www.w3.org/2000/svg" width="{canvas_w}" height="{canvas_h}"'
+            f'<svg xmlns="http://www.w3.org/2000/svg" width="{canvas_w}" height="{canvas_h}"'  # raw-html-ok: canvas_w/canvas_h are computed ints (layout math), never free text
             ' font-family="Arial,sans-serif" font-size="11">',
             (
                 "<defs>"
@@ -100,12 +100,12 @@ class DiagramRenderService:
 
             # Layer background band
             svg_parts.append(
-                f'<rect x="{self.MARGIN // 2}" y="{y_top}"'
-                f' width="{canvas_w - self.MARGIN}" height="{self.LAYER_H - 10}"'
-                f' rx="4" fill="{color}" stroke="#ccc" stroke-width="1"/>'
+                f'<rect x="{self.MARGIN // 2}" y="{y_top}"'  # raw-html-ok: self.MARGIN/y_top are computed ints
+                f' width="{canvas_w - self.MARGIN}" height="{self.LAYER_H - 10}"'  # raw-html-ok: canvas_w/self.MARGIN/self.LAYER_H are computed ints
+                f' rx="4" fill="{color}" stroke="#ccc" stroke-width="1"/>'  # raw-html-ok: color is a LAYER_COLORS dict value (fixed hex palette, not user input)
             )
             svg_parts.append(
-                f'<text x="{self.MARGIN}" y="{y_top + 14}"'
+                f'<text x="{self.MARGIN}" y="{y_top + 14}"'  # raw-html-ok: self.MARGIN/y_top are computed ints
                 f' font-size="10" fill="#666" font-weight="bold">'
                 f"{html.escape(layer_name.upper())}</text>"
             )
@@ -123,16 +123,16 @@ class DiagramRenderService:
                 el_type = html.escape(el.type or "")
 
                 svg_parts.append(
-                    f'<rect x="{bx}" y="{by}" width="{self.BOX_W}" height="{self.BOX_H}"'
+                    f'<rect x="{bx}" y="{by}" width="{self.BOX_W}" height="{self.BOX_H}"'  # raw-html-ok: bx/by/self.BOX_W/self.BOX_H are computed ints (layout math)
                     f' rx="3" fill="white" stroke="#666" stroke-width="1.5"/>'
                 )
                 svg_parts.append(
-                    f'<text x="{bx + self.BOX_W // 2}" y="{by + 18}"'
-                    f' text-anchor="middle" font-weight="bold">{label}</text>'
+                    f'<text x="{bx + self.BOX_W // 2}" y="{by + 18}"'  # raw-html-ok: bx/by are computed ints
+                    f' text-anchor="middle" font-weight="bold">{label}</text>'  # raw-html-ok: label is html.escape()'d 4 lines above, assigned once, used unchanged
                 )
                 svg_parts.append(
-                    f'<text x="{bx + self.BOX_W // 2}" y="{by + 32}"'
-                    f' text-anchor="middle" fill="#888">{el_type}</text>'
+                    f'<text x="{bx + self.BOX_W // 2}" y="{by + 32}"'  # raw-html-ok: bx/by are computed ints
+                    f' text-anchor="middle" fill="#888">{el_type}</text>'  # raw-html-ok: el_type is html.escape()'d 3 lines above, assigned once, used unchanged
                 )
 
         # Relationships — drawn after elements so they appear on top of band fills
@@ -148,7 +148,7 @@ class DiagramRenderService:
                     x1, y1 = positions[rel.source_id]
                     x2, y2 = positions[rel.target_id]
                     svg_parts.append(
-                        f'<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}"'
+                        f'<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}"'  # raw-html-ok: x1/y1/x2/y2 are computed ints from stored element centre-point tuples
                         f' stroke="#666" stroke-width="1.5" marker-end="url(#arrow)"/>'
                     )
         except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value — relationship errors must not abort SVG output
