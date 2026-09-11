@@ -155,7 +155,12 @@
                 <div class="flex items-center justify-between">
                     <div>
                         <div class="font-medium">{{ license.product_name }}</div>
-                        <div class="text-sm text-muted-foreground">
+                        {# text-muted-foreground is tuned for 4.5:1 on bg-card/bg-muted (see
+                           shadcn_tokens.css); this card sits on bg-destructive/10, which
+                           lightens the effective background and drops the same token to
+                           ~4.45:1 -- a WCAG AA fail axe caught on this page. text-foreground/80
+                           has enough headroom against any of the tinted status backgrounds. #}
+                        <div class="text-sm text-foreground/80">
                             Consumed: {{ license.quantity_deployed }} / Entitled: {{ license.quantity_entitled }}
                         </div>
                     </div>
@@ -214,7 +219,8 @@
             <div class="flex items-center justify-between p-3 bg-warning/10 rounded-lg">
                 <div>
                     <div class="font-medium">{{ license.product_name }}</div>
-                    <div class="text-sm text-muted-foreground">
+                    {# same bg-warning/10-lightens-the-token issue as the violations card above #}
+                    <div class="text-sm text-foreground/80">
                         Consumed: {{ license.quantity_deployed }} / Entitled: {{ license.quantity_entitled }}
                         ({{ "{:.0f}".format((license.quantity_deployed or 0) / (license.quantity_entitled or 1) * 100) }}% utilized)
                     </div>
