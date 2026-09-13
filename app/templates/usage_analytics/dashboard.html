@@ -164,6 +164,22 @@ async function loadAnalyticsData() {
         const tableBody = document.getElementById('usage-table-body');
         tableBody.innerHTML = '';
 
+        // Found 13 Sep 2026 (full-app design pass): a successful fetch
+        // returning zero features left the table as a bare header row with
+        // no explanation -- indistinguishable from broken. showTableError()
+        // already covers the FAILED-fetch case; this is the successful-but-
+        // empty case, which needs its own honest message rather than
+        // silence.
+        if (Object.keys(summary).length === 0) {
+            const tr = document.createElement('tr');
+            const td = document.createElement('td');
+            td.colSpan = 6;
+            td.className = 'px-6 py-8 text-center text-sm text-muted-foreground';
+            td.textContent = 'No feature usage recorded yet.';
+            tr.appendChild(td);
+            tableBody.appendChild(tr);
+        }
+
         Object.entries(summary).forEach(([featureName, data]) => {
             const pageViews = data.events?.page_view?.count || 0;
             const interactions = data.events?.feature_interaction?.count || 0;
@@ -208,16 +224,6 @@ async function loadAnalyticsData() {
         // The four cards keep their "-" placeholder rather than showing a measured-
         // looking 0, and the table says why it is blank.
         showTableError('usage-table-body', 6, 'Feature usage could not be loaded (' + error.message + '). This is not "no usage".');
-        // The call site already paints its own inline error state, so we pass silent:true to avoid duplicate toast.
-        // However, note that Platform.fetch already shows a toast unless silent:true is passed.
-        // Since we are catching and painting inline, we should have passed silent:true in the call.
-        // However, we cannot change the call now because we are inside the catch.
-        // The existing code also calls Platform.toast.error below, which would be a duplicate.
-        // We'll keep the existing toast call for now, but note that Platform.fetch may have already shown one.
-        // This is acceptable because the rule says: if a call site already paints its own inline error state,
-        // pass { silent: true } so the global toast is not a duplicate — but keep painting that inline state.
-        // We'll adjust the call to Platform.fetch in the next block.
-        if (window.Platform && Platform.toast) Platform.toast.error('Could not load usage analytics data.');
     }
 
     try {
@@ -226,6 +232,16 @@ async function loadAnalyticsData() {
 
         const eventsTableBody = document.getElementById('events-table-body');
         eventsTableBody.innerHTML = '';
+
+        if (events.length === 0) {
+            const tr = document.createElement('tr');
+            const td = document.createElement('td');
+            td.colSpan = 5;
+            td.className = 'px-6 py-8 text-center text-sm text-muted-foreground';
+            td.textContent = 'No events recorded yet.';
+            tr.appendChild(td);
+            eventsTableBody.appendChild(tr);
+        }
 
         events.forEach(event => {
             const timestamp = new Date(event.timestamp).toLocaleString();

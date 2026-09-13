@@ -11,6 +11,12 @@ browser test exercises it) but stated as discipline is not enforced as
 mechanism -- an agent (or a person) can simply forget. This makes forgetting
 a failed gate instead of a missed step.
 
+Extended the same day to watch `app/static/styles/**/*.css` too: a fix to the
+Vendor Catalogue's sticky-column background (a CSS-only change, no template
+or JS touched) would itself have shipped unwatched by the original version of
+this gate -- the exact blind spot the gate exists to close, found while
+closing a different one.
+
 Deliberately git-diff-based rather than route-execution-based (contrast with
 the `nav-verified` gate, which instruments a real behavioural run to prove a
 sidebar route was actually clicked): that mechanism answers "has this route
@@ -52,7 +58,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-WATCHED_PREFIXES = ("app/templates/", "app/static/js/")
+WATCHED_PREFIXES = ("app/templates/", "app/static/js/", "app/static/styles/")
 EXCLUDED_PREFIXES = ("app/static/js/bundles/", "app/static/js/vendor/", "app/static/vendor/")
 SMOKE_PREFIX = "tests/smoke/"
 ESCAPE_MARKER = "smoke-coverage-ok"
@@ -87,7 +93,7 @@ def _changed_files(base: str) -> set[str]:
 
 
 def _is_watched(path: str) -> bool:
-    if not path.endswith((".html", ".js")):
+    if not path.endswith((".html", ".js", ".css")):
         return False
     if any(path.startswith(p) for p in EXCLUDED_PREFIXES):
         return False

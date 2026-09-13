@@ -37,12 +37,21 @@
    visible while the middle of a wide table scrolls underneath. Harmless on
    tables that never overflow -- position: sticky is a no-op with nothing to
    scroll. Backgrounds are set explicitly so scrolled-under cell content
-   doesn't show through the sticky column. */
+   doesn't show through the sticky column.
+
+   Found 13 Sep 2026 (Vendor Catalogue, full-app design pass): the header's
+   background was hsl(var(--muted) / 0.5) -- semi-transparent -- so on any
+   table wide enough to actually need the sticky freeze, the scrolled-under
+   header text (Status/Contract on Vendors) showed through and visually
+   overlapped the sticky "Actions" label, reading as garbled/broken text.
+   The body-cell rule below already used a fully opaque hsl(var(--card));
+   the header needs the same property, not merely a lower-alpha echo of
+   thead's own bg-muted/40. */
 #main-content .overflow-x-auto table thead th:first-child,
 #main-content .overflow-x-auto table thead th:last-child {
     position: sticky;
     z-index: 2;
-    background-color: hsl(var(--muted) / 0.5);
+    background-color: hsl(var(--muted));
 }
 
 #main-content .overflow-x-auto table tbody td:first-child,
@@ -242,7 +251,7 @@
     width: 2.5rem;
     height: 2.5rem;
     border-radius: 50%;
-    background-color: hsl(var(--muted));
+    background-color: hsl(var(--muted) / 0.5);
     display: flex;
     align-items: center;
     justify-content: center;

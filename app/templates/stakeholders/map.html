@@ -165,7 +165,12 @@
     </svg>
     <p class="text-muted-foreground font-medium text-lg mb-1" x-text="selectedSolution ? 'No stakeholders yet' : 'Select a solution'"></p>
     <p class="text-muted-foreground/60 text-sm mb-4" x-text="selectedSolution ? 'Add stakeholders to visualise your Power/Interest grid' : 'Choose a solution from the dropdown above to view its stakeholder map'"></p>
-    <button type="button" @click="openAddModal()"
+    {# Found 13 Sep 2026 (full-app design pass): this button used to render
+       unconditionally, including in the "no solution selected yet" state --
+       clicking it there immediately failed with a "Select a solution first"
+       toast, since a stakeholder can't be linked to nothing. Offering a
+       primary CTA that always fails is worse than not offering it yet. #}
+    <button type="button" x-show="selectedSolution" x-cloak @click="openAddModal()"
             class="bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-semibold px-5 py-2.5 rounded-lg transition">
       + Add First Stakeholder
     </button>
