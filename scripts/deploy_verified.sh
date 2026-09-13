@@ -22,6 +22,24 @@
 #   container's own self-report — that the bind mount is real and the code
 #   running inside it is the commit that was asked for.
 #
+# AUTO-ROLLBACK (added 13 Sep 2026, Fortune-500-rigor phase 4):
+#   Before this, a deploy that failed verification left production on
+#   whatever half-applied state the failed attempt produced, for a human to
+#   notice and fix by hand. Now: on verification failure, if a previous
+#   deploy by this script fully verified (recorded in DEPLOY_STATE_FILE) and
+#   it isn't the SHA that just failed, the script automatically redeploys
+#   that previous known-good commit and re-verifies it. A successful rollback
+#   still exits non-zero (the REQUESTED ref did not ship — that's a real
+#   failure to report), but says clearly that production is stable on the
+#   prior commit rather than broken. If the rollback attempt ALSO fails to
+#   verify, that is reported distinctly and loudly: production may be in a
+#   genuinely broken state and needs a human, not another automatic retry —
+#   this script never rolls back more than once per invocation, deliberately,
+#   to avoid flapping between two bad commits or masking a droplet-wide
+#   problem (postgres down, disk full) as a code regression.
+#   Disable with AUTO_ROLLBACK=0 (e.g. while deliberately testing a deploy
+#   that is expected to fail, such as this feature's own verification runs).
+#
 # RELATIONSHIP TO deploy/deploy.sh (read before adding a third script):
 #   deploy/deploy.sh + scripts/deploy.sh are a SEPARATE, more advanced
 #   pipeline for a different topology: an immutable image built by CI and
@@ -51,7 +69,8 @@
 #                   current tip, never a stale local ref.
 #   --skip-deploy   run verification only, against whatever is already
 #                   running (used for testing this script itself, and for
-#                   re-checking a deploy without repeating it).
+#                   re-checking a deploy without repeating it). Never
+#                   triggers a rollback — it is a read-only check.
 #
 # ENVIRONMENT:
 #   DROPLET                 ssh target (default root@134.122.105.56)
@@ -70,10 +89,16 @@
 #                           smoke check is run at the end. If either is
 #                           unset, step 5 is SKIPPED with a printed warning —
 #                           never silently treated as a pass.
+#   AUTO_ROLLBACK           1 (default) or 0 — see AUTO-ROLLBACK above.
+#   DEPLOY_STATE_FILE       where the last verified SHA is recorded (default
+#                           <repo>/.deploy-state/last-verified-sha, gitignored
+#                           — this is local machine state, not shared via git,
+#                           since it describes what THIS script has personally
+#                           watched verify from THIS machine).
 #
-# EXIT CODE is the AND of every check. Any failure prints a clear diagnostic
-# to stderr and the script exits non-zero — a deploy that cannot prove itself
-# is not allowed to report success.
+# EXIT CODE is 0 only if the REQUESTED ref ended up verified and running. A
+# successful rollback to a DIFFERENT commit still exits non-zero — see
+# AUTO-ROLLBACK above for why that is correct, not a bug.
 set -euo pipefail
 
 DROPLET=${DROPLET:-root@134.122.105.56}
@@ -82,16 +107,19 @@ SERVER_CONTAINER=${SERVER_CONTAINER:-archie-ea-server-1}
 EXPECTED_MOUNT_SOURCE=${EXPECTED_MOUNT_SOURCE:-$APP_DIR}
 EXPECTED_MOUNT_DEST=${EXPECTED_MOUNT_DEST:-/app}
 HEALTH_TIMEOUT_SECONDS=${HEALTH_TIMEOUT_SECONDS:-900}
+AUTO_ROLLBACK=${AUTO_ROLLBACK:-1}
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DEPLOY_STATE_FILE=${DEPLOY_STATE_FILE:-"$SCRIPT_DIR/../.deploy-state/last-verified-sha"}
 SSH_OPTS=(-o ConnectTimeout=20 -o BatchMode=yes)
 
-REF=${1:-}
+REQUESTED_REF=${1:-}
 MODE=${2:-}
 
 say()  { printf '\n== %s\n' "$*"; }
 fail() { printf 'DEPLOY-VERIFY FAIL: %s\n' "$*" >&2; }
 die()  { fail "$*"; exit 1; }
 
-[ -n "$REF" ] || die "usage: scripts/deploy_verified.sh <ref> [--skip-deploy]"
+[ -n "$REQUESTED_REF" ] || die "usage: scripts/deploy_verified.sh <ref> [--skip-deploy]"
 [ "$MODE" = "" ] || [ "$MODE" = "--skip-deploy" ] || die "unknown argument: $MODE"
 
 remote() {
@@ -100,18 +128,8 @@ remote() {
     ssh "${SSH_OPTS[@]}" "$DROPLET" bash -s -- "$@"
 }
 
-OVERALL_STATUS=0
-record() {
-    # $1 = 0/nonzero result of the step just run, $2 = step name.
-    if [ "$1" -ne 0 ]; then
-        OVERALL_STATUS=1
-        fail "step failed: $2"
-    else
-        printf 'OK: %s\n' "$2"
-    fi
-}
-
 RESOLVED_COMMIT=""
+EXPECTED_SHORT=""
 
 # ---------------------------------------------------------------------------
 # Step 1: deploy — fetch, checkout the resolved ref, and force-recreate the
@@ -123,8 +141,9 @@ RESOLVED_COMMIT=""
 # itself changed.
 # ---------------------------------------------------------------------------
 do_deploy() {
-    say "deploying $REF to $DROPLET:$APP_DIR"
-    remote "$APP_DIR" "$REF" <<'REMOTE'
+    local ref=$1
+    say "deploying $ref to $DROPLET:$APP_DIR"
+    remote "$APP_DIR" "$ref" <<'REMOTE'
 set -euo pipefail
 APP_DIR=$1
 REF=$2
@@ -148,23 +167,6 @@ echo "RESOLVED_COMMIT=$TARGET"
 docker compose up -d --force-recreate server
 REMOTE
 }
-
-if [ "$MODE" != "--skip-deploy" ]; then
-    DEPLOY_OUTPUT=$(do_deploy) || { fail "deploy step (checkout/compose up) failed"; exit 1; }
-    printf '%s\n' "$DEPLOY_OUTPUT"
-    RESOLVED_COMMIT=$(printf '%s\n' "$DEPLOY_OUTPUT" | sed -n 's/^RESOLVED_COMMIT=//p' | tail -1)
-    [ -n "$RESOLVED_COMMIT" ] || die "could not determine the commit that was actually checked out on the droplet"
-else
-    say "--skip-deploy: verifying the currently-running deployment only"
-    RESOLVED_COMMIT=$(remote "$APP_DIR" <<'REMOTE'
-cd "$1"
-git rev-parse HEAD
-REMOTE
-    ) || die "could not read the current commit on the droplet"
-fi
-
-EXPECTED_SHORT=${RESOLVED_COMMIT:0:8}
-say "target commit: $RESOLVED_COMMIT (short: $EXPECTED_SHORT)"
 
 # ---------------------------------------------------------------------------
 # Step 2: wait for the container to report healthy. Necessary, not
@@ -192,7 +194,6 @@ REMOTE
     fail "container did not report healthy within ${HEALTH_TIMEOUT_SECONDS}s (last status: ${status:-unknown})"
     return 1
 }
-wait_for_health; record $? "container reports healthy"
 
 # ---------------------------------------------------------------------------
 # Step 3: verify the bind mount is REAL. This is the exact check that would
@@ -213,7 +214,6 @@ REMOTE
     fi
     return 0
 }
-verify_mount; record $? "bind mount is present and correct"
 
 # ---------------------------------------------------------------------------
 # Step 4: verify the container is running the TARGET COMMIT's code, not just
@@ -244,7 +244,6 @@ REMOTE
     fi
     return 0
 }
-verify_running_code; record $? "running build_id matches target commit"
 
 # ---------------------------------------------------------------------------
 # Step 5 (optional): authenticated Playwright reachability check. Skipped,
@@ -260,18 +259,112 @@ run_smoke_check() {
     DEPLOY_VERIFY_EMAIL="$DEPLOY_VERIFY_EMAIL" \
     DEPLOY_VERIFY_PASSWORD="$DEPLOY_VERIFY_PASSWORD" \
     DEPLOY_VERIFY_BASE_URL="${DEPLOY_VERIFY_BASE_URL:-https://165-22-125-156.sslip.io}" \
-    python3 "$(dirname "$0")/deploy_verify_smoke.py"
+    python3 "$SCRIPT_DIR/deploy_verify_smoke.py"
 }
-if [ -n "${DEPLOY_VERIFY_EMAIL:-}" ] && [ -n "${DEPLOY_VERIFY_PASSWORD:-}" ]; then
-    run_smoke_check; record $? "authenticated smoke check reached a real page"
+
+# ---------------------------------------------------------------------------
+# Runs steps 2-5 against whatever is currently running and returns their
+# combined status. Does not touch $RESOLVED_COMMIT/$EXPECTED_SHORT itself —
+# the caller sets those before calling this, since step 1 (or reading the
+# droplet's current HEAD, in --skip-deploy mode) is what determines them.
+# ---------------------------------------------------------------------------
+run_verification() {
+    local status=0
+    if wait_for_health; then printf 'OK: %s\n' "container reports healthy"; else status=1; fi
+    if verify_mount; then printf 'OK: %s\n' "bind mount is present and correct"; else status=1; fi
+    if verify_running_code; then printf 'OK: %s\n' "running build_id matches target commit"; else status=1; fi
+    if run_smoke_check; then
+        # run_smoke_check also returns 0 when it deliberately skipped (no
+        # credentials set) -- only claim success when it actually ran.
+        if [ -n "${DEPLOY_VERIFY_EMAIL:-}" ] && [ -n "${DEPLOY_VERIFY_PASSWORD:-}" ]; then
+            printf 'OK: %s\n' "authenticated smoke check reached a real page"
+        fi
+    else
+        status=1
+    fi
+    return "$status"
+}
+
+record_verified_state() {
+    # $1 = the SHA that just verified clean. Local-machine bookkeeping only —
+    # never pushed, never read by anything on the droplet.
+    mkdir -p "$(dirname "$DEPLOY_STATE_FILE")"
+    printf '%s\n' "$1" > "$DEPLOY_STATE_FILE"
+}
+
+read_last_verified_sha() {
+    [ -f "$DEPLOY_STATE_FILE" ] && cat "$DEPLOY_STATE_FILE" || true
+}
+
+# ---------------------------------------------------------------------------
+# Primary attempt: deploy (unless --skip-deploy) and verify the requested ref.
+# ---------------------------------------------------------------------------
+if [ "$MODE" != "--skip-deploy" ]; then
+    DEPLOY_OUTPUT=$(do_deploy "$REQUESTED_REF") || { fail "deploy step (checkout/compose up) failed for $REQUESTED_REF"; DEPLOY_OUTPUT=""; }
+    if [ -n "$DEPLOY_OUTPUT" ]; then
+        printf '%s\n' "$DEPLOY_OUTPUT"
+        RESOLVED_COMMIT=$(printf '%s\n' "$DEPLOY_OUTPUT" | sed -n 's/^RESOLVED_COMMIT=//p' | tail -1)
+    fi
 else
-    run_smoke_check
+    say "--skip-deploy: verifying the currently-running deployment only"
+    RESOLVED_COMMIT=$(remote "$APP_DIR" <<'REMOTE'
+cd "$1"
+git rev-parse HEAD
+REMOTE
+    ) || die "could not read the current commit on the droplet"
+fi
+
+PRIMARY_STATUS=1
+if [ -n "$RESOLVED_COMMIT" ]; then
+    EXPECTED_SHORT=${RESOLVED_COMMIT:0:8}
+    say "target commit: $RESOLVED_COMMIT (short: $EXPECTED_SHORT)"
+    if run_verification; then
+        PRIMARY_STATUS=0
+    fi
+else
+    fail "could not determine the commit that was actually checked out on the droplet"
+fi
+
+OVERALL_STATUS=$PRIMARY_STATUS
+ROLLBACK_ATTEMPTED=0
+ROLLBACK_STATUS=""
+ROLLBACK_SHA=""
+
+if [ "$PRIMARY_STATUS" -ne 0 ] && [ "$MODE" != "--skip-deploy" ] && [ "$AUTO_ROLLBACK" = "1" ]; then
+    LAST_GOOD=$(read_last_verified_sha)
+    if [ -n "$LAST_GOOD" ] && [ "$LAST_GOOD" != "$RESOLVED_COMMIT" ]; then
+        ROLLBACK_ATTEMPTED=1
+        ROLLBACK_SHA="$LAST_GOOD"
+        say "AUTO-ROLLBACK: $REQUESTED_REF (resolved $RESOLVED_COMMIT) failed verification -- redeploying last known-good commit $LAST_GOOD"
+        ROLLBACK_OUTPUT=$(do_deploy "$LAST_GOOD") || { fail "rollback deploy step failed"; ROLLBACK_OUTPUT=""; }
+        if [ -n "$ROLLBACK_OUTPUT" ]; then
+            printf '%s\n' "$ROLLBACK_OUTPUT"
+            RESOLVED_COMMIT=$(printf '%s\n' "$ROLLBACK_OUTPUT" | sed -n 's/^RESOLVED_COMMIT=//p' | tail -1)
+            EXPECTED_SHORT=${RESOLVED_COMMIT:0:8}
+            if run_verification; then
+                ROLLBACK_STATUS=0
+                record_verified_state "$RESOLVED_COMMIT"
+            else
+                ROLLBACK_STATUS=1
+            fi
+        else
+            ROLLBACK_STATUS=1
+        fi
+    else
+        say "AUTO-ROLLBACK: no different known-good commit on record ($DEPLOY_STATE_FILE) -- nothing to roll back to"
+    fi
+elif [ "$PRIMARY_STATUS" -eq 0 ]; then
+    record_verified_state "$RESOLVED_COMMIT"
 fi
 
 say "summary"
-if [ "$OVERALL_STATUS" -eq 0 ]; then
+if [ "$PRIMARY_STATUS" -eq 0 ]; then
     printf 'DEPLOY VERIFIED: commit %s is running, mounted and reachable.\n' "$RESOLVED_COMMIT"
+elif [ "$ROLLBACK_ATTEMPTED" -eq 1 ] && [ "$ROLLBACK_STATUS" = "0" ]; then
+    printf 'DEPLOY FAILED, ROLLED BACK SUCCESSFULLY: %s did not verify; production is stable and verified on the prior commit %s. The requested deploy did NOT ship -- this is still a failure to fix and redeploy, not a pass.\n' "$REQUESTED_REF" "$ROLLBACK_SHA" >&2
+elif [ "$ROLLBACK_ATTEMPTED" -eq 1 ]; then
+    printf 'CRITICAL: %s did not verify, AND the automatic rollback to %s ALSO failed to verify. Production may be in a broken state that is NOT a code regression (check postgres, disk space, the droplet itself) -- this needs a human now, not another automatic retry.\n' "$REQUESTED_REF" "$ROLLBACK_SHA" >&2
 else
     printf 'DEPLOY NOT VERIFIED — see FAIL lines above. Do not report this deploy as done.\n' >&2
 fi
-exit "$OVERALL_STATUS"
+exit "$PRIMARY_STATUS"

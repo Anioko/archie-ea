@@ -179,6 +179,10 @@ scripts/prune/*.txt
 
 verification_artifacts/
 
+# deploy_verified.sh's local record of the last SHA it watched verify clean,
+# used for auto-rollback. Machine-local by design -- never shared via git.
+.deploy-state/
+
 # Screenshot evidence files (captured during E2E verification sessions)
 *.jpg
 *.png
