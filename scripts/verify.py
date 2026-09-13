@@ -894,6 +894,35 @@ def gate_raw_html_escaping(baseline: int) -> Result:
                   detail, count, baseline)
 
 
+def gate_smoke_coverage_on_change() -> Result:
+    """Every changed template/JS file in this diff has a tests/smoke/ touch too.
+    Gated at ZERO -- this is a per-diff question, not an accumulating debt count.
+
+    13 Sep 2026: the ARB status-chart bug (a chart-building <script> that ran
+    before its <canvas> existed, silently) and the AI-chat persona-switch
+    clipping bug (a scroll-timing race) both shipped as pure template/JS edits
+    with no browser test, and both left the DOM and accessibility tree intact
+    -- invisible to every other gate. "Done means DEMONSTRATED" was already
+    the stated rule in this file; this is that rule as a check instead of a
+    reminder. Static and boot-free: it diffs file paths against origin/main,
+    never launches a server, so it runs in the dependency-free CI job too.
+
+    Escape hatch is a first-line comment 'smoke-coverage-ok: <reason>' on the
+    changed file -- a real exception for a non-visual template (an email
+    body, a CLI-only script's output) or JS with no rendered surface, not a
+    way to skip writing the test.
+    """
+    proc = _run([sys.executable, "scripts/check_smoke_coverage_on_change.py"])
+    count_proc = _run([sys.executable, "scripts/check_smoke_coverage_on_change.py", "--count"])
+    try:
+        count = int(count_proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("smoke-coverage-on-change", FAIL,
+                      f"could not parse count: {count_proc.stdout!r} {count_proc.stderr[:300]}")
+    detail = proc.stdout.strip()[-1800:] if count else ""
+    return Result("smoke-coverage-on-change", PASS if count == 0 else FAIL, detail, count, 0)
+
+
 def gate_sri() -> Result:
     """Every same-origin integrity= hash matches the file it guards. Gated at ZERO.
 
@@ -1619,6 +1648,11 @@ def build_gates(baseline: dict) -> list[Gate]:
              remediation="wrap the interpolated value in escape(...) (from html or markupsafe); "
                          "run scripts/check_raw_html_escaping.py; else mark 'raw-html-ok: <reason>'",
              tags=["static", "security"]),
+        Gate("smoke-coverage-on-change", "a template/JS change with no tests/smoke/ touch in the same diff",
+             "zero", gate_smoke_coverage_on_change,
+             remediation="extend an existing tests/smoke/ journey or add a new one; "
+                         "else mark the file's first line 'smoke-coverage-ok: <reason>'",
+             tags=["static"]),
         Gate("stale-models", "no retired LLM model id (404s in prod) in shipped code", "zero",
              gate_stale_models,
              remediation="use a current id from DEFAULT_MODELS (model_defaults.py); "
