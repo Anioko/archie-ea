@@ -161,6 +161,10 @@
       <span>{{ stats.owner_assigned|dash }} of {{ stats.total|dash }} applications in the portfolio have an assigned owner</span>
       <span>{{ stats.vendor_assigned|dash }} of {{ stats.total|dash }} applications in the portfolio have a vendor recorded</span>
       <span>{{ stats.decommissioned|dash }} of {{ stats.total|dash }} applications in the portfolio decommissioned</span>
+      <a href="{{ url_for('enterprise_crud.data_freshness_cockpit') }}" class="inline-flex items-center gap-1 text-warning-emphasis font-medium hover:underline">
+        View full data-freshness report
+        <i data-lucide="arrow-right" class="h-3 w-3" aria-hidden="true"></i>
+      </a>
     </div>
   </div>
 
