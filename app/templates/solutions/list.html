@@ -43,6 +43,13 @@
         <i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i>
         <span x-text="startingSolution ? 'Creating…' : 'New Solution'"></span>
       </button>
+      {% if 'enterprise_crud.reference_catalog' in flask.current_app.view_functions %}
+      <a href="{{ url_for('enterprise_crud.reference_catalog') }}" data-testid="btn-reference-catalog"
+         class="inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-input bg-background text-sm font-medium hover:bg-accent transition-colors"
+         aria-label="Browse the reference catalogue of approved, reusable solutions">
+        <i data-lucide="library" class="h-4 w-4" aria-hidden="true"></i>Reference catalogue
+      </a>
+      {% endif %}
       <a href="{{ url_for('architecture_journey.index') }}" data-testid="btn-start-journey"
          class="inline-flex items-center gap-1.5 h-9 px-4 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors"
          aria-label="Start the guided Architecture Journey to design a new solution">

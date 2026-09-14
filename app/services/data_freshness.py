@@ -16,8 +16,6 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
-from app import db
-
 # Cap the scan so a huge estate can't turn the page into a slow scorer; the
 # aggregate is representative and the worst-offenders list is what drives action.
 _SCAN_LIMIT = 4000

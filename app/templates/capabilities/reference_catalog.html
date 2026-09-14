@@ -1,0 +1,86 @@
+{% extends 'layouts/admin_base.html' %}
+{% from "components/page_header.html" import page_header %}
+{% from "components/empty_state.html" import empty_state %}
+
+{% block title %}Reference catalogue{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto">
+
+  {{ page_header(
+      title='Reference catalogue',
+      description='Approved, governed solutions you can reuse — check what the enterprise has already solved before starting from scratch.',
+      breadcrumbs=[{'label': 'Solutions'}, {'label': 'Reference catalogue'}]
+  ) }}
+
+  {# ── Filter bar (GET form) ───────────────────────────────────────────── #}
+  <form method="get" class="flex flex-wrap items-end gap-3 mb-5 rounded-xl border border-border bg-card p-4">
+    <div class="flex-1 min-w-[200px]">
+      <label for="q" class="block text-xs font-medium text-muted-foreground mb-1">Search</label>
+      <input id="q" name="q" type="text" value="{{ active.q }}" placeholder="Solution name…"
+             class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+    </div>
+    <div>
+      <label for="domain" class="block text-xs font-medium text-muted-foreground mb-1">Domain</label>
+      <select id="domain" name="domain" class="h-9 rounded-md border border-input bg-background px-3 text-sm">
+        <option value="">All domains</option>
+        {% for d in facets.domains %}<option value="{{ d }}" {% if active.domain == d %}selected{% endif %}>{{ d }}</option>{% endfor %}
+      </select>
+    </div>
+    <div>
+      <label for="type" class="block text-xs font-medium text-muted-foreground mb-1">Type</label>
+      <select id="type" name="type" class="h-9 rounded-md border border-input bg-background px-3 text-sm">
+        <option value="">All types</option>
+        {% for t in facets.types %}<option value="{{ t }}" {% if active.type == t %}selected{% endif %}>{{ t }}</option>{% endfor %}
+      </select>
+    </div>
+    <button type="submit" class="inline-flex items-center gap-1.5 h-9 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors">
+      <i data-lucide="search" class="h-3.5 w-3.5" aria-hidden="true"></i> Filter
+    </button>
+    {% if active.q or active.domain or active.type %}
+    <a href="{{ url_for('enterprise_crud.reference_catalog') }}" class="inline-flex items-center h-9 px-3 text-sm text-muted-foreground hover:text-foreground">Clear</a>
+    {% endif %}
+  </form>
+
+  <p class="text-sm text-muted-foreground mb-4">
+    <span class="font-medium text-foreground">{{ total }}</span> reference solution{{ '' if total == 1 else 's' }}
+    {% if total != total_reference %} matching · {{ total_reference }} approved in total{% endif %}
+  </p>
+
+  {# ── Results ─────────────────────────────────────────────────────────── #}
+  {% if items %}
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+    {% for s in items %}
+    <a href="/solutions/{{ s.id }}" data-slot="card"
+       class="rounded-xl border border-border bg-card shadow-sm p-5 hover:border-primary/50 hover:shadow transition-all block">
+      <div class="flex items-start justify-between gap-3">
+        <h2 class="text-base font-semibold text-foreground leading-snug">{{ s.name }}</h2>
+        {% if s.approved_on %}
+        <span class="shrink-0 inline-flex items-center gap-1 text-xs text-success bg-success/10 rounded-full px-2 py-0.5">
+          <i data-lucide="badge-check" class="h-3 w-3" aria-hidden="true"></i> Approved
+        </span>
+        {% elif s.governance %}
+        <span class="shrink-0 text-xs text-muted-foreground bg-muted rounded-full px-2 py-0.5 capitalize">{{ s.governance }}</span>
+        {% endif %}
+      </div>
+      {% if s.description %}<p class="text-sm text-muted-foreground mt-2 line-clamp-2">{{ s.description }}</p>{% endif %}
+      <div class="flex flex-wrap items-center gap-x-4 gap-y-1 mt-3 text-xs text-muted-foreground">
+        {% if s.domain %}<span class="inline-flex items-center gap-1"><i data-lucide="layers" class="h-3 w-3" aria-hidden="true"></i>{{ s.domain }}</span>{% endif %}
+        {% if s.type %}<span class="inline-flex items-center gap-1"><i data-lucide="shapes" class="h-3 w-3" aria-hidden="true"></i>{{ s.type }}</span>{% endif %}
+        {% if s.adm_phase %}<span class="inline-flex items-center gap-1"><i data-lucide="git-commit-horizontal" class="h-3 w-3" aria-hidden="true"></i>ADM {{ s.adm_phase }}</span>{% endif %}
+        {% if s.owner %}<span class="inline-flex items-center gap-1"><i data-lucide="user" class="h-3 w-3" aria-hidden="true"></i>{{ s.owner }}</span>{% endif %}
+        {% if s.approved_on %}<span class="ml-auto">{{ s.approved_on.strftime('%d %b %Y') if s.approved_on.strftime is defined else s.approved_on }}</span>{% endif %}
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}
+    {{ empty_state(
+        icon='library',
+        title='No reference solutions yet' if not (active.q or active.domain or active.type) else 'No matches',
+        description='Solutions become reusable references once they are ARB-approved or governed. Take a solution through review to add it here.' if not (active.q or active.domain or active.type) else 'Try a broader search or clear the filters.',
+        padding='py-16') }}
+  {% endif %}
+
+</div>
+{% endblock %}

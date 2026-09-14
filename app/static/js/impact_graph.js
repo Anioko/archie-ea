@@ -109,10 +109,9 @@
         fetch(ENDPOINT + '?depth=' + depth, { credentials: 'same-origin' })
             .then(function (r) { if (!r.ok) throw new Error('impact-graph ' + r.status); return r.json(); })
             .then(render)
-            .catch(function (e) {
+            .catch(function () {
                 _show('impact-loading', false);
                 _text('impact-counts', 'Could not load the impact graph.');
-                /* eslint-disable no-console */ if (window.console) console.warn(e);
             });
     }
 

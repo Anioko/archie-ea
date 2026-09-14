@@ -13,7 +13,7 @@ filled with a plausible default.
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from app import db
 
@@ -80,13 +80,10 @@ def _maturity(cap: Any) -> Dict[str, Any]:
 
 def _realizing_apps(cap_id: int) -> List[Dict[str, Any]]:
     """Applications that realise / cover this capability."""
-    try:
-        from app.models.business_capabilities import (  # noqa: PLC0415
-            ApplicationCapabilityCoverage,
-        )
-        from app.models.application_portfolio import ApplicationComponent  # noqa: PLC0415
-    except Exception:  # noqa: BLE001
-        return []
+    from app.models.business_capabilities import (  # noqa: PLC0415
+        ApplicationCapabilityCoverage,
+    )
+    from app.models.application_portfolio import ApplicationComponent  # noqa: PLC0415
     rows = (db.session.query(ApplicationCapabilityCoverage, ApplicationComponent)
             .join(ApplicationComponent,
                   ApplicationCapabilityCoverage.application_component_id == ApplicationComponent.id)
@@ -103,10 +100,7 @@ def _realizing_apps(cap_id: int) -> List[Dict[str, Any]]:
 
 
 def _sub_capabilities(cap_id: int) -> List[Dict[str, Any]]:
-    try:
-        from app.models.business_capabilities import BusinessCapability  # noqa: PLC0415
-    except Exception:  # noqa: BLE001
-        return []
+    from app.models.business_capabilities import BusinessCapability  # noqa: PLC0415
     kids = (BusinessCapability.query
             .filter_by(parent_capability_id=cap_id)
             .order_by(BusinessCapability.name).limit(60).all())

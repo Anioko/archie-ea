@@ -100,6 +100,23 @@ def capability_app_counts():
         return jsonify({"success": False, "error": "Could not load capability app counts"}), 500
 
 
+@enterprise_crud_bp.route("/reference-catalog", methods=["GET"])
+@login_required
+def reference_catalog():
+    """Reference catalogue — browse ARB-approved / governed solutions as a reuse
+    library, so a solution architect can find what's already been solved and
+    approved instead of starting from scratch. Filterable by domain and type.
+    """
+    from app.services.reference_catalog import build_reference_catalog  # noqa: PLC0415
+
+    data = build_reference_catalog(
+        domain=(request.args.get("domain") or None),
+        solution_type=(request.args.get("type") or None),
+        q=(request.args.get("q") or None),
+    )
+    return render_template("capabilities/reference_catalog.html", **data)
+
+
 @enterprise_crud_bp.route("/data-freshness", methods=["GET"])
 @login_required
 def data_freshness_cockpit():
