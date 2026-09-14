@@ -100,6 +100,19 @@ def capability_app_counts():
         return jsonify({"success": False, "error": "Could not load capability app counts"}), 500
 
 
+@enterprise_crud_bp.route("/data-freshness", methods=["GET"])
+@login_required
+def data_freshness_cockpit():
+    """Portfolio-wide data-freshness / completeness cockpit — is the repository
+    trustworthy? Rolls the per-object Fact Sheet completeness scores up across
+    applications and capabilities and surfaces the worst offenders to fix.
+    """
+    from app.services.data_freshness import build_data_freshness  # noqa: PLC0415
+
+    return render_template("capabilities/data_freshness.html",
+                           **build_data_freshness())
+
+
 @enterprise_crud_bp.route("/capabilities/<int:capability_id>/fact-sheet", methods=["GET"])
 @login_required
 def capability_fact_sheet(capability_id):
