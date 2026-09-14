@@ -9,7 +9,7 @@ Provides full CRUD operations with RBAC enforcement and audit logging.
 """
 
 import logging
-from flask import Blueprint, jsonify, render_template, request
+from flask import Blueprint, abort, jsonify, render_template, request
 from flask_login import current_user, login_required
 
 from app import db
@@ -98,6 +98,26 @@ def capability_app_counts():
     except Exception as e:
         logger.exception(f"Error getting app counts: {e}")
         return jsonify({"success": False, "error": "Could not load capability app counts"}), 500
+
+
+@enterprise_crud_bp.route("/capabilities/<int:capability_id>/fact-sheet", methods=["GET"])
+@login_required
+def capability_fact_sheet(capability_id):
+    """Fact Sheet — one consolidated single-source-of-truth page per capability.
+
+    Identity, ownership, maturity (current vs target), strategic weight, the
+    applications that realise it, its sub-capabilities, and a link to the impact
+    graph — with a completeness score over the key fields.
+    """
+    from app.services.capability_fact_sheet import (  # noqa: PLC0415
+        build_capability_fact_sheet,
+    )
+
+    cap = BusinessCapability.query.get(capability_id)
+    if not cap:
+        abort(404)
+    return render_template("capabilities/capability_fact_sheet.html",
+                           **build_capability_fact_sheet(cap))
 
 
 @enterprise_crud_bp.route("/capabilities/<int:capability_id>", methods=["GET"])
