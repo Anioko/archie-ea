@@ -197,20 +197,29 @@ def get_mapping_statistics():
             )
         ).scalar()
 
-        # Calculate coverage percentages
+        # Calculate coverage percentages. A zero-denominator ratio is "not
+        # computed", not "measured at 0%" -- CLAUDE.md's fabricated-data rule
+        # (a 0 meaning "nothing to divide by" is indistinguishable from a
+        # real measured zero, and the template colors 0% red, i.e. "failing",
+        # which is actively misleading for a brand-new org with no
+        # capabilities yet). Found 14 Sep 2026 in a full-app design pass:
+        # every one of these except prod_archimate_coverage returned a bare
+        # `0` on an empty denominator instead of `None` -- the one that
+        # already returned None was the only correct example in this
+        # function. All six now match it.
         total_caps = app_result[0]
-        app_coverage = (app_result[1] / total_caps * 100) if total_caps > 0 else 0
-        app_archimate_coverage = (app_result[2] / app_result[1] * 100) if app_result[1] > 0 else 0
-        prod_coverage = (prod_result[1] / total_caps * 100) if total_caps > 0 else 0
+        app_coverage = (app_result[1] / total_caps * 100) if total_caps > 0 else None
+        app_archimate_coverage = (app_result[2] / app_result[1] * 100) if app_result[1] > 0 else None
+        prod_coverage = (prod_result[1] / total_caps * 100) if total_caps > 0 else None
         prod_archimate_coverage = (
             (prod_archimate_result[0] / prod_result[1] * 100)
             if prod_result[1] > 0
             else None
         )
-        arch_coverage = (arch_result[1] / total_caps * 100) if total_caps > 0 else 0
-        end_to_end_coverage = (app_result[2] / total_caps * 100) if total_caps > 0 else 0
-        multi_path_coverage = (multi_path_caps / total_caps * 100) if total_caps > 0 else 0
-        quality_score = (high_quality_mappings / total_mappings * 5) if total_mappings > 0 else 0
+        arch_coverage = (arch_result[1] / total_caps * 100) if total_caps > 0 else None
+        end_to_end_coverage = (app_result[2] / total_caps * 100) if total_caps > 0 else None
+        multi_path_coverage = (multi_path_caps / total_caps * 100) if total_caps > 0 else None
+        quality_score = (high_quality_mappings / total_mappings * 5) if total_mappings > 0 else None
 
         return {
             "total_capabilities": total_caps,
@@ -250,14 +259,18 @@ def get_mapping_statistics():
         db.session.rollback()  # clear any aborted txn so later queries don't cascade
         import logging
         logging.getLogger(__name__).error(f"Error getting mapping statistics: {e}")
-        return {
-            "total_capabilities": 0,
-            "application_centric": {"total_capabilities": 0, "capabilities_with_apps": 0, "apps_with_archimate": 0, "coverage_percentage": 0, "archimate_coverage_percentage": 0, "end_to_end_coverage": 0},
-            "product_centric": {"total_capabilities": 0, "capabilities_with_products": 0, "capabilities_with_products_archimate": 0, "coverage_percentage": 0, "archimate_coverage_percentage": 0},
-            "direct_archimate": {"total_capabilities": 0, "capabilities_with_archimate": 0, "coverage_percentage": 0},
-            "multi_path": {"total_capabilities": 0, "capabilities_with_multi_path": 0, "coverage_percentage": 0},
-            "quality_metrics": {"total_mappings": 0, "high_quality_mappings": 0, "quality_score": 0},
-        }
+        # Found 14 Sep 2026: this used to return a fabricated all-zero stats
+        # dict on a query failure -- which the template then rendered as a
+        # real "0% coverage" measurement, exactly the failure mode
+        # hybrid_mapping_dashboard()'s own docstring/comment warns about
+        # ("stats=None, not a zeroed structure... every percentage in that
+        # structure reads as a measurement... produced by a database error,
+        # all of them are false"). That caller already handles an exception
+        # correctly by passing stats=None -- this inner except was silently
+        # defeating it by never letting the exception reach that handler.
+        # Re-raising restores the caller's own safety net instead of
+        # duplicating (and getting wrong) a second one here.
+        raise
 
 
 def get_application_mappings():

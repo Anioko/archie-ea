@@ -21,7 +21,7 @@
 
     {# -- Header --------------------------------------------------------- #}
     {% macro _ps_actions() %}
-<div class="flex items-center gap-2">
+<div class="flex items-center gap-2" data-testid="adm-kanban-toolbar">
             <select x-model="filters.assignee" @change="reload()"
                     class="h-8 px-2 text-xs bg-background border border-border rounded text-foreground" aria-label="Filter by Type">
                 <option value="all">All Assignees</option>
@@ -83,11 +83,6 @@
                     title="Sprint Planning — manage sprints and assign cards">
                 <i data-lucide="calendar-clock" class="h-3.5 w-3.5"></i> Sprint Planning
             </button>
-            <a href="{{ url_for('adm_kanban_view.adm_roadmap_timeline') }}"
-               class="px-2.5 py-1.5 text-xs font-medium rounded border border-border hover:bg-muted transition-colors text-foreground"
-               title="ADM Roadmap Timeline — Gantt view of cards">
-                Roadmap
-            </a>
         </div>
     {% endmacro %}
     {{ page_shell(title='ADM Kanban', breadcrumb=[('Home', '/'), ('ADM Kanban', none)], subtitle='Architecture work across all TOGAF ADM phases', actions_caller=_ps_actions) }}

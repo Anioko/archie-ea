@@ -17,20 +17,36 @@
        and a zeroed stats structure would be worse still, reporting "0%
        coverage" as a finding about the portfolio rather than a failed query.
        The banner from layouts/admin_base.html says why they are missing. #}
+    {# A per-metric coverage_percentage is itself allowed to be None -- a
+       0/0 ratio (no capabilities yet, not "0% coverage measured") -- fixed
+       14 Sep 2026 in app/main/routes_hybrid_mapping.py alongside this macro;
+       every coverage percentage below now renders through it instead of
+       repeating the same "%.1f + colour band" logic five times, one of
+       which (product_centric.archimate_coverage_percentage) had already
+       special-cased None correctly while the rest had not. #}
+    {% macro _coverage_pct(value, warn_threshold=60, good_threshold=80) %}
+        {%- if value is none -%}
+        <span class="text-muted-foreground">&mdash;</span>
+        {%- else -%}
+        <span class="{% if value >= good_threshold %}text-success{% elif value >= warn_threshold %}text-warning{% else %}text-destructive{% endif %}">{{ "%.1f"|format(value) }}%</span>
+        {%- endif -%}
+    {% endmacro %}
+    {% macro _coverage_bar_width(value) %}{{ value if value is not none else 0 }}{% endmacro %}
+    {% macro _coverage_bar_class(value, warn_threshold=60, good_threshold=80) %}{% if value is none %}bg-muted-foreground/30{% elif value >= good_threshold %}bg-success{% elif value >= warn_threshold %}bg-warning{% else %}bg-destructive{% endif %}{% endmacro %}
     {% if stats %}
     <!-- Key Statistics -->
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         {{ metrics_card(title='Total Capabilities', value=stats.application_centric.total_capabilities, icon='layers') }}
         {{ metrics_card(
             title='Multi-Path Coverage',
-            value="%.1f"|format(stats.multi_path.coverage_percentage) ~ '%',
+            value=("%.1f"|format(stats.multi_path.coverage_percentage) ~ '%') if stats.multi_path.coverage_percentage is not none else '—',
             description=stats.multi_path.capabilities_with_multi_path ~ '/' ~ stats.application_centric.total_capabilities ~ ' mapped',
             icon='git-merge'
         ) }}
         {{ metrics_card(title='Total Mappings', value=stats.quality_metrics.total_mappings, description='Across all paths', icon='link') }}
         {{ metrics_card(
             title='Quality Score',
-            value="%.1f"|format(stats.quality_metrics.quality_score) ~ '/5.0',
+            value=("%.1f"|format(stats.quality_metrics.quality_score) ~ '/5.0') if stats.quality_metrics.quality_score is not none else '—',
             description=stats.quality_metrics.high_quality_mappings ~ ' high-quality',
             icon='star'
         ) }}
@@ -42,35 +58,31 @@
         <div class="bg-card border border-border rounded-lg p-6">
             <div class="flex items-center justify-between mb-4">
                 <h3 class="text-lg font-semibold text-foreground">Application-Centric Mapping</h3>
-                <div class="text-2xl font-bold {% if stats.application_centric.coverage_percentage >= 80 %}text-success{% elif stats.application_centric.coverage_percentage >= 60 %}text-warning{% else %}text-destructive{% endif %}">
-                    {{ "%.1f"|format(stats.application_centric.coverage_percentage) }}%
-                </div>
+                <div class="text-2xl font-bold">{{ _coverage_pct(stats.application_centric.coverage_percentage) }}</div>
             </div>
-            
+
             <div class="space-y-3">
                 <div class="flex justify-between text-sm">
                     <span class="text-muted-foreground">Capability → Application</span>
                     <span class="font-medium">{{ stats.application_centric.capabilities_with_apps }}/{{ stats.application_centric.total_capabilities }}</span>
                 </div>
                 <div class="w-full bg-muted rounded-full h-2">
-                    <div class="h-2 rounded-full {% if stats.application_centric.coverage_percentage >= 80 %}bg-success{% elif stats.application_centric.coverage_percentage >= 60 %}bg-warning{% else %}bg-destructive{% endif %}"
-                         style="width: {{ stats.application_centric.coverage_percentage }}%"></div>
+                    <div class="h-2 rounded-full {{ _coverage_bar_class(stats.application_centric.coverage_percentage) }}"
+                         style="width: {{ _coverage_bar_width(stats.application_centric.coverage_percentage) }}%"></div>
                 </div>
                 <div class="flex justify-between text-sm">
                     <span class="text-muted-foreground">Application → ArchiMate</span>
                     <span class="font-medium">{{ stats.application_centric.apps_with_archimate }}/{{ stats.application_centric.capabilities_with_apps }}</span>
                 </div>
                 <div class="w-full bg-muted rounded-full h-2">
-                    <div class="h-2 rounded-full bg-primary" style="width: {{ stats.application_centric.archimate_coverage_percentage }}%"></div>
+                    <div class="h-2 rounded-full bg-primary" style="width: {{ _coverage_bar_width(stats.application_centric.archimate_coverage_percentage) }}%"></div>
                 </div>
             </div>
-            
+
             <div class="mt-4 pt-4 border-t border-border">
                 <div class="flex justify-between text-sm">
                     <span class="text-muted-foreground">End-to-End Coverage</span>
-                    <span class="font-medium {% if stats.application_centric.end_to_end_coverage >= 80 %}text-success{% elif stats.application_centric.end_to_end_coverage >= 60 %}text-warning{% else %}text-destructive{% endif %}">
-                        {{ "%.1f"|format(stats.application_centric.end_to_end_coverage) }}%
-                    </span>
+                    <span class="font-medium">{{ _coverage_pct(stats.application_centric.end_to_end_coverage) }}</span>
                 </div>
             </div>
         </div>
@@ -79,27 +91,25 @@
         <div class="bg-card border border-border rounded-lg p-6">
             <div class="flex items-center justify-between mb-4">
                 <h3 class="text-lg font-semibold text-foreground">Product-Centric Mapping</h3>
-                <div class="text-2xl font-bold {% if stats.product_centric.coverage_percentage >= 80 %}text-success{% elif stats.product_centric.coverage_percentage >= 60 %}text-warning{% else %}text-destructive{% endif %}">
-                    {{ "%.1f"|format(stats.product_centric.coverage_percentage) }}%
-                </div>
+                <div class="text-2xl font-bold">{{ _coverage_pct(stats.product_centric.coverage_percentage) }}</div>
             </div>
-            
+
             <div class="space-y-3">
                 <div class="flex justify-between text-sm">
                     <span class="text-muted-foreground">Capability → Products</span>
                     <span class="font-medium">{{ stats.product_centric.capabilities_with_products }}/{{ stats.product_centric.total_capabilities }}</span>
                 </div>
                 <div class="w-full bg-muted rounded-full h-2">
-                    <div class="h-2 rounded-full {% if stats.product_centric.coverage_percentage >= 80 %}bg-success{% elif stats.product_centric.coverage_percentage >= 60 %}bg-warning{% else %}bg-destructive{% endif %}"
-                         style="width: {{ stats.product_centric.coverage_percentage }}%"></div>
+                    <div class="h-2 rounded-full {{ _coverage_bar_class(stats.product_centric.coverage_percentage) }}"
+                         style="width: {{ _coverage_bar_width(stats.product_centric.coverage_percentage) }}%"></div>
                 </div>
             </div>
-            
+
             <div class="mt-4 pt-4 border-t border-border">
                 <div class="flex justify-between text-sm">
                     <span class="text-muted-foreground">Products with ArchiMate</span>
                     {% if stats.product_centric.archimate_coverage_percentage is not none %}
-                    <span class="font-medium {% if stats.product_centric.archimate_coverage_percentage >= 80 %}text-success{% elif stats.product_centric.archimate_coverage_percentage >= 50 %}text-warning{% else %}text-destructive{% endif %}">{{ "%.1f"|format(stats.product_centric.archimate_coverage_percentage) }}%</span>
+                    <span class="font-medium">{{ _coverage_pct(stats.product_centric.archimate_coverage_percentage, warn_threshold=50) }}</span>
                     {% else %}
                     <span class="font-medium text-muted-foreground">Not calculated</span>
                     {% endif %}
@@ -111,19 +121,17 @@
         <div class="bg-card border border-border rounded-lg p-6">
             <div class="flex items-center justify-between mb-4">
                 <h3 class="text-lg font-semibold text-foreground">Direct ArchiMate Mapping</h3>
-                <div class="text-2xl font-bold {% if stats.direct_archimate.coverage_percentage >= 80 %}text-success{% elif stats.direct_archimate.coverage_percentage >= 60 %}text-warning{% else %}text-destructive{% endif %}">
-                    {{ "%.1f"|format(stats.direct_archimate.coverage_percentage) }}%
-                </div>
+                <div class="text-2xl font-bold">{{ _coverage_pct(stats.direct_archimate.coverage_percentage) }}</div>
             </div>
-            
+
             <div class="space-y-3">
                 <div class="flex justify-between text-sm">
                     <span class="text-muted-foreground">Capability → ArchiMate</span>
                     <span class="font-medium">{{ stats.direct_archimate.capabilities_with_archimate }}/{{ stats.direct_archimate.total_capabilities }}</span>
                 </div>
                 <div class="w-full bg-muted rounded-full h-2">
-                    <div class="h-2 rounded-full {% if stats.direct_archimate.coverage_percentage >= 80 %}bg-success{% elif stats.direct_archimate.coverage_percentage >= 60 %}bg-warning{% else %}bg-destructive{% endif %}"
-                         style="width: {{ stats.direct_archimate.coverage_percentage }}%"></div>
+                    <div class="h-2 rounded-full {{ _coverage_bar_class(stats.direct_archimate.coverage_percentage) }}"
+                         style="width: {{ _coverage_bar_width(stats.direct_archimate.coverage_percentage) }}%"></div>
                 </div>
             </div>
             

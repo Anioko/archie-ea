@@ -79,7 +79,12 @@ function userSearchWidget(getVal, setVal) {
         </div>
         <div class="rounded-xl border-2 border-input bg-background p-5">
             <div class="flex items-start gap-4">
-                <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-success">
+                {# Found 14 Sep 2026: this icon's bg-success was hardcoded
+                   regardless of the actual score, so a 0% governance score
+                   (every capability needing attention) still showed a green
+                   "all good" badge -- directly contradicting the Need
+                   Attention tile right next to it. #}
+                <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg" :class="governanceScoreBadgeClass()">
                     <i data-lucide="shield-check" class="h-5 w-5 text-primary-foreground" aria-hidden="true"></i>
                 </div>
                 <div class="flex-1">

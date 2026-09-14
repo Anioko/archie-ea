@@ -23,6 +23,21 @@
             totalCapabilities: 0,
             needsAttention: 0,
             governanceScore: '—',
+            // Numeric value backing governanceScore's display string, or null
+            // when there is nothing to measure. Found 14 Sep 2026: the
+            // Governance Score tile's icon was hardcoded to a green
+            // "shield-check" success color regardless of the actual score --
+            // a 0% score (every capability needing attention) still showed
+            // as green, contradicting the Need Attention tile right next to
+            // it. This value drives the icon's color band instead.
+            governanceScoreValue: null,
+
+            governanceScoreBadgeClass: function () {
+                if (this.governanceScoreValue === null) return 'bg-muted-foreground/40';
+                if (this.governanceScoreValue >= 80) return 'bg-success';
+                if (this.governanceScoreValue >= 50) return 'bg-warning';
+                return 'bg-destructive';
+            },
 
             // Pagination
             page: 1,
@@ -84,9 +99,13 @@
                         self.needsAttention = self._allItems.filter(function (c) { return c.needs_attention; }).length;
 
                         const governed = self._allItems.length - self.needsAttention;
-                        self.governanceScore = self._allItems.length > 0
-                            ? Math.round((governed / self._allItems.length) * 100) + '%'
-                            : '—';
+                        if (self._allItems.length > 0) {
+                            self.governanceScoreValue = Math.round((governed / self._allItems.length) * 100);
+                            self.governanceScore = self.governanceScoreValue + '%';
+                        } else {
+                            self.governanceScoreValue = null;
+                            self.governanceScore = '—';
+                        }
 
                         self.applyFilters();
                         self.loading = false;
