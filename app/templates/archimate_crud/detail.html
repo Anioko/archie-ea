@@ -36,6 +36,10 @@
                class="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 px-3 py-2">
                 <i data-lucide="zap" class="h-4 w-4 mr-1.5" aria-hidden="true"></i>Impact
             </a>
+            <a href="{{ url_for('archimate.element_impact_graph_page', element_id=element.id) }}"
+               class="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 px-3 py-2">
+                <i data-lucide="git-fork" class="h-4 w-4 mr-1.5" aria-hidden="true"></i>Impact graph
+            </a>
             <a href="{{ url_for('archimate_crud.update_element', layer=layer, element_type=element_type, element_id=element.id) }}"
                class="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 px-3 py-2">
                 <i data-lucide="pencil" class="h-4 w-4 mr-1.5" aria-hidden="true"></i>Edit
