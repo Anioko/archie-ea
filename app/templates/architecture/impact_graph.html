@@ -1,0 +1,75 @@
+{% extends 'layouts/admin_base.html' %}
+{% from "components/page_header.html" import page_header %}
+
+{% block title %}{{ element.name }} — Impact{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto">
+
+  {{ page_header(
+      title='Impact graph',
+      description='Blast radius — what depends on this element, and what it depends on.',
+      breadcrumbs=[
+        {'label': 'ArchiMate elements', 'href': '/archimate/elements'},
+        {'label': element.name},
+        {'label': 'Impact'}
+      ]
+  ) }}
+
+  {# ── Control bar: depth + counts ─────────────────────────────────────── #}
+  <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+    <div class="flex items-center gap-2">
+      <span class="text-sm text-muted-foreground">Depth</span>
+      <div class="inline-flex rounded-md border border-border overflow-hidden" role="group" aria-label="Graph depth">
+        <button type="button" data-depth="1" class="impact-depth-btn px-3 py-1.5 text-sm hover:bg-accent border-r border-border">1</button>
+        <button type="button" data-depth="2" class="impact-depth-btn px-3 py-1.5 text-sm hover:bg-accent border-r border-border">2</button>
+        <button type="button" data-depth="3" class="impact-depth-btn px-3 py-1.5 text-sm hover:bg-accent">3</button>
+      </div>
+      <span class="text-xs text-muted-foreground ml-1">hops from centre</span>
+    </div>
+    <div id="impact-counts" class="text-sm text-muted-foreground" aria-live="polite">Loading…</div>
+  </div>
+
+  {# ── Graph + side panel ──────────────────────────────────────────────── #}
+  <div class="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-4">
+    <div class="rounded-xl border border-border bg-card overflow-hidden relative">
+      <svg id="impact-svg" class="w-full block"
+           style="height:600px"  {# inline-style-ok: fixed graph canvas height #}
+           data-element-id="{{ element.id }}"
+           data-center-name="{{ element.name | e }}"
+           data-endpoint="{{ url_for('archimate.api_element_impact_graph', element_id=element.id) }}"
+           data-page="{{ url_for('archimate.element_impact_graph_page', element_id=0) }}"></svg>
+      <div id="impact-empty" class="hidden absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">
+        This element has no recorded relationships yet.
+      </div>
+      <div id="impact-loading" class="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">
+        Building blast radius…
+      </div>
+    </div>
+
+    <aside class="rounded-xl border border-border bg-card p-4">
+      <h2 class="text-sm font-semibold text-foreground mb-3">Legend</h2>
+      <ul class="space-y-1.5 text-sm">
+        <li class="flex items-center gap-2"><span class="inline-block h-3 w-3 rounded-full" style="background:#B9770E">{# inline-style-ok #}</span> Business</li>
+        <li class="flex items-center gap-2"><span class="inline-block h-3 w-3 rounded-full" style="background:#1E7FB4">{# inline-style-ok #}</span> Application</li>
+        <li class="flex items-center gap-2"><span class="inline-block h-3 w-3 rounded-full" style="background:#2E8B57">{# inline-style-ok #}</span> Technology</li>
+        <li class="flex items-center gap-2"><span class="inline-block h-3 w-3 rounded-full" style="background:#7C5CBF">{# inline-style-ok #}</span> Motivation</li>
+        <li class="flex items-center gap-2"><span class="inline-block h-3 w-3 rounded-full" style="background:#C2683A">{# inline-style-ok #}</span> Strategy</li>
+        <li class="flex items-center gap-2"><span class="inline-block h-3 w-3 rounded-full" style="background:#64748B">{# inline-style-ok #}</span> Other</li>
+      </ul>
+      <div class="mt-4 pt-4 border-t border-border">
+        <h3 class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">Selected</h3>
+        <p id="impact-selected" class="text-sm text-foreground">Hover a node to inspect it. Click to re-centre the graph on it.</p>
+      </div>
+      <p class="mt-4 pt-4 border-t border-border text-xs text-muted-foreground">
+        Solid arrow = depends on. Drag to rearrange, scroll to zoom.
+      </p>
+    </aside>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="/static/vendor/d3.min.js"></script>
+<script src="/static/js/impact_graph.js"></script>
+{% endblock %}

@@ -7211,7 +7211,37 @@ def api_shared_elements():
     })
 
 
-# ── GOV-01: Cross-Solution Dependency Graph ──────────────────────────────────
+# ── Impact / dependency graph — the interactive blast-radius lens ────────────
+
+
+@archimate_bp.route("/elements/<int:element_id>/impact", methods=["GET"])
+@login_required
+def element_impact_graph_page(element_id):
+    """Interactive dependency graph centred on one element — its blast radius.
+
+    Renders the node-link view; the graph data is fetched from
+    api_element_impact_graph so a click on any node can re-centre without a
+    full page load.
+    """
+    from app.models.archimate_core import ArchiMateElement  # noqa: PLC0415
+
+    element = db.session.get(ArchiMateElement, element_id)
+    if element is None:
+        abort(404)
+    return render_template("architecture/impact_graph.html", element=element)
+
+
+@archimate_bp.route("/api/element/<int:element_id>/impact-graph", methods=["GET"])
+@login_required
+def api_element_impact_graph(element_id):
+    """Nodes + edges of the blast radius around an element, to a bounded depth."""
+    from app.services.impact_graph import build_impact_graph  # noqa: PLC0415
+
+    depth = request.args.get("depth", default=2, type=int)
+    graph = build_impact_graph(element_id, depth=depth)
+    if graph is None:
+        return jsonify({"error": "Element not found"}), 404
+    return jsonify(graph)
 
 
 @archimate_bp.route("/api/impact-analysis/<int:element_id>", methods=["GET"])
