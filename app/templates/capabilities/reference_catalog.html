@@ -14,7 +14,7 @@
   ) }}
 
   {# ── Filter bar (GET form) ───────────────────────────────────────────── #}
-  <form method="get" class="flex flex-wrap items-end gap-3 mb-5 rounded-xl border border-border bg-card p-4">
+  <form method="get" action="{{ url_for('enterprise_crud.reference_catalog') }}" class="flex flex-wrap items-end gap-3 mb-5 rounded-xl border border-border bg-card p-4">
     <div class="flex-1 min-w-[200px]">
       <label for="q" class="block text-xs font-medium text-muted-foreground mb-1">Search</label>
       <input id="q" name="q" type="text" value="{{ active.q }}" placeholder="Solution name…"
