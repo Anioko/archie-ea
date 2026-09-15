@@ -206,7 +206,7 @@ aiohttp>=3.9.0
 # NORTH STAR PHASE 4: Enterprise Export Formats
 # -----------------------------------------------------------------------------
 python-pptx>=0.6.23,<1.0.0  # PowerPoint generation
-weasyprint>=69.0,<70.0      # security-fixed HTML to PDF renderer
+weasyprint>=70.0,<71.0      # security-fixed HTML to PDF renderer (70.0 fixes PYSEC-2026-3940)
 # WeasyPrint 69 requires pydyf>=0.11. The previous pydyf<0.11 compatibility pin
 # applied to WeasyPrint 60; tests/test_weasyprint_runtime.py now executes the
 # exact HTML(string=...).write_pdf() API Archie uses so this pair cannot drift
