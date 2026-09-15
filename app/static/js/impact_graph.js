@@ -106,8 +106,10 @@
     function load(depth) {
         _show('impact-empty', false);
         _show('impact-loading', true);
-        fetch(ENDPOINT + '?depth=' + depth, { credentials: 'same-origin' })
-            .then(function (r) { if (!r.ok) throw new Error('impact-graph ' + r.status); return r.json(); })
+        // Platform.fetch returns the parsed body and throws on a non-2xx, so the
+        // old two-step response check is unnecessary (and keeps this off the
+        // raw-fetch-sites gate).
+        Platform.fetch(ENDPOINT + '?depth=' + depth)
             .then(render)
             .catch(function () {
                 _show('impact-loading', false);
