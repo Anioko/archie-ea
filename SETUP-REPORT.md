@@ -55,6 +55,25 @@ QA agent and install the Kilo Code VS Code extension from the marketplace.
   `tests/smoke/` instead of a nonexistent browser agent.
 - `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1` set in project settings.
 
+## Addendum: 7 more AI/ML roles added (2026-09-15)
+
+`ai-feasibility-analyst`, `conversational-ux-designer`,
+`ai-product-strategist`, `prompt-security-tester`,
+`ai-ethics-governance-lead`, `model-release-manager`,
+`ai-integration-engineer` — bringing the roster to 27 agents. Validated the
+same way as the rest: frontmatter parses for all 7 (script-checked), and the
+two no-write roles (`prompt-security-tester`, `ai-ethics-governance-lead`)
+correctly carry no `Edit` in their `tools:` line. `ai-integration-engineer`
+follows the same Aider-routing and path-scoping convention as
+`ml-engineer`/`nlp-engineer` (again: written convention, not a mechanical
+sandbox — see the caveat under those agents).
+
+**Important standing rule, not just a note:** this roster must never be
+chained through multiple handoffs unattended again — see the warning added
+to `CLAUDE.md` and the memory entry `sdlc-agents-no-autonomous-execution`
+saved after the 2026-09-15 incident where the roster ran a full feature
+build unsupervised for hours.
+
 ## Addendum: Aider wasn't actually being invoked (fixed 2026-09-15)
 
 The original roster had a gap: `builder`, `ml-engineer`, and `nlp-engineer`
