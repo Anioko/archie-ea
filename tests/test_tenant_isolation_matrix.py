@@ -69,6 +69,13 @@ INTENTIONALLY_GLOBAL = {
         "owner actions explicitly scope by organization_id; the unauthenticated "
         "public token flow derives scope from the link"
     ),
+    "ErrorEvent": (
+        "operational telemetry about the platform, not tenant data — a platform "
+        "admin needs to see every organisation's errors to tell 'one customer hit "
+        "a bug' from 'the deploy just broke everything'; organization_id/user_id "
+        "are plain nullable columns kept for attribution, not filtering (see the "
+        "model's own docstring, app/models/error_event.py)"
+    ),
 }
 
 
