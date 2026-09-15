@@ -1425,6 +1425,20 @@
             && reason.isFromCancelledTransition === true;
     }
 
+    // WebKit rejects some cancelled transitions and aborted resource loads with
+    // a bare DOM Event (no message, no stack) rather than an Error; Chromium
+    // does not, which is why the browser-compatibility gate saw '[object Event]'
+    // only under webkit. A genuine application error always rejects with an
+    // Error, so a rejection whose reason IS an Event carries nothing actionable
+    // and is the same benign noise as a cancelled transition — suppress it
+    // rather than let it surface as an uncatchable '[object Event]'.
+    function _isBareEventRejection(reason) {
+        if (!reason || typeof reason !== 'object') return false;
+        if (typeof Event !== 'undefined' && reason instanceof Event) return true;
+        // Cross-realm safety: an Event from another frame fails instanceof.
+        return Object.prototype.toString.call(reason) === '[object Event]';
+    }
+
     // ── Ship errors to the server so silent client-side breakage is visible
     // somewhere other than a browser console nobody is watching ─────────────
     //
@@ -1466,12 +1480,13 @@
     }
 
     global.window.addEventListener('unhandledrejection', function (event) {
-        if (_isCancelledAlpineTransition(event.reason)) {
+        if (_isCancelledAlpineTransition(event.reason) || _isBareEventRejection(event.reason)) {
             // Always prevented, dev included. The usual reason to let a rejection
             // through in dev is so devtools still shows it -- but there is nothing
             // here worth showing, and leaving it unprevented surfaces a bare
-            // "Object" in the console and in Playwright's pageerror channel, which
-            // is what made the browser gates fail on pages that merely animate.
+            // "Object" / "[object Event]" in the console and in Playwright's
+            // pageerror channel, which is what made the browser gates fail on
+            // pages that merely animate or abort an in-flight load.
             event.preventDefault();
             return;
         }
