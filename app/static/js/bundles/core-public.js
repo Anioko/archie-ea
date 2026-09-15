@@ -1456,7 +1456,7 @@
                 }),
                 credentials: 'same-origin',
                 keepalive: true
-            }).catch(function () { /* best-effort telemetry; nothing to do if it fails */ })
+            }).catch(function () { /* swallow-ok: best-effort telemetry; reporting a failure here would re-enter this reporter */ })
               .finally(function () { _reporting = false; });
         } catch (e) {
             _reporting = false;
