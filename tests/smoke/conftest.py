@@ -364,6 +364,24 @@ def seeded(live_server, request, ai_protocol_stub):
         db.session.commit()
         out["ids"]["solution"] = solution.id
 
+        # An ARB-approved reference solution so the reference catalogue lens has
+        # real content to render and filter, rather than only its empty state.
+        reference_solution = Solution(
+            name="Smoke reference payroll integration %s" % suffix,
+            description="Approved, reusable integration for the reference catalogue lens.",
+            organization_id=org.id,
+            created_by_id=out["ids"]["solution_architect_user"],
+            governance_status="approved",
+            business_domain="Finance",
+            solution_type="integration",
+            solution_owner="Smoke Arch Team",
+            adm_phase="F",
+            arb_approval_date=__import__("datetime").date.today(),
+        )
+        db.session.add(reference_solution)
+        db.session.commit()
+        out["ids"]["reference_solution"] = reference_solution.id
+
         component = ApplicationComponent(
             name="Smoke Payroll %s" % suffix, organization_id=org.id,
             lifecycle_status="operational", description="Smoke fixture.",
