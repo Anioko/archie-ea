@@ -55,6 +55,31 @@ QA agent and install the Kilo Code VS Code extension from the marketplace.
   `tests/smoke/` instead of a nonexistent browser agent.
 - `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1` set in project settings.
 
+## Addendum: Aider wasn't actually being invoked (fixed 2026-09-15)
+
+The original roster had a gap: `builder`, `ml-engineer`, and `nlp-engineer`
+had `Edit`/`Write` tools and used them directly — Aider was configured and
+validated (the ping worked) but nothing in the workflow ever called it.
+Fixed by updating all three agent files to route implementation through
+`aider --model coder --no-auto-commits --yes --no-stream --message "..."
+<explicit files> < /dev/null`, with direct `Edit`/`Write` demoted to a
+fixup-only path. `--no-auto-commits` is deliberate — this repo has its own
+strict commit conventions (`CLAUDE.md`: heredoc/`-F` messages, `git add
+<file>` never `-A`), so the agent stages and commits itself after reviewing
+Aider's diff.
+
+**Validated the exact invocation** against a throwaway file outside the
+repo: `aider --model coder --no-auto-commits --yes --no-stream --message
+"Add a docstring..." sample.py < /dev/null` → correctly edited the file
+(cost $0.00024), made **no commit** (confirming `--no-auto-commits` behaves
+as expected). **PASS.**
+
+No model change was made to the `coder` alias — confirmed with the user it
+stays on `qwen/qwen3-coder`; there was no `deepseek` alias anywhere in this
+config to begin with (checked `~/.aider.conf.yml` and
+`~/.aider.chat.history.md` — no trace of deepseek or kimi prior to this
+conversation).
+
 ## Part 3b addendum: AI/ML/NLP agent roster (added 2026-09-15)
 
 7 more subagents: `ai-solution-architect`, `llm-architect`, `ml-architect`,

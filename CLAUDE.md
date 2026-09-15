@@ -21,6 +21,13 @@ under `docs/buckets/<slug>/` and approval gates tracked in
 `docs/handoffs/*.json` (schema: `docs/handoffs/handoff-schema.json`). Only
 `builder`, `ml-engineer`, and `nlp-engineer` may edit application code;
 `refuter` and `ai-ml-evaluation-lead` are read-only-on-code by construction.
+Those three route actual code authoring through **Aider** (`aider --model
+coder --no-auto-commits --yes --no-stream --message "..." <files>
+< /dev/null`, configured at `~/.aider.conf.yml`) rather than editing
+directly — `--no-auto-commits` is deliberate so staging/commit messages still
+follow this repo's own conventions (see below) instead of Aider's own commit
+format. Direct `Edit`/`Write` is a fixup path, not the default authoring
+path. Confirmed working end-to-end (see `SETUP-REPORT.md`).
 
 **AI/ML/NLP roster:** `ai-solution-architect` and `solution-architect` work
 in parallel from the same PRD (AI-specific vs. general design concerns);
