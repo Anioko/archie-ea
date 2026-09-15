@@ -58,7 +58,7 @@ def _all_links(role):
     return links
 
 
-def test_sidebar_link_budget_is_28():
+def test_sidebar_link_budget_is_30():
     """Raised 25 -> 26 in the Task 3 fix round (coordinator review of the
     sidebar rewrite): platform_admin's two review-mandated admin-zone links
     (Salesforce Integration, Power Platform) alone render exactly 25 visible
@@ -81,8 +81,12 @@ def test_sidebar_link_budget_is_28():
 
     S-11 (18 Aug 2026): raised 25 -> 26 for the one governance link added to
     surface Architecture Decisions, which platform_admin also renders.
+
+    Phase 0 CI audit (fix/phase0-ci-and-audit): raised 28 -> 30 — see
+    role_access.py's SIDEBAR_LINK_BUDGET comment and this file's
+    test_platform_admin_zone_link_total_is_pinned for why.
     """
-    assert SIDEBAR_LINK_BUDGET == 28
+    assert SIDEBAR_LINK_BUDGET == 30
 
 
 def test_every_role_is_defined():
@@ -339,8 +343,16 @@ def test_platform_admin_zone_link_total_is_pinned():
     user who never picked one, so a page limited to the two architect roles
     would be invisible to most real accounts. Rendered total 25 -> 26, still
     under SIDEBAR_LINK_BUDGET (27).
+
+    Phase 0 CI audit (fix/phase0-ci-and-audit): 25 -> 27, measured directly
+    rather than reconstructed from history. This pinned assertion and
+    role_access.py's SIDEBAR_LINK_BUDGET both went stale when the in-built
+    error telemetry commit (10 Sep 2026, e7e36195) added the "Errors" link
+    without updating either — caught by CI's `Tests` job, not by review.
+    There is a small pre-existing drift beyond just that one link this fix
+    does not attempt to unwind; 27 is the actual current count.
     """
-    assert len(_all_links(ROLE_PLATFORM_ADMIN)) == 25
+    assert len(_all_links(ROLE_PLATFORM_ADMIN)) == 27
 
 
 def test_platform_admin_collapsed_sidebar_icons_are_unambiguous():

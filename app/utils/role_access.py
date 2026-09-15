@@ -343,7 +343,16 @@ def get_all_roles_with_access(section: str) -> List[str]:
 # retire "Batch Import", but that link exists to satisfy the S-11 finding above
 # — trading one discoverability defect for another. Raising the budget by one is
 # the honest cost of adding a front door.
-SIDEBAR_LINK_BUDGET = 28
+#
+# In-built error telemetry (10 Sep 2026, commit e7e36195) added platform_admin's
+# "Errors" link (see this file's _ADMIN_LINKS) without raising this constant or
+# the paired pinned test in tests/test_sidebar_budgets.py — both silently went
+# stale and only surfaced as a CI failure during the Phase 0 archie-ea to-be
+# plan's CI audit (fix/phase0-ci-and-audit). Measured directly rather than
+# reconstructed from history (the exact link-by-link arithmetic in the comments
+# above has a small pre-existing drift this fix does not attempt to unwind):
+# platform_admin currently renders 30 links. Raising 28 -> 30 to match.
+SIDEBAR_LINK_BUDGET = 30
 
 _ZONE_TITLES = {
     "home": "Home",
