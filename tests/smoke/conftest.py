@@ -382,6 +382,32 @@ def seeded(live_server, request, ai_protocol_stub):
         db.session.commit()
         out["ids"]["reference_solution"] = reference_solution.id
 
+        # Two related ArchiMate elements so the impact / dependency-graph lens
+        # renders a real node-link picture (2 nodes, 1 edge), not just its
+        # "no relationships recorded" empty state.
+        from app.models.archimate_core import (
+            ArchiMateElement as _ImpactElement,
+            ArchiMateRelationship as _ImpactRel,
+        )
+
+        impact_source = _ImpactElement(
+            name="Smoke impact source %s" % suffix, type="application_component",
+            layer="application", organization_id=org.id,
+        )
+        impact_target = _ImpactElement(
+            name="Smoke impact target %s" % suffix, type="application_component",
+            layer="application", organization_id=org.id,
+        )
+        db.session.add_all([impact_source, impact_target])
+        db.session.commit()
+        db.session.add(_ImpactRel(
+            type="serving", source_id=impact_source.id, target_id=impact_target.id,
+            organization_id=org.id,
+        ))
+        db.session.commit()
+        out["ids"]["impact_source_element"] = impact_source.id
+        out["ids"]["impact_target_element"] = impact_target.id
+
         component = ApplicationComponent(
             name="Smoke Payroll %s" % suffix, organization_id=org.id,
             lifecycle_status="operational", description="Smoke fixture.",

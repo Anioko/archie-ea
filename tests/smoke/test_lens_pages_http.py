@@ -33,6 +33,28 @@ def test_data_freshness_cockpit_renders(browser, live_server, seeded):
         page.close()
 
 
+def test_impact_graph_draws_the_dependency_nodes(browser, live_server, seeded):
+    """The impact graph is d3-rendered from a fetch — a broken endpoint or a JS
+    error leaves the SVG empty while the page still returns 200. Assert the
+    graph actually draws the seeded source + target nodes."""
+    element_id = seeded["ids"]["impact_source_element"]
+    page = browser.new_page()
+    try:
+        _login(page, live_server, seeded["emails"]["enterprise_architect"])
+        response = page.goto(
+            live_server + "/archimate/elements/%s/impact" % element_id, timeout=PAGE_TIMEOUT)
+        assert response is not None
+        assert response.status == 200, response.text()
+        # d3 appends one <g> with a <circle> per node once the fetch resolves.
+        page.wait_for_selector("#impact-svg circle", timeout=PAGE_TIMEOUT)
+        circles = page.locator("#impact-svg circle").count()
+        assert circles >= 2, "expected the source + target nodes, got %d" % circles
+        # The counts line must leave its Loading… placeholder.
+        assert page.locator("#impact-counts").inner_text().strip() != "Loading…"
+    finally:
+        page.close()
+
+
 def test_reference_catalogue_lists_and_filters_approved_solutions(browser, live_server, seeded):
     page = browser.new_page()
     try:
