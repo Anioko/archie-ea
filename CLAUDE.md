@@ -12,14 +12,29 @@ UI contract (color tokens, base templates, component macros, Alpine rules) and i
 
 ## SDLC orchestration subagents — execution mechanism, not a second role system
 
-`.claude/agents/*.md` defines 13 Claude Code subagents (business-analyst,
+`.claude/agents/*.md` defines 20 Claude Code subagents (business-analyst,
 product-manager, solution-architect, data-architect, integration-architect,
 security-architect, tech-lead, builder, refuter, qa-lead, devops-engineer,
-release-manager, technical-writer) used to decompose a task into a
-brief → build → review pipeline, with artifacts under `docs/buckets/<slug>/`
-and approval gates tracked in `docs/handoffs/*.json` (schema:
-`docs/handoffs/handoff-schema.json`). Only `builder` may edit application
-code; `refuter` is read-only by construction.
+release-manager, technical-writer, plus the AI/ML/NLP roster below) used to
+decompose a task into a brief → build → review pipeline, with artifacts
+under `docs/buckets/<slug>/` and approval gates tracked in
+`docs/handoffs/*.json` (schema: `docs/handoffs/handoff-schema.json`). Only
+`builder`, `ml-engineer`, and `nlp-engineer` may edit application code;
+`refuter` and `ai-ml-evaluation-lead` are read-only-on-code by construction.
+
+**AI/ML/NLP roster:** `ai-solution-architect` and `solution-architect` work
+in parallel from the same PRD (AI-specific vs. general design concerns);
+`tech-lead` reconciles the two. `llm-architect` turns the AI blueprint into
+binding LLM ADRs before any LLM code is written. `ml-engineer`/`nlp-engineer`
+implement strictly from that spec — this repo has no `src/` directory at
+all, so their write scope (by written convention, not a mechanical sandbox —
+see the note in `ml-engineer.md`) is `app/modules/ai_chat/` and `app/ai/`,
+where this repo's actual LLM routing and `sentence-transformers` embeddings
+already live. `ai-ml-evaluation-lead` has no Edit/Write on any code and must
+produce a passing evaluation report before `mlops-engineer` deploys.
+`ml-architect` is scoped narrowly — this repo integrates LLMs, it does not
+train models — and most AI-shaped tasks should route through
+`llm-architect` instead.
 
 **This is a delegation mechanism, not a second accountability system.** The
 14 roles in "Own the decision" below, and the gates in

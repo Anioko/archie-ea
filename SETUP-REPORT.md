@@ -55,6 +55,23 @@ QA agent and install the Kilo Code VS Code extension from the marketplace.
   `tests/smoke/` instead of a nonexistent browser agent.
 - `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1` set in project settings.
 
+## Part 3b addendum: AI/ML/NLP agent roster (added 2026-09-15)
+
+7 more subagents: `ai-solution-architect`, `llm-architect`, `ml-architect`,
+`ml-engineer`, `nlp-engineer`, `ai-ml-evaluation-lead`, `mlops-engineer`.
+
+**Path correction:** the original brief specified `src/ml/` and `src/nlp/`
+for `ml-engineer`/`nlp-engineer` write access. This repo has **no `src/`
+directory at all** — it's a Flask `app/`-layout project, and its actual
+LLM/embeddings code lives under `app/modules/ai_chat/` and `app/ai/`. Scoped
+both agents there instead (confirmed with the user before building).
+
+| Validation item | Result | Evidence |
+|---|---|---|
+| `ml-engineer` has Edit/Write on its AI paths, not elsewhere | **PARTIAL — documented convention, not mechanically sandboxed** | `ml-engineer.md` tools: `Read, Glob, Grep, Edit, Write, Bash` (unscoped). Claude Code subagent frontmatter has no syntax for a per-agent path-scoped tool grant — only project-wide `permissions.allow`/`deny` in `.claude/settings.local.json` can scope by path, and that would apply to every agent, not just this one. The restriction is written into the agent's own instructions instead. If you need this mechanically enforced, add a `PreToolUse` hook keyed to this agent that denies Edit/Write outside `app/modules/ai_chat/` and `app/ai/` — the update-config skill can wire that up. |
+| `ai-ml-evaluation-lead` has no Edit/Write on any code | **PASS** | `ai-ml-evaluation-lead.md` tools: `Read, Glob, Grep, Write` — no `Edit`, and its only `Write` output is its own report under `docs/buckets/`, per its system prompt. Confirmed by reading the frontmatter directly. |
+| Mock handoff chain: AI Solution Architect → LLM Architect → ML Engineer → AI/ML Evaluation Lead, correct artifact each step | **PASS** | `docs/handoffs/example-aisa-to-llm-to-mle-to-eval.json` — script-verified: each record's `(from, to, artifact)` matches the expected chain, first two steps `approved` (proceed), third step correctly `BLOCKED` on `unmet_conditions: ["verify_py_clean"]`. |
+
 ## To actually start using this
 
 1. Put a real OpenRouter key in `.env`'s `OPENROUTER_API_KEY` line.
