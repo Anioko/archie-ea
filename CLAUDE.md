@@ -10,6 +10,36 @@ with Tailwind/shadcn tokens and Alpine.js on the front end.
 **Read `DESIGN.md` before editing any template, CSS, or front-end JS file.** It is the authoritative
 UI contract (color tokens, base templates, component macros, Alpine rules) and is not repeated here.
 
+## SDLC orchestration subagents — execution mechanism, not a second role system
+
+`.claude/agents/*.md` defines 13 Claude Code subagents (business-analyst,
+product-manager, solution-architect, data-architect, integration-architect,
+security-architect, tech-lead, builder, refuter, qa-lead, devops-engineer,
+release-manager, technical-writer) used to decompose a task into a
+brief → build → review pipeline, with artifacts under `docs/buckets/<slug>/`
+and approval gates tracked in `docs/handoffs/*.json` (schema:
+`docs/handoffs/handoff-schema.json`). Only `builder` may edit application
+code; `refuter` is read-only by construction.
+
+**This is a delegation mechanism, not a second accountability system.** The
+14 roles in "Own the decision" below, and the gates in
+`docs/DELIVERY_CONTRACT.md`, remain the actual standard this repo is held to
+— a green subagent handoff does not substitute for a role's own before/after
+question or its gate. See design rationale in
+`docs/superpowers/specs/2026-09-15-sdlc-orchestration-design.md`.
+
+A task brief has six sections: objective, context, constraints, deliverable,
+acceptance criteria, and handoff target. No agent proceeds past a handoff
+whose `approval_status` is not `approved`. Each bucket
+(`docs/buckets/<slug>/`) holds all artifacts for one task; reset context
+between roles rather than carrying one role's conversation into the next.
+
+The standalone browser QA agent (`qa/qa-config.yml`) and Kilo Code
+(`kilo.jsonc`) referenced by earlier drafts of this workflow are **not
+installed** on the machine this was set up on (Node.js/npm missing) — see
+`SETUP-REPORT.md` for status and install commands. Use `pytest tests/smoke/`
+for actual browser QA until then.
+
 ## Own the decision — standing instruction from the owner (17 Aug 2026)
 
 Act as the CTO, solution/software/technical architect, and delivery + QA lead at

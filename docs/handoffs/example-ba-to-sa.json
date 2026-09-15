@@ -1,0 +1,9 @@
+{
+  "from": "business-analyst",
+  "to": "solution-architect",
+  "artifact": "docs/buckets/example/srs.md",
+  "approval_status": "pending",
+  "gate_conditions": ["all_user_stories_have_acceptance_criteria", "no_open_questions"],
+  "unmet_conditions": ["no_open_questions"],
+  "timestamp": "2026-09-15T00:00:00Z"
+}
