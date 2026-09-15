@@ -7,6 +7,13 @@ from types import SimpleNamespace
 import pytest
 from jinja2 import ChoiceLoader, DictLoader, Environment, FileSystemLoader
 
+# The template uses `flask.current_app.view_functions` to guard a cross-module
+# link (this repo's own documented pattern for a blueprint that may not have
+# registered — see CLAUDE.md "Blueprints register non-fatally"). This is a
+# shell/URL boundary concern, same category as the `url_for` stub below, not
+# app logic this test exercises — an empty view_functions means that guarded
+# link simply doesn't render, which this test doesn't assert on either way.
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -32,6 +39,7 @@ def render_summary(rows):
         FileSystemLoader([ROOT / "app/templates", ROOT / "app/modules/procurement/templates"]),
     ]), autoescape=True)
     env.globals["url_for"] = lambda endpoint, **kwargs: "/test/" + endpoint
+    env.globals["flask"] = SimpleNamespace(current_app=SimpleNamespace(view_functions={}))
     return env.get_template("procurement/compliance_dashboard.html").render(summary=summary(rows), licenses=[])
 
 

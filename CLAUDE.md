@@ -10,6 +10,79 @@ with Tailwind/shadcn tokens and Alpine.js on the front end.
 **Read `DESIGN.md` before editing any template, CSS, or front-end JS file.** It is the authoritative
 UI contract (color tokens, base templates, component macros, Alpine rules) and is not repeated here.
 
+## SDLC orchestration subagents — execution mechanism, not a second role system
+
+`.claude/agents/*.md` defines 27 Claude Code subagents (business-analyst,
+product-manager, solution-architect, data-architect, integration-architect,
+security-architect, tech-lead, builder, refuter, qa-lead, devops-engineer,
+release-manager, technical-writer, plus the AI/ML/NLP roster below) used to
+decompose a task into a brief → build → review pipeline, with artifacts
+under `docs/buckets/<slug>/` and approval gates tracked in
+`docs/handoffs/*.json` (schema: `docs/handoffs/handoff-schema.json`). Only
+`builder`, `ml-engineer`, `nlp-engineer`, and `ai-integration-engineer` may
+edit application code; `refuter`, `ai-ml-evaluation-lead`,
+`prompt-security-tester`, and `ai-ethics-governance-lead` are
+read-only-on-code by construction. The code-writing roles route actual
+authoring through **Aider** (`aider --model coder --no-auto-commits --yes
+--no-stream --message "..." <files> < /dev/null`, configured at
+`~/.aider.conf.yml`) rather than editing directly — `--no-auto-commits` is
+deliberate so staging/commit messages still follow this repo's own
+conventions (see below) instead of Aider's own commit format. Direct
+`Edit`/`Write` is a fixup path, not the default authoring path. Confirmed
+working end-to-end (see `SETUP-REPORT.md`).
+
+**⚠️ This roster is never chained end-to-end unattended.** Every handoff
+(`docs/handoffs/*.json`) needs an explicit go-ahead — from the user, or the
+orchestrator acting one step at a time on the user's explicit instruction —
+before the next role starts. On 2026-09-15 something ran this roster
+autonomously for hours on a real feature, producing uncommitted production
+changes nobody reviewed at any checkpoint. That must not happen again: treat
+each role transition as its own checkpoint, not something to run through in
+one pass.
+
+**AI/ML/NLP roster:** `ai-feasibility-analyst` decides *whether* AI is
+warranted at all (default: no), alongside `business-analyst` at discovery.
+`ai-product-strategist` sets AI-specific success metrics alongside
+`product-manager`. `ai-solution-architect` and `solution-architect` work in
+parallel from the same PRD (AI-specific vs. general design concerns);
+`tech-lead` reconciles the two. `conversational-ux-designer` designs the
+chat/agent interaction flow. `llm-architect` turns the AI blueprint into
+binding LLM ADRs before any LLM code is written. `ml-engineer`/
+`nlp-engineer`/`ai-integration-engineer` implement strictly from that spec
+(model logic, NLP pipelines, and API/tool-wiring integration, respectively)
+— this repo has no `src/` directory at all, so their write scope (written
+convention, not a mechanical sandbox — see the note in `ml-engineer.md`) is
+`app/modules/ai_chat/` and `app/ai/`, where this repo's actual LLM routing
+and `sentence-transformers` embeddings already live. `ai-ml-evaluation-lead`
+and `prompt-security-tester` (adversarial: prompt injection, jailbreaks,
+exfiltration) have no Edit/Write on any code. `ai-ethics-governance-lead`
+reviews disclosure/fairness/data-use before release, also with no
+Edit/Write. `model-release-manager` writes the AI-specific release notes
+(model IDs, prompt versions, rollback target) alongside `release-manager`,
+requiring all three review reports to pass first, before `mlops-engineer`
+deploys. `ml-architect` is scoped narrowly — this repo integrates LLMs, it
+does not train models — and most AI-shaped tasks should route through
+`llm-architect` instead.
+
+**This is a delegation mechanism, not a second accountability system.** The
+14 roles in "Own the decision" below, and the gates in
+`docs/DELIVERY_CONTRACT.md`, remain the actual standard this repo is held to
+— a green subagent handoff does not substitute for a role's own before/after
+question or its gate. See design rationale in
+`docs/superpowers/specs/2026-09-15-sdlc-orchestration-design.md`.
+
+A task brief has six sections: objective, context, constraints, deliverable,
+acceptance criteria, and handoff target. No agent proceeds past a handoff
+whose `approval_status` is not `approved`. Each bucket
+(`docs/buckets/<slug>/`) holds all artifacts for one task; reset context
+between roles rather than carrying one role's conversation into the next.
+
+The standalone browser QA agent (`qa/qa-config.yml`) and Kilo Code
+(`kilo.jsonc`) referenced by earlier drafts of this workflow are **not
+installed** on the machine this was set up on (Node.js/npm missing) — see
+`SETUP-REPORT.md` for status and install commands. Use `pytest tests/smoke/`
+for actual browser QA until then.
+
 ## Own the decision — standing instruction from the owner (17 Aug 2026)
 
 Act as the CTO, solution/software/technical architect, and delivery + QA lead at
