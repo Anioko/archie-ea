@@ -1,0 +1,280 @@
+{% extends 'layouts/admin_base.html' %}
+{% from 'macros/page_shell.html' import page_shell %}
+
+{% block title %}{% if interface %}Edit {{ interface.name }}{% else %}New interface{% endif %} — A.R.C.H.I.E.{% endblock %}
+
+{% block content %}
+<div class="flex-1 overflow-auto p-6" x-data="interfaceComponentPicker()">
+  {{ page_shell(
+      title=('Edit ' ~ interface.name) if interface else 'New interface',
+      subtitle=initiative.name if initiative else None,
+      breadcrumb=[
+          ('Home', url_for('main.index')),
+          ('Interface Register', url_for('interface_register.index', initiative_id=initiative.id) if initiative else url_for('interface_register.index')),
+          (interface.name if interface else 'New interface', None)
+      ]
+  ) }}
+
+  {% if errors %}
+  <div class="mb-4 rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive-emphasis" role="alert" data-testid="interface-form-error">
+    {{ errors }}
+  </div>
+  {% endif %}
+
+  <form method="POST"
+        action="{{ url_for('interface_register.update', element_id=interface.id) if interface else url_for('interface_register.create') }}"
+        class="space-y-6 max-w-3xl">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="initiative_id" value="{{ initiative.id if initiative else '' }}">
+
+    <div class="bg-card border border-border rounded-lg p-6 space-y-5">
+      <div>
+        <label class="block text-sm font-medium text-foreground mb-1.5" for="name">Name <span class="text-destructive-emphasis">*</span></label>
+        <input type="text" id="name" name="name" required
+               value="{{ form_data.get('name') if form_data else (interface.name if interface else '') }}"
+               placeholder="e.g. Customer Master Replication (S/4 to CRM)"
+               class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring" autofocus>
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-foreground mb-1.5" for="description">Description</label>
+        <textarea id="description" name="description" rows="3"
+                  class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-y">{{ form_data.get('description') if form_data else (interface.description or '' if interface else '') }}</textarea>
+      </div>
+
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <label class="block text-sm font-medium text-foreground mb-1.5" for="interface_type">Interface type <span class="text-destructive-emphasis">*</span></label>
+          <select id="interface_type" name="interface_type" required
+                  class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+            {% set current = form_data.get('interface_type') if form_data else (metadata.interface_type if metadata else '') %}
+            <option value="" {% if not current %}selected{% endif %} disabled>Select…</option>
+            {% for val in ['REST', 'SOAP', 'GraphQL', 'gRPC', 'MQ', 'Event', 'File', 'Database'] %}
+            <option value="{{ val }}" {% if current == val %}selected{% endif %}>{{ val }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-foreground mb-1.5" for="protocol">Protocol <span class="text-destructive-emphasis">*</span></label>
+          <select id="protocol" name="protocol" required
+                  class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+            {% set current = form_data.get('protocol') if form_data else (metadata.protocol if metadata else '') %}
+            <option value="" {% if not current %}selected{% endif %} disabled>Select…</option>
+            {% for val in ['HTTP', 'HTTPS', 'TCP', 'AMQP', 'MQTT', 'FTP', 'SFTP'] %}
+            <option value="{{ val }}" {% if current == val %}selected{% endif %}>{{ val }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <label class="block text-sm font-medium text-foreground mb-1.5" for="data_format">Data format</label>
+          <select id="data_format" name="data_format"
+                  class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+            {% set current = form_data.get('data_format') if form_data else (metadata.data_format if metadata else '') %}
+            <option value="" {% if not current %}selected{% endif %}>—</option>
+            {% for val in ['JSON', 'XML', 'CSV', 'Avro', 'Protobuf', 'EDI'] %}
+            <option value="{{ val }}" {% if current == val %}selected{% endif %}>{{ val }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-foreground mb-1.5" for="message_pattern">Message pattern</label>
+          <select id="message_pattern" name="message_pattern"
+                  class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+            {% set current = form_data.get('message_pattern') if form_data else (metadata.message_pattern if metadata else '') %}
+            <option value="" {% if not current %}selected{% endif %}>—</option>
+            {% for val in ['Request-Response', 'Fire-and-Forget', 'Pub-Sub', 'Streaming'] %}
+            <option value="{{ val }}" {% if current == val %}selected{% endif %}>{{ val }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <div>
+        <span class="block text-sm font-medium text-foreground mb-1.5">Synchronous?</span>
+        {% set sync_current = 'sync' if (form_data and form_data.get('is_synchronous') == 'sync') or (not form_data and metadata and metadata.is_synchronous) else 'async' %}
+        <div class="flex items-center gap-4">
+          <label class="inline-flex items-center gap-2 text-sm">
+            <input type="radio" name="is_synchronous" value="sync" {% if sync_current == 'sync' %}checked{% endif %}>
+            Synchronous
+          </label>
+          <label class="inline-flex items-center gap-2 text-sm">
+            <input type="radio" name="is_synchronous" value="async" {% if sync_current == 'async' %}checked{% endif %}>
+            Asynchronous
+          </label>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <label class="block text-sm font-medium text-foreground mb-1.5" for="authentication_method">Authentication</label>
+          <select id="authentication_method" name="authentication_method"
+                  class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+            {% set current = form_data.get('authentication_method') if form_data else (metadata.authentication_method if metadata else '') %}
+            <option value="" {% if not current %}selected{% endif %}>—</option>
+            {% for val in ['OAuth2', 'API Key', 'Basic Auth', 'Certificate', 'SAML', 'None'] %}
+            <option value="{{ val }}" {% if current == val %}selected{% endif %}>{{ val }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-foreground mb-1.5" for="business_criticality">Business criticality</label>
+          <select id="business_criticality" name="business_criticality"
+                  class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+            {% set current = form_data.get('business_criticality') if form_data else (metadata.business_criticality if metadata else '') %}
+            <option value="" {% if not current %}selected{% endif %}>—</option>
+            {% for val in ['Critical', 'High', 'Medium', 'Low'] %}
+            <option value="{{ val }}" {% if current == val %}selected{% endif %}>{{ val }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <label class="block text-sm font-medium text-foreground mb-1.5" for="transaction_volume_daily">Daily transaction volume</label>
+          <input type="number" id="transaction_volume_daily" name="transaction_volume_daily" min="0"
+                 value="{{ form_data.get('transaction_volume_daily') if form_data else (metadata.transaction_volume_daily if metadata and metadata.transaction_volume_daily is not none else '') }}"
+                 class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-foreground mb-1.5" for="operational_status">Operational status</label>
+          <select id="operational_status" name="operational_status" x-model="operationalStatus"
+                  class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+            {% set os_current = form_data.get('operational_status') if form_data else (metadata.operational_status if metadata else 'planned') %}
+            {% for val in ['planned', 'development', 'testing', 'production', 'deprecated', 'retired'] %}
+            <option value="{{ val }}" {% if os_current == val %}selected{% endif %}>{{ val | capitalize }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <div x-show="operationalStatus === 'retired'" x-cloak>
+        <label class="block text-sm font-medium text-foreground mb-1.5" for="retirement_date">Retirement date</label>
+        <input type="date" id="retirement_date" name="retirement_date"
+               value="{{ form_data.get('retirement_date') if form_data else (metadata.retirement_date.isoformat() if metadata and metadata.retirement_date else '') }}"
+               class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+      </div>
+    </div>
+
+    <!-- Provider / consumer application pickers (DESIGN.md entity-field rule: debounced live-search, never free text) -->
+    <div class="bg-card border border-border rounded-lg p-6 space-y-5">
+      <h3 class="text-sm font-semibold text-foreground flex items-center gap-2">
+        <i data-lucide="git-compare-arrows" class="h-4 w-4 text-muted-foreground" aria-hidden="true"></i>
+        Coupling
+      </h3>
+
+      <div>
+        <label class="block text-sm font-medium text-foreground mb-1.5">Provider application</label>
+        <input type="hidden" name="provider_component_id" :value="provider ? provider.id : ''">
+        <template x-if="provider">
+          <div class="flex items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm">
+            <span x-text="provider.name"></span>
+            <button type="button" @click="provider = null" aria-label="Clear provider" class="text-muted-foreground hover:text-destructive-emphasis">
+              <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>
+            </button>
+          </div>
+        </template>
+        <template x-if="!provider">
+          <div class="relative">
+            <input type="text" x-model="providerQuery" @input.debounce.300ms="search('provider')"
+                   placeholder="Search applications…"
+                   aria-label="Search provider application"
+                   class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+            <div x-show="providerResults.length > 0" x-cloak
+                 class="mt-1 border border-border rounded-md bg-popover shadow-md divide-y divide-border max-h-48 overflow-y-auto absolute z-10 w-full">
+              <template x-for="app in providerResults" :key="app.id">
+                <button type="button" @click="selectProvider(app)"
+                        class="w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors" x-text="app.name"></button>
+              </template>
+            </div>
+          </div>
+        </template>
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-foreground mb-1.5">Consumer application</label>
+        <input type="hidden" name="consumer_component_id" :value="consumer ? consumer.id : ''">
+        <template x-if="consumer">
+          <div class="flex items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm">
+            <span x-text="consumer.name"></span>
+            <button type="button" @click="consumer = null" aria-label="Clear consumer" class="text-muted-foreground hover:text-destructive-emphasis">
+              <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>
+            </button>
+          </div>
+        </template>
+        <template x-if="!consumer">
+          <div class="relative">
+            <input type="text" x-model="consumerQuery" @input.debounce.300ms="search('consumer')"
+                   placeholder="Search applications…"
+                   aria-label="Search consumer application"
+                   class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+            <div x-show="consumerResults.length > 0" x-cloak
+                 class="mt-1 border border-border rounded-md bg-popover shadow-md divide-y divide-border max-h-48 overflow-y-auto absolute z-10 w-full">
+              <template x-for="app in consumerResults" :key="app.id">
+                <button type="button" @click="selectConsumer(app)"
+                        class="w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors" x-text="app.name"></button>
+              </template>
+            </div>
+          </div>
+        </template>
+      </div>
+    </div>
+
+    <div class="flex items-center justify-between">
+      <a href="{{ url_for('interface_register.index', initiative_id=initiative.id) if initiative else url_for('interface_register.index') }}"
+         class="inline-flex items-center gap-2 px-4 py-2 rounded-md border border-input bg-background text-sm font-medium hover:bg-accent transition-colors">
+        Cancel
+      </a>
+      <button type="submit" data-testid="interface-form-submit"
+              class="inline-flex items-center gap-2 px-5 py-2 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors">
+        <i data-lucide="save" class="h-4 w-4" aria-hidden="true"></i>
+        {% if interface %}Save changes{% else %}Create interface{% endif %}
+      </button>
+    </div>
+  </form>
+</div>
+
+<script>
+function interfaceComponentPicker() {
+    return {
+        operationalStatus: {{ (form_data.get('operational_status') if form_data else (metadata.operational_status if metadata else 'planned')) | tojson }},
+        provider: {{ current_provider | default(none) | tojson }},
+        consumer: {{ current_consumer | default(none) | tojson }},
+        providerQuery: '',
+        consumerQuery: '',
+        providerResults: [],
+        consumerResults: [],
+
+        async search(which) {
+            const query = which === 'provider' ? this.providerQuery : this.consumerQuery;
+            if (query.length < 2) {
+                if (which === 'provider') { this.providerResults = []; } else { this.consumerResults = []; }
+                return;
+            }
+            try {
+                const data = await Platform.fetch.get(`/applications/api/list?search=${encodeURIComponent(query)}&per_page=10`, null, { silent: true });
+                const results = (data.applications || []).map(app => ({ id: app.id, name: app.name }));
+                if (which === 'provider') { this.providerResults = results; } else { this.consumerResults = results; }
+            } catch (e) {
+                if (which === 'provider') { this.providerResults = []; } else { this.consumerResults = []; }
+            }
+        },
+
+        selectProvider(app) {
+            this.provider = app;
+            this.providerResults = [];
+            this.providerQuery = '';
+        },
+
+        selectConsumer(app) {
+            this.consumer = app;
+            this.consumerResults = [];
+            this.consumerQuery = '';
+        }
+    };
+}
+</script>
+{% endblock %}

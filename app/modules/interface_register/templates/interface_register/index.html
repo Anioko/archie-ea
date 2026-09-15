@@ -1,0 +1,139 @@
+{% extends 'layouts/admin_base.html' %}
+{% from 'macros/page_shell.html' import page_shell, empty_state %}
+
+{% block title %}Interface Register — A.R.C.H.I.E.{% endblock %}
+
+{% block content %}
+<div class="flex-1 overflow-auto p-6">
+  {{ page_shell(
+      title='Interface Register',
+      subtitle=initiative.name if initiative else 'Pick an initiative to view its interface register.',
+      breadcrumb=[('Home', url_for('main.index')), ('Interface Register', None)]
+  ) }}
+
+  {% if initiative is none %}
+  {% if initiatives %}
+  <div class="rounded-lg border border-border bg-card p-4">
+    <ul class="divide-y divide-border">
+      {% for init in initiatives %}
+      <li class="py-3 flex items-center justify-between gap-4">
+        <div class="min-w-0">
+          <p class="text-sm font-medium truncate">{{ init.name }}</p>
+          <p class="text-xs text-muted-foreground">{{ init.fiscal_year_start }}–{{ init.fiscal_year_end }}</p>
+        </div>
+        <a href="{{ url_for('interface_register.index', initiative_id=init.id) }}"
+           class="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-transparent hover:bg-accent hover:text-accent-foreground h-9 px-3 shrink-0">
+          View register
+        </a>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% else %}
+  {{ empty_state(
+      icon='route',
+      headline='No technology roadmap initiatives yet',
+      body='The interface register is scoped to a technology roadmap initiative. Create one before registering interfaces.'
+  ) }}
+  {% endif %}
+
+  {% else %}
+
+  <div class="mb-4 flex justify-end gap-2">
+    <a href="{{ url_for('interface_register.comparison', initiative_id=initiative.id) }}"
+       data-testid="interface-comparison-link"
+       class="inline-flex items-center gap-2 rounded-md text-sm font-medium border border-input bg-transparent hover:bg-accent hover:text-accent-foreground h-9 px-4">
+      <i data-lucide="git-compare" class="h-4 w-4" aria-hidden="true"></i>
+      As-is / To-be comparison
+    </a>
+    <a href="{{ url_for('interface_register.new', initiative_id=initiative.id) }}"
+       data-testid="interface-register-new"
+       class="inline-flex items-center gap-2 rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 h-9 px-4">
+      <i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i>
+      New interface
+    </a>
+  </div>
+
+  {% if rows %}
+  <div class="rounded-lg border border-border bg-card overflow-hidden">
+    <div class="hidden md:block overflow-x-auto">
+      <table class="w-full text-sm" data-testid="interface-register-table">
+        <thead class="bg-muted/50 text-xs text-muted-foreground uppercase tracking-wide">
+          <tr>
+            <th class="text-left px-4 py-2.5">Name</th>
+            <th class="text-left px-4 py-2.5">Type</th>
+            <th class="text-left px-4 py-2.5">Protocol</th>
+            <th class="text-left px-4 py-2.5">Pattern</th>
+            <th class="text-left px-4 py-2.5">Sync</th>
+            <th class="text-left px-4 py-2.5">Criticality</th>
+            <th class="text-left px-4 py-2.5">Daily volume</th>
+            <th class="text-left px-4 py-2.5">Status</th>
+            <th class="text-right px-4 py-2.5">Actions</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-border">
+          {% for row in rows %}
+          {% set element = row.element %}
+          {% set meta = row.metadata %}
+          {% set full_name = (element.custom_properties or {}).get('source_name') %}
+          <tr data-testid="interface-row-{{ element.id }}">
+            <td class="px-4 py-2.5 font-medium"
+                {% if full_name %}title="{{ full_name }}"{% endif %}>{{ element.name }}</td>
+            <td class="px-4 py-2.5">{{ meta.interface_type | dash if meta else '—' }}</td>
+            <td class="px-4 py-2.5">{{ meta.protocol | dash if meta else '—' }}</td>
+            <td class="px-4 py-2.5">{{ meta.message_pattern | dash if meta else '—' }}</td>
+            <td class="px-4 py-2.5">
+              {% if meta and meta.is_synchronous is not none %}
+                {{ 'Sync' if meta.is_synchronous else 'Async' }}
+              {% else %}—{% endif %}
+            </td>
+            <td class="px-4 py-2.5">{{ meta.business_criticality | dash if meta else '—' }}</td>
+            <td class="px-4 py-2.5">{{ meta.transaction_volume_daily | dash if meta else '—' }}</td>
+            <td class="px-4 py-2.5">{{ meta.operational_status | dash if meta else '—' }}</td>
+            <td class="px-4 py-2.5 text-right">
+              <a href="{{ url_for('interface_register.edit', element_id=element.id) }}"
+                 data-testid="interface-edit-{{ element.id }}"
+                 class="inline-flex items-center justify-center rounded-md text-xs font-medium border border-input bg-transparent hover:bg-accent hover:text-accent-foreground h-8 px-3">
+                Edit
+              </a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Narrow width: card list. Name and business_criticality survive the collapse. -->
+    <ul class="md:hidden divide-y divide-border">
+      {% for row in rows %}
+      {% set element = row.element %}
+      {% set meta = row.metadata %}
+      {% set full_name = (element.custom_properties or {}).get('source_name') %}
+      <li class="p-4" data-testid="interface-card-{{ element.id }}">
+        <div class="flex items-start justify-between gap-3">
+          <div class="min-w-0">
+            <p class="text-sm font-medium truncate" {% if full_name %}title="{{ full_name }}"{% endif %}>{{ element.name }}</p>
+            <p class="text-xs text-muted-foreground mt-0.5">{{ meta.business_criticality | dash if meta else '—' }}</p>
+          </div>
+          <a href="{{ url_for('interface_register.edit', element_id=element.id) }}"
+             class="inline-flex items-center justify-center rounded-md text-xs font-medium border border-input bg-transparent hover:bg-accent h-8 px-3 shrink-0">
+            Edit
+          </a>
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% else %}
+  {{ empty_state(
+      icon='cable',
+      headline='No interfaces registered for this initiative',
+      body='Register the first SAP S/4HANA interface for this initiative.',
+      cta_label='New interface',
+      cta_href=url_for('interface_register.new', initiative_id=initiative.id)
+  ) }}
+  {% endif %}
+
+  {% endif %}
+</div>
+{% endblock %}

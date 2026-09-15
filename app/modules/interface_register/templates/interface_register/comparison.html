@@ -1,0 +1,114 @@
+{% extends 'layouts/admin_base.html' %}
+{% from 'macros/page_shell.html' import page_shell, empty_state %}
+
+{% block title %}Interface Comparison — A.R.C.H.I.E.{% endblock %}
+
+{% block content %}
+<div class="flex-1 overflow-auto p-6">
+  {{ page_shell(
+      title='As-is / To-be Comparison',
+      breadcrumb=[
+        ('Home', url_for('main.index')), 
+        ('Interface Register', url_for('interface_register.index', initiative_id=initiative.id)), 
+        ('As-is / To-be', None)
+      ]
+  ) }}
+
+  {% if errors %}
+  <div role="alert" data-testid="comparison-error" class="border border-destructive/40 bg-destructive/10 text-destructive-emphasis rounded-lg p-4 mb-6">
+    <p class="text-sm">{{ errors }}</p>
+  </div>
+  {% endif %}
+
+  {% if not as_is or not to_be %}
+  <div class="rounded-lg border border-border bg-card p-6">
+    <div class="text-center">
+      <p class="text-sm text-muted-foreground mb-4">Set up the As-is/To-be comparison to begin analyzing interface gaps.</p>
+      <form method="POST" action="{{ url_for('interface_register.provision_comparison') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="initiative_id" value="{{ initiative.id }}">
+        <button type="submit" data-testid="provision-comparison" class="inline-flex items-center gap-2 rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 h-9 px-4">
+          Set up As-is/To-be comparison
+        </button>
+      </form>
+    </div>
+  </div>
+  {% else %}
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+    <div data-testid="plateau-as-is" class="rounded-lg border border-border bg-card p-4">
+      <h3 class="text-sm font-medium text-muted-foreground uppercase tracking-wide mb-2">As-is</h3>
+      <p class="font-medium">{{ as_is.name }}</p>
+    </div>
+    <div data-testid="plateau-to-be" class="rounded-lg border border-border bg-card p-4">
+      <h3 class="text-sm font-medium text-muted-foreground uppercase tracking-wide mb-2">To-be</h3>
+      <p class="font-medium">{{ to_be.name }}</p>
+    </div>
+  </div>
+
+  <div class="mb-6">
+    <h2 class="text-lg font-semibold text-foreground mb-4">Interfaces</h2>
+    {% if interfaces %}
+    <div class="rounded-lg border border-border bg-card overflow-hidden">
+      <ul class="divide-y divide-border">
+        {% for row in interfaces %}
+        {% set element = row.element %}
+        <li class="p-4" data-testid="interface-row-{{ element.id }}">
+          <div class="flex items-center justify-between gap-4">
+            <div class="min-w-0">
+              <p class="text-sm font-medium truncate">{{ element.name }}</p>
+            </div>
+            <form method="POST" action="{{ url_for('interface_register.raise_gap', element_id=element.id) }}" data-testid="raise-gap-{{ element.id }}" class="flex items-center gap-2">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="initiative_id" value="{{ initiative.id }}">
+              <select name="gap_type" required class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                <option value="">Select gap type</option>
+                {% for gap_type in gap_types %}
+                <option value="{{ gap_type }}">{{ gap_type.replace('_', ' ').title() }}</option>
+                {% endfor %}
+              </select>
+              <button type="submit" class="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-transparent hover:bg-accent hover:text-accent-foreground h-9 px-3">
+                Raise Gap
+              </button>
+            </form>
+          </div>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% else %}
+    {{ empty_state(
+        icon='cable',
+        headline='No interfaces registered for this initiative',
+        body='Register interfaces before analyzing gaps.'
+    ) }}
+    {% endif %}
+  </div>
+
+  <div>
+    <h2 class="text-lg font-semibold text-foreground mb-4">Identified Gaps</h2>
+    {% if gaps %}
+    <div class="rounded-lg border border-border bg-card overflow-hidden">
+      <ul class="divide-y divide-border" data-testid="gap-list">
+        {% for gap in gaps %}
+        <li class="p-4" data-testid="gap-{{ gap.id }}">
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-sm font-medium">{{ gap.name }}</p>
+              <p class="text-xs text-muted-foreground">{{ gap.gap_type.replace('_', ' ').title() }} • {{ gap.archimate_element.name if gap.archimate_element else '—' }}</p>
+            </div>
+          </div>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% else %}
+    {{ empty_state(
+        icon='list-x',
+        headline='No gaps identified yet',
+        body='Raise gaps for interfaces to track migration requirements.'
+    ) }}
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

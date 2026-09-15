@@ -454,7 +454,15 @@ class Plateau(TenantMixin, db.Model):
     """Stable architectural state at a specific point in time."""
 
     __tablename__ = "plateaus"
-    __table_args__ = {"extend_existing": True}
+    __table_args__ = (
+        db.Index(
+            "uq_plateau_initiative_scope",
+            "initiative_id", "name", "sequence_order",
+            unique=True,
+            postgresql_where=db.text("initiative_id IS NOT NULL"),
+        ),
+        {"extend_existing": True},
+    )
 
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(255), nullable=False, index=True)
@@ -462,6 +470,17 @@ class Plateau(TenantMixin, db.Model):
 
     architecture_id = db.Column(
         db.Integer, db.ForeignKey("architecture_models.id", ondelete="SET NULL"), index=True
+    )
+    # Scopes a plateau to the initiative that provisioned it (e.g. the
+    # Interface Register's As-Is/To-Be pair). Nullable: architecture-level
+    # plateaus with no single owning initiative predate this column.
+    # architecture_id alone is not a safe key -- N initiatives can share one
+    # ArchitectureModel, so two initiatives keyed only on architecture_id
+    # would silently resolve to the same plateau pair.
+    initiative_id = db.Column(
+        db.Integer,
+        db.ForeignKey("technology_roadmap_initiatives.id", ondelete="SET NULL"),
+        index=True,
     )
     archimate_element_id = db.Column(
         db.Integer, db.ForeignKey("archimate_elements.id", ondelete="SET NULL"), index=True
@@ -748,6 +767,23 @@ class Gap(TenantMixin, db.Model):
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
+
+
+# validate_gap_kind (defined above, line ~550) had zero callers anywhere in the
+# tree before Task 03 of the SAP S/4HANA Interface Register bucket -- a
+# validator with no producer is the same defect as a store with no producer
+# (CLAUDE.md, ADR 0008). Registered here, below the class it validates, as a
+# real ORM listener so the invariant holds for every write path, not only the
+# one service-layer caller (app/modules/interface_register/services/
+# interface_gap_service.py) that also calls validate_gap_kind() explicitly so
+# its ValueError reaches the user as an inline 4xx instead of surfacing from a
+# flush deep inside a transaction. Zero behaviour change for existing data:
+# validate_gap_kind() returns immediately unless gap_kind == 'plateau_transition',
+# and nothing in the tree wrote that value before this task.
+@event.listens_for(Gap, "before_insert")
+@event.listens_for(Gap, "before_update")
+def _enforce_gap_kind(mapper, connection, target):
+    validate_gap_kind(target)
 
 
 # ---------------------------------------------------------------------------

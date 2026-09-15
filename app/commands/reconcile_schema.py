@@ -395,6 +395,7 @@ _MATERIALISATION_INDEXES = (
     ("uq_benefit_materialisation", "benefits"),
     ("uq_decision_brief_workstream_scope", "decision_briefs"),
     ("uq_decision_brief_candidate_scope", "decision_briefs"),
+    ("uq_plateau_initiative_scope", "plateaus"),
 )
 
 _DECISION_BRIEF_SCOPE_INDEXES = {

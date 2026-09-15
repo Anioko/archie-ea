@@ -366,6 +366,134 @@ def test_application_manager_maintains_an_owned_application(page, live_server, s
         "health assessment did not reach the health overview"
 
 
+def test_solution_architect_registers_an_interface(page, live_server, seeded):
+    """SAP S/4HANA Interface Register (Task 02): create an interface, reload,
+    see it persisted in the list — "done means demonstrated"."""
+    import uuid
+
+    _login(page, live_server, seeded["emails"]["solution_architect"])
+    initiative_id = seeded["ids"]["interface_register_initiative"]
+    ref = uuid.uuid4().hex[:6]
+    name = "Smoke Interface %s" % ref
+
+    _visit(page, live_server, "/interface-register/new?initiative_id=%d" % initiative_id)
+    assert page.locator("#name").count() == 1, "the create form did not render"
+    page.fill("#name", name)
+    page.select_option("#interface_type", "REST")
+    page.select_option("#protocol", "HTTPS")
+    page.select_option("#business_criticality", "High")
+    with page.expect_navigation(wait_until="domcontentloaded", timeout=PAGE_TIMEOUT):
+        page.get_by_role("button", name="Create interface", exact=True).click()
+    page.wait_for_timeout(500)
+
+    page.reload(wait_until="domcontentloaded")
+    assert name in page.inner_text("body"), "interface did not persist after reload"
+
+    # Element-detail-page cross-check (store-agreement spirit): the interface
+    # just created through the register form must also render correctly through
+    # the ArchiMate element detail enrichment block (archimate_routes.py ~2627,
+    # api_element_detail), which is what /archimate/composer's node detail panel
+    # calls (composer.js:1859) to show protocol/interface_type for an
+    # ApplicationInterface element. Resolved by a real browser hit of that JSON
+    # endpoint for THIS interface's real element id, not by reading source.
+    from app import create_app, db as _db
+    from app.models.archimate_core import ArchiMateElement as _AME
+
+    app = create_app("testing")
+    with app.app_context():
+        element = _AME.query.filter_by(name=name, type="ApplicationInterface").one()
+        element_id = element.id
+
+    response = page.goto(
+        live_server + "/archimate/api/elements/%d/detail" % element_id,
+        wait_until="domcontentloaded", timeout=PAGE_TIMEOUT,
+    )
+    assert response is not None and response.status == 200, (
+        "element detail endpoint did not return 200 for the just-created interface"
+    )
+    body = response.json()
+    assert body["type"] == "ApplicationInterface"
+    meta = body.get("interface_metadata")
+    assert meta is not None, (
+        "api_element_detail returned interface_metadata=None for element %d created "
+        "through the register form — the store-agreement between the register and "
+        "the ArchiMate element detail page is broken" % element_id
+    )
+    assert meta.get("interface_type") == "REST", (
+        "detail page shows interface_type=%r, expected REST (what was submitted "
+        "through the register form)" % meta.get("interface_type")
+    )
+    assert meta.get("protocol") == "HTTPS", (
+        "detail page shows protocol=%r, expected HTTPS (what was submitted "
+        "through the register form)" % meta.get("protocol")
+    )
+
+
+def test_solution_architect_provisions_plateau_pair_and_raises_gap(page, live_server, seeded):
+    """SAP S/4HANA Interface Register (Task 03): provision the As-is/To-be
+    plateau pair, raise a gap against a just-created interface, reload, and
+    confirm both persisted -- "done means demonstrated", not source-read."""
+    import uuid
+
+    _login(page, live_server, seeded["emails"]["solution_architect"])
+    initiative_id = seeded["ids"]["interface_register_initiative"]
+    ref = uuid.uuid4().hex[:6]
+    name = "Smoke Comparison Interface %s" % ref
+
+    # Register an interface to raise a gap against.
+    _visit(page, live_server, "/interface-register/new?initiative_id=%d" % initiative_id)
+    page.fill("#name", name)
+    page.select_option("#interface_type", "REST")
+    page.select_option("#protocol", "HTTPS")
+    with page.expect_navigation(wait_until="domcontentloaded", timeout=PAGE_TIMEOUT):
+        page.get_by_role("button", name="Create interface", exact=True).click()
+    page.wait_for_timeout(500)
+
+    # GET is side-effect-free: visiting the comparison page before provisioning
+    # must show the explicit "set up" button, not a fabricated pair.
+    _visit(page, live_server, "/interface-register/comparison?initiative_id=%d" % initiative_id)
+    assert page.locator('[data-testid="provision-comparison"]').count() >= 1, (
+        "comparison screen did not show the explicit set-up control before provisioning"
+    )
+    assert page.locator('[data-testid="plateau-as-is"]').count() == 0, (
+        "GET provisioned the plateau pair as a side effect"
+    )
+
+    with page.expect_navigation(wait_until="domcontentloaded", timeout=PAGE_TIMEOUT):
+        page.locator('[data-testid="provision-comparison"]').click()
+    page.wait_for_timeout(500)
+
+    assert page.locator('[data-testid="plateau-as-is"]').count() == 1
+    assert page.locator('[data-testid="plateau-to-be"]').count() == 1
+    body = page.inner_text("body")
+    assert "Current Integration Landscape" in body
+    assert "S/4HANA-Integrated Landscape" in body
+
+    # Reload: the set-up button must not reappear, and provisioning must not
+    # have been undone or duplicated (repeat-POST idempotency is covered at
+    # the service layer in tests/test_interface_plateau_pair.py).
+    page.reload(wait_until="domcontentloaded")
+    assert page.locator('[data-testid="plateau-as-is"]').count() == 1, (
+        "reload after provisioning shows the pair as already set up (no duplicate button)"
+    )
+    assert page.locator('[data-testid="provision-comparison"]').count() == 0
+
+    # Raise a gap for the interface just created -- locate its row by name
+    # rather than by element id, which this test never resolves from the DB.
+    interface_li = page.locator("li", has_text=name)
+    interface_li.locator("select[name='gap_type']").select_option("protocol_change")
+    with page.expect_navigation(wait_until="domcontentloaded", timeout=PAGE_TIMEOUT):
+        interface_li.get_by_role("button", name="Raise Gap", exact=True).click()
+    page.wait_for_timeout(500)
+
+    page.reload(wait_until="domcontentloaded")
+    body = page.inner_text("body")
+    assert "Protocol Change" in body, "gap did not persist after reload"
+    assert page.locator('[data-testid="gap-list"] li').count() >= 1, (
+        "gap does not show against the To-be plateau's list"
+    )
+
+
 def test_an_archetype_cannot_reach_another_personas_section(page, live_server, seeded):
     """Authorisation is part of the journey, not a separate concern."""
     _login(page, live_server, seeded["emails"]["procurement"])
