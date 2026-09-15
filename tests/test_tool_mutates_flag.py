@@ -58,6 +58,14 @@ HAND_WRITTEN = {
     "record_capability_maturity", "score_rationalization",
     "create_vendor", "merge_capabilities",
     "bulk_update_application_status", "create_contract", "upsert_license",
+    # create_programme (Phase 0 CI audit, fix/phase0-ci-and-audit): calls
+    # ProgrammeSetupService.create_business_first_programme, the same entry
+    # point the human /solutions/new-programme wizard POST handler calls, and
+    # checks can_create_programme at the door first (audit F-04) before
+    # building the write payload. Genuinely mutates; verified by reading
+    # app/modules/ai_chat/tools/executor.py::_tool_create_programme directly,
+    # not assumed from its name.
+    "create_programme",
 }
 
 # The per-ArchiMate-type element tools are GENERATED from ELEMENT_SPECS rather
