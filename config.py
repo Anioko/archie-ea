@@ -481,11 +481,21 @@ class TestingConfig(Config):
         "postgresql://postgres:postgres@127.0.0.1:5432/archie_test",  # secrets-safety-ok
     )
 
-    # PostgreSQL connection options for testing
+    # PostgreSQL connection options for testing.
+    #
+    # NullPool, not a sized pool: many older test modules hand-roll a module-
+    # scoped `app` fixture (each builds its own engine) and never dispose it, so
+    # a pooled engine keeps up to pool_size+max_overflow connections open per
+    # module. Across the ~2350-test suite that accumulated past Postgres's
+    # default max_connections=100 and the run died mid-way with "FATAL: sorry,
+    # too many clients already" (15 errors on CI). NullPool opens a connection
+    # per checkout and closes it on return, so nothing idle is held between
+    # tests and the count stays flat regardless of how many engines exist.
+    from sqlalchemy.pool import NullPool as _NullPool  # noqa: PLC0415
+
     SQLALCHEMY_ENGINE_OPTIONS = {
         "pool_pre_ping": True,
-        "pool_size": 5,
-        "max_overflow": 10,
+        "poolclass": _NullPool,
     }
 
     @classmethod
