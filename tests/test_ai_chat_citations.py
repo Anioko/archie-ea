@@ -349,12 +349,25 @@ def test_an_unmapped_turn_offers_no_next_step():
     assert "NEXT_ARTIFACT" in js and "create_option" in js
 
 
-def test_pending_approvals_use_the_endpoints_the_modal_uses():
-    """approval_gate's 202 payload is a different mechanism from the live modal."""
+def test_pending_approvals_card_states_whose_queue_it_is_not_a_dead_control():
+    """The inline pending-approvals card must NOT offer a modal-open button.
+
+    Segregation of duties: AIChatApprovalService.get_approver_queue() excludes
+    the actor's own requests, so the requester — the only person who ever sees
+    this card — opening the approvals modal always gets "No approvals waiting
+    for your review". A button that always opens an empty modal for its only
+    viewer reads as broken, so the card instead names whose queue it is and who
+    can act. This locks in that deliberate decision (see render.js), replacing
+    an earlier assertion that demanded the dead modal-open button.
+    """
     js = _render_js()
     assert "function renderPendingApprovals(" in js
-    assert 'data-modal-open="ai-chat-approvals-modal"' in js, (
-        "the inline card must open the same modal the header badge does"
+    assert 'data-modal-open="ai-chat-approvals-modal"' not in js, (
+        "the requester's own card must not open an approvals modal that is "
+        "always empty for them (segregation of duties)"
+    )
+    assert "Approvals for review" in js, (
+        "the card must point to where another reviewer acts on it"
     )
 
 

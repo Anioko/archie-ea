@@ -73,6 +73,7 @@ def test_scheduler_disabled_preserves_established_jobs(monkeypatch):
         "data_maturity_digest",
         "executive_summary",
         "teams_subscription_renewal",
+        "error_digest",
     }
 
 
@@ -94,6 +95,7 @@ def test_malformed_optional_interval_does_not_disable_established_jobs(monkeypat
         "data_maturity_digest",
         "executive_summary",
         "teams_subscription_renewal",
+        "error_digest",
     }
 
 
@@ -118,6 +120,7 @@ def test_overflowing_optional_trigger_does_not_disable_established_jobs(monkeypa
         "data_maturity_digest",
         "executive_summary",
         "teams_subscription_renewal",
+        "error_digest",
     }
 
 
@@ -134,4 +137,5 @@ def test_optional_add_job_failure_does_not_disable_established_jobs(monkeypatch)
         "data_maturity_digest",
         "executive_summary",
         "teams_subscription_renewal",
+        "error_digest",
     }
