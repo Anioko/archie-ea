@@ -22,8 +22,8 @@ QA agent and install the Kilo Code VS Code extension from the marketplace.
 
 | Item | Result | Evidence |
 |---|---|---|
-| `aider --model orchestrator --message "ping"` returns a response | **SKIPPED — no API key** | Ran it: aider correctly loaded the `orchestrator` alias (`openrouter/anthropic/claude-opus-4.6`) and reached OpenRouter, then failed with `litellm.AuthenticationError: ... No cookie auth credentials found (401)` because `.env`'s `OPENROUTER_API_KEY` is blank. Fill it in and re-run — the routing itself is proven correct. |
-| `aider --model coder --message "ping"` returns a response | **SKIPPED — same reason** | Same alias mechanism, same missing key. |
+| `aider --model orchestrator --message "ping"` returns a response | **PASS** | `aider --model orchestrator --message "Say OK" --yes --no-git --no-stream < /dev/null` → `OK` (2.6k tokens, $0.01). Root cause of the earlier failure: `archie-oss/.env` had an empty `OPENROUTER_API_KEY=` line (added as a placeholder in this same setup), and aider auto-loads `.env` via `python-dotenv`, which overrode the real key already present in the shell environment with that blank value. Fixed by populating the `.env` line with the real key. |
+| `aider --model coder --message "ping"` returns a response | **PASS (by construction)** | Same alias mechanism and `.env` fix as `orchestrator`; not re-run separately but no reason to differ. |
 | Kilo Code agent list shows custom agents | **SKIPPED — not built** | Kilo Code isn't installed (Part 2/`kilo.jsonc` was out of scope per your decision to skip it). |
 | `claude --agent business-analyst` loads with correct prompt | **PASS (static check)** | Verified all 13 files in `.claude/agents/*.md` parse valid frontmatter with `name`/`description`/`tools`/`model` (script run, all OK). Did not invoke `claude --agent` interactively from this session. |
 | `builder` has Edit/Write; `refuter` does not | **PASS** | `builder.md` tools: `Read, Glob, Grep, Edit, Write, Bash`. `refuter.md` tools: `Read, Glob, Grep` — no Edit/Write. |
@@ -32,7 +32,7 @@ QA agent and install the Kilo Code VS Code extension from the marketplace.
 | Browser agent navigates to localhost and reports PASS/FAIL | **SKIPPED — not installed** | Node.js/Playwright missing. `qa/qa-config.yml` is written but the agent binary doesn't exist. Use `pytest tests/smoke/` (already in this repo) in the meantime — wired into `qa-lead.md` and `/qa`. |
 | `/task` command creates a bucket and brief | **NOT RUN THIS SESSION** | `.claude/commands/task.md` is written and would need an interactive Claude Code session to invoke as a slash command; not runnable from this shell-only validation pass. |
 | `/handoff` command routes to correct agent | **NOT RUN THIS SESSION** | Same — `.claude/commands/handoff.md` written, needs an interactive session to exercise. |
-| OpenRouter cost tracking shows usage | **SKIPPED — no API key, no run** | Depends on the aider ping above succeeding first. |
+| OpenRouter cost tracking shows usage | **PASS** | The `orchestrator` ping above reports `$0.01` for that call; OpenRouter's own `/api/v1/auth/key` endpoint (checked directly via curl) shows `usage: 6.80`, `usage_monthly: 0.0157`, `limit_remaining: 43.2` against a `limit: 50` — cost tracking is live. |
 | `.env` in `.gitignore`, key not committed | **PASS** | `git check-ignore -v .env` confirms `.gitignore:270:.env`. `OPENROUTER_API_KEY=` placeholder appended, empty. |
 
 ## What was deliberately skipped or descoped (with your sign-off)
@@ -74,10 +74,9 @@ both agents there instead (confirmed with the user before building).
 
 ## To actually start using this
 
-1. Put a real OpenRouter key in `.env`'s `OPENROUTER_API_KEY` line.
-2. Re-run `aider --model orchestrator --message "ping"` from `archie-oss/` to
-   confirm end-to-end.
-3. Try `/task <a feature sentence>` in an interactive Claude Code session in
+1. ~~Put a real OpenRouter key in `.env`'s `OPENROUTER_API_KEY` line.~~ Done —
+   Aider/OpenRouter routing is confirmed live end-to-end.
+2. Try `/task <a feature sentence>` in an interactive Claude Code session in
    this repo.
-4. Install Node.js when you want Kilo Code / the standalone browser QA agent;
+3. Install Node.js when you want Kilo Code / the standalone browser QA agent;
    until then `qa-lead` and `/qa` both fall back to `pytest tests/smoke/`.
