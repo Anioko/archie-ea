@@ -668,6 +668,213 @@ def test_solution_architect_attaches_costed_work_package_and_costing_rollup_upda
     )
 
 
+def test_solution_architect_full_interface_register_journey_from_sidebar(
+    page, live_server, seeded
+):
+    """Task 05 (US-7), the bucket's single acceptance-criterion journey:
+    Tasks 02-04 each proved their own slice starting from a direct URL visit.
+    This is the one continuous walk a real solution_architect actually makes,
+    starting at the sidebar link added in Task 02 -- register -> create an
+    interface -> confirm it renders through the ArchiMate element detail page
+    -> provision the As-is/To-be pair -> raise a gap -> attach a costed work
+    package -> reload -> the rollup total changed. Nothing here is a new
+    assertion invented for this test; it is Tasks 02/03/04's three journeys
+    walked back-to-back in the order a user would actually take them, entered
+    through the sidebar rather than a URL bar."""
+    import uuid
+
+    from flask import g
+    from app import create_app, db
+    from app.models.archimate_core import ArchiMateElement as _AME
+    from app.models.implementation_migration import TechnologyRoadmapInitiative
+
+    initiative_id = seeded["ids"]["interface_register_initiative"]
+    org_id = seeded["ids"]["org"]
+    ref = uuid.uuid4().hex[:6]
+    interface_name = "E2E Interface %s" % ref
+    wp_name = "E2E Costed WP %s" % ref
+
+    app = create_app("testing")
+    with app.app_context():
+        g.current_org_id = org_id
+        initiative = TechnologyRoadmapInitiative.query.get(initiative_id)
+        initiative.investment_budget = 100_000
+        db.session.commit()
+
+    _login(page, live_server, seeded["emails"]["solution_architect"])
+
+    # 1. Sidebar -> register. Land on the dashboard first, then click the real
+    # rendered control -- not a direct URL visit -- so this actually proves
+    # the sidebar entry reaches the module (US-7's own acceptance criterion).
+    _visit(page, live_server, "/")
+    sidebar_link = page.get_by_test_id("sidebar").get_by_role(
+        "link", name="Interface Register", exact=True
+    )
+    with page.expect_navigation(wait_until="domcontentloaded", timeout=PAGE_TIMEOUT):
+        sidebar_link.click()
+    page.wait_for_timeout(500)
+    assert "/interface-register" in page.url, (
+        "the sidebar's Interface Register link did not reach the module"
+    )
+
+    # The picker/register list without an initiative selected -- navigate to
+    # this initiative the same way the picker's own "View register" link does.
+    _visit(page, live_server, "/interface-register/?initiative_id=%d" % initiative_id)
+
+    # 2. Create an interface.
+    with page.expect_navigation(wait_until="domcontentloaded", timeout=PAGE_TIMEOUT):
+        page.get_by_test_id("interface-register-new").click()
+    page.wait_for_timeout(300)
+    assert page.locator("#name").count() == 1, "the create form did not render"
+    page.fill("#name", interface_name)
+    page.select_option("#interface_type", "REST")
+    page.select_option("#protocol", "HTTPS")
+    page.select_option("#business_criticality", "High")
+    with page.expect_navigation(wait_until="domcontentloaded", timeout=PAGE_TIMEOUT):
+        page.get_by_role("button", name="Create interface", exact=True).click()
+    page.wait_for_timeout(500)
+
+    page.reload(wait_until="domcontentloaded")
+    assert interface_name in page.inner_text("body"), (
+        "interface did not persist after reload"
+    )
+
+    # 3. Confirm it renders through the ArchiMate element detail page (the
+    # store-agreement cross-check Task 02's journey already proved in
+    # isolation -- repeated here as part of the one continuous walk).
+    with app.app_context():
+        element = _AME.query.filter_by(
+            name=interface_name, type="ApplicationInterface"
+        ).one()
+        element_id = element.id
+    detail_response = page.goto(
+        live_server + "/archimate/api/elements/%d/detail" % element_id,
+        wait_until="domcontentloaded", timeout=PAGE_TIMEOUT,
+    )
+    assert detail_response is not None and detail_response.status == 200
+    detail_body = detail_response.json()
+    assert detail_body["type"] == "ApplicationInterface"
+    assert detail_body.get("interface_metadata") is not None, (
+        "element detail page shows no interface_metadata for the interface "
+        "just created through this journey"
+    )
+
+    # 4. Provision the As-is/To-be plateau pair from the comparison screen
+    # (via the in-page nav link on the register list, not a direct URL).
+    _visit(page, live_server, "/interface-register/?initiative_id=%d" % initiative_id)
+    with page.expect_navigation(wait_until="domcontentloaded", timeout=PAGE_TIMEOUT):
+        page.get_by_test_id("interface-comparison-link").click()
+    page.wait_for_timeout(300)
+    if page.locator('[data-testid="provision-comparison"]').count() >= 1:
+        with page.expect_navigation(wait_until="domcontentloaded", timeout=PAGE_TIMEOUT):
+            page.locator('[data-testid="provision-comparison"]').click()
+        page.wait_for_timeout(500)
+    assert page.locator('[data-testid="plateau-as-is"]').count() == 1
+    assert page.locator('[data-testid="plateau-to-be"]').count() == 1
+
+    # 5. Raise a gap against the interface just created.
+    interface_li = page.locator("li", has_text=interface_name)
+    interface_li.locator("select[name='gap_type']").select_option("protocol_change")
+    with page.expect_navigation(wait_until="domcontentloaded", timeout=PAGE_TIMEOUT):
+        interface_li.get_by_role("button", name="Raise Gap", exact=True).click()
+    page.wait_for_timeout(500)
+    page.reload(wait_until="domcontentloaded")
+    assert "Protocol Change" in page.inner_text("body"), "gap did not persist after reload"
+
+    # 6. Attach a costed work package to that gap, from the comparison screen
+    # (in-page nav link to costing was already proven reachable in step 4).
+    before_costing_response = page.goto(
+        live_server + "/interface-register/costing?initiative_id=%d" % initiative_id,
+        wait_until="domcontentloaded", timeout=PAGE_TIMEOUT,
+    )
+    assert before_costing_response.status == 200
+    before_cost_text = page.locator('[data-testid="rollup-committed-cost"]').inner_text()
+
+    _visit(page, live_server, "/interface-register/comparison?initiative_id=%d" % initiative_id)
+    gap_form = page.locator('form[data-testid^="attach-work-package-"]').last
+    gap_form.locator("input[name='name']").fill(wp_name)
+    gap_form.locator("input[name='estimated_cost']").fill("250000")
+    with page.expect_navigation(wait_until="domcontentloaded", timeout=PAGE_TIMEOUT):
+        gap_form.get_by_role("button", name="Attach work package", exact=True).click()
+    page.wait_for_timeout(500)
+
+    # 7. Reload the dedicated costing screen (a real navigation to a different
+    # route, not the same page re-rendering) and confirm the rollup total the
+    # user actually sees changed.
+    with page.expect_navigation(wait_until="domcontentloaded", timeout=PAGE_TIMEOUT):
+        page.get_by_test_id("view-costing").click()
+    page.wait_for_timeout(500)
+    page.reload(wait_until="domcontentloaded")
+    after_cost_text = page.locator('[data-testid="rollup-committed-cost"]').inner_text()
+    assert after_cost_text != before_cost_text, (
+        "costing rollup total did not change after attaching a costed work package, "
+        "reached via the comparison screen's own in-page link rather than a direct URL"
+    )
+    # Assert the DELTA rather than an absolute total: this initiative_id is the
+    # shared seeded fixture's, so another test in this same file (Task 04's own
+    # journey) may have already committed cost against it earlier in the run --
+    # a hard-coded absolute figure would be order-dependent. £250,000 more than
+    # whatever was already committed is the actual claim this step is proving.
+    import re as _re
+
+    def _parse_currency(text):
+        digits = _re.sub(r"[^\d.]", "", text)
+        return float(digits) if digits else 0.0
+
+    delta = _parse_currency(after_cost_text) - _parse_currency(before_cost_text)
+    assert delta == 250_000, (
+        "costing rollup total increased by %s, not the £250,000 just committed "
+        "(before=%r after=%r)" % (delta, before_cost_text, after_cost_text)
+    )
+
+
+@pytest.mark.parametrize("archetype", ["security_architect", "data_architect"])
+def test_non_solution_architect_reaches_interface_register_from_own_sidebar(
+    page, live_server, seeded, archetype
+):
+    """Task 05 round 2 (D-05-1/D-05-3): security_architect and data_architect
+    were already authorised (per this bucket's own authorisation matrix and
+    interface_register's _guard()) to reach /interface-register, but had no
+    link to it anywhere in their own rendered sidebar -- an "authorised but
+    undiscoverable" defect. The earlier claim that this was fixed by an
+    ENTERPRISE_ROLE_SECTION_MAP dedup was wrong: that map only feeds
+    `user_visible_sections`, which no template reads. The real fix added
+    `_link("Interface Register", ...)` to `_MY_WORK_LINKS[ROLE_SECURITY_ARCHITECT]`
+    and `_MY_WORK_LINKS[ROLE_DATA_ARCHITECT]` in app/utils/role_access.py. Prove
+    it by clicking the real sidebar control as each persona, not by reading
+    role_access.py -- and confirm the page the link lands on actually renders
+    (no template assuming solution_architect-specific request state, no missing
+    section header), not just that the click didn't 404."""
+    _login(page, live_server, seeded["emails"][archetype])
+
+    _visit(page, live_server, "/")
+    sidebar_link = page.get_by_test_id("sidebar").get_by_role(
+        "link", name="Interface Register", exact=True
+    )
+    assert sidebar_link.count() == 1, (
+        "%s's rendered sidebar has no 'Interface Register' link" % archetype
+    )
+    with page.expect_navigation(wait_until="domcontentloaded", timeout=PAGE_TIMEOUT):
+        sidebar_link.click()
+    page.wait_for_timeout(500)
+
+    assert "/interface-register" in page.url, (
+        "%s's sidebar link did not reach the interface register module" % archetype
+    )
+
+    body = page.inner_text("body")
+    assert "Interface Register" in body or "Interface" in body, (
+        "%s's interface register page rendered with no recognisable heading "
+        "for the module" % archetype
+    )
+    # A template that assumes solution_architect-only request state (e.g. a
+    # missing initiative picker) would blow up with a 500 or an unhandled
+    # error banner rather than the picker/list this route falls back to when
+    # no initiative_id is supplied -- assert neither happened.
+    assert "Internal Server Error" not in body
+    assert "Traceback" not in body
+
+
 def test_an_archetype_cannot_reach_another_personas_section(page, live_server, seeded):
     """Authorisation is part of the journey, not a separate concern."""
     _login(page, live_server, seeded["emails"]["procurement"])

@@ -454,51 +454,48 @@ def init_context_processors(app):
     # PLT-040: enterprise_role-based sidebar visibility (takes precedence over archetype)
     # NS-006: Updated for North Star Persona MVP with 8 enterprise roles
     # (+ business_architect added for the Business Architect persona)
+    #
+    # ADR-0008 correction (Task 05, sap-s4-interface-register): this used to be
+    # a second, hand-maintained literal dict that disagreed with
+    # app.utils.role_access.ROLE_SECTION_ACCESS — security_architect and
+    # data_architect had entries there and none here, so those two personas
+    # fell through to the archetype map (or all_sections) for sidebar
+    # visibility while ROLE_SECTION_ACCESS.can_access_section() — the
+    # predicate every route guard in this codebase actually calls, including
+    # interface_register's _guard() — already granted them data_integration.
+    # That gap meant this map's own idea of section access disagreed with
+    # ROLE_SECTION_ACCESS. One system of record: derive this map from
+    # ROLE_SECTION_ACCESS and layer the legacy section aliases
+    # (application/tools/data/utilities/admin) that predate the NS-006
+    # section names on top, per role, exactly where they were inlined before.
+    #
+    # CORRECTED (Task 05 round 2 review): this dedup does NOT, by itself, put
+    # an Interface Register link in front of security_architect or
+    # data_architect. ENTERPRISE_ROLE_SECTION_MAP only feeds
+    # `user_visible_sections` below, and no template/macro/JS reads that
+    # variable — the real sidebar renders from
+    # app.utils.role_access.get_sidebar_zones() /
+    # `_MY_WORK_LINKS`, a completely separate structure. The actual "was
+    # authorised but had no link" defect was fixed by adding real
+    # `_link("Interface Register", ...)` entries to
+    # `_MY_WORK_LINKS[ROLE_SECURITY_ARCHITECT]` and
+    # `_MY_WORK_LINKS[ROLE_DATA_ARCHITECT]` in role_access.py. This map
+    # derivation remains a legitimate, worthwhile ADR-0008 cleanup (one fewer
+    # hand-maintained literal disagreeing with the canonical
+    # ROLE_SECTION_ACCESS), it just is not sufficient on its own and never
+    # was — do not cite it as evidence that a sidebar link exists.
+    from app.utils.role_access import ROLE_SECTION_ACCESS as _ROLE_SECTION_ACCESS
+
+    _LEGACY_SECTION_ALIASES = {
+        "enterprise_architect": {"application", "tools", "data", "utilities"},
+        "portfolio_manager": {"application", "tools"},
+        "procurement": {"application"},
+        "application_manager": {"application"},
+        "platform_admin": {"application", "tools", "data", "utilities", "admin"},
+    }
     ENTERPRISE_ROLE_SECTION_MAP = {
-        "solution_architect": {
-            "home", "solutions", "portfolio", "architecture", "capabilities",
-            "roadmaps", "governance", "data_integration",
-        },
-        "enterprise_architect": {
-            "home", "solutions", "portfolio", "architecture", "capabilities",
-            "business_architecture", "roadmaps", "governance", "data_integration",
-            # Legacy aliases
-            "application", "tools", "data", "utilities",
-        },
-        "business_architect": {
-            "home", "business_architecture", "capabilities", "architecture",
-            "roadmaps", "governance", "portfolio", "solutions", "data_integration",
-        },
-        "arb_member": {
-            "home", "solutions", "portfolio", "governance",
-        },
-        "portfolio_manager": {
-            "home", "solutions", "portfolio", "capabilities", "roadmaps",
-            "governance", "procurement",
-            # Legacy aliases
-            "application", "tools",
-        },
-        "cto": {
-            "home", "solutions", "portfolio", "capabilities", "roadmaps",
-            "governance",
-        },
-        "procurement": {
-            "home", "portfolio", "procurement",
-            # Legacy alias for portfolio
-            "application",
-        },
-        "application_manager": {
-            "home", "solutions", "portfolio", "my_applications", "roadmaps",
-            # Legacy alias for portfolio
-            "application",
-        },
-        "platform_admin": {
-            "home", "solutions", "portfolio", "architecture", "capabilities",
-            "business_architecture", "roadmaps", "governance", "procurement",
-            "my_applications", "data_integration", "administration",
-            # Legacy aliases for backward compatibility
-            "application", "tools", "data", "utilities", "admin",
-        },
+        role: sections | _LEGACY_SECTION_ALIASES.get(role, set())
+        for role, sections in _ROLE_SECTION_ACCESS.items()
     }
 
     @app.context_processor

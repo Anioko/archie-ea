@@ -696,6 +696,7 @@ _MY_WORK_LINKS = {
         _link("Data Architecture", "data_architecture.data_architecture_dashboard", "database"),
         _link("Traceability Matrix", "architect_ui.traceability_matrix", "git-compare"),
         _link("Tech Radar", "tech_radar.index", "radar"),
+        _link("Interface Register", "interface_register.index", "cable"),
     ],
     # ARCH-123 folded this into enterprise_architect with the note "no dedicated
     # role for either yet". These three surfaces ship and are the whole of the
@@ -708,6 +709,7 @@ _MY_WORK_LINKS = {
         _link("Applications", "unified_applications.application_list", "list"),
         _link("Capability Map", "capability_map.index", "layers"),
         _link("Traceability Matrix", "architect_ui.traceability_matrix", "git-compare"),
+        _link("Interface Register", "interface_register.index", "cable"),
     ],
 }
 
