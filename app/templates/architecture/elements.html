@@ -641,9 +641,16 @@ document.addEventListener('alpine:init', () => {
         },
 
         async loadDiagram() {
+            // Bug fix: this never passed the page's own search term through, so
+            // "Diagram View" always showed the same arbitrary unordered top-30
+            // elements for the viewpoint type regardless of what was searched,
+            // and near-zero relationships (real relationships exist, but not
+            // among that random slice). Now scopes the diagram to the searched
+            // element(s) plus their real one-hop relationship neighbors.
             let vpKey = this.activeLayer ? 'layered' : 'layered';
             let url = '/api/archimate/viewpoints/' + vpKey + '/diagram?limit=30';
             if (this.activeLayer) url += '&layer=' + this.activeLayer;
+            if (this.searchQuery) url += '&search=' + encodeURIComponent(this.searchQuery);
             try {
                 let data = await Platform.fetch(url, { silent: true });
                 if (!data.success) throw new Error(data.error || data.message || 'the viewpoint diagram could not be built');

@@ -696,6 +696,22 @@ def viewpoint_diagram_data(viewpoint_key):
     Query params:
         limit: max elements (default 30, max 100)
         layer: optional extra layer filter
+        search: optional element-name filter (case-insensitive substring). When
+            given, the diagram is scoped to matching elements PLUS their real
+            one-hop relationship neighbors, so the elements shown are actually
+            connected to each other -- not an arbitrary unordered slice of the
+            viewpoint's element pool with a coincidental few relationships
+            among them. Without `search`, behavior is unchanged from before
+            except elements are now ordered by name for determinism (was:
+            no ORDER BY at all, so the "top N" was effectively DB-order-
+            dependent and arbitrary).
+
+    Bug fix (live-reported): "Diagram View" on the Architecture Elements page
+    ignored the page's own search box entirely -- clicking it always requested
+    this endpoint with only `limit`/`layer`, so searching for e.g. "Design
+    partners" and opening the diagram showed an unrelated random sample of
+    elements (including test/seed data) with almost no relationships among
+    them, not "Design partners" and what it actually connects to.
     """
     from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship
     from app.modules.architecture.services.archimate_viewpoint_service import (
@@ -711,13 +727,47 @@ def viewpoint_diagram_data(viewpoint_key):
     allowed_rel_types = vp_def.get("relationship_types")
     max_elements = min(safe_int_arg('limit', 30, minimum=1, maximum=500), 100)
     extra_layer = request.args.get("layer")
+    search_term = (request.args.get("search") or "").strip()
 
-    query = ArchiMateElement.query
+    base_query = ArchiMateElement.query
     if allowed_types:
-        query = query.filter(ArchiMateElement.type.in_(allowed_types))
+        base_query = base_query.filter(ArchiMateElement.type.in_(allowed_types))
     if extra_layer:
-        query = query.filter(db.func.lower(ArchiMateElement.layer) == extra_layer.lower())
-    elements = query.limit(max_elements).all()
+        base_query = base_query.filter(db.func.lower(ArchiMateElement.layer) == extra_layer.lower())
+
+    if search_term:
+        matched = (
+            base_query.filter(ArchiMateElement.name.ilike(f"%{search_term}%"))
+            .order_by(ArchiMateElement.name)
+            .limit(max_elements)
+            .all()
+        )
+        matched_ids = {e.id for e in matched}
+        if matched_ids:
+            neighbor_rel_q = ArchiMateRelationship.query.filter(
+                db.or_(
+                    ArchiMateRelationship.source_id.in_(matched_ids),
+                    ArchiMateRelationship.target_id.in_(matched_ids),
+                )
+            )
+            if allowed_rel_types:
+                neighbor_rel_q = neighbor_rel_q.filter(ArchiMateRelationship.type.in_(allowed_rel_types))
+            neighbor_ids = set()
+            for r in neighbor_rel_q.all():
+                neighbor_ids.add(r.source_id)
+                neighbor_ids.add(r.target_id)
+            remaining_slots = max(0, max_elements - len(matched_ids))
+            extra_ids = list(neighbor_ids - matched_ids)[:remaining_slots]
+            all_ids = matched_ids | set(extra_ids)
+            elements = (
+                ArchiMateElement.query.filter(ArchiMateElement.id.in_(all_ids))
+                .order_by(ArchiMateElement.name)
+                .all()
+            ) if all_ids else []
+        else:
+            elements = []
+    else:
+        elements = base_query.order_by(ArchiMateElement.name).limit(max_elements).all()
 
     element_ids = {e.id for e in elements}
 
