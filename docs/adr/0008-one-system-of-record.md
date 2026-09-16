@@ -86,6 +86,24 @@ The second is the important one. Every existing gate reads source. The defects
 the owner found are disagreements between running surfaces, and only a gate that
 compares answers can see them.
 
+## Addendum — 15 Sep 2026: `application_interfaces` partially superseded
+
+`application_interfaces` (backing `app/models/application_layer.py:42`'s
+`ApplicationInterface` class) is a partially-superseded store as of the
+SAP S/4HANA interface-register feature. The canonical answer to "what
+application interfaces exist" is now `ArchiMateElement(type=
+'ApplicationInterface')`, created element-first via
+`create_backbone_element()` in `app/services/archimate_backbone.py`. The
+software-architecture dashboard's interface count reads from
+`ArchiMateElement` accordingly.
+
+`application_interfaces` itself is not retired: its `before_insert` listener
+(`create_interface_archimate_element`) still mirrors rows created through that
+path into `ArchiMateElement`, and existing rows are untouched. `retired_into_id`
+wiring and any row migration/backfill from `application_interfaces` into
+`ArchiMateElement` are deferred to their own bucket — this addendum records the
+direction, not a completed migration.
+
 ## What this does not cover
 
 Making the AI *maintain* the model is a separate decision, taken in
