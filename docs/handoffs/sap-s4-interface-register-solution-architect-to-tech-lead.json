@@ -1,0 +1,12 @@
+{
+  "from": "solution-architect",
+  "to": "tech-lead",
+  "artifact": "docs/buckets/sap-s4-interface-register/sdd.md",
+  "approval_status": "approved",
+  "gate_conditions": [
+    "sdd_covers_all_srs_stories",
+    "no_new_tables_without_justification"
+  ],
+  "unmet_conditions": [],
+  "timestamp": "2026-09-15T00:00:00Z"
+}

@@ -178,9 +178,13 @@ def archimate_roadmap():
         gaps_summary = {"total": 0, "by_severity": {}, "open_gaps": []}
         plateaus_list = []
         try:
+            # D3: exclude interface-register plateau-transition gaps -- this
+            # is the capability roadmap's gap summary, not the interface
+            # register's.
             open_gaps = (
                 Gap.query.filter(
-                    Gap.resolution_status.in_(["identified", "analyzed", "planned", "in_progress"])
+                    Gap.resolution_status.in_(["identified", "analyzed", "planned", "in_progress"]),
+                    Gap.gap_kind != "plateau_transition",
                 )
                 .order_by(Gap.severity.asc(), Gap.priority.asc())
                 .all()

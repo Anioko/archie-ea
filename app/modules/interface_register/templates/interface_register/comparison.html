@@ -94,7 +94,7 @@
           <div class="flex items-center justify-between">
             <div>
               <p class="text-sm font-medium">{{ gap.name }}</p>
-              <p class="text-xs text-muted-foreground">{{ gap.gap_type.replace('_', ' ').title() }} • {{ gap.archimate_element.name if gap.archimate_element else '—' }}</p>
+              <p class="text-xs text-muted-foreground">{{ (gap.gap_type or '').replace('_', ' ').title() or '—' }} • {{ gap.archimate_element.name if gap.archimate_element else '—' }}</p>
             </div>
           </div>
         </li>

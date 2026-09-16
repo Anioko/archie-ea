@@ -93,6 +93,50 @@ def _resolve_org_id(obj: Any) -> Optional[int]:
         return None
 
 
+def create_backbone_element(*, element_type, layer, name, description=None, organization_id, session=None, provenance=None):
+    """Create an ArchiMate element for the backbone.
+
+    Returns the ArchiMateElement. Raises ValueError when name is blank/missing,
+    not a string, or when organization_id is missing (None or 0). Postgres
+    `serial`/`SERIAL` primary keys in this codebase start at 1, so 0 is never
+    a real organization id -- it is rejected explicitly here rather than being
+    passed through to a foreign-key constraint failure later.
+    """
+    from app import db
+    from app.models.archimate_core import ArchiMateElement
+
+    if not isinstance(name, str) or not name.strip():
+        raise ValueError(
+            "Cannot create ArchiMate element: name is required"
+        )
+
+    if organization_id in (None, 0):
+        raise ValueError(
+            "Cannot create ArchiMate element: organization_id is required"
+        )
+
+    session = session or db.session
+
+    properties = dict(provenance or {})
+    properties.setdefault("source_model", element_type)
+    stored_name = name.strip() if len(name.strip()) <= MAX_NAME else name.strip()[: MAX_NAME - 1] + "\u2026"
+    if stored_name != name.strip():
+        properties["source_name"] = name.strip()
+
+    element = ArchiMateElement(
+        organization_id=organization_id,
+        name=stored_name,
+        type=element_type,
+        layer=layer,
+        description=description,
+        scope="enterprise",
+        custom_properties=properties,
+    )
+    session.add(element)
+    session.flush()
+    return element
+
+
 def sync_archimate_element(obj: Any, *, session=None, provenance: Optional[Dict] = None):
     """Create and attach the ArchiMate mirror of a motivation row.
 
@@ -104,7 +148,6 @@ def sync_archimate_element(obj: Any, *, session=None, provenance: Optional[Dict]
     represented -- silently skipping is what produced a backbone with holes.
     """
     from app import db
-    from app.models.archimate_core import ArchiMateElement
 
     session = session or db.session
     type_name = type(obj).__name__
@@ -134,21 +177,16 @@ def sync_archimate_element(obj: Any, *, session=None, provenance: Optional[Dict]
         )
 
     properties = dict(provenance or {})
-    properties.setdefault("source_model", type_name)
-    stored_name = name if len(name) <= MAX_NAME else name[: MAX_NAME - 1] + "\u2026"
-    if stored_name != name:
-        properties["source_name"] = name
+    properties["source_model"] = type_name
 
-    element = ArchiMateElement(
-        organization_id=org_id,
-        name=stored_name,
-        type=element_type,
+    element = create_backbone_element(
+        element_type=element_type,
         layer=layer,
+        name=name,
         description=getattr(obj, "description", None),
-        scope="enterprise",
-        custom_properties=properties,
+        organization_id=org_id,
+        session=session,
+        provenance=properties
     )
-    session.add(element)
-    session.flush()
     obj.archimate_element_id = element.id
     return element

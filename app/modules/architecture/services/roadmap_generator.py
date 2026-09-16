@@ -216,7 +216,13 @@ class RoadmapGenerator:
         priority_filter: Optional[str],
     ) -> List[Gap]:
         """Retrieve gaps based on filters."""
-        query = Gap.query.filter(Gap.resolution_status.in_(["identified", "planned"]))
+        # D3: exclude interface-register plateau-transition gaps -- they are
+        # not capability gaps and must not be swept into AI-generated
+        # capability roadmaps/work packages.
+        query = Gap.query.filter(
+            Gap.resolution_status.in_(["identified", "planned"]),
+            Gap.gap_kind != "plateau_transition",
+        )
 
         if gap_ids:
             query = query.filter(Gap.id.in_(gap_ids))

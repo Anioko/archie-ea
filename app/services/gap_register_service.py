@@ -18,7 +18,7 @@ from typing import Any, Dict, List
 
 from app import db
 from app.models.capability_gap_analysis import CapabilityGapAnalysis
-from app.models.implementation_migration import Gap
+from app.models.implementation_migration import Gap, GAP_KIND_PLATEAU_TRANSITION
 
 log = logging.getLogger(__name__)
 
@@ -78,7 +78,7 @@ def get_unified_gap_register(
     # Source 2: implementation / technology gaps — Phase D
     # ------------------------------------------------------------------
     try:
-        q = db.session.query(Gap)
+        q = db.session.query(Gap).filter(Gap.gap_kind != GAP_KIND_PLATEAU_TRANSITION)
         if severity:
             q = q.filter(Gap.severity == severity)
         if status:
@@ -105,7 +105,10 @@ def get_unified_gap_register(
     # Subset of Gap rows with roadmap-oriented gap_type values.
     # ------------------------------------------------------------------
     try:
-        q = db.session.query(Gap).filter(Gap.gap_type.in_(_ROADMAP_GAP_TYPES))
+        q = db.session.query(Gap).filter(
+            Gap.gap_type.in_(_ROADMAP_GAP_TYPES),
+            Gap.gap_kind != GAP_KIND_PLATEAU_TRANSITION
+        )
         if severity:
             q = q.filter(Gap.severity == severity)
         rows = q.limit(limit).all()
@@ -158,6 +161,7 @@ def gap_summary_by_phase() -> Dict[str, Any]:
     try:
         rows = (
             db.session.query(Gap.severity, db.func.count(Gap.id))
+            .filter(Gap.gap_kind != GAP_KIND_PLATEAU_TRANSITION)
             .group_by(Gap.severity)
             .all()
         )
@@ -170,7 +174,10 @@ def gap_summary_by_phase() -> Dict[str, Any]:
     try:
         rows = (
             db.session.query(Gap.severity, db.func.count(Gap.id))
-            .filter(Gap.gap_type.in_(_ROADMAP_GAP_TYPES))
+            .filter(
+                Gap.gap_type.in_(_ROADMAP_GAP_TYPES),
+                Gap.gap_kind != GAP_KIND_PLATEAU_TRANSITION
+            )
             .group_by(Gap.severity)
             .all()
         )

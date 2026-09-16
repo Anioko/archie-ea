@@ -106,3 +106,6 @@ def test_raise_interface_gap_writes_a_valid_plateau_transition_gap(db_session, m
         assert gap.archimate_element_id == element.id
         assert gap.originating_plateau_id == as_is.id
         assert gap.target_plateau_id == to_be.id
+        # D3: architecture_id must be stamped from the initiative so
+        # architecture-scoped gap surfaces (roadmap_generator) can filter on it.
+        assert gap.architecture_id == architecture.id

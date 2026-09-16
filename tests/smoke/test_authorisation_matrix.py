@@ -51,6 +51,43 @@ POLICY = {
     # operational fact about the platform, not a per-org one -- so gated by
     # platform_admin_required rather than the ordinary admin_required.
     "/admin/errors":           set(),
+    # Interface Register (SAP S/4HANA Interface Register, Task 02): gated by
+    # can_access_section(current_user, "data_integration") -- the same
+    # section-based predicate the sidebar uses, not a requires_role()-style
+    # decorator (root CLAUDE.md F-01/F-11/F-04: a sidebar link must never
+    # 403). The design call: POLICY is keyed by "which archetypes actually
+    # reach this path", observed from the server, not by how the guard is
+    # implemented -- so a section-based guard fits this shape unchanged; no
+    # schema extension needed. data_integration is granted, per
+    # ROLE_SECTION_ACCESS in app/utils/role_access.py, to solution_architect
+    # and enterprise_architect (both given the sidebar link's SDD-scoped
+    # personas), and additionally to business_architect, security_architect
+    # and data_architect (who share the section for other data_integration
+    # surfaces already live there, without a sidebar link of their own --
+    # reachable-but-not-linked is intentional and consistent with the rest of
+    # this section, not a leak). arb_member, portfolio_manager, cto,
+    # procurement and application_manager do not have data_integration and
+    # must be denied. GET / and GET /new take no path parameter, so both are
+    # exercisable directly, unlike /new's initiative_id which only changes
+    # whether the guarded response is a 200 render or a 302 redirect to the
+    # picker -- both are ALLOWED, and the guard runs before either.
+    "/interface-register/":    {
+        "solution_architect", "enterprise_architect", "business_architect",
+        "security_architect", "data_architect",
+    },
+    "/interface-register/new": {
+        "solution_architect", "enterprise_architect", "business_architect",
+        "security_architect", "data_architect",
+    },
+    # Task 03 (D5): /comparison takes an optional initiative_id query param --
+    # like /new, the data_integration guard runs before that param is even
+    # read, so a static POLICY row observes the same boundary. Without
+    # initiative_id it 302s to the picker; both are ALLOWED per the /new
+    # precedent above.
+    "/interface-register/comparison": {
+        "solution_architect", "enterprise_architect", "business_architect",
+        "security_architect", "data_architect",
+    },
 }
 for _allowed in POLICY.values():
     _allowed.add("platform_admin")
@@ -228,6 +265,133 @@ def test_transformation_api_authorisation_matrix(
     actual = _observe(page, live_server, TRANSFORMATION_API_PATH)
     assert actual == expected, (
         f"{archetype} reached {TRANSFORMATION_API_PATH}: expected {expected}, got {actual}"
+    )
+
+
+INTERFACE_REGISTER_PERMITTED = {
+    "solution_architect", "enterprise_architect", "business_architect",
+    "security_architect", "data_architect", "platform_admin",
+}
+
+
+@pytest.fixture(scope="module")
+def seeded_interface_element(seeded):
+    """A real ApplicationInterface element, for the edit route's <id> path --
+    GET /interface-register/ and /new take no id, but edit does, so the
+    static POLICY dict (keyed by literal path) cannot cover it."""
+    from app import create_app, db
+    from app.models.archimate_core import ArchiMateElement
+
+    app = create_app("testing")
+    with app.app_context():
+        org_id = seeded["ids"]["org"]
+        element = ArchiMateElement.query.filter_by(
+            type="ApplicationInterface", organization_id=org_id,
+        ).order_by(ArchiMateElement.id.desc()).first()
+        if element is None:
+            element = ArchiMateElement(
+                name="Auth-matrix probe interface", type="ApplicationInterface",
+                layer="Application", organization_id=org_id,
+            )
+            db.session.add(element)
+            db.session.commit()
+        return element.id
+
+
+@pytest.mark.parametrize("archetype", ARCHETYPES)
+def test_interface_register_edit_route_authorisation(
+    archetype, page, live_server, seeded, seeded_interface_element
+):
+    """GET /interface-register/<id>/edit -- the guard runs before the id is
+    even resolved, so this observes the same data_integration boundary as
+    the static POLICY rows above, for the one route that needs a real id."""
+    _login(page, live_server, seeded["emails"][archetype])
+    expected = ALLOWED if archetype in INTERFACE_REGISTER_PERMITTED else DENIED
+    path = "/interface-register/%d/edit" % seeded_interface_element
+    actual = _observe(page, live_server, path)
+    assert actual == expected, (
+        "%s reached %s: expected %s, got %s -- data_integration section "
+        "access should match the static index/new rows" % (archetype, path, expected, actual)
+    )
+
+
+@pytest.fixture(scope="module")
+def seeded_interface_initiative(seeded):
+    """A real TechnologyRoadmapInitiative wired to an ArchitectureModel in the
+    seeded org, for the comparison POST routes (D5) -- provision_comparison
+    and raise_gap both need a real initiative_id to render past the guard
+    into the CSRF-bearing forms, unlike the static POLICY rows above."""
+    from app import create_app, db
+    from app.models.archimate_core import ArchitectureModel
+    from app.models.implementation_migration import TechnologyRoadmapInitiative
+
+    app = create_app("testing")
+    with app.app_context():
+        org_id = seeded["ids"]["org"]
+        arch = ArchitectureModel.query.filter_by(
+            name="Auth-matrix probe architecture", organization_id=org_id,
+        ).first()
+        if arch is None:
+            arch = ArchitectureModel(
+                name="Auth-matrix probe architecture", organization_id=org_id,
+            )
+            db.session.add(arch)
+            db.session.flush()
+        initiative = TechnologyRoadmapInitiative.query.filter_by(
+            name="Auth-matrix probe initiative", architecture_id=arch.id,
+        ).first()
+        if initiative is None:
+            initiative = TechnologyRoadmapInitiative(
+                name="Auth-matrix probe initiative",
+                fiscal_year_start=2026,
+                fiscal_year_end=2027,
+                architecture_id=arch.id,
+            )
+            db.session.add(initiative)
+        db.session.commit()
+        return initiative.id
+
+
+@pytest.mark.parametrize("archetype", ARCHETYPES)
+def test_interface_register_provision_comparison_authorisation(
+    archetype, page, live_server, seeded, seeded_interface_initiative
+):
+    """POST /interface-register/comparison/provision -- same data_integration
+    boundary as the GET rows, observed on the write path: an allowed
+    archetype must not be refused by the guard (a CSRF-related 400 or a
+    service-level redirect are both fine -- only a 403 from _guard means
+    DENIED), and a denied archetype must get exactly the 403 the guard
+    renders."""
+    _login(page, live_server, seeded["emails"][archetype])
+    comparison_path = "/interface-register/comparison?initiative_id=%d" % seeded_interface_initiative
+    expected = ALLOWED if archetype in INTERFACE_REGISTER_PERMITTED else DENIED
+    actual = _observe(page, live_server, comparison_path)
+    assert actual == expected, (
+        "%s reached %s: expected %s, got %s" % (archetype, comparison_path, expected, actual)
+    )
+    if expected == DENIED:
+        # The guard 403s the GET itself, before any form exists to submit --
+        # nothing further to check on the write path for a denied archetype.
+        return
+    # This fixture (and the initiative_id it seeds) is module-scoped, so the
+    # first allowed archetype in this parametrized run provisions the real
+    # pair -- every archetype after it sees the comparison page WITHOUT the
+    # "set up" form (already provisioned), by the same idempotent design
+    # proven in tests/test_interface_plateau_pair.py. Only submit the form
+    # when it is actually present; either way, the GET above already proved
+    # the guard did not refuse this archetype.
+    provision_button = page.locator('[data-testid="provision-comparison"]')
+    if provision_button.count() == 0:
+        return
+    csrf = page.locator('input[name="csrf_token"]').first.input_value()
+    response = page.request.post(
+        live_server + "/interface-register/comparison/provision",
+        form={"initiative_id": str(seeded_interface_initiative), "csrf_token": csrf},
+        max_redirects=0,
+    )
+    assert response.status != 403, (
+        "%s was refused provision_comparison by the data_integration guard "
+        "despite being permitted by the GET rows" % archetype
     )
 
 

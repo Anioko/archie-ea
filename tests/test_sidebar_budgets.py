@@ -153,6 +153,10 @@ def test_solution_architect_my_work_membership():
         # TO the board. Adding it closed a handoff that stopped mid-journey.
         "Review Board",
         "Programmes",
+        # SAP S/4HANA Interface Register (Task 02, round 3 fix): a 7th
+        # my_work link was added at role_access.py:469; this test asserted
+        # exact equality and had gone red on main until this line was added.
+        "Interface Register",
     ]
 
 

@@ -462,6 +462,11 @@ _MY_WORK_LINKS = {
         # they address the ARB by URL. The persona could not find it.
         _link("Review Board", "arb.dashboard", "gavel"),
         _link("Programmes", "solution_design.programmes_list", "git-merge"),
+        # SAP S/4HANA Interface Register (Task 02) — label deliberately avoids
+        # "Integrations", which already names the outbound-connector admin
+        # surface; "cable" is distinct from the git-merge/git-branch/waypoints/
+        # milestone icons already in this zone.
+        _link("Interface Register", "interface_register.index", "cable"),
     ],
     ROLE_ENTERPRISE_ARCHITECT: [
         _link("Transformation programmes", "solution_design.programmes_list", "waypoints"),

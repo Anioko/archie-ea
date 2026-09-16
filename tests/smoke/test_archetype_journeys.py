@@ -494,6 +494,71 @@ def test_solution_architect_provisions_plateau_pair_and_raises_gap(page, live_se
     )
 
 
+def test_comparison_page_renders_a_gap_with_null_gap_type(page, live_server, seeded):
+    """Task 03 Round 2 (D4): interface_register/comparison.html called
+    `gap.gap_type.replace(...)` unguarded -- gap_type is nullable and not
+    enforced by validate_gap_kind's listener, so any Gap reaching this
+    template with gap_type=None 500s the whole comparison page. Write such a
+    Gap directly (bypassing the form, which always supplies gap_type, to
+    reach the same DB state a different creation path or fixture could leave
+    behind) and prove the page still renders -- with the em-dash null
+    convention, not a fabricated label -- rather than reading the template
+    source and trusting the guard is there."""
+    import uuid
+
+    from flask import g
+    from app import create_app, db
+    from app.models.implementation_migration import (
+        Gap,
+        GAP_KIND_PLATEAU_TRANSITION,
+        TechnologyRoadmapInitiative,
+    )
+    from app.modules.interface_register.services import plateau_pair_service
+
+    initiative_id = seeded["ids"]["interface_register_initiative"]
+    org_id = seeded["ids"]["org"]
+    ref = uuid.uuid4().hex[:6]
+    gap_name = "Null gap_type probe %s" % ref
+
+    app = create_app("testing")
+    with app.app_context():
+        g.current_org_id = org_id
+        initiative = TechnologyRoadmapInitiative.query.get(initiative_id)
+        pair = plateau_pair_service.provision_plateau_pair(initiative.id)
+        as_is, to_be = pair
+        gap = Gap(
+            name=gap_name,
+            gap_kind=GAP_KIND_PLATEAU_TRANSITION,
+            gap_type=None,
+            originating_plateau_id=as_is.id,
+            target_plateau_id=to_be.id,
+            architecture_id=initiative.architecture_id,
+            severity="medium",
+            impact="medium",
+            priority="medium",
+        )
+        db.session.add(gap)
+        db.session.commit()
+
+    _login(page, live_server, seeded["emails"]["solution_architect"])
+    response, _ = _visit(
+        page, live_server, "/interface-register/comparison?initiative_id=%d" % initiative_id
+    )
+    assert response.status == 200, (
+        "comparison page returned %d for a Gap with gap_type=None -- D4 regressed"
+        % response.status
+    )
+    body = page.inner_text("body")
+    assert gap_name in body, "the null-gap_type gap is not shown on reload"
+    assert "AttributeError" not in body and "Internal Server Error" not in body
+    # Null display convention (root CLAUDE.md): em dash, never a blank or a
+    # fabricated label, in the gap-type slot for this row.
+    gap_row = page.locator("li", has_text=gap_name)
+    assert "—" in gap_row.inner_text(), (
+        "gap_type=None did not render as the em-dash null convention"
+    )
+
+
 def test_an_archetype_cannot_reach_another_personas_section(page, live_server, seeded):
     """Authorisation is part of the journey, not a separate concern."""
     _login(page, live_server, seeded["emails"]["procurement"])
