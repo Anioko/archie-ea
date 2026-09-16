@@ -559,6 +559,115 @@ def test_comparison_page_renders_a_gap_with_null_gap_type(page, live_server, see
     )
 
 
+def test_solution_architect_attaches_costed_work_package_and_costing_rollup_updates(
+    page, live_server, seeded
+):
+    """Task 04 (US-6): attach a costed WorkPackage to an interface gap from
+    the comparison screen, reload the dedicated costing screen, and confirm
+    the displayed committed-cost total actually changed -- the AC6 clicked
+    journey, not a source assertion. Also demonstrates the over-budget
+    indicator (badge + text) legibly appearing once a low budget is
+    exceeded, and the em-dash for a work package left with no effort
+    estimate."""
+    import uuid
+
+    from flask import g
+    from app import create_app, db
+    from app.models.implementation_migration import TechnologyRoadmapInitiative
+
+    initiative_id = seeded["ids"]["interface_register_initiative"]
+    org_id = seeded["ids"]["org"]
+    ref = uuid.uuid4().hex[:6]
+    interface_name = "Smoke Costing Interface %s" % ref
+    wp_name = "Smoke Costed WP %s" % ref
+
+    # Set a low, real investment_budget directly (the shared seeded initiative
+    # carries none) so the over-budget state is reachable without touching
+    # the shared smoke fixture used by every other journey in this file.
+    app = create_app("testing")
+    with app.app_context():
+        g.current_org_id = org_id
+        initiative = TechnologyRoadmapInitiative.query.get(initiative_id)
+        initiative.investment_budget = 100_000
+        db.session.commit()
+
+    _login(page, live_server, seeded["emails"]["solution_architect"])
+
+    # Register an interface and raise a gap against it, exactly as the Task
+    # 03 journey does, so there is a real plateau-transition Gap to attach a
+    # work package to.
+    _visit(page, live_server, "/interface-register/new?initiative_id=%d" % initiative_id)
+    page.fill("#name", interface_name)
+    page.select_option("#interface_type", "REST")
+    page.select_option("#protocol", "HTTPS")
+    with page.expect_navigation(wait_until="domcontentloaded", timeout=PAGE_TIMEOUT):
+        page.get_by_role("button", name="Create interface", exact=True).click()
+    page.wait_for_timeout(500)
+
+    _visit(page, live_server, "/interface-register/comparison?initiative_id=%d" % initiative_id)
+    if page.locator('[data-testid="provision-comparison"]').count() >= 1:
+        with page.expect_navigation(wait_until="domcontentloaded", timeout=PAGE_TIMEOUT):
+            page.locator('[data-testid="provision-comparison"]').click()
+        page.wait_for_timeout(500)
+
+    interface_li = page.locator("li", has_text=interface_name)
+    interface_li.locator("select[name='gap_type']").select_option("protocol_change")
+    with page.expect_navigation(wait_until="domcontentloaded", timeout=PAGE_TIMEOUT):
+        interface_li.get_by_role("button", name="Raise Gap", exact=True).click()
+    page.wait_for_timeout(500)
+
+    # Baseline: the costing screen before any work package is attached.
+    _visit(page, live_server, "/interface-register/costing?initiative_id=%d" % initiative_id)
+    before_cost_text = page.locator('[data-testid="rollup-committed-cost"]').inner_text()
+    assert page.locator('[data-testid="over-budget-indicator"]').count() == 0, (
+        "over-budget indicator shown before any cost was committed"
+    )
+
+    # Attach a costed work package (no effort hours) via the real rendered
+    # form on the comparison page.
+    _visit(page, live_server, "/interface-register/comparison?initiative_id=%d" % initiative_id)
+    gap_form = page.locator('form[data-testid^="attach-work-package-"]').last
+    gap_form.locator("input[name='name']").fill(wp_name)
+    gap_form.locator("input[name='estimated_cost']").fill("250000")
+    with page.expect_navigation(wait_until="domcontentloaded", timeout=PAGE_TIMEOUT):
+        gap_form.get_by_role("button", name="Attach work package", exact=True).click()
+    page.wait_for_timeout(500)
+
+    # Reload the comparison page: the attached work package must persist and
+    # show an em-dash for its (never-supplied) effort/size, not a fabricated
+    # band or a blank.
+    page.reload(wait_until="domcontentloaded")
+    body = page.inner_text("body")
+    assert wp_name in body, "attached work package did not persist after reload"
+
+    # Reload the dedicated costing screen -- this is the AC6 assertion: the
+    # displayed total actually changed after the write, on a real reload of
+    # a different route, not the same page re-rendering stale server state.
+    _visit(page, live_server, "/interface-register/costing?initiative_id=%d" % initiative_id)
+    after_cost_text = page.locator('[data-testid="rollup-committed-cost"]').inner_text()
+    assert after_cost_text != before_cost_text, (
+        "costing rollup total did not change after attaching a costed work package"
+    )
+    assert "250,000" in after_cost_text or "250000" in after_cost_text.replace(",", ""), (
+        "costing rollup total does not reflect the £250,000 just committed"
+    )
+
+    # £250,000 committed against a £100,000 budget must show the legible
+    # over-budget state -- a badge AND text, not a number alone.
+    assert page.locator('[data-testid="over-budget-indicator"]').count() == 1, (
+        "over-budget indicator did not appear once committed cost exceeded the budget"
+    )
+    indicator_text = page.locator('[data-testid="over-budget-indicator"]').inner_text()
+    assert "Over budget" in indicator_text
+
+    # The work package row on the costing screen shows an em-dash for size
+    # (no effort hours were ever supplied), never a fabricated band.
+    rollup_row = page.locator('[data-testid^="rollup-work-package-"]', has_text=wp_name)
+    assert "—" in rollup_row.inner_text(), (
+        "work package with no estimated_effort_hours did not render the em-dash size band"
+    )
+
+
 def test_an_archetype_cannot_reach_another_personas_section(page, live_server, seeded):
     """Authorisation is part of the journey, not a separate concern."""
     _login(page, live_server, seeded["emails"]["procurement"])

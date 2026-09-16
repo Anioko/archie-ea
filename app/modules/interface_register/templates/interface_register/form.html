@@ -49,7 +49,7 @@
                   class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
             {% set current = form_data.get('interface_type') if form_data else (metadata.interface_type if metadata else '') %}
             <option value="" {% if not current %}selected{% endif %} disabled>Select…</option>
-            {% for val in ['REST', 'SOAP', 'GraphQL', 'gRPC', 'MQ', 'Event', 'File', 'Database'] %}
+            {% for val in ['REST', 'SOAP', 'GraphQL', 'gRPC', 'MQ', 'Event', 'File', 'Database', 'IDOC', 'BAPI', 'RFC', 'OData'] %}
             <option value="{{ val }}" {% if current == val %}selected{% endif %}>{{ val }}</option>
             {% endfor %}
           </select>
@@ -60,7 +60,7 @@
                   class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
             {% set current = form_data.get('protocol') if form_data else (metadata.protocol if metadata else '') %}
             <option value="" {% if not current %}selected{% endif %} disabled>Select…</option>
-            {% for val in ['HTTP', 'HTTPS', 'TCP', 'AMQP', 'MQTT', 'FTP', 'SFTP'] %}
+            {% for val in ['HTTP', 'HTTPS', 'TCP', 'AMQP', 'MQTT', 'FTP', 'SFTP', 'tRFC', 'qRFC', 'IDoc-XML'] %}
             <option value="{{ val }}" {% if current == val %}selected{% endif %}>{{ val }}</option>
             {% endfor %}
           </select>

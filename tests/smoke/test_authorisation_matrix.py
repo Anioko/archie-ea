@@ -88,6 +88,14 @@ POLICY = {
         "solution_architect", "enterprise_architect", "business_architect",
         "security_architect", "data_architect",
     },
+    # Task 04: /costing takes the same optional initiative_id query param and
+    # runs the identical _guard() call before it is read -- same data_integration
+    # boundary as /comparison and /new above, no initiative_id 302s to the
+    # picker either way.
+    "/interface-register/costing": {
+        "solution_architect", "enterprise_architect", "business_architect",
+        "security_architect", "data_architect",
+    },
 }
 for _allowed in POLICY.values():
     _allowed.add("platform_admin")

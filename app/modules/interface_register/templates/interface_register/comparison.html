@@ -34,6 +34,10 @@
     </div>
   </div>
   {% else %}
+  <div class="flex justify-end mb-4">
+    <a href="{{ url_for('interface_register.costing', initiative_id=initiative.id) }}" data-testid="view-costing" class="text-sm text-primary hover:underline">View programme costing</a>
+  </div>
+  
   <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
     <div data-testid="plateau-as-is" class="rounded-lg border border-border bg-card p-4">
       <h3 class="text-sm font-medium text-muted-foreground uppercase tracking-wide mb-2">As-is</h3>
@@ -91,12 +95,51 @@
       <ul class="divide-y divide-border" data-testid="gap-list">
         {% for gap in gaps %}
         <li class="p-4" data-testid="gap-{{ gap.id }}">
-          <div class="flex items-center justify-between">
+          <div class="flex items-center justify-between mb-3">
             <div>
               <p class="text-sm font-medium">{{ gap.name }}</p>
               <p class="text-xs text-muted-foreground">{{ (gap.gap_type or '').replace('_', ' ').title() or '—' }} • {{ gap.archimate_element.name if gap.archimate_element else '—' }}</p>
             </div>
           </div>
+          
+          {% if gap.work_packages %}
+          <div class="ml-4 mb-3">
+            <ul class="space-y-1">
+              {% for wp in gap.work_packages %}
+              <li data-testid="work-package-{{ wp.id }}" class="flex items-center text-xs">
+                <span class="font-medium mr-2">{{ wp.name }}</span>
+                <span class="text-muted-foreground mr-2">
+                  {{ wp.estimated_cost | currency if wp.estimated_cost is not none else wp.estimated_cost | dash }}
+                </span>
+                <span class="text-muted-foreground">
+                  {{ wp.estimated_effort_hours | effort_band | dash }}
+                </span>
+              </li>
+              {% endfor %}
+            </ul>
+          </div>
+          {% endif %}
+          
+          <form method="POST" action="{{ url_for('interface_register.attach_work_package', gap_id=gap.id) }}" data-testid="attach-work-package-{{ gap.id }}" class="flex flex-wrap items-end gap-2 ml-4" x-data="{ submitting: false }" @submit="submitting = true" @pageshow.window="submitting = false" :aria-busy="submitting">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="initiative_id" value="{{ initiative.id }}">
+            <div class="flex flex-col">
+              <label for="wp-name-{{ gap.id }}" class="sr-only">Work package name</label>
+              <input id="wp-name-{{ gap.id }}" type="text" name="name" placeholder="Work package name" class="flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+            </div>
+            <div class="flex flex-col">
+              <label for="wp-cost-{{ gap.id }}" class="sr-only">Estimated cost</label>
+              <input id="wp-cost-{{ gap.id }}" type="number" name="estimated_cost" placeholder="Estimated cost" step="0.01" min="0" class="flex h-9 w-32 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+            </div>
+            <div class="flex flex-col">
+              <label for="wp-hours-{{ gap.id }}" class="sr-only">Estimated hours</label>
+              <input id="wp-hours-{{ gap.id }}" type="number" name="estimated_effort_hours" placeholder="Estimated hours" step="1" min="0" max="2147483647" class="flex h-9 w-32 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+            </div>
+            <button type="submit" :disabled="submitting" class="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-transparent hover:bg-accent hover:text-accent-foreground h-9 px-3 disabled:opacity-50 disabled:pointer-events-none">
+              <span x-show="!submitting">Attach work package</span>
+              <span x-show="submitting" x-cloak role="status" aria-live="polite">Attaching…</span>
+            </button>
+          </form>
         </li>
         {% endfor %}
       </ul>

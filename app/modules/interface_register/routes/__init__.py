@@ -2,5 +2,6 @@
 
 from .register_routes import interface_register_bp
 from . import comparison_routes  # noqa: F401 - registers /comparison routes on interface_register_bp
+from . import costing_routes  # noqa: F401 - registers /costing route on interface_register_bp
 
 __all__ = ["interface_register_bp"]

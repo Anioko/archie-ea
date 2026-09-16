@@ -24,6 +24,7 @@ from app.modules.interface_register.services import (
     interface_register_service as service,
     plateau_pair_service,
     interface_gap_service,
+    work_package_service,
 )
 
 
@@ -156,3 +157,32 @@ def raise_gap(element_id):
             ),
             400,
         )
+
+
+@interface_register_bp.route("/gaps/<int:gap_id>/work-packages", methods=["POST"])
+@login_required
+def attach_work_package(gap_id):
+    """Attach a costed WorkPackage to an interface gap (US-6 AC6)."""
+    guard = _guard()
+    if guard:
+        return guard
+
+    initiative_id = request.form.get("initiative_id", type=int)
+    try:
+        service.resolve_initiative(initiative_id, g.current_org_id)
+    except service.InterfaceRegisterError:
+        return render_template("errors/404.html"), 404
+
+    try:
+        work_package_service.attach_work_package_to_gap(
+            gap_id,
+            initiative_id=initiative_id,
+            name=request.form.get("name"),
+            estimated_cost=request.form.get("estimated_cost"),
+            estimated_effort_hours=request.form.get("estimated_effort_hours"),
+        )
+        flash("Work package attached.", "success")
+    except service.InterfaceRegisterError as exc:
+        flash(str(exc), "error")
+
+    return redirect(url_for("interface_register.comparison", initiative_id=initiative_id))

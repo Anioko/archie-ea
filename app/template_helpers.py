@@ -101,6 +101,24 @@ def register_template_filters(app):
         service = CurrencyService(app)
         return service.parse_amount_from_string(amount_string, currency_code)
 
+    try:
+        from app.modules.interface_register.services.size_bands import effort_band
+
+        @app.template_filter("effort_band")
+        def effort_band_filter(estimated_effort_hours):
+            """Convert estimated effort hours to a T-shirt size band."""
+            return effort_band(estimated_effort_hours)
+    except Exception:
+        # A failure anywhere in interface_register must not prevent every
+        # other filter registered by this function from registering --
+        # importing this module transitively pulls in the whole
+        # interface_register package (routes -> models). Losing this one
+        # filter degrades one feature; losing the whole function 500s every
+        # page using |currency, |number_format, etc.
+        app.logger.warning(
+            "effort_band template filter failed to register", exc_info=True
+        )
+
     @app.template_filter("number_format")
     def number_format_filter(number: Union[int, float], decimal_places: int = 2) -> str:
         """
