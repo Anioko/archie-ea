@@ -51,6 +51,51 @@ POLICY = {
     # operational fact about the platform, not a per-org one -- so gated by
     # platform_admin_required rather than the ordinary admin_required.
     "/admin/errors":           set(),
+    # Interface Register (SAP S/4HANA Interface Register, Task 02): gated by
+    # can_access_section(current_user, "data_integration") -- the same
+    # section-based predicate the sidebar uses, not a requires_role()-style
+    # decorator (root CLAUDE.md F-01/F-11/F-04: a sidebar link must never
+    # 403). The design call: POLICY is keyed by "which archetypes actually
+    # reach this path", observed from the server, not by how the guard is
+    # implemented -- so a section-based guard fits this shape unchanged; no
+    # schema extension needed. data_integration is granted, per
+    # ROLE_SECTION_ACCESS in app/utils/role_access.py, to solution_architect
+    # and enterprise_architect (both given the sidebar link's SDD-scoped
+    # personas), and additionally to business_architect, security_architect
+    # and data_architect (who share the section for other data_integration
+    # surfaces already live there, without a sidebar link of their own --
+    # reachable-but-not-linked is intentional and consistent with the rest of
+    # this section, not a leak). arb_member, portfolio_manager, cto,
+    # procurement and application_manager do not have data_integration and
+    # must be denied. GET / and GET /new take no path parameter, so both are
+    # exercisable directly, unlike /new's initiative_id which only changes
+    # whether the guarded response is a 200 render or a 302 redirect to the
+    # picker -- both are ALLOWED, and the guard runs before either.
+    "/interface-register/":    {
+        "solution_architect", "enterprise_architect", "business_architect",
+        "security_architect", "data_architect",
+    },
+    "/interface-register/new": {
+        "solution_architect", "enterprise_architect", "business_architect",
+        "security_architect", "data_architect",
+    },
+    # Task 03 (D5): /comparison takes an optional initiative_id query param --
+    # like /new, the data_integration guard runs before that param is even
+    # read, so a static POLICY row observes the same boundary. Without
+    # initiative_id it 302s to the picker; both are ALLOWED per the /new
+    # precedent above.
+    "/interface-register/comparison": {
+        "solution_architect", "enterprise_architect", "business_architect",
+        "security_architect", "data_architect",
+    },
+    # Task 04: /costing takes the same optional initiative_id query param and
+    # runs the identical _guard() call before it is read -- same data_integration
+    # boundary as /comparison and /new above, no initiative_id 302s to the
+    # picker either way.
+    "/interface-register/costing": {
+        "solution_architect", "enterprise_architect", "business_architect",
+        "security_architect", "data_architect",
+    },
 }
 for _allowed in POLICY.values():
     _allowed.add("platform_admin")
@@ -228,6 +273,340 @@ def test_transformation_api_authorisation_matrix(
     actual = _observe(page, live_server, TRANSFORMATION_API_PATH)
     assert actual == expected, (
         f"{archetype} reached {TRANSFORMATION_API_PATH}: expected {expected}, got {actual}"
+    )
+
+
+INTERFACE_REGISTER_PERMITTED = {
+    "solution_architect", "enterprise_architect", "business_architect",
+    "security_architect", "data_architect", "platform_admin",
+}
+
+
+@pytest.fixture(scope="module")
+def seeded_interface_element(seeded):
+    """A real ApplicationInterface element, for the edit route's <id> path --
+    GET /interface-register/ and /new take no id, but edit does, so the
+    static POLICY dict (keyed by literal path) cannot cover it."""
+    from app import create_app, db
+    from app.models.archimate_core import ArchiMateElement
+
+    app = create_app("testing")
+    with app.app_context():
+        org_id = seeded["ids"]["org"]
+        element = ArchiMateElement.query.filter_by(
+            type="ApplicationInterface", organization_id=org_id,
+        ).order_by(ArchiMateElement.id.desc()).first()
+        if element is None:
+            element = ArchiMateElement(
+                name="Auth-matrix probe interface", type="ApplicationInterface",
+                layer="Application", organization_id=org_id,
+            )
+            db.session.add(element)
+            db.session.commit()
+        return element.id
+
+
+@pytest.mark.parametrize("archetype", ARCHETYPES)
+def test_interface_register_edit_route_authorisation(
+    archetype, page, live_server, seeded, seeded_interface_element
+):
+    """GET /interface-register/<id>/edit -- the guard runs before the id is
+    even resolved, so this observes the same data_integration boundary as
+    the static POLICY rows above, for the one route that needs a real id."""
+    _login(page, live_server, seeded["emails"][archetype])
+    expected = ALLOWED if archetype in INTERFACE_REGISTER_PERMITTED else DENIED
+    path = "/interface-register/%d/edit" % seeded_interface_element
+    actual = _observe(page, live_server, path)
+    assert actual == expected, (
+        "%s reached %s: expected %s, got %s -- data_integration section "
+        "access should match the static index/new rows" % (archetype, path, expected, actual)
+    )
+
+
+@pytest.fixture(scope="module")
+def seeded_interface_initiative(seeded):
+    """A real TechnologyRoadmapInitiative wired to an ArchitectureModel in the
+    seeded org, for the comparison POST routes (D5) -- provision_comparison
+    and raise_gap both need a real initiative_id to render past the guard
+    into the CSRF-bearing forms, unlike the static POLICY rows above."""
+    from app import create_app, db
+    from app.models.archimate_core import ArchitectureModel
+    from app.models.implementation_migration import TechnologyRoadmapInitiative
+
+    app = create_app("testing")
+    with app.app_context():
+        org_id = seeded["ids"]["org"]
+        arch = ArchitectureModel.query.filter_by(
+            name="Auth-matrix probe architecture", organization_id=org_id,
+        ).first()
+        if arch is None:
+            arch = ArchitectureModel(
+                name="Auth-matrix probe architecture", organization_id=org_id,
+            )
+            db.session.add(arch)
+            db.session.flush()
+        initiative = TechnologyRoadmapInitiative.query.filter_by(
+            name="Auth-matrix probe initiative", architecture_id=arch.id,
+        ).first()
+        if initiative is None:
+            initiative = TechnologyRoadmapInitiative(
+                name="Auth-matrix probe initiative",
+                fiscal_year_start=2026,
+                fiscal_year_end=2027,
+                architecture_id=arch.id,
+            )
+            db.session.add(initiative)
+        db.session.commit()
+        return initiative.id
+
+
+@pytest.mark.parametrize("archetype", ARCHETYPES)
+def test_interface_register_provision_comparison_authorisation(
+    archetype, page, live_server, seeded, seeded_interface_initiative
+):
+    """POST /interface-register/comparison/provision -- same data_integration
+    boundary as the GET rows, observed on the write path: an allowed
+    archetype must not be refused by the guard (a CSRF-related 400 or a
+    service-level redirect are both fine -- only a 403 from _guard means
+    DENIED), and a denied archetype must get exactly the 403 the guard
+    renders."""
+    _login(page, live_server, seeded["emails"][archetype])
+    comparison_path = "/interface-register/comparison?initiative_id=%d" % seeded_interface_initiative
+    expected = ALLOWED if archetype in INTERFACE_REGISTER_PERMITTED else DENIED
+    actual = _observe(page, live_server, comparison_path)
+    assert actual == expected, (
+        "%s reached %s: expected %s, got %s" % (archetype, comparison_path, expected, actual)
+    )
+    if expected == DENIED:
+        # The guard 403s the GET itself, before any form exists to submit --
+        # nothing further to check on the write path for a denied archetype.
+        return
+    # This fixture (and the initiative_id it seeds) is module-scoped, so the
+    # first allowed archetype in this parametrized run provisions the real
+    # pair -- every archetype after it sees the comparison page WITHOUT the
+    # "set up" form (already provisioned), by the same idempotent design
+    # proven in tests/test_interface_plateau_pair.py. Only submit the form
+    # when it is actually present; either way, the GET above already proved
+    # the guard did not refuse this archetype.
+    provision_button = page.locator('[data-testid="provision-comparison"]')
+    if provision_button.count() == 0:
+        return
+    csrf = page.locator('input[name="csrf_token"]').first.input_value()
+    response = page.request.post(
+        live_server + "/interface-register/comparison/provision",
+        form={"initiative_id": str(seeded_interface_initiative), "csrf_token": csrf},
+        max_redirects=0,
+    )
+    assert response.status != 403, (
+        "%s was refused provision_comparison by the data_integration guard "
+        "despite being permitted by the GET rows" % archetype
+    )
+
+
+@pytest.mark.parametrize("archetype", ARCHETYPES)
+def test_interface_register_raise_gap_authorisation(
+    archetype, page, live_server, seeded, seeded_interface_initiative, seeded_interface_element
+):
+    """POST /interface-register/<id>/gaps -- same data_integration boundary,
+    observed on the raise-gap write path. A denied archetype must get exactly
+    the 403 the guard renders; an allowed archetype must not be refused by
+    the guard even if the underlying service rejects the request for a
+    reason unrelated to authorisation (no plateau pair provisioned yet in
+    this fixture's initiative -- that is a 400, not a 403, and this test only
+    asserts the boundary, not the gap-raising business rule already covered
+    in tests/test_interface_register_service.py)."""
+    _login(page, live_server, seeded["emails"][archetype])
+    page.goto(live_server + "/", wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
+    csrf_token = page.locator('meta[name="csrf-token"]').get_attribute("content") or ""
+    response = page.request.post(
+        live_server + "/interface-register/%d/gaps" % seeded_interface_element,
+        form={
+            "initiative_id": str(seeded_interface_initiative),
+            "gap_type": "new_interface",
+            "csrf_token": csrf_token,
+        },
+        max_redirects=0,
+    )
+    expected_denied = archetype not in INTERFACE_REGISTER_PERMITTED
+    if expected_denied:
+        assert response.status == 403, (
+            "%s reached raise_gap: expected 403, got %s" % (archetype, response.status)
+        )
+    else:
+        assert response.status != 403, (
+            "%s was refused raise_gap by the data_integration guard despite "
+            "being permitted by the GET rows" % archetype
+        )
+
+
+@pytest.fixture(scope="module")
+def seeded_interface_gap(seeded, seeded_interface_initiative, seeded_interface_element):
+    """A real Gap wired to the seeded initiative/element, created directly
+    through the ORM -- so the attach-work-package authorisation test below
+    does not depend on raise_gap's plateau-pair precondition (covered
+    separately) to reach the route it is actually probing.
+
+    Deliberately left at its default gap_kind (GAP_KIND_CAPABILITY_SHORTFALL)
+    rather than GAP_KIND_PLATEAU_TRANSITION: the latter's before_insert
+    listener (validate_gap_kind, Task 03) requires both
+    originating_plateau_id and target_plateau_id, which is a business rule
+    already covered in tests/test_interface_register_service.py and
+    tests/test_interface_gap_capability_gap_isolation.py -- this fixture only
+    needs A gap to exist so the route under test can be reached."""
+    from app import create_app, db
+    from app.models.implementation_migration import Gap
+
+    app = create_app("testing")
+    with app.app_context():
+        org_id = seeded["ids"]["org"]
+        gap = Gap.query.filter_by(
+            name="Auth-matrix probe gap", organization_id=org_id,
+        ).first()
+        if gap is None:
+            gap = Gap(
+                name="Auth-matrix probe gap",
+                gap_type="new_interface",
+                archimate_element_id=seeded_interface_element,
+                organization_id=org_id,
+            )
+            db.session.add(gap)
+            db.session.commit()
+        return gap.id
+
+
+@pytest.mark.parametrize("archetype", ARCHETYPES)
+def test_interface_register_attach_work_package_authorisation(
+    archetype, page, live_server, seeded, seeded_interface_initiative, seeded_interface_gap
+):
+    """POST /interface-register/gaps/<id>/work-packages -- same
+    data_integration boundary, observed on the costed-work-package write
+    path (US-6 AC6)."""
+    _login(page, live_server, seeded["emails"][archetype])
+    page.goto(live_server + "/", wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
+    csrf_token = page.locator('meta[name="csrf-token"]').get_attribute("content") or ""
+    response = page.request.post(
+        live_server + "/interface-register/gaps/%d/work-packages" % seeded_interface_gap,
+        form={
+            "initiative_id": str(seeded_interface_initiative),
+            "name": "Auth-matrix probe work package",
+            "estimated_cost": "1000",
+            "estimated_effort_hours": "10",
+            "csrf_token": csrf_token,
+        },
+        max_redirects=0,
+    )
+    expected_denied = archetype not in INTERFACE_REGISTER_PERMITTED
+    if expected_denied:
+        assert response.status == 403, (
+            "%s reached attach_work_package: expected 403, got %s" % (archetype, response.status)
+        )
+    else:
+        assert response.status != 403, (
+            "%s was refused attach_work_package by the data_integration guard "
+            "despite being permitted by the GET rows" % archetype
+        )
+
+
+@pytest.fixture(scope="module")
+def other_org_interface_initiative(seeded):
+    """SDD §8.2 negative case: a TechnologyRoadmapInitiative rooted at an
+    ArchitectureModel belonging to a DIFFERENT organisation than `seeded`'s.
+    resolve_initiative() must 404 this for a solution_architect signed in as
+    the seeded org -- TechnologyRoadmapInitiative itself carries no
+    organization_id, so the entire isolation argument is the join through
+    ArchitectureModel (which IS TenantMixin) -- an unauthenticated-looking
+    200 here would mean that join is not actually doing the filtering."""
+    from app import create_app, db
+    from app.models.archimate_core import ArchitectureModel
+    from app.models.implementation_migration import TechnologyRoadmapInitiative
+    from app.models.organization import Organization
+
+    app = create_app("testing")
+    with app.app_context():
+        other_org = Organization.query.filter_by(slug="auth-matrix-other-org").first()
+        if other_org is None:
+            other_org = Organization(name="Auth-matrix other org", slug="auth-matrix-other-org")
+            db.session.add(other_org)
+            db.session.flush()
+        arch = ArchitectureModel.query.filter_by(
+            name="Auth-matrix other-org architecture", organization_id=other_org.id,
+        ).first()
+        if arch is None:
+            arch = ArchitectureModel(
+                name="Auth-matrix other-org architecture", organization_id=other_org.id,
+            )
+            db.session.add(arch)
+            db.session.flush()
+        initiative = TechnologyRoadmapInitiative.query.filter_by(
+            name="Auth-matrix other-org initiative", architecture_id=arch.id,
+        ).first()
+        if initiative is None:
+            initiative = TechnologyRoadmapInitiative(
+                name="Auth-matrix other-org initiative",
+                fiscal_year_start=2026,
+                fiscal_year_end=2027,
+                architecture_id=arch.id,
+            )
+            db.session.add(initiative)
+        db.session.commit()
+        return initiative.id
+
+
+@pytest.fixture(scope="module")
+def null_architecture_interface_initiative(seeded):
+    """SDD §8.2's second negative case: an initiative with architecture_id IS
+    NULL. resolve_initiative() must treat this identically to "not found" --
+    a visible-but-unlinked initiative would let a picker offer a register that
+    can never resolve its tenant, and worse, would make the guard's isolation
+    argument silently optional rather than universal."""
+    from app import create_app, db
+    from app.models.implementation_migration import TechnologyRoadmapInitiative
+
+    app = create_app("testing")
+    with app.app_context():
+        initiative = TechnologyRoadmapInitiative.query.filter_by(
+            name="Auth-matrix null-architecture initiative", architecture_id=None,
+        ).first()
+        if initiative is None:
+            initiative = TechnologyRoadmapInitiative(
+                name="Auth-matrix null-architecture initiative",
+                fiscal_year_start=2026,
+                fiscal_year_end=2027,
+                architecture_id=None,
+            )
+            db.session.add(initiative)
+            db.session.commit()
+        return initiative.id
+
+
+def test_interface_register_other_org_initiative_is_404_not_visible(
+    page, live_server, seeded, other_org_interface_initiative
+):
+    """An initiative belonging to another organisation must 404 through the
+    register, never render -- a data_integration-permitted archetype (here
+    solution_architect) is used deliberately, so this observes the tenant
+    boundary in isolation from the section guard already covered above."""
+    _login(page, live_server, seeded["emails"]["solution_architect"])
+    path = "/interface-register/?initiative_id=%d" % other_org_interface_initiative
+    response = page.goto(live_server + path, wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
+    assert response.status == 404, (
+        "an initiative belonging to another org resolved to %s, not 404 -- "
+        "resolve_initiative's tenant join may not be filtering" % response.status
+    )
+
+
+def test_interface_register_null_architecture_initiative_is_404_not_visible(
+    page, live_server, seeded, null_architecture_interface_initiative
+):
+    """An initiative with architecture_id IS NULL must 404 through the
+    register, never render -- it has no ArchitectureModel to root a tenant
+    check on at all, so resolve_initiative rejects it outright rather than
+    treating a NULL link as "visible to everyone"."""
+    _login(page, live_server, seeded["emails"]["solution_architect"])
+    path = "/interface-register/?initiative_id=%d" % null_architecture_interface_initiative
+    response = page.goto(live_server + path, wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
+    assert response.status == 404, (
+        "an initiative with architecture_id IS NULL resolved to %s, not 404" % response.status
     )
 
 

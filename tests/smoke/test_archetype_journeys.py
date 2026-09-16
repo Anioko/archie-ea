@@ -366,6 +366,515 @@ def test_application_manager_maintains_an_owned_application(page, live_server, s
         "health assessment did not reach the health overview"
 
 
+def test_solution_architect_registers_an_interface(page, live_server, seeded):
+    """SAP S/4HANA Interface Register (Task 02): create an interface, reload,
+    see it persisted in the list — "done means demonstrated"."""
+    import uuid
+
+    _login(page, live_server, seeded["emails"]["solution_architect"])
+    initiative_id = seeded["ids"]["interface_register_initiative"]
+    ref = uuid.uuid4().hex[:6]
+    name = "Smoke Interface %s" % ref
+
+    _visit(page, live_server, "/interface-register/new?initiative_id=%d" % initiative_id)
+    assert page.locator("#name").count() == 1, "the create form did not render"
+    page.fill("#name", name)
+    page.select_option("#interface_type", "REST")
+    page.select_option("#protocol", "HTTPS")
+    page.select_option("#business_criticality", "High")
+    with page.expect_navigation(wait_until="domcontentloaded", timeout=PAGE_TIMEOUT):
+        page.get_by_role("button", name="Create interface", exact=True).click()
+    page.wait_for_timeout(500)
+
+    page.reload(wait_until="domcontentloaded")
+    assert name in page.inner_text("body"), "interface did not persist after reload"
+
+    # Element-detail-page cross-check (store-agreement spirit): the interface
+    # just created through the register form must also render correctly through
+    # the ArchiMate element detail enrichment block (archimate_routes.py ~2627,
+    # api_element_detail), which is what /archimate/composer's node detail panel
+    # calls (composer.js:1859) to show protocol/interface_type for an
+    # ApplicationInterface element. Resolved by a real browser hit of that JSON
+    # endpoint for THIS interface's real element id, not by reading source.
+    from app import create_app, db as _db
+    from app.models.archimate_core import ArchiMateElement as _AME
+
+    app = create_app("testing")
+    with app.app_context():
+        element = _AME.query.filter_by(name=name, type="ApplicationInterface").one()
+        element_id = element.id
+
+    response = page.goto(
+        live_server + "/archimate/api/elements/%d/detail" % element_id,
+        wait_until="domcontentloaded", timeout=PAGE_TIMEOUT,
+    )
+    assert response is not None and response.status == 200, (
+        "element detail endpoint did not return 200 for the just-created interface"
+    )
+    body = response.json()
+    assert body["type"] == "ApplicationInterface"
+    meta = body.get("interface_metadata")
+    assert meta is not None, (
+        "api_element_detail returned interface_metadata=None for element %d created "
+        "through the register form — the store-agreement between the register and "
+        "the ArchiMate element detail page is broken" % element_id
+    )
+    assert meta.get("interface_type") == "REST", (
+        "detail page shows interface_type=%r, expected REST (what was submitted "
+        "through the register form)" % meta.get("interface_type")
+    )
+    assert meta.get("protocol") == "HTTPS", (
+        "detail page shows protocol=%r, expected HTTPS (what was submitted "
+        "through the register form)" % meta.get("protocol")
+    )
+
+
+def test_solution_architect_provisions_plateau_pair_and_raises_gap(page, live_server, seeded):
+    """SAP S/4HANA Interface Register (Task 03): provision the As-is/To-be
+    plateau pair, raise a gap against a just-created interface, reload, and
+    confirm both persisted -- "done means demonstrated", not source-read."""
+    import uuid
+
+    _login(page, live_server, seeded["emails"]["solution_architect"])
+    initiative_id = seeded["ids"]["interface_register_initiative"]
+    ref = uuid.uuid4().hex[:6]
+    name = "Smoke Comparison Interface %s" % ref
+
+    # Register an interface to raise a gap against.
+    _visit(page, live_server, "/interface-register/new?initiative_id=%d" % initiative_id)
+    page.fill("#name", name)
+    page.select_option("#interface_type", "REST")
+    page.select_option("#protocol", "HTTPS")
+    with page.expect_navigation(wait_until="domcontentloaded", timeout=PAGE_TIMEOUT):
+        page.get_by_role("button", name="Create interface", exact=True).click()
+    page.wait_for_timeout(500)
+
+    # GET is side-effect-free: visiting the comparison page before provisioning
+    # must show the explicit "set up" button, not a fabricated pair.
+    _visit(page, live_server, "/interface-register/comparison?initiative_id=%d" % initiative_id)
+    assert page.locator('[data-testid="provision-comparison"]').count() >= 1, (
+        "comparison screen did not show the explicit set-up control before provisioning"
+    )
+    assert page.locator('[data-testid="plateau-as-is"]').count() == 0, (
+        "GET provisioned the plateau pair as a side effect"
+    )
+
+    with page.expect_navigation(wait_until="domcontentloaded", timeout=PAGE_TIMEOUT):
+        page.locator('[data-testid="provision-comparison"]').click()
+    page.wait_for_timeout(500)
+
+    assert page.locator('[data-testid="plateau-as-is"]').count() == 1
+    assert page.locator('[data-testid="plateau-to-be"]').count() == 1
+    body = page.inner_text("body")
+    assert "Current Integration Landscape" in body
+    assert "S/4HANA-Integrated Landscape" in body
+
+    # Reload: the set-up button must not reappear, and provisioning must not
+    # have been undone or duplicated (repeat-POST idempotency is covered at
+    # the service layer in tests/test_interface_plateau_pair.py).
+    page.reload(wait_until="domcontentloaded")
+    assert page.locator('[data-testid="plateau-as-is"]').count() == 1, (
+        "reload after provisioning shows the pair as already set up (no duplicate button)"
+    )
+    assert page.locator('[data-testid="provision-comparison"]').count() == 0
+
+    # Raise a gap for the interface just created -- locate its row by name
+    # rather than by element id, which this test never resolves from the DB.
+    interface_li = page.locator("li", has_text=name)
+    interface_li.locator("select[name='gap_type']").select_option("protocol_change")
+    with page.expect_navigation(wait_until="domcontentloaded", timeout=PAGE_TIMEOUT):
+        interface_li.get_by_role("button", name="Raise Gap", exact=True).click()
+    page.wait_for_timeout(500)
+
+    page.reload(wait_until="domcontentloaded")
+    body = page.inner_text("body")
+    assert "Protocol Change" in body, "gap did not persist after reload"
+    assert page.locator('[data-testid="gap-list"] li').count() >= 1, (
+        "gap does not show against the To-be plateau's list"
+    )
+
+
+def test_comparison_page_renders_a_gap_with_null_gap_type(page, live_server, seeded):
+    """Task 03 Round 2 (D4): interface_register/comparison.html called
+    `gap.gap_type.replace(...)` unguarded -- gap_type is nullable and not
+    enforced by validate_gap_kind's listener, so any Gap reaching this
+    template with gap_type=None 500s the whole comparison page. Write such a
+    Gap directly (bypassing the form, which always supplies gap_type, to
+    reach the same DB state a different creation path or fixture could leave
+    behind) and prove the page still renders -- with the em-dash null
+    convention, not a fabricated label -- rather than reading the template
+    source and trusting the guard is there."""
+    import uuid
+
+    from flask import g
+    from app import create_app, db
+    from app.models.implementation_migration import (
+        Gap,
+        GAP_KIND_PLATEAU_TRANSITION,
+        TechnologyRoadmapInitiative,
+    )
+    from app.modules.interface_register.services import plateau_pair_service
+
+    initiative_id = seeded["ids"]["interface_register_initiative"]
+    org_id = seeded["ids"]["org"]
+    ref = uuid.uuid4().hex[:6]
+    gap_name = "Null gap_type probe %s" % ref
+
+    app = create_app("testing")
+    with app.app_context():
+        g.current_org_id = org_id
+        initiative = TechnologyRoadmapInitiative.query.get(initiative_id)
+        pair = plateau_pair_service.provision_plateau_pair(initiative.id)
+        as_is, to_be = pair
+        gap = Gap(
+            name=gap_name,
+            gap_kind=GAP_KIND_PLATEAU_TRANSITION,
+            gap_type=None,
+            originating_plateau_id=as_is.id,
+            target_plateau_id=to_be.id,
+            architecture_id=initiative.architecture_id,
+            severity="medium",
+            impact="medium",
+            priority="medium",
+        )
+        db.session.add(gap)
+        db.session.commit()
+
+    _login(page, live_server, seeded["emails"]["solution_architect"])
+    response, _ = _visit(
+        page, live_server, "/interface-register/comparison?initiative_id=%d" % initiative_id
+    )
+    assert response.status == 200, (
+        "comparison page returned %d for a Gap with gap_type=None -- D4 regressed"
+        % response.status
+    )
+    body = page.inner_text("body")
+    assert gap_name in body, "the null-gap_type gap is not shown on reload"
+    assert "AttributeError" not in body and "Internal Server Error" not in body
+    # Null display convention (root CLAUDE.md): em dash, never a blank or a
+    # fabricated label, in the gap-type slot for this row.
+    gap_row = page.locator("li", has_text=gap_name)
+    assert "—" in gap_row.inner_text(), (
+        "gap_type=None did not render as the em-dash null convention"
+    )
+
+
+def test_solution_architect_attaches_costed_work_package_and_costing_rollup_updates(
+    page, live_server, seeded
+):
+    """Task 04 (US-6): attach a costed WorkPackage to an interface gap from
+    the comparison screen, reload the dedicated costing screen, and confirm
+    the displayed committed-cost total actually changed -- the AC6 clicked
+    journey, not a source assertion. Also demonstrates the over-budget
+    indicator (badge + text) legibly appearing once a low budget is
+    exceeded, and the em-dash for a work package left with no effort
+    estimate."""
+    import uuid
+
+    from flask import g
+    from app import create_app, db
+    from app.models.implementation_migration import TechnologyRoadmapInitiative
+
+    initiative_id = seeded["ids"]["interface_register_initiative"]
+    org_id = seeded["ids"]["org"]
+    ref = uuid.uuid4().hex[:6]
+    interface_name = "Smoke Costing Interface %s" % ref
+    wp_name = "Smoke Costed WP %s" % ref
+
+    # Set a low, real investment_budget directly (the shared seeded initiative
+    # carries none) so the over-budget state is reachable without touching
+    # the shared smoke fixture used by every other journey in this file.
+    app = create_app("testing")
+    with app.app_context():
+        g.current_org_id = org_id
+        initiative = TechnologyRoadmapInitiative.query.get(initiative_id)
+        initiative.investment_budget = 100_000
+        db.session.commit()
+
+    _login(page, live_server, seeded["emails"]["solution_architect"])
+
+    # Register an interface and raise a gap against it, exactly as the Task
+    # 03 journey does, so there is a real plateau-transition Gap to attach a
+    # work package to.
+    _visit(page, live_server, "/interface-register/new?initiative_id=%d" % initiative_id)
+    page.fill("#name", interface_name)
+    page.select_option("#interface_type", "REST")
+    page.select_option("#protocol", "HTTPS")
+    with page.expect_navigation(wait_until="domcontentloaded", timeout=PAGE_TIMEOUT):
+        page.get_by_role("button", name="Create interface", exact=True).click()
+    page.wait_for_timeout(500)
+
+    _visit(page, live_server, "/interface-register/comparison?initiative_id=%d" % initiative_id)
+    if page.locator('[data-testid="provision-comparison"]').count() >= 1:
+        with page.expect_navigation(wait_until="domcontentloaded", timeout=PAGE_TIMEOUT):
+            page.locator('[data-testid="provision-comparison"]').click()
+        page.wait_for_timeout(500)
+
+    interface_li = page.locator("li", has_text=interface_name)
+    interface_li.locator("select[name='gap_type']").select_option("protocol_change")
+    with page.expect_navigation(wait_until="domcontentloaded", timeout=PAGE_TIMEOUT):
+        interface_li.get_by_role("button", name="Raise Gap", exact=True).click()
+    page.wait_for_timeout(500)
+
+    # Baseline: the costing screen before any work package is attached.
+    _visit(page, live_server, "/interface-register/costing?initiative_id=%d" % initiative_id)
+    before_cost_text = page.locator('[data-testid="rollup-committed-cost"]').inner_text()
+    assert page.locator('[data-testid="over-budget-indicator"]').count() == 0, (
+        "over-budget indicator shown before any cost was committed"
+    )
+
+    # Attach a costed work package (no effort hours) via the real rendered
+    # form on the comparison page.
+    _visit(page, live_server, "/interface-register/comparison?initiative_id=%d" % initiative_id)
+    gap_form = page.locator('form[data-testid^="attach-work-package-"]').last
+    gap_form.locator("input[name='name']").fill(wp_name)
+    gap_form.locator("input[name='estimated_cost']").fill("250000")
+    with page.expect_navigation(wait_until="domcontentloaded", timeout=PAGE_TIMEOUT):
+        gap_form.get_by_role("button", name="Attach work package", exact=True).click()
+    page.wait_for_timeout(500)
+
+    # Reload the comparison page: the attached work package must persist and
+    # show an em-dash for its (never-supplied) effort/size, not a fabricated
+    # band or a blank.
+    page.reload(wait_until="domcontentloaded")
+    body = page.inner_text("body")
+    assert wp_name in body, "attached work package did not persist after reload"
+
+    # Reload the dedicated costing screen -- this is the AC6 assertion: the
+    # displayed total actually changed after the write, on a real reload of
+    # a different route, not the same page re-rendering stale server state.
+    _visit(page, live_server, "/interface-register/costing?initiative_id=%d" % initiative_id)
+    after_cost_text = page.locator('[data-testid="rollup-committed-cost"]').inner_text()
+    assert after_cost_text != before_cost_text, (
+        "costing rollup total did not change after attaching a costed work package"
+    )
+    assert "250,000" in after_cost_text or "250000" in after_cost_text.replace(",", ""), (
+        "costing rollup total does not reflect the £250,000 just committed"
+    )
+
+    # £250,000 committed against a £100,000 budget must show the legible
+    # over-budget state -- a badge AND text, not a number alone.
+    assert page.locator('[data-testid="over-budget-indicator"]').count() == 1, (
+        "over-budget indicator did not appear once committed cost exceeded the budget"
+    )
+    indicator_text = page.locator('[data-testid="over-budget-indicator"]').inner_text()
+    assert "Over budget" in indicator_text
+
+    # The work package row on the costing screen shows an em-dash for size
+    # (no effort hours were ever supplied), never a fabricated band.
+    rollup_row = page.locator('[data-testid^="rollup-work-package-"]', has_text=wp_name)
+    assert "—" in rollup_row.inner_text(), (
+        "work package with no estimated_effort_hours did not render the em-dash size band"
+    )
+
+
+def test_solution_architect_full_interface_register_journey_from_sidebar(
+    page, live_server, seeded
+):
+    """Task 05 (US-7), the bucket's single acceptance-criterion journey:
+    Tasks 02-04 each proved their own slice starting from a direct URL visit.
+    This is the one continuous walk a real solution_architect actually makes,
+    starting at the sidebar link added in Task 02 -- register -> create an
+    interface -> confirm it renders through the ArchiMate element detail page
+    -> provision the As-is/To-be pair -> raise a gap -> attach a costed work
+    package -> reload -> the rollup total changed. Nothing here is a new
+    assertion invented for this test; it is Tasks 02/03/04's three journeys
+    walked back-to-back in the order a user would actually take them, entered
+    through the sidebar rather than a URL bar."""
+    import uuid
+
+    from flask import g
+    from app import create_app, db
+    from app.models.archimate_core import ArchiMateElement as _AME
+    from app.models.implementation_migration import TechnologyRoadmapInitiative
+
+    initiative_id = seeded["ids"]["interface_register_initiative"]
+    org_id = seeded["ids"]["org"]
+    ref = uuid.uuid4().hex[:6]
+    interface_name = "E2E Interface %s" % ref
+    wp_name = "E2E Costed WP %s" % ref
+
+    app = create_app("testing")
+    with app.app_context():
+        g.current_org_id = org_id
+        initiative = TechnologyRoadmapInitiative.query.get(initiative_id)
+        initiative.investment_budget = 100_000
+        db.session.commit()
+
+    _login(page, live_server, seeded["emails"]["solution_architect"])
+
+    # 1. Sidebar -> register. Land on the dashboard first, then click the real
+    # rendered control -- not a direct URL visit -- so this actually proves
+    # the sidebar entry reaches the module (US-7's own acceptance criterion).
+    _visit(page, live_server, "/")
+    sidebar_link = page.get_by_test_id("sidebar").get_by_role(
+        "link", name="Interface Register", exact=True
+    )
+    with page.expect_navigation(wait_until="domcontentloaded", timeout=PAGE_TIMEOUT):
+        sidebar_link.click()
+    page.wait_for_timeout(500)
+    assert "/interface-register" in page.url, (
+        "the sidebar's Interface Register link did not reach the module"
+    )
+
+    # The picker/register list without an initiative selected -- navigate to
+    # this initiative the same way the picker's own "View register" link does.
+    _visit(page, live_server, "/interface-register/?initiative_id=%d" % initiative_id)
+
+    # 2. Create an interface.
+    with page.expect_navigation(wait_until="domcontentloaded", timeout=PAGE_TIMEOUT):
+        page.get_by_test_id("interface-register-new").click()
+    page.wait_for_timeout(300)
+    assert page.locator("#name").count() == 1, "the create form did not render"
+    page.fill("#name", interface_name)
+    page.select_option("#interface_type", "REST")
+    page.select_option("#protocol", "HTTPS")
+    page.select_option("#business_criticality", "High")
+    with page.expect_navigation(wait_until="domcontentloaded", timeout=PAGE_TIMEOUT):
+        page.get_by_role("button", name="Create interface", exact=True).click()
+    page.wait_for_timeout(500)
+
+    page.reload(wait_until="domcontentloaded")
+    assert interface_name in page.inner_text("body"), (
+        "interface did not persist after reload"
+    )
+
+    # 3. Confirm it renders through the ArchiMate element detail page (the
+    # store-agreement cross-check Task 02's journey already proved in
+    # isolation -- repeated here as part of the one continuous walk).
+    with app.app_context():
+        element = _AME.query.filter_by(
+            name=interface_name, type="ApplicationInterface"
+        ).one()
+        element_id = element.id
+    detail_response = page.goto(
+        live_server + "/archimate/api/elements/%d/detail" % element_id,
+        wait_until="domcontentloaded", timeout=PAGE_TIMEOUT,
+    )
+    assert detail_response is not None and detail_response.status == 200
+    detail_body = detail_response.json()
+    assert detail_body["type"] == "ApplicationInterface"
+    assert detail_body.get("interface_metadata") is not None, (
+        "element detail page shows no interface_metadata for the interface "
+        "just created through this journey"
+    )
+
+    # 4. Provision the As-is/To-be plateau pair from the comparison screen
+    # (via the in-page nav link on the register list, not a direct URL).
+    _visit(page, live_server, "/interface-register/?initiative_id=%d" % initiative_id)
+    with page.expect_navigation(wait_until="domcontentloaded", timeout=PAGE_TIMEOUT):
+        page.get_by_test_id("interface-comparison-link").click()
+    page.wait_for_timeout(300)
+    if page.locator('[data-testid="provision-comparison"]').count() >= 1:
+        with page.expect_navigation(wait_until="domcontentloaded", timeout=PAGE_TIMEOUT):
+            page.locator('[data-testid="provision-comparison"]').click()
+        page.wait_for_timeout(500)
+    assert page.locator('[data-testid="plateau-as-is"]').count() == 1
+    assert page.locator('[data-testid="plateau-to-be"]').count() == 1
+
+    # 5. Raise a gap against the interface just created.
+    interface_li = page.locator("li", has_text=interface_name)
+    interface_li.locator("select[name='gap_type']").select_option("protocol_change")
+    with page.expect_navigation(wait_until="domcontentloaded", timeout=PAGE_TIMEOUT):
+        interface_li.get_by_role("button", name="Raise Gap", exact=True).click()
+    page.wait_for_timeout(500)
+    page.reload(wait_until="domcontentloaded")
+    assert "Protocol Change" in page.inner_text("body"), "gap did not persist after reload"
+
+    # 6. Attach a costed work package to that gap, from the comparison screen
+    # (in-page nav link to costing was already proven reachable in step 4).
+    before_costing_response = page.goto(
+        live_server + "/interface-register/costing?initiative_id=%d" % initiative_id,
+        wait_until="domcontentloaded", timeout=PAGE_TIMEOUT,
+    )
+    assert before_costing_response.status == 200
+    before_cost_text = page.locator('[data-testid="rollup-committed-cost"]').inner_text()
+
+    _visit(page, live_server, "/interface-register/comparison?initiative_id=%d" % initiative_id)
+    gap_form = page.locator('form[data-testid^="attach-work-package-"]').last
+    gap_form.locator("input[name='name']").fill(wp_name)
+    gap_form.locator("input[name='estimated_cost']").fill("250000")
+    with page.expect_navigation(wait_until="domcontentloaded", timeout=PAGE_TIMEOUT):
+        gap_form.get_by_role("button", name="Attach work package", exact=True).click()
+    page.wait_for_timeout(500)
+
+    # 7. Reload the dedicated costing screen (a real navigation to a different
+    # route, not the same page re-rendering) and confirm the rollup total the
+    # user actually sees changed.
+    with page.expect_navigation(wait_until="domcontentloaded", timeout=PAGE_TIMEOUT):
+        page.get_by_test_id("view-costing").click()
+    page.wait_for_timeout(500)
+    page.reload(wait_until="domcontentloaded")
+    after_cost_text = page.locator('[data-testid="rollup-committed-cost"]').inner_text()
+    assert after_cost_text != before_cost_text, (
+        "costing rollup total did not change after attaching a costed work package, "
+        "reached via the comparison screen's own in-page link rather than a direct URL"
+    )
+    # Assert the DELTA rather than an absolute total: this initiative_id is the
+    # shared seeded fixture's, so another test in this same file (Task 04's own
+    # journey) may have already committed cost against it earlier in the run --
+    # a hard-coded absolute figure would be order-dependent. £250,000 more than
+    # whatever was already committed is the actual claim this step is proving.
+    import re as _re
+
+    def _parse_currency(text):
+        digits = _re.sub(r"[^\d.]", "", text)
+        return float(digits) if digits else 0.0
+
+    delta = _parse_currency(after_cost_text) - _parse_currency(before_cost_text)
+    assert delta == 250_000, (
+        "costing rollup total increased by %s, not the £250,000 just committed "
+        "(before=%r after=%r)" % (delta, before_cost_text, after_cost_text)
+    )
+
+
+@pytest.mark.parametrize("archetype", ["security_architect", "data_architect"])
+def test_non_solution_architect_reaches_interface_register_from_own_sidebar(
+    page, live_server, seeded, archetype
+):
+    """Task 05 round 2 (D-05-1/D-05-3): security_architect and data_architect
+    were already authorised (per this bucket's own authorisation matrix and
+    interface_register's _guard()) to reach /interface-register, but had no
+    link to it anywhere in their own rendered sidebar -- an "authorised but
+    undiscoverable" defect. The earlier claim that this was fixed by an
+    ENTERPRISE_ROLE_SECTION_MAP dedup was wrong: that map only feeds
+    `user_visible_sections`, which no template reads. The real fix added
+    `_link("Interface Register", ...)` to `_MY_WORK_LINKS[ROLE_SECURITY_ARCHITECT]`
+    and `_MY_WORK_LINKS[ROLE_DATA_ARCHITECT]` in app/utils/role_access.py. Prove
+    it by clicking the real sidebar control as each persona, not by reading
+    role_access.py -- and confirm the page the link lands on actually renders
+    (no template assuming solution_architect-specific request state, no missing
+    section header), not just that the click didn't 404."""
+    _login(page, live_server, seeded["emails"][archetype])
+
+    _visit(page, live_server, "/")
+    sidebar_link = page.get_by_test_id("sidebar").get_by_role(
+        "link", name="Interface Register", exact=True
+    )
+    assert sidebar_link.count() == 1, (
+        "%s's rendered sidebar has no 'Interface Register' link" % archetype
+    )
+    with page.expect_navigation(wait_until="domcontentloaded", timeout=PAGE_TIMEOUT):
+        sidebar_link.click()
+    page.wait_for_timeout(500)
+
+    assert "/interface-register" in page.url, (
+        "%s's sidebar link did not reach the interface register module" % archetype
+    )
+
+    body = page.inner_text("body")
+    assert "Interface Register" in body or "Interface" in body, (
+        "%s's interface register page rendered with no recognisable heading "
+        "for the module" % archetype
+    )
+    # A template that assumes solution_architect-only request state (e.g. a
+    # missing initiative picker) would blow up with a 500 or an unhandled
+    # error banner rather than the picker/list this route falls back to when
+    # no initiative_id is supplied -- assert neither happened.
+    assert "Internal Server Error" not in body
+    assert "Traceback" not in body
+
+
 def test_an_archetype_cannot_reach_another_personas_section(page, live_server, seeded):
     """Authorisation is part of the journey, not a separate concern."""
     _login(page, live_server, seeded["emails"]["procurement"])

@@ -1,0 +1,26 @@
+{
+  "from": "builder",
+  "to": "refuter",
+  "artifact": "docs/buckets/sap-s4-interface-register/tasks/01-archimate-sync-helper.result.md",
+  "approval_status": "approved",
+  "gate_conditions": [
+    "verify_static_clean",
+    "all_call_sites_preserved"
+  ],
+  "unmet_conditions": [],
+  "round": 3,
+  "round_1_findings_fixed": [
+    "D1: removed ELEMENT_TYPES[\"ApplicationInterfaceMetadata\"] entry (unreachable via sync_archimate_element)",
+    "D2: interface_count query in architecture_routes.py now filters type AND layer=='Application', matching unified_enterprise_routes.py exactly; demonstrated live in a browser with seeded data proving both routes agree and correctly exclude a wrong-layer decoy",
+    "D4: source_model provenance default moved into create_backbone_element itself so direct callers (Task 02) get it too",
+    "D5: tautological ELEMENT_TYPES self-assert test replaced with a real regression test against create_backbone_element's direct-call seam",
+    "D7: create_backbone_element now raises ValueError (not AttributeError) on a non-string name, and rejects organization_id in (None, 0) explicitly",
+    "D8: srs.md updated to name create_backbone_element() as the actual call site, removing the _sync_archimate_element() reference and the open hedge"
+  ],
+  "round_1_findings_deferred": [
+    "D3: follow-up scope decision, not this task's to fix",
+    "D6: process note (re-run verification honestly), addressed by this handoff update itself"
+  ],
+  "notes": "python scripts/verify.py --tag static: 47 passed, 1 failed (css-build), pre-existing and unrelated to this bucket (confirmed via git stash in round 1, unchanged in round 2). Targeted tests (tests/test_archimate_backbone_sync.py + tests/test_backbone_insert_ownership.py): 67 passed. ruff clean on all touched files. D2 was demonstrated in a real browser (Playwright, logged in as sa@walkthrough.example.com against local dev Postgres) with seeded ArchiMateElement rows, not verified by source reading alone. Round 2 independent refuter re-review: all six D1/D2/D4/D5/D7/D8 fixes confirmed genuine, no new defects, code approved. Round 3 (coordinator): bare `python scripts/verify.py` run to completion -- 52 passed, 2 failed (css-build, nav-verified[15>0]), 2 skipped (schema-drift/tests, no DATABASE_URL set locally). Both failures confirmed pre-existing and unrelated to this bucket's diff via git stash isolation of exactly the four tracked files this task touched (architecture_routes.py, archimate_backbone.py, 0008-one-system-of-record.md, test_archimate_backbone_sync.py): nav-verified fails with the identical 15 routes with this diff stashed out entirely. Gate condition verify_static_clean now genuinely satisfied for this bucket's scope.",
+  "timestamp": "2026-09-15T16:00:00Z"
+}

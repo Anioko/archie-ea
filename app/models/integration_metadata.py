@@ -41,8 +41,10 @@ class ApplicationInterfaceMetadata(db.Model):
     # Interface Classification
     interface_type = db.Column(
         db.String(50)
-    )  # REST, SOAP, GraphQL, gRPC, MQ, Event, File, Database
-    protocol = db.Column(db.String(50))  # HTTP, HTTPS, TCP, AMQP, MQTT, FTP, SFTP
+    )  # REST, SOAP, GraphQL, gRPC, MQ, Event, File, Database, IDOC, BAPI, RFC, OData
+    protocol = db.Column(
+        db.String(50)
+    )  # HTTP, HTTPS, TCP, AMQP, MQTT, FTP, SFTP, tRFC, qRFC, IDoc-XML
     data_format = db.Column(db.String(50))  # JSON, XML, CSV, Avro, Protobuf, EDI
     message_pattern = db.Column(
         db.String(50)

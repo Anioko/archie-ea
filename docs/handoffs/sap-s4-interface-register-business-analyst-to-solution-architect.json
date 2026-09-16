@@ -1,0 +1,9 @@
+{
+  "from": "business-analyst",
+  "to": "solution-architect",
+  "artifact": "docs/buckets/sap-s4-interface-register/srs.md",
+  "approval_status": "approved",
+  "gate_conditions": ["all_user_stories_have_acceptance_criteria", "no_open_questions"],
+  "unmet_conditions": [],
+  "timestamp": "2026-09-15T00:00:00Z"
+}

@@ -471,6 +471,11 @@ _MY_WORK_LINKS = {
         # they address the ARB by URL. The persona could not find it.
         _link("Review Board", "arb.dashboard", "gavel"),
         _link("Programmes", "solution_design.programmes_list", "git-merge"),
+        # SAP S/4HANA Interface Register (Task 02) — label deliberately avoids
+        # "Integrations", which already names the outbound-connector admin
+        # surface; "cable" is distinct from the git-merge/git-branch/waypoints/
+        # milestone icons already in this zone.
+        _link("Interface Register", "interface_register.index", "cable"),
     ],
     ROLE_ENTERPRISE_ARCHITECT: [
         _link("Transformation programmes", "solution_design.programmes_list", "waypoints"),
@@ -700,6 +705,7 @@ _MY_WORK_LINKS = {
         _link("Data Architecture", "data_architecture.data_architecture_dashboard", "database"),
         _link("Traceability Matrix", "architect_ui.traceability_matrix", "git-compare"),
         _link("Tech Radar", "tech_radar.index", "radar"),
+        _link("Interface Register", "interface_register.index", "cable"),
     ],
     # ARCH-123 folded this into enterprise_architect with the note "no dedicated
     # role for either yet". These three surfaces ship and are the whole of the
@@ -712,6 +718,7 @@ _MY_WORK_LINKS = {
         _link("Applications", "unified_applications.application_list", "list"),
         _link("Capability Map", "capability_map.index", "layers"),
         _link("Traceability Matrix", "architect_ui.traceability_matrix", "git-compare"),
+        _link("Interface Register", "interface_register.index", "cable"),
     ],
 }
 

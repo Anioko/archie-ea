@@ -416,6 +416,26 @@ def seeded(live_server, request, ai_protocol_stub):
         db.session.commit()
         out["ids"]["application"] = component.id
 
+        # Interface Register (SAP S/4HANA Interface Register, Task 02): a
+        # TechnologyRoadmapInitiative resolved through a real ArchitectureModel,
+        # per the feature's own tenant-scoping argument (SDD §8.2).
+        from app.models.archimate_core import ArchitectureModel
+        from app.models.implementation_migration import TechnologyRoadmapInitiative
+
+        interface_register_architecture = ArchitectureModel(
+            name="Smoke Architecture %s" % suffix, organization_id=org.id,
+        )
+        db.session.add(interface_register_architecture)
+        db.session.commit()
+        interface_register_initiative = TechnologyRoadmapInitiative(
+            name="Smoke S/4HANA Programme %s" % suffix,
+            fiscal_year_start=2026, fiscal_year_end=2027,
+            architecture_id=interface_register_architecture.id,
+        )
+        db.session.add(interface_register_initiative)
+        db.session.commit()
+        out["ids"]["interface_register_initiative"] = interface_register_initiative.id
+
         # Select a real tenant domain in entity journeys rather than triggering
         # the create form's implicit General-domain side effect.
         from app.models.process_data import DataDomain

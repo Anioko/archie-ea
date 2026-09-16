@@ -560,6 +560,7 @@ def software_architecture_dashboard():
 
     try:
         from app.models.application_portfolio import ApplicationComponent
+        from app.models.archimate_core import ArchiMateElement
 
         component_count = ApplicationComponent.query.count()
 
@@ -575,9 +576,10 @@ def software_architecture_dashboard():
                    " WHERE ac.organization_id = :org" if _org is not None else "")
             ), _pp
         ).scalar() or 0
-        interface_count = db.session.execute(
-            text(f"SELECT COUNT(*) FROM application_interfaces{_oc}"), _pp
-        ).scalar() or 0
+        interface_count = ArchiMateElement.query.filter(
+            ArchiMateElement.type == 'ApplicationInterface',
+            ArchiMateElement.layer == 'Application',
+        ).count()
         dependency_count = db.session.execute(
             text(f"SELECT COUNT(*) FROM application_dependencies{_oc}"), _pp
         ).scalar() or 0

@@ -1,0 +1,72 @@
+{% extends 'layouts/admin_base.html' %}
+{% from 'macros/page_shell.html' import page_shell, empty_state %}
+
+{% block title %}Programme Costing — A.R.C.H.I.E.{% endblock %}
+
+{% block content %}
+<div class="flex-1 overflow-auto p-6">
+  {{ page_shell(
+      title='S/4HANA Programme Costing',
+      breadcrumb=[
+        ('Home', url_for('main.index')), 
+        ('Interface Register', url_for('interface_register.index', initiative_id=initiative.id)), 
+        ('Costing', None)
+      ]
+  ) }}
+
+  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+    <div data-testid="rollup-committed-cost" class="rounded-lg border border-border bg-card p-4">
+      <h3 class="text-sm font-medium text-muted-foreground mb-1">Committed Cost</h3>
+      <p class="text-lg font-semibold">{{ rollup.committed_cost | currency }}</p>
+    </div>
+    <div data-testid="rollup-investment-budget" class="rounded-lg border border-border bg-card p-4">
+      <h3 class="text-sm font-medium text-muted-foreground mb-1">Investment Budget</h3>
+      <p class="text-lg font-semibold">{{ rollup.investment_budget | currency if rollup.investment_budget is not none else rollup.investment_budget | dash }}</p>
+    </div>
+    <div data-testid="rollup-headroom" class="rounded-lg border border-border bg-card p-4">
+      <h3 class="text-sm font-medium text-muted-foreground mb-1">Headroom</h3>
+      <p class="text-lg font-semibold">{{ rollup.headroom | currency if rollup.headroom is not none else rollup.headroom | dash }}</p>
+    </div>
+    <div data-testid="rollup-missing-cost-count" class="rounded-lg border border-border bg-card p-4">
+      <h3 class="text-sm font-medium text-muted-foreground mb-1">Work Packages Missing a Cost Estimate</h3>
+      <p class="text-lg font-semibold">{{ rollup.work_packages_missing_cost }}</p>
+    </div>
+  </div>
+
+  {% if rollup.over_budget %}
+  <div data-testid="over-budget-indicator" role="alert" class="border border-destructive/40 bg-destructive/10 text-destructive-emphasis rounded-lg p-4 mb-6 flex items-center gap-2">
+    <span class="inline-flex items-center rounded-full bg-destructive/20 px-2.5 py-0.5 text-xs font-medium text-destructive-emphasis">Over budget</span>
+    <p class="text-sm">Committed cost exceeds the investment budget by {{ rollup.overage | currency if rollup.overage is not none else rollup.overage | dash }}.</p>
+  </div>
+  {% endif %}
+
+  <div>
+    <h2 class="text-lg font-semibold text-foreground mb-4">Work Packages</h2>
+    {% if rollup.work_packages %}
+    <div class="rounded-lg border border-border bg-card overflow-hidden">
+      <ul class="divide-y divide-border">
+        {% for wp in rollup.work_packages %}
+        <li data-testid="rollup-work-package-{{ wp.id }}" class="p-4">
+          <div class="flex items-center justify-between">
+            <div class="min-w-0">
+              <p class="text-sm font-medium truncate">{{ wp.name }}</p>
+            </div>
+            <div class="flex items-center gap-4 text-sm">
+              <span>{{ wp.estimated_cost | currency if wp.estimated_cost is not none else wp.estimated_cost | dash }}</span>
+              <span>{{ wp.estimated_effort_hours | effort_band | dash }}</span>
+            </div>
+          </div>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% else %}
+    {{ empty_state(
+        icon='package',
+        headline='No work packages costed yet',
+        body='Attach a work package to a gap from the comparison screen to see it here.'
+    ) }}
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

@@ -247,6 +247,14 @@ def _register_optional_standalone(app):
         # ARCH-124: Tech Radar — adopt/trial/assess/hold over the existing
         # Technology-layer ArchiMateElement catalogue.
         ("app.modules.tech_radar.routes", "tech_radar_bp", "/technology/radar"),
+        # SAP S/4HANA Interface Register (Task 02): gives
+        # ApplicationInterfaceMetadata its first producer, scoped to a
+        # TechnologyRoadmapInitiative.
+        (
+            "app.modules.interface_register.routes",
+            "interface_register_bp",
+            "/interface-register",
+        ),
         # BA-B1: revocable, read-only share links for capability artefacts. Its
         # public route (/shared/<token>) is the only unauthenticated page here —
         # scope comes from the share row, never from the URL. See the module

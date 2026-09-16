@@ -1512,6 +1512,11 @@ def get_statistics():
         _org_where = " WHERE organization_id = :org" if _org is not None else ""
         _org_and = " AND organization_id = :org" if _org is not None else ""
         _org_params = {"org": _org} if _org is not None else {}
+        _gap_kind_clause = (
+            " AND gap_kind != 'plateau_transition'"
+            if _org_where
+            else " WHERE gap_kind != 'plateau_transition'"
+        )
 
         stats = {
             "work_packages": {
@@ -1564,13 +1569,13 @@ def get_statistics():
                 ),
             },
             "gaps": {
-                "total": ImplementationGap.query.count(),
+                "total": ImplementationGap.query.filter(ImplementationGap.gap_kind != "plateau_transition").count(),
                 "by_priority": dict(
                     db.session.execute(
                         text(
                             f"""
                     SELECT COALESCE(priority, 'unset'), COUNT(*)
-                    FROM gaps{_org_where}
+                    FROM gaps{_org_where}{_gap_kind_clause}
                     GROUP BY priority
                 """
                         ), _org_params
@@ -1581,7 +1586,7 @@ def get_statistics():
                         text(
                             f"""
                     SELECT COALESCE(gap_type, 'unset'), COUNT(*)
-                    FROM gaps{_org_where}
+                    FROM gaps{_org_where}{_gap_kind_clause}
                     GROUP BY gap_type
                 """
                         ), _org_params

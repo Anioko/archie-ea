@@ -546,7 +546,9 @@ class GapArchiMateService:
         Returns:
             List of Gap objects
         """
-        query = Gap.query
+        # D3: exclude interface-register plateau-transition gaps -- this
+        # feeds capability roadmap display, not the interface register.
+        query = Gap.query.filter(Gap.gap_kind != "plateau_transition")
 
         if filters:
             if filters.get("gap_type"):

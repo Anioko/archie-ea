@@ -644,14 +644,17 @@ class EnterprisePostureService:
         # closed rather than guessing at the open vocabulary, so an unfamiliar
         # status is treated as open (visible) rather than silently resolved.
         closed_states = ("resolved", "closed", "complete", "completed")
-        open_gaps = Gap.query.filter(
+        # D3: exclude interface-register plateau-transition gaps -- this
+        # posture metric answers "capability gaps", not interface gaps.
+        _capability_gaps = Gap.query.filter(Gap.gap_kind != "plateau_transition")
+        open_gaps = _capability_gaps.filter(
             db.or_(
                 Gap.resolution_status.is_(None),
                 db.func.lower(Gap.resolution_status).notin_(closed_states),
             )
         ).count()
-        total_gaps = Gap.query.count()
-        overdue_gaps = Gap.query.filter(
+        total_gaps = _capability_gaps.count()
+        overdue_gaps = _capability_gaps.filter(
             db.or_(
                 Gap.resolution_status.is_(None),
                 db.func.lower(Gap.resolution_status).notin_(closed_states),
@@ -659,7 +662,7 @@ class EnterprisePostureService:
             Gap.target_resolution_date.isnot(None),
             Gap.target_resolution_date < today,
         ).count()
-        unowned_gaps = Gap.query.filter(
+        unowned_gaps = _capability_gaps.filter(
             db.or_(
                 Gap.resolution_status.is_(None),
                 db.func.lower(Gap.resolution_status).notin_(closed_states),

@@ -394,7 +394,7 @@ def strategic_planning_dashboard():
     """Strategic Planning Dashboard"""
     try:
         # Get strategic metrics with ArchiMate fallback for empty tables
-        gap_count = Gap.query.count()
+        gap_count = Gap.query.filter(Gap.gap_kind != "plateau_transition").count()
         if gap_count == 0:
             gap_count = ArchiMateElement.query.filter(
                 ArchiMateElement.type.in_(["Gap", "GAP"])
@@ -487,7 +487,7 @@ def investment_matrix():
 def risk_assessment():
     """Risk Assessment"""
     try:
-        gaps = Gap.query.limit(500).all()
+        gaps = Gap.query.filter(Gap.gap_kind != "plateau_transition").limit(500).all()
 
         return render_template("enterprise/risk_assessment.html", gaps=gaps)
     except SQLAlchemyError as e:
@@ -937,7 +937,12 @@ def gap_analysis():
     column = _GAP_SORT_COLUMNS.get(sort_key, Gap.name)
     order = column.desc() if direction == "desc" else column.asc()
     try:
-        gaps = Gap.query.order_by(order, Gap.id).limit(500).all()
+        gaps = (
+            Gap.query.filter(Gap.gap_kind != "plateau_transition")
+            .order_by(order, Gap.id)
+            .limit(500)
+            .all()
+        )
 
         return render_template(
             "enterprise/gap_analysis.html", gaps=gaps,
@@ -975,11 +980,12 @@ def ai_architecture_analysis():
         )
 
         # Count gaps by severity
+        _cap_gaps = Gap.query.filter(Gap.gap_kind != "plateau_transition")
         gaps_by_severity = {
-            "critical": Gap.query.filter_by(severity="critical").count(),
-            "high": Gap.query.filter_by(severity="high").count(),
-            "medium": Gap.query.filter_by(severity="medium").count(),
-            "low": Gap.query.filter_by(severity="low").count(),
+            "critical": _cap_gaps.filter_by(severity="critical").count(),
+            "high": _cap_gaps.filter_by(severity="high").count(),
+            "medium": _cap_gaps.filter_by(severity="medium").count(),
+            "low": _cap_gaps.filter_by(severity="low").count(),
         }
 
         # Fetch applications needing review
@@ -992,7 +998,7 @@ def ai_architecture_analysis():
 
         # Total counts
         total_recommendations = AIRecommendation.query.count()
-        total_gaps = Gap.query.count()
+        total_gaps = Gap.query.filter(Gap.gap_kind != "plateau_transition").count()
 
         return render_template(
             "enterprise/ai_architecture_analysis.html",
@@ -1215,7 +1221,7 @@ def enterprise_dashboard():
         software_modules_count = SoftwareModule.query.count()
 
         # Gaps with ArchiMate fallback for empty tables
-        gaps_count = Gap.query.count()
+        gaps_count = Gap.query.filter(Gap.gap_kind != "plateau_transition").count()
         if gaps_count == 0:
             gaps_count = ArchiMateElement.query.filter(
                 ArchiMateElement.type.in_(["Gap", "GAP"])

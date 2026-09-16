@@ -2560,25 +2560,39 @@ def api_element_detail(element_id):
             })
     except Exception as exc:  # noqa: BLE001
         current_app.logger.debug("Solution link query failed for element %s: %s", element_id, exc)
+        db.session.rollback()
 
-    # Linked capabilities
+    # Linked capabilities. Found broken (25 Sep 2026): this referenced
+    # "business_capabilities"/"capability_archimate_elements", which do not
+    # exist under those names anywhere in the schema (the real tables are
+    # business_capability, singular, and capability_archimate_classifications
+    # -- see ADR 0008 on the six competing capability stores). The resulting
+    # UndefinedTable aborted the whole request's transaction
+    # (psycopg2.errors.InFailedSqlTransaction), silently blanking every
+    # LATER block in this handler including GAP-INT-007's interface_metadata
+    # -- caught by a browser cross-check of a just-created interface, not by
+    # reading source. Pointed at the real mapping table; every except in this
+    # handler also now rolls back so one broken legacy block can never again
+    # poison its siblings.
     linked_capabilities = []
     try:
-        cap_rows = db.session.execute(  # tenant-filtered: scoped via parent FK (element_id join)
-            db.text(  # tenant-filtered
+        _org_and_cap = " AND bc.organization_id = :org" if _org is not None else ""
+        cap_rows = db.session.execute(
+            db.text(
                 "SELECT DISTINCT bc.id, bc.name, bc.level "
-                "FROM business_capabilities bc "
-                "JOIN capability_archimate_elements cae ON cae.capability_id = bc.id "
-                "WHERE cae.archimate_element_id = :eid "
+                "FROM business_capability bc "
+                "JOIN capability_archimate_classifications cae ON cae.capability_id = bc.id "
+                f"WHERE cae.archimate_element_id = :eid{_org_and_cap} "
                 "ORDER BY bc.name "
                 "LIMIT 20"
             ),
-            {"eid": element_id},
+            {"eid": element_id, **({"org": _org} if _org is not None else {})},
         ).fetchall()
         for row in cap_rows:
             linked_capabilities.append({"id": row[0], "name": row[1], "level": row[2]})
     except Exception as exc:  # noqa: BLE001
         current_app.logger.debug("Capability link query failed for element %s: %s", element_id, exc)
+        db.session.rollback()
 
     # Connected elements (relationships with names)
     connected = []
@@ -2598,6 +2612,7 @@ def api_element_detail(element_id):
                 })
     except Exception as exc:  # noqa: BLE001
         current_app.logger.debug("Connected elements query failed for element %s: %s", element_id, exc)
+        db.session.rollback()
 
     # GAP-CMP-008: Requirements linked via realization
     linked_requirements = []
@@ -2615,6 +2630,7 @@ def api_element_detail(element_id):
                 })
     except Exception as exc:  # noqa: BLE001
         current_app.logger.debug("Requirements link query failed for element %s: %s", element_id, exc)
+        db.session.rollback()
 
     # GAP-CMP-009: Custom properties (data classification, PII, etc.)
     cp = {}
@@ -2633,6 +2649,7 @@ def api_element_detail(element_id):
                 interface_metadata = meta.to_dict()
         except Exception:  # noqa: BLE001
             current_app.logger.debug("CMP-detail: interface metadata lookup failed for element %s", element_id)
+            db.session.rollback()
 
     return jsonify({
         "id": el.id,

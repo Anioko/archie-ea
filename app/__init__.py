@@ -162,6 +162,7 @@ REQUIRED_ENDPOINTS = [
     "solution_design.programmes_list",
     "solution_design.transformation_programme_overview",
     "transformation_api.create_programme",
+    "interface_register.index",
 ]
 
 
