@@ -48,6 +48,10 @@ NAV_PAGES = {
         "Salesforce Org Discovery",
     ),
     "admin.seed_management": ("/admin/seed-management", "Seed Management"),
+    "error_events.errors_dashboard": (
+        "/admin/errors",
+        "Deduplicated server + client errors, aggregated by fingerprint across every organization.",
+    ),
     "batch_import_view.dashboard": ("/batch-import/", "Batch Import Dashboard"),
     "consolidation_list.dashboard": (
         "/consolidation-list/",
