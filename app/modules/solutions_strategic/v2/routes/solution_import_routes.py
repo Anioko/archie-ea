@@ -8,7 +8,7 @@ Routes are attached to ``solution_design_bp`` (url_prefix=/solutions).
 
 import logging
 
-from flask import jsonify, request
+from flask import jsonify, render_template, request
 from flask_login import login_required
 
 from .solution_design_routes import solution_design_bp
@@ -16,6 +16,18 @@ from .solution_design_routes import solution_design_bp
 logger = logging.getLogger(__name__)
 
 _MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10 MB limit for OEF XML files
+
+
+@solution_design_bp.route("/import/archimate", methods=["GET"])
+@login_required
+def import_archimate_page():
+    """The page that hosts the OEF import panel (DOGFOOD-005).
+
+    The preview/execute endpoints below predate any page that reaches them; the
+    panel partial was only ever included from a batch-import job page. This is
+    the entry point linked from the ArchiMate Element Catalog.
+    """
+    return render_template("solutions/import_archimate.html")
 
 
 @solution_design_bp.route("/import/archimate/preview", methods=["POST"])

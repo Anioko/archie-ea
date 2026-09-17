@@ -1,0 +1,25 @@
+{% extends "layouts/admin_base.html" %}
+{% from 'components/page_header.html' import page_header %}
+
+{% block title %}Import ArchiMate Model (OEF XML){% endblock %}
+
+{% block extra_css %}
+<style>
+  [x-cloak]{display:none!important}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    {# DOGFOOD-005: the OEF importer existed as an endpoint and a partial but had no page a user
+       could reach from the catalog. This page is that entry point. #}
+    {{ page_header(
+        title='Import ArchiMate Model',
+        description='Upload an ArchiMate Open Exchange Format (.xml / .archimate) file. Preview shows what will be created, what already exists, and what the import will refuse, before anything is written.',
+        breadcrumbs=[{'label': 'Home', 'href': '/'}, {'label': 'ArchiMate Element Catalog', 'href': '/architecture/elements'}, {'label': 'Import model'}],
+        actions=[{'text': 'Back to catalog', 'icon': 'arrow-left', 'href': '/architecture/elements', 'variant': 'outline'}]
+    ) }}
+
+    {% include 'solutions/partials/_import_preview.html' %}
+</div>
+{% endblock %}

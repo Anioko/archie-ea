@@ -96,39 +96,45 @@ db_required = pytest.mark.skipif(
 
 
 @db_required
-def test_execute_writes_relationships_properties_and_survives_an_invalid_element(app, db_session, parsed):
+def test_execute_writes_relationships_properties_and_survives_an_invalid_element(app, db_session, make_org, tenant_ctx, parsed):
+    """Runs inside a tenant context, as a logged-in request would: archimate_elements.organization_id
+    is NOT NULL and TenantMixin fills it from ``g.current_org_id`` on INSERT."""
     from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship
 
-    result = ArchiMateImportService().execute_import(parsed, strategy="skip_duplicates")
+    org = make_org("oef-roundtrip")
+    with tenant_ctx(org.id):
+        result = ArchiMateImportService().execute_import(parsed, strategy="skip_duplicates")
 
-    # DOGFOOD-001: the three valid elements land; only E4 fails, and it is named.
-    assert result["created"] == 3
-    assert result["failed"] == 1
-    assert any("E4" in err or "name_too_long" in err for err in result["errors"])
+        # DOGFOOD-001: the three valid elements land; only E4 fails, and it is named.
+        assert result["created"] == 3
+        assert result["failed"] == 1
+        assert any("E4" in err or "name_too_long" in err for err in result["errors"])
 
-    # DOGFOOD-004: provenance survives the import.
-    e1 = ArchiMateElement.query.filter_by(name="Design partners are free", type="Constraint").first()
-    assert e1 is not None
-    assert e1.custom_properties["status"] == "RULED"
-    assert e1.custom_properties["source"] == "strategy/10G-ASSESSMENT-OFFER.md"
+        # DOGFOOD-004: provenance survives the import.
+        e1 = ArchiMateElement.query.filter_by(name="Design partners are free", type="Constraint").first()
+        assert e1 is not None
+        assert e1.custom_properties["status"] == "RULED"
+        assert e1.custom_properties["source"] == "strategy/10G-ASSESSMENT-OFFER.md"
 
-    # DOGFOOD-003: relationships are written; the one with an unknown endpoint is reported, not lost silently.
-    assert result["relationships_created"] == 1
-    assert result["relationships_skipped"] == 1
-    e2 = ArchiMateElement.query.filter_by(name="Design-partner pilot", type="BusinessService").first()
-    rel = ArchiMateRelationship.query.filter_by(source_id=e1.id, target_id=e2.id, type="Association").first()
-    assert rel is not None and rel.description == "ruling constrains offer"
+        # DOGFOOD-003: relationships are written; the one with an unknown endpoint is reported, not lost silently.
+        assert result["relationships_created"] == 1
+        assert result["relationships_skipped"] == 1
+        e2 = ArchiMateElement.query.filter_by(name="Design-partner pilot", type="BusinessService").first()
+        rel = ArchiMateRelationship.query.filter_by(source_id=e1.id, target_id=e2.id, type="Association").first()
+        assert rel is not None and rel.description == "ruling constrains offer"
 
-    # DOGFOOD-002: the work package is in the layer the catalog renders.
-    e3 = ArchiMateElement.query.filter_by(name="WP-A1 Azure exit", type="WorkPackage").first()
-    assert e3.layer == "Implementation"
+        # DOGFOOD-002: the work package is in the layer the catalog renders.
+        e3 = ArchiMateElement.query.filter_by(name="WP-A1 Azure exit", type="WorkPackage").first()
+        assert e3.layer == "Implementation"
 
 
 @db_required
-def test_execute_is_idempotent_on_reimport(app, db_session, parsed):
+def test_execute_is_idempotent_on_reimport(app, db_session, make_org, tenant_ctx, parsed):
     svc = ArchiMateImportService()
-    svc.execute_import(parsed, strategy="skip_duplicates")
-    second = svc.execute_import(parsed, strategy="skip_duplicates")
+    org = make_org("oef-reimport")
+    with tenant_ctx(org.id):
+        svc.execute_import(parsed, strategy="skip_duplicates")
+        second = svc.execute_import(parsed, strategy="skip_duplicates")
     assert second["created"] == 0
     assert second["skipped"] == 3
     assert second["relationships_created"] == 0

@@ -67,6 +67,16 @@
         <span x-show="showDiagram" x-cloak class="text-xs text-muted-foreground">
             Showing <span x-text="activeLayer || 'all'"></span> layer elements as architecture diagram
         </span>
+        {# DOGFOOD-005: a company with an existing model imports it first; this is where. #}
+        {% if current_user.enterprise_role in ('enterprise_architect', 'platform_admin') or current_user.is_admin() %}
+        <a href="/solutions/import/archimate" data-testid="import-model-link"
+           class="ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border border-border bg-background text-foreground hover:bg-muted/50 transition-colors">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 4v12m0-12l-4 4m4-4l4 4"/>
+            </svg>
+            Import model (OEF XML)
+        </a>
+        {% endif %}
     </div>
     <div x-show="showDiagram" x-cloak x-transition class="mb-6">
         <div class="rounded-xl border border-border bg-card overflow-hidden">
@@ -297,7 +307,8 @@
             <button type="button" @click="clearFilters()" class="mt-2 text-sm text-primary hover:underline">Clear all filters</button>
             {% if current_user.enterprise_role in ('enterprise_architect', 'platform_admin') or current_user.is_admin() %}
             <p class="mt-3 text-sm text-muted-foreground">
-                <a href="/archimate/composer" class="text-primary hover:underline">Open the Composer</a> to create elements,
+                <a href="/solutions/import/archimate" class="text-primary hover:underline">Import an existing model (OEF XML)</a>,
+                <a href="/archimate/composer" class="text-primary hover:underline">open the Composer</a> to create elements,
                 or <a href="/admin/abacus-settings" class="text-primary hover:underline">sync from Abacus</a>.
             </p>
             {% elif current_user.enterprise_role == 'solution_architect' %}
