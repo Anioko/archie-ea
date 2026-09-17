@@ -1565,7 +1565,7 @@ class SecurityScan(db.Model):
 # ============================================================================
 
 
-class Outcome(db.Model):
+class Outcome(TenantMixin, db.Model):
     """
     ArchiMate 3.2 Outcome element.
 
@@ -1573,9 +1573,23 @@ class Outcome(db.Model):
     It realizes Goals and is measured through KPIs.
 
     Follows Basecoat pattern: archimate_element_id links to ArchiMateElement.
+
+    TenantMixin declares organization_id NOT NULL, but `outcomes` is an
+    existing table and reconcile-schema can only ADD nullable columns (ADR
+    0002). Override to nullable so the column can land on deployed databases
+    without a maintenance window -- same pattern as Principle below.
+    Consequence: pre-existing rows have organization_id NULL until backfilled.
+    Run: flask --app manage backfill-outcome-org
     """
 
     __tablename__ = "outcomes"
+
+    organization_id = db.Column(
+        db.Integer,
+        db.ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
 
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(255), nullable=False)
