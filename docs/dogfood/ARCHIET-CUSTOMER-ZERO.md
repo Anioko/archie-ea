@@ -34,6 +34,18 @@ not against the synthetic fixture the automated tests use.
 3. **Export OEF → re-import** → expect 168 "exists" / 0 "new" / 0 "conflict".
 4. **Catalog banner** → expect no "No relationships" warning.
 
+## Finding status (code side — not acceptance)
+
+A fix being merged is not a row passing above; only the deploy log closes a step.
+
+| Finding | What it was | Code status |
+|---|---|---|
+| DOGFOOD-001 | One over-long name aborted the whole import with a raw SQL error | fix in PR #__PR_NUMBER__ (preview flags `name_too_long`, execute writes each element in its own savepoint and returns `failed`) |
+| DOGFOOD-002 | Implementation & Migration elements imported but invisible in the catalog | fix in PR #__PR_NUMBER__ (importer writes the catalog's `Implementation` layer key) |
+| DOGFOOD-003 | Relationships parsed and previewed, never written | fixed on `main` in f5362b5; relationship `<documentation>` persisted in PR #__PR_NUMBER__ |
+| DOGFOOD-004 | OEF `<properties>` dropped on import | fixed on `main` in f5362b5 |
+| DOGFOOD-005 | No entry point to the OEF importer from the catalog | fixed on `main` in f5362b5; empty-state link added in PR #__PR_NUMBER__ |
+
 ---
 
 ## Deploy log
