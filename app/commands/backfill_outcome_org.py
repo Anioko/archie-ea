@@ -61,7 +61,10 @@ def _backfill_outcome_org(dry_run):
         click.echo(f"  + {TABLE}: added organization_id")
 
     total_orphans = conn.execute(
-        text(f'SELECT count(*) FROM "{TABLE}" WHERE organization_id IS NULL')
+        # TABLE is the hardcoded literal "outcomes" (line 44), never request
+        # input; only the bound :id-style values would need parameterizing,
+        # and there are none in this query.
+        text(f'SELECT count(*) FROM "{TABLE}" WHERE organization_id IS NULL')  # nosec B608
     ).scalar()
     if not total_orphans:
         click.echo("  no orphaned rows — nothing to assign")
@@ -84,7 +87,8 @@ def _backfill_outcome_org(dry_run):
         'WHERE o.archimate_element_id = e.id AND o.organization_id IS NULL'
     ))
     after_element = conn.execute(
-        text(f'SELECT count(*) FROM "{TABLE}" WHERE organization_id IS NULL')
+        # TABLE is the hardcoded literal "outcomes" (line 44), never request input.
+        text(f'SELECT count(*) FROM "{TABLE}" WHERE organization_id IS NULL')  # nosec B608
     ).scalar()
     click.echo(f"  + {TABLE}: derived org for {total_orphans - after_element} row(s) from archimate_elements")
 
@@ -95,7 +99,8 @@ def _backfill_outcome_org(dry_run):
             'WHERE o.architecture_id = m.id AND o.organization_id IS NULL'
         ))
         remaining = conn.execute(
-            text(f'SELECT count(*) FROM "{TABLE}" WHERE organization_id IS NULL')
+            # TABLE is the hardcoded literal "outcomes" (line 44), never request input.
+            text(f'SELECT count(*) FROM "{TABLE}" WHERE organization_id IS NULL')  # nosec B608
         ).scalar()
         click.echo(f"  + {TABLE}: derived org for {after_element - remaining} more row(s) from architecture_models")
         if remaining:
