@@ -66,6 +66,7 @@
     class=''
 ) %}
 {% set col_count = columns|length + (1 if selectable else 0) %}
+{% set _scroll_id = 'wbt-scroll-' ~ range(1000000)|random %}
 <div data-slot="card" class="rounded-xl border bg-card shadow-sm {{ class }}">
 
     {# ── Toolbar ──────────────────────────────────────────────────────── #}
@@ -140,7 +141,7 @@
     {% endif %}
 
     {# ── Table ────────────────────────────────────────────────────────── #}
-    <div class="overflow-x-auto" aria-live="polite" aria-atomic="false">
+    <div id="{{ _scroll_id }}" class="overflow-x-auto workbench-table-scroll" aria-live="polite" aria-atomic="false">
         <table class="w-full caption-bottom text-sm" role="grid">
             <thead class="border-b bg-muted/40">
                 <tr>
@@ -246,4 +247,37 @@
     </div>
 
 </div>
+
+{# Horizontal scroll-fade affordance (mirrors sidebar's vertical pattern in
+   admin_sidebar.html / shadcn-sidebar.css). Toggles .at-scroll-end-x once
+   the container is scrolled fully right, or if it was never scrollable in
+   the first place, so the fade never implies content that isn't there. #}
+<script>
+(function initWorkbenchScrollFade() {
+    var el = document.getElementById('{{ _scroll_id }}');
+    if (!el) return;
+    var update = function () {
+        var atEnd = el.scrollWidth - el.clientWidth <= el.scrollLeft + 1;
+        el.classList.toggle('at-scroll-end-x', atEnd);
+    };
+    update();
+    el.addEventListener('scroll', update, { passive: true });
+    window.addEventListener('resize', update);
+    if (typeof document.addEventListener === 'function') {
+        document.addEventListener('alpine:updated', update);
+    }
+    // Rows here are fetched asynchronously by the page's own Alpine
+    // component (e.g. vendor_list_table.js's API call) after this script
+    // already ran its first `update()` -- at that point the table is empty
+    // and genuinely not scrollable, so the initial check correctly (but
+    // permanently, without this observer) locks the fade off before real
+    // content ever renders. A ResizeObserver reacts to the table's actual
+    // size whenever it changes, regardless of what caused the change or
+    // when, so it catches the async-loaded case the other listeners miss.
+    if (typeof ResizeObserver !== 'undefined') {
+        var table = el.querySelector('table');
+        new ResizeObserver(update).observe(table || el);
+    }
+})();
+</script>
 {% endmacro %}
