@@ -24,8 +24,10 @@
     "console_reporting": 0,
     "evidence_contract": 30,
     "role_gate_coverage": 7,
-    "unregistered_checks": 41,
+    "unregistered_checks": 33,
     "duplicate_breadcrumb": 0,
-    "raw_html_escaping": 0
+    "raw_html_escaping": 0,
+    "store_agreement": 1,
+    "canonical_store": 0
   }
 }

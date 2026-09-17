@@ -241,12 +241,49 @@ Enforcement is the `store-agreement` gate: it boots the app, asks every surface
 that answers a given question, and fails when they disagree. It is the only
 check here that compares ANSWERS rather than reading source, which is why every
 other gate passed all four defects above — and did, while the owner found them
-by clicking. Registered 31 Aug 2026 and ratcheted at **1** — deliberately not 0. That 1 is
-the live disagreement it found on the day it was written: `business_capability`
-and `/dashboard/api/capabilities` both answer 12 while `unified_capabilities`
-and `/api/v1/capabilities/` both answer 0, because the canonical store has no
-producer. Baselining it at 0 would have hidden the very defect the gate exists
-to surface. It closes when the projection lands.
+by clicking.
+
+**Corrected 17 Sep 2026** — this section previously said the gate was
+"registered 31 Aug 2026 and ratcheted at 1". It was not: `check_store_agreement.py`
+existed and worked, but `grep 'Gate("' scripts/verify.py` never returned
+`store-agreement`, so nothing in `python scripts/verify.py` ever ran it — the
+exact "checker exists, enforces nothing" gap this file's own `docs/known-issues/`
+section warns about, found a second time in the same session
+(`docs/buckets/unified-capabilities-producer/`). It is now actually registered,
+and `flask project-capabilities` (which already implemented the ADR 0008
+projection correctly) is now wired into `scripts/database/deploy-schema.sh`,
+with a `BusinessCapability` write-time sync listener keeping it current.
+
+**Corrected again 17 Sep 2026 (round 3)** — the ratchet's value is a property of
+whatever database `verify.py` is pointed at, not a fixed fact about the
+codebase, and the previous wording of this paragraph stated one specific run's
+numbers as if they were the current state. They were not: the gate re-reads
+live data every run, so a fresh CI database with no legacy rows measures **0**,
+while the shared local dev/test database — which carries 87 pre-cutover rows
+with `organization_id IS NULL` and `scope IS NULL` — measures **1** on that
+database, today, as one example. The ratchet is set at **1** deliberately, to
+tolerate at most one such disagreement, whatever database or whatever specific
+disagreement produces it; it is not a claim that "1" or "0" is *the* answer.
+
+Concretely, on the shared local test database (as one snapshot, not a fixed
+state to expect on every run) the gate found `capabilities:
+orm:UnifiedCapability=99, GET /api/v1/capabilities/=99` against
+`orm:BusinessCapability=12, GET /dashboard/api/capabilities=12` for the
+richest tenant — a 12/12 vs 99/99 split, not a 0-vs-461 one. The 99 there was
+12 tenant-owned (projected) rows plus 87 rows with `organization_id IS NULL`
+that the read-side `do_orm_execute` listener on `UnifiedCapability`
+(`app/models/unified_capability.py`) lets every tenant see during what its own
+comment calls "the pre-cutover compatibility window." Those 87 rows have
+`scope IS NULL`, not `scope = "reference"`, so
+`UnifiedCapability.visible_to_organization` (same file, ~lines 346-361) does
+not treat them as a designed shared-data category — they are unclassified
+pre-cutover legacy rows that the read-side compatibility branch tolerates and
+the write-side branch (same listener, `else` clause) already refuses to let a
+tenant mutate. The resolution path is `flask cutover-capability-tenancy
+--apply` (already implemented in `app/commands/`), which is expected to either
+assign each row a real `organization_id`/`scope="reference"` or retire it;
+running that command remains out of scope for this bucket and is recorded here
+as an open follow-up.
 
 ## Done means DEMONSTRATED — standing instruction from the owner (1 Sep 2026)
 
@@ -411,7 +448,7 @@ counts only the families in `BANNED_FAMILIES` (`scripts/check_design_tokens.py`)
 `orange` or `cyan` class is right per DESIGN.md but moves this number by zero, and a
 line carrying a `token-migration-ok` marker is already excluded from the count.
 
-**All 56 gates, in registry order (`scripts/verify.py`, `build_gates`) — this table
+**All 58 gates, in registry order (`scripts/verify.py`, `build_gates`) — this table
 is a snapshot, not generated. Run `grep -oE '^\s*Gate\("[a-z-]+"' scripts/verify.py`
 to reconfirm the count before trusting it:**
 
@@ -442,6 +479,8 @@ to reconfirm the count before trusting it:**
 | `template-references` | an `include`/`extends` target that does not exist (TemplateNotFound at render) | must be 0 |
 | `broken-surfaces` | a front-end target that resolves to no real route | ratchet, boot-only |
 | `dynamic-link-prefixes` | a concatenated href/fetch whose literal prefix is a dead route | ratchet @ 0, boot-only |
+| `store-agreement` | two surfaces answering one question with different numbers | ratchet @ 1, boot-only |
+| `canonical-store` | a table gaining a second mapped SQLAlchemy model class | ratchet @ 0 |
 | `fetch-guards` | a `fetch()` parsed without checking the response | ratchet @ 0 |
 | `ui-contract` | a native dialog / `onclick=` / typeless button / arbitrary `px` (DESIGN.md) | ratchet @ 0 |
 | `error-signalling` | an API error path that answers `200` | must be 0 |
@@ -472,7 +511,7 @@ to reconfirm the count before trusting it:**
 | `tests` | behavioural regression | must pass (needs DB) |
 | `nav-verified` | a new sidebar route with no test loading it | ratchet @ 0, carries no tags |
 | `docs-drift` | CLAUDE.md/DELIVERY_CONTRACT.md gate claims disagreeing with build_gates() | must be 0 |
-| `unregistered-checks` | a scripts/check_\*.py with no Gate(...) entry (F500-008) | ratchet @ 41 |
+| `unregistered-checks` | a scripts/check_\*.py with no Gate(...) entry (F500-008) | ratchet @ 33 |
 
 Per-line escape hatches, each of which makes the exception reviewable rather than
 silent — every one greppable as `<name>-ok` in `scripts/verify.py`/`scripts/check_*.py`:
