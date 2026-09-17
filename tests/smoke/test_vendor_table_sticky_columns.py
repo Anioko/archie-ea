@@ -93,3 +93,54 @@ def test_vendor_catalogue_sticky_header_cells_are_opaque(browser, live_server, s
         )
     finally:
         page.close()
+
+
+def test_vendor_catalogue_scroll_fade_signals_more_columns(browser, live_server, seeded):
+    """A user on a narrow/docked window whose table columns overflow the
+    visible area must see SOME indication that scrolling right reveals more
+    -- reported 17 Sep 2026 as a real customer-facing defect: content ran off
+    or got crushed with zero affordance. workbench_table.html's
+    .workbench-table-scroll container applies a right-edge mask-image fade,
+    removed via .at-scroll-end-x once scrolled to the end (or immediately if
+    the table was never scrollable at all, so the fade never lies about
+    content that isn't there)."""
+    page = browser.new_page(viewport={"width": 700, "height": 900})
+    try:
+        _login(page, live_server, seeded["emails"]["platform_admin"])
+        page.goto(live_server + "/vendors/", wait_until="networkidle", timeout=PAGE_TIMEOUT)
+        page.wait_for_timeout(500)
+
+        state = page.evaluate("""
+            () => {
+                const el = document.querySelector('.workbench-table-scroll');
+                if (!el) return null;
+                const scrollable = el.scrollWidth > el.clientWidth;
+                const maskBefore = getComputedStyle(el).maskImage || getComputedStyle(el).webkitMaskImage;
+                el.scrollLeft = el.scrollWidth;
+                el.dispatchEvent(new Event('scroll'));
+                const maskAfter = getComputedStyle(el).maskImage || getComputedStyle(el).webkitMaskImage;
+                return { scrollable, maskBefore, maskAfter };
+            }
+        """)
+        assert state is not None, (
+            "no .workbench-table-scroll container found on /vendors/ -- the "
+            "scroll-fade affordance markup is missing"
+        )
+        assert state["scrollable"], (
+            "the vendor table did not overflow its container at a 700px "
+            "viewport -- either columns shrank enough to fit (nothing to "
+            "test here) or the table stopped rendering its usual columns; "
+            "confirm which before trusting this test"
+        )
+        assert state["maskBefore"] not in (None, "none"), (
+            "the table overflows but no mask-image fade is applied before "
+            "scrolling -- a user has no indication that scrolling right "
+            "reveals more columns"
+        )
+        assert state["maskAfter"] == "none", (
+            "the mask-image fade is still applied after scrolling to the "
+            "end of the table -- it now falsely implies there is more "
+            "content to the right when there isn't"
+        )
+    finally:
+        page.close()

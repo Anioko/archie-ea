@@ -79,3 +79,19 @@ aside.sidebar-collapsed .sidebar-collapse-btn i[data-lucide="panel-left"] {
     -webkit-mask-image: none;
     mask-image: none;
 }
+
+/* ── Workbench table horizontal scroll affordance ────────────────────────────
+   Mirrors the sidebar's vertical scroll-fade pattern above, adapted to the
+   horizontal axis. A right-edge fade signals "more columns, scroll right"
+   without adding a custom scrollbar. The companion JS in
+   workbench_table.html toggles `.at-scroll-end-x` once the container is
+   scrolled fully right (or was never scrollable) so the fade never implies
+   content that isn't there. */
+.workbench-table-scroll {
+    -webkit-mask-image: linear-gradient(to right, black calc(100% - 28px), transparent 100%);
+    mask-image: linear-gradient(to right, black calc(100% - 28px), transparent 100%);
+}
+.workbench-table-scroll.at-scroll-end-x {
+    -webkit-mask-image: none;
+    mask-image: none;
+}
