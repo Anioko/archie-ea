@@ -1,0 +1,14 @@
+{
+  "from": "tech-lead",
+  "to": "builder",
+  "artifact": "docs/buckets/unified-capabilities-producer/implementation-plan.md",
+  "approval_status": "approved",
+  "gate_conditions": [
+    "adr_0008_claims_reverified",
+    "store_agreement_gate_confirmed_registered",
+    "projection_design_decided_not_deferred"
+  ],
+  "unmet_conditions": [],
+  "timestamp": "2026-09-17T00:00:00Z",
+  "notes": "adr_0008_claims_reverified: done, and three claims are FALSE. (1) 'no producer' - app/commands/project_capabilities.py already implements the full idempotent provenance projection, is registered at app/_bootstrap/cli.py:313 and tested by tests/test_capability_projection.py; the real defect is that nothing ever RUNS it (absent from scripts/database/deploy-schema.sh, as is scripts/migrate_unified_capability_provenance.sql which creates the ON CONFLICT arbiter index the command requires). (2) 'eight /api/v1 route files' - three files under app/api reference UnifiedCapability, not eight. (3) The six capability stores are now three relevant ones: enterprise_capabilities and archimate_capabilities have no mapped model at all (dead); technical_capabilities answers a different question; capabilities/Capability is live-but-empty and is a SECOND half-built projection target, deliberately left out of scope. store_agreement_gate_confirmed_registered: condition is MET in the sense of being verified, but the verification came back NEGATIVE - store-agreement is NOT in scripts/verify.py build_gates() (56 gates, not one of them) and has NO verification_baseline.json entry, so CLAUDE.md's 'registered and ratcheted at 1' is drifted prose and the brief's headline acceptance criterion ('ratchet drops from 1 to 0') is unreachable as written. Registering it is therefore pulled into scope as Task 03 rather than assumed. projection_design_decided_not_deferred: decided - deploy-chain backfill AND a write-time after_insert/update/delete listener on BusinessCapability extending the existing create_capability_archimate_element pattern in app/models/business_capabilities.py, reusing _PROJECT_SQL rather than a second column mapping; scheduled job explicitly rejected (no reliable scheduler in the deployed topology, and a staleness window makes the store-agreement gate flap). Failure policy and delete handling are decided in the plan, not left open. Tasks 01 -> 02 -> 03 are strictly ordered."
+}
