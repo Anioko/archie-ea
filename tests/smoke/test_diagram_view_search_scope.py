@@ -69,3 +69,55 @@ def test_diagram_view_request_carries_the_search_term(browser, live_server, seed
         assert payload["success"] is True
     finally:
         page.close()
+
+
+def test_diagram_view_carries_search_term_from_url_directly(browser, live_server, seeded):
+    """A shared/bookmarked link (?q=...) must scope the diagram too, not just
+    a term typed live into the search box.
+
+    Live-reported bug: elements.html's init() only ever read `?layer=` from
+    the URL, never `?q=`/`?search=` -- so landing on a link like
+    /architecture/elements?q=Design%20partners left searchQuery empty and
+    both fetchElements() and loadDiagram() ran unfiltered, showing the
+    default unrelated top-30 slice regardless of the URL's own search term.
+    """
+    page = browser.new_page()
+    try:
+        _login(page, live_server, seeded["emails"]["enterprise_architect"])
+
+        # Create a real element via the actual "Create Element" modal first,
+        # same as the sibling test, so there is something real to find.
+        page.goto(live_server + "/architecture/dashboard", timeout=PAGE_TIMEOUT)
+        page.click('[data-testid="btn-create-element"]')
+        page.wait_for_timeout(500)
+        page.select_option('select[x-model="formData.element_type"]', value="Goal")
+        unique_name = "QA-E2E URL Search Target"
+        page.fill('input[placeholder="Element name"]', unique_name)
+        page.click('button[aria-label="Submit"]')
+        page.wait_for_timeout(1500)
+
+        # Land directly on the elements page with the search term already in
+        # the URL -- never touch the search input.
+        import urllib.parse
+        page.goto(
+            live_server + "/architecture/elements?q=" + urllib.parse.quote(unique_name),
+            timeout=PAGE_TIMEOUT,
+        )
+        page.wait_for_timeout(500)
+
+        search_value = page.input_value('input[placeholder="Search by name..."]')
+        assert unique_name == search_value, (
+            f"landing on a ?q= URL must pre-fill the search box, got: {search_value!r}"
+        )
+
+        with page.expect_request(
+            lambda r: "/api/archimate/viewpoints/" in r.url and "/diagram" in r.url,
+            timeout=PAGE_TIMEOUT,
+        ) as req_info:
+            page.click('button:has-text("Diagram View")')
+        request = req_info.value
+
+        assert "search=" in request.url, f"diagram request must carry the URL's search term, got: {request.url}"
+        assert "URL" in request.url, f"the actual URL-supplied search text must reach the request, got: {request.url}"
+    finally:
+        page.close()
