@@ -223,6 +223,12 @@
             </button>
             <div class="flex-1"></div>
             <span class="text-sm text-muted-foreground" x-text="totalCount + ' elements'"></span>
+            <a href="/solutions/import/archimate"
+               class="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background hover:bg-accent h-9 px-4 py-2"
+               data-testid="import-oef-link">
+                <svg class="w-4 h-4 mr-1.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v12m0 0l-4-4m4 4l4-4M4 20h16"/></svg>
+                Import OEF Model
+            </a>
             <button type="button" @click="showCreateModal = true"
                     class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 h-9 px-4 py-2">
                 <svg class="w-4 h-4 mr-1.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
@@ -447,6 +453,22 @@
                 </template>
             </div>
 
+            {# Properties (DOGFOOD-004 — imported/tagged custom_properties) #}
+            <div class="border-t border-border pt-4 mb-4">
+                <h3 class="text-sm font-medium text-foreground mb-3">Properties</h3>
+                <div x-show="detailLoading" x-cloak class="text-xs text-muted-foreground">Loading...</div>
+                <div x-show="!detailLoading && propertiesError" x-cloak class="text-xs text-destructive-emphasis">Could not load properties.</div>
+                <div x-show="!detailLoading && !propertiesError && customProperties.length === 0" x-cloak class="text-xs text-muted-foreground italic">&mdash;</div>
+                <div x-show="!detailLoading && !propertiesError && customProperties.length > 0" x-cloak class="space-y-1" data-testid="element-properties">
+                    <template x-for="prop in customProperties" :key="prop.key">
+                        <div class="flex items-start justify-between gap-2 text-xs py-1">
+                            <span class="text-muted-foreground font-medium" x-text="prop.key"></span>
+                            <span class="text-foreground text-right break-words" x-text="prop.value" data-testid="element-property-value"></span>
+                        </div>
+                    </template>
+                </div>
+            </div>
+
             {# Relationships (loaded on select) #}
             <div class="border-t border-border pt-4">
                 <h3 class="text-sm font-medium text-foreground mb-3">Relationships</h3>
@@ -573,6 +595,8 @@ document.addEventListener('alpine:init', () => {
         relationshipsError: false,
         elementsError: null,
         relationships: [],
+        customProperties: [],
+        propertiesError: false,
         showCreateModal: false,
         createSubmitting: false,
         createError: '',
@@ -827,6 +851,8 @@ document.addEventListener('alpine:init', () => {
             this.detailLoading = true;
             this.relationships = [];
             this.relationshipsError = false;
+            this.customProperties = [];
+            this.propertiesError = false;
             try {
                 const json = await Platform.fetch('/architecture/api/elements/' + el.id + '/relationships', { silent: true });
                 const incoming = (json.incoming || []).map(r => ({...r, direction: 'incoming'}));
@@ -835,6 +861,25 @@ document.addEventListener('alpine:init', () => {
             } catch (e) {
                 this.relationships = [];
                 this.relationshipsError = true;
+            }
+            // DOGFOOD-004: element list rows carry no custom_properties, so
+            // fetch the enriched detail payload for the properties panel.
+            // NOTE: /architecture/api/elements/<id>/detail is a DIFFERENT,
+            // older handler (app/modules/architecture/routes/archimate_crud/
+            // routes.py) that returns relationships, not custom_properties —
+            // a same-URL-shape, different-blueprint duplicate (ADR 0008).
+            // /archimate/api/elements/<id>/detail (archimate_routes.py) is
+            // the one that actually carries custom_properties; use that one
+            // explicitly rather than the ambiguous relative path.
+            try {
+                const detail = await Platform.fetch('/archimate/api/elements/' + el.id + '/detail', { silent: true });
+                const cp = detail.custom_properties || {};
+                this.customProperties = Object.entries(cp)
+                    .filter(([key]) => !key.startsWith('archie:'))
+                    .map(([key, value]) => ({ key, value }));
+            } catch (e) {
+                this.customProperties = [];
+                this.propertiesError = true;
             }
             this.detailLoading = false;
         },

@@ -1,0 +1,13 @@
+{
+  "from": "tech-lead",
+  "to": "builder",
+  "artifact": "docs/buckets/archiet-dogfood-import-fixes/implementation-plan.md",
+  "approval_status": "approved",
+  "gate_conditions": [
+    "all_customer_acceptance_criteria_covered_by_a_task",
+    "r4c_escalated_not_decided",
+    "adr_gap_flagged_not_invented"
+  ],
+  "unmet_conditions": [],
+  "timestamp": "2026-09-17T00:00:00Z"
+}

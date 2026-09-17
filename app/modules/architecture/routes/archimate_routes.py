@@ -1260,6 +1260,15 @@ def api_viewpoint_data(viewpoint_id: str):
 
 
 # ── Relationship CRUD API ────────────────────────────────────────────────────
+#
+# DOGFOOD-003 relationship-validity-authority audit: ARCHIMATE_RELATIONSHIP_TYPES
+# below is a flat syntactic list (11 canonical spellings) used by POST/PATCH
+# /archimate/api/relationships to reject an unrecognised type string outright
+# — it is a spelling check, not a metamodel check, and is not a second
+# opinion on element-type compatibility. Kept as-is. `_normalize_rel_type` is
+# reused (not duplicated) by app/services/archimate_import_service.py's
+# relationship classifier so OEF xsi:type spellings ("CompositionRelationship")
+# normalise the same way here and on import.
 
 ARCHIMATE_RELATIONSHIP_TYPES = [
     "composition", "aggregation", "assignment", "realization",

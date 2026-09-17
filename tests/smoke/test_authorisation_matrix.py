@@ -47,6 +47,13 @@ POLICY = {
     "/my-applications/list":   {"application_manager"},
     "/my-applications/health": {"application_manager"},
     "/ai-chat":                set(ARCHETYPES),
+    # ArchiMate OEF import (dogfood-import-fixes, Task 01): the route carries
+    # only @login_required -- no role gate at all -- despite update_existing
+    # being able to overwrite elements across the whole enterprise model, per
+    # refuter M9. Recording it here pins the actual (wide-open) boundary so a
+    # role gate added later shows up as a row change, and a further widening
+    # (e.g. an unauthenticated route) would also be visible.
+    "/solutions/import/archimate": set(ARCHETYPES),
     # Error telemetry (10 Sep 2026): cross-tenant by design -- an error is an
     # operational fact about the platform, not a per-org one -- so gated by
     # platform_admin_required rather than the ordinary admin_required.

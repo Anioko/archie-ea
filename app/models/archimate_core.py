@@ -209,6 +209,17 @@ class RelationshipSuggestion(db.Model):  # migration-exempt — uses db.create_a
 # ArchiMate 3.2 relationship validity matrix
 # Key: (relationship_type, source_layer, target_layer) → bool
 # Layers: business, application, technology, motivation, strategy, implementation, physical
+#
+# DOGFOOD-003 relationship-validity-authority audit (docs/buckets/
+# archiet-dogfood-import-fixes/): this layer-triple matrix is coarser than
+# the element-type-keyed one in app/config/archimate_relationship_matrix.py
+# (via RelationshipValidator), which the tech-lead ruled authoritative and
+# which the OEF importer (app/services/archimate_import_service.py) now
+# calls exclusively. This table is NOT retired — it is still read by
+# solution_ai_orchestrator.py, solutions_strategic/v2/routes/
+# solution_archimate_routes.py and modules/genome/patch/coherence.py — so do
+# not delete it. Just don't add a new caller: the importer and any new
+# relationship-validity check belong on RelationshipValidator, not here.
 VALID_RELATIONSHIPS = {
     # Composition — within same layer only
     ("composition", "business", "business"): True,
