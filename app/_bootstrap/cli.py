@@ -296,6 +296,13 @@ def init_cli(app):
         app.logger.warning(f"⚠️  Failed to register principle tenancy backfill CLI: {e}")
 
     try:
+        from app.commands.backfill_outcome_org import init_app as init_outcome_org
+        init_outcome_org(app)
+        app.logger.info("✅ Outcome tenancy backfill CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"⚠️  Failed to register outcome tenancy backfill CLI: {e}")
+
+    try:
         from app.commands.backfill_architect_role import init_app as init_backfill_architect
         init_backfill_architect(app)
         app.logger.info("\u2705 Architect-role backfill CLI command registered")
