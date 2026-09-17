@@ -8,7 +8,18 @@ import json
 import xml.etree.ElementTree as ET
 
 from app import db
+from app.config.archimate_relationship_matrix import RELATIONSHIP_TYPES
 from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship, ArchitectureModel
+
+# Import (and _normalize_rel_type in archimate_routes.py) store/compare
+# relationship types in lowercase per RELATIONSHIP_TYPES (the canonical
+# authority, app/config/archimate_relationship_matrix.py). The OEF/XSD spec
+# requires PascalCase (e.g. "Serving", "Realization") for xsi:type — every
+# name in RELATIONSHIP_TYPES is a single lowercase word, so .capitalize()
+# round-trips correctly without a second hardcoded name list. A tool that
+# actually validates the XSD (Archi) rejects the lowercase form even though
+# Archie's own importer tolerates it by lowercasing again on the way back in.
+_PASCAL_CASE_REL_TYPES: dict[str, str] = {t: t.capitalize() for t in RELATIONSHIP_TYPES}
 
 
 class ArchiMateOEFService:
@@ -139,24 +150,53 @@ class ArchiMateOEFService:
             rel_query = rel_query.filter_by(architecture_id=model_id)
         relationships = rel_query.all()
 
-        # <propertyDefinitions> — O-02: custom element attributes (ArchiMateElement.properties,
-        # a JSON string) were previously dropped entirely on export. Collect every distinct
-        # key across the exported elements first so each can get a stable propertyDefinition
-        # identifier that <properties> entries below reference.
+        # <propertyDefinitions> — O-02: custom element attributes were
+        # previously dropped entirely on export. Collect every distinct key
+        # across the exported elements first so each can get a stable
+        # propertyDefinition identifier that <properties> entries below
+        # reference.
+        #
+        # DOGFOOD-004 correction: this used to read ONLY
+        # ``ArchiMateElement.properties`` (a legacy JSON-text column — see
+        # app/models/models.py:274 — used by older financial/tagging
+        # features such as annual_cost/owner). The OEF importer
+        # (app/services/archimate_import_service.py) writes to a different,
+        # newer column, ``custom_properties`` (db.JSON — app/models/
+        # archimate_core.py:80 / models.py:377), which this export never
+        # read at all, so nothing imported via OEF ever survived a
+        # round-trip. Both columns are real and both are exported here,
+        # merged with ``custom_properties`` taking precedence on a key
+        # collision (it is the column DOGFOOD-004's import convention
+        # writes to). This is two systems of record for "element
+        # properties" and is flagged, not fixed, by this task — see the
+        # ADR 0009 addendum. The ``archie:`` namespace is reserved
+        # provenance (``archie:imported_at``, written by the importer) and
+        # is excluded here per the round-trip rule in
+        # docs/adr/0009-continuous-model-maintenance.md (Addendum) — only
+        # the customer's own keys are written back, so re-importing an
+        # exported file reproduces byte-identical custom_properties for
+        # those keys.
         prop_key_to_def_id: dict[str, str] = {}
         elem_props: dict[int, dict] = {}
-        for elem in elements:
-            raw = getattr(elem, "properties", None)
+
+        def _parsed_json_dict(raw):
             if not raw:
-                continue
+                return {}
             try:
                 parsed = json.loads(raw) if isinstance(raw, str) else raw
             except (ValueError, TypeError):
+                return {}
+            return parsed if isinstance(parsed, dict) else {}
+
+        for elem in elements:
+            merged: dict = {}
+            merged.update(_parsed_json_dict(getattr(elem, "properties", None)))
+            merged.update(_parsed_json_dict(getattr(elem, "custom_properties", None)))
+            merged = {k: v for k, v in merged.items() if not str(k).startswith("archie:")}
+            if not merged:
                 continue
-            if not isinstance(parsed, dict):
-                continue
-            elem_props[elem.id] = parsed
-            for key in parsed:
+            elem_props[elem.id] = merged
+            for key in merged:
                 if key not in prop_key_to_def_id:
                     prop_key_to_def_id[key] = f"id-propdef-{len(prop_key_to_def_id) + 1}"
 
@@ -237,9 +277,12 @@ class ArchiMateOEFService:
                 )
                 continue
 
+            # Export xsi:type in OEF/XSD-required PascalCase, not the
+            # lowercase form the importer stores internally (B4).
+            rel_type_export = _PASCAL_CASE_REL_TYPES.get(rel_type_key, rel_type_key.capitalize() if rel_type_key else "Association")
             rel_attrib = {
                 "identifier": f"id-rel-{rel.id}",
-                f"{{{self.XSI_NS}}}type": rel_type,
+                f"{{{self.XSI_NS}}}type": rel_type_export,
                 "source": f"id-{source_id}",
                 "target": f"id-{target_id}",
             }

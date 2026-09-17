@@ -68,6 +68,24 @@
     </div>
   </template>
 
+  {# ── Relationship Summary Counts ── #}
+  <template x-if="preview && preview.summary.relationships_total !== undefined">
+    <div class="grid grid-cols-3 gap-4" data-testid="relationship-preview-summary">
+      <div class="rounded-lg border border-border bg-card p-4 text-center">
+        <p class="text-2xl font-bold text-foreground" x-text="preview.summary.relationships_total"></p>
+        <p class="text-xs text-muted-foreground">Total Relationships</p>
+      </div>
+      <div class="rounded-lg border border-border bg-card p-4 text-center">
+        <p class="text-2xl font-bold text-success" x-text="preview.summary.relationships_valid"></p>
+        <p class="text-xs text-muted-foreground">Valid</p>
+      </div>
+      <div class="rounded-lg border border-border bg-card p-4 text-center">
+        <p class="text-2xl font-bold text-warning-emphasis" x-text="preview.summary.relationships_invalid"></p>
+        <p class="text-xs text-muted-foreground">Invalid</p>
+      </div>
+    </div>
+  </template>
+
   {# ── Preview Table ── #}
   <template x-if="preview && preview.elements.length > 0">
     <div class="rounded-lg border border-border bg-card overflow-hidden">
@@ -141,7 +159,7 @@
             <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
           </svg>
         </template>
-        Import Elements
+        Import Model
       </button>
     </div>
   </template>
@@ -172,6 +190,39 @@
               <li x-text="err"></li>
             </template>
           </ul>
+        </div>
+      </template>
+
+      {# ── Relationship Import Result ── #}
+      <template x-if="importResult.relationships_created !== undefined">
+        <div class="mt-6 border-t border-border pt-4" data-testid="relationship-import-result">
+          <h4 class="text-sm font-semibold text-foreground mb-3">Relationships</h4>
+          <div class="grid grid-cols-3 gap-4 text-center">
+            <div>
+              <p class="text-xl font-bold text-success" x-text="importResult.relationships_created"></p>
+              <p class="text-xs text-muted-foreground">Created</p>
+            </div>
+            <div>
+              <p class="text-xl font-bold text-muted-foreground" x-text="importResult.relationships_skipped"></p>
+              <p class="text-xs text-muted-foreground">Skipped (existing)</p>
+            </div>
+            <div>
+              <p class="text-xl font-bold text-destructive-emphasis" x-text="(importResult.relationships_failed || []).length"></p>
+              <p class="text-xs text-muted-foreground">Failed</p>
+            </div>
+          </div>
+          <template x-if="importResult.relationships_failed && importResult.relationships_failed.length > 0">
+            <div class="mt-4 rounded-md bg-destructive/10 border border-destructive/30 p-3">
+              <p class="text-xs font-medium text-destructive-emphasis mb-1">Relationships not imported:</p>
+              <ul class="list-disc list-inside text-xs text-destructive-emphasis space-y-1">
+                <template x-for="failure in importResult.relationships_failed" :key="failure.identifier">
+                  <li>
+                    <span x-text="failure.type + ': ' + failure.source + ' → ' + failure.target + ' — ' + failure.reason"></span>
+                  </li>
+                </template>
+              </ul>
+            </div>
+          </template>
         </div>
       </template>
     </div>

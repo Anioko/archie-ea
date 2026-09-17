@@ -102,3 +102,59 @@ It is not autonomy. The proposal-and-govern shape is deliberate: an AI that
 edits the system of record without a decision record reproduces the failure this
 product exists to fix, which is an architecture nobody can trace back to a
 reason.
+
+## Addendum (17 Sep 2026) — the property-import convention this ADR did not define
+
+DOGFOOD-004 (`docs/buckets/archiet-dogfood-import-fixes/`): a customer's OEF
+import carried `status`/`source`/`as_of`-shaped `<properties>` on individual
+elements and cited this ADR as the spec for how they should land. **They do
+not land anywhere per this ADR** — the "model age" measure above (Consequences,
+above) names no field, no key, and no store; it is a target metric, not a
+schema. This addendum is the minimal convention actually implemented, so the
+gap is closed in writing rather than left to be inferred from a docstring.
+
+**ADR 0010 was already taken** (`0010-enterprise-genome.md`) by the time this
+was written, so this lands as an addendum rather than a new numbered ADR —
+flagged here for the solution-architect to renumber into a standalone ADR
+later if a fuller property-governance decision (allow-lists, type coercion,
+a real model-age job reading `archie:imported_at`) is ever made.
+
+The convention:
+
+1. Every `<property>` parsed from an OEF import is stored as a literal key in
+   `ArchiMateElement.custom_properties` (`db.JSON`), keyed by the referenced
+   `<propertyDefinition>`'s `<name>`, value as the string found in `<value>`.
+   No key renaming, no type coercion, no allow-list. `status`, `source`,
+   `as_of`, or any other customer-defined key get no privileged storage —
+   they are ordinary JSON keys like any other.
+   **Correction (17 Sep 2026, found while wiring export):** the normal
+   runtime mapping (`app/models/models.py:274`) additionally carries
+   `ArchiMateElement.properties` — a *different*, older `db.Text` JSON-string
+   column already populated by other features (e.g. `annual_cost`, `owner`
+   financial tagging). This is a second store for the same concept and is
+   flagged, not resolved, here: `ArchimateOEFService.export_model()` now
+   reads and merges both (`custom_properties` wins on a key collision) so
+   neither an OEF import nor a pre-existing `properties` value is silently
+   dropped on export, but the underlying duplication is unresolved and
+   belongs in a follow-up ADR-0008 cleanup, not this one.
+2. One namespaced key is reserved for provenance: `archie:imported_at` (ISO
+   8601, UTC), written by `ArchiMateImportService.execute_import`. Namespacing
+   prevents a collision with a customer property genuinely called
+   `imported_at`, and gives a future model-age job (the metric this ADR's
+   body actually asks for) something to read.
+3. **Round-trip rule.** `ArchiMateOEFService.export_model()` writes every
+   `custom_properties` key back to `<propertyDefinitions>`/`<properties>`
+   **except** the `archie:` namespace, so re-importing an exported file
+   reproduces byte-identical `custom_properties` for the customer's own keys.
+4. **Known collision, not resolved here:** a separate feature
+   (`GET/PUT /architecture/api/elements/<id>/properties`, CMP-043) already
+   stores user-entered "Properties" (tagged values) under a reserved
+   `custom_properties["tags"]` sub-object, specifically so a generic
+   properties editor cannot clobber `data_classification`/`contains_pii`/
+   `lifecycle_history`. This import convention writes literal top-level keys,
+   which is a *different* sub-space of the same JSON blob and does not
+   collide with `"tags"` — but if a customer's OEF property is ever named
+   `tags`, `data_classification`, `contains_pii`, or `lifecycle_history`
+   itself, the import will silently occupy a reserved key. Out of scope for
+   this task; flagged for the next property-governance pass rather than
+   silently left undocumented.
