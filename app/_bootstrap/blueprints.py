@@ -171,6 +171,7 @@ def _init_blueprints(app):
     _ff_governance = _register_governance(app, csrf)
     _ff_industry_apqc = _register_industry_apqc(app)
     _register_solution_product(app)
+    _register_intelligence(app)
 
     # --- North Star Persona MVP modules (NS-008, NS-009, NS-010, NS-011, NS-012, NS-013) ---
     _register_persona_modules(app)
@@ -1320,6 +1321,25 @@ def _register_industry_apqc(app):
     except Exception as _e:
         app.logger.error(f"[MODULE] Industry APQC import failed: {_e}")
         return False
+
+
+def _register_intelligence(app):
+    """Register the intelligence module (T-001 skeleton — mounts nothing yet).
+
+    ``app.modules.intelligence.register`` currently registers no blueprint and
+    no event hook (T-003/T-004 add those). This call exists so later tasks
+    have exactly one non-fatal registration point to extend, matching every
+    other module here.
+    """
+    try:
+        from app.modules.intelligence import register as _reg
+
+        _reg(app)
+        app.logger.info(
+            "[MODULE] Intelligence module registered (app.modules.intelligence)"
+        )
+    except Exception as e:
+        app.logger.warning("Failed to register intelligence module: %s", e)
 
 
 def _register_solution_product(app):
