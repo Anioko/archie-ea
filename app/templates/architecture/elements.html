@@ -637,6 +637,14 @@ document.addEventListener('alpine:init', () => {
                 this.activeLayer = layerParam.toLowerCase();
                 this.availableTypes = this.layerTypes[this.activeLayer] || Object.values(this.layerTypes).flat().sort();
             }
+            // Bug fix: a shared/bookmarked link carrying a search term (?q=...)
+            // never populated searchQuery, so landing here directly (rather than
+            // typing into the box) silently dropped the search entirely --
+            // fetchElements() and loadDiagram() both ran unfiltered.
+            const qParam = params.get('q');
+            if (qParam) {
+                this.searchQuery = qParam;
+            }
             await this.fetchElements();
         },
 
