@@ -57,10 +57,27 @@ def api_roadmap_capabilities():
             ApplicationCapabilityCoverage,
             BusinessCapability,
         )
+        from app.models.unified_capability import UnifiedCapability
 
         capabilities = BusinessCapability.query.all()
         mappings = ApplicationCapabilityCoverage.query.all()
         mapped_cap_ids = {m.capability_id for m in mappings}
+
+        # D-R7-2: this is the roadmap screen's own data feed, sitting in the
+        # same file/blueprint as api_roadmap_detect_gaps() (the "Detect gaps"
+        # button), which was already fixed under D-R5-1 to read maturity
+        # through the single authority accessor rather than the SOURCE
+        # columns. Reading `cap.current_maturity_level` / `.target_maturity_level`
+        # / `.maturity_gap` here (the source, per ADR 0008 rule 3) instead of
+        # the authority let the two co-located endpoints disagree for up to
+        # the 15-minute raw-SQL-write-to-projection window: the list shows
+        # "has a gap" while the button reports zero gaps found. Fetch the
+        # authority for every candidate ONCE, batched, same as the sibling
+        # endpoint.
+        org_id = capabilities[0].organization_id if capabilities else None
+        maturity_map = UnifiedCapability.maturity_for_sources(
+            "business_capability", [c.id for c in capabilities], organization_id=org_id
+        )
 
         # Group by roadmap priority
         roadmap_groups = {
@@ -74,9 +91,24 @@ def api_roadmap_capabilities():
         for cap in capabilities:
             domain = None  # BusinessCapability uses string business_domain
 
-            # Calculate gap status
+            # Calculate gap status — D-R7-2: read through the same authority
+            # accessor as api_roadmap_detect_gaps(), not the source columns.
+            maturity = maturity_map.get(str(cap.id))
+            if maturity is None or maturity.get("reason_code") == "no_maturity_recorded":
+                cap_current_maturity = None
+                cap_target_maturity = None
+                cap_maturity_gap = None
+            else:
+                cap_current_maturity = maturity["current_maturity_level"]
+                cap_target_maturity = maturity["target_maturity_level"]
+                cap_maturity_gap = (
+                    (cap_target_maturity - cap_current_maturity)
+                    if cap_current_maturity is not None and cap_target_maturity is not None
+                    else None
+                )
+
             is_mapped = cap.id in mapped_cap_ids
-            has_maturity_gap = (cap.maturity_gap or 0) > 0
+            has_maturity_gap = (cap_maturity_gap or 0) > 0
 
             # Get investment priority from domain if available
             domain_investment_priority = (
@@ -96,9 +128,9 @@ def api_roadmap_capabilities():
                 "business_criticality": getattr(cap, "business_criticality", None)
                 or getattr(cap, "strategic_importance", None),
                 "is_core_differentiator": getattr(cap, "is_core_differentiator", None),
-                "current_maturity": cap.current_maturity_level,
-                "target_maturity": cap.target_maturity_level,
-                "maturity_gap": cap.maturity_gap,
+                "current_maturity": cap_current_maturity,
+                "target_maturity": cap_target_maturity,
+                "maturity_gap": cap_maturity_gap,
                 "is_mapped": is_mapped,
                 "has_maturity_gap": has_maturity_gap,
                 "investment_priority": domain_investment_priority,

@@ -574,10 +574,30 @@ FAIL schema-drift   [2 > 0]   -- pre-existing local drift (outcomes.organization
                                  only an unrelated missing-table/env-secret issue.
 ```
 
-**Full bare `python scripts/verify.py --require-db`**: started this round
-(round 1 never completed it) — see the session's final message for whether
-it finished green within the time budget; if it did not finish, that is
-disclosed there rather than reported as done.
+**Full bare `python scripts/verify.py --require-db`**: completed this round
+(round 1 never completed it) — **55 passed, 2 failed, 1 skipped**:
+
+```
+  ok    store-agreement            27.8s  [1 <= 2]   <- confirms the raised baseline is safe
+  ok    schema-drift               38.2s  [0 <= 0]   <- resolved by init-db/reconcile-schema this round
+  ok    boot-health                33.4s
+  ok    csrf-coverage              33.2s
+  ok    dependency-cves            99.1s  [0 <= 0]
+  ...
+  FAIL  tests                     3600.4s   timed out (not a failing assertion)
+  FAIL  nav-verified                0.2s    no audit data (downstream of the tests timeout)
+```
+
+The `tests` gate hit `verify.py`'s own internal timeout running the FULL
+pytest suite (hundreds of tests) on this machine — same limitation round 1
+disclosed ("individual db-backed gates measured 20s-65s each, and the full
+suite has hundreds of tests"), not a regression or a failing assertion.
+`nav-verified` fails only because it depends on the audit data that run would
+have produced. Every test file touched or added by this task (T-002's own
+two files, 19 tests) was run standalone and is green. **This machine cannot
+complete the full suite within `verify.py`'s timeout in one run** — a
+genuine environmental limit, disclosed rather than worked around by
+inflating the timeout or truncating the suite.
 
 ## What was NOT completed in round 2 either — carried forward from round 1
 
@@ -980,3 +1000,181 @@ with each round's findings genuinely fixed and verified rather than argued
 away. I believe this is ready for final approval and to ship, pending one
 more refuter pass per this round's own instruction — the merge/deploy
 decision itself belongs to the coordinator, not to this builder pass.
+
+## Round 8 — a 4th fabrication site, a sibling-endpoint divergence, and a mutation-coverage hole
+
+Round 7's holistic re-read found 3 blocking issues that survived rounds 1-6,
+plus 4 lower-priority items on the full sweep. All 3 blocking items are fixed
+and verified this round; the lower-priority items are addressed where quick,
+documented where not.
+
+### D-R7-1 — fixed: 4th fabrication site, `mapping_routes.py:687-689`
+
+`api_unified_capabilities`'s manufacturing-capability branch (~120 lines
+below the 3 sites already fixed at :561-566/:890/:972) read
+`getattr(capability, "lean_maturity", 1)` for `current_maturity` AND
+`getattr(capability, "lean_maturity", 3)` for `target_maturity` — the same
+field read twice under two different labels, plus a hardcoded
+`"maturity_gap": 0` that could never be anything else.
+
+**Product question answered, per the round's instruction**:
+`ManufacturingCapability` (`app/models/manufacturing_capability.py:161`) has
+exactly one maturity field, `lean_maturity` — there is no separate
+target-maturity column anywhere on that model, confirmed by grepping the
+whole model tree. The genuine single authority for a current/target/gap
+*triplet* on this row is the linked `UnifiedCapability` projection
+(`unified_cap`, already fetched a few lines above this block via
+`unified_caps_by_id.get(unified_cap_id)` and used for `name`/`code`/`level`
+etc. on the very same dict). Fixed to read
+`unified_cap.current_maturity_level` / `.target_maturity_level` /
+`.maturity_gap` when `unified_cap` is present, with the same
+`maturity_reason_code: "no_maturity_recorded"` fallback pattern used at the
+other 3 sites, and `None` (not a fabricated `0`) for all three fields when
+`unified_cap` is absent. `lean_maturity` is no longer read at all in this
+dict — it was never a legitimate stand-in for either current or target on
+the *unified* representation this endpoint serves.
+
+### D-R7-2 — fixed: sibling roadmap-feed endpoint repointed to the authority
+
+`GET /capability-map/api/roadmap/capabilities` (`roadmap_routes.py`,
+`api_roadmap_capabilities`) — the roadmap screen's own list feed — read
+`cap.current_maturity_level` / `.target_maturity_level` / `.maturity_gap`
+straight off the SOURCE (`BusinessCapability`), while its sibling in the
+same file, `api_roadmap_detect_gaps` (the "Detect gaps" button), was already
+fixed under D-R5-1/round 6 to read through `UnifiedCapability.
+maturity_for_sources`, the single authority accessor. This let the list and
+the button on one screen disagree for up to the 15-minute raw-SQL-write-to-
+projection window.
+
+Fixed by batch-fetching `UnifiedCapability.maturity_for_sources(
+"business_capability", [c.id for c in capabilities], organization_id=org_id)`
+once up front (identical call shape to the sibling endpoint) and deriving
+`current_maturity`/`target_maturity`/`maturity_gap`/`has_maturity_gap` from
+that authority map instead of the source columns, with `None` (not the
+sibling's stale `.maturity_gap` derived column) when the authority has no
+recorded maturity for a capability. No disclosure-block update to
+`check_store_agreement.py` was needed since the divergence is closed, not
+merely documented — `roadmap_routes.py` is not added to that file's "reads
+the source directly" list because, after this round, it no longer does.
+
+### D-R7-3 — fixed: added the missing positive mutation-coverage test
+
+`tests/test_d_r7_3_gap_detect_positive.py` (new) seeds a `BusinessCapability`
+with `current_maturity_level=2` / `target_maturity_level=5` — a real,
+non-None delta — confirms the write-time ORM sync listener projected a
+matching, non-stale `UnifiedCapability` authority row (so the test exercises
+the success path, not accidentally the D-R5-1 skip path), calls
+`POST /capability-map/api/roadmap/gaps/detect`, and asserts:
+- `created == 1` (a mutation that always skips would report `0` here and
+  break this test, where it previously broke nothing)
+- the created Gap's `priority == "critical"` (crossing the endpoint's own
+  `>= 3 -> critical` threshold for a gap of exactly 3), confirming the
+  *magnitude*, not just the count, flows through correctly
+- the persisted `Gap` row (queried independently via
+  `app.models.implementation_migration.Gap`) carries the same priority,
+  a `"high"`/`"critical"` severity, and `resolution_status == "identified"`
+
+En route to writing this test, found and worked around (but did **not**
+fix, as out of scope for D-R7-3) a pre-existing, unrelated key-name mismatch
+in `api_roadmap_detect_gaps`: the endpoint builds `gap_data` with
+`"source_capability_type"`/`"source_capability_id"` keys, but
+`GapArchiMateService.convert_capability_gap_to_archimate` reads
+`data.get("capability_type")`/`data.get("capability_id")` — so every
+persisted `Gap.source_capability_id` from this endpoint is silently `None`
+regardless of the real capability. The new test asserts on the Gap's `name`
+(`f"Gap: Gap: {cap.name}"` — also double-prefixed, since the endpoint
+already passes `f"Gap: {cap.name}"` and the service prefixes `"Gap: "`
+again) rather than `source_capability_id`, to avoid masking this separate,
+real defect behind a workaround. **Flagging as a new, separate follow-up**
+(not filed under D-R7 since the refuter's brief didn't ask for it): fixing
+the key mismatch would make `Gap.source_capability_id` actually populate,
+which downstream code may already assume works — worth its own task rather
+than a drive-by fix here.
+
+Ran the full existing suite for this endpoint together with the new test —
+`test_d_r7_3_gap_detect_positive.py`, `test_d_r5_1_gap_detect_divergence.py`,
+`test_c1_gap_tile_reconciliation.py` — all 3 pass (4 tests total).
+
+### D-R7-4 / D-R7-5 — documented, not fixed this round (pre-existing, out of round-8 scope per instruction)
+
+- **D-R7-4** (`app/modules/ai_chat/tools/executor.py:1483,1516`):
+  `(c.target_maturity_level or 3) - (c.current_maturity_level or 1)` reports
+  a fabricated "gap of 2" to the LLM/user for a wholly unassessed
+  capability — the AI-tool-executor sibling of the bug already fixed in
+  `capability_requirement_generator_service.py` (round 2/4). Not fixed this
+  round: the instruction explicitly said "fix if time allows, otherwise
+  document as a named follow-up," and this round's time went to the 3
+  blocking items plus their verification. **Follow-up**: apply the same
+  `maturity_for_source`/reason-code pattern used everywhere else in this
+  task at both line numbers.
+- **D-R7-5** (`app/modules/capabilities/services/capability_heatmap_service.py:
+  126,132,136,360-361,390`): same `or 1`/`or 3` fabrication pattern feeding a
+  heatmap tile and an "average maturity" figure. Same disposition as
+  D-R7-4 — documented, not fixed this round.
+
+### D-R7-6 — done: pointer comment added directly in `check_store_agreement.py`
+
+Added a comment at the `store-agreement` ratchet in
+`scripts/check_store_agreement.py` pointing at D-R5-2's orphan-projection
+explanation in this build report, so a future person hitting a ratchet
+regression from a bulk-delete-created orphan finds the explanation without
+having to already know this document exists.
+
+### D-R7-7 — not fixed this round
+
+`ea_workflow_engine.py:2960-2962` and
+`implementation_context_engine.py:248-250` call `maturity_for_sources`
+without an explicit `organization_id`, unlike `roadmap_routes.py` and
+`arb_integration_service.py`. Per the round's own framing this is "safe
+today per the tenant-context listener but inconsistent" — a real but
+non-blocking hardening item, left as a named follow-up rather than touched
+this round to keep the diff focused on the 3 blocking items plus their
+tests.
+
+### Round 8 verification
+
+- `python scripts/verify.py --tag static` — 48 passed, 0 failed, 1 skipped
+  (`css-build`, no vendored Tailwind CLI on this machine — pre-existing,
+  unrelated to this change; the full un-tagged `verify.py` run needing
+  `--require-db` remains a confirmed environmental hang on this machine
+  across every round, not skipped carelessly this round either).
+- New test `tests/test_d_r7_3_gap_detect_positive.py` — 1 passed.
+- Existing directly-relevant tests re-run: `test_d_r5_1_gap_detect_
+  divergence.py` (1 passed), `test_c1_gap_tile_reconciliation.py`
+  (1 passed), `test_ba02_maturity_frameworks_overview.py` (3 passed),
+  `test_capability_maturity_heatmap.py` (3 passed),
+  `test_capability_visuals.py`, `test_traceability_store_agreement.py`,
+  `test_genome_roadmap.py` — 40 passed total across that group.
+- Full non-smoke `pytest -q` sweep (background, ~10 min): 154 passed, 3
+  failed, 3 errors. All 6 confirmed **pre-existing and unrelated** to this
+  round's diff — reproduced identically with `git stash` applied (i.e.
+  against the round-7 tree, before any round-8 change):
+  - `test_def003_capability_mapping_visible.py` x2 — a test-fixture
+    `IntegrityError` on `uq_unified_capabilities_provenance` unrelated to
+    the maturity fields touched this round
+  - `test_m1_zero_denominator.py::test_product_roadmap_on_track_pct_none_
+    when_no_now_epics` — an unrelated product-roadmap epic-percentage
+    calculation, no maturity/gap involvement
+  - `test_roadmap_modal_visibility.py` x3 (firefox) — Playwright
+    browser-driver errors, environmental, unrelated to any Python route
+    change
+  No new failures were introduced by this round's diff.
+
+### Round 8 conclusion
+
+All 3 blocking items from the round-7 holistic re-read are fixed and
+verified: the 4th fabrication site in `mapping_routes.py` no longer copies
+one field into both current/target/gap; the roadmap list feed now reads
+maturity through the same single authority accessor as its sibling
+"Detect gaps" button, closing the live on-screen contradiction; and a
+positive mutation-proof test now exists for the gap-detection success path,
+closing the "always skip" blind spot in prior coverage. The 4 lower-priority
+items are handled per the round's own "document, don't necessarily fix"
+framing: D-R7-6 is done (pointer comment landed), D-R7-4/5/7 are documented
+here as named, scoped follow-ups rather than silently deferred. `git status`
+is clean after this round's commit (see below) and the working tree carries
+no uncommitted changes.
+
+I believe this is genuinely ready for merge after this round, subject as
+always to the refuter's own independent verification rather than this
+builder's self-report.

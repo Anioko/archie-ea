@@ -684,9 +684,26 @@ def api_unified_capabilities():
                         if capability.unified_capability
                         else False,
                         "business_impact": min(mfg_business_impact, 100),
-                        "current_maturity": getattr(capability, "lean_maturity", 1),  # model-safety-ok: field on ManufacturingCapability, defensive for mixed types
-                        "target_maturity": getattr(capability, "lean_maturity", 3),  # model-safety-ok: field on ManufacturingCapability, defensive for mixed types
-                        "maturity_gap": 0,
+                        # D-R7-1: ManufacturingCapability only carries a single
+                        # `lean_maturity` field (current, no separate target
+                        # concept on that model). The single authority for a
+                        # current/target/gap TRIPLET for this row is the linked
+                        # UnifiedCapability (`unified_cap`), same as the other 3
+                        # sites in this file (:561-566, :890, :972). Do not copy
+                        # `lean_maturity` into both current and target — that
+                        # fabricates a gap of 0 that can never be anything else.
+                        "current_maturity": unified_cap.current_maturity_level
+                        if unified_cap
+                        else None,
+                        "target_maturity": unified_cap.target_maturity_level
+                        if unified_cap
+                        else None,
+                        "maturity_reason_code": None
+                        if unified_cap and unified_cap.current_maturity_level is not None
+                        else "no_maturity_recorded",
+                        "maturity_gap": unified_cap.maturity_gap
+                        if unified_cap and unified_cap.maturity_gap is not None
+                        else None,
                         "annual_cost": None,
                         "annual_revenue_impact": None,
                         "status": getattr(capability, "status", "defined"),  # model-safety-ok: ManufacturingCapability does not have status field

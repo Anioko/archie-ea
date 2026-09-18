@@ -174,6 +174,19 @@ CONCEPTS = {
     # not run recently enough, or a raw-SQL maturity writer bypassed it --
     # exactly the defect class T-002 exists to close, and exactly what the
     # superseded prose below wrongly claimed could not be expressed.
+    #
+    # D-R7-6 / D-R5-2: this ratchet has a known, currently-unclosed orphan
+    # gap -- if a BusinessCapability row is ever deleted via a bulk
+    # `query.filter(...).delete()` or raw SQL (either of which bypasses the
+    # ORM `after_delete` listener), the matching UnifiedCapability
+    # projection becomes a permanent orphan that project_capabilities.py's
+    # upsert-only projection logic can never clean up, and this ratchet
+    # could creep back to a nonzero count with no code remedy currently
+    # available. Full explanation and suggested remedies (a periodic
+    # orphan-reaping pass, or an after_bulk_delete hook) are in
+    # docs/buckets/t002-maturity-single-authority/build-report.md, sections
+    # "D-R5-2" and "D-R7-6" -- read that before assuming a regression here
+    # is a fresh bug rather than this known, documented gap resurfacing.
     "capability maturity assessed": [
         Surface("orm:BusinessCapability(maturity recorded)", "orm",
                 "app.models.business_capabilities.BusinessCapability",
