@@ -35,6 +35,9 @@ def _create_disposable_user(organization_id):
     `User(...); user.password = PASSWORD` construction) but is never added to
     `seeded['emails']`, so no other test file's `_login` helper can ever be
     handed this user's (about to be rotated) credentials.
+
+    Returns (email, user_id) so the caller can register a teardown that
+    removes this user from the shared smoke organisation.
     """
     from app import create_app, db
     from app.models.user import Role, User
@@ -55,13 +58,48 @@ def _create_disposable_user(organization_id):
         user.password = PASSWORD
         db.session.add(user)
         db.session.commit()
-        return email
+        return email, user.id
 
 
-def test_change_password_and_relogin_with_new_password(browser, live_server, seeded):
-    page = browser.new_page()
+def _remove_disposable_user(user_id, email):
+    """Deletes the user `_create_disposable_user` added to the shared smoke org.
+
+    This journey logs the disposable user in twice and out once, and
+    authentication auditing records each event in soc2_audit_log with a
+    NOT-NULLable-in-practice foreign key to users.id -- deleting the user
+    first raises IntegrityError. Those rows are this disposable user's own
+    login/logout events and nothing else's audit trail, so removing them
+    ahead of the user, scoped strictly by this user_id, is safe.
+
+    Otherwise follows the same query-count-assert-delete-assert pattern as
+    the `remove_protocol_provider` finalizer in
+    tests/smoke/conftest.py:335-347, so the shared smoke organisation
+    doesn't accumulate an extra member per run.
+    """
+    from app import create_app, db
+    from app.models.audit_log import AuditLog
+    from app.models.user import User
+
+    app = create_app("testing")
+    with app.app_context():
+        db.session.remove()
+        AuditLog.query.filter_by(user_id=user_id).delete(synchronize_session=False)
+        db.session.commit()
+
+        query = User.query.filter_by(id=user_id, email=email)
+        assert query.count() == 1, "Disposable password-change user was unexpectedly changed"
+        assert query.delete(synchronize_session=False) == 1
+        db.session.commit()
+        assert User.query.filter_by(id=user_id).count() == 0
+        db.session.remove()
+
+
+def test_change_password_and_relogin_with_new_password(browser, live_server, seeded, request):
     new_password = "SmokeJourneyRotated!2026"
-    email = _create_disposable_user(seeded['ids']['org'])
+    email, disposable_user_id = _create_disposable_user(seeded['ids']['org'])
+    request.addfinalizer(lambda: _remove_disposable_user(disposable_user_id, email))
+
+    page = browser.new_page()
     try:
         _login(page, live_server, email)
 
