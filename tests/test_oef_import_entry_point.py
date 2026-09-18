@@ -54,8 +54,12 @@ def test_import_page_renders_for_a_logged_in_user(app, client, db_session, login
     from app.models import User
 
     org = make_org("oef-entry")
-    user = User(email="oef-entry@example.com", is_active=True, organization_id=org.id)
-    user.set_password("x")
+    # confirmed=True: an unconfirmed user is redirected to /account/unconfirmed by a
+    # global before_request check, which would otherwise make this test measure email
+    # confirmation instead of the route under test. is_active is flask_login.UserMixin's
+    # read-only property (not a settable column) and is omitted.
+    user = User(email="oef-entry@example.com", organization_id=org.id, confirmed=True)
+    user.password = "x"  # ``password`` is a write-only property (app/models/user.py); there is no set_password method
     db_session.add(user)
     db_session.flush()
 

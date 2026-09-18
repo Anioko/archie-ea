@@ -123,7 +123,10 @@ def test_execute_writes_relationships_properties_and_survives_an_invalid_element
         assert result["relationships_skipped"] == 0
         assert [r["identifier"] for r in result["relationships_failed"]] == ["R2"]
         e2 = ArchiMateElement.query.filter_by(name="Design-partner pilot", type="BusinessService").first()
-        rel = ArchiMateRelationship.query.filter_by(source_id=e1.id, target_id=e2.id, type="Association").first()
+        # Stored type is the lowercase canonical form from _normalize_rel_type
+        # (app/modules/architecture/routes/archimate_routes.py), shared by the
+        # execute path — the OEF xsi:type "Association" normalises to "association".
+        rel = ArchiMateRelationship.query.filter_by(source_id=e1.id, target_id=e2.id, type="association").first()
         assert rel is not None and rel.description == "ruling constrains offer"
 
         # DOGFOOD-002: the work package is in the layer the catalog renders.

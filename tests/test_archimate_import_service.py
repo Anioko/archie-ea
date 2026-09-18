@@ -119,13 +119,15 @@ def test_reimport_after_execute_reports_every_element_as_exists(app, org_ctx, fi
     assert preview_again["summary"]["conflict"] == 0
 
 
-def test_element_flush_failure_discards_whole_batch(app, org_ctx, monkeypatch):
-    """D1 (round 4) — reproduces refuter's exact trace: elements [A, BAD, C]
-    where BAD raises on flush. Before this fix, A's flush()/created-increment/
-    id_map entry survived the rollback() triggered by BAD's failure, so the
-    response reported a non-zero, confidently wrong created count (or a
-    phantom-FK secondary failure) even though A no longer exists in the DB
-    after rollback. The whole batch must be discarded and reported as such.
+def test_element_flush_failure_is_isolated_to_that_element(app, org_ctx, monkeypatch):
+    """DOGFOOD-001 superseded D1 (round 4)'s whole-batch-discard behaviour
+    tested here previously: reproduces the same trace, elements [A, BAD, C]
+    where BAD raises on flush, but now each element is written inside its own
+    ``db.session.begin_nested()`` savepoint (see execute_import). BAD's
+    savepoint rolls back and BAD alone is refused — A and C, already
+    committed to their own savepoints, are unaffected. A single bad element
+    (the customer's actual failure: one over-100-char name) must never again
+    cost the rest of a 168-element model.
     """
     from app.extensions import db
     from app.models.archimate_core import ArchiMateElement
@@ -156,17 +158,18 @@ def test_element_flush_failure_discards_whole_batch(app, org_ctx, monkeypatch):
     service = ArchiMateImportService()
     result = service.execute_import(parsed, strategy="skip_duplicates")
 
-    assert result["created"] == 0
+    assert result["created"] == 2  # A and C, each in their own savepoint
     assert result["updated"] == 0
     assert result["skipped"] == 0
+    assert result["failed"] == 1  # BAD, and only BAD
     assert result["relationships_created"] == 0
     assert result["relationships_failed"] == []
-    assert any("discarded" in e.lower() for e in result["errors"])
+    assert any("BAD" in e for e in result["errors"])
 
     monkeypatch.setattr(db.session, "flush", real_flush)
-    assert ArchiMateElement.query.filter_by(name="A").first() is None
+    assert ArchiMateElement.query.filter_by(name="A").first() is not None
     assert ArchiMateElement.query.filter_by(name="BAD").first() is None
-    assert ArchiMateElement.query.filter_by(name="C").first() is None
+    assert ArchiMateElement.query.filter_by(name="C").first() is not None
 
 
 def test_export_then_reimport_preserves_custom_properties(app, org_ctx, fixture_xml):
