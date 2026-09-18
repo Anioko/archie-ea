@@ -115,6 +115,13 @@ class ArchiMateCapability(db.Model):
     strategic_importance = db.Column(db.String(20))  # critical, high, medium, low
     investment_priority = db.Column(db.Integer)  # 1 - 10 ranking
     strategic_objective = db.Column(db.Text)  # Alignment with business objectives
+    # T-002 (ADR 0008 rule 3): superseded by the single maturity authority,
+    # `UnifiedCapability.current_maturity_level` / `.target_maturity_level`
+    # (projected from `business_capability`, not from this table). Not the
+    # current-value read path — read `UnifiedCapability.maturity_for_source`
+    # or `.maturity_for_sources` instead. Retained, not dropped: this model
+    # is a separate ArchiMate-framework capability catalogue, not itself a
+    # copy with declared provenance.
     target_maturity = db.Column(db.Integer)  # Target maturity level (1 - 5)
     current_maturity = db.Column(db.Integer)  # Current maturity level (1 - 5)
     maturity_gap = db.Column(db.Integer)  # Calculated gap

@@ -185,9 +185,20 @@ class ARBIntegrationService:
                 f"This capability is critical to achieving business objectives."
             )
         
-        if hasattr(capability, 'maturity_level'):
+        # T-002: `capability` is a BusinessCapability; it has never had a
+        # `maturity_level` attribute (its columns are `current_maturity_level`
+        # / `target_maturity_level`, and those are the projection's source,
+        # not a current-value read target — ADR 0008 rule 3), so this
+        # `hasattr` guard was always False and this text never rendered. Read
+        # the single maturity authority instead.
+        from app.models.unified_capability import UnifiedCapability
+
+        _maturity = UnifiedCapability.maturity_for_source(
+            "business_capability", capability.id, organization_id=capability.organization_id
+        )
+        if _maturity["current_maturity_level"] is not None:
             justification_parts.append(
-                f"Current Maturity: {capability.maturity_level} - "
+                f"Current Maturity: {_maturity['current_maturity_level']} - "
                 f"Investment required to reach target state."
             )
         

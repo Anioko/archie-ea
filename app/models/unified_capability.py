@@ -189,9 +189,17 @@ class UnifiedCapability(HybridCapabilityTenantMixin, db.Model, OptimisticLockMix
     manufacturing_critical = Column(db.Boolean, default=False)
     industry_kpis = Column(db.Text)  # JSON with industry-specific KPIs
 
-    # Maturity assessment (CMM-based: 1 - 5)
-    current_maturity_level = Column(db.Integer, default=1)
-    target_maturity_level = Column(db.Integer, default=3)
+    # Maturity assessment (CMM-based: 1 - 5).
+    # T-002: no default. This is the single maturity authority pair
+    # (ADR 0008 rule 3) — an unassessed/unprojected capability must read as
+    # NULL -> `no_maturity_recorded`, not as a fabricated Level 1 / Level 3.
+    # SQLAlchemy's Python-side `default=` fires whenever the flushed value is
+    # None (not only when the attribute was never set), so this default used
+    # to silently overwrite an explicit `None` — exactly the "plausible score
+    # nobody assessed" defect `business_capabilities.py`'s own maturity
+    # columns already document having removed.
+    current_maturity_level = Column(db.Integer)
+    target_maturity_level = Column(db.Integer)
     maturity_gap = Column(db.Integer)
     maturity_assessment_date = Column(db.DateTime)
     maturity_assessment_notes = Column(db.Text)
@@ -359,6 +367,95 @@ class UnifiedCapability(HybridCapabilityTenantMixin, db.Model, OptimisticLockMix
         if organization_id is not None:
             visibility = or_(reference_scope, cls.organization_id == organization_id)
         return cls.query.filter(cls.id == capability_id, visibility).one_or_none()
+
+    # ------------------------------------------------------------------ #
+    # T-002: the single maturity accessor (ADR 0008 rule 3 — one accessor
+    # per concept). ``current_maturity_level`` / ``target_maturity_level``
+    # on this model are the authority, kept fresh by the scheduled
+    # projection in ``app/jobs/capability_projection_job.py`` (source of
+    # truth: ``app/commands/project_capabilities.py``). Every reader that
+    # needs a capability's *current* maturity — as opposed to a historical
+    # ``CapabilityMaturityAssessment`` event — must go through one of the
+    # two methods below rather than reading the columns, or a source
+    # model's superseded columns, directly.
+    # ------------------------------------------------------------------ #
+
+    @classmethod
+    def maturity_for_source(
+        cls, source_table: str, source_id, *, organization_id: int | None = None
+    ) -> dict:
+        """Return current/target maturity for one source row, by provenance.
+
+        Both values come from the same ``UnifiedCapability`` row. Returns the
+        T-001 ``no_maturity_recorded`` reason code — never ``0`` — when no
+        projected row exists yet or the projected row carries no maturity.
+        """
+        from app.modules.intelligence.services.reason_codes import validate_reason_code
+
+        query = cls.query.filter(
+            cls.source_table == source_table,
+            cls.source_id == str(source_id),
+        )
+        if organization_id is not None:
+            query = query.filter(
+                or_(cls.organization_id == organization_id, cls.organization_id.is_(None))
+            )
+        row = query.order_by(cls.id.asc()).first()
+
+        if row is None or row.current_maturity_level is None:
+            return {
+                "current_maturity_level": None,
+                "target_maturity_level": None,
+                "reason_code": validate_reason_code("no_maturity_recorded"),
+            }
+        return {
+            "current_maturity_level": row.current_maturity_level,
+            "target_maturity_level": row.target_maturity_level,
+            "reason_code": None,
+        }
+
+    @classmethod
+    def maturity_for_sources(
+        cls, source_table: str, source_ids: list, *, organization_id: int | None = None
+    ) -> dict:
+        """Batch form of :meth:`maturity_for_source` — avoids an N+1 in list views.
+
+        Returns a dict keyed by the *string* form of each supplied source id.
+        A source id with no projected row (or no maturity yet) is present in
+        the returned dict with ``no_maturity_recorded``, so callers never have
+        to distinguish "missing key" from "no maturity" themselves.
+        """
+        from app.modules.intelligence.services.reason_codes import validate_reason_code
+
+        wanted = [str(sid) for sid in source_ids]
+        result = {
+            sid: {
+                "current_maturity_level": None,
+                "target_maturity_level": None,
+                "reason_code": validate_reason_code("no_maturity_recorded"),
+            }
+            for sid in wanted
+        }
+        if not wanted:
+            return result
+
+        query = cls.query.filter(
+            cls.source_table == source_table,
+            cls.source_id.in_(wanted),
+        )
+        if organization_id is not None:
+            query = query.filter(
+                or_(cls.organization_id == organization_id, cls.organization_id.is_(None))
+            )
+        for row in query.all():
+            if row.current_maturity_level is None:
+                continue
+            result[row.source_id] = {
+                "current_maturity_level": row.current_maturity_level,
+                "target_maturity_level": row.target_maturity_level,
+                "reason_code": None,
+            }
+        return result
 
     def to_dict(self):
         """Convert to dictionary for API responses"""
