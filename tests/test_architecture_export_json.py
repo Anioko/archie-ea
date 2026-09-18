@@ -13,22 +13,25 @@ architecture_crud_routes.py, which exist for the list APIs and would silently
 narrow this export to a fraction of its declared columns.
 
 This test pins full-fidelity export two ways: (1) representative
-non-trivial fields - including custom_properties and building_block_type,
-the kind of TOGAF/tagged-value data that a narrow projection drops first -
-round-trip with their real values, and (2) the exported key *set* for both
-an element and a relationship equals every column the model declares, not
-just a fixed handful. Either assertion alone would have caught the original
-8-field/5-field regression; both are kept because they fail for different
-reasons and pin different parts of the contract.
+non-trivial fields - including custom_properties, building_block_type and
+togaf_plateau, the kind of TOGAF/tagged-value data that a narrow projection
+drops first - round-trip with their real values, and (2) the exported key
+*set* for both an element and a relationship equals every column the model
+declares, not just a fixed handful. Either assertion alone would have caught
+the original 8-field/5-field regression; both are kept because they fail for
+different reasons and pin different parts of the contract.
 
-Deliberately not asserted: the `plateau` key (ArchiMateElement's
-togaf_plateau column, mapped explicitly to DB column name "plateau"). A
-same-named relationship backref (Plateau.archimate_element, backref="plateau")
-shadows it on the model instance, so to_dict()'s generic
-getattr(self, col.name) loop reads the relationship, not the column, for
-that one field. That collision predates this task, is not part of its scope,
-and is called out in the build report rather than asserted on here as if it
-round-tripped correctly.
+The element seeded here is also linked to a real Plateau row (deliberately,
+via Plateau.archimate_element_id) because ArchiMateElement.togaf_plateau is
+declared with an explicit DB column name ("plateau") that collides with
+Plateau.archimate_element's same-named backref on ArchiMateElement
+instances. to_dict() reads each column's value through its ORM-mapped
+attribute name specifically to avoid that backref; without that, exporting
+any element linked to a Plateau row raises TypeError (a list of Plateau
+rows is not JSON-serializable) instead of returning the plateau
+classification string. A first real-CI run of this fix caught exactly that
+crash on the smoke suite's own realistic fixture data - this test seeds the
+same shape locally so the regression can't return silently.
 """
 from __future__ import annotations
 
@@ -43,6 +46,7 @@ pytestmark = pytest.mark.usefixtures("db_session")
 
 def test_export_to_json_serializes_seeded_element_and_relationship(db_session, make_org, tenant_ctx):
     from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship
+    from app.models.implementation_migration import Plateau
     from app.modules.architecture.services.architecture_import_export_service import (
         ArchitectureImportExportService,
     )
@@ -57,8 +61,14 @@ def test_export_to_json_serializes_seeded_element_and_relationship(db_session, m
             organization_id=org.id,
             building_block_type="ABB",
             custom_properties={"tagged_value": "CMP-043"},
+            togaf_plateau="Target",
         )
         db_session.add(element)
+        db_session.flush()
+
+        # Links a real Plateau row to the element - see the module docstring
+        # for why this is what actually crashed export_to_json() in CI.
+        db_session.add(Plateau(name="Transition 1", archimate_element_id=element.id, organization_id=org.id))
         db_session.flush()
 
         relationship = ArchiMateRelationship(
@@ -101,6 +111,12 @@ def test_export_to_json_serializes_seeded_element_and_relationship(db_session, m
         assert exported_element["custom_properties"] == {"tagged_value": "CMP-043"}, (
             "custom tagged-value properties did not round-trip through the "
             "export - the narrow 8-field projection drops this field"
+        )
+        assert exported_element["plateau"] == "Target", (
+            "TOGAF plateau classification did not round-trip through the "
+            "export - either the narrow 8-field projection drops it, or "
+            "to_dict() read the same-named Plateau backref instead of the "
+            "togaf_plateau column"
         )
 
         expected_element_keys = {col.name for col in ArchiMateElement.__table__.columns}

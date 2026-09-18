@@ -451,13 +451,28 @@ else:
         def to_dict(self):
             """JSON-safe dict of all columns. Several CRUD routes call
             element.to_dict() (edit/view/search element); without it they 500
-            with AttributeError 'ArchiMateElement has no attribute to_dict'."""
+            with AttributeError 'ArchiMateElement has no attribute to_dict'.
+
+            Reads each column's value through the ORM-mapped attribute name
+            (mapper.get_property_by_column), not col.name, because togaf_plateau
+            is declared with an explicit DB column name ("plateau") that
+            collides with the unrelated Plateau.archimate_element backref of
+            the same name on this class. getattr(self, col.name) would read
+            that backref (a list of Plateau rows, not JSON-serializable) instead
+            of the scalar column - dropping the real classification value at
+            best, raising TypeError from json.dump at worst, for any element
+            linked to a Plateau row.
+            """
             from datetime import date, datetime
             from decimal import Decimal
 
+            from sqlalchemy import inspect as sa_inspect
+
             out = {}
+            mapper = sa_inspect(self.__class__)
             for col in self.__table__.columns:
-                val = getattr(self, col.name)
+                attr_name = mapper.get_property_by_column(col).key
+                val = getattr(self, attr_name)
                 if isinstance(val, (datetime, date)):
                     val = val.isoformat()
                 elif isinstance(val, Decimal):
@@ -530,15 +545,22 @@ else:
 
         def to_dict(self):
             """JSON-safe dict of all columns. Mirrors ArchiMateElement.to_dict()
-            immediately above: several CRUD routes call relationship.to_dict()
+            immediately above (including reading each column's value through
+            its ORM-mapped attribute name rather than assuming it equals the DB
+            column name - no current column on this class needs that, but a
+            future one might). Several CRUD routes call relationship.to_dict()
             (e.g. update_relationship); without it they 500 with AttributeError
             'ArchiMateRelationship has no attribute to_dict'."""
             from datetime import date, datetime
             from decimal import Decimal
 
+            from sqlalchemy import inspect as sa_inspect
+
             out = {}
+            mapper = sa_inspect(self.__class__)
             for col in self.__table__.columns:
-                val = getattr(self, col.name)
+                attr_name = mapper.get_property_by_column(col).key
+                val = getattr(self, attr_name)
                 if isinstance(val, (datetime, date)):
                     val = val.isoformat()
                 elif isinstance(val, Decimal):
