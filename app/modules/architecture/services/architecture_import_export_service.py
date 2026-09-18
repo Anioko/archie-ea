@@ -85,17 +85,31 @@ class ArchitectureImportExportService:
     @staticmethod
     def export_to_json() -> Tuple[str, str]:
         """Export all architecture to JSON.
-        
+
         Returns: (file_path, filename)
         """
+        # Deferred import: app.modules.architecture.routes.architecture_crud_routes
+        # imports this service module at module load time (directly, and via the
+        # app.services.architecture_import_export_service backward-compat shim),
+        # so a top-level import here would be circular. _element_to_dict /
+        # _relationship_to_dict are the same serialization helpers already used
+        # by that module's own JSON API endpoints (api_list_elements,
+        # api_list_relationships) - reused here rather than adding a third
+        # hand-rolled serialization. Neither ArchiMateElement nor
+        # ArchiMateRelationship defines a to_dict() method.
+        from app.modules.architecture.routes.architecture_crud_routes import (
+            _element_to_dict,
+            _relationship_to_dict,
+        )
+
         filename = f"architecture_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-        
+
         elements = ArchitectureElement.query.all()
         relationships = Relationship.query.all()
-        
+
         data = {
-            "elements": [e.to_dict() for e in elements],
-            "relationships": [r.to_dict() for r in relationships],
+            "elements": [_element_to_dict(e) for e in elements],
+            "relationships": [_relationship_to_dict(r) for r in relationships],
             "exported_at": datetime.now().isoformat(),
         }
         
