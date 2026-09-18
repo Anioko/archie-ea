@@ -143,6 +143,12 @@ class Config:
         "ARB_CONDITION_EXPIRY_INTERVAL_MINUTES", "5"
     )
 
+    # T-002: capability maturity projection — recurring interval, configurable
+    # downward. Default 15 minutes per the task brief.
+    CAPABILITY_PROJECTION_INTERVAL_MINUTES = os.environ.get(
+        "CAPABILITY_PROJECTION_INTERVAL_MINUTES", "15"
+    )
+
     # Session security — 8-hour session lifetime, 30-day remember-me cookie
     PERMANENT_SESSION_LIFETIME = timedelta(hours=8)
     # F-07: the 8 hours above is an ABSOLUTE cap; it is not an idle timeout and

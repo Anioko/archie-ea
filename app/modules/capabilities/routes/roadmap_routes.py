@@ -1761,15 +1761,24 @@ def api_roadmap_detect_gaps():
     """
     try:
         from app.models.business_capabilities import BusinessCapability
+        from app.models.unified_capability import UnifiedCapability
         from app.modules.architecture.services.gap_archimate_service import GapArchiMateService
 
         service = GapArchiMateService()
 
-        # BusinessCapability may not have maturity_gap — compute from levels
+        # BusinessCapability may not have maturity_gap — compute from levels.
+        # R3-2: a capability whose current_maturity_level is None (never
+        # assessed) must not be selected here — "target - 0 > 0" would
+        # fabricate a gap purely because nobody has assessed it yet, and
+        # the SAME request renders "Current maturity: no_maturity_recorded"
+        # for that same row a few lines below, contradicting the Gap
+        # element this loop would otherwise persist. A gap is meaningless
+        # without a real current value to measure it from.
         all_caps = BusinessCapability.query.all()
         capabilities = [
             c for c in all_caps
-            if (c.target_maturity_level or 0) - (c.current_maturity_level or 0) > 0
+            if c.current_maturity_level is not None
+            and (c.target_maturity_level or 0) - c.current_maturity_level > 0
         ]
 
         created_count = 0
@@ -1777,24 +1786,55 @@ def api_roadmap_detect_gaps():
         gap_results = []
 
         for cap in capabilities:
+            # T-002: read current maturity through the single authority
+            # accessor rather than `cap.current_maturity` / `.target_maturity`
+            # — those names never existed on BusinessCapability (its columns
+            # are `current_maturity_level` / `target_maturity_level`, the
+            # projection's *source*, per ADR 0008 rule 3), so this always
+            # rendered "unknown" regardless of whether an assessment existed.
+            maturity = UnifiedCapability.maturity_for_source(
+                "business_capability", cap.id, organization_id=cap.organization_id
+            )
+            # R3-8: render the reason code as readable prose ("not assessed"),
+            # matching the LLM-prompt path's treatment
+            # (capability_requirement_generator_service.py), rather than the
+            # raw vocabulary token ("no_maturity_recorded") leaking into
+            # user-facing text.
+            _READABLE_REASON = {"no_maturity_recorded": "not assessed"}
+            current_label = maturity["current_maturity_level"]
+            if current_label is None:
+                current_label = _READABLE_REASON.get(maturity["reason_code"], "not assessed")
+            target_label = maturity["target_maturity_level"]
+            if target_label is None:
+                target_label = _READABLE_REASON.get(maturity["reason_code"], "not assessed")
+            # R3-7: this loop is already filtered to rows with a real,
+            # assessed current_maturity_level (see the selection above), so
+            # compute the gap from the same accessor values rendered above,
+            # not from the stale, unsynced `BusinessCapability.maturity_gap`
+            # derived column — reading that column here would be a THIRD,
+            # potentially-contradicting answer alongside the accessor values
+            # just rendered into `current_label`/`target_label`.
+            computed_gap = (maturity["target_maturity_level"] or 0) - (
+                maturity["current_maturity_level"] or 0
+            )
             gap_data = {
                 "source_capability_type": "business",
                 "source_capability_id": cap.id,
                 "name": f"Gap: {cap.name}",
                 "description": (
-                    f"Capability '{cap.name}' has a maturity gap of {cap.maturity_gap}. "
-                    f"Current maturity: {cap.current_maturity or 'unknown'}. "
-                    f"Target maturity: {cap.target_maturity or 'unknown'}."
+                    f"Capability '{cap.name}' has a maturity gap of {computed_gap}. "
+                    f"Current maturity: {current_label}. "
+                    f"Target maturity: {target_label}."
                 ),
-                "gap_type": "coverage" if not cap.current_maturity else "quality",
+                "gap_type": "coverage" if not maturity["current_maturity_level"] else "quality",
                 "priority": (
-                    "critical" if (cap.maturity_gap or 0) >= 3
-                    else "high" if (cap.maturity_gap or 0) >= 2
+                    "critical" if computed_gap >= 3
+                    else "high" if computed_gap >= 2
                     else "medium"
                 ),
                 "severity": (
-                    "critical" if (cap.maturity_gap or 0) >= 3
-                    else "high" if (cap.maturity_gap or 0) >= 2
+                    "critical" if computed_gap >= 3
+                    else "high" if computed_gap >= 2
                     else "medium"
                 ),
                 "auto_generated": True,

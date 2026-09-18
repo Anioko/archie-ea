@@ -207,9 +207,26 @@ class InvestmentPrioritizationService:
                 return 0
 
     def _calculate_maturity_score(self, capability: BusinessCapability) -> int:
-        """Calculate maturity gap score (0 - 25 points)."""
-        current_maturity = capability.current_maturity_level or 1
-        target_maturity = capability.target_maturity_level or 3
+        """Calculate maturity gap score (0 - 25 points).
+
+        R3-6: this file is superseded by
+        `app.modules.solutions_strategic.v2.services.investment_prioritization_service`,
+        which is the copy actually imported by
+        `app/modules/architecture/routes/architecture_routes.py` and
+        `app/modules/solutions_strategic/v2/routes/strategic_routes.py` — no
+        current importer references this copy. Per ADR 0008 ("retire, never
+        accumulate"), fixed here too rather than left fabricating, so the
+        next person doesn't resurrect the fabricating version by copying
+        from this file. `or 1` / `or 3` fabricated a specific invented gap
+        for a capability with no recorded maturity at all; an unassessed
+        side now returns a documented NEUTRAL score (midpoint of the
+        0-25 range) instead of computing a gap from invented inputs.
+        """
+        current_maturity = capability.current_maturity_level
+        target_maturity = capability.target_maturity_level
+
+        if current_maturity is None or target_maturity is None:
+            return 12  # neutral midpoint -- not a measured gap
 
         maturity_gap = target_maturity - current_maturity
 

@@ -64,6 +64,19 @@ class BusinessCapability(TenantMixin, db.Model):
     # on every capability nobody had assessed — indistinguishable from a real
     # assessment, and the exact failure CLAUDE.md's "never invent data" rule
     # exists to prevent. maturity_assessment_date is what says "this is real".
+    #
+    # T-002 (ADR 0008 rule 3): these two columns are the projection's SOURCE,
+    # not a current-value read target. `app/commands/project_capabilities.py`
+    # reads them into `unified_capabilities.current_maturity_level` /
+    # `.target_maturity_level`, the single maturity authority; the write-time
+    # listeners at the bottom of this module and the scheduled job in
+    # `app/jobs/capability_projection_job.py` keep that projection fresh,
+    # including for the raw-SQL writers in
+    # `app/modules/capabilities/routes/maturity_routes.py` that never fire an
+    # ORM event. A caller asking "what is this capability's maturity now?"
+    # must use `UnifiedCapability.maturity_for_source("business_capability", id)`
+    # (or its batch form), never read these two columns directly outside this
+    # model and the projection itself.
     current_maturity_level = db.Column(db.Integer, nullable=True)  # 1 - 5 scale
     target_maturity_level = db.Column(db.Integer, nullable=True)  # 1 - 5 scale
     maturity_gap = db.Column(db.Integer)  # Calculated gap between current and target

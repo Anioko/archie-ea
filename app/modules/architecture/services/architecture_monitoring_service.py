@@ -982,8 +982,15 @@ class ArchitectureMonitoringService:
                         "domain_id": cap.domain_id,
                         "strategic_importance": cap.strategic_importance,
                         "business_criticality": cap.business_criticality,
-                        "target_maturity": cap.target_maturity,
-                        "current_maturity": cap.current_maturity,
+                        # T-002: these are UnifiedCapability rows (the maturity
+                        # authority) — the columns are *_maturity_level, not
+                        # *_maturity; the old names never existed on this model
+                        # and silently raised AttributeError, caught by this
+                        # method's outer try/except and logged as "Error
+                        # capturing capabilities snapshot" instead of reaching
+                        # the caller.
+                        "target_maturity": cap.target_maturity_level,
+                        "current_maturity": cap.current_maturity_level,
                         "mapping_count": mapping_count,
                     }
                 )
@@ -1242,8 +1249,13 @@ class ArchitectureMonitoringService:
         for cap in current_caps:
             cap_id = cap.get("id")
             if cap_id in baseline_map:
-                baseline_maturity = baseline_map[cap_id].get("current_maturity") or 0
-                current_maturity = cap.get("current_maturity") or 0
+                baseline_maturity = baseline_map[cap_id].get("current_maturity")
+                current_maturity = cap.get("current_maturity")
+                # Cannot compare against an unassessed state: neither None baseline nor
+                # None current may be coerced to 0, which would fabricate a CMM level 0
+                # that does not exist on the scale (fabricated-data gate).
+                if baseline_maturity is None or current_maturity is None:
+                    continue
                 if current_maturity < baseline_maturity:
                     maturity_regressions.append(
                         {
