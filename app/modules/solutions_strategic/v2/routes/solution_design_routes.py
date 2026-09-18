@@ -1031,9 +1031,17 @@ def list_solutions():
         # computed classifications, NOT stored DB statuses, so we handle them
         # separately after fetching all accessible solutions.
         ws_filter = ""
+        show_all_statuses = False
         if status_filter in _WORKLIST_BUCKETS:
             ws_filter = status_filter
             status_filter = ""
+        elif status_filter == "all":
+            # "all" means "show every status, including the ones the default
+            # shell/archived exclusion below would otherwise hide" — it is not a
+            # literal DB status value, so leaving it unhandled fell through to a
+            # `WHERE status = 'all'` that matched no row ever.
+            status_filter = ""
+            show_all_statuses = True
 
         # PLT-019: BU scope resolution ────────────────────────────────────────
         # If the user has a business unit set (PLT-018), filter solutions whose
@@ -1107,6 +1115,10 @@ def list_solutions():
         # Apply status filter
         if status_filter:
             query = query.filter(Solution.status == status_filter)
+        elif show_all_statuses:
+            # ?status=all — explicit escape hatch, skip the default
+            # shell/archived exclusion entirely rather than narrowing further.
+            pass
         elif not search:
             # Default: exclude only archived solutions and empty draft shells.
             #
@@ -1209,18 +1221,106 @@ def list_solutions():
             for _sol in pagination.items
         }
 
-        # S-01: the list used to assert "Page 1 of 1" while silently withholding
-        # rows. Report how many the default filter hid so the count on screen is
-        # honest about being filtered.
-        hidden_by_default_filter = 0
-        if not status_filter and not search:
-            try:
-                _visible_ids = {s_.id for s_ in _ordered.with_entities(Solution.id).all()}
-                _accessible = _base.with_entities(Solution.id).all()
-                hidden_by_default_filter = max(0, len({r[0] for r in _accessible}) - len(_visible_ids))
-            except Exception as _hid_err:  # a count must never 500 the page
-                logger.warning("solutions list: hidden-count unavailable: %s", _hid_err)
-                hidden_by_default_filter = 0
+        # ── Unified hidden-solutions disclosure (round 4) ───────────────────
+        # Rounds 1-3 each added a separate, conditionally-gated disclosure
+        # block for ONE filter type (ownership, then BU, then search/status),
+        # leaving the identical false "create your first solution" empty
+        # state reachable through whichever filter type wasn't covered yet —
+        # domain/type/date filters (D2) and worklist-bucket clicks via the
+        # stat cards (D3). Replaced with ONE canonical breakdown, computed
+        # unconditionally, whenever the org has solutions:
+        #   org_total       — every solution in the org, excluding
+        #                      [DELETED]% rows — same grain as the Health
+        #                      Scorecard tile, ALWAYS org-wide (D1: never a
+        #                      BU-scoped subtotal presented as if it were
+        #                      the org total).
+        #   hidden_by_role_filter — org_total - accessible_count. Captures
+        #                      BOTH ownership scoping and BU-domain scoping
+        #                      in one number, because `_base`/
+        #                      `_accessible_count` already has both baked in
+        #                      (ownership filter at line ~1080, BU domain
+        #                      filter at line ~1083, `_base = query` line
+        #                      ~1091) — no separate hidden_by_bu_filter is
+        #                      needed any more.
+        #   hidden_by_filters — accessible_count - final_visible_count,
+        #                      where final_visible_count is `pagination.total`
+        #                      taken AFTER every filter (search, status,
+        #                      domain, type, dates, the default shell
+        #                      exclusion, AND the worklist-bucket filter) has
+        #                      already been applied above — `pagination` is
+        #                      `_ManualPagination` (post-bucket-filter) on the
+        #                      ws_filter branch and the SQL-paginated object
+        #                      otherwise, so this one number is automatically
+        #                      correct for any current or future filter
+        #                      without a per-filter-type conditional.
+        hidden_by_default_filter = 0  # kept for template/test back-compat; now an alias of hidden_by_filters
+        hidden_by_role_filter = 0
+        hidden_by_bu_filter = 0  # kept for template/test back-compat; folded into hidden_by_role_filter
+        hidden_by_search_filter = 0  # kept for template/test back-compat; now an alias of hidden_by_filters
+        hidden_by_filters = 0
+        org_total = None
+
+        try:
+            _accessible_count = _base.with_entities(Solution.id).count()
+        except Exception as _acc_err:  # a count must never 500 the page
+            logger.warning("solutions list: accessible-count unavailable: %s", _acc_err)
+            _accessible_count = 0
+
+        try:
+            org_total = Solution.query.filter(~Solution.name.like("[DELETED]%")).count()
+        except Exception as _org_err:  # a count must never 500 the page
+            logger.warning("solutions list: org-total unavailable: %s", _org_err)
+            org_total = _accessible_count
+
+        try:
+            _final_visible_count = pagination.total if pagination is not None else 0
+        except Exception:
+            _final_visible_count = 0
+
+        # Unconditional on `_can_see_all`: `_accessible_count` (from `_base`)
+        # already carries the ownership filter ONLY for non-privileged users
+        # (line ~1080) but the BU-domain filter for EVERY user regardless of
+        # `_can_see_all` (line ~1083, PLT-019) — so a privileged user scoped
+        # to a business unit whose domain matches none of the org's
+        # solutions must still see this number (R2-1's bug, now fixed at the
+        # unified level rather than re-special-cased).
+        hidden_by_role_filter = max(0, org_total - _accessible_count)
+        hidden_by_filters = max(0, _accessible_count - _final_visible_count)
+        # Back-compat aliases — the template's per-cause testids/messages
+        # still read these three names; they now all describe the same
+        # `hidden_by_filters` number rather than three independently-derived
+        # ones, so they can never disagree with each other again.
+        hidden_by_default_filter = hidden_by_filters
+        hidden_by_search_filter = hidden_by_filters
+
+        # Describe which filters are actually active, for the disclosure
+        # message ("K are hidden by your current filters: search 'x',
+        # domain 'Finance', ..."), covering every filter this route
+        # supports — not a hand-picked subset (D2/D3).
+        active_filter_descriptions = []
+        _default_shell_filter_active = not status_filter and not show_all_statuses and not search
+        if _default_shell_filter_active:
+            active_filter_descriptions.append("the default filter (empty drafts and archived solutions)")
+        if search:
+            active_filter_descriptions.append(f'search "{search}"')
+        if status_filter:
+            active_filter_descriptions.append(f'status "{status_filter}"')
+        if ws_filter:
+            _ws_labels = {
+                "needs_setup": "Needs Setup", "in_design": "In Design",
+                "needs_attention": "Needs Attention", "ready_for_review": "Ready for Review",
+            }
+            active_filter_descriptions.append(f'worklist "{_ws_labels.get(ws_filter, ws_filter)}"')
+        if domain_filter:
+            active_filter_descriptions.append(f'domain "{domain_filter}"')
+        if type_filter:
+            active_filter_descriptions.append(f'type "{type_filter}"')
+        if created_after:
+            active_filter_descriptions.append(f'created after {created_after}')
+        if created_before:
+            active_filter_descriptions.append(f'created before {created_before}')
+        if bu_filter_active and not show_all_override:
+            active_filter_descriptions.append(f'business unit "{bu_name}"')
 
         # Show the "New Programme" CTA only to users who can actually create one
         # (audit F-04: otherwise the wizard is a six-step dead end).
@@ -1228,10 +1328,32 @@ def list_solutions():
             TransformationProgrammeService,
         )
         can_create_programme = TransformationProgrammeService.can_create_programme(current_user)
+
+        # D4 (round-4 refuter finding, security-adjacent): this used to splat
+        # every raw `request.args` key into `url_for(**_clear_filter_args)`,
+        # which reserves keywords like `endpoint`/`_external`/`_scheme`/
+        # `_method`/`_anchor` — `?endpoint=x` raised TypeError, `?_scheme=
+        # https` raised ValueError, `?_method=POST` raised BuildError, all
+        # caught by the blanket `except Exception` below and silently
+        # re-rendered as the FALSE first-run empty state with no disclosure
+        # vars at all. D6: the "clear filters" action must also actually
+        # clear every filter it claims to (domain/type/dates/bu too, not
+        # just search/status/page) and be reachable from every empty state.
+        # A single unqualified link to the bare list URL satisfies both: no
+        # user-supplied keys ever reach `url_for`, and every filter is gone.
+        clear_filters_url = url_for("solution_design.list_solutions")
+
         return render_template(
             "solutions/list.html",
             can_create_programme=can_create_programme,
             hidden_by_default_filter=hidden_by_default_filter,
+            hidden_by_role_filter=hidden_by_role_filter,
+            hidden_by_bu_filter=hidden_by_bu_filter,
+            hidden_by_search_filter=hidden_by_search_filter,
+            hidden_by_filters=hidden_by_filters,
+            active_filter_descriptions=active_filter_descriptions,
+            clear_filters_url=clear_filters_url,
+            org_total=org_total,
             solutions=pagination.items,
             pagination=pagination,
             per_page=per_page,
