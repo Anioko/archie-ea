@@ -23,11 +23,12 @@
     var _chart = null;
     var _domainsPopulated = false;
 
-    function cssHSL(varName, alpha) {
+    // Shared helper — see app/static/js/shared/css_color_tokens.js.
+    var cssHSL = (window.ArchieColorTokens && window.ArchieColorTokens.cssHSL) || function (varName, alpha) {
         var raw = getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
         if (!raw) return null;
         return alpha !== undefined ? 'hsl(' + raw + ' / ' + alpha + ')' : 'hsl(' + raw + ')';
-    }
+    };
 
     function loadMaturityRadarTab(forceRerender) {
         var loading = document.getElementById('maturity-loading');

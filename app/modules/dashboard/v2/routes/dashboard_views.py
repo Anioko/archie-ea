@@ -237,8 +237,15 @@ def overview():
                 "% Test Programme%", "%PESTLE News Analyser%",
                 "MDM Test%", "Create an architecture for%",
             ]
+            # D5 (round-4 refuter finding): also exclude soft-deleted rows
+            # ("[DELETED] ..." name prefix), matching the grain the Health
+            # Scorecard tile (dashboard_views.py total_solutions below,
+            # fixed round-2/R2-5) and the Solutions list's org_total (S-01)
+            # both already use. This was the third surface answering "how
+            # many solutions" with its own, uniquely-inflated count.
             solutions = SolutionModel.query.filter(
                 SolutionModel.name.isnot(None),
+                not_(SolutionModel.name.like("[DELETED]%")),
                 not_(or_(*[SolutionModel.name.like(p) for p in _test_name_patterns])),
             ).all()
 
@@ -1007,7 +1014,15 @@ def _assemble_health_scorecard_metrics():
     total_solutions = None
     try:
         from app.models.solution_models import Solution as SolutionModel
-        solutions_q = SolutionModel.query.with_entities(SolutionModel.adm_phase).all()
+        # R2-5 (round-3 refuter fix): the solutions list excludes soft-deleted
+        # "[DELETED] ..." rows from its org_total (solution_design_routes.py),
+        # so this tile must exclude them too or the two screens report
+        # different answers to "how many solutions exist" for the same org.
+        solutions_q = (
+            SolutionModel.query.filter(~SolutionModel.name.like("[DELETED]%"))
+            .with_entities(SolutionModel.adm_phase)
+            .all()
+        )
         total_solutions = len(solutions_q)
         maturity_scores = []
         for (phase,) in solutions_q:

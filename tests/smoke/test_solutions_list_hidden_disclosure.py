@@ -1,0 +1,107 @@
+"""The Solutions list must never tell a user "no solutions found" while their
+organisation actually has some -- it must disclose what is hiding them
+(ownership/role filter, or the default shell/archived filter), per S-01's
+precedent and its 17 Sep 2026 extension (bucket:
+arb-chart-and-solutions-data-disagreement, Task B).
+
+Ground truth (production, 2026-09-17, org 11): `qa-solution-architect`'s two
+"hidden" solutions were owned by the SAME user, not someone else -- they were
+excluded by the default shell filter (draft, no description, no narrative,
+version 1), not by the ownership filter. This journey drives the ownership
+case with a second, non-privileged persona in the seeded org (who did not
+create the fixture's Solution rows) to prove the general disclosure mechanism
+-- not only the specific shell-filter case reproduced in production.
+"""
+
+from __future__ import annotations
+
+import pytest
+
+from .conftest import PAGE_TIMEOUT, PASSWORD
+
+pytestmark = [pytest.mark.smoke, pytest.mark.journey]
+
+
+def _login(page, base, email):
+    page.goto(base + "/account/login", wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
+    page.fill("#email", email)
+    page.fill("#password", PASSWORD)
+    page.locator("#submit").dispatch_event("click")
+    page.wait_for_url(lambda u: "/account/login" not in u, timeout=PAGE_TIMEOUT)
+
+
+def test_solutions_list_discloses_hidden_count_instead_of_false_empty_state(browser, live_server, seeded):
+    """The seeded org's `solution` and `reference_solution` fixtures are owned
+    by the solution_architect persona. An application_manager in the SAME org,
+    who created neither, must be told solutions exist and are hidden by
+    ownership -- not "create your first solution", which would be a false
+    claim that the org has none.
+
+    application_manager (not business_architect) is used deliberately: per
+    app/models/user.py's can_vote_arb()/can_manage_portfolio(), a
+    business_architect is granted `_can_see_all = True` in the route, so a
+    business_architect sees every org solution regardless of ownership and
+    the disclosure code path (`if not _can_see_all`) is never exercised --
+    round-1's test passed for that reason, not because anything was actually
+    disclosed. application_manager holds none of the roles in that check, so
+    `_can_see_all` is genuinely False and this test exercises the real
+    disclosure path.
+    """
+    page = browser.new_page()
+    _login(page, live_server, seeded["emails"]["application_manager"])
+    page.goto(live_server + "/solutions/", wait_until="networkidle", timeout=PAGE_TIMEOUT)
+
+    body_text = page.locator("body").inner_text()
+    assert "Get started by creating your first solution" not in body_text, (
+        "false first-run empty state: the org has solutions, they are just "
+        "not owned by this viewer"
+    )
+    disclosure = page.locator('[data-testid="solutions-hidden-disclosure"]')
+    assert disclosure.count() > 0, (
+        "the role-hidden disclosure block must actually render when solutions "
+        "are hidden by ownership, not merely avoid the false empty-state text"
+    )
+    heading_text = page.locator('[data-testid="solutions-empty-state-heading"]').inner_text()
+    assert "Showing 0 of" in heading_text and "0 of 0" not in heading_text, (
+        f"expected the disclosed org_total to be a real non-zero figure, got: {heading_text!r}"
+    )
+
+
+def test_solutions_list_status_all_discloses_for_non_privileged_persona(browser, live_server, seeded):
+    """B-2 regression test: the ?status=all escape hatch the S-01 fix added
+    must not silently reset org_total/disclosure counters to their zero/None
+    defaults for a non-privileged persona -- that was the exact false
+    "create your first solution" empty state resurfacing through the fix's
+    own new escape hatch."""
+    page = browser.new_page()
+    _login(page, live_server, seeded["emails"]["application_manager"])
+    page.goto(live_server + "/solutions/?status=all", wait_until="networkidle", timeout=PAGE_TIMEOUT)
+
+    body_text = page.locator("body").inner_text()
+    assert "Get started by creating your first solution" not in body_text, (
+        "?status=all must not regress into the false first-run empty state "
+        "for a non-privileged user when the org actually has solutions"
+    )
+    # R2-3 (round-3 refuter fix): the assertion above would also pass on a
+    # 500, a redirect, or a silently blank page -- none of which prove
+    # disclosure actually happened. Assert the disclosure block is present
+    # AND carries a real, non-zero total, mirroring the stronger assertions
+    # in the previous test.
+    disclosure = page.locator('[data-testid="solutions-hidden-disclosure"]')
+    assert disclosure.count() > 0, (
+        "the hidden-disclosure block must actually render for ?status=all, "
+        "not merely avoid the false empty-state text"
+    )
+    heading_text = page.locator('[data-testid="solutions-empty-state-heading"]').inner_text()
+    assert "Showing 0 of" in heading_text and "0 of 0" not in heading_text, (
+        f"expected a real non-zero disclosed org_total, got: {heading_text!r}"
+    )
+
+
+def test_solutions_list_status_all_returns_rows_for_the_owner(browser, live_server, seeded):
+    page = browser.new_page()
+    _login(page, live_server, seeded["emails"]["solution_architect"])
+    page.goto(live_server + "/solutions/?status=all", wait_until="networkidle", timeout=PAGE_TIMEOUT)
+
+    body_text = page.locator("body").inner_text()
+    assert "Get started by creating your first solution" not in body_text

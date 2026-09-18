@@ -86,10 +86,12 @@
             description='Derived from recorded ADM phases only'
         ) }}
         {{ metrics_card(
-            title='Total Solutions',
+            title='Solutions in Organisation',
             value=total_solutions | string if total_solutions is not none else '—',
+            value_testid='health-total-solutions',
             icon='puzzle',
-            description='Solutions tracked in portfolio'
+            description='All solutions tracked org-wide, regardless of who created them',
+            href=url_for('solution_design.list_solutions') if 'solution_design.list_solutions' in flask.current_app.view_functions else ''
         ) }}
         {{ metrics_card(
             title='ArchiMate Elements',

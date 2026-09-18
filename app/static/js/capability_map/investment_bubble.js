@@ -35,11 +35,12 @@
         ELIMINATE: 'rgba(239, 68, 68, 0.75)'  // destructive red — low value, large gap
     };
 
-    function cssHSL(varName, alpha) {
+    // Shared helper — see app/static/js/shared/css_color_tokens.js.
+    var cssHSL = (window.ArchieColorTokens && window.ArchieColorTokens.cssHSL) || function (varName, alpha) {
         var raw = getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
         if (!raw) return null;
         return alpha !== undefined ? 'hsl(' + raw + ' / ' + alpha + ')' : 'hsl(' + raw + ')';
-    }
+    };
 
     function classifyQuadrant(x, y) {
         if (x >= X_MID && y < Y_MID) return 'INVEST';
