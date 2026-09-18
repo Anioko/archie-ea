@@ -528,6 +528,24 @@ else:
         def __repr__(self):
             return f"<ArchiMateRelationship {self.source_id} -> {self.target_id}>"
 
+        def to_dict(self):
+            """JSON-safe dict of all columns. Mirrors ArchiMateElement.to_dict()
+            immediately above: several CRUD routes call relationship.to_dict()
+            (e.g. update_relationship); without it they 500 with AttributeError
+            'ArchiMateRelationship has no attribute to_dict'."""
+            from datetime import date, datetime
+            from decimal import Decimal
+
+            out = {}
+            for col in self.__table__.columns:
+                val = getattr(self, col.name)
+                if isinstance(val, (datetime, date)):
+                    val = val.isoformat()
+                elif isinstance(val, Decimal):
+                    val = float(val)
+                out[col.name] = val
+            return out
+
 
 class WorkflowInstanceArchiMateElement(db.Model):
     """ORM mapping for the workflow_instance_archimate_elements junction table.

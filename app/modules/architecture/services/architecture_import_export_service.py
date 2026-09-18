@@ -88,28 +88,24 @@ class ArchitectureImportExportService:
 
         Returns: (file_path, filename)
         """
-        # Deferred import: app.modules.architecture.routes.architecture_crud_routes
-        # imports this service module at module load time (directly, and via the
-        # app.services.architecture_import_export_service backward-compat shim),
-        # so a top-level import here would be circular. _element_to_dict /
-        # _relationship_to_dict are the same serialization helpers already used
-        # by that module's own JSON API endpoints (api_list_elements,
-        # api_list_relationships) - reused here rather than adding a third
-        # hand-rolled serialization. Neither ArchiMateElement nor
-        # ArchiMateRelationship defines a to_dict() method.
-        from app.modules.architecture.routes.architecture_crud_routes import (
-            _element_to_dict,
-            _relationship_to_dict,
-        )
-
+        # Full-fidelity export: serialize every declared column via each
+        # model's own to_dict() (ArchiMateElement's has always existed;
+        # ArchiMateRelationship's was added alongside this fix). Deliberately
+        # NOT _element_to_dict/_relationship_to_dict from
+        # architecture_crud_routes.py - those are compact 8/5-key
+        # projections built for the list APIs (api_list_elements,
+        # api_list_relationships) and stay untouched for that purpose. Using
+        # them here previously narrowed every export from 50+ columns to 8,
+        # silently dropping fields such as togaf_plateau/building_block_type/
+        # custom_properties and organization_id.
         filename = f"architecture_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
 
         elements = ArchitectureElement.query.all()
         relationships = Relationship.query.all()
 
         data = {
-            "elements": [_element_to_dict(e) for e in elements],
-            "relationships": [_relationship_to_dict(r) for r in relationships],
+            "elements": [e.to_dict() for e in elements],
+            "relationships": [r.to_dict() for r in relationships],
             "exported_at": datetime.now().isoformat(),
         }
         
