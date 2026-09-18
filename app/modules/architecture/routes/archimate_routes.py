@@ -2585,13 +2585,16 @@ def api_element_detail(element_id):
     # poison its siblings.
     linked_capabilities = []
     try:
+        # _org_and_cap is one of two hardcoded literal clauses selected by
+        # `_org is not None`; the actual org value is always bound as :org,
+        # never interpolated -- no request input reaches the query text.
         _org_and_cap = " AND bc.organization_id = :org" if _org is not None else ""
         cap_rows = db.session.execute(
             db.text(
                 "SELECT DISTINCT bc.id, bc.name, bc.level "
                 "FROM business_capability bc "
                 "JOIN capability_archimate_classifications cae ON cae.capability_id = bc.id "
-                f"WHERE cae.archimate_element_id = :eid{_org_and_cap} "
+                f"WHERE cae.archimate_element_id = :eid{_org_and_cap} "  # nosec B608
                 "ORDER BY bc.name "
                 "LIMIT 20"
             ),
