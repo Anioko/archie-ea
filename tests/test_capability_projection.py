@@ -551,10 +551,36 @@ def test_moved_row_does_not_block_a_dry_run_either(projection_schema):
 
 # ------------------------------------------------------------ write-time listeners
 #
-# These run against the REAL business_capability / unified_capabilities tables
-# (via db_session, not the disposable cloned schema above) because the listeners
-# under test are registered on the real BusinessCapability model class, not on a
-# schema clone. db_session's per-test rollback keeps this from leaving residue.
+# The listeners under test are registered on the real BusinessCapability model
+# class, but (like every sibling test above) they act on whatever
+# `unified_capabilities` / `business_capability` the connection's search_path
+# currently resolves to, not on a hardcoded schema name. Requesting
+# `projection_schema` here gets these two tests a database that genuinely has the
+# provenance index, without touching CI's schema-setup step or the unrelated
+# `test_def003_capability_mapping_visible.py` fixtures that collide with it (see
+# the T-001 bucket's defect report, D-002). db_session's per-test rollback keeps
+# this from leaving residue, exactly as for the disposable-schema tests above.
+#
+# `_provenance_index_available`'s cache (`business_capabilities.py:631`) is keyed
+# on the connection's engine URL alone, not on schema/search_path, so it cannot
+# tell "index present in this test's clone" apart from "index present in the real,
+# un-migrated public schema" that every other test in the suite runs against.
+# `_cleared_provenance_cache` below makes that cache irrelevant across the
+# boundary of these two tests: cleared on setup so this test's own clone is what
+# gets observed rather than a stale entry from an earlier test, and cleared again
+# on teardown so this test's True does not leak into whatever runs next in the
+# same pytest process.
+
+
+@pytest.fixture
+def _cleared_provenance_cache():
+    """Force a fresh `_provenance_index_available` check for this test's connection."""
+
+    from app.models import business_capabilities as module
+
+    module._provenance_index_cache.clear()
+    yield
+    module._provenance_index_cache.clear()
 
 
 def _real_provenance_index_present(db_session) -> bool:
@@ -564,7 +590,9 @@ def _real_provenance_index_present(db_session) -> bool:
 
 
 @pytest.mark.usefixtures("db_session")
-def test_listener_projects_on_create_update_delete(db_session, make_org):
+def test_listener_projects_on_create_update_delete(
+    db_session, make_org, projection_schema, _cleared_provenance_cache
+):
     """Create -> update -> delete round-trips through unified_capabilities."""
 
     from app.models.business_capabilities import BusinessCapability
@@ -613,7 +641,9 @@ def test_listener_projects_on_create_update_delete(db_session, make_org):
 
 
 @pytest.mark.usefixtures("db_session")
-def test_listener_projection_no_cross_tenant_leak(db_session, make_org, tenant_ctx):
+def test_listener_projection_no_cross_tenant_leak(
+    db_session, make_org, tenant_ctx, projection_schema, _cleared_provenance_cache
+):
     """Org A's write-time projection is never visible when scoped as org B."""
 
     from app.models.business_capabilities import BusinessCapability
