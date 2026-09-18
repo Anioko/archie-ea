@@ -215,9 +215,25 @@ def login_as(app):
 
     def _login(client, user):
         user_id = getattr(user, "id", user)
+        # Session revocation (session-invalidation-on-logout) checks a
+        # server-side registry record keyed by "_sid" on every authenticated
+        # request and fails CLOSED when it is missing. Writing "_user_id"
+        # alone -- the pre-existing shape of this fixture -- would now bounce
+        # every caller to the login page, so mint a real registry row the
+        # same way the production login path does.
+        # One accessor for test-session minting (ADR 0008) -- see
+        # tests/_session_test_helpers.py::mint_test_sid, the same logic this
+        # used to reimplement inline.
+        from tests._session_test_helpers import mint_test_sid
+
+        real_user = user if hasattr(user, "id") else None
+        org_id = getattr(real_user, "organization_id", None) if real_user is not None else None
+        sid = mint_test_sid(user_id, organization_id=org_id) if has_app_context() else None
         with client.session_transaction() as sess:
             sess["_user_id"] = str(user_id)
             sess["_fresh"] = True
+            if sid:
+                sess["_sid"] = sid
         if not has_app_context():
             return
         for cached in ("_login_user", "_current_user", "current_org_id", "current_org"):

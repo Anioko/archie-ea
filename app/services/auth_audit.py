@@ -26,6 +26,11 @@ logger = logging.getLogger(__name__)
 ACTION_LOGIN = "login"
 ACTION_LOGIN_FAILED = "login_failed"
 ACTION_LOGOUT = "logout"
+ACTION_SESSIONS_REVOKED = "sessions_revoked"
+#: A rejected/replayed session cookie -- the actual attack signal for a
+#: captured-cookie scenario (D5, round 2): a revoked or unknown sid being
+#: presented again, or a session timing out from inactivity.
+ACTION_SESSION_REJECTED = "session_rejected"
 
 #: Recorded as the "table" so the audit-log entity filter can isolate them.
 AUTH_TABLE = "auth"
@@ -80,6 +85,18 @@ def record_login_failure(email=None):
 def record_logout(user):
     """Record a logout. Never raises."""
     return _record(ACTION_LOGOUT, user=user)
+
+
+def record_sessions_revoked(user, reason, count):
+    """Record that other sessions were revoked for ``user`` (e.g. on a
+    password change). Never raises."""
+    return _record(ACTION_SESSIONS_REVOKED, user=user, extra={"reason": reason, "count": count})
+
+
+def record_session_rejected(user, reason):
+    """Record that a session was rejected -- revoked/unknown sid replayed, or
+    an idle-timeout expiry. Never raises."""
+    return _record(ACTION_SESSION_REJECTED, user=user, extra={"reason": reason})
 
 
 def _record(action, user=None, extra=None):

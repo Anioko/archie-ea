@@ -48,9 +48,13 @@ def logged_in_org(db_session, make_org, client):
     db_session.flush()
     db_session.commit()
 
+    from tests._session_test_helpers import mint_test_sid
+    _sid = mint_test_sid(user.id)
     with client.session_transaction() as sess:
         sess["_user_id"] = str(user.id)
         sess["_fresh"] = True
+        if _sid:
+            sess["_sid"] = _sid
 
     _clear_auth_caches()
     return org

@@ -118,9 +118,14 @@ def login(client, user_id):
     """
     from flask import g, has_app_context
 
+    from tests._session_test_helpers import mint_test_sid
+
+    _sid = mint_test_sid(user_id)
     with client.session_transaction() as sess:
         sess["_user_id"] = str(user_id)
         sess["_fresh"] = True
+        if _sid:
+            sess["_sid"] = _sid
 
     if has_app_context():
         for cached in ("_login_user", "_current_user", "current_org_id", "current_org"):

@@ -186,12 +186,28 @@ class AdminUserService:
 
     @staticmethod
     def set_user_password(user: User, new_password: str, confirm_user: bool = True) -> None:
-        """Set a user's password and optionally mark the account confirmed."""
+        """Set a user's password and optionally mark the account confirmed.
+
+        Revokes every existing session for the user (D2, round 2): this is
+        the primary incident-response path -- an admin resetting a
+        compromised account's password must also kick out whatever session
+        the attacker's captured cookie is still riding on, or the reset is
+        cosmetic.
+        """
         user.password = new_password
         if confirm_user:
             user.confirmed = True
         db.session.add(user)
         db.session.commit()
+
+        from app.services import session_registry
+
+        try:
+            session_registry.revoke_all_for_user(user.id, "admin")
+        except Exception:
+            logging.getLogger(__name__).error(
+                "set_user_password: failed to revoke sessions for user_id=%s", user.id, exc_info=True
+            )
 
     @staticmethod
     def delete_user(user: User) -> Tuple[bool, str]:

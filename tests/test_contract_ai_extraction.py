@@ -54,9 +54,13 @@ def logged_in_procurement(db_session, make_org, client):
     # tests/test_ai_wiring_ui.py for the same note.
     db_session.commit()
 
+    from tests._session_test_helpers import mint_test_sid
+    _sid = mint_test_sid(user.id)
     with client.session_transaction() as sess:
         sess["_user_id"] = str(user.id)
         sess["_fresh"] = True
+        if _sid:
+            sess["_sid"] = _sid
 
     _clear_auth_caches()
     return org

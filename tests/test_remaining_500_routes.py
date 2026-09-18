@@ -47,9 +47,13 @@ def _login(client, user_id):
     tests/test_ba_tenant_and_authz.py::_login for why the g-cache clear below
     is required in this test harness (pytest-flask reuses one request context
     across client calls, and Flask-Login caches the resolved user on it)."""
+    from tests._session_test_helpers import mint_test_sid
+    _sid = mint_test_sid(user_id)
     with client.session_transaction() as sess:
         sess["_user_id"] = str(user_id)
         sess["_fresh"] = True
+        if _sid:
+            sess["_sid"] = _sid
 
     from flask import g, has_app_context
 
