@@ -132,13 +132,35 @@ RESOLVED_COMMIT=""
 EXPECTED_SHORT=""
 
 # ---------------------------------------------------------------------------
-# Step 1: deploy — fetch, checkout the resolved ref, and force-recreate the
-# server container. `up -d` alone is NOT sufficient (see incident above): if
-# nothing in the compose *config* changed, `up -d` will not recreate a
-# container either, only `restart`'s cousin. `--force-recreate` is what
-# actually guarantees a fresh container is created from current config on
-# every run, deploy after deploy, regardless of whether the compose file
-# itself changed.
+# Step 1: deploy — fetch, checkout the resolved ref, run the one-shot schema
+# chain to completion, then force-recreate the server container. `up -d`
+# alone is NOT sufficient (see incident above): if nothing in the compose
+# *config* changed, `up -d` will not recreate a container either, only
+# `restart`'s cousin. `--force-recreate` is what actually guarantees a fresh
+# container is created from current config on every run, deploy after
+# deploy, regardless of whether the compose file itself changed.
+#
+# ACL-RACE INCIDENT (18 Sep 2026): `docker compose up -d --force-recreate
+# server` targets ONLY the server service. Even though server declares
+# `depends_on: database-acl: condition: service_completed_successfully` in
+# docker-compose.yml, that dependency was NOT reliably re-run/blocked on by
+# this targeted invocation — measured directly on the droplet via `docker
+# inspect`, server started serving (StartedAt 09:29:13, healthy) a full
+# ~8 minutes BEFORE database-acl even started (09:36:58), let alone finished
+# granting the runtime role's privileges on a schema change that added a new
+# table. A request landing in that window got a real, user-visible
+# `psycopg2.errors.InsufficientPrivilege` on the new table, which then
+# poisoned that request's transaction and cascaded into unrelated page
+# failures for the rest of it. depends_on is a startup-ordering hint for a
+# full `docker compose up`, not a guarantee under a single targeted
+# `--force-recreate <service>` call — so the one-shot chain
+# (database-bootstrap -> schema-deploy -> database-acl) is now run
+# explicitly and synchronously in the foreground first. Each is `restart:
+# "no"`, so `docker compose up <service>` (no `-d`) blocks until it exits
+# and propagates its exit code — `up database-acl` alone is enough to also
+# run its own upstream dependencies (schema-deploy, database-bootstrap) in
+# order first, since compose still resolves depends_on within one `up`
+# invocation for services actually being started this call.
 # ---------------------------------------------------------------------------
 do_deploy() {
     local ref=$1
@@ -164,6 +186,22 @@ else
     echo "already at $TARGET; checkout skipped (verification still runs)"
 fi
 echo "RESOLVED_COMMIT=$TARGET"
+# Force a fresh run of the whole one-shot schema chain on every deploy —
+# these are restart:"no" containers, so an already-Exited container from a
+# prior deploy would otherwise satisfy depends_on's completed_successfully
+# condition without re-running against the NEW schema at all.
+#
+# --exit-code-from is required, not cosmetic: `docker compose up <service>`
+# on its own always exits 0 regardless of whether the SERVICE's container
+# exited 0 or failed — verified directly (18 Sep 2026) by a database-acl run
+# that crashed with a real RuntimeError inside configure_roles.py yet the
+# surrounding `docker compose up` command still reported exit code 0. Without
+# --exit-code-from, `set -e` above would never see the failure and this
+# script would go on to force-recreate server anyway, on a schema that may
+# not have its grants applied — the exact failure mode this whole synchronous
+# reordering exists to close.
+docker compose rm -f database-bootstrap schema-deploy database-acl
+docker compose up --exit-code-from database-acl database-acl
 docker compose up -d --force-recreate server
 REMOTE
 }
