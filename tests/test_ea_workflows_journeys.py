@@ -47,9 +47,13 @@ def _login(client, user_id, app):
     Follows the pattern from test_ba_tenant_and_authz.py to properly
     clear Flask-Login's cache so the login actually takes effect.
     """
+    from tests._session_test_helpers import mint_test_sid
+    _sid = mint_test_sid(user_id)
     with client.session_transaction() as sess:
         sess["_user_id"] = str(user_id)
         sess["_fresh"] = True
+        if _sid:
+            sess["_sid"] = _sid
 
     from flask import g, has_app_context
 

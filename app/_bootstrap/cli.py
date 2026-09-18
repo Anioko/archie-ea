@@ -391,3 +391,10 @@ def init_cli(app):
         app.logger.info("Typed ARB waiver expiry CLI command registered")
     except Exception as e:
         app.logger.warning(f"Failed to register typed ARB waiver expiry CLI: {e}")
+
+    try:
+        from app.commands.purge_sessions import init_app as init_purge_sessions
+        init_purge_sessions(app)
+        app.logger.info("✅ Session registry purge CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"⚠️  Failed to register session registry purge CLI: {e}")

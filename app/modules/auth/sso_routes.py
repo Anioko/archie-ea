@@ -24,7 +24,7 @@ from flask import (
     session,
     url_for,
 )
-from flask_login import current_user, login_user
+from flask_login import current_user
 
 from app.decorators import admin_required
 from app.services.sso_service import SSONotConfiguredError, SSOService
@@ -111,10 +111,9 @@ def sso_callback_oidc():
         userinfo = _svc.handle_oidc_callback(config, code, state, redirect_uri)
         user = _svc.provision_user(org, userinfo)
 
-        session.clear()
-        session.modified = True
-        login_user(user)
-        session.permanent = True
+        from app.services import session_registry
+
+        session_registry.login_and_register(user)
 
         return redirect(url_for("dashboard.overview"))
 

@@ -52,9 +52,13 @@ def _login(client, user_id):
     """Log in as *user_id*, dropping flask_login's per-context identity cache."""
     from flask.globals import app_ctx
 
+    from tests._session_test_helpers import mint_test_sid
+    _sid = mint_test_sid(user_id)
     with client.session_transaction() as sess:
         sess["_user_id"] = str(user_id)
         sess["_fresh"] = True
+        if _sid:
+            sess["_sid"] = _sid
     try:
         ctx = app_ctx._get_current_object()
     except RuntimeError:
