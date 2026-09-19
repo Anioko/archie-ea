@@ -617,6 +617,37 @@ def test_interface_register_null_architecture_initiative_is_404_not_visible(
     )
 
 
+@pytest.mark.parametrize("archetype", ARCHETYPES)
+def test_intelligence_impact_route_authorisation(
+    archetype, page, live_server, seeded, seeded_interface_element
+):
+    """T-004 (API-1): GET /api/v1/intelligence/impact/<element_id> carries
+    only ``@login_required`` -- no enterprise-role gate -- so every one of
+    the eleven canonical archetypes is expected to reach it once
+    authenticated, the same "deliberately open row" shape as /ai-chat above.
+    Anonymous is covered separately below.
+    """
+    _login(page, live_server, seeded["emails"][archetype])
+    path = "/api/v1/intelligence/impact/%d" % seeded_interface_element
+    actual = _observe(page, live_server, path)
+    assert actual == ALLOWED, (
+        f"{archetype} could not reach {path}: expected ALLOWED (login_required only)"
+    )
+
+
+def test_intelligence_impact_route_rejects_anonymous_browser_session(page, live_server, seeded, seeded_interface_element):
+    path = "/api/v1/intelligence/impact/%d" % seeded_interface_element
+    response = page.goto(live_server + path, wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
+    assert response is not None
+    # Corrected against a live run: this is a JSON API route, so
+    # login_required answers 401 directly rather than redirecting to the
+    # login page (unlike an HTML page route). Tightened per the minor finding
+    # to the precise-status pattern used a few lines below at :647-657 -- a
+    # bare ">= 400" would also pass on an unrelated 500, which is not the
+    # behaviour under test.
+    assert response.status == 401
+
+
 def test_transformation_api_rejects_anonymous_browser_session(page, live_server):
     response = page.goto(
         live_server + TRANSFORMATION_API_PATH,

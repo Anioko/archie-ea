@@ -11,7 +11,8 @@ gate enforces this mechanically at the template layer, out of scope here).
 
 from __future__ import annotations
 
-# sdd-v2.md § API-8 — the sixteen members, exactly, nothing invented.
+# sdd-v2.md § API-8 — the original sixteen members, plus the two T-004
+# additions below (eighteen total), exactly, nothing invented.
 REASON_CODES = frozenset(
     {
         "no_ownership_recorded",
@@ -30,6 +31,12 @@ REASON_CODES = frozenset(
         "review_item_not_visible",
         "insufficient_samples_for_p95",
         "feed_not_connected",
+        # T-004 (US-1) additions: absence conditions on the cross-layer
+        # impact read path that the original sixteen do not cover. Added
+        # here, and nowhere else, per this module's own rule that no
+        # endpoint may invent an absence string inline.
+        "no_tenant_context",
+        "element_not_found",
     }
 )
 
