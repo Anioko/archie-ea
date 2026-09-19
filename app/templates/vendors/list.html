@@ -151,8 +151,11 @@
       {% endcall %}
     </div>
 
-    {# RIGHT: Products side panel — hidden until a vendor is clicked #}
-    <div id="vendor-products-wrapper" class="hidden lg:block w-72 shrink-0">
+    {# RIGHT: Products side panel — hidden until a vendor is clicked. showVendorProducts()
+       (js/vendors/list.js) adds lg:block on click; the wrapper must NOT carry lg:block itself, or an empty
+       bordered box reserves 288px from 1024px up and squeezes the table into a scrolled, overlapped state
+       (UX_IA_REVIEW.md finding 6). #}
+    <div id="vendor-products-wrapper" class="hidden w-72 shrink-0">
       <div id="vendor-products-panel" class="sticky top-4 rounded-xl border bg-card p-4 text-sm text-muted-foreground">
       </div>
     </div>
