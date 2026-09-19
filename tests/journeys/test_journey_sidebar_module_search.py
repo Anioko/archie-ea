@@ -172,8 +172,8 @@ def test_sidebar_renders_the_results_region_and_loads_the_module(app, client):
 
 # ---- the real sidebar, real Alpine, real endpoint -----------------------------------------------------
 
-def _serve_app_in_browser(pg, client, document):
-    """Serve `document` at /solutions/, static files from disk, and /api/sidebar/search from the Flask app,
+def _serve_app_in_browser(pg, client, document, path):
+    """Serve `document` at `path`, static files from disk, and /api/sidebar/search from the Flask app,
     so the sidebar's Alpine wiring is exercised against the real markup and the real endpoint."""
     from urllib.parse import parse_qsl, urlparse
 
@@ -185,7 +185,7 @@ def _serve_app_in_browser(pg, client, document):
         if url.path == "/api/sidebar/search":
             r = client.get(url.path, query_string=dict(parse_qsl(url.query)))
             return route.fulfill(status=r.status_code, content_type="application/json", body=r.get_data())
-        if url.path == "/solutions/":
+        if url.path == path:
             return route.fulfill(status=200, content_type="text/html", body=document)
         return route.fulfill(status=204, body="")
 
@@ -193,15 +193,17 @@ def _serve_app_in_browser(pg, client, document):
 
 
 def test_typing_in_the_real_sidebar_finds_impact_analysis(app, client, browser):
-    login(client, _persona(app, "solution_architect"))
-    document = client.get("/solutions/").get_data(as_text=True)
-    # The architect's own zones must not already contain the link, or this proves nothing.
+    # The CTO's own zones do not contain Impact Analysis (only the architect personas' do), so a hit
+    # here can only have come from the search, not from a link already in the sidebar.
+    login(client, _persona(app, "cto"))
+    page_path = "/dashboard/overview"
+    document = client.get(page_path).get_data(as_text=True)
     assert 'href="/strategic/impact-analysis"' not in document.split('data-testid="sidebar-module-results"')[0]
 
     pg = browser.new_page(viewport={"width": 1440, "height": 900})
     try:
-        _serve_app_in_browser(pg, client, document)
-        pg.goto("http://app.test/solutions/")
+        _serve_app_in_browser(pg, client, document, page_path)
+        pg.goto("http://app.test" + page_path)
         pg.fill('#sidebar-nav input[x-ref="searchInput"]', "impact")
         hit = pg.locator('[data-testid="sidebar-module-results"] a[href="/strategic/impact-analysis"]')
         hit.wait_for(state="visible", timeout=10000)
