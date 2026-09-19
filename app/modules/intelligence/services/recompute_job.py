@@ -22,6 +22,7 @@ re-implement it.
 
 from __future__ import annotations
 
+import functools
 import logging
 
 from app.extensions import db
@@ -60,7 +61,7 @@ def stale_carrying_organization_ids() -> list[int]:
     return [int(row[0]) for row in rows]
 
 
-def _recompute_one_tenant(organization_id: int) -> dict:
+def _recompute_one_tenant(organization_id: int, *, trigger: str) -> dict:
     """The per-tenant work function ``run_for_each_tenant`` calls.
 
     Runs INSIDE ``tenant_scope(organization_id)`` already (the harness sets
@@ -68,6 +69,10 @@ def _recompute_one_tenant(organization_id: int) -> dict:
     own to any ORM read. Wraps its body in the shared per-tenant lock; when
     not acquired, returns a ``skipped_locked`` result rather than a silent
     success or a fabricated zero.
+
+    ``trigger`` (T-005 D5/D7) is passed straight through to
+    ``run_and_persist`` -- ``"scheduled"`` from the sweep, ``"on_demand"``
+    from the API-triggered call -- never guessed here.
     """
     from app.modules.intelligence.services.derivation_runner import DerivationRunner
 
@@ -76,7 +81,7 @@ def _recompute_one_tenant(organization_id: int) -> dict:
             return {"skipped_locked": True}
 
         runner = DerivationRunner()
-        result = runner.run_and_persist(organization_id)
+        result = runner.run_and_persist(organization_id, trigger=trigger)
         return {
             "skipped_locked": False,
             "explicit_count": result.explicit_count,
@@ -100,7 +105,7 @@ def recompute_derived_facts(app) -> JobRun:
     return run_for_each_tenant(
         app,
         JOB_NAME,
-        _recompute_one_tenant,
+        functools.partial(_recompute_one_tenant, trigger="scheduled"),
         organization_ids=organization_ids,
         use_lock=True,
     )
@@ -118,7 +123,7 @@ def recompute_derived_facts_on_demand(app, organization_id: int) -> JobRun:
     return run_for_each_tenant(
         app,
         ON_DEMAND_JOB_NAME,
-        _recompute_one_tenant,
+        functools.partial(_recompute_one_tenant, trigger="on_demand"),
         organization_ids=[organization_id],
         use_lock=False,
     )

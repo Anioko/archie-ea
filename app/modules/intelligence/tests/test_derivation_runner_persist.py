@@ -52,7 +52,7 @@ def test_run_and_persist_writes_chain_and_rule_id(app, db_session, make_org):
 
     runner = DerivationRunner()
     with app.app_context():
-        result = runner.run_and_persist(org.id)
+        result = runner.run_and_persist(org.id, trigger="on_demand")
 
     assert result.derived_count >= 1
     rows = _rows(db_session, org.id)
@@ -77,11 +77,11 @@ def test_run_and_persist_is_idempotent(app, db_session, make_org):
 
     runner = DerivationRunner()
     with app.app_context():
-        first = runner.run_and_persist(org.id)
+        first = runner.run_and_persist(org.id, trigger="on_demand")
     first_rows = {(r.source_element_id, r.target_element_id, r.rule_id): r.computed_at for r in _rows(db_session, org.id)}
 
     with app.app_context():
-        second = runner.run_and_persist(org.id)
+        second = runner.run_and_persist(org.id, trigger="on_demand")
     second_rows = _rows(db_session, org.id)
 
     assert second.derived_count == first.derived_count
@@ -105,7 +105,7 @@ def test_run_and_persist_deletes_rows_no_longer_produced(app, db_session, make_o
 
     runner = DerivationRunner()
     with app.app_context():
-        first = runner.run_and_persist(org.id)
+        first = runner.run_and_persist(org.id, trigger="on_demand")
     assert first.derived_count >= 1
 
     # Remove the relationship the derived chain depended on.
@@ -113,7 +113,7 @@ def test_run_and_persist_deletes_rows_no_longer_produced(app, db_session, make_o
     db_session.commit()
 
     with app.app_context():
-        second = runner.run_and_persist(org.id)
+        second = runner.run_and_persist(org.id, trigger="on_demand")
 
     rows = _rows(db_session, org.id)
     assert len(rows) == second.derived_count
@@ -141,8 +141,8 @@ def test_pruning_is_scoped_to_one_tenant(app, db_session, make_org):
 
     runner = DerivationRunner()
     with app.app_context():
-        runner.run_and_persist(org_a.id)
-        runner.run_and_persist(org_b.id)
+        runner.run_and_persist(org_a.id, trigger="on_demand")
+        runner.run_and_persist(org_b.id, trigger="on_demand")
 
     rows_a_before = len(_rows(db_session, org_a.id))
     rows_b_before = len(_rows(db_session, org_b.id))
@@ -159,7 +159,7 @@ def test_pruning_is_scoped_to_one_tenant(app, db_session, make_org):
     db_session.commit()
 
     with app.app_context():
-        runner.run_and_persist(org_a.id)
+        runner.run_and_persist(org_a.id, trigger="on_demand")
 
     assert len(_rows(db_session, org_a.id)) == 0
     assert len(_rows(db_session, org_b.id)) == rows_b_before

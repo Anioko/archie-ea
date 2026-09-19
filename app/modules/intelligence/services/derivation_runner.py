@@ -107,7 +107,9 @@ class DerivationRunner:
             derived=derived,
         )
 
-    def run_and_persist(self, organization_id: int) -> DerivationResult:
+    def run_and_persist(
+        self, organization_id: int, *, trigger: str
+    ) -> DerivationResult:
         """Compute, then upsert into the T-003 store (DE-2), for one tenant.
 
         Additive to ``run()`` — computing without writing stays possible (the
@@ -126,14 +128,53 @@ class DerivationRunner:
           * ``computed_at`` stamped, ``stale`` cleared, ``stale_since`` /
             ``stale_reason`` set NULL;
           * rows for this tenant the engine no longer produces are deleted.
+
+        ``trigger`` (T-005 D7/D5) — ``"scheduled"`` or ``"on_demand"``,
+        whatever the caller actually is; never guessed here. Required
+        (no default) so a future caller cannot silently default to a wrong
+        value. A ``DerivationRun`` row is written in the SAME
+        ``tenant_scope`` block, before the commit that persists the facts —
+        so the run record and the facts it describes land atomically and no
+        reader can ever observe one without the other (D7's binding
+        "producer ships with the store" rule).
         """
         result = self.run(organization_id)
 
         with tenant_scope(organization_id):
             self._persist(organization_id, result.derived)
+            self._record_run(organization_id, result, trigger)
             db.session.commit()
 
         return result
+
+    def _record_run(
+        self, organization_id: int, result: DerivationResult, trigger: str
+    ) -> None:
+        """Write one ``DerivationRun`` row for a completed run (D7).
+
+        Every field is copied from the real, measured ``DerivationResult`` —
+        never a literal (CLAUDE.md "never invent data"). Called only from
+        inside ``run_and_persist``'s success path: a raised exception or a
+        lock-skip never reaches here, so a failed/skipped run correctly
+        writes no row (D6 -- absence means "no completed run").
+        """
+        from app.modules.intelligence.models.derivation_run import DerivationRun
+
+        finished = _dt.datetime.utcnow()
+        started = finished - _dt.timedelta(milliseconds=result.duration_ms)
+        db.session.add(
+            DerivationRun(
+                organization_id=organization_id,
+                started_at=started,
+                finished_at=finished,
+                duration_ms=result.duration_ms,
+                explicit_count=result.explicit_count,
+                derived_count=result.derived_count,
+                ratio=result.ratio,
+                engine_version=result.engine_version,
+                trigger=trigger,
+            )
+        )
 
     def _persist(self, organization_id: int, derived: List[Dict[str, Any]]) -> None:
         """Upsert *derived* rows for *organization_id* and prune the rest.

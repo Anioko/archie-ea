@@ -375,6 +375,12 @@ else:
         DerivedRelationship,
     )
 
+    # T-005 (D7): derivation run-record store (DE-11) — the only producer of
+    # "did derivation run for this tenant, when, and how long did it take".
+    from app.modules.intelligence.models.derivation_run import (  # noqa: F401
+        DerivationRun,
+    )
+
     # Solution Workflow & Governance — FK dependency: governance references workflow_tasks
     from .solution_workflow import *  # noqa: F401
     # solution_reasoning defines solution_ai_reasoning_states, which solution_governance

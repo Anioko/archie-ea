@@ -1,13 +1,17 @@
-"""T-003/T-004: the intelligence module's query surfaces (API-7, API-2, API-1).
+"""T-003/T-004/T-005: the intelligence module's query surfaces
+(API-7, API-2, API-1, API-5).
 
   POST /api/v1/intelligence/derivation/recompute   (DE-4, API-7)
   GET  /api/v1/intelligence/derived/<derived_id>    (DE-3 read path, API-2)
   GET  /api/v1/intelligence/impact/<element_id>     (DE-9, API-1 -- T-004)
+  GET  /api/v1/intelligence/yield                   (DE-11, API-5 -- T-005)
 
-T-004 adds the third route to this EXISTING blueprint rather than a new
-module/blueprint on the same URL prefix -- see
+T-004 and T-005 both add their route to this EXISTING blueprint rather than a
+new module/blueprint on the same URL prefix -- see
 ``docs/buckets/t004-us1-impact-endpoint/tasks/00-verification-notes.md``
-defect D1 (ADR 0008 rule 3: two blueprints on one prefix).
+defect D1 (ADR 0008 rule 3: two blueprints on one prefix), reverified for
+T-005 in ``docs/buckets/t005-us5-yield-report/tasks/00-verification-notes.md``
+section A.
 
 CSRF is covered by Flask-WTF's global ``CSRFProtect`` (see
 ``app/_bootstrap/extensions.py``); no per-route decorator is needed for a
@@ -325,6 +329,31 @@ def cross_layer_impact(element_id: int):
     return success_response(
         {"rows": result["rows"], "summary": result["summary"], "reasons": result.get("reasons") or []}
     )
+
+
+@intelligence_api.route("/yield", methods=["GET"])
+@login_required
+def derivation_yield():
+    """API-5 (DE-11): US-5's "how much does derivation add", for the
+    caller's own tenant. Serialises
+    ``IntelligenceQueryService.derivation_yield`` through
+    ``success_response`` -- no business logic here (task 02 constraint;
+    view function name is deliberately ``derivation_yield``, not
+    ``cross_layer_impact``, which is already taken in this file).
+    """
+    organization_id = _current_organization_id()
+    if organization_id is None:
+        return error_response(
+            "no tenant context for this request",
+            code="NO_TENANT_CONTEXT",
+            details={"reason": _NO_TENANT_CONTEXT_REASON},
+            status_code=400,
+        )
+
+    from app.modules.intelligence.services.query_service import IntelligenceQueryService
+
+    result = IntelligenceQueryService.derivation_yield(organization_id)
+    return success_response(result)
 
 
 __all__ = ["intelligence_api"]

@@ -154,6 +154,87 @@ def list_derived_facts(
     return [_serialize(r) for r in rows]
 
 
+def derived_fact_aggregates(organization_id: int) -> Dict[str, Any]:
+    """T-005 (D7/D8): per-tenant SQL aggregates over the derived-fact store.
+
+    Genuine ``COUNT``/``MAX``/``COUNT(DISTINCT ...)`` SQL aggregates -- never
+    ``len(list_derived_facts(...))``, which would materialise every row into
+    Python just to count them (task 01 constraint; a tenant with 100k derived
+    rows must not pay that cost). Must be called inside ``app.app_context()``;
+    called from a request, the existing tenant-isolation ``do_orm_execute``
+    listener already filters this read by ``g.current_org_id`` -- the
+    explicit ``organization_id ==`` predicate below is defence-in-depth,
+    matching this module's own documented pattern, and is what makes this
+    function correct when called with no ambient request context too.
+
+    Returns:
+      - ``derived_count`` -- non-stale row count.
+      - ``stale_count`` -- stale row count.
+      - ``computed_at`` -- ``MAX(computed_at)`` over the tenant's rows
+        (across stale and non-stale), ``None`` when there are none -- never a
+        fabricated date.
+      - ``engine_versions`` -- the DISTINCT ``engine_version`` values present
+        on the tenant's rows (D9: the store's own values, never
+        ``derivation_runner.ENGINE_VERSION``), as a sorted list.
+    """
+    from app.modules.intelligence.models.derived_relationship import DerivedRelationship
+
+    derived_count = db.session.execute(
+        db.select(db.func.count(DerivedRelationship.id)).where(
+            DerivedRelationship.organization_id == organization_id,
+            DerivedRelationship.stale.is_(False),
+        )
+    ).scalar_one()
+
+    stale_count = db.session.execute(
+        db.select(db.func.count(DerivedRelationship.id)).where(
+            DerivedRelationship.organization_id == organization_id,
+            DerivedRelationship.stale.is_(True),
+        )
+    ).scalar_one()
+
+    computed_at = db.session.execute(
+        db.select(db.func.max(DerivedRelationship.computed_at)).where(
+            DerivedRelationship.organization_id == organization_id
+        )
+    ).scalar_one()
+
+    engine_versions = db.session.execute(
+        db.select(DerivedRelationship.engine_version)
+        .where(DerivedRelationship.organization_id == organization_id)
+        .distinct()
+    ).scalars().all()
+
+    return {
+        "derived_count": int(derived_count),
+        "stale_count": int(stale_count),
+        "computed_at": computed_at,
+        "engine_versions": sorted(v for v in engine_versions if v is not None),
+    }
+
+
+def latest_derivation_run(organization_id: int):
+    """T-005 (D5/D6/D7): the most recent completed ``DerivationRun`` for a
+    tenant, or ``None`` when derivation has never completed for it.
+
+    ``None`` is the exact fact the yield endpoint's not-computed branch
+    reads -- distinct from "ran and derived zero", which returns a real row
+    with ``derived_count == 0`` (D6). Must be called inside
+    ``app.app_context()``; the explicit ``organization_id ==`` predicate is
+    defence-in-depth on top of the tenant-isolation listener, matching this
+    module's pattern.
+    """
+    from app.modules.intelligence.models.derivation_run import DerivationRun
+
+    stmt = (
+        db.select(DerivationRun)
+        .where(DerivationRun.organization_id == organization_id)
+        .order_by(DerivationRun.finished_at.desc(), DerivationRun.id.desc())
+        .limit(1)
+    )
+    return db.session.execute(stmt).scalars().first()
+
+
 def get_derived_fact(
     organization_id: int, derived_id: int, *, include_stale: bool = True
 ) -> Optional[Dict[str, Any]]:
@@ -178,4 +259,10 @@ def get_derived_fact(
     return _serialize(row) if row is not None else None
 
 
-__all__ = ["STALE_REASON", "get_derived_fact", "list_derived_facts"]
+__all__ = [
+    "STALE_REASON",
+    "derived_fact_aggregates",
+    "get_derived_fact",
+    "latest_derivation_run",
+    "list_derived_facts",
+]

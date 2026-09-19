@@ -17,6 +17,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Iterator, Optional
 
+from app.modules.intelligence.services.reason_codes import validate_reason_code
 from app.services.prometheus_metrics import INTELLIGENCE_QUERY_DURATION
 
 logger = logging.getLogger("archie.intelligence.oa2")
@@ -119,4 +120,95 @@ def record_query_latency(query_name: str) -> Iterator[_LatencyScope]:
         logger.info("intelligence.query_latency: %s", record.as_dict())
 
 
-__all__ = ["QueryLatencyRecord", "record_query_latency"]
+_INSUFFICIENT_SAMPLES_REASON = validate_reason_code("insufficient_samples_for_p95")
+_ABOVE_HIGHEST_BUCKET_REASON = validate_reason_code("p95_above_highest_bucket")
+_MIN_SAMPLES_FOR_P95 = 100
+
+
+def read_p95_bucket_edge(
+    *, query: str, depth: str, include_derived: str, min_samples: int = _MIN_SAMPLES_FOR_P95
+) -> dict:
+    """T-005 (D1/D3/D4): read p95 off ``INTELLIGENCE_QUERY_DURATION`` as a
+    bucket-edge read for one PINNED label combination -- never widened, never
+    aggregated across label values (D1/D2).
+
+    ``histogram_quantile`` is a PromQL function; there is no Prometheus
+    server in this deployment (NFR-6 forbids adding one). In-process,
+    ``prometheus_client`` exposes only cumulative bucket counters, so this
+    walks the histogram's own declared boundaries and reports the ``le`` of
+    the first bucket whose cumulative count reaches 95% of the series'
+    total -- no interpolation, no averaging, no raw-sample retention, no
+    arithmetic beyond the comparison (D3). The reported value is always one
+    of the histogram's declared boundaries, i.e. the metric's own value, not
+    a derived statistic.
+
+    Uses the public ``Histogram.collect()`` API (not private ``_buckets``/
+    ``_upper_bounds`` attributes) so this stays correct across
+    ``prometheus_client`` versions.
+
+    Returns a dict with ``latency_seconds`` (``None`` unless a real bucket
+    boundary was found), ``sample_count`` (the pinned series' total,
+    ``0`` when the series has never been observed), and ``reason`` (a DE-14
+    member, or ``None`` on a real reading).
+    """
+    from app.services.prometheus_metrics import INTELLIGENCE_QUERY_DURATION
+
+    family = INTELLIGENCE_QUERY_DURATION.collect()[0]
+    target_labels = {"query": query, "depth": depth, "include_derived": include_derived}
+
+    bucket_samples = []
+    total = None
+    for sample in family.samples:
+        if sample.name.endswith("_bucket") and all(
+            sample.labels.get(k) == v for k, v in target_labels.items()
+        ):
+            bucket_samples.append((sample.labels.get("le"), sample.value))
+        elif sample.name.endswith("_count") and all(
+            sample.labels.get(k) == v for k, v in target_labels.items()
+        ):
+            total = sample.value
+
+    sample_count = int(total) if total is not None else 0
+
+    if sample_count < min_samples:
+        return {
+            "latency_seconds": None,
+            "sample_count": sample_count,
+            "reason": _INSUFFICIENT_SAMPLES_REASON,
+        }
+
+    threshold = 0.95 * sample_count
+    # Sort buckets by their declared upper bound, +Inf last -- cumulative
+    # counts are already non-decreasing across this order.
+    def _sort_key(item):
+        le = item[0]
+        return float("inf") if le == "+Inf" else float(le)
+
+    for le, cumulative_count in sorted(bucket_samples, key=_sort_key):
+        if le == "+Inf":
+            continue
+        if cumulative_count >= threshold:
+            return {
+                "latency_seconds": float(le),
+                "sample_count": sample_count,
+                "reason": None,
+            }
+
+    # The 95th percentile falls in the +Inf overflow bucket: no declared
+    # boundary is an honest answer (D3). Report the highest DECLARED bucket
+    # as the exceeded threshold, never as if it were the measured value.
+    declared = [float(le) for le, _ in bucket_samples if le != "+Inf"]
+    highest_declared = max(declared) if declared else None
+    return {
+        "latency_seconds": None,
+        "sample_count": sample_count,
+        "reason": _ABOVE_HIGHEST_BUCKET_REASON,
+        "p95_exceeds_seconds": highest_declared,
+    }
+
+
+__all__ = [
+    "QueryLatencyRecord",
+    "read_p95_bucket_edge",
+    "record_query_latency",
+]

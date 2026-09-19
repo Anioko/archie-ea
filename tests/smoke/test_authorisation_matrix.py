@@ -648,6 +648,29 @@ def test_intelligence_impact_route_rejects_anonymous_browser_session(page, live_
     assert response.status == 401
 
 
+@pytest.mark.parametrize("archetype", ARCHETYPES)
+def test_intelligence_yield_route_authorisation(archetype, page, live_server, seeded):
+    """T-005 (API-5): GET /api/v1/intelligence/yield carries only
+    ``@login_required`` -- no enterprise-role gate -- so every one of the
+    eleven canonical archetypes is expected to reach it once authenticated,
+    the same "deliberately open row" shape as the T-004 impact route above.
+    Anonymous is covered separately below.
+    """
+    _login(page, live_server, seeded["emails"][archetype])
+    path = "/api/v1/intelligence/yield"
+    actual = _observe(page, live_server, path)
+    assert actual == ALLOWED, (
+        f"{archetype} could not reach {path}: expected ALLOWED (login_required only)"
+    )
+
+
+def test_intelligence_yield_route_rejects_anonymous_browser_session(page, live_server):
+    path = "/api/v1/intelligence/yield"
+    response = page.goto(live_server + path, wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
+    assert response is not None
+    assert response.status == 401
+
+
 def test_transformation_api_rejects_anonymous_browser_session(page, live_server):
     response = page.goto(
         live_server + TRANSFORMATION_API_PATH,
