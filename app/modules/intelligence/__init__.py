@@ -15,12 +15,30 @@ from __future__ import annotations
 def register(app) -> None:
     """Register the intelligence module's blueprints and event hooks.
 
-    Nothing is mounted yet. T-003 adds the API blueprint and the ORM
-    invalidation hook; T-004 adds the UI blueprint — both at this one place,
-    so a later task extends this function rather than inventing a second
-    registration point for the module.
+    T-003 adds the ORM invalidation hook (DE-3) and the API blueprint
+    (DE-4, the recompute + provenance-expansion routes); T-004 adds the UI
+    blueprint. Both non-fatal: a failure here degrades this one feature, not
+    the whole app (CLAUDE.md "Blueprints register non-fatally").
     """
-    return None
+    try:
+        from app.modules.intelligence.services.invalidation import (
+            register_invalidation_listener,
+        )
+
+        register_invalidation_listener()
+    except Exception:
+        app.logger.exception(
+            "[MODULE] intelligence: invalidation listener registration failed"
+        )
+
+    try:
+        from app.modules.intelligence.routes.api import intelligence_api
+
+        app.register_blueprint(intelligence_api)
+    except Exception:
+        app.logger.exception(
+            "[MODULE] intelligence: API blueprint registration failed"
+        )
 
 
 __all__ = ["register"]

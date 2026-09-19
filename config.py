@@ -149,6 +149,12 @@ class Config:
         "CAPABILITY_PROJECTION_INTERVAL_MINUTES", "15"
     )
 
+    # T-003: derived-fact recompute (DE-4) — recurring interval, configurable
+    # downward. Default 10 minutes per the task brief (ADR-003).
+    DERIVED_RECOMPUTE_INTERVAL_MINUTES = os.environ.get(
+        "DERIVED_RECOMPUTE_INTERVAL_MINUTES", "10"
+    )
+
     # Session security — 8-hour session lifetime, 30-day remember-me cookie
     PERMANENT_SESSION_LIFETIME = timedelta(hours=8)
     # F-07: the 8 hours above is an ABSOLUTE cap; it is not an idle timeout and
