@@ -37,6 +37,13 @@ REASON_CODES = frozenset(
         # endpoint may invent an absence string inline.
         "no_tenant_context",
         "element_not_found",
+        # T-005 (US-5) addition: the yield endpoint's p95 bucket-edge read
+        # (D3) has no honest number to report when the 95th percentile falls
+        # in the histogram's +Inf overflow bucket -- reporting the top
+        # declared boundary (5.0) as if it were the measured value would be
+        # exactly the fabrication CLAUDE.md's "never invent data" rule
+        # forbids.
+        "p95_above_highest_bucket",
     }
 )
 

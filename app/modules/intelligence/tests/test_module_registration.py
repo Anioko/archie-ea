@@ -62,9 +62,11 @@ class _StubApp:
 def test_register_mounts_exactly_the_intelligence_api_blueprint():
     """T-003 (brief item 14, NFR-8): exactly one blueprint, no more.
 
-    T-004 adds a third route (API-1, US-1 impact) to this SAME blueprint --
+    T-004 added a third route (API-1, US-1 impact) to this SAME blueprint --
     see docs/buckets/t004-us1-impact-endpoint/tasks/00-verification-notes.md
-    defect D1 -- so the route count below moved from 2 to 3, but the
+    defect D1. T-005 adds a fourth (API-5, US-5 yield) -- see
+    docs/buckets/t005-us5-yield-report/tasks/00-verification-notes.md
+    section C -- so the route count below moved from 3 to 4, but the
     one-blueprint invariant this test exists to pin is unchanged.
     """
     from app.modules.intelligence import register
@@ -77,9 +79,9 @@ def test_register_mounts_exactly_the_intelligence_api_blueprint():
     # Blueprint.deferred_functions holds the registration callables, not the
     # rules directly (rules only materialise once bound to a real app); count
     # them instead, which is stable without booting a real Flask app.
-    assert len(bp.deferred_functions) == 3, (
-        "exactly three routes: POST .../recompute, GET .../derived/<id>, "
-        "GET .../impact/<element_id>"
+    assert len(bp.deferred_functions) == 4, (
+        "exactly four routes: POST .../recompute, GET .../derived/<id>, "
+        "GET .../impact/<element_id>, GET .../yield"
     )
 
 

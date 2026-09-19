@@ -1,12 +1,15 @@
 """T-001 acceptance criterion 13: the DE-14 reason-code vocabulary is closed.
 
 Mapping:
-    13 -> test_reason_codes_has_exactly_eighteen_members,
+    13 -> test_reason_codes_has_exactly_nineteen_members,
           test_unknown_reason_code_is_rejected_not_passed_through
 
 T-004 (US-1) added two members -- ``no_tenant_context`` and
 ``element_not_found`` -- for absence conditions on the cross-layer impact
-read path that sdd-v2.md's original sixteen do not cover. "Closed" means no
+read path that sdd-v2.md's original sixteen do not cover. T-005 (US-5) added
+one more -- ``p95_above_highest_bucket`` (D3) -- for the yield endpoint's
+p95 bucket-edge read having no honest number to report when the 95th
+percentile falls in the histogram's +Inf overflow bucket. "Closed" means no
 endpoint may invent an absence string inline, not that the set is frozen at
 sixteen forever; the module's own docstring says a new absence condition
 adds a member here, and nowhere else. This test is updated in lockstep.
@@ -23,7 +26,8 @@ from app.modules.intelligence.services.reason_codes import (
     validate_reason_code,
 )
 
-# sdd-v2.md § API-8's original sixteen, plus T-004's two additions.
+# sdd-v2.md § API-8's original sixteen, T-004's two additions, plus T-005's
+# one addition (p95_above_highest_bucket, D3).
 _EXPECTED = {
     "no_ownership_recorded",
     "no_maturity_recorded",
@@ -43,11 +47,12 @@ _EXPECTED = {
     "feed_not_connected",
     "no_tenant_context",
     "element_not_found",
+    "p95_above_highest_bucket",
 }
 
 
-def test_reason_codes_has_exactly_eighteen_members():
-    assert len(REASON_CODES) == 18
+def test_reason_codes_has_exactly_nineteen_members():
+    assert len(REASON_CODES) == 19
     assert REASON_CODES == frozenset(_EXPECTED)
 
 

@@ -104,7 +104,7 @@ def test_recompute_one_tenant_failure_does_not_abort_the_others(
     def _flaky(organization_id):
         if organization_id == org_a_id:
             raise RuntimeError("simulated failure for org_a")
-        return real_one_tenant(organization_id)
+        return real_one_tenant(organization_id, trigger="on_demand")
 
     monkeypatch.setattr(recompute_job, "_recompute_one_tenant", _flaky)
 

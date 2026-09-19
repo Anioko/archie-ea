@@ -97,14 +97,22 @@ def test_runner_loads_only_the_scoped_tenants_rows(app, db_session, make_org):
 
 def test_runner_uses_tenant_scope_and_never_hand_writes_organization_id():
     """Static check: the runner obtains scope through tenant_scope(), and the
-    ORM reads it makes carry no hand-written organization_id predicate (a
+    ORM READS it makes carry no hand-written organization_id predicate (a
     filter keyword argument or a WHERE-clause comparison) -- only the
-    tenant_scope()/do_orm_execute listener may filter by tenant.
+    tenant_scope()/do_orm_execute listener may filter a READ by tenant.
 
     A bare substring check for "organization_id" would false-fail: the
     parameter name in ``run(self, organization_id: int)`` and the docstring's
-    prose both legitimately contain the string. What must never appear is a
-    predicate shaped like ``organization_id=...`` or ``organization_id ==``.
+    prose both legitimately contain the string. What must never appear on a
+    READ path is a predicate shaped like ``organization_id=...`` (as a filter
+    kwarg) or ``organization_id ==`` (as a WHERE comparison).
+
+    T-005's ``_record_run`` WRITES one new ``DerivationRun`` row per
+    completed run, and constructing that row legitimately passes
+    ``organization_id=organization_id`` as a plain model-constructor keyword
+    argument (not a filter) -- exactly the same shape ``TenantMixin``'s own
+    ``before_flush`` listener would stamp on the row anyway, made explicit
+    here for clarity. It is excluded from this scan by name.
     """
     import app.modules.intelligence.services.derivation_runner as runner_module
 
@@ -112,13 +120,21 @@ def test_runner_uses_tenant_scope_and_never_hand_writes_organization_id():
     assert "from app.jobs.tenant_safe_job import tenant_scope" in source
     assert "with tenant_scope(" in source, "the runner must obtain scope through tenant_scope()"
 
+    # Scan line-by-line so the one legitimate write-side constructor call
+    # (DerivationRun(organization_id=organization_id, ...)) can be excluded
+    # by name without weakening the check for every other line.
     forbidden_predicates = ["organization_id=", "organization_id =="]
-    for pattern in forbidden_predicates:
-        assert pattern not in source, (
-            f"found a hand-written organization_id predicate ({pattern!r}) in the "
-            "runner -- do_orm_execute already filters inside tenant_scope(), and a "
-            "hand-written predicate on a TenantMixin model would double-filter"
-        )
+    allowed_line_substring = "organization_id=organization_id,"
+    for lineno, line in enumerate(source.splitlines(), start=1):
+        if line.strip() == allowed_line_substring:
+            continue
+        for pattern in forbidden_predicates:
+            assert pattern not in line, (
+                f"found a hand-written organization_id predicate ({pattern!r}) on "
+                f"line {lineno} of the runner -- do_orm_execute already filters "
+                "READS inside tenant_scope(), and a hand-written predicate on a "
+                "TenantMixin model READ would double-filter"
+            )
 
 
 # --- Acceptance criterion 12: DerivationResult shape -------------------------

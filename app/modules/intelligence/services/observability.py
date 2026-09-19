@@ -66,4 +66,69 @@ def record_invalidation(
     return record
 
 
-__all__ = ["InvalidationRecord", "record_invalidation"]
+@dataclass(frozen=True)
+class ShapeBTriggerRecord:
+    """T-005 (D11, ADR-009): a dated, logged Shape-B trigger event.
+
+    Fired when the NFR-5 measurement point's p95 breaches its
+    ``threshold_seconds`` (2.0s). This is exactly the pattern
+    ``InvalidationRecord`` above and ``latency_probe.QueryLatencyRecord``
+    already establish -- a frozen dataclass with ``as_dict()``, logged
+    structurally, not a bare log string. It is deliberately NOT a new
+    workflow, queue entry, build/work item or state change: it opens a
+    decision for a human, it does not start work, and it does not reuse
+    ``intelligence_derivation_runs`` -- that store answers a different
+    question (D11).
+    """
+
+    measured_p95_seconds: float
+    threshold_seconds: float
+    sample_count: int
+    query: str
+    depth: str
+    include_derived: str
+    recorded_at: _dt.datetime
+
+    def as_dict(self) -> dict:
+        return {
+            "measured_p95_seconds": self.measured_p95_seconds,
+            "threshold_seconds": self.threshold_seconds,
+            "sample_count": self.sample_count,
+            "query": self.query,
+            "depth": self.depth,
+            "include_derived": self.include_derived,
+            "recorded_at": self.recorded_at.isoformat(),
+        }
+
+
+def record_shape_b_trigger(
+    *,
+    measured_p95_seconds: float,
+    threshold_seconds: float,
+    sample_count: int,
+    query: str,
+    depth: str,
+    include_derived: str,
+) -> ShapeBTriggerRecord:
+    """Emit the ADR-009 Shape-B trigger event at WARNING (it is a breach,
+    unlike the INFO-level records above), and return the record so the
+    caller can echo it into the yield endpoint's response body."""
+    record = ShapeBTriggerRecord(
+        measured_p95_seconds=measured_p95_seconds,
+        threshold_seconds=threshold_seconds,
+        sample_count=sample_count,
+        query=query,
+        depth=depth,
+        include_derived=include_derived,
+        recorded_at=_dt.datetime.utcnow(),
+    )
+    logger.warning("intelligence.shape_b_trigger: %s", record.as_dict())
+    return record
+
+
+__all__ = [
+    "InvalidationRecord",
+    "ShapeBTriggerRecord",
+    "record_invalidation",
+    "record_shape_b_trigger",
+]

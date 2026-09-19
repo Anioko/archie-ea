@@ -23,6 +23,18 @@ VALID_DIRECTIONS = {"downstream", "upstream", "both"}
 NO_OWNERSHIP_REASON = validate_reason_code("no_ownership_recorded")
 NO_TENANT_CONTEXT_REASON = validate_reason_code("no_tenant_context")
 ELEMENT_NOT_FOUND_REASON = validate_reason_code("element_not_found")
+DERIVATION_NOT_COMPUTED_REASON = validate_reason_code("derivation_not_computed")
+
+# T-005 (D1): the NFR-5 measurement point is this exact, PINNED series --
+# never widened, never aggregated across label values.
+NFR5_QUERY = "cross_layer_impact"
+NFR5_DEPTH = "4"
+NFR5_INCLUDE_DERIVED = "true"
+
+# T-005 (ADR-009): NFR-5's stated measurement threshold. Appears only as the
+# Shape-B trigger's threshold_seconds -- never as a yield target (task 02
+# constraint: no fabricated target anywhere in the payload).
+SHAPE_B_THRESHOLD_SECONDS = 2.0
 
 
 def _include_derived_gate(include_derived: bool) -> bool:
@@ -290,8 +302,142 @@ def _derived_filter_args(
     return element_id, element_id, "both"
 
 
+def _not_computed_counts() -> Dict[str, Any]:
+    """T-005 task 02 acceptance item 12: the not-computed branch's null
+    counts, isolated as their own seam (same pattern as
+    ``_include_derived_gate`` / ``_sec09_tenant_check`` above and
+    ``derived_facts.py``'s ``_apply_default_staleness_filter``) so the
+    mutation-proof test can monkeypatch exactly this function to emit ``0``
+    instead of ``None`` and confirm the not-computed/measured-zero
+    distinguishability test goes red, without editing source under test.
+    """
+    return {
+        "explicit_count": None,
+        "derived_count": None,
+        "ratio": None,
+        "computed_at": None,
+        "engine_version": None,
+        "stale_count": None,
+        "last_recompute_duration_ms": None,
+    }
+
+
 class IntelligenceQueryService:
     """DE-9: read-only cross-layer intelligence queries."""
+
+    @staticmethod
+    def derivation_yield(organization_id: int) -> Dict[str, Any]:
+        """DE-11 (US-5): "how much does derivation add", for one tenant.
+
+        Read ``docs/buckets/t005-us5-yield-report/tasks/
+        00-verification-notes.md`` D1-D4, D8, D11, D12 before changing this
+        method -- several defects there correct the parent brief and are
+        binding.
+
+        p95 is read from the T-004 histogram at a PINNED selector (D1) via a
+        bucket-edge read (D3) -- never computed in application code, never
+        widened, never aggregated across label values. It is process-local
+        and estate-wide, not per tenant (D4), so it is reported as its own
+        nested, self-describing block on BOTH branches (it measures query
+        latency, not derivation -- suppressing it on the not-computed branch
+        would hide a real breach).
+
+        ``explicit_count``/``derived_count``/``ratio``/
+        ``last_recompute_duration_ms`` come from the tenant's
+        ``DerivationRun`` row itself -- the SAME values API-7's recompute
+        response already returns (D8: two surfaces, one answer; a store-
+        agreement test pins this). ``computed_at``/``engine_version``/
+        ``stale_count`` come from ``derived_fact_aggregates`` -- the store's
+        OWN current state (D9: never the ``ENGINE_VERSION`` module
+        constant).
+        """
+        from app.modules.intelligence.services.derived_facts import (
+            derived_fact_aggregates,
+            latest_derivation_run,
+        )
+        from app.modules.intelligence.services.latency_probe import read_p95_bucket_edge
+        from app.modules.intelligence.services.observability import record_shape_b_trigger
+
+        # D2: this call is wrapped in its OWN series (query="derivation_yield")
+        # -- the p95 read below is pinned to "cross_layer_impact" only, and is
+        # therefore unaffected by calling this endpoint repeatedly.
+        with record_query_latency("derivation_yield") as scope:
+            scope.organization_id = organization_id
+
+            p95_read = read_p95_bucket_edge(
+                query=NFR5_QUERY, depth=NFR5_DEPTH, include_derived=NFR5_INCLUDE_DERIVED
+            )
+            p95_block: Dict[str, Any] = {
+                "latency_seconds": p95_read["latency_seconds"],
+                "sample_count": p95_read["sample_count"],
+                "scope": "process_estate_wide",
+                "query": NFR5_QUERY,
+                "depth": int(NFR5_DEPTH),
+                "include_derived": True,
+                "reason": p95_read["reason"],
+            }
+            if p95_read.get("p95_exceeds_seconds") is not None:
+                p95_block["p95_exceeds_seconds"] = p95_read["p95_exceeds_seconds"]
+
+            # D3/D11: a real value OR the honest "exceeds the highest
+            # declared bucket" fact both constitute a genuine breach signal
+            # -- the Shape-B trigger must fire on either (task 02 acceptance
+            # item 6), never only on the interpolated case.
+            breach_value = p95_read["latency_seconds"]
+            if breach_value is None and p95_read["reason"] == "p95_above_highest_bucket":
+                breach_value = p95_read.get("p95_exceeds_seconds")
+
+            shape_b_trigger = None
+            if breach_value is not None and breach_value > SHAPE_B_THRESHOLD_SECONDS:
+                record = record_shape_b_trigger(
+                    measured_p95_seconds=breach_value,
+                    threshold_seconds=SHAPE_B_THRESHOLD_SECONDS,
+                    sample_count=p95_read["sample_count"],
+                    query=NFR5_QUERY,
+                    depth=NFR5_DEPTH,
+                    include_derived=NFR5_INCLUDE_DERIVED,
+                )
+                shape_b_trigger = record.as_dict()
+
+            run = latest_derivation_run(organization_id)
+            if run is None:
+                payload: Dict[str, Any] = {
+                    "organization_id": organization_id,
+                    "state": "not_computed",
+                    "reason": DERIVATION_NOT_COMPUTED_REASON,
+                    "reasons": [],
+                    **_not_computed_counts(),
+                    "p95": p95_block,
+                    "shape_b_trigger": shape_b_trigger,
+                }
+            else:
+                agg = derived_fact_aggregates(organization_id)
+                payload = {
+                    "organization_id": organization_id,
+                    "state": "computed",
+                    "explicit_count": run.explicit_count,
+                    "derived_count": run.derived_count,
+                    "ratio": float(run.ratio) if run.ratio is not None else None,
+                    "computed_at": agg["computed_at"].isoformat() if agg["computed_at"] else None,
+                    # D-5 (refuter): the derived-fact store's own computed_at
+                    # is honestly null for a tenant whose latest run produced
+                    # zero derived facts (nothing lands in
+                    # archimate_derived_relationships to stamp). last_run_at
+                    # is a distinct fact -- when derivation itself last
+                    # genuinely ran, from intelligence_derivation_runs -- so a
+                    # measured-zero tenant is not under-reporting a timestamp
+                    # the system already has. Never repurposes computed_at,
+                    # which still specifically describes store freshness.
+                    "last_run_at": run.finished_at.isoformat() if run.finished_at else None,
+                    "engine_version": agg["engine_versions"],
+                    "stale_count": agg["stale_count"],
+                    "last_recompute_duration_ms": run.duration_ms,
+                    "p95": p95_block,
+                    "shape_b_trigger": shape_b_trigger,
+                    "reasons": [],
+                }
+
+        return payload
 
     @staticmethod
     def cross_layer_impact(
