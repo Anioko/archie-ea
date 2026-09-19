@@ -10,6 +10,7 @@ write path).
 
 from __future__ import annotations
 
+import datetime as _dt
 import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
@@ -105,6 +106,165 @@ class DerivationRunner:
             engine_version=ENGINE_VERSION,
             derived=derived,
         )
+
+    def run_and_persist(self, organization_id: int) -> DerivationResult:
+        """Compute, then upsert into the T-003 store (DE-2), for one tenant.
+
+        Additive to ``run()`` — computing without writing stays possible (the
+        recompute job in task 03 is the caller that wants both). Must run
+        inside ``app.app_context()``; tenant scope is set once here and
+        covers both the compute and the persist, so no in-between window can
+        be observed from another tenant's scope.
+
+        Upsert semantics (DA-1 natural key
+        ``organization_id, source_element_id, target_element_id,
+        derived_type, rule_id``):
+          * one ``INSERT ... ON CONFLICT ON CONSTRAINT uq_derived_rel DO
+            UPDATE`` per batch, not one statement per row;
+          * ``confidence = 1.00`` / ``provenance = 'derivation'`` always,
+            with no caller override (ADR-001);
+          * ``computed_at`` stamped, ``stale`` cleared, ``stale_since`` /
+            ``stale_reason`` set NULL;
+          * rows for this tenant the engine no longer produces are deleted.
+        """
+        result = self.run(organization_id)
+
+        with tenant_scope(organization_id):
+            self._persist(organization_id, result.derived)
+            db.session.commit()
+
+        return result
+
+    def _persist(self, organization_id: int, derived: List[Dict[str, Any]]) -> None:
+        """Upsert *derived* rows for *organization_id* and prune the rest.
+
+        Raw SQL — the ``organization_id`` predicate is written explicitly on
+        every statement because the ORM tenant listeners do not reach raw
+        SQL, and this path is inside ``tenant_scope`` already so an ORM
+        write would be double-filtered if it also carried the predicate.
+        """
+        now = _dt.datetime.utcnow()
+        natural_keys: List[tuple] = []
+
+        if derived:
+            rows = []
+            for item in derived:
+                chain = list(item.get("relationship_chain") or item.get("chain") or [])
+                chain_element_ids = list(item.get("chain") or [])
+                depth = item.get("depth")
+                rule_id = item.get("rule_id")
+                derived_type = item.get("type")
+                source_id = item.get("source_id")
+                target_id = item.get("target_id")
+                rows.append(
+                    {
+                        "organization_id": organization_id,
+                        "source_element_id": source_id,
+                        "target_element_id": target_id,
+                        "derived_type": derived_type,
+                        "rule_id": rule_id,
+                        "chain": chain,
+                        "chain_element_ids": chain_element_ids,
+                        "depth": depth,
+                        "engine_version": ENGINE_VERSION,
+                        "computed_at": now,
+                    }
+                )
+                natural_keys.append((source_id, target_id, derived_type, rule_id))
+
+            db.session.execute(
+                db.text(
+                    """
+                    INSERT INTO archimate_derived_relationships (
+                        organization_id, source_element_id, target_element_id,
+                        derived_type, rule_id, chain, chain_element_ids, depth,
+                        confidence, provenance, engine_version, computed_at,
+                        stale, stale_since, stale_reason
+                    ) VALUES (
+                        :organization_id, :source_element_id, :target_element_id,
+                        :derived_type, :rule_id, :chain, :chain_element_ids, :depth,
+                        1.00, 'derivation', :engine_version, :computed_at,
+                        FALSE, NULL, NULL
+                    )
+                    ON CONFLICT ON CONSTRAINT uq_derived_rel DO UPDATE SET
+                        chain = EXCLUDED.chain,
+                        chain_element_ids = EXCLUDED.chain_element_ids,
+                        depth = EXCLUDED.depth,
+                        engine_version = EXCLUDED.engine_version,
+                        computed_at = EXCLUDED.computed_at,
+                        confidence = 1.00,
+                        provenance = 'derivation',
+                        stale = FALSE,
+                        stale_since = NULL,
+                        stale_reason = NULL
+                    """
+                ),
+                rows,
+            )
+
+        # Prune: delete this tenant's rows the engine no longer produces.
+        # A row is kept only if its natural key (minus organization_id,
+        # which is fixed to this tenant by the WHERE clause) is one of the
+        # keys just written this run.
+        if natural_keys:
+            # Compute the set of ids to delete explicitly, then delete by id
+            # in chunks (round-1 refuter finding D7). A single "NOT IN
+            # (VALUES <every surviving natural key>)" statement uses 4 bound
+            # params per surviving row and would exceed Postgres's 65535
+            # parameter limit once a tenant has roughly 16,380+ derived rows
+            # in one run -- but naively chunking that survivor VALUES list
+            # is itself wrong: a DELETE scoped to "NOT IN (this one chunk of
+            # survivors)" would delete every row that is a survivor in a
+            # DIFFERENT chunk too, since it is absent from *this* chunk's
+            # list. Instead: select this tenant's current natural keys,
+            # diff against the full survivor set in Python, and delete only
+            # the resulting stale ids -- a positive "id IN (...)" DELETE is
+            # safe to chunk because each chunk's membership list is already
+            # exactly the rows meant to be deleted, independent of any other
+            # chunk.
+            survivor_keys = {
+                (src, tgt, typ, rule) for src, tgt, typ, rule in natural_keys
+            }
+            existing_rows = db.session.execute(
+                db.text(
+                    """
+                    SELECT id, source_element_id, target_element_id, derived_type, rule_id
+                    FROM archimate_derived_relationships
+                    WHERE organization_id = :organization_id
+                    """
+                ),
+                {"organization_id": organization_id},
+            ).all()
+            stale_ids = [
+                row.id
+                for row in existing_rows
+                if (row.source_element_id, row.target_element_id, row.derived_type, row.rule_id)
+                not in survivor_keys
+            ]
+
+            _PRUNE_CHUNK_SIZE = 1000
+            for start in range(0, len(stale_ids), _PRUNE_CHUNK_SIZE):
+                chunk_ids = stale_ids[start : start + _PRUNE_CHUNK_SIZE]
+                db.session.execute(
+                    db.text(
+                        """
+                        DELETE FROM archimate_derived_relationships
+                        WHERE organization_id = :organization_id
+                          AND id = ANY(CAST(:ids AS integer[]))
+                        """
+                    ),
+                    {"organization_id": organization_id, "ids": chunk_ids},
+                )
+        else:
+            # The engine produced nothing this run: every existing row for
+            # this tenant is stale by definition of "no longer produced".
+            db.session.execute(
+                db.text(
+                    "DELETE FROM archimate_derived_relationships "
+                    "WHERE organization_id = :organization_id"
+                ),
+                {"organization_id": organization_id},
+            )
 
 
 __all__ = ["DerivationRunner", "DerivationResult", "ENGINE_VERSION"]

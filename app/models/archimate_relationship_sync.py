@@ -110,15 +110,34 @@ def _ensure_relationship(
 
 
 def _remove_relationship(session, rel_type, source_id, target_id):
-    """Remove ArchiMateRelationship when junction row is deleted."""
+    """Remove ArchiMateRelationship when junction row is deleted.
+
+    Per-instance query + ``session.delete()`` rather than a bulk
+    ``Query.delete()`` (round-2 refuter findings NEW-1/NEW-2): a bulk
+    ``.delete()`` here never populates ``session.deleted``, so it is
+    structurally invisible to T-003's precisely-scoped ``after_flush``
+    invalidation listener and instead falls through to the conservative,
+    tenant-blunt ``do_orm_execute`` bulk-listener fallback -- turning an
+    ordinary single-row junction unlink into either an entire tenant's
+    derived-fact store going stale (NEW-1) or, when no tenant context is
+    resolvable, every tenant's store going stale (NEW-2). This call site
+    only ever matches a small number of rows (one relationship instance per
+    (type, source, target) triple), so per-instance deletion costs nothing
+    and lets these deletes flow through the existing, already-tested,
+    correctly-scoped ``after_flush`` per-row path instead.
+    """
     if not source_id or not target_id:
         return
 
     from app.models.archimate_core import ArchiMateRelationship
 
-    session.query(ArchiMateRelationship).filter_by(
-        type=rel_type, source_id=source_id, target_id=target_id
-    ).delete()
+    existing = (
+        session.query(ArchiMateRelationship)
+        .filter_by(type=rel_type, source_id=source_id, target_id=target_id)
+        .all()
+    )
+    for rel in existing:
+        session.delete(rel)
 
 
 # ---------------------------------------------------------------------------

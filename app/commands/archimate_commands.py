@@ -6,6 +6,7 @@ Provides automated enterprise architecture modeling from vendor and capability d
 """
 
 import click
+from flask import current_app
 from flask.cli import with_appcontext
 
 from app.services.archimate.archimate_service import ArchiMateService
@@ -284,12 +285,45 @@ def clear_data(confirm):
         ArchiMateElement.query.delete()
         ArchitectureModel.query.delete()
 
+        # T-003 belt-and-suspenders (round-1 refuter finding D2): this
+        # command deletes across every tenant with no request/tenant context
+        # set, so any T-003 derived-fact row anywhere would otherwise keep
+        # pointing at now-deleted elements/relationships while still reading
+        # as current (stale=false) forever. The generic do_orm_execute bulk
+        # listener in invalidation.py already catches the .query.delete()
+        # calls above; this explicit call is the fallback if that mechanism
+        # ever stops covering this specific command.
+        invalidation_failed = False
+        try:
+            from app.modules.intelligence.services.invalidation import mark_all_stale
+
+            mark_all_stale(organization_id=None)
+        except Exception:
+            invalidation_failed = True
+            current_app.logger.exception(
+                "flask archimate clear: failed to mark derived facts stale"
+            )
+
         db.session.commit()
 
-        click.echo("✅ ArchiMate data cleared successfully!")
         click.echo(
             f"🗑️  Deleted: {element_count} elements, {relationship_count} relationships, {model_count} models"
         )
+
+        if invalidation_failed:
+            # A failed staleness mark leaves derived rows pointing at
+            # now-deleted elements/relationships while still reading as
+            # current (stale=false) -- this must not be reported as a clean
+            # success (error-signalling / silent-data gates).
+            click.echo(
+                "⚠️  ArchiMate data cleared, but marking derived facts stale "
+                "FAILED -- the derived-fact store may now be inconsistent. "
+                "See the log above and re-run `flask intelligence recompute` "
+                "(or equivalent) once the underlying issue is fixed."
+            )
+            raise SystemExit(1)
+
+        click.echo("✅ ArchiMate data cleared successfully!")
 
     except Exception as e:
         click.echo(f"❌ Error clearing ArchiMate data: {e}")

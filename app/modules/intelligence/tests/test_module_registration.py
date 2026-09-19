@@ -1,4 +1,4 @@
-"""T-001 acceptance criteria 14 and 16: non-fatal registration, nothing mounted.
+"""T-001 acceptance criteria 14 and 16: non-fatal registration.
 
 Deliberately does NOT call ``create_app()`` a second time in this process:
 ``tests/test_boot_health.py`` documents that a second boot raises "can no
@@ -10,10 +10,21 @@ rather than on the behaviour under test. Instead this exercises
 minimal stub app object — the same try/except path a real boot runs through,
 without re-invoking ``create_app()``.
 
+**Updated for T-003.** T-001's original ``test_register_mounts_no_blueprint_and_no_route``
+asserted nothing was mounted, because T-001 shipped no query surface by
+design (sdd-v2.md OA-5). T-003 is the task that adds one: the
+``intelligence_api`` blueprint (recompute + provenance-expansion routes,
+task 03), registered via the same non-fatal try/except this file already
+exercised. The blueprint object itself constructs fine against a plain
+Python stub (it needs no real Flask app until a request is dispatched), so
+it mounts even here -- this file now asserts exactly ONE blueprint mounts,
+named ``intelligence_api``, matching NFR-8 ("no query surface beyond these
+two routes").
+
 Mapping:
     14 -> test_registration_succeeds_when_module_is_importable,
           test_registration_is_non_fatal_when_import_is_forced_to_raise
-    16 -> test_register_mounts_no_blueprint_and_no_route
+    16 -> test_register_mounts_exactly_the_intelligence_api_blueprint
 """
 
 from __future__ import annotations
@@ -35,6 +46,9 @@ class _StubLogger:
     def info(self, msg, *args):
         self.infos.append(msg % args if args else msg)
 
+    def exception(self, msg, *args):
+        self.warnings.append(msg % args if args else msg)
+
 
 class _StubApp:
     def __init__(self):
@@ -45,13 +59,21 @@ class _StubApp:
         self.blueprints[bp.name] = bp
 
 
-def test_register_mounts_no_blueprint_and_no_route():
-    """T-001 mounts nothing: register(app) is a placeholder for T-003/T-004."""
+def test_register_mounts_exactly_the_intelligence_api_blueprint():
+    """T-003 (brief item 14, NFR-8): exactly one blueprint, no more."""
     from app.modules.intelligence import register
 
     stub = _StubApp()
     register(stub)
-    assert stub.blueprints == {}
+    assert set(stub.blueprints.keys()) == {"intelligence_api"}
+
+    bp = stub.blueprints["intelligence_api"]
+    # Blueprint.deferred_functions holds the registration callables, not the
+    # rules directly (rules only materialise once bound to a real app); count
+    # them instead, which is stable without booting a real Flask app.
+    assert len(bp.deferred_functions) == 2, (
+        "exactly two routes: POST .../recompute and GET .../derived/<id>"
+    )
 
 
 def test_registration_succeeds_when_module_is_importable():
@@ -61,8 +83,7 @@ def test_registration_succeeds_when_module_is_importable():
     stub = _StubApp()
     _register_intelligence(stub)
 
-    assert stub.blueprints == {}, "T-001 mounts nothing yet"
-    assert stub.logger.warnings == [], "a clean import/register must not warn"
+    assert set(stub.blueprints.keys()) == {"intelligence_api"}
     assert any("intelligence" in msg.lower() for msg in stub.logger.infos)
 
 

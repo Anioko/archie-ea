@@ -370,6 +370,11 @@ else:
     from .solution_domain_spec import SolutionDomainSpec  # noqa: F401
     from .acm_property_template import AcmPropertyTemplate  # noqa: F401
 
+    # T-003: derived-fact store (DE-2) — rule-derived ArchiMate relationships
+    from app.modules.intelligence.models.derived_relationship import (  # noqa: F401
+        DerivedRelationship,
+    )
+
     # Solution Workflow & Governance — FK dependency: governance references workflow_tasks
     from .solution_workflow import *  # noqa: F401
     # solution_reasoning defines solution_ai_reasoning_states, which solution_governance
