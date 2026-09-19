@@ -94,10 +94,23 @@ DEPENDENCIES:
        scrollbar is the affordance — restored rather than replaced with
        custom chrome, since the sidebar's own :hover/:focus-within styling
        already handles when it should be visually quiet. #}
+    <script src="{{ url_for('static', filename='js/sidebar/module_search.js') }}"></script>
     <nav id="sidebar-nav" class="flex-1 px-2 py-4 space-y-2 overflow-y-auto min-h-0"
          x-data="{
              searchQuery: '',
              searchFocused: false,
+             moduleSearch: { results: [], loading: false, error: false },
+             init() {
+                 // Typing also asks /api/sidebar/search for module hits, so a page that is in
+                 // /modules/ but not in this persona's zones (Impact Analysis, for an architect)
+                 // can be found by name. See app/static/js/sidebar/module_search.js.
+                 if (!window.SidebarModuleSearch) return;
+                 const finder = window.SidebarModuleSearch.create({
+                     fetchJson: (q) => Platform.fetch.get('/api/sidebar/search', { q: q }, { silent: true }),
+                     onChange: (state) => { this.moduleSearch = state; }
+                 });
+                 this.$watch('searchQuery', (q) => finder.search(q));
+             },
              clearSearch() {
                  this.searchQuery = '';
                  this.$refs.searchInput.focus();
@@ -137,6 +150,24 @@ DEPENDENCIES:
             <div x-cloak x-show="searchQuery && searchQuery.length > 0" class="mt-2 text-xs text-muted-foreground">
                 <span x-text="`Searching for: ${searchQuery}`"></span>
             </div>
+        </div>
+
+        <div x-cloak x-show="searchQuery && searchQuery.trim().length >= 2"
+             class="px-3 pb-2" role="region" aria-label="Matching modules" aria-live="polite"
+             data-testid="sidebar-module-results">
+            <div class="pb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">All modules</div>
+            <div class="space-y-1">
+                <template x-for="hit in moduleSearch.results" :key="hit.url">
+                    <a :href="hit.url" :title="hit.name"
+                       class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground">
+                        <span class="flex-1 truncate" x-text="hit.name"></span>
+                    </a>
+                </template>
+            </div>
+            <p x-show="moduleSearch.loading" class="px-3 py-1 text-xs text-muted-foreground">Searching all modules&hellip;</p>
+            <p x-show="!moduleSearch.loading &amp;&amp; !moduleSearch.error &amp;&amp; moduleSearch.results.length === 0"
+               class="px-3 py-1 text-xs text-muted-foreground">No module matches this search.</p>
+            <p x-show="moduleSearch.error" role="alert" class="px-3 py-1 text-xs text-destructive">Module search is unavailable. Try again.</p>
         </div>
 
         {% set ns = namespace(has_all_modules=false) %}

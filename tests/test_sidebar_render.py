@@ -104,7 +104,7 @@ def _sidebar_html(app, db_session, make_org, role, label):
 )
 def test_flagship_persona_sidebar_within_budget(app, db_session, make_org, role, label):
     sidebar_html = _sidebar_html(app, db_session, make_org, role, label)
-    link_count = len(re.findall(r"<a ", sidebar_html))
+    link_count = _real_link_count(sidebar_html)
     assert link_count <= SIDEBAR_BUDGET, (
         f"{role} sidebar renders {link_count} links, budget is {SIDEBAR_BUDGET}"
     )
@@ -124,6 +124,13 @@ def test_enterprise_architect_sidebar_includes_arb_dashboard(app, db_session, ma
     )
 
 
+def _real_link_count(sidebar_html: str) -> int:
+    """Links the sidebar really shows. An Alpine <template> (the module-search results, which render
+    nothing until the user types) is inert markup, not a link, so it does not count against the budget."""
+    without_templates = re.sub(r"<template[ >].*?</template>", "", sidebar_html, flags=re.S)
+    return len(re.findall(r"<a ", without_templates))
+
+
 def test_platform_admin_hits_the_link_budget_exactly(app, db_session, make_org):
     """Task 3 fix round (coordinator review): platform_admin's two new
     admin-zone links (Salesforce Integration, Power Platform) plus the
@@ -141,7 +148,7 @@ def test_platform_admin_hits_the_link_budget_exactly(app, db_session, make_org):
     links to 22 and the total — and SIDEBAR_LINK_BUDGET — to 25.
     """
     sidebar_html = _sidebar_html(app, db_session, make_org, "platform_admin", "pa-budget")
-    link_count = len(re.findall(r"<a ", sidebar_html))
+    link_count = _real_link_count(sidebar_html)
     assert link_count == SIDEBAR_BUDGET, (
         f"platform_admin sidebar renders {link_count} links, expected exactly "
         f"{SIDEBAR_BUDGET} (0 headroom left — see role_access.py's "
