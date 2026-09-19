@@ -34,7 +34,7 @@ listener's reach, go red. See "Mutation proof".
 
 ## Files changed
 
-`git diff --stat 1cdd8c4d..HEAD` (before this report was added):
+`git diff --stat 1cdd8c4d..ff8acfb9` (everything except this report):
 
 ```
  app/modules/intelligence/routes/api.py             |   7 +-
@@ -43,8 +43,8 @@ listener's reach, go red. See "Mutation proof".
  app/modules/intelligence/tests/test_api_routes.py  |  53 ++
  app/modules/intelligence/tests/test_plain_terms.py | 324 +++++++++
  .../intelligence/tests/test_query_service.py       |  57 ++
- .../tests/test_query_service_elements_map.py       | 724 +++++++++++++++++++++
- 7 files changed, 1397 insertions(+), 3 deletions(-)
+ .../tests/test_query_service_elements_map.py       | 742 +++++++++++++++++++++
+ 7 files changed, 1415 insertions(+), 3 deletions(-)
 ```
 
 - `services/query_service.py` — `_resolve_elements_batch`, `_element_ids_in_rows`, `_name_in`,
