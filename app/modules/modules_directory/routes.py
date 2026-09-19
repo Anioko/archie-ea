@@ -228,7 +228,7 @@ def _resolve(links):
         if link["endpoint"] not in current_app.view_functions:
             continue
         try:
-            href = url_for(link["endpoint"])
+            href = url_for(link["endpoint"], **(link.get("query_params") or {}))
         except Exception:
             current_app.logger.warning(
                 "modules directory: cannot build URL for %s - row omitted",
