@@ -15,20 +15,24 @@ droplet are ordinary Python with unit tests, not shell embedded in YAML.
 
 preflight    Refuses (exit 1, nothing written) unless the requested ref is a
              full lowercase 40-character SHA, the workflow was dispatched from
-             main, the commit is an ancestor of origin/main, no branch named
-             like the SHA exists (deploy_verified.sh resolves `origin/<ref>`
-             before it falls back to the bare ref), and every job in ci.yml has
-             concluded `success` for that exact commit. It also reads the
-             `production` environment's protection rules and refuses if they
-             are absent. There is deliberately no override.
+             main, the commit is an ancestor of origin/main, no branch or tag
+             named like the SHA (or origin/<sha>) exists (defence in depth:
+             deploy_verified.sh itself resolves a 40-hex ref as an object), and
+             every job in ci.yml that is not in EXCLUDED_CHECKS has concluded
+             `success` for that exact commit. It also reads the `production`
+             environment's protection rules and refuses if the reviewers are
+             absent or the rules cannot be read. There is deliberately no
+             override.
 setup-ssh    Writes the deploy key, the pinned host key, an ssh config with
              StrictHostKeyChecking yes, and an `ssh` wrapper that forces that
-             config, because deploy_verified.sh calls plain `ssh` with fixed
-             options and offers no way to pass a key or a known_hosts file.
-filter-log   Lets only deploy_verified.sh's own status lines through. This
-             repository is public, so its Actions logs are world-readable;
-             anything else the droplet prints (compose output, tracebacks) is
-             withheld rather than trusted to contain no secret.
+             config and repeats the pinning options ahead of its arguments,
+             because deploy_verified.sh calls plain `ssh` with fixed options and
+             offers no way to pass a key or a known_hosts file.
+filter-log   Lets through only lines that begin like deploy_verified.sh's own
+             status lines. It matches by prefix and cannot tell who wrote a
+             line. This repository is public, so its Actions logs are
+             world-readable; anything else the droplet prints (compose output,
+             tracebacks) is withheld rather than trusted to contain no secret.
 classify-log Reads the raw script output and exit status and says what
              happened: verified, rolled back, rollback failed, or no rollback
              possible. Exit 0 only when the requested commit is verified.
@@ -58,12 +62,10 @@ ENV_NAME_RE = re.compile(r"[A-Za-z0-9_.-]{1,64}")
 HOST_RE = re.compile(r"[0-9]{1,3}(\.[0-9]{1,3}){3}")
 USER_RE = re.compile(r"[a-z_][a-z0-9_-]{0,31}")
 
-# Every job in .github/workflows/ci.yml, by the name GitHub reports for its
-# check run. tests/test_deploy_workflow.py fails when ci.yml gains, loses or
-# renames a job without this list following, so the list cannot rot quietly.
-# "Build immutable release image" is included on purpose: it runs only for push
-# events and `needs` every other job, so its success also proves the push-
-# triggered run for this commit finished.
+# Every job in .github/workflows/ci.yml except the ones in EXCLUDED_CHECKS, by
+# the name GitHub reports for its check run. tests/test_deploy_workflow.py fails
+# when ci.yml gains, loses or renames a job without this list or the exclusions
+# following, so neither can rot quietly.
 REQUIRED_CHECKS = (
     "Secret scan (gitleaks)",
     "Static gates (compile + ratchets)",
@@ -76,8 +78,17 @@ REQUIRED_CHECKS = (
     "Browser compatibility (webkit)",
     "Level 10 archetype walkthrough",
     "Dependency CVEs (pip-audit)",
-    "Build immutable release image",
 )
+
+# Jobs in ci.yml that are deliberately not required, with the reason. Adding a
+# name here is a decision to let a deploy proceed while that job is red.
+EXCLUDED_CHECKS = {
+    "Build immutable release image": (
+        "builds and pushes a GHCR image, which production does not run: it deploys "
+        "a bind-mounted source checkout (see the header of scripts/deploy_verified.sh). "
+        "A registry or buildx outage must not block a deploy that never uses the image."
+    ),
+}
 CHECK_APP_SLUG = "github-actions"
 MAX_CHECK_PAGES = 10
 API_TIMEOUT_SECONDS = 20
@@ -164,6 +175,9 @@ def check_ancestry(sha: str, main_ref: str = "origin/main", runner=subprocess.ru
     """The commit must exist here and be reachable from origin/main."""
     if git(["cat-file", "-e", sha + "^{commit}"], runner).returncode != 0:
         return ["commit %s is not present in this repository" % sha]
+    peeled = git(["rev-parse", "--verify", "--quiet", sha + "^{commit}"], runner)
+    if peeled.returncode != 0 or (peeled.stdout or "").strip() != sha:
+        return ["%s is not itself a commit (a tag object's SHA is refused)" % sha]
     if git(["rev-parse", "--verify", "--quiet", main_ref], runner).returncode != 0:
         return ["cannot resolve %s in this checkout; cannot prove the commit is on main" % main_ref]
     result = git(["merge-base", "--is-ancestor", sha, main_ref], runner)
@@ -174,20 +188,30 @@ def check_ancestry(sha: str, main_ref: str = "origin/main", runner=subprocess.ru
     return ["git merge-base failed (exit %d); cannot prove the commit is on main" % result.returncode]
 
 
-def check_no_shadow_branch(repo: str, sha: str, token: str, api_base: str, opener=None) -> list[str]:
-    """deploy_verified.sh tries `origin/<ref>` first. A branch named like the
-    SHA would therefore deploy the branch tip instead of the commit that was
-    checked here. Refuse if any such branch exists."""
-    url = "%s/repos/%s/git/matching-refs/heads/%s" % (api_base, repo, sha)
-    response = api_get(url, token, opener)
-    if response.status != 200 or not isinstance(response.body, list):
-        return ["could not check for a branch named like the SHA (HTTP %s %s)" % (response.status, response.message())]
-    if response.body:
-        return [
-            "a branch whose name starts with the SHA exists; deploy_verified.sh would "
-            "resolve origin/<sha> to that branch instead of the commit checked here"
-        ]
-    return []
+# Ref namespaces, under refs/, in which a name built from the SHA could be looked
+# up instead of the commit. The real control is in deploy_verified.sh, which
+# resolves a 40-hex ref as an object and never as origin/<sha>; refusing these
+# here as well is defence in depth and stops the request before it is approved.
+SHADOW_REF_TEMPLATES = ("heads/%s", "tags/%s", "tags/origin/%s", "heads/origin/%s")
+
+
+def check_no_shadow_refs(repo: str, sha: str, token: str, api_base: str, opener=None) -> list[str]:
+    """Refuse if any branch or tag is named like the SHA (or origin/<sha>).
+
+    An API failure is a refusal, not a pass.
+    """
+    problems = []
+    for template in SHADOW_REF_TEMPLATES:
+        url = "%s/repos/%s/git/matching-refs/%s" % (api_base, repo, template % sha)
+        response = api_get(url, token, opener)
+        if response.status != 200 or not isinstance(response.body, list):
+            problems.append("could not check refs named like the SHA under %s (HTTP %s %s)"
+                            % (template % "<sha>", response.status, response.message()))
+        elif response.body:
+            names = [str(r.get("ref", "?"))[:120] for r in response.body if isinstance(r, dict)][:3]
+            problems.append("a ref named like the SHA exists (%s); refused so nothing can stand in for the checked commit"
+                            % ", ".join(names))
+    return problems
 
 
 def fetch_check_runs(repo: str, sha: str, token: str, api_base: str, opener=None):
@@ -246,7 +270,8 @@ def evaluate_environment(response: ApiResponse, name: str):
     ok           required reviewers and a deployment-branch policy are present
     unprotected  the environment exists but jobs would run without approval
     missing      the environment does not exist (or is invisible to the token)
-    unknown      the API could not answer; the setup step is the only control
+    unknown      the API could not answer; the caller refuses, because the
+                 reviewer requirement cannot be confirmed
     """
     if response.status == 200 and isinstance(response.body, dict):
         rules = response.body.get("protection_rules") or []
@@ -254,7 +279,7 @@ def evaluate_environment(response: ApiResponse, name: str):
         reviewers = 0
         for rule in reviewer_rules:
             listed = rule.get("reviewers")
-            reviewers += len(listed) if isinstance(listed, list) else 1
+            reviewers += len(listed) if isinstance(listed, list) else 0
         if not reviewer_rules or reviewers == 0:
             return "unprotected", "environment %r has no required reviewers, so its jobs would run without approval" % name
         policy = response.body.get("deployment_branch_policy")
@@ -266,7 +291,11 @@ def evaluate_environment(response: ApiResponse, name: str):
         return "missing", "environment %r does not exist, or the workflow token cannot see it" % name
     accepted = response.headers.get("x-accepted-github-permissions", "")
     extra = " (token permissions accepted: %s)" % accepted if accepted else ""
-    return "unknown", "environment settings could not be read: HTTP %s %s%s" % (response.status, response.message(), extra)
+    return "unknown", (
+        "environment settings could not be read: HTTP %s %s%s; refused because the "
+        "required-reviewer setting cannot be confirmed (see deploy/DEPLOY_WORKFLOW.md)"
+        % (response.status, response.message(), extra)
+    )
 
 
 def write_output(name: str, value: str) -> None:
@@ -286,7 +315,6 @@ def write_summary(text: str) -> None:
 
 def run_preflight(env, args, runner=subprocess.run, opener=None, out=print) -> int:
     problems: list[str] = []
-    warnings: list[str] = []
     ref = env.get("DEPLOY_REF", "")
     dry_run = parse_dry_run(env.get("DEPLOY_DRY_RUN", ""))
     repo = env.get("GITHUB_REPOSITORY", "")
@@ -310,11 +338,12 @@ def run_preflight(env, args, runner=subprocess.run, opener=None, out=print) -> i
                 % (args.require_branch, env.get("GITHUB_REF", ""))
             )
 
-    env_note = "not requested"
+    env_note = ("not requested" if not args.check_environment
+                else "not evaluated (the request was refused before the environment was read)")
     ci_note = "not evaluated"
     if not problems:
         problems += check_ancestry(ref, "origin/" + (args.require_branch or "main"), runner)
-        problems += check_no_shadow_branch(repo, ref, token, api_base, opener)
+        problems += check_no_shadow_refs(repo, ref, token, api_base, opener)
         runs, fetch_problem = fetch_check_runs(repo, ref, token, api_base, opener)
         if runs is None:
             problems.append(fetch_problem)
@@ -329,9 +358,6 @@ def run_preflight(env, args, runner=subprocess.run, opener=None, out=print) -> i
             )
             if state == "ok":
                 env_note = "verified (%s)" % detail
-            elif state == "unknown":
-                env_note = "NOT CHECKED: %s. The required-reviewer setup step is the only control." % detail
-                warnings.append(env_note)
             else:
                 env_note = "REFUSED: %s" % detail
                 problems.append(detail)
@@ -346,8 +372,6 @@ def run_preflight(env, args, runner=subprocess.run, opener=None, out=print) -> i
         lines += ["", "**Refused.**", ""] + ["- " + p for p in problems]
     write_summary("\n".join(lines))
 
-    for warning in warnings:
-        out("::warning title=Environment protection not checked::%s" % warning)
     if problems:
         out("PRE-FLIGHT REFUSED:")
         for problem in problems:
@@ -381,31 +405,55 @@ def validate_known_hosts(text: str, host: str) -> list[str]:
             problems.append("DROPLET_KNOWN_HOSTS has a marker or hashed entry; use plain '<ip> <type> <key>' lines")
         elif len(fields) < 3 or fields[1] not in KNOWN_HOSTS_TYPES:
             problems.append("DROPLET_KNOWN_HOSTS has a line that is not '<host> <key-type> <key>'")
-        elif host not in fields[0].split(","):
-            problems.append("DROPLET_KNOWN_HOSTS has an entry for a host other than %s" % host)
+        elif fields[0] != host:
+            problems.append("DROPLET_KNOWN_HOSTS entries must name exactly %s (no host lists, patterns or other hosts)" % host)
     return problems
 
 
+def hard_ssh_options(directory: str) -> list[tuple[str, str]]:
+    """Options that pin the connection.
+
+    They are written to the ssh config and also passed on the command line by
+    the wrapper, ahead of the caller's own arguments. OpenSSH keeps the first
+    value it obtains for an option and command-line options are obtained before
+    any config file, so a caller's own -o option cannot loosen them; putting
+    them in the config alone would not stop that.
+    """
+    return [
+        ("IdentitiesOnly", "yes"),
+        ("StrictHostKeyChecking", "yes"),
+        ("UserKnownHostsFile", directory + "/known_hosts"),
+        ("GlobalKnownHostsFile", "/dev/null"),
+        ("UpdateHostKeys", "no"),
+        ("VerifyHostKeyDNS", "no"),
+        ("BatchMode", "yes"),
+        ("PasswordAuthentication", "no"),
+        ("KbdInteractiveAuthentication", "no"),
+        ("ForwardAgent", "no"),
+        ("ForwardX11", "no"),
+        ("ClearAllForwardings", "yes"),
+    ]
+
+
 def render_ssh_config(directory: str) -> str:
-    return "\n".join([
+    lines = [
         "# Written by scripts/deploy_workflow.py setup-ssh for one workflow run.",
         "Host *",
         '    IdentityFile "%s/id_deploy"' % directory,
-        "    IdentitiesOnly yes",
-        "    StrictHostKeyChecking yes",
-        '    UserKnownHostsFile "%s/known_hosts"' % directory,
-        "    GlobalKnownHostsFile /dev/null",
-        "    UpdateHostKeys no",
-        "    BatchMode yes",
-        "    PasswordAuthentication no",
-        "    KbdInteractiveAuthentication no",
-        "    ForwardAgent no",
-        "    ForwardX11 no",
-        "    ClearAllForwardings yes",
-        "    ServerAliveInterval 30",
-        "    ServerAliveCountMax 40",
-        "",
-    ])
+    ]
+    for key, value in hard_ssh_options(directory):
+        lines.append("    %s %s" % (key, '"%s"' % value if key == "UserKnownHostsFile" else value))
+    lines += ["    ServerAliveInterval 30", "    ServerAliveCountMax 40", ""]
+    return "\n".join(lines)
+
+
+def render_ssh_wrapper(real_ssh: str, directory: str) -> str:
+    forced = " ".join("-o %s" % shlex.quote("%s=%s" % pair) for pair in hard_ssh_options(directory))
+    return (
+        "#!/bin/sh\n"
+        "# The pinning options come before \"$@\" so a caller's -o cannot override them.\n"
+        "exec %s -F %s %s \"$@\"\n" % (shlex.quote(real_ssh), shlex.quote(os.path.join(directory, "config")), forced)
+    )
 
 
 def _write_private(path: str, content: str, mode: int) -> None:
@@ -444,10 +492,8 @@ def setup_ssh(directory: str, host: str, user: str, key: str, known_hosts: str,
     _write_private(key_path, key, 0o600)
     _write_private(os.path.join(directory, "known_hosts"), known_hosts.strip() + "\n", 0o600)
     _write_private(os.path.join(directory, "config"), render_ssh_config(directory), 0o600)
-    wrapper = "#!/bin/sh\nexec %s -F %s \"$@\"\n" % (
-        shlex.quote(real_ssh), shlex.quote(os.path.join(directory, "config")))
     wrapper_path = os.path.join(directory, "bin", "ssh")
-    _write_private(wrapper_path, wrapper, 0o700)
+    _write_private(wrapper_path, render_ssh_wrapper(real_ssh, directory), 0o700)
 
     # Prove the key parses without printing it: -y derives the public half and
     # fails on a malformed or passphrase-protected key.

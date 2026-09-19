@@ -3,26 +3,35 @@ name: Production deploy
 # Deploys one commit that is already on main to production by running
 # scripts/deploy_verified.sh from a runner, for sessions that have GitHub access
 # but no SSH access to the droplet. Setup, rollback and revocation are in
-# deploy/DEPLOY_WORKFLOW.md; read the setup section before the first dispatch.
+# deploy/DEPLOY_WORKFLOW.md. Read it, starting with "Decide first", before the
+# first dispatch.
 #
-#   gh workflow run deploy.yml -f ref=<40-character sha> -f dry_run=true
-#   gh workflow run deploy.yml -f ref=<40-character sha> -f dry_run=false
+#   gh workflow run deploy.yml --ref main -f ref=<40-character sha> -f dry_run=true
+#   gh workflow run deploy.yml --ref main -f ref=<40-character sha> -f dry_run=false
 #
 # Two jobs. `preflight` has no secrets and no approval step: it refuses bad
 # requests before a reviewer is asked anything. `deploy` declares the
-# `production` environment, whose required reviewers must approve before the
-# job starts. The SSH key and the pinned host key are secrets of that
-# environment, so neither exists in any job that has not been approved.
+# `production` environment. The SSH key and the pinned host key are secrets of
+# that environment, so neither exists in any job that has not been approved.
+#
+# What the approval step is, and is not. With one maintainer, GitHub's "prevent
+# self-review" has to stay off or nobody could approve, and then whoever
+# dispatches a run (a person, or a session holding that person's GitHub token)
+# can also approve it. In that setup the approval is a confirmation prompt with
+# an audit trail, not a separation of duties. It becomes one only with a second
+# reviewer account and prevent_self_review switched on. That is a decision for
+# the repository owner, set out at the top of the runbook. Nothing in this file
+# can enforce it: GitHub evaluates reviewers server-side.
 #
 # The environment MUST have required reviewers. GitHub runs a job that names an
 # environment with no protection rules immediately and without asking anyone.
 # Both jobs read the environment's rules through the API and refuse if the
-# reviewers are missing, but that read is a guard against misconfiguration, not
-# the control: the reviewers setting is.
+# reviewers are missing or the rules cannot be read, but that read is a guard
+# against misconfiguration, not the control: the reviewers setting is.
 #
 # The repository is public, so Actions logs are world-readable. Output from the
-# droplet is therefore filtered to deploy_verified.sh's own status lines; the
-# unfiltered output stays on the runner and is deleted with it.
+# droplet is therefore filtered to lines that begin like deploy_verified.sh's own
+# status lines; the unfiltered output stays on the runner and is deleted with it.
 run-name: Production deploy of ${{ inputs.ref }} (dry_run=${{ inputs.dry_run }})
 
 on:
@@ -77,7 +86,10 @@ jobs:
     name: Deploy to production (reviewer approval required)
     needs: preflight
     runs-on: ubuntu-24.04
-    timeout-minutes: 75
+    # Baseline up to 15 min, deploy step up to 65, plus setup and the public-page
+    # check. A run cut off part-way leaves the droplet mid-deploy, so this is a
+    # ceiling on a hung run, not a target.
+    timeout-minutes: 100
     environment:
       name: production
       url: https://165-22-125-156.sslip.io
@@ -129,12 +141,16 @@ jobs:
       - name: Reach the droplet and record what is running
         id: ssh
         run: |
-          before=$(ssh -o ConnectTimeout=20 "$DROPLET" bash -s -- "$APP_DIR" <<'REMOTE'
+          # stderr can carry text from the droplet, so it is filtered like every
+          # other droplet-facing step; ssh's own client errors pass the filter.
+          rc=0
+          before=$(ssh -o ConnectTimeout=20 "$DROPLET" bash -s -- "$APP_DIR" 2>"$LOG_DIR/ssh-check.err" <<'REMOTE'
           cd "$1"
           git rev-parse HEAD
           REMOTE
-          )
-          if ! [[ "$before" =~ ^[0-9a-f]{40}$ ]]; then
+          ) || rc=$?
+          python3 scripts/deploy_workflow.py filter-log < "$LOG_DIR/ssh-check.err"
+          if [ "$rc" -ne 0 ] || ! [[ "$before" =~ ^[0-9a-f]{40}$ ]]; then
             echo "could not read the commit that is running on the droplet"
             exit 1
           fi
@@ -150,7 +166,9 @@ jobs:
         env:
           DEPLOY_SHA: ${{ steps.gate.outputs.sha }}
           AUTO_ROLLBACK: "0"
-          HEALTH_TIMEOUT_SECONDS: "180"
+          # Same budget as the deploy step (the boot chain is documented as taking
+          # 8-12 minutes), so a dry run reports what the baseline would.
+          HEALTH_TIMEOUT_SECONDS: "900"
         run: |
           set +e
           bash scripts/deploy_verified.sh "$DEPLOY_SHA" --skip-deploy 2>&1 \
@@ -171,7 +189,9 @@ jobs:
         env:
           DEPLOY_SHA: ${{ steps.gate.outputs.sha }}
           AUTO_ROLLBACK: "0"
-          HEALTH_TIMEOUT_SECONDS: "180"
+          # Same budget as the deploy step. A container that is merely slow to
+          # report healthy must not cost the deploy its rollback target.
+          HEALTH_TIMEOUT_SECONDS: "900"
         run: |
           set +e
           bash scripts/deploy_verified.sh "$DEPLOY_SHA" --skip-deploy 2>&1 \

@@ -69,6 +69,7 @@ class Job:
         self.outcomes: dict = {"gate": "success", "ssh_setup": "success", "post": "skipped"}
         self.failed = False
         self.transcript: dict = {}
+        self.extra_env: dict = {}
 
     def _expr(self, match) -> str:
         expr = match.group(1).strip()
@@ -116,15 +117,18 @@ class Job:
             env[name] = value
         for name, value in step.get("env", {}).items():
             env[name] = re.sub(r"\$\{\{([^}]*)\}\}", self._expr, str(value))
-        if "HEALTH_TIMEOUT_SECONDS" in env:
-            env["HEALTH_TIMEOUT_SECONDS"] = "1"  # the workflow sets 180 / 900; do not wait that long here
+        # The workflow's own HEALTH_TIMEOUT_SECONDS (900) is used as written. The fake `date`
+        # advances by this many "seconds" per call, so an unhealthy container exhausts the
+        # budget after two polls whatever the machine is doing.
+        env["FAKE_CLOCK_STEP"] = "300"
+        env.update(self.extra_env)
         assert "${{" not in step["run"]
         script = self.ws / "step.sh"
         script.write_text(step["run"], encoding="utf-8", newline="\n")
         before = self.files["output"].read_text()
-        result = subprocess.run(
+        result = support.run_bounded(
             [BASH, "--noprofile", "--norc", "-eo", "pipefail", script.as_posix()],
-            cwd=self.ws, env=env, capture_output=True, text=True, timeout=180,
+            cwd=self.ws, env=env, timeout=900,
         )
         written = self.files["output"].read_text()[len(before):]
         if sid:
@@ -228,3 +232,29 @@ def test_droplet_output_is_kept_off_the_log_and_the_raw_copy_is_deleted(droplet)
     assert "hunter2-SECRET" in raw  # kept on the runner only ...
     job.run_step("Remove the key, the pinned host key and the raw logs")
     assert not (job.temp / "deploy-logs").exists()  # ... and deleted with it
+
+
+def test_the_droplets_stderr_in_the_first_ssh_step_is_filtered(droplet):
+    job = Job(droplet, "dry-run", sha(droplet, "B"))
+    job.extra_env = {"FAKE_SSH_STDERR": "token=SECRET-FROM-DROPLET\nssh: connect to host x port 22: Connection timed out"}
+    for name in ("Prepare runner directories", "ssh"):
+        job.run_step(name)
+
+    shown = job.transcript["ssh"]
+    assert job.outcomes["ssh"] == "success"
+    assert "SECRET-FROM-DROPLET" not in shown
+    assert "ssh: connect to host x port 22: Connection timed out" in shown   # the client's own error is kept
+    assert "withheld" in shown
+
+
+def test_a_failed_connection_stops_the_run_and_still_shows_the_clients_error(droplet):
+    job = Job(droplet, "dry-run", sha(droplet, "B"))
+    job.extra_env = {"FAKE_SSH_STDERR": "Permission denied (publickey).", "FAKE_SSH_FAIL": "1"}
+    job.run_all()
+
+    assert job.outcomes["ssh"] == "failure"
+    assert "Permission denied (publickey)." in job.transcript["ssh"]
+    assert "could not read the commit that is running on the droplet" in job.transcript["ssh"]
+    assert job.outcomes["dry"] == "skipped"
+    assert "SSH setup or the connection to the droplet failed" in job.summary()
+    assert not any(c.startswith("docker compose") for c in droplet.docker_calls())

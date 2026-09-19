@@ -173,7 +173,21 @@ cd "$APP_DIR"
 git fetch --prune origin
 # Resolve to a full SHA now, after fetch, so a branch name means its current
 # tip and the caller gets back exactly what was deployed.
-if git rev-parse --verify --quiet "origin/$REF" >/dev/null; then
+#
+# A full 40-hex SHA names an object, never a ref, so it is resolved directly and
+# origin/<sha> is never tried. Trying it first let a ref named like the SHA
+# (a remote branch, or a tag literally called origin/<sha>, which git resolves
+# ahead of refs/remotes/origin/<sha>) substitute a different commit for the one
+# that was requested. This applies to the rollback path too, which calls
+# do_deploy with the last verified SHA. If the object does not resolve to
+# exactly that commit the deploy stops before anything is checked out.
+if [[ "$REF" =~ ^[0-9a-f]{40}$ ]]; then
+    TARGET=$(git rev-parse --verify --quiet "$REF^{commit}") || TARGET=""
+    if [ "$TARGET" != "$REF" ]; then
+        echo "DEPLOY-VERIFY FAIL: $REF does not resolve to that exact commit on the droplet" >&2
+        exit 1
+    fi
+elif git rev-parse --verify --quiet "origin/$REF" >/dev/null; then
     TARGET=$(git rev-parse "origin/$REF")
 else
     TARGET=$(git rev-parse --verify "$REF")

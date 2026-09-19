@@ -23,9 +23,11 @@ import importlib.util
 import os
 import shlex
 import shutil
+import signal
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -45,6 +47,8 @@ FAKE_SSH = """#!/bin/bash
 # ssh [-o opt]... host bash -s -- args...   (remote script arrives on stdin)
 while [ "$1" = "-o" ]; do shift 2; done
 shift                                   # host
+[ -n "$FAKE_SSH_STDERR" ] && echo "$FAKE_SSH_STDERR" >&2
+[ -n "$FAKE_SSH_FAIL" ] && exit 255
 [ "$1" = bash ] || { echo "fake ssh: unsupported remote command: $*" >&2; exit 255; }
 shift
 exec bash "$@"
@@ -85,6 +89,52 @@ printf '{"build_id": "%s"}' "${running:0:8}"
 
 FAKE_SLEEP = "#!/bin/bash\nexit 0\n"
 
+# `date +%s` is the only clock deploy_verified.sh reads (its health-wait loop).
+# This fake advances by a fixed step per call, so how many polls fit inside
+# HEALTH_TIMEOUT_SECONDS depends on the call count and never on how busy the
+# machine is. (A 1-second real deadline made two tests fail intermittently under
+# load.) The step must stay below the timeout or the loop would not poll once.
+FAKE_DATE = """#!/bin/bash
+if [ "$1" = "+%s" ]; then
+    n=$(cat "$FAKE_STATE/clock" 2>/dev/null || echo 1000000000)
+    n=$((n + ${FAKE_CLOCK_STEP:-20}))
+    echo "$n" > "$FAKE_STATE/clock"
+    echo "$n"
+    exit 0
+fi
+exec REAL_DATE "$@"
+"""
+
+
+def _kill_tree(proc: subprocess.Popen) -> None:
+    if os.name == "nt":
+        subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)], capture_output=True)
+    else:
+        os.killpg(proc.pid, signal.SIGKILL)
+
+
+def run_bounded(cmd, *, cwd=None, env=None, timeout=600):
+    """subprocess.run that cannot hang the suite.
+
+    On a timeout the whole process tree is killed and the test fails loudly. With
+    plain subprocess.run(timeout=...) only the direct child is killed, and on
+    Windows a grandchild still holding the output pipe makes the follow-up
+    communicate() wait forever: a loaded machine turned a slow step into a run
+    that never finished.
+    """
+    kwargs = {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP} if os.name == "nt" else {"start_new_session": True}
+    proc = subprocess.Popen(cmd, cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, **kwargs)
+    try:
+        out, err = proc.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        _kill_tree(proc)
+        try:
+            proc.communicate(timeout=30)
+        except subprocess.TimeoutExpired:
+            pass
+        raise AssertionError("timed out after %ss: %s" % (timeout, " ".join(str(c) for c in cmd[:3])))
+    return SimpleNamespace(returncode=proc.returncode, stdout=out, stderr=err)
+
 
 def _write(path: Path, text: str) -> None:
     path.write_text(text, encoding="utf-8", newline="\n")
@@ -110,6 +160,8 @@ class FakeDroplet:
         _write(self.bin / "docker", FAKE_DOCKER)
         _write(self.bin / "curl", FAKE_CURL)
         _write(self.bin / "sleep", FAKE_SLEEP)
+        real_date = Path(shutil.which("date") or "/bin/date").as_posix()
+        _write(self.bin / "date", FAKE_DATE.replace("REAL_DATE", shlex.quote(real_date)))
         _write(self.bin / "python3", "#!/bin/bash\nexec %s \"$@\"\n" % shlex.quote(Path(sys.executable).as_posix()))
         # deploy_verified.sh as committed uses LF; a Windows checkout may hold CRLF.
         self.script = tmp_path / "scripts" / "deploy_verified.sh"
@@ -126,12 +178,26 @@ class FakeDroplet:
             _git(work, "add", "f.txt")
             _git(work, "commit", "-q", "-m", name)
             self.commits[name] = _git(work, "rev-parse", "HEAD")
+        # A commit that is not on main, standing in for an attacker's commit.
+        _git(work, "checkout", "-q", "-b", "evil", self.commits["A"])
+        (work / "f.txt").write_text("E")
+        _git(work, "commit", "-q", "-am", "E")
+        self.commits["E"] = _git(work, "rev-parse", "HEAD")
+        _git(work, "checkout", "-q", "main")
+        self.work, self.origin = work, origin
         subprocess.run(["git", "init", "-q", "--bare", str(origin)], check=True)
-        _git(work, "push", "-q", str(origin), "main")
+        _git(work, "push", "-q", str(origin), "main", "evil")
         subprocess.run(["git", "clone", "-q", str(origin), str(self.app)], check=True, capture_output=True)
         # Production starts on A, running and healthy.
         _git(self.app, "checkout", "-q", "--detach", self.commits["A"])
         (self.state / "running").write_text(self.commits["A"] + "\n")
+
+    def plant(self, ref: str, target: str) -> None:
+        """Publish `ref` (for example tags/origin/<sha>) at commit `target` on
+        origin and make sure the droplet's checkout has it, as a fetch would."""
+        _git(self.work, "update-ref", "refs/" + ref, target)
+        _git(self.work, "push", "-q", str(self.origin), "refs/%s:refs/%s" % (ref, ref))
+        _git(self.app, "fetch", "-q", "--tags", str(self.origin), "+refs/heads/*:refs/remotes/origin/*")
 
     def mark_bad(self, *names: str) -> None:
         (self.state / "bad").write_text("".join(self.commits[n] + "\n" for n in names))
@@ -146,16 +212,13 @@ class FakeDroplet:
             "DROPLET": "root@fake-droplet",
             "APP_DIR": self.app.as_posix(),
             "FAKE_STATE": self.state.as_posix(),
-            "HEALTH_TIMEOUT_SECONDS": "1",
+            "HEALTH_TIMEOUT_SECONDS": "60",
             "DEPLOY_STATE_FILE": self.runner_state.as_posix(),
             "DEPLOY_VERIFY_EMAIL": "",
             "DEPLOY_VERIFY_PASSWORD": "",
         }
         env.update(env_overrides)
-        result = subprocess.run(
-            [BASH, self.script.as_posix(), ref, *extra],
-            env=env, capture_output=True, text=True, timeout=120,
-        )
+        result = run_bounded([BASH, self.script.as_posix(), ref, *extra], env=env, timeout=600)
         return result.returncode, result.stdout + result.stderr
 
     def recorded(self) -> str | None:
@@ -250,18 +313,73 @@ def test_verify_only_checks_what_is_running_not_the_requested_commit(droplet):
     assert sha(droplet, "C") not in out.replace("DEPLOY VERIFIED", "")
 
 
-def test_a_branch_named_like_the_sha_would_win_over_the_sha(droplet):
-    """Why the pre-flight refuses such a branch: the script resolves origin/<ref>
-    before the bare ref, so it would deploy the branch tip, not the checked commit."""
-    work = droplet.tmp / "work"
-    victim = sha(droplet, "B")
-    _git(work, "push", "-q", str(droplet.tmp / "origin.git"), "%s:refs/heads/%s" % (sha(droplet, "C"), victim))
+def head(droplet) -> str:
+    return _git(droplet.app, "rev-parse", "HEAD")
 
-    rc, out = droplet.run(victim)
 
-    assert rc == 0
+@pytest.mark.parametrize("shadow", ["tags/origin/{sha}", "heads/{sha}", "tags/{sha}"])
+def test_a_ref_named_like_the_sha_cannot_substitute_another_commit(droplet, shadow):
+    """The script used to resolve origin/<ref> before the bare ref. A tag literally
+    named origin/<sha> (git resolves refs/tags/ ahead of refs/remotes/) or a branch
+    named <sha> then deployed a different commit from the one that passed CI."""
+    good, evil = sha(droplet, "B"), sha(droplet, "E")
+    droplet.plant(shadow.format(sha=good), evil)
+    if shadow != "tags/{sha}":
+        # The poison is real: the old lookup order would have picked the attacker's commit.
+        shadowed = subprocess.run(["git", "rev-parse", "--verify", "--quiet", "origin/" + good],
+                                  cwd=droplet.app, capture_output=True, text=True).stdout.strip()
+        assert shadowed == evil
+
+    rc, out = droplet.run(good)
+
+    assert rc == 0, out
+    assert "RESOLVED_COMMIT=%s" % good in out
+    assert droplet.running() == good and head(droplet) == good
+    assert dw.classify_log(out, rc, good) == ("verified", "not-attempted")
+
+
+def test_the_rollback_target_cannot_be_substituted_either(droplet):
+    """do_deploy also runs for the auto-rollback, with the last verified SHA."""
+    assert droplet.run(sha(droplet, "B"), "--skip-deploy")[0] == 0          # baseline: A is the target
+    droplet.plant("tags/origin/%s" % sha(droplet, "A"), sha(droplet, "E"))
+    droplet.mark_bad("B")
+
+    rc, out = droplet.run(sha(droplet, "B"))
+
+    assert rc == 1 and "ROLLED BACK SUCCESSFULLY" in out
+    assert droplet.running() == sha(droplet, "A") and head(droplet) == sha(droplet, "A")
+
+
+def test_a_sha_that_does_not_resolve_fails_closed_before_anything_changes(droplet):
+    rc, out = droplet.run("f" * 40)
+
+    assert rc == 1
+    assert "does not resolve to that exact commit" in out
+    assert droplet.running() == sha(droplet, "A") and head(droplet) == sha(droplet, "A")
+    assert not any(call.startswith("docker compose") for call in droplet.docker_calls())
+
+
+def test_the_sha_of_an_annotated_tag_object_is_refused_not_peeled(droplet):
+    """A tag object's own SHA peels to a commit with a different SHA; deploying
+    that would not be deploying the requested object."""
+    _git(droplet.work, "tag", "-a", "-m", "release", "rel", sha(droplet, "B"))
+    tag_object = _git(droplet.work, "rev-parse", "refs/tags/rel")
+    _git(droplet.work, "push", "-q", str(droplet.origin), "refs/tags/rel")
+    _git(droplet.app, "fetch", "-q", "origin", "--tags")
+    assert tag_object != sha(droplet, "B")
+
+    rc, out = droplet.run(tag_object)
+
+    assert rc == 1 and "does not resolve to that exact commit" in out
+    assert droplet.running() == sha(droplet, "A")
+
+
+def test_a_branch_name_still_resolves_to_its_current_tip(droplet):
+    """The hand-run form `deploy_verified.sh main` is unchanged."""
+    rc, out = droplet.run("main")
+
+    assert rc == 0, out
     assert droplet.running() == sha(droplet, "C")
-    assert dw.classify_log(out, rc, victim)[0] == "contradiction"   # the workflow still fails the run
 
 
 def test_droplet_output_never_survives_the_log_filter(droplet):

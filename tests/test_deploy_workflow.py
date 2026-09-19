@@ -104,7 +104,7 @@ def test_concurrency_timeouts_and_least_privilege_permissions():
     assert workflow["concurrency"] == {"group": "production-deploy", "cancel-in-progress": False}
     assert workflow["permissions"] == {"contents": "read"}
     for name, job in workflow["jobs"].items():
-        assert isinstance(job["timeout-minutes"], int) and 0 < job["timeout-minutes"] <= 90, name
+        assert isinstance(job["timeout-minutes"], int) and 0 < job["timeout-minutes"] <= 120, name
         assert set(job["permissions"].values()) == {"read"}, name
         assert set(job["permissions"]) <= {"contents", "checks", "actions"}, name
 
@@ -122,6 +122,26 @@ def test_ssh_is_strict_pinned_and_never_traced():
     assert "StrictHostKeyChecking yes" in dw.render_ssh_config("/tmp/x")
     assert "UserKnownHostsFile" in dw.render_ssh_config("/tmp/x")
     assert "--logs" not in text  # post_deploy_verify --logs uses StrictHostKeyChecking=no
+
+
+def test_dry_run_baseline_and_deploy_share_one_health_budget_that_fits_the_job_timeout():
+    workflow = load_workflow()
+    steps = {s.get("id"): s for _, s in all_steps(workflow)}
+
+    budgets = {sid: steps[sid]["env"]["HEALTH_TIMEOUT_SECONDS"] for sid in ("dry", "baseline", "deploy")}
+    assert set(budgets.values()) == {"900"}, budgets   # a slow container must not cost the deploy its rollback target
+    baseline_minutes = int(budgets["baseline"]) / 60
+    assert baseline_minutes + steps["deploy"]["timeout-minutes"] < workflow["jobs"]["deploy"]["timeout-minutes"]
+
+
+def test_the_first_ssh_step_filters_the_droplets_stderr_like_the_others():
+    steps = {s.get("id"): s for _, s in all_steps(load_workflow())}
+    body = steps["ssh"]["run"]
+
+    assert '2>"$LOG_DIR/ssh-check.err"' in body
+    assert 'filter-log < "$LOG_DIR/ssh-check.err"' in body
+    for sid in ("dry", "baseline", "deploy"):
+        assert "filter-log" in steps[sid]["run"]
 
 
 def test_the_key_is_removed_by_an_always_step():
@@ -163,7 +183,7 @@ def test_both_jobs_run_the_preflight_and_only_from_main():
         assert "--require-branch main" in run and "--check-environment production" in run
 
 
-def test_required_checks_match_ci_yml_job_for_job():
+def ci_job_names() -> set:
     ci = yaml.safe_load(CI_WORKFLOW.read_text(encoding="utf-8"))
     names = set()
     for job in ci["jobs"].values():
@@ -175,7 +195,37 @@ def test_required_checks_match_ci_yml_job_for_job():
                 names.add(re.sub(r"\$\{\{[^}]*\}\}", value, template))
         else:
             names.add(template)
-    assert names == set(dw.REQUIRED_CHECKS)
+    return names
+
+
+def test_every_ci_job_is_required_or_deliberately_excluded():
+    required, excluded = set(dw.REQUIRED_CHECKS), set(dw.EXCLUDED_CHECKS)
+
+    assert not required & excluded
+    assert ci_job_names() == required | excluded   # a new, renamed or removed job fails here until decided
+
+
+def test_the_only_exclusion_is_the_image_build_and_it_says_why():
+    assert set(dw.EXCLUDED_CHECKS) == {"Build immutable release image"}
+    reason = dw.EXCLUDED_CHECKS["Build immutable release image"]
+    assert "GHCR" in reason and "bind-mounted" in reason
+    # Everything else the CI runs is required, including the jobs that are red today.
+    for name in ("Tests (pytest + coverage)", "SAST (bandit)", "Browser journeys (one per archetype)",
+                 "Browser compatibility (webkit)", "Browser compatibility (firefox)"):
+        assert name in dw.REQUIRED_CHECKS
+    assert len(dw.REQUIRED_CHECKS) == 11
+
+
+@pytest.mark.parametrize("dry_run", ["true", "false"])
+def test_there_is_no_path_that_skips_the_ci_requirement_for_dry_runs(preflight_env, dry_run):
+    """Dry runs hold the same key and run the same script; they get the same pre-flight."""
+    env, _, out = preflight_env
+    env["DEPLOY_DRY_RUN"] = dry_run
+    runs = all_green()
+    runs[4] = run(dw.REQUIRED_CHECKS[4], "failure", run_id=91)
+    code, text = preflight(env, FakeGitHub(runs=runs))
+
+    assert code == 1 and dw.REQUIRED_CHECKS[4] in text and not out.exists()
 
 
 # ---------------------------------------------------------------------------
@@ -275,11 +325,12 @@ def http_error(url, code, message="nope", headers=None):
 class FakeGitHub:
     """Answers the three endpoints the pre-flight uses."""
 
-    def __init__(self, runs=None, shadow=None, environment=None, checks_error=None):
+    def __init__(self, runs=None, shadow=None, environment=None, checks_error=None, shadow_error=None):
         self.runs = all_green() if runs is None else runs
         self.shadow = shadow or []
         self.environment = environment
         self.checks_error = checks_error
+        self.shadow_error = shadow_error
         self.requests = []
 
     def __call__(self, request, timeout=None):
@@ -292,19 +343,26 @@ class FakeGitHub:
             page = int(re.search(r"[?&]page=(\d+)", url).group(1))
             chunk = self.runs[(page - 1) * 100: page * 100]
             return FakeResponse({"total_count": len(self.runs), "check_runs": chunk})
-        if "/git/matching-refs/heads/" in url:
-            return FakeResponse(self.shadow)
+        if "/git/matching-refs/" in url:
+            if self.shadow_error:
+                raise http_error(url, self.shadow_error)
+            prefix = "refs/" + url.split("/git/matching-refs/", 1)[1]      # matching-refs is a prefix match
+            return FakeResponse([r for r in self.shadow if r["ref"].startswith(prefix)])
         if "/environments/" in url:
+            if isinstance(self.environment, Exception):
+                raise self.environment
             if isinstance(self.environment, int):
                 raise http_error(url, self.environment)
             return FakeResponse(self.environment)
         raise AssertionError("unexpected request " + url)
 
 
-def protected_environment(reviewers=1, branch_policy=True):
+def protected_environment(reviewers=1, branch_policy=True, reviewers_key=True):
     rules = [{"type": "branch_policy"}]
-    if reviewers is not None:
+    if reviewers is not None and reviewers_key:
         rules.append({"type": "required_reviewers", "reviewers": [{"type": "User"}] * reviewers})
+    elif reviewers is not None:
+        rules.append({"type": "required_reviewers"})              # a rule that does not say who
     return {
         "name": "production",
         "protection_rules": rules,
@@ -461,7 +519,7 @@ def test_a_commit_without_a_green_required_ci_run_is_refused(preflight_env):
     runs[2] = run(dw.REQUIRED_CHECKS[2], "failure", run_id=77)
     code, text = preflight(env, FakeGitHub(runs=runs))
 
-    assert code == 1 and dw.REQUIRED_CHECKS[2] in text and "11 of 12" in open(env["GITHUB_STEP_SUMMARY"]).read()
+    assert code == 1 and dw.REQUIRED_CHECKS[2] in text and "%d of %d" % (len(dw.REQUIRED_CHECKS) - 1, len(dw.REQUIRED_CHECKS)) in open(env["GITHUB_STEP_SUMMARY"]).read()
     assert not out.exists()
 
 
@@ -485,10 +543,36 @@ def test_an_ambiguous_dry_run_value_is_refused(preflight_env):
     assert code == 1 and "dry_run must be exactly" in text
 
 
-def test_a_branch_named_like_the_sha_is_refused(preflight_env):
+@pytest.mark.parametrize("template", ["refs/heads/%s", "refs/tags/%s", "refs/tags/origin/%s", "refs/heads/origin/%s"])
+def test_a_branch_or_tag_named_like_the_sha_is_refused(preflight_env, template):
+    """Branches, tags, and tags named origin/<sha> (which git resolves ahead of a
+    remote-tracking branch) are all refused, whichever namespace they are in."""
+    env, commits, out = preflight_env
+    code, text = preflight(env, FakeGitHub(shadow=[{"ref": template % commits["A"]}]))
+
+    assert code == 1 and "a ref named like the SHA exists" in text and not out.exists()
+
+
+def test_refs_that_merely_share_a_short_prefix_do_not_block(preflight_env):
     env, commits, _ = preflight_env
-    code, text = preflight(env, FakeGitHub(shadow=[{"ref": "refs/heads/" + commits["A"]}]))
-    assert code == 1 and "branch whose name starts with the SHA" in text
+    code, _ = preflight(env, FakeGitHub(shadow=[{"ref": "refs/tags/v1.0"}, {"ref": "refs/heads/" + commits["B"][:8]}]))
+    assert code == 0
+
+
+def test_a_failing_refs_lookup_is_a_refusal(preflight_env):
+    env, _, _ = preflight_env
+    code, text = preflight(env, FakeGitHub(shadow_error=500))
+    assert code == 1 and "could not check refs named like the SHA" in text
+
+
+def test_the_sha_of_a_tag_object_is_refused(repo):
+    path, commits = repo
+    git_in(path, "tag", "-a", "-m", "release", "rel", commits["B"])
+    tag_object = git_in(path, "rev-parse", "refs/tags/rel")
+    assert tag_object != commits["B"]
+
+    problems = dw.check_ancestry(tag_object, "origin/main", runner=lambda a, **k: subprocess.run(a, cwd=path, **k))
+    assert problems and "not itself a commit" in problems[0]
 
 
 def test_the_checks_api_failing_is_a_refusal(preflight_env):
@@ -535,14 +619,58 @@ def test_a_missing_environment_is_refused(preflight_env):
     assert code == 1 and "does not exist" in text
 
 
-def test_an_unreadable_environment_warns_and_relies_on_the_setup_step(preflight_env):
-    """If the token cannot read environment settings the check cannot be made;
-    the run continues and says so in an annotation and in the summary."""
+@pytest.mark.parametrize(
+    "answer",
+    [403, 500, 502, 429, TimeoutError("timed out"), urllib.error.URLError("no route")],
+    ids=["403", "500", "502", "429", "timeout", "transport"],
+)
+def test_an_environment_that_cannot_be_read_is_refused(preflight_env, answer):
+    """The reviewer requirement cannot be confirmed, so the request is refused."""
     env, _, out = preflight_env
-    code, text = preflight(env, FakeGitHub(environment=403), environment="production")
+    code, text = preflight(env, FakeGitHub(environment=answer), environment="production")
 
-    assert code == 0 and out.exists()
-    assert "::warning" in text and "NOT CHECKED" in open(env["GITHUB_STEP_SUMMARY"]).read()
+    assert code == 1 and not out.exists()
+    assert "could not be read" in text and "refused because the required-reviewer setting cannot be confirmed" in text
+    assert "REFUSED" in open(env["GITHUB_STEP_SUMMARY"]).read()
+    assert "NOT CHECKED" not in text and "::warning" not in text
+
+
+def test_a_required_reviewers_rule_that_names_nobody_is_not_protection(preflight_env):
+    env, _, out = preflight_env
+    code, text = preflight(env, FakeGitHub(environment=protected_environment(reviewers_key=False)), environment="production")
+
+    assert code == 1 and "no required reviewers" in text and not out.exists()
+    state, _ = dw.evaluate_environment(dw.ApiResponse(200, protected_environment(reviewers_key=False), {}), "production")
+    assert state == "unprotected"
+
+
+def test_a_request_refused_on_ci_still_reports_the_environment_result(preflight_env):
+    """The rehearsal in the runbook: with no commit passing CI, one dispatch still
+    shows whether the environment is set up, and never reaches the droplet."""
+    env, _, out = preflight_env
+    runs = all_green()
+    runs[0] = run(dw.REQUIRED_CHECKS[0], "failure", run_id=90)
+    code, _ = preflight(env, FakeGitHub(runs=runs, environment=protected_environment()), environment="production")
+    ok_summary = open(env["GITHUB_STEP_SUMMARY"]).read()
+    code_open, _ = preflight(env, FakeGitHub(runs=runs, environment=protected_environment(reviewers=None)), environment="production")
+    all_summaries = open(env["GITHUB_STEP_SUMMARY"]).read()
+
+    assert code == 1 and code_open == 1 and not out.exists()
+    assert "Environment protection: verified (required reviewers: 1" in ok_summary
+    assert "Environment protection: REFUSED: environment 'production' has no required reviewers" in all_summaries
+
+
+def test_the_summary_says_when_the_environment_was_not_evaluated(preflight_env):
+    env, _, _ = preflight_env
+    env["DEPLOY_REF"] = "main"
+    preflight(env, FakeGitHub(), environment="production")
+    asked = open(env["GITHUB_STEP_SUMMARY"]).read()
+    open(env["GITHUB_STEP_SUMMARY"], "w").close()
+    preflight(env, FakeGitHub(), environment="")
+    not_asked = open(env["GITHUB_STEP_SUMMARY"]).read()
+
+    assert "not evaluated (the request was refused before the environment was read)" in asked
+    assert "Environment protection: not requested" in not_asked and "not evaluated" not in not_asked.split("Environment")[1]
 
 
 def test_evaluate_environment_reports_reviewer_count():
@@ -623,6 +751,9 @@ def test_a_key_that_ssh_keygen_cannot_parse_is_refused_and_removed(tmp_path):
         "%s ssh-ed25519" % HOST,                                         # no key
         "%s not-a-key-type AAAAexample" % HOST,
         KNOWN + "\n1.2.3.4 ssh-ed25519 AAAAexample",                    # one good, one foreign
+        "%s,evil.example ssh-ed25519 AAAAexample" % HOST,                # a host list that includes the droplet
+        "evil.example,%s ssh-ed25519 AAAAexample" % HOST,
+        "*.105.56 ssh-ed25519 AAAAexample",                             # a pattern
     ],
 )
 def test_the_pinned_host_key_must_be_plain_and_for_this_host_only(tmp_path, known):
@@ -648,6 +779,47 @@ def test_a_refused_setup_never_echoes_the_secret(tmp_path, monkeypatch, capsys):
     captured = capsys.readouterr()
 
     assert code == 1 and SECRET_MARKER not in captured.out + captured.err
+
+
+def test_the_wrapper_puts_every_pinning_option_before_the_callers_arguments():
+    wrapper = dw.render_ssh_wrapper("/usr/bin/ssh", "/d")
+    caller_position = wrapper.rindex('"$@"')
+
+    options = dw.hard_ssh_options("/d")
+    assert ("StrictHostKeyChecking", "yes") in options and ("UserKnownHostsFile", "/d/known_hosts") in options
+    for key, value in options:
+        marker = "-o %s=%s" % (key, value)
+        assert marker in wrapper and wrapper.index(marker) < caller_position, key
+    assert wrapper.rstrip().endswith('"$@"')
+
+
+@pytest.mark.skipif(
+    shutil.which("ssh") is None or shutil.which("ssh-keygen") is None or shutil.which("sh") is None,
+    reason="needs an OpenSSH client and sh",
+)
+def test_a_command_line_override_cannot_loosen_host_key_checking(tmp_path):
+    """OpenSSH keeps the first value it obtains, and -o is obtained before -F. A config
+    file alone is therefore overridable; the wrapper's leading options are what hold."""
+    key_file = tmp_path / "k"
+    subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "test", "-f", str(key_file)], check=True)
+    target = tmp_path / "ssh"
+    assert dw.setup_ssh(target.as_posix(), HOST, "root", key_file.read_text(), KNOWN) == []
+
+    def resolved(command):
+        out = subprocess.run(command, capture_output=True, text=True, check=True).stdout.lower().splitlines()
+        return {line.partition(" ")[0]: line.partition(" ")[2] for line in out}
+
+    overrides = ["-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null",
+                 "-o", "BatchMode=no", "-o", "ForwardAgent=yes", "-o", "UpdateHostKeys=yes"]
+    control = resolved(["ssh", "-F", str(target / "config"), *overrides, "-G", "root@" + HOST])
+    through_wrapper = resolved(["sh", str(target / "bin" / "ssh"), *overrides, "-G", "root@" + HOST])
+
+    assert control["stricthostkeychecking"] == "false"                    # the config alone loses to -o
+    assert through_wrapper["stricthostkeychecking"] == "true"
+    assert through_wrapper["userknownhostsfile"].endswith("known_hosts")
+    assert through_wrapper["batchmode"] in ("yes", "true")
+    assert through_wrapper["forwardagent"] in ("no", "false")
+    assert through_wrapper["updatehostkeys"] in ("no", "false")
 
 
 @pytest.mark.skipif(shutil.which("ssh") is None or shutil.which("ssh-keygen") is None, reason="needs an OpenSSH client")
@@ -817,3 +989,89 @@ def test_summary_never_renders_unvalidated_text():
     text = dw.render_summary(summary_env(SUMMARY_SHA="<script>x</script>", SUMMARY_BEFORE_SHA="; rm -rf /",
                                           SUMMARY_RUN_URL="javascript:alert(1)"))
     assert "<script>" not in text and "rm -rf" not in text and "javascript:" not in text
+
+
+# ---------------------------------------------------------------------------
+# Documentation contract: the claims the runbook must keep making plainly
+# ---------------------------------------------------------------------------
+RUNBOOK = ROOT / "deploy" / "DEPLOY_WORKFLOW.md"
+CLAUDE_MD = ROOT / "CLAUDE.md"
+
+
+def flat(text: str) -> str:
+    return " ".join(text.split())
+
+
+def test_the_approval_step_is_described_as_what_it_is_on_the_first_page():
+    runbook = RUNBOOK.read_text(encoding="utf-8")
+    first_page = flat(runbook.split("## What it does")[0])
+    header = flat(WORKFLOW.read_text(encoding="utf-8").replace("# ", " ").split("run-name:")[0])
+    approval = flat(runbook.split("## How approval works")[1].split("## Rollback")[0])
+
+    for text in (first_page, header):
+        assert "confirmation prompt with an audit trail" in text
+        assert "not a separation of duties" in text
+    assert "Decide first" in first_page
+    assert "confirmation prompt" in approval and "second account" in approval
+
+
+def test_the_decision_comes_before_setup_and_names_both_options():
+    runbook = RUNBOOK.read_text(encoding="utf-8")
+
+    assert runbook.index("## Decide first") < runbook.index("## One-time setup")
+    decision = runbook.split("## Decide first")[1].split("## One-time setup")[0]
+    assert "Option (a)" in decision and "Option (b)" in decision and "prevent self-review" in decision
+    assert '"prevent_self_review": $PREVENT_SELF_REVIEW' in runbook
+    assert "Recommended" not in runbook
+
+
+def test_setup_puts_the_rehearsal_before_the_key_and_the_secrets():
+    runbook = RUNBOOK.read_text(encoding="utf-8")
+    order = [runbook.index(h) for h in (
+        "### 1. Create the `production` environment", "### 2. Merge the workflow", "### 3. Rehearse the guard",
+        "### 4. Create a dedicated deploy key", "### 5. Authorise the key", "### 7. Add the two secrets")]
+
+    assert order == sorted(order)
+    rehearsal = flat(runbook.split("### 3. Rehearse the guard")[1].split("### 4.")[0])
+    assert "never reaches the droplet" in rehearsal and "no key or secret exists" in rehearsal
+    assert "Environment protection: verified" in rehearsal
+    assert "could not be read" in rehearsal and "refused" in rehearsal
+
+
+def test_the_runbook_says_red_ci_refuses_every_dispatch_and_who_decides():
+    runbook = flat(RUNBOOK.read_text(encoding="utf-8"))
+
+    assert "every dispatch is refused" in runbook and "dry runs included" in runbook
+    assert "every real dispatch is refused by design until CI on `main` is green" in runbook
+    for job in ("Tests (pytest + coverage)", "SAST (bandit)", "Browser journeys (one per archetype)",
+                "Browser compatibility (webkit)"):
+        assert job in runbook
+    assert "decision for the repository owner" in runbook
+    assert "no path that skips the CI requirement for dry runs" in runbook
+    assert "Build immutable release image" in runbook and "GHCR" in runbook
+
+
+def test_the_runbook_covers_key_rotation_after_an_unexplained_run_and_the_parked_run():
+    runbook = flat(RUNBOOK.read_text(encoding="utf-8"))
+
+    assert "unexplained run" in runbook and "rotating the key" in runbook and "read the private key" in runbook
+    assert "gh run cancel" in runbook and "Reject or cancel the parked run first" in runbook
+
+
+def test_the_runbook_limits_match_what_the_filter_and_the_tests_can_claim():
+    runbook = flat(RUNBOOK.read_text(encoding="utf-8"))
+
+    assert "matches by line prefix and cannot tell who wrote a line" in runbook
+    assert "not a guarantee against a hostile droplet" in runbook
+    assert "protects against mistakes, not against someone with write access" in runbook
+    assert "only run on POSIX" in runbook and "Linux runner in CI" in runbook
+
+
+def test_claude_md_pointer_lets_a_session_dispatch_but_not_approve_its_own_run():
+    text = CLAUDE_MD.read_text(encoding="utf-8")
+    paragraph = flat(text[text.index("**Deploying without droplet SSH.**"):text.index("## Schema management")])
+
+    assert "may dispatch but must not approve its own production run" in paragraph
+    assert "deploy-in-the-same-session rule" in paragraph
+    assert "not one GitHub enforces" in paragraph
+    assert "Do not end a session by offering deployment as a menu option" in flat(text)   # the existing rule is intact
