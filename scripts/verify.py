@@ -247,6 +247,18 @@ def gate_raw_fetch_sites(baseline: int) -> Result:
                   "", count, baseline)
 
 
+def gate_composer_url_params(baseline: int) -> Result:
+    """A literal /archimate/composer?... link carrying a param the receiver never reads - ratchet."""
+    proc = _run([sys.executable, "scripts/check_composer_url_params.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("composer-url-params", FAIL,
+                      f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    return Result("composer-url-params", PASS if count <= baseline else FAIL,
+                  "", count, baseline)
+
+
 def gate_design_tokens_extended(baseline: int) -> Result:
     """Non-banned colour families (emerald/orange/teal/...) - their own ratchet."""
     proc = _run([sys.executable, "scripts/check_design_tokens.py", "--extended", "--count"])
@@ -1490,6 +1502,14 @@ def build_gates(baseline: dict) -> list[Gate]:
              lambda: gate_design_tokens(baseline["design_tokens"]),
              remediation="use semantic tokens; see the table in DESIGN.md",
              tags=["static", "ui"]),
+        Gate("composer-url-params",
+             "No composer link carrying a parameter the composer doesn't read",
+             "ratchet",
+             lambda: gate_composer_url_params(baseline.get("composer_url_params", 0)),
+             remediation="fix the param name to one of solution_id/viewpoint/layer/"
+                          "viewpoint_id/prefill, route through create_diagram() for a real "
+                          "viewpoint_id, or mark 'composer-url-ok: <reason>'",
+             tags=["static", "fast"]),
         Gate("raw-fetch-sites",
              "No new raw fetch() sites bypassing Platform.fetch",
              "ratchet",

@@ -19,6 +19,7 @@
     "design_tokens_extended": 0,
     "shell_conformance": 3,
     "raw_fetch_sites": 0,
+    "composer_url_params": 0,
     "ui_contract": 0,
     "nav_verified": 0,
     "console_reporting": 0,

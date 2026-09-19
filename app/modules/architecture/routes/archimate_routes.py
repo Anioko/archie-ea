@@ -6380,6 +6380,26 @@ def _resolve_layer(element_type: str, explicit_layer: str = "") -> str:
     return _TYPE_TO_LAYER.get(normalised, "Application")
 
 
+def _composer_url_for_elements(element_ids, name: str):
+    """Build a real, openable composer URL for a set of element ids.
+
+    The composer only reads `viewpoint_id` (plus `solution_id`/`layer`), so a
+    literal `?elements=1,2,3` string is silently ignored — this creates a
+    real `SavedDiagram` via the shared service (same helper D4 already uses)
+    and returns its `?viewpoint_id=` URL, or None if there is nothing to
+    open.
+    """
+    if not element_ids:
+        return None
+    from app.services.archimate_composer_service import create_diagram
+
+    return create_diagram(
+        element_ids,
+        name,
+        created_by=current_user.id if current_user.is_authenticated else None,
+    )
+
+
 @archimate_bp.route("/import", methods=["GET"])
 @login_required
 def import_page():
@@ -6501,7 +6521,9 @@ def api_import_elements_csv():
         "error_count": len(errors),
         "total_rows": len(rows),
         "element_ids": [e["id"] for e in created_ids],
-        "composer_url": f"/archimate/composer?elements={','.join(str(e['id']) for e in created_ids)}" if created_ids else None,
+        "composer_url": _composer_url_for_elements(
+            [e["id"] for e in created_ids], "Imported Elements"
+        ),
     })
 
 
@@ -6630,7 +6652,7 @@ def api_import_document():
             "error_count": len(errors),
             "total_elements": len(elements),
             "element_ids": all_ids,
-            "composer_url": f"/archimate/composer?elements={','.join(str(eid) for eid in all_ids)}" if all_ids else None,
+            "composer_url": _composer_url_for_elements(all_ids, "Imported Document Elements"),
         })
 
     except Exception as e:
@@ -6743,7 +6765,7 @@ def api_create_diagram_from_elements():
         "diagram_id": diagram.id,
         "diagram_name": diagram.name,
         "element_count": len(elements),
-        "composer_url": f"/archimate/composer?viewpoint={diagram.id}",
+        "composer_url": f"/archimate/composer?viewpoint_id={diagram.id}",
     }), 201
 
 
