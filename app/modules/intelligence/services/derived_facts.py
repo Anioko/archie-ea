@@ -78,6 +78,9 @@ def list_derived_facts(
     include_stale: bool = False,
     source_element_id: Optional[int] = None,
     target_element_id: Optional[int] = None,
+    max_depth: Optional[int] = None,
+    direction: Optional[str] = None,
+    layer: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """The single read path over ``archimate_derived_relationships``.
 
@@ -87,6 +90,26 @@ def list_derived_facts(
     predicate below is defence-in-depth and is what makes this function
     correct even when called with no ambient request context (e.g. a future
     job caller), where the listener would otherwise no-op entirely.
+
+    T-004 additive parameters (D4 in ``00-verification-notes.md``):
+
+    - ``max_depth`` -- a predicate on ``depth`` (SQL, uses no new index;
+      ``depth`` is a plain column comparison and stays within NFR-5).
+    - ``direction`` -- when both ``source_element_id`` and
+      ``target_element_id`` are given, the existing behaviour (both
+      positional filters, effectively an AND on that pair) is preserved for
+      any caller not passing ``direction``. When ``direction="both"`` is
+      passed together with a single ``element_id``-shaped filter (i.e. the
+      caller passes the SAME id as both ``source_element_id`` and
+      ``target_element_id``, T-004's calling convention -- see
+      ``query_service.py``), the predicate becomes ``source = X OR
+      target = X`` instead of ANDing the two columns. This is additive: an
+      existing caller that never passes ``direction`` sees no behaviour
+      change.
+    - ``layer`` -- filters to rows whose source OR target element is on the
+      named ArchiMate layer, via a join to ``ArchiMateElement`` (also
+      ``TenantMixin``-fenced, so no hand-written predicate is needed on that
+      side either).
     """
     from app.modules.intelligence.models.derived_relationship import DerivedRelationship
 
@@ -94,10 +117,39 @@ def list_derived_facts(
         DerivedRelationship.organization_id == organization_id
     )
     stmt = _apply_default_staleness_filter(stmt, DerivedRelationship, include_stale)
-    if source_element_id is not None:
-        stmt = stmt.where(DerivedRelationship.source_element_id == source_element_id)
-    if target_element_id is not None:
-        stmt = stmt.where(DerivedRelationship.target_element_id == target_element_id)
+
+    if (
+        direction == "both"
+        and source_element_id is not None
+        and target_element_id is not None
+        and source_element_id == target_element_id
+    ):
+        anchor = source_element_id
+        stmt = stmt.where(
+            db.or_(
+                DerivedRelationship.source_element_id == anchor,
+                DerivedRelationship.target_element_id == anchor,
+            )
+        )
+    else:
+        if source_element_id is not None:
+            stmt = stmt.where(DerivedRelationship.source_element_id == source_element_id)
+        if target_element_id is not None:
+            stmt = stmt.where(DerivedRelationship.target_element_id == target_element_id)
+
+    if max_depth is not None:
+        stmt = stmt.where(DerivedRelationship.depth <= max_depth)
+
+    if layer is not None:
+        from app.models import ArchiMateElement
+
+        src_el = db.aliased(ArchiMateElement)
+        tgt_el = db.aliased(ArchiMateElement)
+        stmt = stmt.join(
+            src_el, src_el.id == DerivedRelationship.source_element_id, isouter=True
+        ).join(tgt_el, tgt_el.id == DerivedRelationship.target_element_id, isouter=True)
+        stmt = stmt.where(db.or_(src_el.layer == layer, tgt_el.layer == layer))
+
     rows = db.session.execute(stmt).scalars().all()
     return [_serialize(r) for r in rows]
 

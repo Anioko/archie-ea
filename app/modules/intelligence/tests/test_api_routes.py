@@ -335,7 +335,11 @@ def test_expanded_chain_marks_an_unresolved_link_instead_of_dropping_it(
 # --- Acceptance item 7 (brief 14): exactly two routes, NFR-8 ---------------
 
 
-def test_module_registers_exactly_two_routes(app):
+def test_module_registers_exactly_three_routes(app):
+    """T-004 adds the US-1 impact route (API-1) to this existing blueprint --
+    see docs/buckets/t004-us1-impact-endpoint/tasks/00-verification-notes.md
+    defect D1. Still exactly one blueprint, now three routes on it.
+    """
     rules = [
         rule for rule in app.url_map.iter_rules() if rule.endpoint.startswith("intelligence_api.")
     ]
@@ -343,4 +347,5 @@ def test_module_registers_exactly_two_routes(app):
     assert endpoints == {
         "intelligence_api.recompute_derivation",
         "intelligence_api.get_derived_fact_provenance",
+        "intelligence_api.cross_layer_impact",
     }
