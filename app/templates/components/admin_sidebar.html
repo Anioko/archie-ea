@@ -159,7 +159,7 @@ DEPENDENCIES:
                 {# title, not just the label span: collapsed, the span is
                    display:none and the icon is the only thing left, so the
                    tooltip is the only way to learn what this link is. #}
-                <a href="{{ url_for(link.endpoint) }}"
+                <a href="{{ url_for(link.endpoint, **(link.query_params or {})) }}"
                    title="{{ link.label }}"
                    class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint == link.endpoint %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}" {%- if request.endpoint == link.endpoint -%} aria-current="page"{%- endif -%}>
                     <i data-lucide="{{ link.icon }}" class="h-4 w-4 flex-shrink-0"></i>

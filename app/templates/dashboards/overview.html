@@ -138,7 +138,7 @@
             {% set my_work_zone = (get_sidebar_zones(current_user) | selectattr('zone', 'equalto', 'my_work') | first) %}
             {% for link in (my_work_zone.links if my_work_zone else []) %}
             {% if link.endpoint in flask.current_app.view_functions %}
-            <a href="{{ url_for(link.endpoint) }}"
+            <a href="{{ url_for(link.endpoint, **(link.query_params or {})) }}"
                class="group border border-border rounded-xl bg-card p-5 hover:border-primary/30 transition-colors">
                 <div class="flex items-start gap-3">
                     <div class="shrink-0 w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">

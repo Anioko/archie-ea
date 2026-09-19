@@ -39,6 +39,10 @@ STANDARD_VIEWPOINTS = {
         'allowed_relationships': [],  # empty = all types
         'roles': ['Enterprise', 'Business', 'Application', 'Data', 'Integrations', 'Technical', 'Technology'],
         'category': 'basic',
+        # Whole-portfolio viewpoint: "all elements and relationships" is not
+        # answerable from one solution's scope. See enterprise_scope in
+        # get_viewpoint_data()'s docstring.
+        'enterprise_scope': True,
     },
     'layered': {
         'name': 'Layered',
@@ -48,6 +52,9 @@ STANDARD_VIEWPOINTS = {
         'layer_order': ['strategy', 'motivation', 'business', 'application', 'technology', 'physical',
                         'implementation'],
         'element_types': [],  # all types, grouped by layer
+        # Whole-portfolio viewpoint (roles: ['Enterprise'] only) -- see
+        # enterprise_scope in get_viewpoint_data()'s docstring.
+        'enterprise_scope': True,
         'allowed_relationships': [],
         'roles': ['Enterprise'],
         'category': 'composite',
@@ -294,7 +301,12 @@ def get_viewpoint_data(viewpoint_id: str, solution_id: int = None) -> dict:
     """Return elements filtered for this viewpoint, grouped for layout.
 
     Enforces 4 invariants:
-    1. Scope required — no solution_id returns scope_required flag
+    1. Scope required — no solution_id returns scope_required flag, UNLESS
+       the viewpoint declares 'enterprise_scope': True (whole-portfolio
+       viewpoints like 'basic'/'layered', whose own descriptions promise
+       "all elements" across the organisation, not one solution's model —
+       for those, no solution_id means "show the whole tenant", not "show
+       nothing until a solution is picked").
     2. Element type filtering via viewpoint's element_types
     3. Relationship type filtering via viewpoint's allowed_relationships
     4. Relationships with hidden endpoints are hidden (no dangling arrows)
@@ -303,9 +315,10 @@ def get_viewpoint_data(viewpoint_id: str, solution_id: int = None) -> dict:
     layers = [la.lower() for la in vp.get('layers', [])]
     allowed_types = vp.get('element_types', [])
     allowed_rels = set(vp.get('allowed_relationships', []))
+    enterprise_scope = bool(vp.get('enterprise_scope'))
 
     # ── Invariant 1: Scope required ──
-    if not solution_id:
+    if not solution_id and not enterprise_scope:
         return {
             'viewpoint_id': viewpoint_id,
             'viewpoint_name': vp['name'],
@@ -323,34 +336,67 @@ def get_viewpoint_data(viewpoint_id: str, solution_id: int = None) -> dict:
     try:
         from app.models.archimate_core import ArchiMateElement
 
-        # Get solution's element IDs (junction + fallback)
-        from app.models.solution_models import SolutionArchiMateElement
-        junctions = (
-            SolutionArchiMateElement.query
-            .filter_by(solution_id=solution_id)
-            .all()
-        )
-        element_ids = [j.element_id for j in junctions if j.element_id]
+        is_enterprise_wide = not solution_id and enterprise_scope
+        if is_enterprise_wide:
+            # D5: the tenant-isolation listener (do_orm_execute) is a NO-OP,
+            # not a deny, when g.current_org_id is unset — so an unscoped
+            # ArchiMateElement.query here would return every tenant's rows if
+            # this code path is ever reached outside a request context with an
+            # org resolved. Fail closed instead of relying on that listener
+            # alone for the whole-tenant path.
+            from app.middleware.tenant_context import current_org_id as _current_org_id
 
-        # Fallback: if junction is empty, try ArchitectureModel path
-        if not element_ids:
-            try:
-                from app.models.archimate_core import ArchitectureModel
-                sol_arch = ArchitectureModel.query.filter_by(solution_id=solution_id).first()
-                if sol_arch:
-                    arch_elements = ArchiMateElement.query.filter_by(architecture_id=sol_arch.id).all()
-                    element_ids = [e.id for e in arch_elements]
-                    logger.info('Solution %s: loaded %d elements via ArchitectureModel fallback', solution_id, len(element_ids))
-            except Exception as e:
-                logger.warning('ArchitectureModel fallback failed for solution %s: %s', solution_id, e)
+            if not _current_org_id():
+                return {
+                    'viewpoint_id': viewpoint_id,
+                    'viewpoint_name': vp['name'],
+                    'scope_required': True,
+                    'elements': [],
+                    'relationships': [],
+                    'total': 0,
+                    'layer_order': vp.get('layer_order', layers or ['business']),
+                    'groups': {},
+                }
+            # Whole-tenant path: ArchiMateElement carries TenantMixin, so a
+            # bare .query is already scoped to g.current_org_id by the
+            # do_orm_execute listener (app/middleware/tenant_isolation.py) --
+            # no manual organization_id predicate needed or wanted here.
+            query = ArchiMateElement.query
+            if allowed_types:
+                query = query.filter(ArchiMateElement.type.in_(allowed_types))
+            elements = query.limit(500).all()
+            element_ids = [e.id for e in elements]
+        else:
+            # Get solution's element IDs (junction + fallback)
+            from app.models.solution_models import SolutionArchiMateElement
+            junctions = (
+                SolutionArchiMateElement.query
+                .filter_by(solution_id=solution_id)
+                .all()
+            )
+            element_ids = [j.element_id for j in junctions if j.element_id]
 
-        if element_ids:
+            # Fallback: if junction is empty, try ArchitectureModel path
+            if not element_ids:
+                try:
+                    from app.models.archimate_core import ArchitectureModel
+                    sol_arch = ArchitectureModel.query.filter_by(solution_id=solution_id).first()
+                    if sol_arch:
+                        arch_elements = ArchiMateElement.query.filter_by(architecture_id=sol_arch.id).all()
+                        element_ids = [e.id for e in arch_elements]
+                        logger.info('Solution %s: loaded %d elements via ArchitectureModel fallback', solution_id, len(element_ids))
+                except Exception as e:
+                    logger.warning('ArchitectureModel fallback failed for solution %s: %s', solution_id, e)
+
+        if element_ids and not is_enterprise_wide:
             # ── Invariant 2: Element type filtering ──
+            # (skipped for the enterprise-wide path above, which already
+            # queried and filtered `elements` directly)
             query = ArchiMateElement.query.filter(ArchiMateElement.id.in_(element_ids))
             if allowed_types:
                 query = query.filter(ArchiMateElement.type.in_(allowed_types))
             elements = query.limit(500).all()
-        else:
+        elif not is_enterprise_wide:
             elements = []
 
         # Build FILTERED element ID set (for Invariant 4 — hidden endpoints)
@@ -424,8 +470,28 @@ def get_viewpoint_data(viewpoint_id: str, solution_id: int = None) -> dict:
                     continue
                 relationships_out.append(r)
 
-    except Exception:  # noqa: BLE001 — DB may not be initialised in fast-init
+    except Exception as e:  # noqa: BLE001 — DB may not be initialised in fast-init
+        # D4: a bare `serialised = []` here was indistinguishable from a
+        # genuinely empty model (fabricated-data class per CLAUDE.md) — a 200
+        # response with elements: [] on any failure told the caller nothing
+        # went wrong. Surface an explicit error flag instead, and reset
+        # relationships_out too so a failure partway through the relationship
+        # loop can never leave dangling relationships alongside an empty
+        # elements list (Invariant 4).
+        logger.warning('get_viewpoint_data failed for viewpoint %s, solution %s: %s', viewpoint_id, solution_id, e)
         serialised = []
+        relationships_out = []
+        return {
+            'viewpoint_id': viewpoint_id,
+            'viewpoint_name': vp['name'],
+            'error': True,
+            'error_reason': 'Failed to load viewpoint data',
+            'elements': [],
+            'relationships': [],
+            'total': 0,
+            'layer_order': vp.get('layer_order', layers or ['business']),
+            'groups': {},
+        }
 
     # Group by layer for the layered viewpoint
     grouped: dict = {}

@@ -330,7 +330,13 @@ ARCHITECTURE_TOOLS_SECTION = NavigationSectionV2(
             label="ArchiMate Composer",
             icon="layers",
             endpoint="archimate.composer_page",
-            url_fallback="/archimate/composer",
+            url_fallback="/archimate/composer?viewpoint=layered",
+            # Opens directly into the Layered viewpoint (every element and
+            # relationship across all ArchiMate layers) instead of a blank
+            # "Unsaved diagram" canvas — composer_page's `viewpoint` query
+            # param opens straight into View mode on that viewpoint (see
+            # app/modules/architecture/routes/archimate_routes.py::composer_page).
+            query_params={"viewpoint": "layered"},
             order=1,
         ),
         NavigationItemV2(

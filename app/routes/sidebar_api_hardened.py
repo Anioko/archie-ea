@@ -588,7 +588,7 @@ def api_global_search():
                 if link["endpoint"] not in current_app.view_functions:
                     continue
                 try:
-                    module_url = url_for(link["endpoint"])
+                    module_url = url_for(link["endpoint"], **(link.get("query_params") or {}))
                 except Exception:
                     continue
                 results.append(
