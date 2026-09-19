@@ -448,7 +448,7 @@ counts only the families in `BANNED_FAMILIES` (`scripts/check_design_tokens.py`)
 `orange` or `cyan` class is right per DESIGN.md but moves this number by zero, and a
 line carrying a `token-migration-ok` marker is already excluded from the count.
 
-**All 58 gates, in registry order (`scripts/verify.py`, `build_gates`) — this table
+**All 59 gates, in registry order (`scripts/verify.py`, `build_gates`) — this table
 is a snapshot, not generated. Run `grep -oE '^\s*Gate\("[a-z-]+"' scripts/verify.py`
 to reconfirm the count before trusting it:**
 
@@ -460,6 +460,7 @@ to reconfirm the count before trusting it:**
 | `redefinitions` | shadowed definitions (ruff F811) | ratchet @ 0 |
 | `lint-core` | correctness lint (ruff `F,E4,E7,E9`) | ratchet @ 0 |
 | `design-tokens` | raw Tailwind colours (DESIGN.md rule) | ratchet @ 0 |
+| `composer-url-params` | a literal composer link carrying a param the composer doesn't read | ratchet @ 0 |
 | `raw-fetch-sites` | `fetch()` bypassing `Platform.fetch` | ratchet @ 0 |
 | `design-tokens-extended` | raw colours outside the core banned families | ratchet @ 0 |
 | `shell-conformance` | a page off the platform shell (header macro/width) | ratchet @ 3 |

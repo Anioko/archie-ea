@@ -394,7 +394,11 @@
                     </div>
                     <div x-show="editError" x-cloak class="text-destructive-emphasis text-xs mb-3" x-text="editError"></div>
                     <div class="flex items-center justify-between">
-                        <a :href="'/archimate/composer?element_id=' + editElement.id"
+                        {# `element_id` is not a parameter the composer reads — a
+                           real scoped diagram needs a SavedDiagram created
+                           server-side first, which this modal doesn't do. Link
+                           honestly to the generic composer. #}
+                        <a href="/archimate/composer"
                            class="text-xs text-muted-foreground hover:text-foreground underline">Edit in Composer</a>
                         <div class="flex gap-2">
                             <button type="button" @click="editModalOpen = false"
@@ -412,7 +416,8 @@
                 <div>
                     <p class="text-sm text-muted-foreground mb-4">In-place edit is only available for Technology layer elements. To edit this element, use the Composer or the relevant Solution.</p>
                     <div class="flex items-center justify-between">
-                        <a :href="'/archimate/composer?element_id=' + editElement.id"
+                        {# See note above: `element_id` is not read by the composer. #}
+                        <a href="/archimate/composer"
                            class="text-sm font-medium text-primary hover:underline">Edit in Composer</a>
                         <button type="button" @click="editModalOpen = false"
                                 class="inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground">Close</button>

@@ -351,7 +351,11 @@ function blueprintPage() {
 
         openComposer: function (sectionId) {
             let self = this;
-            window.open('/archimate/composer?solution=' + self.solutionId + '&section=' + sectionId, '_blank');
+            /* The composer reads `solution_id`, not `solution` — and has no
+             * mechanism to scroll to a specific blueprint section, so
+             * `section` is dropped rather than passed as a param that does
+             * nothing. */
+            window.open('/archimate/composer?solution_id=' + self.solutionId, '_blank');
         },
 
         exportPng: function (sectionId) {
