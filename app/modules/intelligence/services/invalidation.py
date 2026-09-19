@@ -180,6 +180,11 @@ def _mark_stale_for_org(session, organization_id: int, changes: dict) -> Optiona
         "target_element_id = ANY(CAST(:changed_element_ids AS integer[]))",
     ]
 
+    # case_sql/where_conditions are built above from fixed SQL fragments and
+    # bind-parameter NAMES keyed by the loop's enumerate() index -- never from
+    # request/user data. Every actual value (org id, element/relationship ids,
+    # reason text) is bound via `params`, passed separately to session.execute
+    # below (nosec B608).
     sql = f"""
         UPDATE archimate_derived_relationships
         SET stale = TRUE,
@@ -188,7 +193,7 @@ def _mark_stale_for_org(session, organization_id: int, changes: dict) -> Optiona
         WHERE organization_id = :organization_id
           AND stale = FALSE
           AND ({' OR '.join(where_conditions)})
-    """
+    """  # nosec B608
 
     result = session.execute(db.text(sql), params)
     if result.rowcount is None or result.rowcount < 0:
@@ -275,13 +280,17 @@ def _mark_stale_bulk(
         where += " AND organization_id = :organization_id"
         params["organization_id"] = organization_id
 
+    # `where` is built above from a fixed literal plus, at most, the fixed
+    # string " AND organization_id = :organization_id" -- never from request/
+    # user data. The organization_id value itself is bound via `params`,
+    # passed separately to session.execute below (nosec B608).
     sql = f"""
         UPDATE archimate_derived_relationships
         SET stale = TRUE,
             stale_since = :now,
             stale_reason = :reason
         WHERE {where}
-    """
+    """  # nosec B608
     result = session.execute(db.text(sql), params)
     if result.rowcount is None or result.rowcount < 0:
         return None
