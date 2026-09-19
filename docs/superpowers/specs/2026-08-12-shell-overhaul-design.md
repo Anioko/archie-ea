@@ -32,10 +32,17 @@ Saint-Gobain's evaluation — calmer than a Big-4 deliverable, honest as a syste
 | Zone | Content | Who |
 |---|---|---|
 | Home | persona dashboard, Health Scorecard | all |
-| My work | persona's primary surface, 3–7 items (SA: Architecture Journey, Solutions, Programmes, AI Chat, ADM Kanban · EA: Portfolio, Capability Map, Elements, ArchiMate Composer, Traceability, Roadmaps · CTO: Health, Rationalization, Investment · Business Architect: Capability Map, Value Streams · Portfolio Mgr: Rationalization, Vendors, Applications · Procurement: Overview, Vendors, Contracts, Renewals, Spend, Licences, Compliance · App Mgr: Applications, Rationalization, Vendors) | per role |
+| My work | persona's primary surface, 3–7 items (SA: Architecture Journey, Solutions, Programmes, AI Chat, ADM Kanban, Impact Analysis · EA: Portfolio, Capability Map, Elements, ArchiMate Composer, Traceability, Roadmaps · CTO: Health, Rationalization, Investment · Business Architect: Capability Map, Value Streams, Impact Analysis · Portfolio Mgr: Rationalization, Vendors, Applications · Procurement: Overview, Vendors, Contracts, Renewals, Spend, Licences, Compliance · App Mgr: Applications, Rationalization, Vendors) | per role |
 | Library | Applications, Capabilities, Vendors, ArchiMate Elements | all |
 | Governance | ARB dashboard, Reviews, Sessions | roles on the board (EA, ARB member, CTO, admin) |
 | Admin | Command Center + admin pages | platform_admin |
+
+
+> **Amended 19 Sep 2026 (UX_IA_REVIEW.md finding 4).** Impact Analysis was reachable only through the
+> All-modules page. It is now in My work for the Solution Architect, Enterprise Architect and Business
+> Architect (same endpoint and `crosshair` icon for all three), because impact analysis is a primary job
+> for those personas. The Solution Architect's My work is now 8 links, one past the "3-7" guide above; the
+> guide is a target, and `tests/test_sidebar_budgets.py` pins the exact membership and the link budget.
 
 - Single source of truth: `app/utils/role_access.py` (role → zone → links). The sidebar template
   (`app/templates/components/admin_sidebar.html`) renders from that structure only — no

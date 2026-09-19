@@ -241,3 +241,24 @@ def test_sidebar_includes_all_modules_link(app, db_session, make_org, role, labe
     assert "All modules" in sidebar_html, (
         f"{role} sidebar has no reachable link to the All-modules directory"
     )
+
+
+@pytest.mark.parametrize(
+    "role,label",
+    [
+        ("solution_architect", "sa-impact"),
+        ("enterprise_architect", "ea-impact"),
+        ("business_architect", "ba-impact"),
+    ],
+)
+def test_impact_analysis_is_linked_under_my_work(app, db_session, make_org, role, label):
+    """UX_IA_REVIEW.md finding 4: reachable in one click from the persona's own sidebar, in the zone
+    for their primary jobs (between the "My work" and "Library" headings), not only via All modules."""
+    sidebar_html = _sidebar_html(app, db_session, make_org, role, label)
+    link = sidebar_html.find('href="/strategic/impact-analysis"')
+    assert link != -1, f"{role}: no Impact Analysis link in the rendered sidebar"
+    my_work = sidebar_html.find("My work")
+    library = sidebar_html.find("Library", my_work)
+    assert my_work != -1 and library != -1 and my_work < link < library, (
+        f"{role}: the Impact Analysis link is not under the My work heading"
+    )

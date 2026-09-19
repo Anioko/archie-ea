@@ -476,6 +476,12 @@ _MY_WORK_LINKS = {
         # surface; "cable" is distinct from the git-merge/git-branch/waypoints/
         # milestone icons already in this zone.
         _link("Interface Register", "interface_register.index", "cable"),
+        # UX_IA_REVIEW.md finding 4 (High): the platform's own "analyse the ripple
+        # effects of a change" feature was reachable only from the All-modules
+        # page, so an architect with no training had no discoverable path to it.
+        # Same endpoint and icon as enterprise_architect's link. This is the 8th
+        # link, one past the shell-overhaul spec's "3-7"; the spec table says so.
+        _link("Impact Analysis", "strategic.impact_analysis", "crosshair"),
     ],
     ROLE_ENTERPRISE_ARCHITECT: [
         _link("Transformation programmes", "solution_design.programmes_list", "waypoints"),
@@ -587,6 +593,8 @@ _MY_WORK_LINKS = {
         _link("Work Packages", "enterprise.work_packages", "package"),
         _link("Traceability Matrix", "architect_ui.traceability_matrix", "git-compare"),
         _link("Capability Health", "strategic.capability_health", "activity"),
+        # UX_IA_REVIEW.md finding 4: same link and icon as enterprise_architect's.
+        _link("Impact Analysis", "strategic.impact_analysis", "crosshair"),
         _link("Data Architecture", "data_architecture.data_architecture_dashboard", "database"),
         # NAV-1 (27 Aug 2026, nav-coverage gate 4 -> 0). Three of Iain's twelve
         # business-architecture outputs had working routes and no sidebar link
