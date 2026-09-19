@@ -39,15 +39,25 @@ def document(app, client):
     from app import db
     from app.models.archimate_core import ArchiMateElement
 
+    name = LONG_NAME + " " + uuid.uuid4().hex[:4]
     with app.app_context():
         org = make_org(db, "ArchLabels")
         user = make_user(db, org, "sa", "solution_architect", role_name="Architect")
-        element = ArchiMateElement(name=LONG_NAME + " " + uuid.uuid4().hex[:4], type="Goal", layer="Motivation")
+        element = ArchiMateElement(name=name, type="Goal", layer="Motivation")
         if hasattr(element, "organization_id"):
             element.organization_id = org
         db.session.add(element)
         db.session.commit()
+        stored_org = element.organization_id
     login(client, user)
+    # Pre-flight: ask the API the page will call. If the seeded element is not in its answer, the problem is
+    # the fixture or tenancy, not the layout, and the failure should say so instead of timing out in a browser.
+    api = client.get("/architecture/api/layer/motivation/elements")
+    if name not in api.get_data(as_text=True):
+        pytest.fail(
+            "seeded element is not in the elements API answer (status %s, user org %s, element org %s): %s"
+            % (api.status_code, org, stored_org, api.get_data(as_text=True)[:300])
+        )
     return client.get("/architecture/dashboard").get_data(as_text=True)
 
 
@@ -65,6 +75,7 @@ def browser():
 @pytest.fixture
 def measured(browser, client, document):
     pg = browser.new_page(viewport={"width": 1440, "height": 900})
+    seen = []
 
     def handle(route):
         url = urlparse(route.request.url)
@@ -75,13 +86,17 @@ def measured(browser, client, document):
             return route.fulfill(status=200, content_type="text/html", body=document)
         if url.path.startswith(("/api/", "/architecture/", "/archimate")):
             r = client.get(url.path, query_string=dict(parse_qsl(url.query)))
+            seen.append((url.path, r.status_code, len(r.get_data())))
             return route.fulfill(status=r.status_code, content_type=r.content_type or "application/json", body=r.get_data())
         return route.fulfill(status=204, body="")
 
     pg.route("http://app.test/**", handle)
     try:
         pg.goto("http://app.test/architecture/dashboard")
-        pg.wait_for_selector('[data-field="element-name"] button', timeout=20000)
+        try:
+            pg.wait_for_selector('[data-field="element-name"] button', timeout=20000)
+        except Exception as exc:  # report what the page saw, not just that it timed out
+            pytest.fail("the element table never rendered; page requests: %s; %s" % (seen, str(exc)[:200]))
         pg.wait_for_timeout(400)
         yield pg.evaluate(MEASURE)
     finally:
