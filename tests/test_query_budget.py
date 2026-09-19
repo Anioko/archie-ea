@@ -9,7 +9,7 @@ Query count is the honest measurement. It is identical on every machine, and it
 catches the thing that actually makes a server-rendered page slow: a loop that
 issues one query per row. Thirty applications is fine against a local database;
 twelve thousand across a network round trip is a page that never finishes.
-Saint-Gobain's portfolio is the second case.
+The customer's portfolio is the second case.
 
 So rather than pin an absolute number - which would need rebaselining whenever a
 feature adds a legitimate query - this renders the same endpoint twice with

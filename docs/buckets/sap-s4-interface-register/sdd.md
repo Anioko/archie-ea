@@ -399,7 +399,7 @@ and is a defect. So:
 ### 8.3 Outside a request context
 
 No CLI command, importer or scheduler job is added by this feature. If one is added
-later (e.g. seeding the 18 Saint-Gobain interfaces), it has **no**
+later (e.g. seeding the 18 customer interfaces), it has **no**
 `g.current_org_id` and is therefore unfiltered: it must scope explicitly and call
 `db.session.remove()` between tenants.
 
