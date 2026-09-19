@@ -31,7 +31,7 @@ let ComposerSearch = (function() {
 
         let methods = {
 
-        selectViewpoint: function(vpId, vpName) {
+        selectViewpoint: function(vpId, vpName, layer) {
             let self = this;
             self.vpDropdownOpen = false;
             self.activeViewpoint = vpId;
@@ -45,6 +45,7 @@ let ComposerSearch = (function() {
 
             let url = '/archimate/viewpoints-api/' + vpId + '/data';
             if (self.solutionId) url += '?solution_id=' + self.solutionId;
+            if (layer) url += (url.indexOf('?') === -1 ? '?' : '&') + 'layer=' + encodeURIComponent(layer);
 
             Platform.fetch(url, { silent: true })
             .then(function(data) {
