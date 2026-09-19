@@ -612,6 +612,15 @@ exist because two topologies exist; when the GHCR pipeline becomes the live one,
 `scripts/deploy_verified.sh`'s verification steps should move onto that path and this
 file should retire — don't let both read as "the current answer" at once.
 
+**Deploying without droplet SSH.** A session that has GitHub access but no SSH access to
+the droplet deploys through the `Production deploy` workflow
+(`.github/workflows/deploy.yml`), not by looking for a key. It wraps
+`scripts/deploy_verified.sh` behind a required-reviewer approval, on commits that are on
+`main` with green CI: `gh workflow run deploy.yml --ref main -f ref=<full 40-character sha>
+-f dry_run=true`, then the same with `dry_run=false`. It shows only the script's own status
+lines in the log (the repository is public). One-time setup, rollback and revoking access
+are in `deploy/DEPLOY_WORKFLOW.md`; read it before the first dispatch.
+
 ## Schema management — read this before touching a model
 
 There are **three** overlapping mechanisms, and Alembic is *not* the source of truth:
