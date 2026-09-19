@@ -38,6 +38,13 @@ from sqlalchemy import event
 
 FOUR_KEYS = {"id", "name", "type", "layer"}
 
+# The row and relation shapes the response contract documents (T-004a brief D4).
+ROW_KEYS = {"element_id", "relation", "owner", "reason"}
+RELATION_KEYS = {
+    "kind", "type", "depth", "rule_id", "chain", "chain_elements", "confidence",
+    "provenance", "computed_at", "stale", "derived_id", "engine_version", "plain_terms",
+}
+
 # The six names the brief requires be asserted absent individually, plus the
 # real ArchiMateElement column names those concepts live under and a few more
 # columns that would be a leak if the projection widened.
@@ -531,6 +538,11 @@ def test_cross_tenant_element_is_absent_and_its_name_appears_nowhere_http(
     # The derived row that runs through it has no sentence rather than a gap.
     derived = [r for r in data["rows"] if r["relation"]["kind"] == "derived"]
     assert derived and all(r["relation"]["plain_terms"] is None for r in derived)
+    # Both kinds of row have exactly the documented shape (no internal keys).
+    assert {r["relation"]["kind"] for r in data["rows"]} == {"explicit", "derived"}
+    for row in data["rows"]:
+        assert set(row.keys()) == ROW_KEYS
+        assert set(row["relation"].keys()) == RELATION_KEYS
 
 
 def test_cross_tenant_element_is_absent_from_the_service_map(app, db_session, make_org):
@@ -666,7 +678,11 @@ def test_derived_row_carries_derived_id_and_engine_version_from_the_store(app, d
     result = _impact(app, org.id, a.id, include_derived=True, with_owner=False)
     derived = [r for r in result["rows"] if r["relation"]["kind"] == "derived"]
     assert len(derived) == 1
+    # The row shape is the contract: the internal join key used to name both
+    # ends of the fact (``_endpoints``) must not leak into the payload.
+    assert set(derived[0].keys()) == ROW_KEYS
     relation = derived[0]["relation"]
+    assert set(relation.keys()) == RELATION_KEYS
     assert relation["derived_id"] == fact.id
     assert relation["engine_version"] == "1.2.0"
     # Both come from the store's own values, not from a literal.
@@ -692,7 +708,9 @@ def test_explicit_row_carries_null_for_the_derived_only_fields(app, db_session, 
     explicit = [r for r in result["rows"] if r["relation"]["kind"] == "explicit"]
     assert explicit
     for row in explicit:
+        assert set(row.keys()) == ROW_KEYS
         relation = row["relation"]
+        assert set(relation.keys()) == RELATION_KEYS
         for key in ("derived_id", "engine_version", "plain_terms"):
             assert key in relation  # present ...
             assert relation[key] is None  # ... and null, never a placeholder
