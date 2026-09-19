@@ -248,3 +248,24 @@ def test_sidebar_includes_all_modules_link(app, db_session, make_org, role, labe
     assert "All modules" in sidebar_html, (
         f"{role} sidebar has no reachable link to the All-modules directory"
     )
+
+
+def test_link_ratchet_script_ignores_inert_templates():
+    """scripts/check_sidebar_links.py is the CI ratchet on the rendered sidebar. Like _real_link_count above, it
+    must not count an <a> inside an Alpine <template> (the module-search results): PR #43 failed the
+    sidebar-links gate at 28 > 27 until it did."""
+    import importlib.util
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parents[1] / "scripts" / "check_sidebar_links.py"
+    spec = importlib.util.spec_from_file_location("check_sidebar_links_under_test", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    html = (
+        '<a href="/a">a</a><a href="/b">b</a>'
+        '<template x-for="h in results" :key="h.url"><a :href="h.url">h</a><a :href="h.url">h</a></template>'
+        '<a href="/c">c</a>'
+    )
+    assert module.count_links(html) == 3
+    assert module.count_links("<a href='/x'>x</a>") == 1

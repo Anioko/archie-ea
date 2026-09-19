@@ -41,6 +41,14 @@ os.environ.setdefault("FLASK_CONFIG", "testing")
 os.environ.setdefault("SECRET_KEY", "test-only-not-secret")
 
 LINK_RE = re.compile(r"<a ")
+# An Alpine <template> (the sidebar's module-search results) renders nothing until the user types, so an
+# <a> inside one is not a link the sidebar shows and must not count against the budget.
+TEMPLATE_RE = re.compile(r"<template[ >].*?</template>", re.S)
+
+
+def count_links(html: str) -> int:
+    """Real, visible links in rendered sidebar HTML."""
+    return len(LINK_RE.findall(TEMPLATE_RE.sub("", html)))
 
 
 class _Any:
@@ -107,7 +115,7 @@ def measure() -> dict[str, int]:
             html = render_template(
                 "components/admin_sidebar.html", current_user=_StubUser(role)
             )
-        results[role] = len(LINK_RE.findall(html))
+        results[role] = count_links(html)
     return results
 
 
