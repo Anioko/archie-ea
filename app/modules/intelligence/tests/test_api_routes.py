@@ -352,7 +352,7 @@ def test_module_registers_exactly_three_routes(app):
 
 
 
-# --- T-004a: the restored derived_id addresses the provenance endpoint --------
+# --- the derived_id on an impact row addresses the provenance endpoint --------
 
 
 def test_impact_row_derived_id_addresses_the_provenance_endpoint(

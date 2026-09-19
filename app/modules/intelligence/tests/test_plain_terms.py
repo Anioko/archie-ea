@@ -1,31 +1,12 @@
-"""T-004a acceptance tests for the plain-terms sentence (FR-15).
+"""Tests for the plain-terms sentence on derived rows (FR-15).
 
-Maps to the T-004a brief's acceptance items 8 and 9 and to the v2 rulings on
-the refuter's B-1 (direction of the relationship) and D-6 / D-7:
-
-    8  -> test_confidence_bands_at_the_boundaries[*],
-          test_percent_is_confidence_rounded_half_up_to_a_whole_number[*],
-          test_null_confidence_omits_the_clause_and_never_prints_zero_percent,
-          test_measured_zero_confidence_is_shown_as_zero_and_is_not_null,
-          test_absent_name_or_depth_makes_the_whole_sentence_null[*],
-          test_a_confidence_that_is_not_a_number_is_a_loud_error,
-          test_derived_row_sentence_names_both_ends_from_the_identity_map,
-          test_derived_row_sentence_is_null_when_an_endpoint_is_another_tenants,
-          test_derived_row_without_confidence_has_no_clause,
-          test_explicit_rows_carry_null_plain_terms
-    B-1 -> test_every_derived_type_has_wording_and_no_type_is_missing,
-           test_sentence_names_the_right_element_first_for_every_type[*],
-           test_non_dependency_types_never_say_depends_on[*],
-           test_association_wording_asserts_no_direction,
-           test_type_without_wording_yields_no_sentence[*],
-           test_every_derived_type_reads_the_same_from_every_query_direction,
-           test_a_derived_type_without_wording_has_no_sentence_and_keeps_its_other_fields
-    D-6 -> test_one_hop_is_singular[*], test_depth_below_one_yields_no_sentence[*],
-           test_a_depth_one_derived_fact_reads_1_hop_through_the_service
-    9  -> test_the_sentence_is_assembled_in_exactly_one_place, and the scan's own
-          tests (D-7): test_scan_ignores_scratch_copies_outside_the_source_roots,
-          test_scan_still_catches_a_copy_inside_a_source_root,
-          test_scan_skips_oversized_files_without_reading_them
+Covers the three confidence bands and their boundaries, the rounding of the
+percentage, the omission of the confidence clause when confidence is null, the
+absence of a sentence when a name, a depth or a relationship type is missing,
+which element is named first and which wording is used for every derived
+relationship type, "1 hop" versus "N hops", the sentence as read through
+``cross_layer_impact`` from either end of a fact, and the scan that keeps the
+sentence's wording in ``plain_terms.py`` alone.
 """
 
 from __future__ import annotations
@@ -59,7 +40,7 @@ def _sentence(confidence, *, source="Ledger", target="Billing", type_="Serving",
 # --- the shape and the three bands ------------------------------------------
 
 
-def test_the_sentence_matches_the_brief_example_exactly():
+def test_a_serving_fact_reads_as_one_full_sentence_with_a_confidence_clause():
     assert _sentence(0.82) == (
         "We worked this out because Billing depends on Ledger, 2 hops away. Fairly confident (82%)."
     )
@@ -94,7 +75,7 @@ def test_percent_is_confidence_rounded_half_up_to_a_whole_number(confidence, pct
     assert f"({pct}%)." in _sentence(confidence)
 
 
-# --- honesty: null confidence, absent names ---------------------------------
+# --- null confidence and absent names ---------------------------------------
 
 
 def test_null_confidence_omits_the_clause_and_never_prints_zero_percent():
@@ -136,7 +117,7 @@ def test_a_confidence_that_is_not_a_number_is_a_loud_error():
         _sentence(True)
 
 
-# --- B-1: the sentence never reverses the relationship ----------------------
+# --- the sentence never reverses the relationship ---------------------------
 
 SRC = "SourceEl"
 TGT = "TargetEl"
@@ -237,7 +218,7 @@ def test_type_without_wording_yields_no_sentence(relation_type):
     assert _sentence(0.95, type_=relation_type) is None
 
 
-# --- D-6: 1 hop -------------------------------------------------------------
+# --- 1 hop versus N hops ----------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -453,7 +434,7 @@ def test_explicit_rows_carry_null_plain_terms(app, db_session, make_org):
     assert explicit and all(r["relation"]["plain_terms"] is None for r in explicit)
 
 
-# --- acceptance 9: one generator --------------------------------------------
+# --- the sentence has one generator -----------------------------------------
 
 # Wording specific enough not to collide with unrelated copy (the solution
 # explainability service already says "Very confident" / "Less confident" with
@@ -541,13 +522,11 @@ def test_the_sentence_is_assembled_in_exactly_one_place():
     """No other module, template or script under the tracked source directories
     carries the sentence's wording.
 
-    KNOWN LIMIT of this check, accepted deliberately (a static text scan cannot
-    do better): it reads SOURCE text for the sentence's signature phrases. A
-    second generator that words the sentence differently, or that assembles the
-    identical output from concatenated fragments, or a client-side build that
-    does either, matches none of the signatures and is NOT detected. What it
-    does catch is the realistic regression: someone copying the wording into
-    another module, template or script. It is a tripwire, not a proof.
+    This is a text check: it looks for the sentence's signature phrases in
+    source text, so it catches the wording being copied into another module,
+    template or script. A generator that words the sentence differently, builds
+    the same output from concatenated fragments, or does either in client code
+    has no signature phrase for it to find.
     """
     root = _repo_root()
     assert (root / _GENERATOR).is_file()

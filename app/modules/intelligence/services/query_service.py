@@ -155,7 +155,7 @@ def _resolve_owners_batch(
 
 
 def _resolve_elements_batch(element_ids: Iterable[int], org_id: Optional[int]) -> Dict[str, Dict[str, Any]]:
-    """T-004a: the element identity map -- ``{str(id): {id, name, type, layer}}``.
+    """The element identity map -- ``{str(id): {id, name, type, layer}}``.
 
     ONE batched ``select`` over ``ArchiMateElement`` for every id in the WHOLE
     result set (same shape as ``_resolve_owners_batch``: collect first, then
@@ -201,7 +201,7 @@ def _resolve_elements_batch(element_ids: Iterable[int], org_id: Optional[int]) -
     elements: Dict[str, Dict[str, Any]] = {}
     for element_id, name, element_type, layer in db.session.execute(stmt).all():
         if name is None:
-            # Absence is the honest answer; a null-named entry is not.
+            # Leave the id out rather than emit an entry with a null name.
             continue
         elements[str(element_id)] = {
             "id": element_id,
@@ -271,8 +271,8 @@ def _explicit_row(rel, depth: int, chain: List[int], chain_elements: List[int], 
             "provenance": "explicit",
             "computed_at": None,
             "stale": False,
-            # T-004a: derived-fact-only fields; an explicit row has no
-            # derived fact, so all three are null (never a placeholder).
+            # Derived-fact-only fields; an explicit row has no derived fact,
+            # so all three are null.
             "derived_id": None,
             "engine_version": None,
             "plain_terms": None,
@@ -380,8 +380,8 @@ def _derived_row(fact: Dict[str, Any], root_id: int) -> Dict[str, Any]:
             "provenance": fact["provenance"],
             "computed_at": fact["computed_at"],
             "stale": fact["stale"],
-            # T-004a: the two fields this serialiser used to drop. Both are
-            # already on the dict ``list_derived_facts`` returns.
+            # ``derived_id`` and ``engine_version`` come straight from the dict
+            # ``list_derived_facts`` returns.
             "derived_id": fact["id"],
             "engine_version": fact["engine_version"],
             # Filled by ``_attach_plain_terms`` once the identity map exists.
@@ -434,8 +434,8 @@ class IntelligenceQueryService:
             scope.depth = max_depth
             scope.include_derived = include_derived
 
-            # T-004a: the identity map. Empty on every branch that returns no
-            # rows; filled below from the same tenant-fenced batched select.
+            # The identity map: empty on every branch that returns no rows,
+            # otherwise filled below from one tenant-fenced batched select.
             elements: Dict[str, Dict[str, Any]] = {}
 
             if org_id is None:
@@ -504,8 +504,8 @@ class IntelligenceQueryService:
 
                     rows = explicit_rows + derived_rows
 
-                    # T-004a: resolve every element id the result set can
-                    # name in ONE batched select, INSIDE the latency scope so
+                    # Resolve every element id the result set can name in ONE
+                    # batched select, INSIDE the latency scope so
                     # ``summary.latency_ms`` and the histogram measure it,
                     # then let the derived rows name both of their ends.
                     elements = _resolve_elements_batch(_element_ids_in_rows(rows), org_id)

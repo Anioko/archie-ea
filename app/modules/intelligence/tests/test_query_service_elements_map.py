@@ -1,29 +1,15 @@
-"""T-004a acceptance tests: the element identity map on the impact API and the
-two derived-row fields the serialiser used to drop.
+"""Tests for the element identity map on the impact API, for the derived-row
+fields ``derived_id`` / ``engine_version`` / ``plain_terms``, and for the
+response shape of the canonical impact endpoint (T-004a).
 
-Maps to the T-004a brief's acceptance items (test ids in the build report):
-
-    1  -> test_map_covers_every_row_and_chain_element_and_nothing_else,
-          test_http_data_carries_elements_beside_rows_summary_reasons,
-          test_map_is_empty_object_when_no_rows_and_on_early_return_branches
-    2  -> test_every_map_entry_has_exactly_four_keys,
-          test_forbidden_key_is_absent_from_every_map_entry[*],
-          test_no_element_column_value_beyond_the_four_reaches_the_response
-    3  -> test_map_is_one_batched_select_however_many_elements
-    4  -> test_identity_resolution_runs_inside_the_latency_scope
-    5  -> test_cross_tenant_element_is_absent_and_its_name_appears_nowhere_http,
-          test_cross_tenant_element_is_absent_from_the_service_map,
-          test_identity_lookup_is_tenant_correct_with_no_ambient_request_context,
-          test_identity_lookup_holds_when_the_ambient_tenant_diverges
-    6  -> test_deleted_and_nonexistent_elements_are_absent_not_500
-    7  -> test_derived_row_carries_derived_id_and_engine_version_from_the_store,
-          test_explicit_row_carries_null_for_the_derived_only_fields
-    10 -> test_canonical_impact_endpoint_does_not_return_elements,
-          test_canonical_include_derived_true_pins_the_exact_derived_relation_key_set[*] (v2, B-3),
-          test_canonical_default_request_returns_no_derived_rows_and_none_of_the_new_keys[*] (v2, B-3)
-    D-10 -> test_route_degrades_to_an_empty_map_if_the_service_omits_elements
-    12 -> test_layer_is_plain_canonical_lower_case_or_null_and_type_may_be_null,
-          test_a_null_named_element_is_absent_not_a_null_entry
+Covers: the map holding every element a row names and nothing else; the
+four-key ceiling on every entry, with each sensitive key asserted absent
+individually; one batched select whatever the result size; identity resolution
+inside the latency scope; another tenant's, soft-deleted and missing elements
+being absent from the map rather than present with a null name; the two
+restored ``relation`` fields and their nulls on explicit rows; the exact row
+and relation key sets; and that ``POST /api/v1/impact/analyze`` returns no map
+and, unless ``include_derived`` is true, none of the new keys.
 """
 
 from __future__ import annotations
@@ -41,16 +27,16 @@ from sqlalchemy import event
 
 FOUR_KEYS = {"id", "name", "type", "layer"}
 
-# The row and relation shapes the response contract documents (T-004a brief D4).
+# The row and relation shapes the impact endpoint returns.
 ROW_KEYS = {"element_id", "relation", "owner", "reason"}
 RELATION_KEYS = {
     "kind", "type", "depth", "rule_id", "chain", "chain_elements", "confidence",
     "provenance", "computed_at", "stale", "derived_id", "engine_version", "plain_terms",
 }
 
-# The six names the brief requires be asserted absent individually, plus the
-# real ArchiMateElement column names those concepts live under and a few more
-# columns that would be a leak if the projection widened.
+# Keys that must never appear in a map entry: the sensitive concepts by name,
+# the real ArchiMateElement column names those concepts live under, and a few
+# more columns that would be a leak if the projection widened.
 FORBIDDEN_KEYS = (
     "description",
     "scope",
@@ -198,7 +184,7 @@ def elements_counter(app):
         event.remove(db.engine, "before_cursor_execute", counter)
 
 
-# --- acceptance 1: presence and coverage ------------------------------------
+# --- presence and coverage --------------------------------------------------
 
 
 def test_map_covers_every_row_and_chain_element_and_nothing_else(app, db_session, make_org):
@@ -281,7 +267,7 @@ def test_map_is_empty_object_when_no_rows_and_on_early_return_branches(app, db_s
     assert no_tenant["elements"] == {}
 
 
-# --- acceptance 2: the four-key ceiling -------------------------------------
+# --- the four-key ceiling ---------------------------------------------------
 
 
 def _element_with_every_sensitive_column(db_session, org_id, name):
@@ -372,8 +358,8 @@ def test_a_null_named_element_is_absent_not_a_null_entry(app, monkeypatch):
     """``name`` is NOT NULL on the model, so a null name should be
     unreachable through the database; if a row ever came back with one it is
     dropped rather than surfaced as ``{"name": null}`` (absence over a
-    placeholder). The database cannot produce that row, so the result set is
-    stubbed -- this pins the branch, it is not a reachable scenario.
+    placeholder). The database cannot produce such a row, so the result set is
+    stubbed to exercise the branch.
     """
     from types import SimpleNamespace
 
@@ -396,7 +382,7 @@ def test_a_null_named_element_is_absent_not_a_null_entry(app, monkeypatch):
     assert got["2"] == {"id": 2, "name": "Real", "type": "Node", "layer": "technology"}
 
 
-# --- acceptance 3: one query, not N -----------------------------------------
+# --- one query, not N -------------------------------------------------------
 
 
 def _star(db_session, org, n):
@@ -440,7 +426,7 @@ def test_map_is_one_batched_select_however_many_elements(app, db_session, make_o
     assert small_total == big_total == 2, (small_total, big_total)
 
 
-# --- acceptance 4: inside the latency scope ---------------------------------
+# --- inside the latency scope -----------------------------------------------
 
 
 def test_identity_resolution_runs_inside_the_latency_scope(app, db_session, make_org, monkeypatch):
@@ -494,7 +480,7 @@ def test_identity_resolution_runs_inside_the_latency_scope(app, db_session, make
     assert sum_after - sum_before >= 0.07
 
 
-# --- acceptance 5: cross-tenant absence -------------------------------------
+# --- cross-tenant absence ---------------------------------------------------
 
 
 FOREIGN_NAME = "ORGB-SECRET-ELEMENT-NAME"
@@ -565,12 +551,12 @@ def test_identity_lookup_is_tenant_correct_with_no_ambient_request_context(app, 
     lookup is otherwise unfiltered. ``_resolve_elements_batch(ids, org_id)``
     must still name only ``org_id``'s elements.
 
-    HONESTY: no shipped call path reaches this. ``cross_layer_impact`` reads
-    ``org_id`` from the same ``g.current_org_id`` the listener uses, and
-    returns before the lookup when it is ``None``. This is a direct call to
-    the private function, pinning the guarantee for the caller shape
-    ``derived_facts.list_derived_facts``'s docstring names; it is the only
-    place the predicate is observable (see the build report's mutation proof).
+    No request reaches this state: ``cross_layer_impact`` reads ``org_id`` from
+    the same ``g.current_org_id`` the listener uses, and returns before the
+    lookup when it is ``None``. This is a direct call to the private function,
+    pinning the guarantee for callers that run outside a request, as
+    ``derived_facts.list_derived_facts``'s docstring describes; it is the only
+    place the predicate is observable.
     """
     from flask import g
 
@@ -596,14 +582,14 @@ def test_identity_lookup_holds_when_the_ambient_tenant_diverges(app, db_session,
     Org B's element -- id and name -- must not come back to a caller acting for
     org A.
 
-    The assertion is deliberately only about org B's element. What a caller
-    acting for org A DOES get back in this state depends on the listener as
-    well (with the listener active the two filters intersect and nothing
-    comes back), and that is not what the explicit predicate defends.
+    The assertion covers only org B's element. What a caller acting for org A
+    gets back in this state also depends on the listener (with the listener
+    active the two filters intersect and nothing comes back), and that is not
+    what the explicit predicate defends.
 
-    Same honesty as above: a direct call, not a scenario any shipped path
-    produces (the SEC-09 owner test in ``test_query_service.py`` is the
-    precedent for this shape).
+    Like the test above, this is a direct call and not a state any request
+    produces (the SEC-09 owner test in ``test_query_service.py`` uses the same
+    shape).
     """
     from flask import g
 
@@ -624,7 +610,7 @@ def test_identity_lookup_holds_when_the_ambient_tenant_diverges(app, db_session,
     assert FOREIGN_NAME not in str(got)
 
 
-# --- acceptance 6: deleted-element absence ----------------------------------
+# --- deleted-element absence ------------------------------------------------
 
 
 def test_deleted_and_nonexistent_elements_are_absent_not_500(app, db_session, make_org, client, login_as):
@@ -667,7 +653,7 @@ def test_deleted_and_nonexistent_elements_are_absent_not_500(app, db_session, ma
     assert all(r["relation"]["plain_terms"] is not None for r in derived)  # endpoints a and c resolve
 
 
-# --- acceptance 7: the two restored fields ----------------------------------
+# --- the two restored fields ------------------------------------------------
 
 
 def test_derived_row_carries_derived_id_and_engine_version_from_the_store(app, db_session, make_org):
@@ -719,7 +705,7 @@ def test_explicit_row_carries_null_for_the_derived_only_fields(app, db_session, 
             assert relation[key] is None  # ... and null, never a placeholder
 
 
-# --- acceptance 10: canonical endpoint does not return the map --------------
+# --- the canonical endpoint does not return the map -------------------------
 
 
 def test_canonical_impact_endpoint_does_not_return_elements(app, db_session, make_org, client, login_as):
@@ -745,15 +731,15 @@ def test_canonical_impact_endpoint_does_not_return_elements(app, db_session, mak
         assert set(element.keys()) == {"id", "name", "type", "level"}
 
 
-# --- v2 (orchestrator ruling on the refuter's B-2 / B-3): the canonical shape is pinned ---
+# --- the canonical impact endpoint's shape is pinned -------------------------
 #
-# RULED: POST /api/v1/impact/analyze may carry ``derived_id``, ``engine_version``
-# and ``plain_terms`` inside ``derived_elements[*].relation`` WHEN
-# ``include_derived`` is true (it embeds ``cross_layer_impact``'s derived rows
-# verbatim). No ``elements`` map is added, ``affected_elements`` stays exactly
-# {id, name, type, level}, and the default request is unchanged. These tests pin
-# that shape, so any key added to or dropped from it -- including one that
-# widens the projection -- is red.
+# POST /api/v1/impact/analyze embeds ``cross_layer_impact``'s derived rows
+# verbatim, so when ``include_derived`` is true its
+# ``derived_elements[*].relation`` carries ``derived_id``, ``engine_version``
+# and ``plain_terms``. No ``elements`` map is added, ``affected_elements`` stays
+# exactly {id, name, type, level}, and the default request is unchanged. These
+# tests pin that shape, so any key added to or dropped from it -- including one
+# that widens the projection -- fails.
 
 CANONICAL_KEYS = {
     "affected_elements", "analysis_id", "breakdown", "derivation_state", "derived_elements",
@@ -841,7 +827,7 @@ def test_canonical_default_request_returns_no_derived_rows_and_none_of_the_new_k
     assert not (set(_all_keys(body)) & (NEW_RELATION_KEYS | {"elements"}))
 
 
-# --- v2, refuter D-10: the route degrades instead of raising -----------------
+# --- the route degrades instead of raising ----------------------------------
 
 
 def test_route_degrades_to_an_empty_map_if_the_service_omits_elements(

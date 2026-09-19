@@ -652,15 +652,14 @@ def test_duplicate_component_pointer_resolves_deterministically_not_500(app, db_
 
 
 
-# --- T-004a: the two fields the derived-row serialiser used to drop ----------
+# --- derived rows carry derived_id and engine_version ------------------------
 
 
 def test_derived_row_carries_derived_id_and_engine_version(app, db_session, make_org):
-    """T-004a: ``relation.derived_id`` / ``relation.engine_version`` come from
-    the derived-fact store's own row, so a caller can address
+    """``relation.derived_id`` / ``relation.engine_version`` come from the
+    derived-fact store's own row, so a caller can address
     ``GET /api/v1/intelligence/derived/<derived_id>`` for the row it is
-    looking at. (Fuller coverage of the identity map is in
-    ``test_query_service_elements_map.py``.)
+    looking at. (Fuller coverage is in ``test_query_service_elements_map.py``.)
     """
     from app.modules.intelligence.services.query_service import IntelligenceQueryService
 

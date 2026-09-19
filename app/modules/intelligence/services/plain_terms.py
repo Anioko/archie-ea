@@ -1,15 +1,12 @@
 """The one generator of the "in plain terms" sentence on a derived row.
 
-The Provenance drawer, the Ask answers and the Twin map all show this
-sentence, and the approved UX addendum binds it to the server: it is a
-templating function here, never a client-side string build. This module is
+Every surface that shows this sentence gets it from the server; it is never
+assembled in client code, so they all read the same text. This module is
 therefore the ONLY place the sentence is assembled -- a static test
 (``test_plain_terms.py``) fails if any other module, template or script in
-the tree carries the same wording (a known limit of that check is recorded in
-the test's docstring).
+the tree carries the same wording.
 
-The shape (``ux-design-v1.md`` section 4.3, in the corrected form the T-004a
-brief fixed, made relationship-type aware in v2):
+The shape:
 
     We worked this out because {relationship clause}, {N} hops away.
 
@@ -38,7 +35,7 @@ changes with which end the caller queried from. Wording families:
     symmetric         Association
                       "{source} and {target} are linked"   (asserts no direction)
 
-Honesty rules, all deliberate:
+Absent data:
 
 * A missing confidence omits the clause entirely. It is never rendered as
   ``0%``: a 0 that means "not recorded" cannot be told apart from a measured
