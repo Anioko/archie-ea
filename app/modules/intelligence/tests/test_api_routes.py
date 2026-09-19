@@ -352,3 +352,56 @@ def test_module_registers_exactly_four_routes(app):
         "intelligence_api.cross_layer_impact",
         "intelligence_api.derivation_yield",
     }
+
+
+
+# --- the derived_id on an impact row addresses the provenance endpoint --------
+
+
+def test_impact_row_derived_id_addresses_the_provenance_endpoint(
+    app, db_session, make_org, client, login_as
+):
+    """The reason ``relation.derived_id`` exists: a caller looking at a derived
+    row on the impact API can open ``GET /derived/<derived_id>`` for exactly
+    that fact, and both report the same ``engine_version``."""
+    org = make_org("api-derived-id-roundtrip")
+    user = _make_user(db_session, org)
+    a = _make_element(db_session, org.id, "a")
+    b = _make_element(db_session, org.id, "b")
+    c = _make_element(db_session, org.id, "c")
+    r1 = _make_relationship(db_session, org.id, a, b, "Composition")
+    r2 = _make_relationship(db_session, org.id, b, c, "Serving")
+    db_session.commit()
+    r1_id, r2_id = r1.id, r2.id
+
+    row = _insert_derived_row(
+        db_session,
+        org.id,
+        a,
+        c,
+        chain=[r1_id, r2_id],
+        chain_element_ids=[a.id, b.id, c.id],
+        depth=2,
+        derived_type="Serving",
+        engine_version="1.2.0",
+    )
+    db_session.commit()
+    row_id = row.id
+
+    login_as(client, user)
+    impact = client.get(f"/api/v1/intelligence/impact/{a.id}?include_derived=true")
+    assert impact.status_code == 200
+    derived_rows = [
+        r for r in impact.get_json()["data"]["rows"] if r["relation"]["kind"] == "derived"
+    ]
+    assert len(derived_rows) == 1
+    relation = derived_rows[0]["relation"]
+    assert relation["derived_id"] == row_id
+    assert relation["engine_version"] == "1.2.0"
+
+    login_as(client, user)
+    provenance = client.get(f"/api/v1/intelligence/derived/{relation['derived_id']}")
+    assert provenance.status_code == 200
+    fact = provenance.get_json()["data"]
+    assert fact["id"] == relation["derived_id"]
+    assert fact["engine_version"] == relation["engine_version"]
