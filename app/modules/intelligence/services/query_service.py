@@ -236,10 +236,11 @@ def _attach_plain_terms(rows: List[Dict[str, Any]], elements: Dict[str, Dict[str
     ``None``). The names come from the identity map built for this same
     response; ``plain_terms_sentence`` returns ``None`` when either is absent.
 
-    ``{A}`` is the derived fact's target (the element that depends) and
-    ``{B}`` its source (what it depends on), independent of which end the
-    caller started from -- so one derived fact reads the same sentence from
-    every surface and every query direction.
+    The derived fact's STORED source and target are passed through as they are,
+    together with its stored type; ``plain_terms_sentence`` decides which is
+    named first so the sentence never reverses the relationship. Nothing here
+    depends on which end the caller started from, so one derived fact reads the
+    same sentence from every surface and every query direction.
     """
     for row in rows:
         relation = row["relation"]
@@ -247,8 +248,9 @@ def _attach_plain_terms(rows: List[Dict[str, Any]], elements: Dict[str, Dict[str
             continue
         source_id, target_id = row["_endpoints"]
         relation["plain_terms"] = plain_terms_sentence(
-            dependent_name=_name_in(elements, target_id),
-            dependency_name=_name_in(elements, source_id),
+            source_name=_name_in(elements, source_id),
+            target_name=_name_in(elements, target_id),
+            relation_type=relation["type"],
             depth=relation["depth"],
             confidence=relation["confidence"],
         )

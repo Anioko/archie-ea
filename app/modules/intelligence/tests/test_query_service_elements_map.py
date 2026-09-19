@@ -18,7 +18,10 @@ Maps to the T-004a brief's acceptance items (test ids in the build report):
     6  -> test_deleted_and_nonexistent_elements_are_absent_not_500
     7  -> test_derived_row_carries_derived_id_and_engine_version_from_the_store,
           test_explicit_row_carries_null_for_the_derived_only_fields
-    10 -> test_canonical_impact_endpoint_does_not_return_elements
+    10 -> test_canonical_impact_endpoint_does_not_return_elements,
+          test_canonical_include_derived_true_pins_the_exact_derived_relation_key_set[*] (v2, B-3),
+          test_canonical_default_request_returns_no_derived_rows_and_none_of_the_new_keys[*] (v2, B-3)
+    D-10 -> test_route_degrades_to_an_empty_map_if_the_service_omits_elements
     12 -> test_layer_is_plain_canonical_lower_case_or_null_and_type_may_be_null,
           test_a_null_named_element_is_absent_not_a_null_entry
 """
@@ -740,3 +743,133 @@ def test_canonical_impact_endpoint_does_not_return_elements(app, db_session, mak
     # SEC-02: the canonical projection is still the narrow one.
     for element in data["affected_elements"]:
         assert set(element.keys()) == {"id", "name", "type", "level"}
+
+
+# --- v2 (orchestrator ruling on the refuter's B-2 / B-3): the canonical shape is pinned ---
+#
+# RULED: POST /api/v1/impact/analyze may carry ``derived_id``, ``engine_version``
+# and ``plain_terms`` inside ``derived_elements[*].relation`` WHEN
+# ``include_derived`` is true (it embeds ``cross_layer_impact``'s derived rows
+# verbatim). No ``elements`` map is added, ``affected_elements`` stays exactly
+# {id, name, type, level}, and the default request is unchanged. These tests pin
+# that shape, so any key added to or dropped from it -- including one that
+# widens the projection -- is red.
+
+CANONICAL_KEYS = {
+    "affected_elements", "analysis_id", "breakdown", "derivation_state", "derived_elements",
+    "diagram", "risk_level", "summary", "total_score",
+}
+NEW_RELATION_KEYS = {"derived_id", "engine_version", "plain_terms"}
+
+
+def _canonical_fixture(db_session, make_org, label):
+    org = make_org(label)
+    user = _user(db_session, org.id)
+    a = _element(db_session, org.id, "Alpha")
+    b = _element(db_session, org.id, "Bravo")
+    c = _element(db_session, org.id, "Charlie")
+    _relationship(db_session, org.id, a, b)
+    _derived(db_session, org.id, a, c, chain_element_ids=[a.id, b.id, c.id])
+    a_id = a.id
+    db_session.commit()
+    return user, a_id
+
+
+def _all_keys(node):
+    """Every dict key anywhere in a decoded JSON document."""
+    if isinstance(node, dict):
+        for key, value in node.items():
+            yield key
+            yield from _all_keys(value)
+    elif isinstance(node, list):
+        for item in node:
+            yield from _all_keys(item)
+
+
+def test_canonical_include_derived_true_pins_the_exact_derived_relation_key_set(
+    app, db_session, make_org, client, login_as
+):
+    user, a_id = _canonical_fixture(db_session, make_org, "map-canon-pin")
+
+    login_as(client, user)
+    resp = client.post(
+        "/api/v1/impact/analyze",
+        json={"element_id": a_id, "scenario": "modification", "include_derived": True},
+    )
+    assert resp.status_code == 200
+    data = resp.get_json()["data"]
+
+    assert set(data.keys()) == CANONICAL_KEYS
+    assert "elements" not in data  # the identity map is not added to this endpoint
+    assert data["derivation_state"] == "current"
+    assert data["affected_elements"]  # not vacuous
+    for element in data["affected_elements"]:
+        assert set(element.keys()) == {"id", "name", "type", "level"}  # SEC-02: still the narrow projection
+
+    derived = data["derived_elements"]
+    assert len(derived) == 1  # not vacuous
+    for row in derived:
+        assert set(row.keys()) == ROW_KEYS
+        assert set(row["relation"].keys()) == RELATION_KEYS
+        assert NEW_RELATION_KEYS <= set(row["relation"].keys())
+        assert row["relation"]["kind"] == "derived"
+        assert row["relation"]["plain_terms"].startswith("We worked this out because ")
+
+
+@pytest.mark.parametrize("extra", [{}, {"include_derived": False}], ids=["key_absent", "explicit_false"])
+def test_canonical_default_request_returns_no_derived_rows_and_none_of_the_new_keys(
+    app, db_session, make_org, client, login_as, extra
+):
+    user, a_id = _canonical_fixture(db_session, make_org, "map-canon-default")
+
+    login_as(client, user)
+    resp = client.post(
+        "/api/v1/impact/analyze",
+        json={"element_id": a_id, "scenario": "modification", **extra},
+    )
+    assert resp.status_code == 200
+    body = resp.get_json()
+    data = body["data"]
+
+    assert set(data.keys()) == CANONICAL_KEYS
+    assert data["derived_elements"] == []
+    # A real, current derivation exists for this element (so an empty list is a
+    # consequence of the default, not of there being nothing to return).
+    assert data["derivation_state"] == "current"
+    assert "elements" not in data
+    # None of the new keys -- nor an identity map -- appears anywhere in the document.
+    assert not (set(_all_keys(body)) & (NEW_RELATION_KEYS | {"elements"}))
+
+
+# --- v2, refuter D-10: the route degrades instead of raising -----------------
+
+
+def test_route_degrades_to_an_empty_map_if_the_service_omits_elements(
+    app, db_session, make_org, client, login_as, monkeypatch
+):
+    """Every return path of ``cross_layer_impact`` sets ``elements`` today; if a
+    future early return forgets, the route answers with an empty map (what
+    ``reasons`` already does) rather than a 500 on a missing key."""
+    from app.modules.intelligence.services import query_service
+
+    org = make_org("map-route-degrade")
+    user = _user(db_session, org.id)
+    a = _element(db_session, org.id, "Alpha")
+    a_id = a.id
+    db_session.commit()
+
+    def _without_elements(*args, **kwargs):
+        return {
+            "rows": [],
+            "summary": {"explicit_count": 0, "derived_count": 0, "stale_count": 0,
+                        "derivation_state": "not_computed", "latency_ms": 0.0},
+            "reasons": [],
+        }
+
+    monkeypatch.setattr(
+        query_service.IntelligenceQueryService, "cross_layer_impact", staticmethod(_without_elements)
+    )
+    login_as(client, user)
+    resp = client.get(f"/api/v1/intelligence/impact/{a_id}")
+    assert resp.status_code == 200
+    assert resp.get_json()["data"]["elements"] == {}

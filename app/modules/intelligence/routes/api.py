@@ -327,7 +327,7 @@ def cross_layer_impact(element_id: int):
             "rows": result["rows"],
             "summary": result["summary"],
             "reasons": result.get("reasons") or [],
-            "elements": result["elements"],
+            "elements": result.get("elements") or {},
         }
     )
 
