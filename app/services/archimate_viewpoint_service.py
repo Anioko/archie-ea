@@ -297,7 +297,66 @@ def get_viewpoint_counts(solution_id: int) -> dict:
         return {}
 
 
-def get_viewpoint_data(viewpoint_id: str, solution_id: int = None) -> dict:
+# ── Dashboard layer → ArchiMate element type map ────────────────────────────
+# Single system of record for "which element types make up layer X" (ADR
+# 0008 -- "one accessor per concept"). Previously duplicated inside
+# app/modules/dashboard/v2/routes/dashboard_views.py as a local _LAYER_TYPES
+# dict; that copy is now an import of this one so the dashboard card's count
+# and the composer's layer filter can never drift apart. Six canonical
+# dashboard layers -- ArchiMate 3.2 folds Physical (Equipment/Facility/
+# Material) into Technology, so there is no separate 'physical' key here even
+# though STANDARD_VIEWPOINTS['layered']['layer_order'] has a seventh entry
+# for it; a composer 'layer=technology' filter must include those types to
+# match what the dashboard card promised.
+#
+# There is a third, differently-shaped map in app/models/archimate_core.py
+# (_ELEMENT_TYPE_LAYER, used for relationship-validity checks) -- left alone
+# deliberately; reconciling all three is tracked as a follow-up, not part of
+# this change.
+LAYER_TYPES = {
+    "motivation": {"stakeholder", "driver", "assessment", "goal", "outcome",
+                   "principle", "requirement", "constraint", "meaning", "value"},
+    "strategy": {"resource", "capability", "valuestream", "courseofaction"},
+    "business": {"businessactor", "businessrole", "businesscollaboration",
+                 "businessinterface", "businessprocess", "businessfunction",
+                 "businessinteraction", "businessevent", "businessservice",
+                 "businessobject", "contract", "representation", "product"},
+    "application": {"applicationcomponent", "applicationcollaboration",
+                    "applicationinterface", "applicationfunction",
+                    "applicationinteraction", "applicationprocess",
+                    "applicationevent", "applicationservice", "dataobject"},
+    "technology": {"node", "device", "systemsoftware", "technologycollaboration",
+                   "technologyinterface", "path", "communicationnetwork",
+                   "technologyfunction", "technologyprocess", "technologyinteraction",
+                   "technologyevent", "technologyservice", "artifact",
+                   "equipment", "facility", "distributionnetwork", "material"},
+    "implementation": {"workpackage", "deliverable", "implementationevent",
+                       "plateau", "gap"},
+}
+
+# Reverse index: lowercased element type -> layer key. Used both here (to
+# resolve a `layer` filter to a set of ArchiMateElement.type values) and by
+# dashboard_views.py (to resolve a type to a layer for the count).
+LAYER_TYPE_TO_LAYER = {t: layer for layer, ts in LAYER_TYPES.items() for t in ts}
+
+# The set of layer keys a caller is allowed to filter by (composer `layer=`
+# query param). Untrusted input must be allowlisted against exactly this set
+# -- an unrecognised value is a 400, never a silent "no filter".
+VALID_LAYER_KEYS = frozenset(LAYER_TYPES.keys())
+
+
+def _types_for_layer(layer: str) -> list:
+    """Return the ArchiMate element `type` strings (as actually stored --
+    original casing varies, so callers should match case-insensitively) that
+    belong to the given dashboard layer key.
+
+    Returns an empty list for an unknown layer; callers are expected to have
+    already validated `layer` against VALID_LAYER_KEYS before calling this.
+    """
+    return sorted(LAYER_TYPES.get(layer, set()))
+
+
+def get_viewpoint_data(viewpoint_id: str, solution_id: int = None, layer: str = None) -> dict:
     """Return elements filtered for this viewpoint, grouped for layout.
 
     Enforces 4 invariants:
@@ -316,6 +375,16 @@ def get_viewpoint_data(viewpoint_id: str, solution_id: int = None) -> dict:
     allowed_types = vp.get('element_types', [])
     allowed_rels = set(vp.get('allowed_relationships', []))
     enterprise_scope = bool(vp.get('enterprise_scope'))
+
+    # `layer` narrows by ArchiMateElement.type via the shared LAYER_TYPES map
+    # (not the unreliable .layer column -- see module docstring above).
+    # Callers (the API route) are responsible for 400ing an unknown value
+    # before reaching here; an unrecognised value falls through to
+    # `layer_type_names = []`, which -- to fail closed rather than silently
+    # showing everything -- is treated as "match nothing", not "no filter".
+    layer_type_names = None
+    if layer:
+        layer_type_names = [t.lower() for t in _types_for_layer(layer)]
 
     # ── Invariant 1: Scope required ──
     if not solution_id and not enterprise_scope:
@@ -364,6 +433,9 @@ def get_viewpoint_data(viewpoint_id: str, solution_id: int = None) -> dict:
             query = ArchiMateElement.query
             if allowed_types:
                 query = query.filter(ArchiMateElement.type.in_(allowed_types))
+            if layer_type_names is not None:
+                from app import db as _db
+                query = query.filter(_db.func.lower(ArchiMateElement.type).in_(layer_type_names))
             elements = query.limit(500).all()
             element_ids = [e.id for e in elements]
         else:
@@ -395,6 +467,9 @@ def get_viewpoint_data(viewpoint_id: str, solution_id: int = None) -> dict:
             query = ArchiMateElement.query.filter(ArchiMateElement.id.in_(element_ids))
             if allowed_types:
                 query = query.filter(ArchiMateElement.type.in_(allowed_types))
+            if layer_type_names is not None:
+                from app import db as _db
+                query = query.filter(_db.func.lower(ArchiMateElement.type).in_(layer_type_names))
             elements = query.limit(500).all()
         elif not is_enterprise_wide:
             elements = []
@@ -496,8 +571,8 @@ def get_viewpoint_data(viewpoint_id: str, solution_id: int = None) -> dict:
     # Group by layer for the layered viewpoint
     grouped: dict = {}
     layer_order = vp.get('layer_order', layers or ['business'])
-    for layer in layer_order:
-        grouped[layer] = [el for el in serialised if el['layer'] == layer]
+    for layer_key in layer_order:
+        grouped[layer_key] = [el for el in serialised if el['layer'] == layer_key]
     for el in serialised:
         if el['layer'] not in grouped:
             grouped[el['layer']] = grouped.get(el['layer'], []) + [el]

@@ -159,6 +159,7 @@
     <div class="flex items-center gap-1 rounded-lg border border-border bg-muted/50 p-1 w-fit">
         {% for role_key, role_label in [('overview', 'Overview'), ('cto', 'CTO'), ('cfo', 'CFO'), ('motivation', 'Motivation'), ('strategy', 'Strategy'), ('business', 'Business'), ('application', 'Application'), ('technology', 'Technology'), ('implementation', 'Implementation & Migration')] %}
         <button type="button" @click="activeRole = '{{ role_key }}'"
+                data-testid="layer-tab-{{ role_key }}"
                 :class="activeRole === '{{ role_key }}' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'"
                 class="px-3 py-1.5 rounded-md text-xs font-medium transition-all">
             {{ role_label }}
@@ -616,7 +617,7 @@
                     </div>
                 </div>
                 <div class="mt-5 flex flex-wrap gap-2">
-                    <a href="/archimate/composer" class="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90">
+                    <a :href="'/archimate/composer?viewpoint=layered&layer=' + activeRole" class="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90">
                         Open in composer <i data-lucide="pen-tool" class="h-3.5 w-3.5"></i>
                     </a>
                     <a href="/architecture/dashboard" class="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium hover:bg-muted">

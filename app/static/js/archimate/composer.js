@@ -2545,7 +2545,8 @@ function composerApp() {
             /* ── Check for initial viewpoint from URL ── */
             let initialVp = (window.__COMPOSER_CONFIG__ || {}).initialViewpoint;
             if (initialVp) {
-                this.selectViewpoint(initialVp, initialVp);
+                let initialLayer = (window.__COMPOSER_CONFIG__ || {}).initialLayer;
+                this.selectViewpoint(initialVp, initialVp, initialLayer);
                 return;
             }
 

@@ -338,3 +338,328 @@ def test_layered_viewpoint_with_no_org_context_returns_scope_required(app, db_se
         f"unscoped query that would return every tenant's rows, got {result}"
     )
     assert result["elements"] == []
+
+
+# ── dashboard-composer-layer-links: layer= filter ────────────────────────────
+# Founder-reported: the Technology tab's "32 elements" card promised elements
+# that the "Open in composer" link never actually filtered to -- see
+# docs/buckets/dashboard-composer-layer-links/tasks/01-layer-scoped-composer-link.md.
+
+
+def test_dashboard_layer_tab_links_carry_correct_layer_param(app, db_session, make_org, login_as):
+    """Each of the six dashboard layer tabs' 'Open in composer' anchor must be
+    Alpine-bound to that tab's own layer key, not the static, unscoped href
+    the founder reported. Asserts the Alpine binding expression itself
+    (rendered once, evaluated per-tab client-side by activeRole), matching
+    how test_composer_sidebar_link_carries_viewpoint_query_param above checks
+    the sidebar's real rendered HTML rather than a source file.
+    """
+    import uuid
+
+    from app.models.application_portfolio import ApplicationComponent
+    from app.models.user import User
+
+    org = make_org("layer-tab-links")
+    suffix = uuid.uuid4().hex[:8]
+    user = User(
+        email=f"layer-tab-links-{suffix}@example.com",
+        first_name="Layer",
+        last_name="Tabs",
+        organization_id=org.id,
+        confirmed=True,
+        enterprise_role="enterprise_architect",
+    )
+    db_session.add(user)
+    # The per-layer panel only renders in dashboard_mode == 'data'
+    # (dashboard_views.py:606-608: "guided" for applications_count < 5 and
+    # zero capability mappings) -- seed 5 applications so this org reaches
+    # 'data' mode and the layer tabs actually render.
+    db_session.add_all([
+        ApplicationComponent(name=f"App {i}", organization_id=org.id)
+        for i in range(5)
+    ])
+    db_session.flush()
+
+    client = app.test_client()
+    login_as(client, user)
+
+    resp = client.get("/dashboard/overview")
+    assert resp.status_code == 200, resp.get_data(as_text=True)[:2000]
+    html = resp.get_data(as_text=True)
+
+    assert (
+        ":href=\"'/archimate/composer?viewpoint=layered&layer=' + activeRole\""
+        in html
+    ), (
+        "the per-layer 'Open in composer' link must be dynamically bound to "
+        "activeRole so each of the six tabs opens its own layer -- static "
+        "href found instead"
+    )
+
+    for layer_key in ("motivation", "strategy", "business", "application",
+                       "technology", "implementation"):
+        assert f"{layer_key}:" in html, (
+            f"expected the Alpine _layers object to declare a '{layer_key}' "
+            f"key (drives activeRole matching for that tab)"
+        )
+
+
+def test_layer_filtered_viewpoint_returns_only_that_layers_element_types(
+    app, db_session, make_org, tenant_ctx
+):
+    """A layer= filter on the 'layered' viewpoint must return only elements
+    whose type belongs to that layer (via the shared LAYER_TYPES map), and no
+    relationship with an endpoint outside that set.
+    """
+    from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship
+    from app.services.archimate_viewpoint_service import get_viewpoint_data
+
+    org = make_org("layer-filter-types")
+    tech_node = ArchiMateElement(name="Tech Node", type="Node", layer="technology",
+                                  organization_id=org.id)
+    app_component = ArchiMateElement(name="App Component", type="ApplicationComponent",
+                                      layer="application", organization_id=org.id)
+    db_session.add_all([tech_node, app_component])
+    db_session.flush()
+
+    cross_rel = ArchiMateRelationship(
+        source_id=tech_node.id, target_id=app_component.id, type="serving",
+        organization_id=org.id,
+    )
+    db_session.add(cross_rel)
+    db_session.flush()
+
+    with tenant_ctx(org.id):
+        result = get_viewpoint_data("layered", solution_id=None, layer="technology")
+
+    returned_ids = {e["id"] for e in result["elements"]}
+    assert returned_ids == {tech_node.id}, (
+        f"layer='technology' must return only the technology-typed element, "
+        f"got {result['elements']}"
+    )
+    assert result["total"] == 1
+
+    # The relationship has one endpoint (app_component) outside the filtered
+    # set, so Invariant 4 (no dangling endpoints) must hide it entirely.
+    assert result["relationships"] == [], (
+        f"a relationship with an endpoint outside the layer filter must not "
+        f"be returned: {result['relationships']}"
+    )
+
+
+def test_layer_filter_count_matches_dashboard_card_count_including_physical_fold(
+    app, db_session, make_org, tenant_ctx
+):
+    """The highest-value assertion in this bucket: the composer's
+    layer='technology' element count must equal the dashboard card's own
+    layer_breakdown['technology'] for the same tenant -- including an
+    Equipment/Facility/Material row, pinning the ArchiMate 3.2
+    physical-folds-into-technology behaviour on both sides at once, via the
+    now-single shared LAYER_TYPES map.
+    """
+    from app.models.archimate_core import ArchiMateElement
+    from app.services.archimate_viewpoint_service import get_viewpoint_data
+
+    org = make_org("layer-count-agreement")
+    elements = [
+        ArchiMateElement(name="Node 1", type="Node", layer="technology", organization_id=org.id),
+        ArchiMateElement(name="Device 1", type="Device", layer="technology", organization_id=org.id),
+        # Physical sub-type -- ArchiMate 3.2 folds this into Technology, and
+        # the dashboard card's own count already reflects that.
+        ArchiMateElement(name="Rack 1", type="Equipment", layer="technology", organization_id=org.id),
+        # A different layer, to prove it is excluded from the technology count.
+        ArchiMateElement(name="App 1", type="ApplicationComponent", layer="application",
+                          organization_id=org.id),
+    ]
+    db_session.add_all(elements)
+    db_session.flush()
+
+    with tenant_ctx(org.id):
+        composer_result = get_viewpoint_data("layered", solution_id=None, layer="technology")
+
+    # Reproduce the dashboard route's own count logic against the same map,
+    # rather than hitting the full /dashboard/overview HTTP route (which
+    # pulls in unrelated nav/feature-section rendering) -- both read the same
+    # LAYER_TYPES/LAYER_TYPE_TO_LAYER import, so this proves the shared-map
+    # property directly.
+    from app import db
+    from app.services.archimate_viewpoint_service import LAYER_TYPE_TO_LAYER
+
+    with tenant_ctx(org.id):
+        rows = (
+            db.session.query(ArchiMateElement.type, db.func.count(ArchiMateElement.id))
+            .group_by(ArchiMateElement.type)
+            .all()
+        )
+    card_technology_count = sum(
+        count for elem_type, count in rows
+        if LAYER_TYPE_TO_LAYER.get((elem_type or "").lower()) == "technology"
+    )
+
+    assert composer_result["total"] == card_technology_count == 3, (
+        f"composer layer='technology' total={composer_result['total']}, "
+        f"dashboard card technology count={card_technology_count} -- these "
+        f"must agree, including the Equipment row folded into technology"
+    )
+
+
+def test_layer_param_is_noop_when_absent_for_solution_scoped_and_other_viewpoints(
+    app, db_session, make_org, tenant_ctx
+):
+    """Regression: the optional `layer` param must not change behaviour for
+    solution-scoped viewpoints or non-'layered' viewpoints when omitted.
+    """
+    from app.models.archimate_core import ArchiMateElement
+    from app.services.archimate_viewpoint_service import get_viewpoint_data
+
+    org = make_org("layer-noop-regression")
+    element = ArchiMateElement(name="Solo", type="ApplicationComponent",
+                                layer="application", organization_id=org.id)
+    db_session.add(element)
+    db_session.flush()
+
+    with tenant_ctx(org.id):
+        without_layer = get_viewpoint_data("layered", solution_id=None)
+        with_none_layer = get_viewpoint_data("layered", solution_id=None, layer=None)
+
+    assert without_layer == with_none_layer
+
+    with tenant_ctx(org.id):
+        stakeholder_result = get_viewpoint_data("stakeholder", solution_id=None, layer="technology")
+
+    assert stakeholder_result.get("scope_required") is True, (
+        "a solution-scoped viewpoint must still require solution_id "
+        "regardless of an incidental layer= param"
+    )
+
+
+def test_layer_filter_unknown_value_is_rejected_by_api_route(app, db_session, make_org, login_as):
+    """The API route must 400 an unrecognised layer value, never silently
+    fall back to 'no filter applied'.
+    """
+    import uuid
+
+    from app.models.user import User
+
+    org = make_org("layer-unknown-400")
+    suffix = uuid.uuid4().hex[:8]
+    user = User(
+        email=f"layer-unknown-{suffix}@example.com",
+        first_name="Layer",
+        last_name="Unknown",
+        organization_id=org.id,
+        confirmed=True,
+        enterprise_role="enterprise_architect",
+    )
+    db_session.add(user)
+    db_session.flush()
+
+    client = app.test_client()
+    login_as(client, user)
+
+    resp = client.get("/archimate/viewpoints-api/layered/data?layer=not_a_real_layer")
+    assert resp.status_code == 400, resp.get_data(as_text=True)[:500]
+
+
+def test_layer_filter_cross_tenant_isolation(app, db_session, make_org, tenant_ctx):
+    """The layer filter is an additional narrowing predicate on the already
+    tenant-scoped query -- confirm it cannot leak another org's elements of
+    the same type/layer.
+    """
+    from app.models.archimate_core import ArchiMateElement
+    from app.services.archimate_viewpoint_service import get_viewpoint_data
+
+    org_a = make_org("layer-tenant-a")
+    org_b = make_org("layer-tenant-b")
+
+    b_elements = [
+        ArchiMateElement(name=f"B Node {i}", type="Node", layer="technology",
+                          organization_id=org_b.id)
+        for i in range(4)
+    ]
+    db_session.add_all(b_elements)
+    a_element = ArchiMateElement(name="A Node", type="Node", layer="technology",
+                                  organization_id=org_a.id)
+    db_session.add(a_element)
+    db_session.flush()
+
+    with tenant_ctx(org_a.id):
+        result_a = get_viewpoint_data("layered", solution_id=None, layer="technology")
+
+    returned_ids = {e["id"] for e in result_a["elements"]}
+    b_ids = {e.id for e in b_elements}
+
+    assert returned_ids == {a_element.id}
+    assert not (returned_ids & b_ids), (
+        "CROSS-TENANT LEAK: org A's layer-filtered viewpoint returned org "
+        f"B's element ids {returned_ids & b_ids}"
+    )
+
+
+def test_health_scorecard_agrees_with_dashboard_card_and_composer_on_technology_count(
+    app, db_session, make_org, tenant_ctx
+):
+    """Refuter-found P1: `health_scorecard` (dashboard_views.py) used to
+    define its own second, divergent type->layer map whose 'technology' list
+    was missing Equipment/Facility/DistributionNetwork/Material -- so an
+    Equipment element counted in the dashboard card and the layer-filtered
+    composer, but fell into the health scorecard's 'other' bucket instead of
+    'technology'. Three surfaces answering one question with two different
+    numbers -- the exact ADR-0008 class of defect this bucket exists to
+    close. This test seeds an Equipment row (one of the four previously-
+    divergent types) and asserts all three surfaces agree.
+    """
+    from app.modules.dashboard.v2.routes.dashboard_views import (
+        _assemble_health_scorecard_metrics,
+    )
+    from app import db
+    from app.models.archimate_core import ArchiMateElement
+    from app.services.archimate_viewpoint_service import (
+        LAYER_TYPE_TO_LAYER,
+        get_viewpoint_data,
+    )
+
+    org = make_org("health-scorecard-layer-agreement")
+    elements = [
+        ArchiMateElement(name="Node 1", type="Node", layer="technology", organization_id=org.id),
+        # Previously divergent: missing from health_scorecard's own local
+        # technology list (equipment/facility/distributionnetwork/material),
+        # but present in the shared LAYER_TYPES map.
+        ArchiMateElement(name="Rack 1", type="Equipment", layer="technology", organization_id=org.id),
+        ArchiMateElement(name="App 1", type="ApplicationComponent", layer="application",
+                          organization_id=org.id),
+    ]
+    db_session.add_all(elements)
+    db_session.flush()
+
+    with tenant_ctx(org.id):
+        composer_result = get_viewpoint_data("layered", solution_id=None, layer="technology")
+        scorecard_metrics = _assemble_health_scorecard_metrics()
+
+        rows = (
+            db.session.query(ArchiMateElement.type, db.func.count(ArchiMateElement.id))
+            .group_by(ArchiMateElement.type)
+            .all()
+        )
+    card_technology_count = sum(
+        count for elem_type, count in rows
+        if LAYER_TYPE_TO_LAYER.get((elem_type or "").lower()) == "technology"
+    )
+
+    scorecard_technology_count = scorecard_metrics["archimate_by_layer"]["technology"]
+
+    assert (
+        composer_result["total"]
+        == card_technology_count
+        == scorecard_technology_count
+        == 2
+    ), (
+        f"composer layer='technology' total={composer_result['total']}, "
+        f"dashboard card technology count={card_technology_count}, "
+        f"health scorecard technology count={scorecard_technology_count} -- "
+        f"all three must agree, including the Equipment row"
+    )
+    assert scorecard_metrics["archimate_by_layer"].get("other", 0) == 0, (
+        "Equipment must be counted as technology, not fall through to "
+        f"'other': {scorecard_metrics['archimate_by_layer']}"
+    )
