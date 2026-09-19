@@ -649,3 +649,60 @@ def test_duplicate_component_pointer_resolves_deterministically_not_500(app, db_
         )
 
     assert result["rows"]
+
+
+
+# --- T-004a: the two fields the derived-row serialiser used to drop ----------
+
+
+def test_derived_row_carries_derived_id_and_engine_version(app, db_session, make_org):
+    """T-004a: ``relation.derived_id`` / ``relation.engine_version`` come from
+    the derived-fact store's own row, so a caller can address
+    ``GET /api/v1/intelligence/derived/<derived_id>`` for the row it is
+    looking at. (Fuller coverage of the identity map is in
+    ``test_query_service_elements_map.py``.)
+    """
+    from app.modules.intelligence.services.query_service import IntelligenceQueryService
+
+    org = make_org("qs-derived-id")
+    a = _element(db_session, org.id, "A")
+    c = _element(db_session, org.id, "C")
+    fact = _derived(db_session, org.id, a, c, rule_id="RULE-9", depth=2, chain=[21, 22])
+    db_session.commit()
+
+    with app.test_request_context("/"):
+        from flask import g
+
+        g.current_org_id = org.id
+        result = IntelligenceQueryService.cross_layer_impact(
+            a.id, include_derived=True, max_depth=3, with_owner=False
+        )
+
+    derived = [r for r in result["rows"] if r["relation"]["kind"] == "derived"]
+    assert derived
+    for row in derived:
+        assert row["relation"]["derived_id"] == fact.id
+        assert row["relation"]["engine_version"] == "v1"
+
+
+def test_explicit_row_carries_null_derived_id_and_engine_version(app, db_session, make_org):
+    from app.modules.intelligence.services.query_service import IntelligenceQueryService
+
+    org = make_org("qs-explicit-null-derived")
+    a = _element(db_session, org.id, "A")
+    b = _element(db_session, org.id, "B")
+    _relationship(db_session, org.id, a, b)
+    db_session.commit()
+
+    with app.test_request_context("/"):
+        from flask import g
+
+        g.current_org_id = org.id
+        result = IntelligenceQueryService.cross_layer_impact(
+            a.id, include_derived=False, with_owner=False
+        )
+
+    assert result["rows"]
+    for row in result["rows"]:
+        assert row["relation"]["derived_id"] is None
+        assert row["relation"]["engine_version"] is None

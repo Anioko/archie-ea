@@ -10,12 +10,13 @@ particular) this module implements.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from app.extensions import db
 from app.middleware.tenant_context import current_org_id
 from app.modules.intelligence.services.derived_facts import list_derived_facts
 from app.modules.intelligence.services.latency_probe import record_query_latency
+from app.modules.intelligence.services.plain_terms import plain_terms_sentence
 from app.modules.intelligence.services.reason_codes import validate_reason_code
 
 VALID_DIRECTIONS = {"downstream", "upstream", "both"}
@@ -153,6 +154,106 @@ def _resolve_owners_batch(
     return results
 
 
+def _resolve_elements_batch(element_ids: Iterable[int], org_id: Optional[int]) -> Dict[str, Dict[str, Any]]:
+    """T-004a: the element identity map -- ``{str(id): {id, name, type, layer}}``.
+
+    ONE batched ``select`` over ``ArchiMateElement`` for every id in the WHOLE
+    result set (same shape as ``_resolve_owners_batch``: collect first, then
+    resolve in a constant number of queries -- never one per row).
+
+    The four-key ceiling is enforced at the query, not only when the dict is
+    built: only ``id``, ``name``, ``type`` and ``layer`` are selected, so no
+    other column of the element (description, documentation, properties, the
+    strategic / cost / scoring columns) is ever read, let alone serialised.
+    SEC-02 keeps the projection on this path narrow so a later MCP twin
+    cannot leak; widening it here would widen it there.
+
+    Tenancy is two layers. ``ArchiMateElement`` carries ``TenantMixin``, so the
+    ORM tenant-isolation listener fences the select inside a request. The
+    explicit ``organization_id`` predicate below is defence in depth, exactly
+    as in ``derived_facts.list_derived_facts``: it is what keeps this function
+    correct when it is called with no ambient request context (a job, a CLI
+    command, a test looping tenants in one session), where the listener would
+    no-op entirely.
+
+    An id that does not resolve inside ``org_id`` -- another tenant's element,
+    a soft-deleted element, an element that no longer exists -- is simply
+    ABSENT from the result. It is never present with a null name, a
+    placeholder, or a name found anywhere else. ``org_id`` of ``None`` yields
+    an empty map (there is no tenant whose elements could be named).
+    """
+    from app.models import ArchiMateElement
+
+    distinct_ids = sorted({eid for eid in element_ids if eid is not None})
+    if not distinct_ids or org_id is None:
+        return {}
+
+    stmt = db.select(
+        ArchiMateElement.id,
+        ArchiMateElement.name,
+        ArchiMateElement.type,
+        ArchiMateElement.layer,
+    ).where(
+        ArchiMateElement.id.in_(distinct_ids),
+        ArchiMateElement.organization_id == org_id,
+    )
+
+    elements: Dict[str, Dict[str, Any]] = {}
+    for element_id, name, element_type, layer in db.session.execute(stmt).all():
+        if name is None:
+            # Absence is the honest answer; a null-named entry is not.
+            continue
+        elements[str(element_id)] = {
+            "id": element_id,
+            "name": name,
+            "type": element_type,
+            # ``layer`` comes back as a case-insensitive ``str`` subclass
+            # (canonical lower case); hand callers a plain ``str``.
+            "layer": str(layer) if layer is not None else None,
+        }
+    return elements
+
+
+def _element_ids_in_rows(rows: List[Dict[str, Any]]) -> List[int]:
+    """Every element id a row can name: its ``element_id`` and each id in its
+    ``relation.chain_elements``. These -- and only these -- are the keys of the
+    identity map.
+    """
+    ids: List[int] = []
+    for row in rows:
+        ids.append(row["element_id"])
+        ids.extend(row["relation"].get("chain_elements") or [])
+    return ids
+
+
+def _name_in(elements: Dict[str, Dict[str, Any]], element_id: Optional[int]) -> Optional[str]:
+    entry = elements.get(str(element_id))
+    return entry["name"] if entry is not None else None
+
+
+def _attach_plain_terms(rows: List[Dict[str, Any]], elements: Dict[str, Dict[str, Any]]) -> None:
+    """Fill ``relation.plain_terms`` on every DERIVED row (explicit rows keep
+    ``None``). The names come from the identity map built for this same
+    response; ``plain_terms_sentence`` returns ``None`` when either is absent.
+
+    ``{A}`` is the derived fact's target (the element that depends) and
+    ``{B}`` its source (what it depends on), independent of which end the
+    caller started from -- so one derived fact reads the same sentence from
+    every surface and every query direction.
+    """
+    for row in rows:
+        relation = row["relation"]
+        if relation["kind"] != "derived":
+            continue
+        source_id, target_id = row["_endpoints"]
+        relation["plain_terms"] = plain_terms_sentence(
+            dependent_name=_name_in(elements, target_id),
+            dependency_name=_name_in(elements, source_id),
+            depth=relation["depth"],
+            confidence=relation["confidence"],
+        )
+
+
 def _explicit_row(rel, depth: int, chain: List[int], chain_elements: List[int], element_id: int) -> Dict[str, Any]:
     return {
         "element_id": element_id,
@@ -168,6 +269,11 @@ def _explicit_row(rel, depth: int, chain: List[int], chain_elements: List[int], 
             "provenance": "explicit",
             "computed_at": None,
             "stale": False,
+            # T-004a: derived-fact-only fields; an explicit row has no
+            # derived fact, so all three are null (never a placeholder).
+            "derived_id": None,
+            "engine_version": None,
+            "plain_terms": None,
         },
     }
 
@@ -257,6 +363,10 @@ def _derived_row(fact: Dict[str, Any], root_id: int) -> Dict[str, Any]:
         element_id = fact["source_element_id"]
     return {
         "element_id": element_id,
+        # Internal join key (popped before return, like the explicit rows'):
+        # the fact's own endpoints, so ``_attach_plain_terms`` can name both
+        # ends once the identity map exists.
+        "_endpoints": (fact["source_element_id"], fact["target_element_id"]),
         "relation": {
             "kind": "derived",
             "type": fact["derived_type"],
@@ -268,6 +378,12 @@ def _derived_row(fact: Dict[str, Any], root_id: int) -> Dict[str, Any]:
             "provenance": fact["provenance"],
             "computed_at": fact["computed_at"],
             "stale": fact["stale"],
+            # T-004a: the two fields this serialiser used to drop. Both are
+            # already on the dict ``list_derived_facts`` returns.
+            "derived_id": fact["id"],
+            "engine_version": fact["engine_version"],
+            # Filled by ``_attach_plain_terms`` once the identity map exists.
+            "plain_terms": None,
         },
         "reason": fact.get("reason"),
     }
@@ -315,6 +431,10 @@ class IntelligenceQueryService:
             scope.organization_id = org_id
             scope.depth = max_depth
             scope.include_derived = include_derived
+
+            # T-004a: the identity map. Empty on every branch that returns no
+            # rows; filled below from the same tenant-fenced batched select.
+            elements: Dict[str, Dict[str, Any]] = {}
 
             if org_id is None:
                 rows: List[Dict[str, Any]] = []
@@ -382,6 +502,13 @@ class IntelligenceQueryService:
 
                     rows = explicit_rows + derived_rows
 
+                    # T-004a: resolve every element id the result set can
+                    # name in ONE batched select, INSIDE the latency scope so
+                    # ``summary.latency_ms`` and the histogram measure it,
+                    # then let the derived rows name both of their ends.
+                    elements = _resolve_elements_batch(_element_ids_in_rows(rows), org_id)
+                    _attach_plain_terms(rows, elements)
+
                     # M7 fix: batch owner resolution instead of N+1 --
                     # collect every distinct element id needing a lookup
                     # across the WHOLE result set first, then resolve in a
@@ -430,7 +557,7 @@ class IntelligenceQueryService:
                     reasons = []
 
         summary["latency_ms"] = scope.latency_ms
-        return {"rows": rows, "summary": summary, "reasons": reasons}
+        return {"rows": rows, "summary": summary, "reasons": reasons, "elements": elements}
 
 
 __all__ = ["IntelligenceQueryService"]

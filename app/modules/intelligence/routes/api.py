@@ -323,7 +323,12 @@ def cross_layer_impact(element_id: int):
         return not_found_response("Element")
 
     return success_response(
-        {"rows": result["rows"], "summary": result["summary"], "reasons": result.get("reasons") or []}
+        {
+            "rows": result["rows"],
+            "summary": result["summary"],
+            "reasons": result.get("reasons") or [],
+            "elements": result["elements"],
+        }
     )
 
 
