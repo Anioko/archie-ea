@@ -576,10 +576,15 @@ def test_identity_lookup_is_tenant_correct_with_no_ambient_request_context(app, 
 
 
 def test_identity_lookup_holds_when_the_ambient_tenant_diverges(app, db_session, make_org):
-    """Same contract, other divergence: the ambient tenant (what the listener
-    filters by) is org B while the caller resolves on behalf of org A. Neither
-    org's element may come back under the wrong tenant -- and org B's name in
-    particular must not surface for a caller acting for org A.
+    """Same contract, other divergence: the ambient tenant (what the ORM
+    listener filters by) is org B while the caller resolves on behalf of org A.
+    Org B's element -- id and name -- must not come back to a caller acting for
+    org A.
+
+    The assertion is deliberately only about org B's element. What a caller
+    acting for org A DOES get back in this state depends on the listener as
+    well (with the listener active the two filters intersect and nothing
+    comes back), and that is not what the explicit predicate defends.
 
     Same honesty as above: a direct call, not a scenario any shipped path
     produces (the SEC-09 owner test in ``test_query_service.py`` is the
@@ -593,13 +598,14 @@ def test_identity_lookup_holds_when_the_ambient_tenant_diverges(app, db_session,
     org_b = make_org("map-diverge-b")
     mine = _element(db_session, org_a.id, "Mine")
     theirs = _element(db_session, org_b.id, FOREIGN_NAME)
+    org_a_id, org_b_id, mine_id, theirs_id = org_a.id, org_b.id, mine.id, theirs.id
     db_session.commit()
 
     with app.test_request_context("/"):
-        g.current_org_id = org_b.id
-        got = _resolve_elements_batch([mine.id, theirs.id], org_a.id)
+        g.current_org_id = org_b_id
+        got = _resolve_elements_batch([mine_id, theirs_id], org_a_id)
 
-    assert got == {}
+    assert str(theirs_id) not in got
     assert FOREIGN_NAME not in str(got)
 
 
