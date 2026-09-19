@@ -9,10 +9,12 @@ test modules pre-date that and build a session by writing ``_user_id``/
 would otherwise reject as an unregistered session on every request.
 
 ``mint_test_sid`` mints the same kind of registry row the real login path
-does, so those hand-rolled helpers keep working. It must be called inside an
-open app/db context (the same one ``client.session_transaction()`` is used
-in), before opening the session transaction, and its result written into
-``sess["_sid"]`` inside that transaction.
+does, so those hand-rolled helpers keep working. It needs an open app/db
+context, or an ``app=`` to open one, and its result must be written into
+``sess["_sid"]`` inside the ``client.session_transaction()`` block. It never
+returns ``None``: a login that cannot be registered is an error, because an
+unregistered session is rejected as revoked on the first request and the
+failure would otherwise surface far from its cause.
 """
 
 import secrets
@@ -31,28 +33,42 @@ def _do_mint(user_id, organization_id):
 def mint_test_sid(user_id, organization_id=None, app=None):
     """Insert a ``user_sessions`` row for ``user_id`` and return its sid.
 
-    Best-effort: returns ``None`` (never raises) if it cannot run, so a
-    caller with no DB/app context available degrades to the pre-fix
-    behaviour rather than erroring the whole test.
+    Raises ``RuntimeError`` when the row cannot be written: either no app
+    context is open and no ``app`` was passed, or the insert itself failed.
+    A missing sid is never returned, because a session without one is
+    rejected by the fail-closed revocation check on its first request.
 
-    ``app``: pass this when the caller may run with no app context already
-    active -- notably a worker thread spawned by ``ThreadPoolExecutor`` in a
-    concurrency test, where Flask's context is thread-local and simply isn't
-    there. A missing sid there isn't a silent degrade: it makes every
-    request in that thread fail the fail-closed revocation check this fix
-    added, which is a false failure in the test, not a real one. Flask-
-    SQLAlchemy's session factory is patched process-wide by the ``db_session``
-    fixture, so a session opened in a fresh app context here still resolves
-    to the same wrapped, rolled-back connection.
+    ``app``: pass this whenever the caller may run with no app context open
+    -- a test that logs in after its ``with app.app_context():`` blocks have
+    closed (the test client's own ``client.application`` is always at hand),
+    or a worker thread spawned by ``ThreadPoolExecutor`` in a concurrency
+    test, where Flask's context is thread-local and simply isn't there.
+    Flask-SQLAlchemy's session factory is patched process-wide by the
+    ``db_session`` fixture, so a session opened in a fresh app context here
+    still resolves to the same wrapped, rolled-back connection.
     """
     from flask import has_app_context
 
+    if has_app_context():
+        context = None
+    elif app is not None:
+        context = app.app_context()
+    else:
+        raise RuntimeError(
+            "mint_test_sid(user_id=%r) was called with no app context open and "
+            "no app= argument, so no session row can be registered and the "
+            "login would be rejected as revoked. Pass app=client.application "
+            "(or app=app) when logging in outside a `with app.app_context():` "
+            "block." % (user_id,)
+        )
+
     try:
-        if has_app_context():
+        if context is None:
             return _do_mint(user_id, organization_id)
-        if app is not None:
-            with app.app_context():
-                return _do_mint(user_id, organization_id)
-        return None
-    except Exception:
-        return None
+        with context:
+            return _do_mint(user_id, organization_id)
+    except Exception as exc:
+        raise RuntimeError(
+            "mint_test_sid could not register a session row for user_id=%r: "
+            "%s: %s" % (user_id, type(exc).__name__, exc)
+        ) from exc
