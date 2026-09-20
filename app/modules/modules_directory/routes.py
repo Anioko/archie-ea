@@ -53,6 +53,9 @@ def _link_visible(endpoint: str, requires: str | None = None) -> bool:
     Errors (platform_admin) sitting in a zone most roles can see. Checking only one missed the other:
     a search for "error" offered `error_events.errors_dashboard` to any signed-in role and hard-403'd
     on click, because `requires="platform_admin"` was never consulted here, only by get_sidebar_zones().
+
+    `link_requires_satisfied()` (role_access.py) is the single shared predicate
+    `get_sidebar_zones()` itself uses, so this page and the sidebar never disagree.
     """
     if endpoint in _NOT_RENDERED:
         return False
@@ -140,7 +143,8 @@ _MORE_TOOLS = [
     ("Integration Workflows", "integration.workflow_dashboard", "git-branch"),
     ("Market Intelligence", "architect_ui.market_intelligence", "trending-up"),
     ("Organization", "organization.index", "building-2"),
-    ("Policy Monitoring", "policy_monitoring.policy_dashboard", "shield-check"),
+    # Policy Monitoring lives in the security-architect zone (role_access.py),
+    # pointing at this same endpoint - listed once there rather than twice.
     ("Product Roadmap", "roadmap_outcome.product_roadmap_page", "map"),
     ("Risk Register", "risk.risk_register", "alert-triangle"),
     ("Usage Analytics", "usage_analytics.analytics_root", "bar-chart-3"),
@@ -169,6 +173,17 @@ _NOT_RENDERED = {
 }
 
 _ZONE_ORDER = ["home", "my_work", "library", "governance", "admin"]
+
+# Separate preference order used ONLY to break a same-endpoint tie across two
+# different zone buckets (e.g. arb.dashboard living in both a persona's
+# "my_work" zone as "Review Board" and _GOVERNANCE_LINKS as "ARB Dashboard").
+# _ZONE_ORDER above controls where SECTIONS render on the page and must stay
+# that way; it is the wrong preference for this tie-break because "my_work"
+# is deliberately persona-specific (least meaningful on a page that unions
+# every persona's zones) and would otherwise win over the shared,
+# canonical "governance" placement - which is exactly the bug that dropped
+# "ARB Dashboard" off the Governance section entirely.
+_TIE_BREAK_ZONE_ORDER = ["home", "governance", "library", "my_work", "admin"]
 
 
 def all_module_links():
@@ -218,9 +233,28 @@ def _grouped_zone_sections():
                     continue
                 bucket.setdefault(link["endpoint"], link)
 
+    # A handful of endpoints (arb.dashboard as both "ARB Dashboard" and "Review
+    # Board", dashboard.health_scorecard, etc.) are assigned to more than one
+    # zone across different roles - each bucket dedupes its own endpoints, but
+    # nothing previously stopped the same endpoint appearing again in a
+    # different zone's bucket. Keep the first (highest-priority, per
+    # _ZONE_ORDER) placement only, same principle as the zone-vs-More-tools fix
+    # below.
+    # Resolve which zone wins each cross-bucket tie using _TIE_BREAK_ZONE_ORDER
+    # (not _ZONE_ORDER) - this only decides ownership, not render position.
+    winner_zone: dict[str, str] = {}
+    for key in _TIE_BREAK_ZONE_ORDER:
+        for endpoint in buckets.get(key, {}):
+            winner_zone.setdefault(endpoint, key)
+
     sections = []
     for key in _ZONE_ORDER:
-        links = sorted(buckets.get(key, {}).values(), key=lambda link: link["label"])
+        zone_links = [
+            link
+            for endpoint, link in buckets.get(key, {}).items()
+            if winner_zone.get(endpoint) == key
+        ]
+        links = sorted(zone_links, key=lambda link: link["label"])
         if links:
             sections.append({"title": _ZONE_TITLES.get(key, key.title()), "links": links})
     return sections
@@ -260,10 +294,16 @@ def index():
         if links:
             sections.append({"title": section["title"], "links": links})
 
+    # A module already shown in one of the zone sections above must not also
+    # render under More tools - all_module_links() dedupes the same way for
+    # global search (zone entries win, via dict.setdefault), so the two
+    # surfaces agree instead of one advertising a destination twice.
+    zone_endpoints = {link["endpoint"] for section in sections for link in section["links"]}
+
     more_tools = _resolve(
         {"label": label, "endpoint": endpoint, "icon": icon}
         for label, endpoint, icon in _MORE_TOOLS
-        if _link_visible(endpoint)
+        if endpoint not in zone_endpoints and _link_visible(endpoint)
     )
     total = sum(len(section["links"]) for section in sections) + len(more_tools)
     return render_template(
