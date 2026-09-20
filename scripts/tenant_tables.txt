@@ -59,6 +59,7 @@ migration_waves
 plateaus
 policy_violations
 projects
+review_queue_items
 risk_assessments
 risks
 roadmap_deliverables
