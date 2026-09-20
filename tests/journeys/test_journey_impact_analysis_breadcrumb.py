@@ -1,8 +1,8 @@
 """Journey: the Impact Analysis page's breadcrumb must end in the page's own name.
 
-UX_IA_REVIEW.md finding 8 (Low): the H1 said "Impact Analysis" but the trail read
-"Home > Strategy Layer > Strategic Planning". "Strategic Planning" is the name of a different page, so a user
-retracing their steps by breadcrumb, or scanning history, would not recognise it as the page they were just on.
+Reported problem: the H1 said "Impact Analysis" but the trail read "Home > Strategy Layer > Strategic
+Planning". "Strategic Planning" is the name of a different page, so a user retracing their steps by
+breadcrumb, or scanning history, would not recognise it as the page they were just on.
 
 Asserted on the real rendered page, as a logged-in architect, comparing the last crumb with the H1.
 """
@@ -17,9 +17,12 @@ pytestmark = pytest.mark.journey
 
 
 def _crumbs(html):
-    nav = re.search(r'<nav[^>]*aria-label="Breadcrumb".*?</nav>', html, re.S)
-    assert nav, "no breadcrumb <nav> on the page"
-    items = re.findall(r"<li\b.*?</li>", nav.group(0), re.S)
+    navs = re.findall(r'<nav[^>]*aria-label="Breadcrumb".*?</nav>', html, re.S)
+    # Assert exactly one, not just "at least one": a second breadcrumb-shaped <nav> (the sidebar carries one
+    # with the identical aria-label) would make re.search silently pick whichever comes first in the
+    # document rather than failing loudly.
+    assert len(navs) == 1, "expected exactly one breadcrumb <nav>, found %d" % len(navs)
+    items = re.findall(r"<li\b.*?</li>", navs[0], re.S)
     texts = [re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", i)).strip() for i in items]
     return [t for t in texts if t]
 
