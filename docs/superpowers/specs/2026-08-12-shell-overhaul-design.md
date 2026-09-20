@@ -38,7 +38,7 @@ The customer's evaluation — calmer than a Big-4 deliverable, honest as a syste
 | Admin | Command Center + admin pages | platform_admin |
 
 
-> **Amended 19 Sep 2026 (UX_IA_REVIEW.md finding 4).** Impact Analysis was reachable only through the
+> **Amended 19 Sep 2026.** Impact Analysis was reachable only through the
 > All-modules page. It is now in My work for the Solution Architect, Enterprise Architect and Business
 > Architect (same endpoint and `crosshair` icon for all three), because impact analysis is a primary job
 > for those personas. The Solution Architect's My work is now 8 links, one past the "3-7" guide above; the

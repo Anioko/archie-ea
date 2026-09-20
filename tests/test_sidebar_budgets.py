@@ -187,7 +187,7 @@ def test_solution_architect_my_work_membership():
         # my_work link was added at role_access.py:469; this test asserted
         # exact equality and had gone red on main until this line was added.
         "Interface Register",
-        # UX_IA_REVIEW.md finding 4 (High): the platform's own "analyse the ripple effects of a
+        # Reported problem: the platform's own "analyse the ripple effects of a
         # change" feature was reachable only from the 83-item All-modules page, so an architect
         # with no training had no discoverable path to it. Impact analysis is a primary job for
         # this persona. This is the 8th link, one past the spec table's "3-7"; the spec now says so.
@@ -287,7 +287,7 @@ def test_business_architect_my_work_membership():
         "Work Packages",
         "Traceability Matrix",
         "Capability Health",
-        "Impact Analysis",  # UX_IA_REVIEW.md finding 4; same link and icon as enterprise_architect
+        "Impact Analysis",  # Same link and icon as enterprise_architect
         "Data Architecture",
         # NAV-1 (27 Aug 2026): nav-coverage outputs 5, 6 and 10 — information/
         # data maps, strategy-to-execution and products & services — all had
@@ -449,7 +449,7 @@ IMPACT_PERSONAS = {ROLE_SOLUTION_ARCHITECT, ROLE_ENTERPRISE_ARCHITECT, ROLE_BUSI
 
 @pytest.mark.parametrize("role", sorted(SIDEBAR_ZONES))
 def test_impact_analysis_is_in_my_work_for_exactly_the_architect_personas(role):
-    """UX_IA_REVIEW.md finding 4: the three architect personas get it under My work; nobody else gains it."""
+    """The reported problem: the three architect personas get it under My work; nobody else gains it."""
     assert ("Impact Analysis" in _my_work_labels(role)) == (role in IMPACT_PERSONAS)
 
 

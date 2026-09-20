@@ -285,7 +285,7 @@ def test_sidebar_includes_all_modules_link(app, db_session, make_org, role, labe
     ],
 )
 def test_impact_analysis_is_linked_under_my_work(app, db_session, make_org, role, label):
-    """UX_IA_REVIEW.md finding 4: reachable in one click from the persona's own sidebar, in the zone
+    """The reported problem: reachable in one click from the persona's own sidebar, in the zone
     for their primary jobs (between the "My work" and "Library" headings), not only via All modules."""
     sidebar_html = _sidebar_html(app, db_session, make_org, role, label)
     link = sidebar_html.find('href="/strategic/impact-analysis"')
