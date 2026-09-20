@@ -69,6 +69,19 @@ def _make_logged_in_client(app, db_session, make_org, role, label):
         is_platform_admin=(role == "platform_admin"),
     )
     if role == "platform_admin":
+        # get_sidebar_zones() gates the whole Admin zone on user.is_admin(),
+        # which reads user.role.permissions — not on is_platform_admin alone
+        # (see that function's own docstring/comment). Role rows are seeded
+        # by Role.insert_roles() in normal deploys; a fresh test database may
+        # not have run it, so create-if-missing here exactly like
+        # tests/test_r32_ai_permission_gate.py and every other call site that
+        # queries for the Administrator role. Without this, the query below
+        # silently returns None on a fresh DB, user.role stays unset,
+        # is_admin() is False, and the two assertions after this fixture
+        # measure a sidebar with no Admin zone at all — passing on a
+        # long-lived dev database that already has the row from earlier
+        # seeding, and failing only on a genuinely fresh one.
+        Role.insert_roles()
         user.role = Role.query.filter(
             Role.permissions.op("&")(Permission.ADMINISTER) == Permission.ADMINISTER
         ).first()
