@@ -575,10 +575,17 @@
     const searchResults  = document.getElementById('search-results');
     const searchBackdrop = document.getElementById('search-modal-backdrop');
 
-    function openSearchModal() {
+    function openSearchModal(prefillQuery) {
         searchModal.style.display = 'flex';
+        if (prefillQuery && searchInput) {
+            searchInput.value = prefillQuery;
+            handleSearchInput(prefillQuery);
+        }
         setTimeout(function () { if (searchInput) searchInput.focus(); }, 50);
     }
+
+    // T-302: the sidebar's "Search everywhere (Ctrl+K)" no-match action opens this modal pre-filled.
+    window.openSearchModal = openSearchModal;
 
     function closeSearchModal() {
         searchModal.style.display = 'none';
