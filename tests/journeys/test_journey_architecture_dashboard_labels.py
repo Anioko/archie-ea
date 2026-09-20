@@ -1,8 +1,8 @@
 """Journey: layer tabs and element names on the architecture dashboard must be readable.
 
-UX_IA_REVIEW.md finding 10 (Low): at 1440px the "Implementation" layer tab read "Implementa..." and a long element
+Reported problem: at 1440px the "Implementation" layer tab read "Implementa..." and a long element
 name read "QA-E2E Critical Risk: Order cutov..." with no way to read the rest. That breaks the "truncation still
-says what the thing is" bar the repo already holds sidebar labels to (CLAUDE.md, 31 Aug 2026 sidebar incident).
+says what the thing is" bar the repo already holds sidebar labels to.
 
 Asserted on the real /architecture/dashboard page in a browser, as a logged-in architect, with an element whose
 name is long enough to be truncated. Two rules: a label that CAN fit at 1440px must fit, and a label that is
@@ -42,7 +42,7 @@ def document(app, client):
     name = LONG_NAME + " " + uuid.uuid4().hex[:4]
     with app.app_context():
         org = make_org(db, "ArchLabels")
-        user = make_user(db, org, "sa", "solution_architect", role_name="Architect")
+        user = make_user(db, org, "ea", "enterprise_architect", role_name="Architect")
         element = ArchiMateElement(name=name, type="Goal", layer="Motivation")
         if hasattr(element, "organization_id"):
             element.organization_id = org
@@ -72,9 +72,9 @@ def browser():
         chromium.close()
 
 
-@pytest.fixture
-def measured(browser, client, document):
-    pg = browser.new_page(viewport={"width": 1440, "height": 900})
+def _open(browser, client, document, width=1440, height=900):
+    """Open the real dashboard page in a browser and wait for the element table to render."""
+    pg = browser.new_page(viewport={"width": width, "height": height})
     seen = []
 
     def handle(route):
@@ -91,16 +91,29 @@ def measured(browser, client, document):
         return route.fulfill(status=204, body="")
 
     pg.route("http://app.test/**", handle)
+    pg.goto("http://app.test/architecture/dashboard")
     try:
-        pg.goto("http://app.test/architecture/dashboard")
-        try:
-            pg.wait_for_selector('[data-field="element-name"] button', timeout=20000)
-        except Exception as exc:  # report what the page saw, not just that it timed out
-            pytest.fail("the element table never rendered; page requests: %s; %s" % (seen, str(exc)[:200]))
-        pg.wait_for_timeout(400)
+        pg.wait_for_function(
+            "() => [...document.querySelectorAll('[data-field=\"element-name\"]')].some(e => e.offsetParent !== null)",
+            timeout=20000,
+        )
+    except Exception as exc:  # report what the page saw, not just that it timed out
+        pg.close()
+        pytest.fail("the element table never rendered; page requests: %s; %s" % (seen, str(exc)[:200]))
+    pg.wait_for_timeout(800)
+    return pg
+
+
+@pytest.fixture
+def measured(browser, client, document):
+    pg = _open(browser, client, document)
+    try:
         yield pg.evaluate(MEASURE)
     finally:
         pg.close()
+
+
+STRIP = 'nav[data-testid="layer-spine"] > div'
 
 
 def test_every_layer_tab_shows_its_full_label_at_1440(measured):
@@ -118,3 +131,74 @@ def test_a_truncated_element_name_exposes_its_full_text(measured):
     for n in long_ones:
         assert n["clipped"], "the fixture name is no longer long enough to be truncated; lengthen it"
         assert n["title"] == n["text"] or n["title"].startswith("QA-E2E Critical Risk: Order cutover"), n
+
+
+def test_every_truncated_name_cell_carries_its_full_text_as_a_title(measured):
+    truncated = [n for n in measured["names"] if n["clipped"]]
+    assert truncated, "no name is truncated in this fixture, so the check proves nothing"
+    assert [n["text"] for n in truncated if n["title"] != n["text"]] == []
+
+
+def test_at_1280_every_label_fits_or_the_strip_scrolls_with_an_edge_fade(browser, client, document):
+    pg = _open(browser, client, document, width=1280, height=800)
+    try:
+        info = pg.evaluate("""() => {
+            const strip = document.querySelector('%s');
+            const clipped = [...strip.querySelectorAll('a')].map(a => a.querySelector('span.truncate'))
+                .filter(l => l.scrollWidth > l.clientWidth + 1).map(l => l.innerText.trim());
+            return {clipped: clipped, scrolls: strip.scrollWidth > strip.clientWidth + 1,
+                    fadeClass: strip.classList.contains('workbench-table-scroll'),
+                    atEnd: strip.classList.contains('at-scroll-end-x')};
+        }""" % STRIP)
+        assert info["clipped"] == [], "labels cut off at 1280px: %s" % info["clipped"]
+        if info["scrolls"]:
+            assert info["fadeClass"] and not info["atEnd"], "the strip scrolls but shows no edge cue: %s" % info
+            pg.evaluate("() => { const s = document.querySelector('%s'); s.scrollLeft = s.scrollWidth; }" % STRIP)
+            pg.wait_for_timeout(300)
+            assert pg.evaluate("() => document.querySelector('%s').classList.contains('at-scroll-end-x')" % STRIP),                 "the fade does not drop once the strip is scrolled to its end"
+        reachable = pg.evaluate("""() => {
+            const s = document.querySelector('%s'); const box = s.getBoundingClientRect();
+            return [...s.querySelectorAll('a')].map(a => { a.scrollIntoView({inline: 'nearest', block: 'nearest'});
+                const r = a.getBoundingClientRect(); return r.left >= box.left - 1 && r.right <= box.right + 1; });
+        }""" % STRIP)
+        assert all(reachable), "a tab cannot be brought into view: %s" % reachable
+    finally:
+        pg.close()
+
+
+def test_no_tab_shows_a_dash_where_a_count_is_unknown(browser, client, document):
+    pg = _open(browser, client, document)
+    try:
+        counts = pg.evaluate("""() => [...document.querySelectorAll('%s a')]
+            .map(a => a.querySelector('span:last-child'))
+            .filter(b => b && b.offsetParent !== null).map(b => b.innerText.trim())""" % STRIP)
+        assert [c for c in counts if not c.isdigit()] == [], "tabs showing a placeholder instead of a count: %s" % counts
+    finally:
+        pg.close()
+
+
+@pytest.mark.parametrize("width,height", [(1024, 768), (390, 844)])
+def test_the_strip_causes_no_horizontal_page_overflow(browser, client, document, width, height):
+    pg = _open(browser, client, document, width=width, height=height)
+    try:
+        overflow = pg.evaluate("() => document.documentElement.scrollWidth - window.innerWidth")
+        assert overflow <= 0, "the page overflows sideways by %dpx at %dpx wide" % (overflow, width)
+    finally:
+        pg.close()
+
+
+@pytest.mark.parametrize("persona", ["enterprise_architect", "business_architect", "data_architect"])
+def test_the_active_tab_and_test_ids_are_present_for_each_persona(app, client, persona):
+    from app import db
+
+    with app.app_context():
+        org = make_org(db, "ArchLabels")
+        user = make_user(db, org, "p", persona, role_name="Architect")
+    login(client, user)
+    response = client.get("/architecture/dashboard")
+    assert response.status_code == 200, "%s cannot open the dashboard" % persona
+    html = response.get_data(as_text=True)
+    assert 'data-testid="layer-spine"' in html and 'data-testid="architecture-data-card"' in html
+    nav = html[html.index('data-testid="layer-spine"'):]
+    nav = nav[:nav.index("</nav>")]
+    assert nav.count('aria-current="page"') == 1, "expected exactly one active tab for %s" % persona
