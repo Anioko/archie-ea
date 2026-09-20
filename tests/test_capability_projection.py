@@ -14,6 +14,7 @@ module-scoped `app` fixture here.
 from __future__ import annotations
 
 import uuid
+from pathlib import Path
 
 import pytest
 from sqlalchemy import text
@@ -187,6 +188,40 @@ def test_dry_run_also_refuses_without_the_index(projection_schema_without_index)
 
     with pytest.raises(ProjectionBlocked):
         run_projection(projection_schema_without_index, apply=False, row_limit=None)
+
+
+def test_deploy_chain_ordering_contract(projection_schema_without_index):
+    """Task 01's real deploy-chain ordering: refuse before the migration, succeed after.
+
+    `scripts/database/deploy-schema.sh` runs
+    `apply-unified-capability-provenance-migration` immediately before
+    `project-capabilities --apply`. This test applies the real migration SQL file
+    (not a hand-rolled index) to the disposable schema created without the
+    provenance index, and asserts the exact ordering contract the deploy chain
+    relies on: refuses before, succeeds after, on the identical connection.
+    """
+
+    connection = projection_schema_without_index
+    org = _make_org(connection, 9102, "org-ordering")
+    _make_capability(connection, capability_id=1, org_id=org, name="Order Management")
+
+    with pytest.raises(ProjectionBlocked):
+        run_projection(connection, apply=True, row_limit=None)
+
+    migration_sql = Path("scripts/migrate_unified_capability_provenance.sql").read_text(
+        encoding="utf-8"
+    )
+    statements = [
+        line for line in migration_sql.splitlines()
+        if line.strip().upper() not in {"BEGIN;", "COMMIT;"}
+    ]
+    connection.execute(text("\n".join(statements)))
+
+    report = run_projection(connection, apply=True, row_limit=None)
+    assert report["writes"]["inserted_or_updated"] == 1
+    assert connection.execute(
+        text("SELECT count(*) FROM unified_capabilities WHERE source_table = 'business_capability'")
+    ).scalar_one() == 1
 
 
 # ---------------------------------------------------------------- (a) idempotency
@@ -436,3 +471,212 @@ def test_apply_refuses_on_a_source_hierarchy_cycle(projection_schema):
     with pytest.raises(ProjectionBlocked) as blocked:
         run_projection(connection, apply=True, row_limit=None)
     assert "source_hierarchy_cycle" in str(blocked.value)
+
+
+def test_moved_row_is_skipped_not_blocking_the_whole_run(projection_schema):
+    """Round 3 / R2-1: a row whose owner changed since it was projected must be
+    skipped individually, not abort projection for every other tenant's rows.
+
+    Before this fix, `owner_or_code_changed_since_projection` was a hard blocker:
+    ANY row moved to a different organisation made `--apply` raise `ProjectionBlocked`
+    and write nothing at all, for every tenant, on every subsequent run -- silently,
+    because the only signal was one stderr WARN line from `deploy-schema.sh`.
+    """
+
+    connection = projection_schema
+    org_a = _make_org(connection, 9961, "org-a")
+    org_b = _make_org(connection, 9962, "org-b")
+    _make_capability(connection, capability_id=1, org_id=org_a, name="Moved Cap")
+    _make_capability(connection, capability_id=2, org_id=org_a, name="Stable Cap")
+    run_projection(connection, apply=True, row_limit=None)
+
+    # Simulate an admin re-parenting capability 1 to a different tenant directly
+    # (the write-time listener would itself refuse to sync this -- this reproduces
+    # the state that leaves behind, e.g. a move made before the listener existed,
+    # or made outside the ORM).
+    connection.execute(
+        text("UPDATE business_capability SET organization_id = :org WHERE id = 1"),
+        {"org": org_b},
+    )
+    # A brand-new, never-projected row, to prove the run still makes forward
+    # progress for everything that ISN'T blocked.
+    _make_capability(connection, capability_id=3, org_id=org_a, name="New Cap")
+
+    report = run_projection(connection, apply=True, row_limit=None)
+
+    # The moved row is reported, not silently dropped, and does not abort the run.
+    skipped_kinds = {item["kind"] for item in report["skipped"]}
+    assert "owner_or_code_changed_since_projection" in skipped_kinds
+    skipped_entry = next(
+        item for item in report["skipped"]
+        if item["kind"] == "owner_or_code_changed_since_projection"
+    )
+    assert skipped_entry["source_ids"] == [1]
+    assert skipped_entry["blocking"] is False
+
+    # Only the new, unaffected row was written this run.
+    assert report["writes"]["inserted_or_updated"] == 1
+
+    rows = {row["source_id"]: row for row in _projected(connection)}
+    # The moved row's projection is untouched: still org_a, neither corrupted to
+    # org_b nor deleted -- the leak stays frozen, not fixed by this run, exactly
+    # as the write-time listener's own comment promises.
+    assert rows["1"]["organization_id"] == org_a
+    # Everything else in the same run still projects normally.
+    assert rows["2"]["organization_id"] == org_a
+    assert rows["3"]["organization_id"] == org_a
+
+
+def test_moved_row_does_not_block_a_dry_run_either(projection_schema):
+    """--dry-run must also surface the skip rather than reporting a hard blocker."""
+
+    connection = projection_schema
+    org_a = _make_org(connection, 9971, "org-a")
+    org_b = _make_org(connection, 9972, "org-b")
+    _make_capability(connection, capability_id=1, org_id=org_a, name="Moved Cap")
+    run_projection(connection, apply=True, row_limit=None)
+    connection.execute(
+        text("UPDATE business_capability SET organization_id = :org WHERE id = 1"),
+        {"org": org_b},
+    )
+
+    report = run_projection(connection, apply=False, row_limit=None)
+
+    assert report["writes"]["inserted_or_updated"] == 0
+    assert any(
+        item["kind"] == "owner_or_code_changed_since_projection"
+        for item in report["skipped"]
+    )
+
+
+# ------------------------------------------------------------ write-time listeners
+#
+# These run against the REAL business_capability / unified_capabilities tables
+# (via db_session, not the disposable cloned schema above) because the listeners
+# under test are registered on the real BusinessCapability model class, not on a
+# schema clone. db_session's per-test rollback keeps this from leaving residue.
+
+
+def _real_provenance_index_present(db_session) -> bool:
+    from app.commands.project_capabilities import _has_provenance_index
+
+    return _has_provenance_index(db_session.connection())
+
+
+@pytest.mark.usefixtures("db_session")
+def test_listener_projects_on_create_update_delete(db_session, make_org):
+    """Create -> update -> delete round-trips through unified_capabilities."""
+
+    from app.models.business_capabilities import BusinessCapability
+
+    if not _real_provenance_index_present(db_session):
+        pytest.skip("provenance index absent on this database; run the migration")
+
+    org = make_org("listener")
+    cap = BusinessCapability(name="Listener Order Mgmt", organization_id=org.id, level=1)
+    db_session.add(cap)
+    db_session.commit()
+
+    row = db_session.execute(
+        text(
+            "SELECT source_checksum, organization_id, scope FROM unified_capabilities "
+            "WHERE source_table = 'business_capability' AND source_id = :sid"
+        ),
+        {"sid": str(cap.id)},
+    ).one()
+    assert row.organization_id == org.id
+    assert row.scope == "tenant"
+    assert row.source_checksum is not None
+
+    cap.name = "Listener Order Mgmt (renamed)"
+    db_session.commit()
+    updated_checksum = db_session.execute(
+        text(
+            "SELECT source_checksum FROM unified_capabilities "
+            "WHERE source_table = 'business_capability' AND source_id = :sid"
+        ),
+        {"sid": str(cap.id)},
+    ).scalar_one()
+    assert updated_checksum != row.source_checksum
+
+    cap_id = cap.id
+    db_session.delete(cap)
+    db_session.commit()
+    remaining = db_session.execute(
+        text(
+            "SELECT count(*) FROM unified_capabilities "
+            "WHERE source_table = 'business_capability' AND source_id = :sid"
+        ),
+        {"sid": str(cap_id)},
+    ).scalar_one()
+    assert remaining == 0
+
+
+@pytest.mark.usefixtures("db_session")
+def test_listener_projection_no_cross_tenant_leak(db_session, make_org, tenant_ctx):
+    """Org A's write-time projection is never visible when scoped as org B."""
+
+    from app.models.business_capabilities import BusinessCapability
+
+    if not _real_provenance_index_present(db_session):
+        pytest.skip("provenance index absent on this database; run the migration")
+
+    org_a = make_org("tenant-a")
+    org_b = make_org("tenant-b")
+    org_a_id, org_b_id = org_a.id, org_b.id
+
+    with tenant_ctx(org_a_id):
+        cap = BusinessCapability(name="Org A Only Capability", organization_id=org_a_id, level=1)
+        db_session.add(cap)
+        db_session.commit()
+        cap_id = cap.id
+
+    # Per CLAUDE.md's Session.get()/identity-map note: a fresh read after
+    # expunging is what actually exercises the tenant filter rather than an
+    # identity-map hit.
+    db_session.expunge_all()
+
+    with tenant_ctx(org_b_id):
+        visible = db_session.execute(
+            text(
+                "SELECT organization_id FROM unified_capabilities "
+                "WHERE source_table = 'business_capability' AND source_id = :sid"
+            ),
+            {"sid": str(cap_id)},
+        ).fetchall()
+        # Raw SQL bypasses the ORM tenant filter (documented in
+        # app/commands/project_capabilities.py's module docstring), so the
+        # meaningful assertion is on the row's OWN organization_id, not on
+        # whether the row is returned at all.
+        assert all(row.organization_id == org_a_id for row in visible)
+        assert not any(row.organization_id == org_b_id for row in visible)
+
+
+def test_listener_skips_without_raising_when_index_absent(monkeypatch, db_session, make_org):
+    """An un-migrated database must not 500 a capability create."""
+
+    from app.models import business_capabilities as module
+
+    # Patch the checker function itself rather than poking the cache dict
+    # directly: the cache is now keyed on the connection's engine URL (D6 --
+    # a global "available" key let a process that touched two databases cache
+    # a false negative from the first one forever), so a literal `"available"`
+    # key would silently stop faking anything the moment that keying changes
+    # again and this test would pass vacuously against a real DB query instead.
+    monkeypatch.setattr(module, "_provenance_index_available", lambda connection: False)
+
+    org = make_org("no-index")
+    cap = module.BusinessCapability(
+        name="No Index Capability", organization_id=org.id, level=1
+    )
+    db_session.add(cap)
+    db_session.commit()  # must not raise
+
+    count = db_session.execute(
+        text(
+            "SELECT count(*) FROM unified_capabilities "
+            "WHERE source_table = 'business_capability' AND source_id = :sid"
+        ),
+        {"sid": str(cap.id)},
+    ).scalar_one()
+    assert count == 0

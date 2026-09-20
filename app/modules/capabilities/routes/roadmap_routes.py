@@ -57,10 +57,27 @@ def api_roadmap_capabilities():
             ApplicationCapabilityCoverage,
             BusinessCapability,
         )
+        from app.models.unified_capability import UnifiedCapability
 
         capabilities = BusinessCapability.query.all()
         mappings = ApplicationCapabilityCoverage.query.all()
         mapped_cap_ids = {m.capability_id for m in mappings}
+
+        # D-R7-2: this is the roadmap screen's own data feed, sitting in the
+        # same file/blueprint as api_roadmap_detect_gaps() (the "Detect gaps"
+        # button), which was already fixed under D-R5-1 to read maturity
+        # through the single authority accessor rather than the SOURCE
+        # columns. Reading `cap.current_maturity_level` / `.target_maturity_level`
+        # / `.maturity_gap` here (the source, per ADR 0008 rule 3) instead of
+        # the authority let the two co-located endpoints disagree for up to
+        # the 15-minute raw-SQL-write-to-projection window: the list shows
+        # "has a gap" while the button reports zero gaps found. Fetch the
+        # authority for every candidate ONCE, batched, same as the sibling
+        # endpoint.
+        org_id = capabilities[0].organization_id if capabilities else None
+        maturity_map = UnifiedCapability.maturity_for_sources(
+            "business_capability", [c.id for c in capabilities], organization_id=org_id
+        )
 
         # Group by roadmap priority
         roadmap_groups = {
@@ -74,9 +91,24 @@ def api_roadmap_capabilities():
         for cap in capabilities:
             domain = None  # BusinessCapability uses string business_domain
 
-            # Calculate gap status
+            # Calculate gap status — D-R7-2: read through the same authority
+            # accessor as api_roadmap_detect_gaps(), not the source columns.
+            maturity = maturity_map.get(str(cap.id))
+            if maturity is None or maturity.get("reason_code") == "no_maturity_recorded":
+                cap_current_maturity = None
+                cap_target_maturity = None
+                cap_maturity_gap = None
+            else:
+                cap_current_maturity = maturity["current_maturity_level"]
+                cap_target_maturity = maturity["target_maturity_level"]
+                cap_maturity_gap = (
+                    (cap_target_maturity - cap_current_maturity)
+                    if cap_current_maturity is not None and cap_target_maturity is not None
+                    else None
+                )
+
             is_mapped = cap.id in mapped_cap_ids
-            has_maturity_gap = (cap.maturity_gap or 0) > 0
+            has_maturity_gap = (cap_maturity_gap or 0) > 0
 
             # Get investment priority from domain if available
             domain_investment_priority = (
@@ -96,9 +128,9 @@ def api_roadmap_capabilities():
                 "business_criticality": getattr(cap, "business_criticality", None)
                 or getattr(cap, "strategic_importance", None),
                 "is_core_differentiator": getattr(cap, "is_core_differentiator", None),
-                "current_maturity": cap.current_maturity_level,
-                "target_maturity": cap.target_maturity_level,
-                "maturity_gap": cap.maturity_gap,
+                "current_maturity": cap_current_maturity,
+                "target_maturity": cap_target_maturity,
+                "maturity_gap": cap_maturity_gap,
                 "is_mapped": is_mapped,
                 "has_maturity_gap": has_maturity_gap,
                 "investment_priority": domain_investment_priority,
@@ -1761,40 +1793,96 @@ def api_roadmap_detect_gaps():
     """
     try:
         from app.models.business_capabilities import BusinessCapability
+        from app.models.unified_capability import UnifiedCapability
         from app.modules.architecture.services.gap_archimate_service import GapArchiMateService
 
         service = GapArchiMateService()
 
-        # BusinessCapability may not have maturity_gap — compute from levels
+        # D-R5-1: selection and magnitude/prose must read the SAME store.
+        # Previously the selection predicate below read the SOURCE
+        # (`BusinessCapability.current_maturity_level`) while the magnitude
+        # and persisted description read the AUTHORITY
+        # (`UnifiedCapability.maturity_for_source`). Those two stores can
+        # disagree for up to the 15-minute projection interval — the raw-SQL
+        # UPDATE in maturity_routes.py bypasses the ORM sync listener and
+        # only the next scheduled projection run catches the authority up —
+        # so a capability could be SELECTED off a fresh source write while
+        # its magnitude/prose were computed off a stale (still-NULL)
+        # authority row, fabricating a persisted "gap of 0" via `or 0` for a
+        # capability whose real gap was nonzero. Fetch the authority data for
+        # every candidate ONCE, up front, and use that SAME fetched data for
+        # both selection and magnitude/prose — never a mix of the two
+        # stores in one request.
         all_caps = BusinessCapability.query.all()
-        capabilities = [
-            c for c in all_caps
-            if (c.target_maturity_level or 0) - (c.current_maturity_level or 0) > 0
-        ]
+        org_id = all_caps[0].organization_id if all_caps else None
+        maturity_map = UnifiedCapability.maturity_for_sources(
+            "business_capability", [c.id for c in all_caps], organization_id=org_id
+        )
+
+        capabilities = []
+        for cap in all_caps:
+            maturity = maturity_map.get(str(cap.id))
+            if maturity is None or maturity["reason_code"] == "no_maturity_recorded":
+                # Authority has no recorded maturity (or the projection is
+                # stale and hasn't caught up yet) — skip rather than
+                # fabricate a gap from whichever store happens to be
+                # readable. See D-R5-1.
+                continue
+            current = maturity["current_maturity_level"]
+            target = maturity["target_maturity_level"]
+            if current is None or target is None:
+                continue
+            if (target - current) > 0:
+                capabilities.append((cap, maturity))
 
         created_count = 0
         updated_count = 0
         gap_results = []
 
-        for cap in capabilities:
+        for cap, maturity in capabilities:
+            # T-002: read current maturity through the single authority
+            # accessor rather than `cap.current_maturity` / `.target_maturity`
+            # — those names never existed on BusinessCapability (its columns
+            # are `current_maturity_level` / `target_maturity_level`, the
+            # projection's *source*, per ADR 0008 rule 3), so this always
+            # rendered "unknown" regardless of whether an assessment existed.
+            # R3-8: this loop is already filtered (see the selection above)
+            # to rows where the authority accessor returned real,
+            # non-None current/target values, so no reason-code fallback is
+            # needed here — both labels are always numeric.
+            current_label = maturity["current_maturity_level"]
+            target_label = maturity["target_maturity_level"]
+            # R3-7 / D-R5-1: compute the gap from the same accessor values
+            # used for selection and rendered above, not from the stale,
+            # unsynced `BusinessCapability.maturity_gap` derived column —
+            # reading that column here would be a THIRD, potentially-
+            # contradicting answer alongside the accessor values just
+            # rendered into `current_label`/`target_label`. No `or 0`
+            # fabrication needed: both values are guaranteed non-None here.
+            computed_gap = target_label - current_label
             gap_data = {
                 "source_capability_type": "business",
                 "source_capability_id": cap.id,
                 "name": f"Gap: {cap.name}",
                 "description": (
-                    f"Capability '{cap.name}' has a maturity gap of {cap.maturity_gap}. "
-                    f"Current maturity: {cap.current_maturity or 'unknown'}. "
-                    f"Target maturity: {cap.target_maturity or 'unknown'}."
+                    f"Capability '{cap.name}' has a maturity gap of {computed_gap}. "
+                    f"Current maturity: {current_label}. "
+                    f"Target maturity: {target_label}."
                 ),
-                "gap_type": "coverage" if not cap.current_maturity else "quality",
+                # D-R5-4: `maturity["current_maturity_level"]` is now always
+                # a real int here (filtered above), so `is 0` (falsy but
+                # assessed) must be distinguished from "not assessed" via an
+                # explicit `is None` check rather than `not maturity[...]`,
+                # which would misclassify a genuine 0 maturity as unassessed.
+                "gap_type": "coverage" if current_label is None else "quality",
                 "priority": (
-                    "critical" if (cap.maturity_gap or 0) >= 3
-                    else "high" if (cap.maturity_gap or 0) >= 2
+                    "critical" if computed_gap >= 3
+                    else "high" if computed_gap >= 2
                     else "medium"
                 ),
                 "severity": (
-                    "critical" if (cap.maturity_gap or 0) >= 3
-                    else "high" if (cap.maturity_gap or 0) >= 2
+                    "critical" if computed_gap >= 3
+                    else "high" if computed_gap >= 2
                     else "medium"
                 ),
                 "auto_generated": True,

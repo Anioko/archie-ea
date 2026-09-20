@@ -247,6 +247,18 @@ def gate_raw_fetch_sites(baseline: int) -> Result:
                   "", count, baseline)
 
 
+def gate_composer_url_params(baseline: int) -> Result:
+    """A literal /archimate/composer?... link carrying a param the receiver never reads - ratchet."""
+    proc = _run([sys.executable, "scripts/check_composer_url_params.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("composer-url-params", FAIL,
+                      f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    return Result("composer-url-params", PASS if count <= baseline else FAIL,
+                  "", count, baseline)
+
+
 def gate_design_tokens_extended(baseline: int) -> Result:
     """Non-banned colour families (emerald/orange/teal/...) - their own ratchet."""
     proc = _run([sys.executable, "scripts/check_design_tokens.py", "--extended", "--count"])
@@ -561,6 +573,64 @@ def gate_dynamic_link_prefixes(baseline: int) -> Result:
                       f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
     detail = "" if count <= baseline else "run scripts/check_dynamic_link_prefixes.py to list them"
     return Result("dynamic-link-prefixes", PASS if count <= baseline else FAIL,
+                  detail, count, baseline)
+
+
+def gate_store_agreement(baseline: int) -> Result:
+    """One question, two stores, two different answers to the user. RATCHET.
+
+    Boots the app, picks the richest real tenant, and asks every registered
+    surface (ORM model + live HTTP endpoint) the same question — see
+    `scripts/check_store_agreement.py`'s `CONCEPTS` registry. Reads ANSWERS
+    rather than source, which is why the disagreements it finds (e.g.
+    `/api/v1/capabilities/` answering 0 against `business_capability` holding
+    461 rows) were invisible to every other gate here.
+
+    Registered 17 Sep 2026 (`docs/buckets/unified-capabilities-producer/`) after
+    `flask project-capabilities` was wired into the deploy chain and a write-time
+    sync listener was added on `BusinessCapability` — see that bucket's tasks
+    01/02. It was NOT registered before this: CLAUDE.md claimed it was
+    "registered ... and ratcheted at 1", but `grep 'Gate("' scripts/verify.py`
+    never returned `store-agreement`, so nothing enforced it. See the bucket's
+    task 03 brief for the full re-verification.
+
+    NOT tagged "static" — same reason as `broken-surfaces` and
+    `dynamic-link-prefixes` immediately above: it boots Flask and needs a real
+    database, so CI's dependency-free static-gates job cannot run it.
+    """
+    proc = _run([sys.executable, "scripts/check_store_agreement.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("store-agreement", FAIL,
+                      f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    detail = "" if count <= baseline else "run scripts/check_store_agreement.py to see which surfaces disagree"
+    return Result("store-agreement", PASS if count <= baseline else FAIL,
+                  detail, count, baseline)
+
+
+def gate_canonical_store(baseline: int) -> Result:
+    """No NEW table gains a second mapped SQLAlchemy model class. RATCHET.
+
+    Static (no app boot, no database): a source-level count of tables mapped by
+    more than one model class. See `scripts/check_canonical_store.py`'s module
+    docstring for why two classes on one table is how screens disagree even when
+    every individual line of code is correct.
+
+    Registered 17 Sep 2026 alongside `store-agreement`
+    (`docs/buckets/unified-capabilities-producer/`) — both checkers existed and
+    worked, and neither was registered in `build_gates()`, which is the same
+    "checker exists, enforces nothing" gap CLAUDE.md's `docs/known-issues/`
+    section warns about.
+    """
+    proc = _run([sys.executable, "scripts/check_canonical_store.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("canonical-store", FAIL,
+                      f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    detail = "" if count <= baseline else "run scripts/check_canonical_store.py to see which tables"
+    return Result("canonical-store", PASS if count <= baseline else FAIL,
                   detail, count, baseline)
 
 
@@ -1432,6 +1502,14 @@ def build_gates(baseline: dict) -> list[Gate]:
              lambda: gate_design_tokens(baseline["design_tokens"]),
              remediation="use semantic tokens; see the table in DESIGN.md",
              tags=["static", "ui"]),
+        Gate("composer-url-params",
+             "No composer link carrying a parameter the composer doesn't read",
+             "ratchet",
+             lambda: gate_composer_url_params(baseline.get("composer_url_params", 0)),
+             remediation="fix the param name to one of solution_id/viewpoint/layer/"
+                          "viewpoint_id/prefill, route through create_diagram() for a real "
+                          "viewpoint_id, or mark 'composer-url-ok: <reason>'",
+             tags=["static", "fast"]),
         Gate("raw-fetch-sites",
              "No new raw fetch() sites bypassing Platform.fetch",
              "ratchet",
@@ -1562,6 +1640,21 @@ def build_gates(baseline: dict) -> list[Gate]:
              # NOT "static" - same reason as broken-surfaces: boots the app to
              # read the real url_map.
              tags=["boot", "ui"]),
+        Gate("store-agreement",
+             "every surface answering the same question answers the same number",
+             "ratchet",
+             lambda: gate_store_agreement(baseline.get("store_agreement", 0)),
+             remediation="run scripts/check_store_agreement.py; pick the canonical "
+                         "store, repoint the other surface, and delete the "
+                         "duplicate read - see docs/adr/0008-one-system-of-record.md",
+             # NOT "static" - boots the app, needs a real database with tenant
+             # data, and reads live HTTP responses.
+             tags=["boot", "db"]),
+        Gate("canonical-store", "no NEW table gains a second mapped model class",
+             "ratchet", lambda: gate_canonical_store(baseline.get("canonical_store", 0)),
+             remediation="run scripts/check_canonical_store.py; choose the canonical "
+                         "class and repoint callers, or mark 'canonical-store-ok: <reason>'",
+             tags=["static"]),
         Gate("fetch-guards", "no fetch parsed without checking the response", "ratchet",
              lambda: gate_fetch_guards(baseline.get("fetch_guards", 107)),
              remediation="run scripts/check_fetch_guards.py; add if (!resp.ok) throw, "

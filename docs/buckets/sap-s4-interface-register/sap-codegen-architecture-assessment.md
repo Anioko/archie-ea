@@ -382,7 +382,7 @@ option invites someone to re-litigate it later, and with three near-identical
 entries the pack looks like it contains four options when it contains one.
 
 **Is there a legitimate later-stage use case? Yes, one, and it is genuinely
-distinct.** Once Saint-Gobain's S/4HANA landscape is live and has custom ABAP
+distinct.** Once the customer's S/4HANA landscape is live and has custom ABAP
 in it, a later programme might want an AI feature *inside* a SAP business
 process — classify an incoming supplier document, triage an inbound order
 exception, semantic-match a material master record, the product-recommendation
@@ -408,7 +408,7 @@ One practical consequence of the 3-for-3 convergence (§A.1) worth recording
 for that later programme: because Google, AWS and Microsoft ship
 functionally equivalent SDKs, **the vendor choice at that point is not an
 architecture decision at all** — it falls out of whichever hyperscaler
-Saint-Gobain's SAP landscape already runs on and whose commercial agreement
+The customer's SAP landscape already runs on and whose commercial agreement
 already exists. Nobody should spend architecture time comparing them; the
 comparison has no discriminating technical axis.
 
@@ -475,7 +475,7 @@ Only worth building once something downstream actually exists to report.
 
 - **Cost.** Stage 1 is internal effort only, no licence, no vendor. Stage 2's
   research half is hours. Stage 2's PoC half costs a sandbox and some SAP
-  Basis time — which is Saint-Gobain's to grant, not ours. Stage 3's cost is
+  Basis time — which is the customer's to grant, not ours. Stage 3's cost is
   unknown because sapdev.ai's pricing has not been obtained; that must be
   asked before, not after, anyone becomes attached to the tool.
 - **Timeline.** The register exists now. Stage 1 is the natural next
@@ -497,7 +497,7 @@ Only worth building once something downstream actually exists to report.
   identified alternative. That is exactly the situation in which to stage
   the commitment rather than take it early. If they disappear, the exported
   spec survives (it's ours, and it's plain JSON) but the generation does not.
-- **Third-party data.** A PoC touches Saint-Gobain's SAP landscape — another
+- **Third-party data.** A PoC touches the customer's SAP landscape — another
   organisation's real systems and, potentially, their data. That is squarely
   in the escalate-always category.
 
@@ -524,7 +524,7 @@ another organisation's real systems):
 1. **Do we buy sapdev.ai, or anything like it?** Commercial commitment and
    single-vendor dependency at a critical point in the delivery chain, in a
    segment where no second vendor has been identified.
-2. **Do we ask Saint-Gobain for sandbox SAP access to run a PoC?** This is a
+2. **Do we ask the customer for sandbox SAP access to run a PoC?** This is a
    request to another organisation to touch their real landscape, and it
    changes the engagement's shape and liability.
 3. **Is downstream ABAP delivery in Archie's product scope at all,** or is

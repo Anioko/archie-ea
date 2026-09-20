@@ -14,6 +14,15 @@ tears the session down when the gap exceeds the configured idle window. It is
 authoritative because the client cannot move the timestamp forward without
 making a request, and cannot forge it without the secret key.
 
+It also enforces server-side session revocation (the logout-doesn't-revoke
+finding): before the idle check runs, it looks up the session's ``_sid``
+against ``app.services.session_registry``. A missing/unknown/revoked ``_sid``
+is rejected -- fail closed -- which is what makes logout (and password
+change, see task 02) actually invalidate a captured cookie instead of just
+asking the browser to forget it. Per ADR 0008 this lives here, reusing the
+existing exemption list and response-shaping branches, rather than as a
+second authenticating ``before_request`` hook.
+
 The absolute cap is deliberately left alone and remains separate:
 ``PERMANENT_SESSION_LIFETIME`` bounds how long a session may live at all, this
 bounds how long it may sit unused. Both apply.
@@ -61,8 +70,53 @@ def _now():
     return int(datetime.now(timezone.utc).timestamp())
 
 
+def _wants_json(request):
+    return (
+        "/api/" in request.path
+        or "/ai-chat/" in request.path
+        or request.content_type == "application/json"
+        or request.accept_mimetypes.best == "application/json"
+        or request.headers.get("X-Requested-With") == "XMLHttpRequest"
+    )
+
+
+def _force_clear_remember_cookie(response):
+    """Belt-and-suspenders for D1 (round 2): explicitly delete the remember
+    cookie on the rejection response itself, rather than relying solely on
+    Flask-Login's session["_remember"] = "clear" marker surviving to
+    response-build time. Cheap and idempotent if the marker also worked.
+    """
+    from flask import current_app
+
+    try:
+        cookie_name = current_app.config.get("REMEMBER_COOKIE_NAME", "remember_token")
+        domain = current_app.config.get("REMEMBER_COOKIE_DOMAIN")
+        path = current_app.config.get("REMEMBER_COOKIE_PATH", "/")
+        response.delete_cookie(cookie_name, domain=domain, path=path)
+    except Exception as exc:
+        logger.warning("Could not force-clear remember cookie: %s", exc)
+    return response
+
+
+def _reject_response(request, code, message):
+    """Build the shared 401-JSON / redirect-to-login response for a rejected
+    session, used by both the revocation check and the idle timeout."""
+    from flask import jsonify, redirect, url_for
+
+    if _wants_json(request):
+        resp = jsonify({"success": False, "error": message, "code": code})
+        resp.status_code = 401
+        return resp
+    try:
+        login_url = url_for("account.login", timeout=code)
+    except Exception:
+        login_url = "/account/login?timeout={}".format(code)
+    return redirect(login_url)
+
+
 def init_session_policy(app):
-    """Install the idle-timeout ``before_request`` hook."""
+    """Install the session-enforcement ``before_request`` hook (revocation +
+    idle timeout)."""
 
     idle_seconds = _idle_seconds(app)
     app.config["SESSION_IDLE_TIMEOUT_SECONDS"] = idle_seconds
@@ -73,13 +127,9 @@ def init_session_policy(app):
     def _inject_idle_timeout():
         return {"session_idle_timeout_seconds": idle_seconds}
 
-    if idle_seconds <= 0:
-        app.logger.info("Session idle timeout disabled (SESSION_IDLE_TIMEOUT=0)")
-        return
-
     @app.before_request
-    def _enforce_idle_timeout():
-        from flask import jsonify, redirect, request, session, url_for
+    def _enforce_session_policy():
+        from flask import request, session
         from flask_login import current_user, logout_user
 
         # Static assets and the liveness probe must not keep a session alive:
@@ -96,10 +146,50 @@ def init_session_policy(app):
         try:
             authenticated = bool(current_user and current_user.is_authenticated)
         except Exception as exc:
-            logger.debug("idle timeout: current_user unavailable: %s", exc)
+            logger.debug("session policy: current_user unavailable: %s", exc)
             return None
 
         if not authenticated:
+            return None
+
+        # --- Server-side revocation check (logout / password-change) -----
+        # Fail CLOSED: a session with no registry record (never minted, or
+        # revoked by logout/password-change/idle-timeout/admin) is rejected.
+        # This is deliberate -- deploying this check logs out every
+        # currently-live session once, including any cookie captured before
+        # this fix shipped, which is the whole point of the fix.
+        from app.services import session_registry
+
+        sid = session.get("_sid")
+        if not session_registry.is_active(sid):
+            user_label = getattr(current_user, "email", None) or current_user.get_id()
+            # Captured before logout_user()/session.clear() make current_user
+            # anonymous, so the audit row below still records who was rejected.
+            _rejected_user = current_user._get_current_object() if current_user.is_authenticated else None
+            # Order matters (D1, round 2): clear the session FIRST, then call
+            # logout_user(). Flask-Login's logout_user() signals remember-cookie
+            # deletion by writing session["_remember"] = "clear", which
+            # _update_remember_cookie reads at response-build time. Calling
+            # session.clear() *after* logout_user() (the round-1 order) wipes
+            # that marker before the response is built, so the remember_token
+            # cookie was never actually deleted -- with
+            # REMEMBER_COOKIE_REFRESH_EACH_REQUEST=True and SSO logins passing
+            # remember=True unconditionally, that produced an unbreakable
+            # redirect loop: flask-login silently re-authenticates the user
+            # from the still-live remember cookie on every subsequent request.
+            session.clear()
+            logout_user()
+            logger.info("Session rejected (revoked/unknown sid) for %s", user_label)
+            if _rejected_user is not None:
+                from app.services import auth_audit
+
+                auth_audit.record_session_rejected(_rejected_user, "revoked_or_unknown_sid")
+            resp = _reject_response(request, "revoked", "Your session is no longer valid. Please log in again.")
+            _force_clear_remember_cookie(resp)
+            return resp
+        session_registry.touch(sid)
+
+        if idle_seconds <= 0:
             return None
 
         now = _now()
@@ -107,36 +197,26 @@ def init_session_policy(app):
 
         if isinstance(last, int) and now - last > idle_seconds:
             user_label = getattr(current_user, "email", None) or current_user.get_id()
-            logout_user()
+            _rejected_user = current_user._get_current_object() if current_user.is_authenticated else None
+            session_registry.revoke(sid, "idle_timeout")
+            # Same ordering fix as the revocation branch above (D1, round 2).
             session.clear()
+            logout_user()
             logger.info(
                 "Session idle timeout: signed out %s after %ss idle (limit %ss)",
                 user_label,
                 now - last,
                 idle_seconds,
             )
-            wants_json = (
-                "/api/" in request.path
-                or "/ai-chat/" in request.path
-                or request.content_type == "application/json"
-                or request.accept_mimetypes.best == "application/json"
-                or request.headers.get("X-Requested-With") == "XMLHttpRequest"
+            if _rejected_user is not None:
+                from app.services import auth_audit
+
+                auth_audit.record_session_rejected(_rejected_user, "idle_timeout")
+            resp = _reject_response(
+                request, "idle", "Session expired due to inactivity. Please log in again."
             )
-            if wants_json:
-                resp = jsonify(
-                    {
-                        "success": False,
-                        "error": "Session expired due to inactivity. Please log in again.",
-                        "code": "session_idle_timeout",
-                    }
-                )
-                resp.status_code = 401
-                return resp
-            try:
-                login_url = url_for("account.login", timeout="idle")
-            except Exception:
-                login_url = "/account/login?timeout=idle"
-            return redirect(login_url)
+            _force_clear_remember_cookie(resp)
+            return resp
 
         # Genuine activity — advance the stamp. ``session.permanent`` is set at
         # login; writing here also refreshes the absolute-lifetime cookie,
@@ -144,4 +224,7 @@ def init_session_policy(app):
         session[LAST_ACTIVITY_KEY] = now
         return None
 
-    app.logger.info("Session idle timeout enabled: %ss", idle_seconds)
+    if idle_seconds <= 0:
+        app.logger.info("Session idle timeout disabled (SESSION_IDLE_TIMEOUT=0); revocation check still active")
+    else:
+        app.logger.info("Session idle timeout enabled: %ss", idle_seconds)

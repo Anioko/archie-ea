@@ -85,14 +85,24 @@ class ArchitectureImportExportService:
     @staticmethod
     def export_to_json() -> Tuple[str, str]:
         """Export all architecture to JSON.
-        
+
         Returns: (file_path, filename)
         """
+        # Full-fidelity export: serialize every declared column via each
+        # model's own to_dict() (ArchiMateElement's has always existed;
+        # ArchiMateRelationship's was added alongside this fix). Deliberately
+        # NOT _element_to_dict/_relationship_to_dict from
+        # architecture_crud_routes.py - those are compact 8/5-key
+        # projections built for the list APIs (api_list_elements,
+        # api_list_relationships) and stay untouched for that purpose. Using
+        # them here previously narrowed every export from 50+ columns to 8,
+        # silently dropping fields such as togaf_plateau/building_block_type/
+        # custom_properties and organization_id.
         filename = f"architecture_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-        
+
         elements = ArchitectureElement.query.all()
         relationships = Relationship.query.all()
-        
+
         data = {
             "elements": [e.to_dict() for e in elements],
             "relationships": [r.to_dict() for r in relationships],

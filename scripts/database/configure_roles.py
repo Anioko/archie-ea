@@ -486,14 +486,27 @@ def _terminate_runtime_capable_sessions(
                     )
                 termination_results = tuple(cursor.fetchall())
 
-    returned_pids = tuple(pid for pid, _terminated in termination_results)
-    failed_pids = tuple(
+    # A `pg_terminate_backend(pid)` result of False here is not itself proof
+    # of failure: Postgres returns False both when signalling genuinely
+    # failed AND when the target backend had already disconnected on its own
+    # between the SELECT that found `pids` and this UPDATE-like call — an
+    # ordinary race under real traffic (e.g. a gunicorn worker's pooled
+    # connection closing normally), not a defect. The poll loop directly
+    # below is the actual, sufficient proof: it independently re-queries
+    # pg_stat_activity from a fresh connection and only returns once no
+    # runtime-capable session remains, raising its own clear RuntimeError if
+    # that never becomes true within the deadline. Treating a False here as
+    # immediately fatal — as this function did until 18 Sep 2026 — aborted a
+    # real production deploy on exactly this benign race (one already-gone
+    # PID out of eleven), even though the property this function exists to
+    # guarantee was never actually violated.
+    already_gone = tuple(
         pid for pid, terminated in termination_results if terminated is not True
     )
-    if returned_pids != pids or failed_pids:
-        raise RuntimeError(
-            "runtime-capable session termination result was not exact and true; "
-            f"requested pids={pids!r}, returned={termination_results!r}"
+    if already_gone:
+        print(
+            f"  (terminate-sessions: {len(already_gone)} pid(s) already "
+            f"disconnected before signal, not treated as fatal: {already_gone!r})"
         )
 
     deadline = time.monotonic() + SESSION_TERMINATION_POLL_SECONDS

@@ -2947,9 +2947,24 @@ Return as JSON array of goal objects."""
 
         try:
             from app.models import BusinessCapability
-            low_maturity = BusinessCapability.query.filter(
-                BusinessCapability.maturity_level.in_(["low", "initial", "1"])
-            ).count()
+            from app.models.unified_capability import UnifiedCapability
+            # T-002: `maturity_level` never existed on BusinessCapability (the
+            # column is `current_maturity_level`, an Integer 1-5 — the string
+            # values below could never have matched it), so this always
+            # counted 0 and this constraint never surfaced. Maturity is now
+            # read through the single authority accessor rather than the
+            # superseded source column directly.
+            cap_ids = [cap_id for (cap_id,) in BusinessCapability.query.with_entities(
+                BusinessCapability.id
+            ).all()]
+            maturity_map = UnifiedCapability.maturity_for_sources(
+                "business_capability", cap_ids
+            )
+            low_maturity = sum(
+                1
+                for entry in maturity_map.values()
+                if entry["current_maturity_level"] == 1
+            )
             if low_maturity > 0:
                 business_constraints.append({
                     "type": "capability_maturity",

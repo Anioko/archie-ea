@@ -814,7 +814,7 @@ def create_solution_diagram():
 
         db.session.commit()
 
-        redirect_url = f"/archimate/composer?viewpoint={diag.id}&solution_id={solution_id}"
+        redirect_url = f"/archimate/composer?viewpoint_id={diag.id}&solution_id={solution_id}"
         return jsonify({
             "success": True,
             "diagram_id": diag.id,
@@ -950,7 +950,9 @@ def architect_viewpoints():
 
     For each of 4 standard stakeholder viewpoints (Stakeholder/CIO, Application/Architect,
     Technology/Infrastructure, Implementation/Delivery), filter the solution's ArchiMate
-    elements by allowed layers and create a ViewpointView record.
+    elements by allowed layers and create a SavedDiagram (via
+    app.services.archimate_composer_service.create_diagram) so the result is a
+    real, openable, tenant-scoped diagram in the composer's own saved list.
 
     Request JSON:
         { "solution_id": int }
@@ -962,12 +964,16 @@ def architect_viewpoints():
                 {
                     "type": "stakeholder",
                     "name": "Stakeholder Viewpoint",
-                    "viewpoint_view_id": 42,
-                    "composer_url": "/archimate/composer?viewpoint=42"
+                    "saved_diagram_id": 42,
+                    "composer_url": "/archimate/composer?viewpoint_id=42"
                 },
                 ...
             ]
         }
+
+    When a viewpoint matches zero elements (or diagram creation otherwise
+    fails), "saved_diagram_id" and "composer_url" are both null — never a
+    placeholder link to a diagram that does not exist.
 
     Errors:
         400 — missing solution_id
@@ -1011,8 +1017,8 @@ def architect_viewpoints():
 
         from app.models.solution_models import Solution
         from app.models.solution_archimate_element import SolutionArchiMateElement
-        from app.models.archimate_viewpoint import ArchiMateViewpoint, ViewpointView
         from app.models.archimate_core import ArchiMateElement
+        from app.services.archimate_composer_service import create_diagram
 
         solution = Solution.query.get(solution_id)
         if not solution:
@@ -1031,8 +1037,6 @@ def architect_viewpoints():
             for el in arch_elements:
                 elements_by_id[el.id] = el
 
-        owner_id = current_user.id if current_user and current_user.is_authenticated else 1
-
         result_viewpoints = []
 
         for vp_def in VIEWPOINT_DEFINITIONS:
@@ -1044,79 +1048,34 @@ def architect_viewpoints():
                 if (el.layer or "").lower() in allowed_layers
             ]
 
-            # Try to find a matching ArchiMateViewpoint record by typical_stakeholders overlap
-            matched_vp = None
             try:
-                candidates = ArchiMateViewpoint.query.filter_by(
-                    viewpoint_type=vp_def["type"]
-                ).all()
-                for candidate in candidates:
-                    stakeholders = candidate.typical_stakeholders or []
-                    if any(s in stakeholders for s in vp_def["stakeholders"]):
-                        matched_vp = candidate
-                        break
-                # Fallback: first record with matching type regardless of stakeholders
-                if not matched_vp and candidates:
-                    matched_vp = candidates[0]
-            except Exception as lookup_err:
-                current_app.logger.warning(
-                    f"A95-017: viewpoint lookup failed for type {vp_def['type']}: {lookup_err}"
-                )
-
-            if matched_vp is None:
-                # Cannot create ViewpointView (viewpoint_id NOT NULL) — skip with null ids
-                result_viewpoints.append({
-                    "type": vp_def["type"],
-                    "name": vp_def["name"],
-                    "viewpoint_view_id": None,
-                    "composer_url": "/archimate/composer?viewpoint=0",
-                    "element_count": len(filtered_ids),
-                })
-                continue
-
-            try:
-                view = ViewpointView(
+                composer_url = create_diagram(
+                    filtered_ids,
                     name=f"{solution.name} — {vp_def['name']}",
-                    description=(
-                        f"Auto-generated {vp_def['name']} for solution '{solution.name}'"
-                    ),
-                    viewpoint_id=matched_vp.id,
-                    specific_element_ids=filtered_ids if filtered_ids else None,
-                    owner_id=owner_id,
-                    is_public=False,
+                    created_by=current_user.id if current_user and current_user.is_authenticated else None,
+                    solution_id=solution_id,
+                    viewpoint_type=vp_def["type"],
                 )
-                db.session.add(view)
-                db.session.flush()  # get the ID without full commit
-
-                result_viewpoints.append({
-                    "type": vp_def["type"],
-                    "name": vp_def["name"],
-                    "viewpoint_view_id": view.id,
-                    "composer_url": f"/archimate/composer?viewpoint={view.id}",
-                    "element_count": len(filtered_ids),
-                })
             except Exception as create_err:
                 current_app.logger.warning(
-                    f"A95-017: failed to create ViewpointView for {vp_def['type']}: {create_err}"
+                    f"A95-017: failed to create SavedDiagram for {vp_def['type']}: {create_err}"
                 )
-                db.session.rollback()
-                result_viewpoints.append({
-                    "type": vp_def["type"],
-                    "name": vp_def["name"],
-                    "viewpoint_view_id": None,
-                    "composer_url": "/archimate/composer?viewpoint=0",
-                    "element_count": len(filtered_ids),
-                })
+                composer_url = None
 
-        # Commit all successfully-created views in one transaction
-        try:
-            db.session.commit()
-        except Exception as commit_err:
-            current_app.logger.error(
-                f"A95-017: commit failed: {commit_err}", exc_info=True
-            )
-            db.session.rollback()
-            # Return the viewpoints as-is; ids will be None where commit failed
+            saved_diagram_id = None
+            if composer_url:
+                try:
+                    saved_diagram_id = int(composer_url.rsplit("=", 1)[-1])
+                except (ValueError, IndexError):
+                    saved_diagram_id = None
+
+            result_viewpoints.append({
+                "type": vp_def["type"],
+                "name": vp_def["name"],
+                "saved_diagram_id": saved_diagram_id,
+                "composer_url": composer_url,
+                "element_count": len(filtered_ids),
+            })
 
         return jsonify({
             "success": True,
