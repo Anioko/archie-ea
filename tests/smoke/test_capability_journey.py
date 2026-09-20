@@ -26,6 +26,7 @@ import re
 import time
 
 import pytest
+import requests
 from playwright.sync_api import expect
 
 from tests.smoke.conftest import PASSWORD
@@ -34,6 +35,35 @@ PAGE_TIMEOUT = 30000
 CAP_LIST_URL = "/enterprise/capability-map/capabilities"
 CAP_DASHBOARD_URL = "/enterprise/capability-map/"
 CAP_API = re.compile(r"/enterprise/capabilities(/\d+)?$")
+UNIFIED_CAP_API = "/api/v1/capabilities/"
+
+
+def _unified_capabilities_count(page, base):
+    """Read `/api/v1/capabilities/`'s total, via the browser's own session cookie.
+
+    This is the write-time listener's demonstration (Task 02): the projection
+    into `unified_capabilities` must have run inside the same transaction as the
+    UI's `BusinessCapability` create, so this canonical-store-backed count must
+    increase by exactly the same amount as the BusinessCapability-backed
+    surfaces above, on the very next request.
+    """
+
+    cookies = {c["name"]: c["value"] for c in page.context.cookies()}
+    resp = requests.get(base + UNIFIED_CAP_API, cookies=cookies, timeout=30)
+    if resp.status_code != 200:
+        return None, resp.status_code, resp.text
+    payload = resp.json()
+    data = payload.get("data", payload) if isinstance(payload, dict) else payload
+    # success_response() shape: {"data": {"capabilities": [...], "pagination":
+    # {"total": N, ...}}} -- app/api/v1/capabilities.py, app/utils/api_response.py.
+    pagination = data.get("pagination") if isinstance(data, dict) else None
+    if isinstance(pagination, dict) and "total" in pagination:
+        return int(pagination["total"]), resp.status_code, resp.text
+    if isinstance(data, dict) and "total" in data:
+        return int(data["total"]), resp.status_code, resp.text
+    if isinstance(data, list):
+        return len(data), resp.status_code, resp.text
+    return None, resp.status_code, resp.text
 
 
 def _login(page, base, email):
@@ -83,6 +113,9 @@ def test_capability_create_edit_and_cross_store_count(browser, live_server, seed
         # ---- Baseline counts, before creating anything ---------------------
         list_count_before = _total_capabilities_on_list_page(page, live_server)
         dashboard_count_before = _total_capabilities_on_dashboard(page, live_server)
+        unified_count_before, unified_status_before, unified_body_before = (
+            _unified_capabilities_count(page, live_server)
+        )
 
         # ---- CREATE (POST /enterprise/capabilities) -------------------------
         page.goto(list_url, wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
@@ -151,10 +184,66 @@ def test_capability_create_edit_and_cross_store_count(browser, live_server, seed
                 "disagree, one of them is stale or filtered differently."
             )
         else:
-            pytest.skip(
+            pytest.fail(
                 "Dashboard total-capabilities figure could not be parsed from "
-                "the rendered page; skipping the cross-store comparison rather "
-                "than asserting on a value we could not extract."
+                "the rendered page (#unified-cap-count missing or non-numeric). "
+                "A 200 with no discoverable count is itself evidence of a "
+                "regression (the element was removed or the count service "
+                "stopped rendering) and must be treated as a failure, not "
+                "skipped -- a skip here would silently stop guarding the "
+                "cross-store count agreement this test exists to catch.\n"
+                f"dashboard_count_before={dashboard_count_before!r} "
+                f"dashboard_count_after={dashboard_count_after!r}"
+            )
+
+        # ---- CANONICAL STORE (ADR 0008 / Task 02's write-time sync) --------
+        # /api/v1/capabilities/ reads unified_capabilities, not BusinessCapability
+        # directly. If the write-time listener (app/models/business_capabilities.py)
+        # is reverted or broken, this count stays flat while the two counts above
+        # still go up by one -- that divergence is exactly what this assertion
+        # exists to catch.
+        page.goto(list_url, wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
+        unified_count_after, unified_status_after, unified_body_after = (
+            _unified_capabilities_count(page, live_server)
+        )
+        assert unified_status_before == 200, (
+            "GET /api/v1/capabilities/ (the canonical store this test exists to "
+            f"guard) did not return 200 before create: status={unified_status_before}. "
+            "This must fail, not skip -- a skip here would hide the exact "
+            "canonical-store regression (500/403/etc.) this test exists to catch."
+        )
+        assert unified_status_after == 200, (
+            "GET /api/v1/capabilities/ (the canonical store this test exists to "
+            f"guard) did not return 200 after create: status={unified_status_after}. "
+            "This must fail, not skip -- a skip here would hide the exact "
+            "canonical-store regression (500/403/etc.) this test exists to catch."
+        )
+        if unified_count_before is None or unified_count_after is None:
+            # Round 3 / R2-4: a 200 with no discoverable count is itself evidence
+            # something changed (a response-shape regression -- e.g.
+            # success_response() wrapping changed, or the endpoint nests its data
+            # differently) and is the more likely real-world regression than an
+            # outright non-200, so this must fail loudly rather than skip. A skip
+            # here would silently stop guarding the canonical store the moment its
+            # response shape drifts, which is exactly the class of defect this
+            # test exists to catch.
+            pytest.fail(
+                "/api/v1/capabilities/ returned 200 but its response body did not "
+                "match any expected shape (pagination.total / top-level total / a "
+                "list), so no count could be extracted. This is a response-shape "
+                "regression on the canonical store's own API and must be treated "
+                "as a failure, not skipped.\n"
+                f"before body: {unified_body_before!r}\n"
+                f"after body: {unified_body_after!r}"
+            )
+        else:
+            assert unified_count_after == unified_count_before + 1, (
+                "unified_capabilities (the canonical store /api/v1/capabilities/ "
+                f"reads) did not increase after a BusinessCapability create: "
+                f"before={unified_count_before} after={unified_count_after}. "
+                "The write-time projection listener on BusinessCapability "
+                "(app/models/business_capabilities.py) may be missing, reverted, "
+                "or silently skipping (e.g. the provenance index is absent)."
             )
     finally:
         context.close()

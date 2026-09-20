@@ -23,9 +23,13 @@ pytestmark = pytest.mark.usefixtures("db_session")
 
 
 def _login(client, user_id):
+    from tests._session_test_helpers import mint_test_sid
+    _sid = mint_test_sid(user_id)
     with client.session_transaction() as sess:
         sess["_user_id"] = str(user_id)
         sess["_fresh"] = True
+        if _sid:
+            sess["_sid"] = _sid
 
     from flask import g, has_app_context
 
@@ -80,6 +84,48 @@ def test_modules_directory_includes_curated_more_tools(app, db_session, make_org
     html = client.get("/modules").get_data(as_text=True)
     assert "Stakeholder Map" in html
     assert "Batch Import" in html
+
+
+def test_modules_directory_composer_link_carries_viewpoint_query_param(app, db_session, make_org):
+    """D3 regression guard: /modules re-uses the same SIDEBAR_ZONES link data
+    as the real sidebar, but its own _resolve() dropped query_params entirely
+    -- so clicking ArchiMate Composer from /modules still landed on the bare
+    blank-canvas URL, the founder's original bug, still live on this second
+    door. Assert the href here carries the same ?viewpoint=layered as the
+    real sidebar."""
+    import re
+
+    client = _make_logged_in_client(app, db_session, make_org)
+    html = client.get("/modules").get_data(as_text=True)
+    match = re.search(r'href="([^"]*archimate/composer[^"]*)"', html)
+    assert match, "no ArchiMate Composer link found on /modules"
+    assert "viewpoint=layered" in match.group(1), (
+        f"/modules ArchiMate Composer link must carry ?viewpoint=layered, "
+        f"got {match.group(1)!r}"
+    )
+
+
+def test_global_search_composer_result_carries_viewpoint_query_param(app, db_session, make_org):
+    """Round 3 / 4th render site: the header Ctrl-K global search endpoint
+    (/api/sidebar/search) independently does url_for(link["endpoint"]) off
+    the same visible_module_links() data as /modules, with no query_params --
+    so clicking "ArchiMate Composer" from the header search box still landed
+    on the bare blank-canvas URL, the founder's original bug, still live on
+    this fourth door. Assert the search result's url carries the same
+    ?viewpoint=layered as the real sidebar and /modules."""
+    client = _make_logged_in_client(app, db_session, make_org)
+    resp = client.get("/api/sidebar/search?q=composer")
+    assert resp.status_code == 200, resp.get_data(as_text=True)[:2000]
+    data = resp.get_json()
+    module_results = [r for r in data.get("results", []) if r.get("type") == "module"]
+    composer_results = [r for r in module_results if "archimate/composer" in r.get("url", "")]
+    assert composer_results, (
+        f"no ArchiMate Composer module result found in global search: {data}"
+    )
+    assert any("viewpoint=layered" in r["url"] for r in composer_results), (
+        f"global search ArchiMate Composer result must carry ?viewpoint=layered, "
+        f"got {[r['url'] for r in composer_results]}"
+    )
 
 
 def test_modules_directory_requires_login(app, db_session, make_org):

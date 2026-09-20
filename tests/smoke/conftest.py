@@ -277,6 +277,34 @@ def seeded(live_server, request, ai_protocol_stub):
         from app.models.user import Role, User
 
         db.create_all()
+        # ADR 0008's write-time projection listener (app/models/business_capabilities.py)
+        # silently no-ops -- by design, so a capability create never 500s on an
+        # un-migrated database -- until `uq_unified_capabilities_provenance` exists.
+        # `db.create_all()` never creates it (it's applied by a dedicated migration
+        # command, not declared as a SQLAlchemy Index), so without this call every
+        # fresh smoke-test database would fail test_capability_journey.py's
+        # canonical-store assertion for an environmental reason that looks
+        # identical to a real regression. Mirrors scripts/database/deploy-schema.sh's
+        # own ordering (migration before any capability write).
+        from sqlalchemy import text as _text
+
+        from app.commands.apply_unified_capability_provenance_migration import (
+            MIGRATION_PATH,
+        )
+
+        # The command itself is a click.Command decorated with @with_appcontext,
+        # which requires an active click context (`.callback()` alone raises
+        # RuntimeError: no active click context) -- so the SQL file is applied
+        # directly here rather than invoking the command, following the same
+        # BEGIN/COMMIT-stripping the command itself does so it nests inside this
+        # session's own transaction instead of opening a second one.
+        _migration_sql = MIGRATION_PATH.read_text(encoding="utf-8")
+        _migration_body = "\n".join(
+            line for line in _migration_sql.splitlines()
+            if line.strip().upper() not in {"BEGIN;", "COMMIT;"}
+        )
+        db.session.execute(_text(_migration_body))
+        db.session.commit()
         if ai_protocol_stub is not None:
             from app.models.models import APISettings
 

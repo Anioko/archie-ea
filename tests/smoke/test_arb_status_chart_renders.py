@@ -156,3 +156,50 @@ def test_status_chart_gets_a_real_chartjs_instance(browser, live_server, seeded,
         "it (the extra_head_js/<head>-vs-<body> timing bug), so the card "
         "renders as dead whitespace instead of the review-status donut"
     )
+
+
+def test_status_chart_segments_are_not_all_black(browser, live_server, seeded, one_governed_review):
+    """17 Sep 2026: `hsl(var(--warning))` handed to Chart.js as a JS string
+    literal (var() only resolves in real CSS) made @kurkle/color fail to
+    parse it SILENTLY -- no console error -- and every segment fell back to
+    Chart.js's default fill, black. A source scan cannot see this; only the
+    resolved, rendered chart colours can. This is the browser-driven proof."""
+    page = browser.new_page()
+    _login(page, live_server, seeded["emails"]["solution_architect"])
+    page.goto(live_server + "/arb/", wait_until="networkidle", timeout=PAGE_TIMEOUT)
+
+    colors = page.evaluate(
+        "() => { const c = document.getElementById('arbStatusChart'); "
+        "const chart = window.Chart.getChart(c); "
+        "return chart.data.datasets[0].backgroundColor; }"
+    )
+    assert colors, "chart carries no resolved backgroundColor array"
+    assert len(colors) == 4
+
+    def _is_black_or_unparsed(value):
+        v = (value or "").strip().lower()
+        return v in ("", "#000000", "#000", "rgb(0, 0, 0)", "rgba(0, 0, 0, 1)") or "var(" in v
+
+    assert not any(_is_black_or_unparsed(c) for c in colors), (
+        "chart segment resolved to black/unparsed -- reproduces the silent "
+        "@kurkle/color parse failure: %r" % colors
+    )
+    # Every segment must be a genuinely distinct colour -- four copies of the
+    # same value would still look broken even if none of them is black.
+    assert len(set(colors)) == 4, "chart segments are not visually distinct: %r" % colors
+
+
+def test_status_chart_canvas_height_is_capped(browser, live_server, seeded, one_governed_review):
+    """17 Sep 2026: canvas `height="160"` was inert under
+    `responsive: true` + the doughnut default `maintainAspectRatio: true`,
+    which sizes the canvas as a square as tall as its wide flex-1 container
+    -- ~700px on a 1440px-wide screen. Fixed by capping the wrapper height
+    AND setting `maintainAspectRatio: false`; this asserts the rendered
+    result, not just that both source changes are present."""
+    page = browser.new_page()
+    _login(page, live_server, seeded["emails"]["solution_architect"])
+    page.goto(live_server + "/arb/", wait_until="networkidle", timeout=PAGE_TIMEOUT)
+
+    box = page.locator("#arbStatusChart").bounding_box()
+    assert box is not None
+    assert box["height"] <= 240, "chart canvas is oversized: %r" % box

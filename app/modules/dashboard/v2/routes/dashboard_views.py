@@ -46,6 +46,9 @@ def overview():
     from app.models.business_capabilities import BusinessCapability
     from app.models.user import User
     from app.models.vendor.vendor_organization import VendorOrganization
+    from app.modules.dashboard.v2.services.executive_dashboard_service import (
+        format_health_score,
+    )
 
     metrics = {
         "applications": 0,
@@ -131,27 +134,14 @@ def overview():
     # tabs). Six canonical layers — ArchiMate 3.2 folds Physical elements
     # (Equipment/Facility/Material) into Technology, so there is no separate
     # Physical tab. Grouped count so it is one query, not O(N).
-    _LAYER_TYPES = {
-        "motivation": {"stakeholder", "driver", "assessment", "goal", "outcome",
-                       "principle", "requirement", "constraint", "meaning", "value"},
-        "strategy": {"resource", "capability", "valuestream", "courseofaction"},
-        "business": {"businessactor", "businessrole", "businesscollaboration",
-                     "businessinterface", "businessprocess", "businessfunction",
-                     "businessinteraction", "businessevent", "businessservice",
-                     "businessobject", "contract", "representation", "product"},
-        "application": {"applicationcomponent", "applicationcollaboration",
-                        "applicationinterface", "applicationfunction",
-                        "applicationinteraction", "applicationprocess",
-                        "applicationevent", "applicationservice", "dataobject"},
-        "technology": {"node", "device", "systemsoftware", "technologycollaboration",
-                       "technologyinterface", "path", "communicationnetwork",
-                       "technologyfunction", "technologyprocess", "technologyinteraction",
-                       "technologyevent", "technologyservice", "artifact",
-                       "equipment", "facility", "distributionnetwork", "material"},
-        "implementation": {"workpackage", "deliverable", "implementationevent",
-                           "plateau", "gap"},
-    }
-    _type_to_layer = {t: layer for layer, ts in _LAYER_TYPES.items() for t in ts}
+    #
+    # LAYER_TYPES / LAYER_TYPE_TO_LAYER are the single system of record for
+    # this mapping (ADR 0008) -- imported from archimate_viewpoint_service,
+    # which the composer's `layer=` filter also reads, so this card's count
+    # and the composer's element set can never drift apart. Do not
+    # reintroduce a local copy here.
+    from app.services.archimate_viewpoint_service import LAYER_TYPES as _LAYER_TYPES
+    from app.services.archimate_viewpoint_service import LAYER_TYPE_TO_LAYER as _type_to_layer
     layer_breakdown = {layer: 0 for layer in _LAYER_TYPES}
     try:
         from app.models.archimate_core import ArchiMateElement
@@ -237,8 +227,15 @@ def overview():
                 "% Test Programme%", "%PESTLE News Analyser%",
                 "MDM Test%", "Create an architecture for%",
             ]
+            # D5 (round-4 refuter finding): also exclude soft-deleted rows
+            # ("[DELETED] ..." name prefix), matching the grain the Health
+            # Scorecard tile (dashboard_views.py total_solutions below,
+            # fixed round-2/R2-5) and the Solutions list's org_total (S-01)
+            # both already use. This was the third surface answering "how
+            # many solutions" with its own, uniquely-inflated count.
             solutions = SolutionModel.query.filter(
                 SolutionModel.name.isnot(None),
+                not_(SolutionModel.name.like("[DELETED]%")),
                 not_(or_(*[SolutionModel.name.like(p) for p in _test_name_patterns])),
             ).all()
 
@@ -685,6 +682,7 @@ def overview():
         lifecycle_distribution=lifecycle_distribution,
         solution_pipeline=solution_pipeline,
         health_score=health_score,
+        health_score_text=format_health_score(health_score),
         health_components=health_components,
         enterprise_role=enterprise_role,
         data_coverage=data_coverage,
@@ -970,24 +968,14 @@ def _assemble_health_scorecard_metrics():
         logger.warning("health_scorecard: ARBReviewItem unavailable: %s", exc)
 
     # 3. ArchiMate element count grouped by layer
-    _layer_map = {
-        "motivation": ["stakeholder", "driver", "assessment", "goal", "outcome", "principle",
-                       "requirement", "constraint", "meaning", "value"],
-        "strategy": ["resource", "capability", "valuestream", "courseofaction"],
-        "business": ["businessactor", "businessrole", "businesscollaboration", "businessinterface",
-                     "businessprocess", "businessfunction", "businessinteraction", "businessevent",
-                     "businessservice", "businessobject", "contract", "representation", "product"],
-        "application": ["applicationcomponent", "applicationcollaboration", "applicationinterface",
-                        "applicationfunction", "applicationinteraction", "applicationprocess",
-                        "applicationevent", "applicationservice", "dataobject"],
-        "technology": ["node", "device", "systemsoftware", "technologycollaboration",
-                       "technologyinterface", "path", "communicationnetwork", "technologyfunction",
-                       "technologyprocess", "technologyinteraction", "technologyevent",
-                       "technologyservice", "artifact"],
-        "implementation": ["workpackage", "deliverable", "implementationevent", "plateau", "gap"],
-    }
-    _type_to_layer = {t: layer for layer, types in _layer_map.items() for t in types}
-    archimate_by_layer = {layer: 0 for layer in _layer_map}
+    # LAYER_TYPES / LAYER_TYPE_TO_LAYER are the single system of record for
+    # this mapping (ADR 0008) -- imported from archimate_viewpoint_service,
+    # same as the by-layer card query above. Do not reintroduce a local copy.
+    from app.services.archimate_viewpoint_service import LAYER_TYPES as _scorecard_layer_types
+    from app.services.archimate_viewpoint_service import (
+        LAYER_TYPE_TO_LAYER as _scorecard_type_to_layer,
+    )
+    archimate_by_layer = {layer: 0 for layer in _scorecard_layer_types}
     archimate_by_layer["other"] = 0
     total_archimate = 0
     try:
@@ -995,29 +983,29 @@ def _assemble_health_scorecard_metrics():
         for (elem_type,) in ArchiMateElement.query.with_entities(ArchiMateElement.type).all():
             total_archimate += 1
             t = (elem_type or "").lower()
-            layer = _type_to_layer.get(t, "other")
+            layer = _scorecard_type_to_layer.get(t, "other")
             archimate_by_layer[layer] = archimate_by_layer.get(layer, 0) + 1
     except Exception as exc:
         logger.warning("health_scorecard: ArchiMateElement unavailable: %s", exc)
 
     # 4. ADM phase distribution and average maturity
-    _adm_phase_pct = {"A": 12, "B": 25, "C": 37, "D": 50, "E": 62, "F": 75, "G": 87, "H": 100}
+    # Read through the same phase summary as the Health Score's phase maturity,
+    # so the two maturity figures count the same solutions.
+    from app.modules.dashboard.v2.services.solution_phase_measures import (
+        average_phase_progress,
+        recorded_phase_summary,
+    )
+
     adm_distribution = {p: 0 for p in "ABCDEFGH"}
     avg_maturity = None
     total_solutions = None
     try:
-        from app.models.solution_models import Solution as SolutionModel
-        solutions_q = SolutionModel.query.with_entities(SolutionModel.adm_phase).all()
-        total_solutions = len(solutions_q)
-        maturity_scores = []
-        for (phase,) in solutions_q:
-            p = (phase or "").strip().upper()
-            if p not in _adm_phase_pct:
-                p = "Unclassified"
-            adm_distribution[p] = adm_distribution.get(p, 0) + 1
-            if p in _adm_phase_pct:
-                maturity_scores.append(_adm_phase_pct[p])
-        avg_maturity = round(sum(maturity_scores) / len(maturity_scores)) if maturity_scores else None
+        phase_summary = recorded_phase_summary()
+        total_solutions = phase_summary["total"]
+        adm_distribution.update(phase_summary["counts"])
+        if phase_summary["unclassified"]:
+            adm_distribution["Unclassified"] = phase_summary["unclassified"]
+        avg_maturity = average_phase_progress(phase_summary)
     except Exception as exc:
         adm_distribution = None
         total_solutions = None
@@ -1042,8 +1030,28 @@ def _assemble_health_scorecard_metrics():
 def health_scorecard():
     """Architecture Health Scorecard — real metrics from SolutionRisk, ARBReviewItem,
     ArchiMateElement and Solution ADM phase distribution."""
+    from app.modules.dashboard.v2.services.executive_dashboard_service import (
+        ExecutiveDashboardService,
+        format_health_score,
+        health_score_basis,
+    )
+
     metrics = _assemble_health_scorecard_metrics()
-    return render_template("dashboards/health.html", **metrics)
+    health_score = None
+    unavailable = None
+    try:
+        health = ExecutiveDashboardService()._get_health_score()
+        health_score = health["composite_score"]
+        unavailable = health["unavailable_components"]
+    except Exception as exc:
+        logger.warning("health_scorecard: health score unavailable: %s", exc)
+        db.session.rollback()
+    return render_template(
+        "dashboards/health.html",
+        health_score_text=format_health_score(health_score),
+        health_basis=health_score_basis(health_score, unavailable),
+        **metrics,
+    )
 
 
 @dashboard_bp_v2.route("/api/ai-executive-briefing", methods=["POST"])

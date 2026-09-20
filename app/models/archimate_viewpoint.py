@@ -216,6 +216,19 @@ class ViewpointView(db.Model):
     A view is an instantiation of a viewpoint for a specific architecture model,
     potentially with additional filtering or customization. While a viewpoint is
     a template/specification, a view is an actual diagram or model subset.
+
+    DEPRECATED (composer-diagram-link-mismatches, D3, 2026-09-19): this table
+    has no readers anywhere in the codebase — no route, service, template or
+    test ever queries ``viewpoint_views``. It also lacks ``TenantMixin``, so it
+    was a tenant-isolation gap on top of being a dead store. Its former sole
+    writer, ``architect_viewpoints()`` in
+    ``app/modules/ai_chat/routes/chat_workflows.py``, now creates
+    ``SavedDiagram`` rows via
+    ``app.services.archimate_composer_service.create_diagram`` instead, since
+    ``SavedDiagram`` is the composer's actual system of record and is already
+    served by the ``/archimate/api/saved-viewpoints/*`` endpoints. Retired per
+    ADR 0008 (retire, never accumulate) — do not drop the table, and do not add
+    a new writer here; extend ``SavedDiagram`` instead.
     """
 
     __tablename__ = "viewpoint_views"

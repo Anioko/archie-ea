@@ -446,10 +446,10 @@ def _register_api_auth(app, csrf):
           400:
             description: Bad request - missing email or password
         """
-        from flask import jsonify, request, session
-        from flask_login import login_user
+        from flask import jsonify, request
 
         from app.models import User
+        from app.services import session_registry
 
         data = request.get_json()
         if not data:
@@ -476,10 +476,7 @@ def _register_api_auth(app, csrf):
             ), 401
 
         # Fix Session Fixation: Regenerate session ID after successful authentication
-        session.clear()
-        session.modified = True
-        login_user(user, remember_me)
-        session.permanent = True
+        session_registry.login_and_register(user, remember=remember_me)
 
         return (
             jsonify(
@@ -524,9 +521,10 @@ def _register_api_auth(app, csrf):
                   example: "Logged out successfully"
         """
         from flask import jsonify
-        from flask_login import logout_user
 
-        logout_user()
+        from app.modules.account.services.account_service import AccountService
+
+        AccountService.logout()
         return jsonify({"success": True, "message": "Logged out successfully"}), 200
 
     # csrf.exempt: API logout — token-based authentication endpoint, no browser session or CSRF token expected

@@ -47,6 +47,14 @@ POLICY = {
     "/my-applications/list":   {"application_manager"},
     "/my-applications/health": {"application_manager"},
     "/ai-chat":                set(ARCHETYPES),
+    # Ask and Twin map: both pages carry @login_required and no role gate, so
+    # every archetype is expected to reach them. Stating that in two rows is
+    # what makes a role gate added later show up here as a row change, and what
+    # keeps them in test_no_archetype_reaches_another_personas_section_
+    # unauthenticated below. The data they show is fenced per tenant by the
+    # impact endpoint they read, not by the page.
+    "/intelligence/ask":       set(ARCHETYPES),
+    "/intelligence/twin-map":  set(ARCHETYPES),
     # ArchiMate OEF import (dogfood-import-fixes, Task 01): the route carries
     # only @login_required -- no role gate at all -- despite update_existing
     # being able to overwrite elements across the whole enterprise model, per
@@ -615,6 +623,60 @@ def test_interface_register_null_architecture_initiative_is_404_not_visible(
     assert response.status == 404, (
         "an initiative with architecture_id IS NULL resolved to %s, not 404" % response.status
     )
+
+
+@pytest.mark.parametrize("archetype", ARCHETYPES)
+def test_intelligence_impact_route_authorisation(
+    archetype, page, live_server, seeded, seeded_interface_element
+):
+    """T-004 (API-1): GET /api/v1/intelligence/impact/<element_id> carries
+    only ``@login_required`` -- no enterprise-role gate -- so every one of
+    the eleven canonical archetypes is expected to reach it once
+    authenticated, the same "deliberately open row" shape as /ai-chat above.
+    Anonymous is covered separately below.
+    """
+    _login(page, live_server, seeded["emails"][archetype])
+    path = "/api/v1/intelligence/impact/%d" % seeded_interface_element
+    actual = _observe(page, live_server, path)
+    assert actual == ALLOWED, (
+        f"{archetype} could not reach {path}: expected ALLOWED (login_required only)"
+    )
+
+
+def test_intelligence_impact_route_rejects_anonymous_browser_session(page, live_server, seeded, seeded_interface_element):
+    path = "/api/v1/intelligence/impact/%d" % seeded_interface_element
+    response = page.goto(live_server + path, wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
+    assert response is not None
+    # Corrected against a live run: this is a JSON API route, so
+    # login_required answers 401 directly rather than redirecting to the
+    # login page (unlike an HTML page route). Tightened per the minor finding
+    # to the precise-status pattern used a few lines below at :647-657 -- a
+    # bare ">= 400" would also pass on an unrelated 500, which is not the
+    # behaviour under test.
+    assert response.status == 401
+
+
+@pytest.mark.parametrize("archetype", ARCHETYPES)
+def test_intelligence_yield_route_authorisation(archetype, page, live_server, seeded):
+    """T-005 (API-5): GET /api/v1/intelligence/yield carries only
+    ``@login_required`` -- no enterprise-role gate -- so every one of the
+    eleven canonical archetypes is expected to reach it once authenticated,
+    the same "deliberately open row" shape as the T-004 impact route above.
+    Anonymous is covered separately below.
+    """
+    _login(page, live_server, seeded["emails"][archetype])
+    path = "/api/v1/intelligence/yield"
+    actual = _observe(page, live_server, path)
+    assert actual == ALLOWED, (
+        f"{archetype} could not reach {path}: expected ALLOWED (login_required only)"
+    )
+
+
+def test_intelligence_yield_route_rejects_anonymous_browser_session(page, live_server):
+    path = "/api/v1/intelligence/yield"
+    response = page.goto(live_server + path, wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
+    assert response is not None
+    assert response.status == 401
 
 
 def test_transformation_api_rejects_anonymous_browser_session(page, live_server):

@@ -8,7 +8,7 @@ of them is public, so it matters which is which.
 | Repository | Visibility | Role |
 |---|---|---|
 | `Anioko/archie-ea` | **PUBLIC** | The open-source distribution (AGPL-3.0). The **only** repo that is public. Must be kept up to date. |
-| `saint-gobain-archie/archie-ea` | private | The company repository. Canonical for delivery, deployment and anything customer-specific. |
+| `<company-org>/archie-ea` | private | The company repository. Canonical for delivery, deployment and anything customer-specific. |
 | `aniekanasuquookono-web/archie-ea` | public | **Being decommissioned.** A personal fork. Its content belongs in the two repos above. |
 
 ## Rules
@@ -19,7 +19,7 @@ of them is public, so it matters which is which.
    stale public repo is worse than no public repo.
 3. **Never publish a `prod-live-snapshot-*` branch.** Those branches capture live
    production state, including working files that were never intended for
-   release. They belong in `saint-gobain-archie` only.
+   release. They belong in `<company-org>` only.
 4. **`aniekanasuquookono-web/archie-ea` must not accumulate new work.** Push to
    the company repo, and to the public repo for open-source content.
 5. Before any push to the public repo, the secret scan must be green. See
@@ -43,7 +43,7 @@ Verified on 2026-07-30:
 ## Sync procedure
 
 ```bash
-git remote add sg     https://github.com/saint-gobain-archie/archie-ea.git   # private
+git remote add sg     https://github.com/<company-org>/archie-ea.git   # private
 git remote add public https://github.com/Anioko/archie-ea.git               # PUBLIC
 
 git fetch --all
@@ -63,10 +63,10 @@ git push public main      # open-source content only; never prod-live-snapshot-*
 - **The production server pushes to the public repo.** On the app droplet,
   `/root/archie-ea` has `origin = https://github.com/Anioko/archie-ea.git`. A
   production host should not have the public repository as its default remote;
-  point it at `saint-gobain-archie` instead. (It currently has no credentials, so
+  point it at `<company-org>` instead. (It currently has no credentials, so
   nothing has actually been pushed from there.)
 
-- Branches rescued from the personal fork into `saint-gobain-archie` on
+- Branches rescued from the personal fork into `<company-org>` on
   2026-07-30, none of which existed there before:
   `deploy-sync-2026-07-14` (27 commits), `pilot-readiness-fixes` (4),
   `fix/apex-codegen-dashboards-proxy-https` (1). These still need copying to the

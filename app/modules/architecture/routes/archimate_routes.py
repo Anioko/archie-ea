@@ -1137,11 +1137,19 @@ def composer_page():
     Query Parameters:
         solution_id (int): Scope to a specific solution (required for save).
         viewpoint (str): Pre-select a viewpoint (opens in View mode).
+        layer (str): Optional. Pre-select a dashboard layer within the
+            'layered' viewpoint. Passed through unvalidated as `initial_layer`
+            -- validation happens where it matters, at the data-fetch API
+            (api_viewpoint_data), which 400s on an unknown value; a bad value
+            reaching this page-render route just means selectViewpoint's
+            fetch will come back with that 400 and the composer will show the
+            resulting error state rather than a silently unfiltered canvas.
     """
     from app.services.archimate_viewpoint_service import get_available_viewpoints, get_viewpoint_counts
 
     solution_id = request.args.get("solution_id", type=int)
     viewpoint = request.args.get("viewpoint", "")
+    initial_layer = request.args.get("layer", "")
     solution_name = None
     if solution_id:
         # solution_id is an unvalidated query parameter, so the raw lookup must
@@ -1171,6 +1179,7 @@ def composer_page():
         viewpoint_categories=categories,
         viewpoint_counts=vp_counts,
         initial_viewpoint=viewpoint,
+        initial_layer=initial_layer,
     )
 
 
@@ -1252,10 +1261,26 @@ def api_list_viewpoints():
 @archimate_bp.route("/viewpoints-api/<viewpoint_id>/data", methods=["GET"])
 @login_required
 def api_viewpoint_data(viewpoint_id: str):
-    """Return filtered elements and layout hints for a viewpoint."""
-    from app.services.archimate_viewpoint_service import get_viewpoint_data
+    """Return filtered elements and layout hints for a viewpoint.
+
+    Query Parameters:
+        solution_id (int): Scope to a specific solution.
+        layer (str): Optional. Narrows the response to one dashboard layer
+            (motivation/strategy/business/application/technology/
+            implementation), matched by ArchiMate element type via the
+            shared LAYER_TYPES map -- see archimate_viewpoint_service.
+            Untrusted input: allowlisted below, 400 on anything else. Never
+            silently falls back to "no filter" on a bad value.
+    """
+    from app.services.archimate_viewpoint_service import VALID_LAYER_KEYS, get_viewpoint_data
     solution_id = request.args.get("solution_id", type=int)
-    data = get_viewpoint_data(viewpoint_id=viewpoint_id, solution_id=solution_id)
+    layer = request.args.get("layer", "").strip().lower() or None
+    if layer is not None and layer not in VALID_LAYER_KEYS:
+        return api_error(
+            "Invalid layer. Must be one of: " + ", ".join(sorted(VALID_LAYER_KEYS)),
+            400,
+        )
+    data = get_viewpoint_data(viewpoint_id=viewpoint_id, solution_id=solution_id, layer=layer)
     return jsonify(data)
 
 
@@ -2585,13 +2610,16 @@ def api_element_detail(element_id):
     # poison its siblings.
     linked_capabilities = []
     try:
+        # _org_and_cap is one of two hardcoded literal clauses selected by
+        # `_org is not None`; the actual org value is always bound as :org,
+        # never interpolated -- no request input reaches the query text.
         _org_and_cap = " AND bc.organization_id = :org" if _org is not None else ""
         cap_rows = db.session.execute(
             db.text(
                 "SELECT DISTINCT bc.id, bc.name, bc.level "
                 "FROM business_capability bc "
                 "JOIN capability_archimate_classifications cae ON cae.capability_id = bc.id "
-                f"WHERE cae.archimate_element_id = :eid{_org_and_cap} "
+                f"WHERE cae.archimate_element_id = :eid{_org_and_cap} "  # nosec B608
                 "ORDER BY bc.name "
                 "LIMIT 20"
             ),
@@ -6352,6 +6380,26 @@ def _resolve_layer(element_type: str, explicit_layer: str = "") -> str:
     return _TYPE_TO_LAYER.get(normalised, "Application")
 
 
+def _composer_url_for_elements(element_ids, name: str):
+    """Build a real, openable composer URL for a set of element ids.
+
+    The composer only reads `viewpoint_id` (plus `solution_id`/`layer`), so a
+    literal `?elements=1,2,3` string is silently ignored — this creates a
+    real `SavedDiagram` via the shared service (same helper D4 already uses)
+    and returns its `?viewpoint_id=` URL, or None if there is nothing to
+    open.
+    """
+    if not element_ids:
+        return None
+    from app.services.archimate_composer_service import create_diagram
+
+    return create_diagram(
+        element_ids,
+        name,
+        created_by=current_user.id if current_user.is_authenticated else None,
+    )
+
+
 @archimate_bp.route("/import", methods=["GET"])
 @login_required
 def import_page():
@@ -6473,7 +6521,9 @@ def api_import_elements_csv():
         "error_count": len(errors),
         "total_rows": len(rows),
         "element_ids": [e["id"] for e in created_ids],
-        "composer_url": f"/archimate/composer?elements={','.join(str(e['id']) for e in created_ids)}" if created_ids else None,
+        "composer_url": _composer_url_for_elements(
+            [e["id"] for e in created_ids], "Imported Elements"
+        ),
     })
 
 
@@ -6602,7 +6652,7 @@ def api_import_document():
             "error_count": len(errors),
             "total_elements": len(elements),
             "element_ids": all_ids,
-            "composer_url": f"/archimate/composer?elements={','.join(str(eid) for eid in all_ids)}" if all_ids else None,
+            "composer_url": _composer_url_for_elements(all_ids, "Imported Document Elements"),
         })
 
     except Exception as e:
@@ -6715,7 +6765,7 @@ def api_create_diagram_from_elements():
         "diagram_id": diagram.id,
         "diagram_name": diagram.name,
         "element_count": len(elements),
-        "composer_url": f"/archimate/composer?viewpoint={diagram.id}",
+        "composer_url": f"/archimate/composer?viewpoint_id={diagram.id}",
     }), 201
 
 

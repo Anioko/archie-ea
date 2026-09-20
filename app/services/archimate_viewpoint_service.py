@@ -39,6 +39,10 @@ STANDARD_VIEWPOINTS = {
         'allowed_relationships': [],  # empty = all types
         'roles': ['Enterprise', 'Business', 'Application', 'Data', 'Integrations', 'Technical', 'Technology'],
         'category': 'basic',
+        # Whole-portfolio viewpoint: "all elements and relationships" is not
+        # answerable from one solution's scope. See enterprise_scope in
+        # get_viewpoint_data()'s docstring.
+        'enterprise_scope': True,
     },
     'layered': {
         'name': 'Layered',
@@ -48,6 +52,9 @@ STANDARD_VIEWPOINTS = {
         'layer_order': ['strategy', 'motivation', 'business', 'application', 'technology', 'physical',
                         'implementation'],
         'element_types': [],  # all types, grouped by layer
+        # Whole-portfolio viewpoint (roles: ['Enterprise'] only) -- see
+        # enterprise_scope in get_viewpoint_data()'s docstring.
+        'enterprise_scope': True,
         'allowed_relationships': [],
         'roles': ['Enterprise'],
         'category': 'composite',
@@ -290,11 +297,75 @@ def get_viewpoint_counts(solution_id: int) -> dict:
         return {}
 
 
-def get_viewpoint_data(viewpoint_id: str, solution_id: int = None) -> dict:
+# ── Dashboard layer → ArchiMate element type map ────────────────────────────
+# Single system of record for "which element types make up layer X" (ADR
+# 0008 -- "one accessor per concept"). Previously duplicated inside
+# app/modules/dashboard/v2/routes/dashboard_views.py as a local _LAYER_TYPES
+# dict; that copy is now an import of this one so the dashboard card's count
+# and the composer's layer filter can never drift apart. Six canonical
+# dashboard layers -- ArchiMate 3.2 folds Physical (Equipment/Facility/
+# Material) into Technology, so there is no separate 'physical' key here even
+# though STANDARD_VIEWPOINTS['layered']['layer_order'] has a seventh entry
+# for it; a composer 'layer=technology' filter must include those types to
+# match what the dashboard card promised.
+#
+# There is a third, differently-shaped map in app/models/archimate_core.py
+# (_ELEMENT_TYPE_LAYER, used for relationship-validity checks) -- left alone
+# deliberately; reconciling all three is tracked as a follow-up, not part of
+# this change.
+LAYER_TYPES = {
+    "motivation": {"stakeholder", "driver", "assessment", "goal", "outcome",
+                   "principle", "requirement", "constraint", "meaning", "value"},
+    "strategy": {"resource", "capability", "valuestream", "courseofaction"},
+    "business": {"businessactor", "businessrole", "businesscollaboration",
+                 "businessinterface", "businessprocess", "businessfunction",
+                 "businessinteraction", "businessevent", "businessservice",
+                 "businessobject", "contract", "representation", "product"},
+    "application": {"applicationcomponent", "applicationcollaboration",
+                    "applicationinterface", "applicationfunction",
+                    "applicationinteraction", "applicationprocess",
+                    "applicationevent", "applicationservice", "dataobject"},
+    "technology": {"node", "device", "systemsoftware", "technologycollaboration",
+                   "technologyinterface", "path", "communicationnetwork",
+                   "technologyfunction", "technologyprocess", "technologyinteraction",
+                   "technologyevent", "technologyservice", "artifact",
+                   "equipment", "facility", "distributionnetwork", "material"},
+    "implementation": {"workpackage", "deliverable", "implementationevent",
+                       "plateau", "gap"},
+}
+
+# Reverse index: lowercased element type -> layer key. Used both here (to
+# resolve a `layer` filter to a set of ArchiMateElement.type values) and by
+# dashboard_views.py (to resolve a type to a layer for the count).
+LAYER_TYPE_TO_LAYER = {t: layer for layer, ts in LAYER_TYPES.items() for t in ts}
+
+# The set of layer keys a caller is allowed to filter by (composer `layer=`
+# query param). Untrusted input must be allowlisted against exactly this set
+# -- an unrecognised value is a 400, never a silent "no filter".
+VALID_LAYER_KEYS = frozenset(LAYER_TYPES.keys())
+
+
+def _types_for_layer(layer: str) -> list:
+    """Return the ArchiMate element `type` strings (as actually stored --
+    original casing varies, so callers should match case-insensitively) that
+    belong to the given dashboard layer key.
+
+    Returns an empty list for an unknown layer; callers are expected to have
+    already validated `layer` against VALID_LAYER_KEYS before calling this.
+    """
+    return sorted(LAYER_TYPES.get(layer, set()))
+
+
+def get_viewpoint_data(viewpoint_id: str, solution_id: int = None, layer: str = None) -> dict:
     """Return elements filtered for this viewpoint, grouped for layout.
 
     Enforces 4 invariants:
-    1. Scope required — no solution_id returns scope_required flag
+    1. Scope required — no solution_id returns scope_required flag, UNLESS
+       the viewpoint declares 'enterprise_scope': True (whole-portfolio
+       viewpoints like 'basic'/'layered', whose own descriptions promise
+       "all elements" across the organisation, not one solution's model —
+       for those, no solution_id means "show the whole tenant", not "show
+       nothing until a solution is picked").
     2. Element type filtering via viewpoint's element_types
     3. Relationship type filtering via viewpoint's allowed_relationships
     4. Relationships with hidden endpoints are hidden (no dangling arrows)
@@ -303,9 +374,20 @@ def get_viewpoint_data(viewpoint_id: str, solution_id: int = None) -> dict:
     layers = [la.lower() for la in vp.get('layers', [])]
     allowed_types = vp.get('element_types', [])
     allowed_rels = set(vp.get('allowed_relationships', []))
+    enterprise_scope = bool(vp.get('enterprise_scope'))
+
+    # `layer` narrows by ArchiMateElement.type via the shared LAYER_TYPES map
+    # (not the unreliable .layer column -- see module docstring above).
+    # Callers (the API route) are responsible for 400ing an unknown value
+    # before reaching here; an unrecognised value falls through to
+    # `layer_type_names = []`, which -- to fail closed rather than silently
+    # showing everything -- is treated as "match nothing", not "no filter".
+    layer_type_names = None
+    if layer:
+        layer_type_names = [t.lower() for t in _types_for_layer(layer)]
 
     # ── Invariant 1: Scope required ──
-    if not solution_id:
+    if not solution_id and not enterprise_scope:
         return {
             'viewpoint_id': viewpoint_id,
             'viewpoint_name': vp['name'],
@@ -323,34 +405,73 @@ def get_viewpoint_data(viewpoint_id: str, solution_id: int = None) -> dict:
     try:
         from app.models.archimate_core import ArchiMateElement
 
-        # Get solution's element IDs (junction + fallback)
-        from app.models.solution_models import SolutionArchiMateElement
-        junctions = (
-            SolutionArchiMateElement.query
-            .filter_by(solution_id=solution_id)
-            .all()
-        )
-        element_ids = [j.element_id for j in junctions if j.element_id]
+        is_enterprise_wide = not solution_id and enterprise_scope
+        if is_enterprise_wide:
+            # D5: the tenant-isolation listener (do_orm_execute) is a NO-OP,
+            # not a deny, when g.current_org_id is unset — so an unscoped
+            # ArchiMateElement.query here would return every tenant's rows if
+            # this code path is ever reached outside a request context with an
+            # org resolved. Fail closed instead of relying on that listener
+            # alone for the whole-tenant path.
+            from app.middleware.tenant_context import current_org_id as _current_org_id
 
-        # Fallback: if junction is empty, try ArchitectureModel path
-        if not element_ids:
-            try:
-                from app.models.archimate_core import ArchitectureModel
-                sol_arch = ArchitectureModel.query.filter_by(solution_id=solution_id).first()
-                if sol_arch:
-                    arch_elements = ArchiMateElement.query.filter_by(architecture_id=sol_arch.id).all()
-                    element_ids = [e.id for e in arch_elements]
-                    logger.info('Solution %s: loaded %d elements via ArchitectureModel fallback', solution_id, len(element_ids))
-            except Exception as e:
-                logger.warning('ArchitectureModel fallback failed for solution %s: %s', solution_id, e)
+            if not _current_org_id():
+                return {
+                    'viewpoint_id': viewpoint_id,
+                    'viewpoint_name': vp['name'],
+                    'scope_required': True,
+                    'elements': [],
+                    'relationships': [],
+                    'total': 0,
+                    'layer_order': vp.get('layer_order', layers or ['business']),
+                    'groups': {},
+                }
+            # Whole-tenant path: ArchiMateElement carries TenantMixin, so a
+            # bare .query is already scoped to g.current_org_id by the
+            # do_orm_execute listener (app/middleware/tenant_isolation.py) --
+            # no manual organization_id predicate needed or wanted here.
+            query = ArchiMateElement.query
+            if allowed_types:
+                query = query.filter(ArchiMateElement.type.in_(allowed_types))
+            if layer_type_names is not None:
+                from app import db as _db
+                query = query.filter(_db.func.lower(ArchiMateElement.type).in_(layer_type_names))
+            elements = query.limit(500).all()
+            element_ids = [e.id for e in elements]
+        else:
+            # Get solution's element IDs (junction + fallback)
+            from app.models.solution_models import SolutionArchiMateElement
+            junctions = (
+                SolutionArchiMateElement.query
+                .filter_by(solution_id=solution_id)
+                .all()
+            )
+            element_ids = [j.element_id for j in junctions if j.element_id]
 
-        if element_ids:
+            # Fallback: if junction is empty, try ArchitectureModel path
+            if not element_ids:
+                try:
+                    from app.models.archimate_core import ArchitectureModel
+                    sol_arch = ArchitectureModel.query.filter_by(solution_id=solution_id).first()
+                    if sol_arch:
+                        arch_elements = ArchiMateElement.query.filter_by(architecture_id=sol_arch.id).all()
+                        element_ids = [e.id for e in arch_elements]
+                        logger.info('Solution %s: loaded %d elements via ArchitectureModel fallback', solution_id, len(element_ids))
+                except Exception as e:
+                    logger.warning('ArchitectureModel fallback failed for solution %s: %s', solution_id, e)
+
+        if element_ids and not is_enterprise_wide:
             # ── Invariant 2: Element type filtering ──
+            # (skipped for the enterprise-wide path above, which already
+            # queried and filtered `elements` directly)
             query = ArchiMateElement.query.filter(ArchiMateElement.id.in_(element_ids))
             if allowed_types:
                 query = query.filter(ArchiMateElement.type.in_(allowed_types))
+            if layer_type_names is not None:
+                from app import db as _db
+                query = query.filter(_db.func.lower(ArchiMateElement.type).in_(layer_type_names))
             elements = query.limit(500).all()
-        else:
+        elif not is_enterprise_wide:
             elements = []
 
         # Build FILTERED element ID set (for Invariant 4 — hidden endpoints)
@@ -424,14 +545,34 @@ def get_viewpoint_data(viewpoint_id: str, solution_id: int = None) -> dict:
                     continue
                 relationships_out.append(r)
 
-    except Exception:  # noqa: BLE001 — DB may not be initialised in fast-init
+    except Exception as e:  # noqa: BLE001 — DB may not be initialised in fast-init
+        # D4: a bare `serialised = []` here was indistinguishable from a
+        # genuinely empty model (fabricated-data class per CLAUDE.md) — a 200
+        # response with elements: [] on any failure told the caller nothing
+        # went wrong. Surface an explicit error flag instead, and reset
+        # relationships_out too so a failure partway through the relationship
+        # loop can never leave dangling relationships alongside an empty
+        # elements list (Invariant 4).
+        logger.warning('get_viewpoint_data failed for viewpoint %s, solution %s: %s', viewpoint_id, solution_id, e)
         serialised = []
+        relationships_out = []
+        return {
+            'viewpoint_id': viewpoint_id,
+            'viewpoint_name': vp['name'],
+            'error': True,
+            'error_reason': 'Failed to load viewpoint data',
+            'elements': [],
+            'relationships': [],
+            'total': 0,
+            'layer_order': vp.get('layer_order', layers or ['business']),
+            'groups': {},
+        }
 
     # Group by layer for the layered viewpoint
     grouped: dict = {}
     layer_order = vp.get('layer_order', layers or ['business'])
-    for layer in layer_order:
-        grouped[layer] = [el for el in serialised if el['layer'] == layer]
+    for layer_key in layer_order:
+        grouped[layer_key] = [el for el in serialised if el['layer'] == layer_key]
     for el in serialised:
         if el['layer'] not in grouped:
             grouped[el['layer']] = grouped.get(el['layer'], []) + [el]

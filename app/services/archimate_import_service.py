@@ -87,13 +87,25 @@ class ArchiMateImportService:
         "Constraint": "Motivation",
         "Meaning": "Motivation",
         "Value": "Motivation",
-        # Implementation & Migration layer
-        "WorkPackage": "Implementation & Migration",
-        "Deliverable": "Implementation & Migration",
-        "ImplementationEvent": "Implementation & Migration",
-        "Plateau": "Implementation & Migration",
-        "Gap": "Implementation & Migration",
+        # Implementation & Migration layer. DOGFOOD-002: the stored key must
+        # be the one the Element Catalog counts and filters on
+        # (``layer_order`` in app/modules/architecture/routes/archimate_routes.py
+        # and the OEF exporter's map in app/services/archimate_oef_service.py
+        # both use "Implementation"). Writing "Implementation & Migration"
+        # here made 35 of customer zero's 168 elements land and vanish.
+        "WorkPackage": "Implementation",
+        "Deliverable": "Implementation",
+        "ImplementationEvent": "Implementation",
+        "Plateau": "Implementation",
+        "Gap": "Implementation",
     }
+
+    # Column widths on ``archimate_elements`` (app/models/archimate_core.py).
+    # DOGFOOD-001: the parser checks these so preview reports what execute
+    # will refuse, instead of one over-long name aborting the whole import
+    # with a raw ``StringDataRightTruncation`` from the database.
+    MAX_NAME_LENGTH = 100
+    MAX_TYPE_LENGTH = 50
 
     # DOGFOOD-003 (relationship-validity authority audit): this class used to
     # carry its own `VALID_RELATIONSHIP_TYPES` flat set — a second opinion on
@@ -123,6 +135,8 @@ class ArchiMateImportService:
                         "type": "BusinessProcess",
                         "layer": "Business",
                         "description": "..." | None,
+                        "properties": {"status": "RULED", ...},
+                        "invalid": "name_too_long (269 chars > 100)",  # only when present
                     }, ...
                 ],
                 "relationships": [
@@ -131,10 +145,15 @@ class ArchiMateImportService:
                         "type": "Serving",
                         "source": "id-elem-2",
                         "target": "id-elem-1",
+                        "description": "..." | None,
                     }, ...
                 ],
                 "errors": [],
             }
+
+        An element with ``invalid`` set is kept in the list so preview can
+        show it, but ``execute_import`` refuses it (counted in ``failed``)
+        rather than letting the database reject the whole batch.
 
         Raises ``ValueError`` on malformed XML.
         """
@@ -222,6 +241,29 @@ class ArchiMateImportService:
                     )
                     continue
 
+                # DOGFOOD-001: flag what the database would reject, per
+                # element, so preview reports it and execute skips it.
+                invalid = None
+                if len(elem_name) > self.MAX_NAME_LENGTH:
+                    invalid = (
+                        f"name_too_long ({len(elem_name)} chars > {self.MAX_NAME_LENGTH})"
+                    )
+                    errors.append(
+                        f"Element {identifier} '{elem_name[:40]}…' ({elem_type}) has a "
+                        f"name of {len(elem_name)} characters; the limit is "
+                        f"{self.MAX_NAME_LENGTH}. It will not be imported — shorten the "
+                        f"name in the source model (the full text can go in its documentation)."
+                    )
+                elif len(elem_type) > self.MAX_TYPE_LENGTH:
+                    invalid = (
+                        f"type_too_long ({len(elem_type)} chars > {self.MAX_TYPE_LENGTH})"
+                    )
+                    errors.append(
+                        f"Element {identifier} '{elem_name}' has a type of "
+                        f"{len(elem_type)} characters; the limit is {self.MAX_TYPE_LENGTH}. "
+                        f"It will not be imported."
+                    )
+
                 # --- Properties (DOGFOOD-004 minimal convention — see
                 # docs/adr/0009-continuous-model-maintenance.md (Addendum)) ---
                 properties: Dict[str, str] = {}
@@ -239,14 +281,17 @@ class ArchiMateImportService:
                         if key:
                             properties[key] = value
 
-                elements.append({
+                entry: Dict[str, Any] = {
                     "identifier": identifier,
                     "name": elem_name,
                     "type": elem_type,
                     "layer": layer,
                     "description": description,
                     "properties": properties,
-                })
+                }
+                if invalid:
+                    entry["invalid"] = invalid
+                elements.append(entry)
 
         # --- Relationships ---
         rels_container = root.find(_tag("relationships"))
@@ -268,11 +313,19 @@ class ArchiMateImportService:
                     )
                     continue
 
+                rel_doc_el = rel.find(_tag("documentation"))
+                rel_description = (
+                    rel_doc_el.text.strip()
+                    if rel_doc_el is not None and rel_doc_el.text
+                    else None
+                )
+
                 relationships.append({
                     "identifier": identifier,
                     "type": rel_type,
                     "source": source,
                     "target": target,
+                    "description": rel_description,
                 })
 
         return {
@@ -333,6 +386,7 @@ class ArchiMateImportService:
                 "type": rel_type_raw,
                 "source": source_ref,
                 "target": target_ref,
+                "description": rel.get("description"),
             }
 
             if source_type is None or target_type is None:
@@ -388,23 +442,37 @@ class ArchiMateImportService:
                 "elements": [
                     {
                         ...element fields...,
-                        "status": "new" | "exists" | "conflict",
+                        "status": "new" | "exists" | "conflict" | "invalid",
                         "existing_id": int | None,
                         "diff": str | None,
                     }, ...
                 ],
-                "summary": {"new": N, "exists": N, "conflict": N, "total": N},
+                "summary": {"new": N, "exists": N, "conflict": N, "invalid": N, "total": N, ...},
                 "relationships": [...],
                 "errors": [...],
             }
+
+        ``invalid`` (DOGFOOD-001) counts the elements ``execute_import`` will
+        refuse, so the number shown before the import matches what happens
+        during it.
         """
         from app.models.archimate_core import ArchiMateElement
 
         elements = parsed_data.get("elements", [])
         preview_elements: List[Dict[str, Any]] = []
-        counts = {"new": 0, "exists": 0, "conflict": 0}
+        counts = {"new": 0, "exists": 0, "conflict": 0, "invalid": 0}
 
         for elem in elements:
+            if elem.get("invalid"):
+                preview_elements.append({
+                    **elem,
+                    "status": "invalid",
+                    "existing_id": None,
+                    "diff": elem["invalid"],
+                })
+                counts["invalid"] += 1
+                continue
+
             name_lower = elem["name"].strip().lower()
             elem_type = elem["type"]
 
@@ -438,8 +506,12 @@ class ArchiMateImportService:
 
             preview_elements.append(entry)
 
+        # Invalid elements will not be written, so relationships touching
+        # them are unresolved in preview exactly as they will be in execute.
         type_by_identifier = {
-            elem["identifier"]: elem["type"] for elem in elements if elem.get("identifier")
+            elem["identifier"]: elem["type"]
+            for elem in elements
+            if elem.get("identifier") and not elem.get("invalid")
         }
         relationships_preview = self._classify_relationships(
             parsed_data.get("relationships", []), type_by_identifier, id_map=None
@@ -486,6 +558,7 @@ class ArchiMateImportService:
                 "created": int,
                 "updated": int,
                 "skipped": int,
+                "failed": int,
                 "errors": [str, ...],
                 "relationships_created": int,
                 "relationships_skipped": int,
@@ -493,6 +566,12 @@ class ArchiMateImportService:
                     {"identifier", "type", "source", "target", "reason"}, ...
                 ],
             }
+
+        DOGFOOD-001: every element is written inside its own savepoint
+        (``db.session.begin_nested()``). An element the parser flagged as
+        ``invalid``, or one the database refuses, is counted in ``failed``
+        and named in ``errors`` in plain English; the rest of the model
+        still lands. Nothing here ever aborts the whole batch.
         """
         from datetime import datetime, timezone
 
@@ -505,6 +584,7 @@ class ArchiMateImportService:
         created = 0
         updated = 0
         skipped = 0
+        failed = 0
         errors: List[str] = list(parsed_data.get("errors", []))
 
         # OEF identifier -> {"db_id": int, "type": str}. Populated for every
@@ -512,7 +592,6 @@ class ArchiMateImportService:
         # name+type under skip_duplicates/update_existing — otherwise every
         # relationship touching a pre-existing element would fail to resolve.
         id_map: Dict[str, Dict[str, Any]] = {}
-        element_batch_failed = False
 
         def _write_properties(target_row, props: Dict[str, str], merge: bool) -> None:
             """Persist parsed <properties> onto custom_properties (DOGFOOD-004).
@@ -538,55 +617,59 @@ class ArchiMateImportService:
             identifier = elem.get("identifier", "")
             props = elem.get("properties") or {}
 
+            # DOGFOOD-001: the parser already flagged this element (name or
+            # type wider than its column). Refuse it here, by name, and carry
+            # on — the database never sees it, so nothing else is lost.
+            if elem.get("invalid"):
+                failed += 1
+                errors.append(
+                    f"Refused '{name[:40]}…' ({elem_type}, identifier={identifier or 'n/a'}): "
+                    f"{elem['invalid']}."
+                )
+                continue
+
             try:
-                if strategy == "create_all":
-                    new_elem = ArchiMateElement(
-                        name=name,
-                        type=elem_type,
-                        layer=layer,
-                        description=description,
-                    )
-                    db.session.add(new_elem)
-                    _write_properties(new_elem, props, merge=False)
-                    db.session.flush()
-                    if identifier:
-                        id_map[identifier] = {"db_id": new_elem.id, "type": elem_type}
-                    created += 1
-                    continue
+                # One savepoint per element. A failed INSERT/UPDATE rolls
+                # back this element only; the outer transaction stays live
+                # for every element after it, and the counters/id_map are
+                # touched only after the flush succeeds, so they never
+                # describe a row that does not exist.
+                with db.session.begin_nested():
+                    existing = None
+                    if strategy != "create_all":
+                        existing = ArchiMateElement.query.filter(  # model-safety-ok: bounded by XML element count
+                            db.func.lower(ArchiMateElement.name) == name_lower,
+                            ArchiMateElement.type == elem_type,
+                        ).first()
 
-                # Check for existing element
-                existing = ArchiMateElement.query.filter(  # model-safety-ok: bounded by XML element count
-                    db.func.lower(ArchiMateElement.name) == name_lower,
-                    ArchiMateElement.type == elem_type,
-                ).first()
-
-                if existing is None:
-                    new_elem = ArchiMateElement(
-                        name=name,
-                        type=elem_type,
-                        layer=layer,
-                        description=description,
-                    )
-                    db.session.add(new_elem)
-                    _write_properties(new_elem, props, merge=False)
-                    db.session.flush()
-                    if identifier:
-                        id_map[identifier] = {"db_id": new_elem.id, "type": elem_type}
-                    created += 1
-                elif strategy == "update_existing":
-                    if description is not None:
-                        existing.description = description
-                    _write_properties(existing, props, merge=True)
-                    if identifier:
-                        id_map[identifier] = {"db_id": existing.id, "type": existing.type}
-                    updated += 1
-                else:
-                    # skip_duplicates — element itself is untouched, but it
-                    # still needs an id-map entry so relationships that
-                    # target it can resolve.
-                    if identifier:
-                        id_map[identifier] = {"db_id": existing.id, "type": existing.type}
-                    skipped += 1
+                    if existing is None:
+                        new_elem = ArchiMateElement(
+                            name=name,
+                            type=elem_type,
+                            layer=layer,
+                            description=description,
+                        )
+                        db.session.add(new_elem)
+                        _write_properties(new_elem, props, merge=False)
+                        db.session.flush()
+                        if identifier:
+                            id_map[identifier] = {"db_id": new_elem.id, "type": elem_type}
+                        created += 1
+                    elif strategy == "update_existing":
+                        if description is not None:
+                            existing.description = description
+                        _write_properties(existing, props, merge=True)
+                        db.session.flush()
+                        if identifier:
+                            id_map[identifier] = {"db_id": existing.id, "type": existing.type}
+                        updated += 1
+                    else:
+                        # skip_duplicates — element itself is untouched, but it
+                        # still needs an id-map entry so relationships that
+                        # target it can resolve.
+                        if identifier:
+                            id_map[identifier] = {"db_id": existing.id, "type": existing.type}
+                        skipped += 1
 
             except Exception as exc:
                 logger.warning(
@@ -594,56 +677,15 @@ class ArchiMateImportService:
                     name, elem_type, exc,
                 )
                 # M6: a raw exception string (e.g. a DB constraint message)
-                # must never reach the client, matching the relationship
-                # path below. A failed flush/insert also leaves the session
-                # transaction aborted (InFailedSqlTransaction) — every
-                # subsequent element in this loop would otherwise fail too,
-                # and the response would misreport "created: 0" with an
-                # empty relationships_failed as if nothing had gone wrong
-                # with relationships specifically, rather than "everything
-                # after this element failed because the transaction died."
-                #
-                # D1 (round-4 fix): db.session.rollback() undoes EVERY row
-                # flushed earlier in this same loop iteration (SQLAlchemy
-                # rolls back the whole transaction, not just this element),
-                # but `created`/`updated`/`skipped` and `id_map` were already
-                # incremented/populated for those now-nonexistent rows. Left
-                # uncorrected, the response either (a) reports a confidently
-                # wrong non-zero created count for elements that no longer
-                # exist in the DB, or (b) lets the relationship pass write a
-                # phantom FK against a rolled-back element's stale id. Treat
-                # any element-flush failure as invalidating the ENTIRE
-                # element batch: reset all counters and the id map, skip the
-                # relationship pass entirely (it would only resolve against
-                # a batch we're already discarding), and report the discard
-                # plainly rather than a partial/misleading count.
-                db.session.rollback()
-                created = 0
-                updated = 0
-                skipped = 0
-                id_map.clear()
-                element_batch_failed = True
+                # must never reach the client. The savepoint has already
+                # been rolled back by the context manager, so the session
+                # is usable for the next element.
+                failed += 1
                 errors.append(
-                    f"Failed to import '{name}' ({elem_type}): could not save this element due to an internal error. "
-                    "The entire element batch for this import was discarded as a result — no elements or "
-                    "relationships from this file were saved."
+                    f"Failed to import '{name[:40]}' ({elem_type}, identifier={identifier or 'n/a'}): "
+                    "the database refused this element. It was skipped; the rest of the model "
+                    "was still imported."
                 )
-                break
-
-        if element_batch_failed:
-            logger.info(
-                "ArchiMate OEF import aborted: element batch discarded after a flush failure; "
-                "0 elements and 0 relationships saved."
-            )
-            return {
-                "created": 0,
-                "updated": 0,
-                "skipped": 0,
-                "errors": errors,
-                "relationships_created": 0,
-                "relationships_skipped": 0,
-                "relationships_failed": [],
-            }
 
         # --- Relationships (second pass, after every element has an id) ---
         type_by_identifier = {ident: info["type"] for ident, info in id_map.items()}
@@ -682,18 +724,28 @@ class ArchiMateImportService:
                 continue
 
             try:
-                existing_rel = ArchiMateRelationship.query.filter_by(
-                    source_id=source_db_id, target_id=target_db_id, type=rel["type"],
-                ).first()
-                if existing_rel is not None:
-                    relationships_skipped += 1
-                    continue
-
-                new_rel = ArchiMateRelationship(
-                    type=rel["type"], source_id=source_db_id, target_id=target_db_id,
-                )
-                db.session.add(new_rel)
-                relationships_created += 1
+                # Same savepoint discipline as elements: one bad row never
+                # takes the rest of the relationships (or the elements
+                # already flushed) down with it.
+                with db.session.begin_nested():
+                    existing_rel = ArchiMateRelationship.query.filter_by(
+                        source_id=source_db_id, target_id=target_db_id, type=rel["type"],
+                    ).first()
+                    if existing_rel is not None:
+                        relationships_skipped += 1
+                    else:
+                        new_rel = ArchiMateRelationship(
+                            type=rel["type"],
+                            source_id=source_db_id,
+                            target_id=target_db_id,
+                            # <documentation> on the relationship (DOGFOOD-003):
+                            # "ruling constrains offer" is the reason the edge
+                            # exists, and it must survive the import.
+                            description=rel.get("description"),
+                        )
+                        db.session.add(new_rel)
+                        db.session.flush()
+                        relationships_created += 1
             except Exception as exc:
                 logger.warning(
                     "Failed to import relationship %s (%s -> %s): %s",
@@ -716,6 +768,7 @@ class ArchiMateImportService:
                 "created": 0,
                 "updated": 0,
                 "skipped": 0,
+                "failed": len(elements),
                 "errors": ["Database commit failed. No changes were saved."],
                 "relationships_created": 0,
                 "relationships_skipped": 0,
@@ -723,9 +776,9 @@ class ArchiMateImportService:
             }
 
         logger.info(
-            "ArchiMate OEF import complete: %d created, %d updated, %d skipped elements; "
+            "ArchiMate OEF import complete: %d created, %d updated, %d skipped, %d failed elements; "
             "%d created, %d skipped, %d failed relationships",
-            created, updated, skipped,
+            created, updated, skipped, failed,
             relationships_created, relationships_skipped, len(relationships_failed),
         )
 
@@ -733,6 +786,7 @@ class ArchiMateImportService:
             "created": created,
             "updated": updated,
             "skipped": skipped,
+            "failed": failed,
             "errors": errors,
             "relationships_created": relationships_created,
             "relationships_skipped": relationships_skipped,

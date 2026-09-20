@@ -114,13 +114,19 @@ class Surface:
     waived  a `store-agreement-ok: <reason>` string; excludes this surface.
     """
 
-    def __init__(self, name, kind, target, extract=None, scope="all", waived=None):
+    def __init__(self, name, kind, target, extract=None, scope="all", waived=None,
+                 filter_eq=None, filter_not_null=None):
         self.name = name
         self.kind = kind
         self.target = target
         self.extract = extract
         self.scope = scope
         self.waived = waived
+        # orm-only: a real WHERE, not just "how many rows" -- lets a concept
+        # express a genuine filtered-count question (e.g. "how many of these
+        # have a maturity value recorded"), not only bare population size.
+        self.filter_eq = filter_eq or {}
+        self.filter_not_null = filter_not_null
 
 
 # --------------------------------------------------------------------------
@@ -158,6 +164,38 @@ CONCEPTS = {
         Surface("GET /implementation/api/gaps", "http",
                 "/implementation/api/gaps", extract="len:gaps"),
     ],
+    # T-002: "how many capabilities have a maturity value recorded" -- a real
+    # freshness question, not a bare population count. The projection
+    # (`app/commands/project_capabilities.py`) is supposed to keep these two
+    # counts equal: every BusinessCapability row with a non-null
+    # current_maturity_level should have a matching UnifiedCapability row
+    # (source_table="business_capability") that ALSO carries a non-null
+    # current_maturity_level. A disagreement here means the projection has
+    # not run recently enough, or a raw-SQL maturity writer bypassed it --
+    # exactly the defect class T-002 exists to close, and exactly what the
+    # superseded prose below wrongly claimed could not be expressed.
+    #
+    # D-R7-6 / D-R5-2: this ratchet has a known, currently-unclosed orphan
+    # gap -- if a BusinessCapability row is ever deleted via a bulk
+    # `query.filter(...).delete()` or raw SQL (either of which bypasses the
+    # ORM `after_delete` listener), the matching UnifiedCapability
+    # projection becomes a permanent orphan that project_capabilities.py's
+    # upsert-only projection logic can never clean up, and this ratchet
+    # could creep back to a nonzero count with no code remedy currently
+    # available. Full explanation and suggested remedies (a periodic
+    # orphan-reaping pass, or an after_bulk_delete hook) are in
+    # docs/buckets/t002-maturity-single-authority/build-report.md, sections
+    # "D-R5-2" and "D-R7-6" -- read that before assuming a regression here
+    # is a fresh bug rather than this known, documented gap resurfacing.
+    "capability maturity assessed": [
+        Surface("orm:BusinessCapability(maturity recorded)", "orm",
+                "app.models.business_capabilities.BusinessCapability",
+                filter_not_null="current_maturity_level"),
+        Surface("orm:UnifiedCapability(business_capability, maturity recorded)", "orm",
+                "app.models.unified_capability.UnifiedCapability",
+                filter_eq={"source_table": "business_capability"},
+                filter_not_null="current_maturity_level"),
+    ],
 }
 
 # Concepts deliberately NOT registered, and why -- naming the exclusion is the
@@ -176,6 +214,33 @@ CONCEPTS = {
 #   capability        the coverage percentages (48% vs 0%) are ratios of two
 #   coverage          populations each of which is itself contested. Fix the
 #                     populations first; the ratio follows.
+#   capability        (T-002, corrected round 2) UnifiedCapability.
+#   maturity          current_maturity_level / target_maturity_level is the
+#                     ONE authority the *maturity accessor* migration
+#                     repointed every reader this task touched at. That is
+#                     NOT the same claim as "no code anywhere reads
+#                     BusinessCapability.current_maturity_level directly" --
+#                     it still does, in several files T-002 did not touch
+#                     (app/modules/capabilities/routes/mapping_routes.py,
+#                     process_routes.py, business_capabilities.py's own
+#                     to_dict()) -- an earlier version of this comment claimed
+#                     otherwise and was wrong. The "capability maturity
+#                     assessed" concept registered above is the real,
+#                     engine-backed check for exactly that disagreement: it
+#                     compares "how many BusinessCapability rows have a
+#                     maturity value recorded" against "how many of the
+#                     matching UnifiedCapability rows do too", via a real
+#                     filtered `WHERE ... IS NOT NULL` (`Surface.filter_eq` /
+#                     `filter_not_null`, added this round), not a bare
+#                     population count -- so a stale or never-run projection,
+#                     or a raw-SQL maturity writer bypassing it, is a finding
+#                     here, not silence. A separate, still-open freshness
+#                     signal -- "how many projected rows' source_checksum
+#                     currently disagrees with source" -- remains
+#                     `app/jobs/capability_projection_job.py`'s own
+#                     `stale_row_count` / `last_successful_run_at` on the
+#                     structured job-run record, per T-002 task 01; it is a
+#                     complementary check, not a substitute for this one.
 
 
 def _extract(payload, spec):
@@ -424,7 +489,12 @@ def _ask(surface, db, client):
             return None, "model %s could not be imported (%s)" % (
                 surface.target, str(exc)[:120])
         try:
-            return int(db.session.query(model).count()), None
+            query = db.session.query(model)
+            for attr, value in surface.filter_eq.items():
+                query = query.filter(getattr(model, attr) == value)
+            if surface.filter_not_null:
+                query = query.filter(getattr(model, surface.filter_not_null).isnot(None))
+            return int(query.count()), None
         except Exception as exc:
             db.session.rollback()
             return None, "the query failed: %s" % str(exc)[:160]

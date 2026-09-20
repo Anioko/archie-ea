@@ -99,9 +99,14 @@ def authed_client(app, db_session, make_org):
     db_session.commit()
 
     client = app.test_client()
+    from tests._session_test_helpers import mint_test_sid
+
+    _sid = mint_test_sid(user.id)
     with client.session_transaction() as session:
         session["_user_id"] = str(user.id)
         session["_fresh"] = True
+        if _sid:
+            session["_sid"] = _sid
     return client
 
 
