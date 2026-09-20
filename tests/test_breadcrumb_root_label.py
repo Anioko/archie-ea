@@ -1,14 +1,20 @@
 """Every breadcrumb trail must start at "Home", never "Dashboard".
 
-UX_IA_REVIEW.md finding 7 (Low): most screens read "Home > ..." but Transformation Programmes and Vendor
-Catalogue read "Dashboard > ...". Both point at the same destination, so a user learning to navigate by
-breadcrumb has no consistent anchor.
+Reported problem: most screens read "Home > ..." but Transformation Programmes and Vendor Catalogue read
+"Dashboard > ...". Both point at the same destination, so a user learning to navigate by breadcrumb has no
+consistent anchor.
 
 Measured before the fix, not just the two screens the audit happened to see: 48 templates start their trail
 with "Dashboard" and 135 with "Home". The callers pass their own first crumb, so the shared point is the
 three macros that render a trail (page_header, page_shell, breadcrumb_nav); each now maps a first crumb of
-"Dashboard" to "Home" through one small macro. Three templates hand-roll their own trail and print the word
-directly; they are checked separately.
+"Dashboard" to "Home" through one small macro. A handful of templates hand-roll their own trail and print
+the word directly; they are checked separately below, by scanning for the root anchor itself rather than
+for any one macro's markup shape.
+
+A fourth mechanism, components/breadcrumb.html (breadcrumb/breadcrumb_item/breadcrumb_separator), is used
+by the analytics, batch-import and capability-map templates. It is out of scope here: every current caller
+passes an icon-only root, never the word "Dashboard", so there is nothing to fix today, but it does not
+route through crumb_label and a future caller that types "Dashboard" there would not be caught by it.
 
 The macros are rendered with the real templates. No database is needed.
 """
@@ -84,15 +90,22 @@ def test_other_roots_are_not_renamed():
 
 
 def test_hand_rolled_trails_do_not_print_dashboard_as_the_root():
-    """Templates that draw their own Breadcrumb <nav> bypass the macros, so they are checked directly."""
+    """Templates that draw their own breadcrumb trail bypass the macros, so they are checked directly.
+
+    Not scoped to `<nav aria-label="Breadcrumb">`: a hand-rolled trail may skip the `<nav>` wrapper
+    entirely, omit `aria-label`, or spell it lowercase (`components/breadcrumb.html` does). What every
+    trail actually shares is its root link: an anchor to `main.index` (the page "Home" and "Dashboard"
+    both used to mean). Whatever wraps it, that anchor must not still read "Dashboard".
+    """
     offenders = []
+    root_link = re.compile(
+        r"<a\s[^>]*href=\"\{\{\s*url_for\('main\.index'\)\s*\}\}\"[^>]*>\s*Dashboard\s*<",
+    )
     for path in TEMPLATES.rglob("*.html"):
         rel = path.relative_to(TEMPLATES).as_posix()
         if rel in MACRO_FILES:
             continue
         text = path.read_text(encoding="utf-8", errors="replace")
-        for nav in re.findall(r'<nav[^>]*aria-label="Breadcrumb".*?</nav>', text, re.S):
-            first = re.search(r">\s*(Dashboard|Home)\s*<", nav)
-            if first and first.group(1) == "Dashboard":
-                offenders.append(rel)
+        if root_link.search(text):
+            offenders.append(rel)
     assert offenders == [], f"hand-rolled breadcrumb roots still say Dashboard: {offenders}"
