@@ -269,12 +269,26 @@ def change_password():
     """Change an existing user's password."""
     form = ChangePasswordForm()
     if form.validate_on_submit():
-        success, message = _svc.change_password(
+        success, message, revoked_count = _svc.change_password(
             current_user, form.old_password.data, form.new_password.data
         )
         flash_cat = "form-success" if success else "form-error"
         flash(message, flash_cat)
         if success:
+            if revoked_count is not None and revoked_count > 0:
+                device_word = "device" if revoked_count == 1 else "devices"
+                flash(
+                    "{} other signed-in {} {} signed out.".format(
+                        revoked_count, device_word, "was" if revoked_count == 1 else "were"
+                    ),
+                    "info",
+                )
+            elif revoked_count is None:
+                flash(
+                    "We could not confirm your other sessions were signed out. "
+                    "Please sign out of other devices manually.",
+                    "warning",
+                )
             return redirect(url_for("main.index"))
     # user= is required: account/manage.html reads user.first_name / user.last_name
     # unconditionally, so omitting it raises UndefinedError and 500s the page.
@@ -523,12 +537,9 @@ def sso_callback(provider):
         db.session.commit()
 
     # Establish Flask-Login session (same as password login)
-    session.clear()
-    session.modified = True
-    from flask_login import login_user
+    from app.services import session_registry
 
-    login_user(user, remember=True)
-    session.permanent = True
+    session_registry.login_and_register(user, remember=True)
 
     flash("Successfully signed in via SSO.", "success")
     return redirect(url_for("main.index"))
@@ -600,12 +611,9 @@ def saml_acs():
         return redirect(url_for("account.login"))
 
     # Establish Flask-Login session
-    session.clear()
-    session.modified = True
-    from flask_login import login_user
+    from app.services import session_registry
 
-    login_user(user, remember=True)
-    session.permanent = True
+    session_registry.login_and_register(user, remember=True)
 
     # Honor RelayState redirect when present and safe
     relay_state = request.form.get("RelayState", "")

@@ -114,6 +114,24 @@ AI_REQUEST_DURATION = Histogram(
     registry=REGISTRY,
 )
 
+# T-004 DE-18/OA-2: intelligence module query latency (US-1 cross-layer
+# impact and later DE-9 queries). Declared on the existing REGISTRY -- no
+# second registry, no second scrape path (CLAUDE.md "one system of record").
+INTELLIGENCE_QUERY_DURATION = Histogram(
+    "archie_intelligence_query_seconds",
+    "Intelligence module query duration in seconds",
+    # ``include_derived`` is a label (not just ``query``/``depth``) because
+    # NFR-5's measurement point is specifically cross_layer_impact WITH
+    # include_derived=true, max_depth=4 -- without this label the same
+    # {query="cross_layer_impact", depth="4"} series would mix cheap
+    # explicit-only samples (e.g. the canonical endpoint's app_id-branch-free
+    # call) with the expensive derived-walk samples the threshold is
+    # actually about, making the p95 read off this metric meaningless.
+    ["query", "depth", "include_derived"],
+    buckets=[0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0],
+    registry=REGISTRY,
+)
+
 # Document upload metrics
 DOCUMENTS_UPLOADED = Counter(
     "app_documents_uploaded_total",

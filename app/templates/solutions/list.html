@@ -421,13 +421,79 @@
             </div>
     </div>
     {% else %}
-    {# D1: Enhanced empty state — metrics, filter bar, and table hidden #}
-    <div data-slot="card" class="rounded-xl border bg-card shadow-sm">
+    {# Unified empty-state disclosure (round 4) — replaces the previous
+       per-filter-type conditional blocks (ownership, then BU, then
+       search/status) with a single canonical breakdown computed
+       unconditionally by the route: org_total (org-wide, same grain as the
+       Health Scorecard — D1), hidden_by_role_filter (ownership+BU combined),
+       hidden_by_filters (every active filter's combined effect, including
+       domain/type/dates/worklist-bucket — D2/D3), and
+       active_filter_descriptions (what's actually active, for the message).
+       A genuine server error (load_error) is its own distinct case, never
+       silently rendered as "no solutions found". #}
+    {% if load_error %}
+    <div data-slot="card" class="rounded-xl border border-destructive/30 bg-destructive/5 shadow-sm" data-testid="solutions-load-error">
+        <div class="text-center py-16 px-4">
+            <div class="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-destructive/10">
+                <i data-lucide="alert-triangle" class="h-8 w-8 text-destructive" aria-hidden="true"></i>
+            </div>
+            <h2 class="mt-4 text-lg font-medium">Could not load solutions</h2>
+            <p class="mt-2 text-sm text-muted-foreground max-w-md mx-auto">{{ load_error }}</p>
+            <div class="mt-6 flex flex-wrap items-center justify-center gap-3">
+                <a href="{{ url_for('solution_design.list_solutions') }}" class="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-sm font-medium">
+                    Try again
+                </a>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    {% set _hidden_total = (hidden_by_role_filter or 0) + (hidden_by_filters or 0) %}
+    <div data-slot="card" class="rounded-xl border bg-card shadow-sm" data-testid="solutions-empty-state">
         <div class="text-center py-16 px-4">
             <div class="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-muted">
-                <i data-lucide="puzzle" class="h-8 w-8 text-muted-foreground" aria-hidden="true"></i>
+                <i data-lucide="{{ 'eye-off' if _hidden_total > 0 else 'puzzle' }}" class="h-8 w-8 text-muted-foreground" aria-hidden="true"></i>
             </div>
-            <h2 class="mt-4 text-lg font-medium">No solutions found</h2>
+            {% if _hidden_total > 0 %}
+            {# D1: the heading always shows the ORG-WIDE total (matching what
+               the Health Scorecard shows) — never a BU/role-scoped subtotal
+               presented as if it were the org total. #}
+            <h2 class="mt-4 text-lg font-medium" data-testid="solutions-empty-state-heading">
+                Showing 0 of {{ org_total if org_total is not none else total }}
+            </h2>
+            <div class="mt-2 space-y-2 max-w-md mx-auto" data-testid="solutions-hidden-disclosure">
+                {% if hidden_by_role_filter and hidden_by_role_filter > 0 %}
+                <p class="text-sm text-muted-foreground" data-testid="solutions-role-filter-reason">
+                    {{ hidden_by_role_filter }} solution{{ 's' if hidden_by_role_filter != 1 else '' }} in your organisation
+                    {{ 'are' if hidden_by_role_filter != 1 else 'is' }} outside what your role can access
+                    (created by other people, or outside your business unit's domain scope).
+                </p>
+                {% endif %}
+                {% if hidden_by_filters and hidden_by_filters > 0 %}
+                <p class="text-sm text-muted-foreground" data-testid="solutions-filter-reason">
+                    {{ hidden_by_filters }} solution{{ 's are' if hidden_by_filters != 1 else ' is' }} hidden by
+                    your current filter{{ 's' if active_filter_descriptions|length != 1 else '' }}{% if active_filter_descriptions %}: {{ active_filter_descriptions|join(', ') }}{% endif %}.
+                </p>
+                {% endif %}
+            </div>
+            <div class="mt-6 flex flex-wrap items-center justify-center gap-3">
+                {% if hidden_by_filters and hidden_by_filters > 0 %}
+                <a href="{{ clear_filters_url }}" class="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-sm font-medium" data-testid="solutions-clear-filters">
+                    Clear all filters
+                </a>
+                {% endif %}
+                {% if hidden_by_role_filter and hidden_by_role_filter > 0 and bu_filter_active and not show_all_override %}
+                <a href="{{ request.path }}?bu=all" class="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-md border border-border/50 bg-card hover:bg-accent transition-colors text-sm font-medium" data-testid="solutions-view-all-bu" aria-label="Show solutions across all business units">
+                    View all business units
+                </a>
+                {% endif %}
+                {% if hidden_by_role_filter and hidden_by_role_filter > 0 and 'arb.dashboard' in flask.current_app.view_functions %}
+                <a href="{{ url_for('arb.dashboard') }}" class="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-md border border-border/50 bg-card hover:bg-accent transition-colors text-sm font-medium">
+                    Request review access
+                </a>
+                {% endif %}
+            </div>
+            {% else %}
+            <h2 class="mt-4 text-lg font-medium" data-testid="solutions-empty-state-heading">No solutions found</h2>
             <p class="mt-2 text-sm text-muted-foreground max-w-md mx-auto">Get started by creating your first solution</p>
             <div class="mt-6 flex flex-wrap items-center justify-center gap-3">
                 <a href="{{ url_for('architecture_journey.index') }}" class="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-sm font-medium" aria-label="Start the guided Architecture Journey to design a new solution">
@@ -439,8 +505,10 @@
                     New from Template
                 </button>
             </div>
+            {% endif %}
         </div>
     </div>
+    {% endif %}
     {% endif %}
 
   {# ENT-010: Sticky comparison bar #}

@@ -30,9 +30,13 @@ SIDEBAR_BUDGET = SIDEBAR_LINK_BUDGET
 
 def _login(client, user_id):
     """Standard Flask-Login test-client pattern (see test_remaining_500_routes.py)."""
+    from tests._session_test_helpers import mint_test_sid
+    _sid = mint_test_sid(user_id)
     with client.session_transaction() as sess:
         sess["_user_id"] = str(user_id)
         sess["_fresh"] = True
+        if _sid:
+            sess["_sid"] = _sid
 
     from flask import g, has_app_context
 
@@ -147,6 +151,35 @@ def test_platform_admin_hits_the_link_budget_exactly(app, db_session, make_org):
         f"{SIDEBAR_BUDGET} (0 headroom left — see role_access.py's "
         f"SIDEBAR_LINK_BUDGET comment)"
     )
+
+
+@pytest.mark.parametrize(
+    "role,label",
+    [
+        ("solution_architect", "sa-ask"),
+        ("enterprise_architect", "ea-ask"),
+        ("cto", "cto-ask"),
+        ("procurement", "proc-ask"),
+        ("platform_admin", "pa-ask"),
+    ],
+)
+def test_ask_link_renders_first_under_my_work_and_the_twin_map_has_none(
+    app, db_session, make_org, role, label
+):
+    """One front door to the Ask page, under My work, before that persona's own
+    links; the Twin map is reached from the Ask page and has no link of its own."""
+    sidebar_html = _sidebar_html(app, db_session, make_org, role, label)
+    ask = sidebar_html.find('href="/intelligence/ask"')
+    assert ask != -1, f"{role}: no Ask a question link in the rendered sidebar"
+    assert sidebar_html.count('href="/intelligence/ask"') == 1
+    my_work = sidebar_html.find("My work")
+    library = sidebar_html.find("Library", my_work)
+    assert my_work != -1 and library != -1 and my_work < ask < library
+    # First link of the zone: nothing but the heading sits between them.
+    first_link = sidebar_html.find("<a ", my_work)
+    assert first_link == sidebar_html.rfind("<a ", 0, ask + 1)
+    assert "Ask a question" in sidebar_html
+    assert "/intelligence/twin-map" not in sidebar_html
 
 
 def test_platform_admin_applications_link_not_duplicated(app, db_session, make_org):

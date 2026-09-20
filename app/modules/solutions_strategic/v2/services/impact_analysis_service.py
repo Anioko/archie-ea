@@ -15,6 +15,20 @@ from app.middleware.tenant_context import current_org_id
 from .decorators import transactional
 
 
+def _acting_user_id():
+    """Id of the signed-in user running the analysis, or None outside a request.
+
+    Stored results belong to the organisation of this user, so a result with no
+    user is visible to nobody.
+    """
+    from flask import has_request_context
+    from flask_login import current_user
+
+    if not has_request_context() or not current_user.is_authenticated:
+        return None
+    return getattr(current_user, "id", None)
+
+
 class ImpactAnalysisService:
     """Service for analyzing impact of architecture changes with transitive dependencies."""
 
@@ -77,6 +91,7 @@ class ImpactAnalysisService:
                 impacted_elements=_json.dumps([d["id"] for d in all_deps]),
                 overall_severity=risk_level.lower(),
                 affected_applications_count=sum(1 for d in all_deps if d.get("app_name")),
+                created_by_id=_acting_user_id(),
             )
             db.session.add(record)
             db.session.commit()

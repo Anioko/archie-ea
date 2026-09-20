@@ -41,17 +41,24 @@ class NavigationItemV2(BaseModel):
     
     label: str = Field(..., min_length=1, max_length=100)
     icon: Optional[str] = Field(None, pattern=r"^[a-z0-9\-]+$")  # Lucide icon name
+
+    # Declared ahead of `endpoint`/`url_fallback` on purpose: pydantic v1-style
+    # validators only see fields validated so far, in declaration order, and
+    # endpoint_and_fallback_not_both_invalid() below needs `disabled` to
+    # already be present in `values` regardless of kwarg order at call time.
+    disabled: bool = False
+
     endpoint: Optional[str] = Field(None, pattern=r"^[a-z_]+\.[a-z_]+$")  # "blueprint.function"
     url_fallback: str = Field("#", min_length=1)
-    
+    query_params: Dict[str, str] = Field(default_factory=dict)  # passed to url_for(endpoint, **query_params)
+
     # Authorization
     visibility: ItemVisibility = ItemVisibility.ALWAYS
     required_roles: List[str] = Field(default_factory=list)
     required_permissions: List[str] = Field(default_factory=list)
     visibility_callback: Optional[Callable] = None  # Custom visibility logic
-    
+
     # UI behavior
-    disabled: bool = False
     order: Optional[int] = None
     badge_field: Optional[str] = None  # For dynamic items
     
@@ -71,8 +78,13 @@ class NavigationItemV2(BaseModel):
     
     @validator("endpoint", pre=True)
     def endpoint_and_fallback_not_both_invalid(cls, v, values):
-        """Either endpoint or valid fallback URL required"""
-        if not v and values.get("url_fallback", "#") == "#":
+        """Either endpoint or valid fallback URL required, unless the item is
+        explicitly disabled -- mirrors icon_required_if_not_disabled above.
+        Without this, a disabled placeholder header (endpoint=None,
+        url_fallback="#", disabled=True -- e.g. "Framework Extensions" in
+        navigation_sections_v2.py) fails validation at import time and takes
+        the whole module down with it."""
+        if not v and values.get("url_fallback", "#") == "#" and not values.get("disabled"):
             raise ValueError(f"Item '{values.get('label')}' has no endpoint AND fallback is '#'")
         return v
 
@@ -80,9 +92,9 @@ class NavigationItemV2(BaseModel):
 class NavigationSectionV2(BaseModel):
     """Validated navigation section"""
     
-    key: str = Field(..., regex=r"^[a-z_]+$")
+    key: str = Field(..., pattern=r"^[a-z_]+$")
     label: str = Field(..., min_length=1, max_length=100)
-    icon: str = Field(..., regex=r"^[a-z0-9\-]+$")
+    icon: str = Field(..., pattern=r"^[a-z0-9\-]+$")
     order: int = Field(..., ge=1, le=999)
     collapsible: bool = True
     
@@ -391,10 +403,10 @@ class NavigationRegistryV2:
     def _resolve_url(self, item: NavigationItemV2) -> str:
         """Resolve URL from endpoint or fallback"""
         if item.endpoint:
-            url = self._safe_url_for(item.endpoint)
+            url = self._safe_url_for(item.endpoint, **item.query_params)
             if url:
                 return url
-        
+
         return item.url_fallback
     
     def _safe_url_for(self, endpoint: str, **kwargs) -> Optional[str]:

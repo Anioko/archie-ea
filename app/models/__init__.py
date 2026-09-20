@@ -58,6 +58,9 @@ if _FAST_INIT:
     from .miscellaneous import *  # noqa
     from .technology_stack import *  # noqa - TechnologyStack for fast init
     from .user import *  # noqa
+    # Session registry is read on every authenticated request via
+    # app/_bootstrap/session_policy.py -- must exist even under fast init.
+    from .user_session import UserSession  # noqa: F401
 else:
     from .adr import *  # noqa - ArchitectureDecisionRecord (Solution Architecture governance)
     from .ai_audit_log import *  # noqa - AIAuditLog (ai_audit_logs table; needed by create_all)
@@ -73,6 +76,8 @@ else:
     # default, so an ADD-only reconcile can apply it.
     from .artefact_share import ArtefactShareLink  # noqa: F401
     from .sso_config import *  # noqa
+    # Session registry (server-side revocation on logout / password change).
+    from .user_session import UserSession  # noqa: F401
     from .error_event import ErrorEvent  # noqa: F401 - server + client error telemetry
     from .gdpr_request import *  # noqa
     from .subscription import *  # noqa
@@ -364,6 +369,17 @@ else:
     from .acm_cross_domain_rule import AcmCrossDomainRule  # noqa: F401
     from .solution_domain_spec import SolutionDomainSpec  # noqa: F401
     from .acm_property_template import AcmPropertyTemplate  # noqa: F401
+
+    # T-003: derived-fact store (DE-2) — rule-derived ArchiMate relationships
+    from app.modules.intelligence.models.derived_relationship import (  # noqa: F401
+        DerivedRelationship,
+    )
+
+    # T-005 (D7): derivation run-record store (DE-11) — the only producer of
+    # "did derivation run for this tenant, when, and how long did it take".
+    from app.modules.intelligence.models.derivation_run import (  # noqa: F401
+        DerivationRun,
+    )
 
     # Solution Workflow & Governance — FK dependency: governance references workflow_tasks
     from .solution_workflow import *  # noqa: F401

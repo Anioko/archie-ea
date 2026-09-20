@@ -66,6 +66,29 @@ def _derive_type(type_a: str, type_b: str) -> str:
     return "Association"
 
 
+def _rule_id(type_a: str, type_b: str) -> str:
+    """ADR-002-v2: a deterministic, stable identifier for the ``_derive_type``
+    branch that combined ``type_a`` and ``type_b`` to produce a derived row.
+
+    Same ``(type_a, type_b)`` always yields the same id; a different branch or
+    different types yield a different one. Transparent propagation is one
+    rule family (``transparent:...``), each ``_DERIVATION_TABLE`` row is its
+    own rule (``table:...``), and the Association fallback is a third
+    (``fallback:...``) — distinct per the ADR-002-v2 requirement that two
+    genuinely different rules producing the same pair are two auditable rows,
+    never one silently overwriting the other. Does not alter `_derive_type`
+    itself; it mirrors the same branch order so the id always matches the
+    branch that actually fired.
+    """
+    if type_a in _TRANSPARENT or type_b in _TRANSPARENT:
+        branch = "transparent"
+    elif (type_a, type_b) in _DERIVATION_TABLE:
+        branch = "table"
+    else:
+        branch = "fallback"
+    return f"{branch}:{type_a}:{type_b}"
+
+
 class ArchiMateDerivationService:
     """Compute derived relationships from a set of elements and relationships."""
 
@@ -82,7 +105,15 @@ class ArchiMateDerivationService:
 
         Returns:
             List of derived relationships:
-            [{source_id, target_id, type, chain, depth}]
+            [{source_id, target_id, type, chain, depth, relationship_chain, rule_id}]
+
+            ``chain`` is unchanged from the pre-ADR-002-v2 shape: the node path
+            (element ids) walked to reach the derived pair. ``depth`` is
+            unchanged: ``len(chain) - 1``. Two fields are additive:
+            ``relationship_chain`` is the ordered ``archimate_relationships.id``
+            sequence traversed — its length always equals ``depth`` — and
+            ``rule_id`` identifies which ``_derive_type`` branch produced
+            ``type`` (see ``_rule_id``).
         """
         element_ids = {e["id"] for e in elements}
 
@@ -105,13 +136,20 @@ class ArchiMateDerivationService:
 
         # BFS from each element
         for start_id in element_ids:
-            # Queue: (current_node, accumulated_type, depth, chain_path)
-            queue: List[Tuple[int, str, int, List[int]]] = []
+            # Queue: (current_node, accumulated_type, depth, chain_path,
+            # relationship_chain). ADR-002-v2: relationship_chain is additive —
+            # it carries the ordered archimate_relationships.id sequence
+            # alongside the existing node path (chain_path), using the rel_id
+            # already present in the adjacency tuple (previously discarded).
+            # It does not change which nodes are visited, in what order, or
+            # when the walk stops: the cycle guard below still keys only on
+            # chain_path, and the depth guard is untouched.
+            queue: List[Tuple[int, str, int, List[int], List[int]]] = []
             for next_id, rel_type, rel_id in adj.get(start_id, []):
-                queue.append((next_id, rel_type, 1, [start_id, next_id]))
+                queue.append((next_id, rel_type, 1, [start_id, next_id], [rel_id]))
 
             while queue:
-                current, acc_type, depth, path = queue.pop(0)
+                current, acc_type, depth, path, rel_chain = queue.pop(0)
                 if depth >= MAX_DEPTH:
                     continue
 
@@ -121,6 +159,7 @@ class ArchiMateDerivationService:
 
                     new_type = _derive_type(acc_type, rel_type)
                     new_path = path + [next_id]
+                    new_rel_chain = rel_chain + [rel_id]
                     pair = (start_id, next_id)
 
                     # Only add if not explicit and not already derived
@@ -132,9 +171,12 @@ class ArchiMateDerivationService:
                             "type": new_type,
                             "chain": new_path,
                             "depth": len(new_path) - 1,
+                            # ADR-002-v2 additions.
+                            "relationship_chain": new_rel_chain,
+                            "rule_id": _rule_id(acc_type, rel_type),
                         })
 
-                    queue.append((next_id, new_type, depth + 1, new_path))
+                    queue.append((next_id, new_type, depth + 1, new_path, new_rel_chain))
 
         logger.info(
             "Derived relationship computation: %d explicit → %d derived",

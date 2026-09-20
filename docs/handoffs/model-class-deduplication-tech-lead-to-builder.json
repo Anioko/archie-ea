@@ -1,0 +1,13 @@
+{
+  "from": "tech-lead",
+  "to": "builder",
+  "artifact": "docs/buckets/model-class-deduplication/tasks/01-archimate-relationship-fast-init-fix.md",
+  "approval_status": "approved",
+  "gate_conditions": [
+    "fast_init_mechanism_understood",
+    "fix_approach_decided_not_deferred",
+    "scope_limited_to_task_1"
+  ],
+  "unmet_conditions": [],
+  "timestamp": "2026-09-17T00:00:00Z"
+}

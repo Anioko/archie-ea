@@ -103,24 +103,35 @@ def make_user(db, org_id, label, enterprise_role, role_name="Administrator"):
 def login(client, user_id):
     """Sign *client* in as *user_id*, defeating flask_login's ``g`` cache.
 
-    pytest-flask (active here -- pytest.ini sets ``base_url``) pushes a request
-    context that lives for the whole test, so ``g`` survives between test-client
-    requests. flask_login caches the resolved user on ``g._login_user`` and the
-    tenant middleware caches ``g.current_org_id``, so writing a new ``_user_id``
-    into the session cookie does NOT change who the next request runs as: a
-    second client keeps executing as the first client's user.
+    When a test keeps one app or request context open for its whole length,
+    ``g`` survives between test-client requests. flask_login caches the
+    resolved user on ``g._login_user`` and the tenant middleware caches
+    ``g.current_org_id``, so writing a new ``_user_id`` into the session cookie
+    does NOT change who the next request runs as: a second client keeps
+    executing as the first client's user.
 
     That reads as a cross-tenant leak, and it is not one -- it is the test
     harness. This exact artifact previously produced four false leak reports
     (see the note in tests/test_ba_tenant_and_authz.py::_login and the tenancy
     section of CLAUDE.md). Clearing the caches here means a tenancy assertion in
     a journey test measures the application, not the fixture.
+
+    Journey tests log in after their ``with app.app_context():`` setup blocks
+    have closed, and nothing here supplies an ambient context (pytest-flask is
+    not installed; ``base_url`` comes from pytest-base-url). The session row is
+    therefore minted through ``client.application``, and the login fails
+    loudly if no sid comes back: a session without one is rejected as revoked.
     """
     from flask import g, has_app_context
 
+    from tests._session_test_helpers import mint_test_sid
+
+    _sid = mint_test_sid(user_id, app=client.application)
+    assert _sid, "test login for user %r did not register a session" % (user_id,)
     with client.session_transaction() as sess:
         sess["_user_id"] = str(user_id)
         sess["_fresh"] = True
+        sess["_sid"] = _sid
 
     if has_app_context():
         for cached in ("_login_user", "_current_user", "current_org_id", "current_org"):

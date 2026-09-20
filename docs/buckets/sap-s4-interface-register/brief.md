@@ -7,7 +7,7 @@ Application and Implementation & Migration layer models — no new bespoke
 schema, no Excel-shaped fields.
 
 ## Context
-Saint-Gobain is running an S/4HANA transformation: ~18 applications integrate
+The customer is running an S/4HANA transformation: ~18 applications integrate
 directly into S/4HANA, £3m budget. The data model to support this already
 exists and is unused:
 
@@ -34,7 +34,7 @@ pattern: modelled correctly, never built out.
 - Every interface must be a real `ApplicationInterface` ArchiMate element (via
   `_sync_archimate_element()`), not a plain form field — per root CLAUDE.md's
   "the field *is* the element" rule.
-- `TenantMixin` on any new/touched write path; this data is Saint-Gobain's,
+- `TenantMixin` on any new/touched write path; this data is the customer's,
   multi-org isolation applies.
 - Must satisfy `store-agreement`, `fabricated-data`, `breadcrumb-coverage`
   gates — no screen may show a count another surface would answer

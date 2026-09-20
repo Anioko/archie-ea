@@ -216,6 +216,10 @@ class InvestmentPrioritizationService:
             "strategic_score": strategic_score,
             "coverage_score": coverage_score,
             "maturity_score": maturity_score,
+            "maturity_assessed": (
+                capability.current_maturity_level is not None
+                and capability.target_maturity_level is not None
+            ),
             "risk_score": risk_score,
             "investment_priority_score": total_score,
             "priority_level": priority_level,
@@ -280,9 +284,22 @@ class InvestmentPrioritizationService:
                 return 0
 
     def _calculate_maturity_score(self, capability) -> int:
-        """Calculate maturity gap score (0 - 25 points)."""
-        current_maturity = capability.current_maturity_level or 1
-        target_maturity = capability.target_maturity_level or 3
+        """Calculate maturity gap score (0 - 25 points).
+
+        D-7: `or 1` / `or 3` fabricated a specific invented gap (e.g. "2")
+        for a capability with no recorded maturity at all, feeding a
+        computed investment-priority number from a made-up input. When
+        either side is genuinely unassessed, this returns a documented
+        NEUTRAL score (the midpoint of the 0-25 range) rather than
+        pretending a real gap was measured -- the caller can distinguish
+        "measured" from "assumed neutral" via `maturity_assessed` in the
+        returned capability dict (see `_calculate_capability_score`).
+        """
+        current_maturity = capability.current_maturity_level
+        target_maturity = capability.target_maturity_level
+
+        if current_maturity is None or target_maturity is None:
+            return 12  # neutral midpoint -- not a measured gap
 
         maturity_gap = target_maturity - current_maturity
 

@@ -31,7 +31,7 @@ let ComposerSearch = (function() {
 
         let methods = {
 
-        selectViewpoint: function(vpId, vpName) {
+        selectViewpoint: function(vpId, vpName, layer) {
             let self = this;
             self.vpDropdownOpen = false;
             self.activeViewpoint = vpId;
@@ -45,6 +45,7 @@ let ComposerSearch = (function() {
 
             let url = '/archimate/viewpoints-api/' + vpId + '/data';
             if (self.solutionId) url += '?solution_id=' + self.solutionId;
+            if (layer) url += (url.indexOf('?') === -1 ? '?' : '&') + 'layer=' + encodeURIComponent(layer);
 
             Platform.fetch(url, { silent: true })
             .then(function(data) {
@@ -59,6 +60,26 @@ let ComposerSearch = (function() {
                     self.scopeFallback = true;
                     self.statusText = 'Select a solution to view this viewpoint';
                     UndoStack.resume();
+                    UndoStack.clear();
+                    self.viewpointDirty = false;
+                    return;
+                }
+
+                /* D4: distinguish a genuine backend failure from a real empty
+                 * result — do not silently render "No elements for this
+                 * viewpoint" for an error. */
+                if (data.error) {
+                    UndoStack.pause();
+                    self.graph.clear();
+                    self.canvasElements = {};
+                    self.elementCount = 0;
+                    self.relCount = 0;
+                    self.viewpointLoading = false;
+                    self.statusText = data.error_reason || 'Failed to load viewpoint data';
+                    UndoStack.resume();
+                    UndoStack.clear();
+                    self.viewpointDirty = false;
+                    _toast('error', data.error_reason || 'Failed to load viewpoint data');
                     return;
                 }
 
@@ -77,6 +98,9 @@ let ComposerSearch = (function() {
                     self.relCount = 0;
                     self.statusText = 'No elements for this viewpoint';
                     self.viewpointLoading = false;
+                    UndoStack.resume();
+                    UndoStack.clear();
+                    self.viewpointDirty = false;
                     return;
                 }
 
@@ -107,6 +131,13 @@ let ComposerSearch = (function() {
 
                 UndoStack.resume();
                 UndoStack.clear();
+                /* D1 fix: loading/viewing a viewpoint is not an edit — graph.on('add')
+                 * fired above for each rendered element/relationship and marked the
+                 * canvas dirty purely from viewing it, which would otherwise let the
+                 * 30s autosave timer create a new SavedDiagram row for a user who
+                 * only looked. Mirror the reset composer.js:2541 does after
+                 * loadSavedViewpoint(). */
+                self.viewpointDirty = false;
                 self.$nextTick(function() {
                     self.fitCanvas();
                     if (window.lucide) lucide.createIcons();
