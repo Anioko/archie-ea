@@ -21,6 +21,7 @@ from . import procurement_bp
 # As in my_applications, services.py held the summary shapes these templates
 # read and was never imported, so every dashboard raised jinja2.UndefinedError.
 from .services import (
+    get_contract_amounts,
     get_days_until_renewal,
     get_renewal_summary,
     get_renewal_urgency,
@@ -62,7 +63,6 @@ def contracts_list():
     contracts = VendorContract.query.filter_by(organization_id=org_id).all()
 
     # Summary stats
-    total_value = sum(c.contract_value or 0 for c in contracts)
     active_count = sum(1 for c in contracts if c.status == "active")
     expiring_soon = sum(
         1 for c in contracts
@@ -89,7 +89,15 @@ def contracts_list():
             urgency = "warning"
         else:
             urgency = "ok"
-        return {"contract": contract, "days_until_renewal": days, "urgency": urgency}
+        # The row's amounts come from the same function the spend totals read,
+        # so a contract with no annual cost is a dash here and is left out of
+        # the total there, never a zero on either.
+        return {
+            "contract": contract,
+            "days_until_renewal": days,
+            "urgency": urgency,
+            **get_contract_amounts(contract),
+        }
 
     return render_template(
         "procurement/contracts_list.html",
@@ -99,7 +107,6 @@ def contracts_list():
         # until a real dataset existed.
         total=len(contracts),
         page=1,
-        total_value=total_value,
         active_count=active_count,
         expiring_soon=expiring_soon,
     )
@@ -270,23 +277,6 @@ def spend_analytics():
     """Spend analytics dashboard."""
     org_id = current_user.organization_id
 
-    contracts = VendorContract.query.filter_by(organization_id=org_id).all()
-
-    # Total spend
-    total_spend = sum(c.contract_value or 0 for c in contracts)
-    annual_spend = sum(c.annual_cost or 0 for c in contracts)
-
-    # Spend by vendor
-    spend_by_vendor = {}
-    for c in contracts:
-        vendor_name = c.vendor.name if c.vendor else "Unknown"
-        if vendor_name not in spend_by_vendor:
-            spend_by_vendor[vendor_name] = 0
-        spend_by_vendor[vendor_name] += c.contract_value or 0
-
-    # Sort by spend
-    spend_by_vendor = dict(sorted(spend_by_vendor.items(), key=lambda x: -x[1]))
-
     # Spend by category - shared with the AI recommendations endpoint
     # (procurement_ai_service.py) via get_spend_by_category() rather than a
     # second parallel loop over the same rows.
@@ -294,12 +284,9 @@ def spend_analytics():
 
     return render_template(
         "procurement/spend_analytics.html",
-        contracts=contracts,
-        total_spend=total_spend,
-        annual_spend=annual_spend,
-        spend_by_vendor=spend_by_vendor,
         spend_by_category=spend_by_category,
-        # Template reads summary.{total_value,total_annual_cost,total_contracts,
-        # by_type,top_vendors} - exactly get_spend_summary()'s return shape.
+        # Every figure on the page comes from this one summary. Total contract
+        # value and annual cost are each summed here and nowhere else, so the
+        # page cannot state two different totals or add a missing amount as 0.
         summary=get_spend_summary(),
     )
