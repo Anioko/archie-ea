@@ -622,11 +622,11 @@ file should retire — don't let both read as "the current answer" at once.
 **Deploying without droplet SSH.** A session that has GitHub access but no SSH access to
 the droplet deploys through the `Production deploy` workflow
 (`.github/workflows/deploy.yml`), which wraps `scripts/deploy_verified.sh` behind a
-required-reviewer approval, on commits that are on `main` with green required CI:
-`gh workflow run deploy.yml --ref main -f ref=<full 40-character sha> -f dry_run=false`
-(`dry_run=true` verifies what is running and changes nothing). Dispatching the run and
-reporting its link and state is how a session meets the deploy-in-the-same-session rule
-above when it has no SSH. **A session may dispatch but must not approve its own production
+required-reviewer approval, on commits on `main` with green required CI. Rehearse first:
+`gh workflow run deploy.yml --ref main -f ref=<full 40-character sha> -f dry_run=true`
+verifies what is running and changes nothing. The same command with `-f dry_run=false`
+deploys. Dispatching the run and reporting its link and state is how a session meets the
+deploy-in-the-same-session rule above when it has no SSH. **A session may dispatch but must not approve its own production
 run.** Approval belongs to the reviewer; where the reviewer is the same GitHub account as the
 session's token, that is a rule to follow, not one GitHub enforces, and the approval is then a
 confirmation prompt rather than a separation of duties. While required CI on `main` is red,

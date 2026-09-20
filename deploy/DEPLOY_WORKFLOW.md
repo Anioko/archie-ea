@@ -27,15 +27,24 @@ Two jobs run in sequence.
    - `ref` is a full 40-character lowercase hex SHA. Branch names, tags and
      short SHAs are refused, and so is the SHA of a tag object.
    - The workflow was dispatched from `main`.
-   - The commit is an ancestor of `origin/main`.
-   - No branch or tag named like the SHA exists (`<sha>`, or `origin/<sha>`).
-     This is defence in depth. The real control is in `deploy_verified.sh`,
+   - The commit is on `origin/main`'s first-parent history: it was itself a
+     commit on `main`. A commit that reached `main` only as part of a merged
+     branch (a pull request's head commit under a merge commit) is an ancestor
+     of `main` but is refused, because its checks ran on a merge preview of the
+     branch and no push-triggered CI run ever ran on its own tree. Deploy the
+     merge commit instead. With squash merges every commit on `main` qualifies.
+   - No branch or tag named like the SHA exists (`<sha>`, or `origin/<sha>`). A
+     name that merely starts with the SHA, for example `<sha>-revert`, counts too,
+     because the refs lookup is a prefix match; renaming or deleting that ref
+     clears the refusal. This is defence in depth. The real control is in `deploy_verified.sh`,
      which resolves a 40-hex ref as an object and never as `origin/<ref>`: git
      resolves a tag named `origin/<sha>` ahead of the remote-tracking branch, so
      the old lookup order could deploy a different commit from the one checked.
    - Every job in `ci.yml` except the one listed under `EXCLUDED_CHECKS` has
-     concluded `success` for that exact commit (queried once from the checks API,
-     not polled). The lists are in `scripts/deploy_workflow.py`; a test fails
+     concluded `success` on that exact commit (queried once from the checks API,
+     not polled; the newest run of each job decides). Because the commit must be
+     on the first-parent history of `main`, CI ran on that commit's own tree when
+     it landed on `main`. The lists are in `scripts/deploy_workflow.py`; a test fails
      when `ci.yml` gains, loses or renames a job without them following. The one
      exclusion is `Build immutable release image`: it builds and pushes a GHCR
      image, production does not run that pipeline, and a registry or buildx
@@ -110,8 +119,10 @@ decides success. The workflow additionally requires the script's
   further run waiting in the group and replaces an older waiting run when a
   newer one arrives. A run parked on approval holds the group; see "Rollback".
 - It cannot finish a deploy that is cut off. The deploy job is stopped after 100
-  minutes (the baseline step can use up to 15, the deploy step is stopped after
-  65). A deploy stopped part-way leaves the droplet in whatever state
+  minutes; the baseline and dry-run steps are each stopped after 25 (the health
+  budget is 15 minutes) and the deploy step after 65. A baseline or dry run
+  stopped that way fails the run before anything is deployed. A deploy stopped
+  part-way leaves the droplet in whatever state
   `deploy_verified.sh` had reached, so check it from a machine with SSH before
   dispatching again.
 - The tests that check file modes (key 0600, directory 0700) only run on POSIX.
@@ -146,8 +157,8 @@ its own servers; nothing inside the workflow can see or change who approved a ru
 
 The choice sets `prevent_self_review` when the environment is created (step 1).
 Also consider protecting `main` (a ruleset that requires a pull request and the CI
-checks): today `main` accepts direct pushes, so "an ancestor of `main` with green
-CI" means CI-checked, not reviewed.
+checks): today `main` accepts direct pushes, so "a first-parent commit of `main`
+with green CI" means CI-checked, not reviewed.
 
 ## One-time setup (a person with admin rights on the repository and root on the droplet)
 
@@ -217,6 +228,11 @@ reject it.
 
 Other results and what they mean:
 
+- `not evaluated (the request was refused before the environment was read)`:
+  the request was refused before the environment was reached, because `ref` was
+  not a full 40-character SHA, `dry_run` was not exactly `true` or `false`, or the
+  workflow was not dispatched from `main`. It says nothing about the environment.
+  Fix the dispatch and run it again.
 - `REFUSED: environment 'production' has no required reviewers` or `can be
   deployed from any branch`: fix step 1.
 - `REFUSED: environment 'production' does not exist, or the workflow token cannot
@@ -286,7 +302,9 @@ Or open the droplet's web console in the DigitalOcean dashboard and run
 `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub`; compare that fingerprint with
 `ssh-keygen -lf known_hosts_value`. The value must be plain
 `<ip> <key-type> <key>` lines naming exactly `134.122.105.56`. Hashed entries,
-`@` markers, host lists, patterns and other hosts are refused. If the host key
+`@` markers, host lists, patterns and other hosts are refused, and so is the
+bracketed `[<ip>]:<port>` form that ssh uses for a non-22 port; if the droplet's
+SSH port ever moves, the validator has to change first. If the host key
 ever changes (the droplet is rebuilt), every run fails with "Host key
 verification failed" until this secret is updated; that is intended.
 

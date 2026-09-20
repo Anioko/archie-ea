@@ -86,9 +86,10 @@ jobs:
     name: Deploy to production (reviewer approval required)
     needs: preflight
     runs-on: ubuntu-24.04
-    # Baseline up to 15 min, deploy step up to 65, plus setup and the public-page
-    # check. A run cut off part-way leaves the droplet mid-deploy, so this is a
-    # ceiling on a hung run, not a target.
+    # The baseline and dry-run steps are stopped after 25 minutes, the deploy step
+    # after 65, plus setup and the public-page check. A run cut off part-way
+    # through a deploy leaves the droplet mid-deploy, so this is a ceiling on a
+    # hung run, not a target.
     timeout-minutes: 100
     environment:
       name: production
@@ -163,6 +164,10 @@ jobs:
       - name: Dry run - verify what is running now
         id: dry
         if: steps.gate.outputs.mode == 'dry-run'
+        # The health budget is 15 minutes; the rest is margin for the script's
+        # other ssh calls. A step cut off here fails the run before anything is
+        # deployed.
+        timeout-minutes: 25
         env:
           DEPLOY_SHA: ${{ steps.gate.outputs.sha }}
           AUTO_ROLLBACK: "0"
@@ -186,6 +191,9 @@ jobs:
       - name: Baseline - verify what is running before the deploy
         id: baseline
         if: steps.gate.outputs.mode == 'deploy'
+        # Same bound as the dry run. A baseline cut off here fails the run before
+        # anything is deployed.
+        timeout-minutes: 25
         env:
           DEPLOY_SHA: ${{ steps.gate.outputs.sha }}
           AUTO_ROLLBACK: "0"
