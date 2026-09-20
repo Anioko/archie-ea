@@ -56,6 +56,16 @@
                         this._tableInit();
                     },
 
+                    // ── Clear filters ─────────────────────────────────
+                    // clearFilters() resets the table state; the toolbar's search box and selects are plain
+                    // controls (not x-model), so reset what the user sees as well.
+                    clearAllFilters: function () {
+                        this.clearFilters();
+                        var root = this.$root;
+                        root.querySelectorAll('input[type="search"]').forEach(function (input) { input.value = ''; });
+                        root.querySelectorAll('select[aria-label^="Filter by"]').forEach(function (select) { select.value = ''; });
+                    },
+
                     // ── Edit modal ─────────────────────────────────────
                     openEditModal: function (row) {
                         this.editingId                 = row.id;
