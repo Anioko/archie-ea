@@ -42,9 +42,13 @@ def _clear_login_cache():
 
 
 def _login(client, user_id):
+    from tests._session_test_helpers import mint_test_sid
+    _sid = mint_test_sid(user_id)
     with client.session_transaction() as sess:
         sess["_user_id"] = str(user_id)
         sess["_fresh"] = True
+        if _sid:
+            sess["_sid"] = _sid
     _clear_login_cache()
 
 

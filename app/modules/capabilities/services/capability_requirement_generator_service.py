@@ -42,8 +42,8 @@ _EARS_SYSTEM_PROMPT = (
 _GENERATION_PROMPT = (
     "Business Capability: {name}\n"
     "Domain: {domain}\n"
-    "Current maturity level: {current_maturity}/5\n"
-    "Target maturity level: {target_maturity}/5\n"
+    "Current maturity level: {current_maturity}\n"
+    "Target maturity level: {target_maturity}\n"
     "Maturity gap: {gap}\n"
     "Available APQC processes (id: name): {apqc_processes}\n"
     "\nGenerate {count} traceable requirements to close the capability gap."
@@ -205,7 +205,15 @@ class CapabilityRequirementGeneratorService:
     def _build_prompt(
         self, cap: UnifiedCapability, apqc_context: Dict[int, str], count: int
     ) -> str:
-        gap = (cap.target_maturity_level or 3) - (cap.current_maturity_level or 1)
+        # D-7: `cap` IS the maturity authority (UnifiedCapability) already —
+        # `or 1` / `or 3` here fabricated a plausible level and grounded the
+        # LLM's generated requirements on an invented value (a no-fabrication
+        # violation on the AI path specifically). When maturity is genuinely
+        # unassessed (None), say so in the prompt via the reason-code
+        # vocabulary instead of inventing a number.
+        current = cap.current_maturity_level
+        target = cap.target_maturity_level
+        gap = (target - current) if (current is not None and target is not None) else None
         apqc_str = (
             ", ".join(f"{pid}: {name}" for pid, name in apqc_context.items())
             if apqc_context
@@ -215,9 +223,9 @@ class CapabilityRequirementGeneratorService:
         user_part = _GENERATION_PROMPT.format(
             name=cap.name or "",
             domain=getattr(cap, 'business_domain', None) or cap.category or "General",
-            current_maturity=cap.current_maturity_level or 1,
-            target_maturity=cap.target_maturity_level or 3,
-            gap=gap,
+            current_maturity=f"{current}/5" if current is not None else "not assessed",
+            target_maturity=f"{target}/5" if target is not None else "not assessed",
+            gap=gap if gap is not None else "unknown (maturity not fully assessed)",
             apqc_processes=apqc_str,
             count=count,
         )

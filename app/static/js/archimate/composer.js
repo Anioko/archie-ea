@@ -2544,8 +2544,19 @@ function composerApp() {
 
             /* ── Check for initial viewpoint from URL ── */
             let initialVp = (window.__COMPOSER_CONFIG__ || {}).initialViewpoint;
+            let initialLayer = (window.__COMPOSER_CONFIG__ || {}).initialLayer;
+            /* A composer link can legitimately pass `layer` with no `viewpoint`
+             * (e.g. traceability_chain.html's "+ Add" buttons, which only know
+             * which layer to seed). Without a fallback here that layer was
+             * silently dropped and the composer opened generically — default
+             * to the 'layered' viewpoint so a layer-only link still does
+             * something sensible, matching the `?viewpoint=layered&layer=X`
+             * convention used everywhere else in this codebase. */
+            if (!initialVp && initialLayer) {
+                initialVp = 'layered';
+            }
             if (initialVp) {
-                this.selectViewpoint(initialVp, initialVp);
+                this.selectViewpoint(initialVp, initialVp, initialLayer);
                 return;
             }
 
@@ -5252,7 +5263,7 @@ function composerApp() {
 
             /* If already linked, navigate to the sub-diagram */
             if (existingId) {
-                window.open('/archimate/composer?viewpoint=' + existingId, '_blank');
+                window.open('/archimate/composer?viewpoint_id=' + existingId, '_blank');
                 return;
             }
 

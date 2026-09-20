@@ -122,8 +122,10 @@ class TestF07SessionIdleTimeout:
         assert idle < absolute.total_seconds()
 
     def test_hook_is_registered(self, app):
+        # Renamed by session-invalidation-on-logout: the hook now also
+        # enforces server-side session revocation, not idle timeout alone.
         names = [f.__name__ for f in app.before_request_funcs.get(None, [])]
-        assert "_enforce_idle_timeout" in names
+        assert "_enforce_session_policy" in names
 
     def test_stale_session_is_torn_down_server_side(
         self, app, db_session, make_org, login_as

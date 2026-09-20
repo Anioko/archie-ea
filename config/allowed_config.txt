@@ -19,3 +19,4 @@ USE_READ_REPLICA_FOR_DASHBOARD  # infra perf (read replica)
 OTEL_ENABLED                    # observability (OpenTelemetry export)
 MAIL_USE_TLS                    # SMTP transport
 MAIL_USE_SSL                    # SMTP transport
+APP_FAST_INIT                   # infra perf: skips heavy ORM mapper config at import (E2E boot speed / Windows mapper crash workaround); exposes no user-facing feature. No runner sets it — retirement tracked in docs/buckets/model-class-deduplication/investigation.md

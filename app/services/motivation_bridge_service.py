@@ -167,6 +167,14 @@ def _find_or_create_outcome(so, name, org_id=None):
         measurement_unit=so.predicted_unit,
         target_date=so.predicted_date,
         realization_status=_TRACKING_TO_REALIZATION.get(tracking_value, "not_started"),
+        # Outcome is tenant-scoped (TenantMixin). This service runs under the
+        # `flask bridge-motivation` CLI -- no request context -- so the
+        # column's declared_attr default can only guess and returns None on a
+        # multi-org install, silently writing an org-less, permanently
+        # invisible row (see app/commands/backfill_outcome_org.py, which
+        # exists to clean up exactly this). Pass it explicitly, matching
+        # _create_archimate_element above.
+        organization_id=org_id,
     )
     db.session.add(outcome)
     db.session.flush()
@@ -187,6 +195,10 @@ def _find_or_create_principle(sp, name, org_id=None):
         implications=sp.implications,
         archimate_element_id=ae.id,
         status="draft",
+        # Principle is tenant-scoped (TenantMixin, organization_id nullable).
+        # Same no-request-context hazard as Outcome above -- pass explicitly
+        # or a multi-org install silently writes an org-less row.
+        organization_id=org_id,
     )
     db.session.add(principle)
     db.session.flush()

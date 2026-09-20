@@ -4,7 +4,7 @@ Approved 2026-08-12. Origin: internal product design review (2026-08-10, artifac
 `archie-design-review`) + user's production screenshots of AI Chat and Dashboard at ~1024px
 (2026-08-12), which confirmed the review's Red/Amber ratings and exposed sub-1280px layout
 collapse the review missed. Goal: a shell and screen system credible to Fortune-500 users and
-Saint-Gobain's evaluation — calmer than a Big-4 deliverable, honest as a system of record.
+The customer's evaluation — calmer than a Big-4 deliverable, honest as a system of record.
 
 ## Principles (binding on every wave)
 

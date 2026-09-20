@@ -247,7 +247,7 @@ ${data.gaps.slice(0, 10).map(g => `
   ${g.description}
   *Recommendation:* ${g.recommendation}
   ${g.capability_id ? `<a href="/capability_map/capabilities?id=${g.capability_id}">→ View Capability</a>` : ''}
-  ${g.process_id ? `<a href="/archimate/composer?process=${g.process_id}">→ Open in Composer</a>` : ''}
+  ${g.process_id ? `<a href="/archimate/composer">→ Open in Composer</a>` : ''}
   ${g.vendor_name ? `<a href="/applications?filter_vendor=${encodeURIComponent(g.vendor_name)}">→ Find Vendors</a>` : ''}
 `).join('\n')}
 
@@ -401,7 +401,7 @@ ${v.tco_estimate ? `**3-Year TCO:** $${v.tco_estimate.three_year.toLocaleString(
 
                 data.viewpoints.forEach(vp => {
                     responseText += `### ${vp.name}\n**Elements:** ${vp.element_count}\n`;
-                    if (vp.viewpoint_view_id) {
+                    if (vp.composer_url) {
                         responseText += `<a href="${vp.composer_url}" class="text-primary underline text-sm"><!-- token-migration-ok -->→ Open in Composer</a>\n\n`;
                     } else {
                         responseText += `*(No elements in this layer)*\n\n`;

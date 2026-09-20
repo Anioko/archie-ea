@@ -410,6 +410,85 @@ def init_scheduler(app):
                     exc,
                 )
 
+        # T-002: recurring capability-maturity projection. Closes the gap PR
+        # #23's write-time ORM sync listeners cannot: the three raw-SQL
+        # maturity writers in maturity_routes.py never fire an ORM event.
+        capability_projection_registered = False
+        try:
+            def run_capability_projection():
+                with app.app_context():
+                    from app.jobs.capability_projection_job import run_capability_projection_job
+
+                    run = run_capability_projection_job()
+                    if run.status == "failed":
+                        app.logger.error(
+                            "APScheduler capability projection failed: %s", run.as_dict()
+                        )
+                    else:
+                        app.logger.info(
+                            "APScheduler capability projection: %s", run.as_dict()
+                        )
+
+            projection_interval_minutes = int(
+                app.config["CAPABILITY_PROJECTION_INTERVAL_MINUTES"]
+            )
+            if projection_interval_minutes <= 0:
+                raise ValueError("interval must be positive")
+            scheduler.add_job(
+                func=run_capability_projection,
+                trigger=IntervalTrigger(minutes=projection_interval_minutes),
+                id="capability_projection",
+                name="Capability Maturity Projection",
+                replace_existing=True,
+                max_instances=1,
+            )
+            capability_projection_registered = True
+        except Exception as exc:
+            app.logger.error(
+                "Capability projection scheduler job was not registered: %s", exc
+            )
+
+        # T-003: recurring recompute of stale derived facts (DE-4, ADR-003).
+        # The on-demand endpoint (POST /api/v1/intelligence/derivation/recompute)
+        # covers the immediate case; this covers everything nobody clicked.
+        derived_recompute_registered = False
+        try:
+            def run_derived_recompute():
+                with app.app_context():
+                    from app.modules.intelligence.services.recompute_job import (
+                        recompute_derived_facts,
+                    )
+
+                    run = recompute_derived_facts(app)
+                    if run.failed:
+                        app.logger.error(
+                            "APScheduler derived-facts recompute partial failure: %s",
+                            run.as_dict(),
+                        )
+                    else:
+                        app.logger.info(
+                            "APScheduler derived-facts recompute: %s", run.as_dict()
+                        )
+
+            derived_recompute_interval_minutes = int(
+                app.config["DERIVED_RECOMPUTE_INTERVAL_MINUTES"]
+            )
+            if derived_recompute_interval_minutes <= 0:
+                raise ValueError("interval must be positive")
+            scheduler.add_job(
+                func=run_derived_recompute,
+                trigger=IntervalTrigger(minutes=derived_recompute_interval_minutes),
+                id="derived_facts_recompute",
+                name="Derived Fact Recompute",
+                replace_existing=True,
+                max_instances=1,
+            )
+            derived_recompute_registered = True
+        except Exception as exc:
+            app.logger.error(
+                "Derived-facts recompute scheduler job was not registered: %s", exc
+            )
+
         scheduler.start()
 
         def _shutdown_scheduler():
@@ -427,6 +506,10 @@ def init_scheduler(app):
         )
         if arb_expiry_registered:
             scheduled_jobs += ", typed ARB waiver expiry (configured)"
+        if capability_projection_registered:
+            scheduled_jobs += ", capability maturity projection (interval)"
+        if derived_recompute_registered:
+            scheduled_jobs += ", derived-facts recompute (interval)"
         app.logger.info("APScheduler started: %s", scheduled_jobs)
     except ImportError:
         app.logger.warning("APScheduler not available — EA workflow schedules disabled")

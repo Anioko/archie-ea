@@ -78,12 +78,40 @@ _CHECKSUM_SQL = """md5(concat_ws('|',
 
 # The source row set, ordered and optionally limited, so --limit is deterministic:
 # the same N rows on every run rather than whatever the planner returns first.
+#
+# `:single_id` narrows the source set to exactly one row when non-NULL, and is
+# always bound (to NULL for the CLI's multi-row runs) so this single CTE serves
+# both the CLI's --limit path and the write-time listener's single-row path with
+# byte-identical SQL below it -- the listener in `app/models/business_capabilities.py`
+# reuses `_PROJECT_SQL` verbatim, parameterised with `single_id` set and `row_limit`
+# left at its default cap, rather than re-expressing the column mapping in Python.
+# Two independent mappings would compute two different `source_checksum` values for
+# the same row and every subsequent CLI run would report phantom drift forever.
 _SOURCE_CTE = """
     source AS (
-        SELECT * FROM business_capability ORDER BY id
+        SELECT * FROM business_capability
+        WHERE (CAST(:single_id AS INTEGER) IS NULL OR id = CAST(:single_id AS INTEGER))
+          AND NOT (id = ANY(CAST(:excluded_ids AS INTEGER[])))
+        ORDER BY id
         LIMIT :row_limit
     )
 """
+
+# Default bind values so every call site can omit `single_id`/`row_limit` when it
+# doesn't care about narrowing, and the single-row listener path can omit `row_limit`.
+_UNLIMITED_ROW_LIMIT = 2**31 - 1
+
+
+def _source_params(
+    *, row_limit: int | None = None, single_id: int | None = None, excluded_ids: list[int] | None = None
+) -> dict[str, object]:
+    """Bind values for `_SOURCE_CTE`, defaulted so either axis can be omitted."""
+
+    return {
+        "row_limit": row_limit if row_limit is not None else _UNLIMITED_ROW_LIMIT,
+        "single_id": single_id,
+        "excluded_ids": excluded_ids if excluded_ids is not None else []
+    }
 
 
 class ProjectionBlocked(RuntimeError):
@@ -208,7 +236,7 @@ def _plan(connection, row_limit: int | None) -> dict[str, object]:
                   AND uc.source_id = bc.id::text
             """  # nosec B608 -- both interpolated fragments are module literals
         ),
-        {"source_table": SOURCE_TABLE, "row_limit": limit},
+        {"source_table": SOURCE_TABLE, "row_limit": limit, "single_id": None, "excluded_ids": []},
     ).mappings().one()
     plan: dict[str, object] = {key: int(value) for key, value in plan_row.items()}
 
@@ -223,29 +251,37 @@ def _plan(connection, row_limit: int | None) -> dict[str, object]:
         ).scalar_one()
     )
     if ownerless:
-        blockers.append({"kind": "ownerless_source_rows", "count": ownerless})
+        blockers.append({"kind": "ownerless_source_rows", "count": ownerless, "blocking": True})
 
     # 2. A projected row whose owner no longer matches its source's owner. The
     #    refresh deliberately never updates organization_id or code (those are what
     #    the four partial unique indexes police, `unified_capability.py:310-340`), so
     #    a moved row must be resolved by a human, not silently left stale.
     # tenancy-ok: cross-organisation reconciliation is the point of the check.
-    moved = int(
-        connection.execute(
-            text(
-                """
-                SELECT count(*) FROM unified_capabilities AS uc
-                JOIN business_capability AS bc ON bc.id::text = uc.source_id
-                WHERE uc.source_table = :source_table
-                  AND (uc.organization_id IS DISTINCT FROM bc.organization_id
-                       OR uc.code IS DISTINCT FROM COALESCE(bc.code, 'BC-' || bc.id))
-                """
-            ),
-            {"source_table": SOURCE_TABLE},
-        ).scalar_one()
-    )
+    moved_result = connection.execute(
+        text(
+            """
+            SELECT bc.id AS source_id
+            FROM unified_capabilities AS uc
+            JOIN business_capability AS bc ON bc.id::text = uc.source_id
+            WHERE uc.source_table = :source_table
+              AND (uc.organization_id IS DISTINCT FROM bc.organization_id
+                   OR uc.code IS DISTINCT FROM COALESCE(bc.code, 'BC-' || bc.id))
+            ORDER BY bc.id
+            LIMIT 5000
+            """
+        ),
+        {"source_table": SOURCE_TABLE},
+    ).fetchall()
+    moved = len(moved_result)
+    moved_ids = [row[0] for row in moved_result]
     if moved:
-        blockers.append({"kind": "owner_or_code_changed_since_projection", "count": moved})
+        blockers.append({
+            "kind": "owner_or_code_changed_since_projection", 
+            "count": moved, 
+            "blocking": False,
+            "source_ids": moved_ids
+        })
 
     # 3. A code already taken inside the same tenant by a row that is NOT this
     #    source row's projection: the insert would violate
@@ -270,12 +306,12 @@ def _plan(connection, row_limit: int | None) -> dict[str, object]:
             LIMIT 200
             """  # nosec B608 -- the interpolated fragment is a module literal
         ),
-        {"source_table": SOURCE_TABLE, "row_limit": limit},
+        {"source_table": SOURCE_TABLE, "row_limit": limit, "single_id": None, "excluded_ids": []},
     ).mappings().all()
     if collisions:
         blockers.append(
             {"kind": "tenant_code_collision", "count": len(collisions),
-             "examples": [dict(row) for row in collisions[:20]]}
+             "examples": [dict(row) for row in collisions[:20]], "blocking": True}
         )
 
     # 4. archimate_id is globally unique on the source (`business_capabilities.py:91`)
@@ -295,11 +331,11 @@ def _plan(connection, row_limit: int | None) -> dict[str, object]:
                        OR existing.source_id IS DISTINCT FROM bc.id::text)
                 """  # nosec B608 -- the interpolated fragment is a module literal
             ),
-            {"source_table": SOURCE_TABLE, "row_limit": limit},
+            {"source_table": SOURCE_TABLE, "row_limit": limit, "single_id": None, "excluded_ids": []},
         ).scalar_one()
     )
     if archimate_collisions:
-        blockers.append({"kind": "archimate_id_collision", "count": archimate_collisions})
+        blockers.append({"kind": "archimate_id_collision", "count": archimate_collisions, "blocking": True})
 
     # 5. A cycle in the source hierarchy. `get_full_hierarchy_path`
     #    (`unified_capability.py:410-418`) walks parents in an unbounded while loop
@@ -333,7 +369,7 @@ def _plan(connection, row_limit: int | None) -> dict[str, object]:
         ).scalar_one()
     )
     if cycles:
-        blockers.append({"kind": "source_hierarchy_cycle", "count": cycles})
+        blockers.append({"kind": "source_hierarchy_cycle", "count": cycles, "blocking": True})
 
     plan["blockers"] = blockers
     return plan
@@ -449,6 +485,7 @@ UPDATE unified_capabilities AS child
    AND child.source_id = bc.id::text
    AND bc.parent_capability_id IS NOT NULL
    AND child.parent_capability_id IS DISTINCT FROM parent.id
+   AND bc.id != ALL(CAST(:excluded_ids AS INTEGER[]))
 """
 
 # Pass 3 — back-link. `deprecated_in_favor_of_id` is the only column on
@@ -465,12 +502,14 @@ UPDATE business_capability AS bc
  WHERE uc.source_table = :source_table
    AND uc.source_id = bc.id::text
    AND bc.deprecated_in_favor_of_id IS DISTINCT FROM uc.id
+   AND bc.id != ALL(CAST(:excluded_ids AS INTEGER[]))
 """
 
 
-def _verify(connection, row_limit: int | None) -> dict[str, object]:
+def _verify(connection, row_limit: int | None, excluded_ids: list[int] | None = None) -> dict[str, object]:
     """Post-write assertions. Every one must hold, or the transaction is rolled back."""
 
+    excluded_ids = excluded_ids or []
     unprojected = int(
         connection.execute(
             text(
@@ -484,7 +523,9 @@ def _verify(connection, row_limit: int | None) -> dict[str, object]:
                 """  # nosec B608 -- the interpolated fragment is a module literal
             ),
             {"source_table": SOURCE_TABLE,
-             "row_limit": row_limit if row_limit is not None else 2**31 - 1},
+             "row_limit": row_limit if row_limit is not None else 2**31 - 1,
+             "single_id": None,
+             "excluded_ids": excluded_ids},
         ).scalar_one()
     )
     malformed = int(
@@ -552,6 +593,11 @@ def run_projection(
     before = _counts(connection)
     plan = _plan(connection, row_limit)
     cutover_complete = _cutover_is_complete(connection)
+    
+    # Separate blocking and skippable blockers
+    hard_blockers = [b for b in plan["blockers"] if b.get("blocking", True)]
+    skippable = [b for b in plan["blockers"] if not b.get("blocking", True)]
+    
     report: dict[str, object] = {
         "mode": "apply" if apply else "dry-run",
         "source_table": SOURCE_TABLE,
@@ -562,12 +608,13 @@ def run_projection(
         "plan": plan,
         "writes": {"inserted_or_updated": 0, "reparented": 0, "backlinked": 0},
         "verification": None,
+        "skipped": skippable,
     }
     if not apply:
         return report
 
-    if plan["blockers"]:
-        kinds = ", ".join(str(item["kind"]) for item in plan["blockers"])
+    if hard_blockers:
+        kinds = ", ".join(str(item["kind"]) for item in hard_blockers)
         raise ProjectionBlocked(f"unresolved blockers ({kinds}); nothing was written")
 
     if not cutover_complete and not _classifier_accepts_projection():
@@ -580,21 +627,27 @@ def run_projection(
         )
 
     _lock_cutover_tables(connection, _foreign_keys(connection))
+    
+    # Compute excluded IDs from skippable blockers
+    excluded_ids: list[int] = sorted({sid for b in skippable for sid in b.get("source_ids", [])})
+    
     parameters = {
         "source_table": SOURCE_TABLE,
+        "single_id": None,
         "row_limit": row_limit if row_limit is not None else 2**31 - 1,
+        "excluded_ids": excluded_ids
     }
     report["writes"] = {
         "inserted_or_updated": connection.execute(text(_PROJECT_SQL), parameters).rowcount,
         "reparented": connection.execute(
-            text(_PARENT_SQL), {"source_table": SOURCE_TABLE}
+            text(_PARENT_SQL), {"source_table": SOURCE_TABLE, "excluded_ids": excluded_ids}
         ).rowcount,
         "backlinked": connection.execute(
-            text(_BACKLINK_SQL), {"source_table": SOURCE_TABLE}
+            text(_BACKLINK_SQL), {"source_table": SOURCE_TABLE, "excluded_ids": excluded_ids}
         ).rowcount,
     }
 
-    verification = _verify(connection, row_limit)
+    verification = _verify(connection, row_limit, excluded_ids=excluded_ids)
     report["verification"] = verification
     failed = {key: value for key, value in verification.items() if value}
     if failed:
@@ -684,6 +737,8 @@ def project_capabilities(dry_run, apply_changes, row_limit, report):
     )
     if plan["blockers"]:
         click.echo(f"blockers: {plan['blockers']}")
+    if payload.get("skipped"):
+        click.echo(f"skipped (needs manual resolution): {payload['skipped']}")
     writes = payload["writes"]
     click.echo(
         f"writes: {writes['inserted_or_updated']} projected, "

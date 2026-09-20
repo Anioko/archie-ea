@@ -1038,9 +1038,14 @@ def _login_client(app, user_id):
     from flask import has_app_context
 
     client = app.test_client()
+    from tests._session_test_helpers import mint_test_sid
+
+    _sid = mint_test_sid(user_id, app=app)
     with client.session_transaction() as session:
         session["_user_id"] = str(user_id)
         session["_fresh"] = True
+        if _sid:
+            session["_sid"] = _sid
     if has_app_context():
         for cached in ("_login_user", "_current_user", "current_org_id", "current_org"):
             if hasattr(g, cached):

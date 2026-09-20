@@ -1572,23 +1572,24 @@ def get_statistics():
                 "total": ImplementationGap.query.filter(ImplementationGap.gap_kind != "plateau_transition").count(),
                 "by_priority": dict(
                     db.session.execute(
+                        # _org_where/_gap_kind_clause are each one of a fixed
+                        # set of hardcoded literal clauses; the only dynamic
+                        # value (_org) is always bound via _org_params, never
+                        # interpolated -- no request input reaches this text.
                         text(
-                            f"""
-                    SELECT COALESCE(priority, 'unset'), COUNT(*)
-                    FROM gaps{_org_where}{_gap_kind_clause}
-                    GROUP BY priority
-                """
+                            f"SELECT COALESCE(priority, 'unset'), COUNT(*) "
+                            f"FROM gaps{_org_where}{_gap_kind_clause} "
+                            f"GROUP BY priority"  # nosec B608
                         ), _org_params
                     ).fetchall()
                 ),
                 "by_type": dict(
                     db.session.execute(
+                        # Same shape as by_priority above.
                         text(
-                            f"""
-                    SELECT COALESCE(gap_type, 'unset'), COUNT(*)
-                    FROM gaps{_org_where}{_gap_kind_clause}
-                    GROUP BY gap_type
-                """
+                            f"SELECT COALESCE(gap_type, 'unset'), COUNT(*) "
+                            f"FROM gaps{_org_where}{_gap_kind_clause} "
+                            f"GROUP BY gap_type"  # nosec B608
                         ), _org_params
                     ).fetchall()
                 ),

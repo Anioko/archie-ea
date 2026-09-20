@@ -72,9 +72,13 @@ def _login(client, user_id):
     explanation in ``tests/test_ba_tenant_and_authz.py::_login``, which this
     mirrors.
     """
+    from tests._session_test_helpers import mint_test_sid
+    _sid = mint_test_sid(user_id)
     with client.session_transaction() as sess:
         sess["_user_id"] = str(user_id)
         sess["_fresh"] = True
+        if _sid:
+            sess["_sid"] = _sid
 
     from flask import g, has_app_context
 

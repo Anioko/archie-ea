@@ -149,12 +149,20 @@ def route_scope(app, _schema):
                 )
 
 
-def _login(client, user_id):
-    from flask import g, has_app_context
+def _login(client, user_id, app=None):
+    from flask import current_app, g, has_app_context
 
+    from tests._session_test_helpers import mint_test_sid
+
+    _app = app
+    if _app is None and has_app_context():
+        _app = current_app._get_current_object()
+    _sid = mint_test_sid(user_id, app=_app)
     with client.session_transaction() as session:
         session["_user_id"] = str(user_id)
         session["_fresh"] = True
+        if _sid:
+            session["_sid"] = _sid
     if has_app_context():
         for cached in ("_login_user", "_current_user", "current_org_id", "current_org"):
             if hasattr(g, cached):
@@ -213,7 +221,7 @@ def test_registered_adr_route_submits_replays_and_ignores_forged_state(
 def test_concurrent_registered_adr_submissions_converge_on_one_cycle(app, route_scope):
     def submit(suffix):
         client = app.test_client()
-        _login(client, route_scope.actor_id)
+        _login(client, route_scope.actor_id, app=app)
         response = client.post(
             f"/arb/api/adr/{route_scope.adr_id}/submit_review",
             json={"human_reviewed": True},
