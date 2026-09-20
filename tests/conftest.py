@@ -228,12 +228,11 @@ def login_as(app):
 
         real_user = user if hasattr(user, "id") else None
         org_id = getattr(real_user, "organization_id", None) if real_user is not None else None
-        sid = mint_test_sid(user_id, organization_id=org_id) if has_app_context() else None
+        sid = mint_test_sid(user_id, organization_id=org_id, app=app)
         with client.session_transaction() as sess:
             sess["_user_id"] = str(user_id)
             sess["_fresh"] = True
-            if sid:
-                sess["_sid"] = sid
+            sess["_sid"] = sid
         if not has_app_context():
             return
         for cached in ("_login_user", "_current_user", "current_org_id", "current_org"):

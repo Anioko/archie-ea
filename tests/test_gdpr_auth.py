@@ -92,7 +92,7 @@ def _login(client, user_id):
     """See tests/test_ba_tenant_and_authz.py::_login for why the g-cache clear
     is required — the same Flask-Login caching hazard applies here."""
     from tests._session_test_helpers import mint_test_sid
-    _sid = mint_test_sid(user_id)
+    _sid = mint_test_sid(user_id, app=client.application)
     with client.session_transaction() as sess:
         sess["_user_id"] = str(user_id)
         sess["_fresh"] = True

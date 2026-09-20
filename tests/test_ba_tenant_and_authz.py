@@ -184,7 +184,7 @@ def _login(client, user_id):
     surely as a stale user.
     """
     from tests._session_test_helpers import mint_test_sid
-    _sid = mint_test_sid(user_id)
+    _sid = mint_test_sid(user_id, app=client.application)
     with client.session_transaction() as sess:
         sess["_user_id"] = str(user_id)
         sess["_fresh"] = True
