@@ -33,6 +33,9 @@
                 <div class="text-sm text-muted-foreground">Total Contract Value</div>
             </div>
             <div class="text-3xl font-bold">{{ summary.total_value|format_currency(show_code=True) if summary.total_value is not none else '—' }}</div>
+            {% if summary.contracts_without_value %}
+            <p class="mt-1 text-sm text-muted-foreground">excludes {{ summary.contracts_without_value }} contract{{ '' if summary.contracts_without_value == 1 else 's' }} without a contract value</p>
+            {% endif %}
         </div>
         <div class="bg-card border border-border rounded-lg p-6">
             <div class="flex items-center gap-3 mb-2">
@@ -42,6 +45,9 @@
                 <div class="text-sm text-muted-foreground">Annual Recurring Cost</div>
             </div>
             <div class="text-3xl font-bold">{{ summary.total_annual_cost|format_currency(show_code=True) if summary.total_annual_cost is not none else '—' }}</div>
+            {% if summary.contracts_without_annual_cost %}
+            <p class="mt-1 text-sm text-muted-foreground">excludes {{ summary.contracts_without_annual_cost }} contract{{ '' if summary.contracts_without_annual_cost == 1 else 's' }} without an annual cost</p>
+            {% endif %}
         </div>
     </div>
 
@@ -114,7 +120,7 @@
                         <span class="capitalize">{{ type.replace('_', ' ') }}</span>
                         <span class="text-sm text-muted-foreground">({{ data.count }} contracts)</span>
                     </div>
-                    <span class="font-medium">{{ (data.annual_cost|format_currency if data.annual_cost is not none else '—') }}/yr</span>
+                    <span class="font-medium">{% if data.annual_cost is not none %}{{ data.annual_cost|format_currency }}/yr{% else %}—{% endif %}</span>
                 </div>
                 {% endfor %}
             </div>
@@ -132,15 +138,17 @@
                 <div>
                     <div class="flex items-center justify-between mb-1">
                         <span class="font-medium">{{ vendor_name }}</span>
-                        <span class="text-sm">{{ (data.annual_cost|format_currency if data.annual_cost is not none else '—') }}/yr</span>
+                        <span class="text-sm">{% if data.annual_cost is not none %}{{ data.annual_cost|format_currency }}/yr{% else %}—{% endif %}</span>
                     </div>
+                    {% if data.annual_cost is not none %}
                     <div class="flex items-center gap-2">
                         <div class="flex-1 h-2 bg-muted rounded-full overflow-hidden">
-                            {% set pct = (data.annual_cost|default(0) / summary.total_annual_cost|default(0) * 100) if (summary.total_annual_cost or 0) > 0 else 0 %}
+                            {% set pct = (data.annual_cost / summary.total_annual_cost * 100) if (summary.total_annual_cost or 0) > 0 else 0 %}
                             <div class="h-full bg-primary rounded-full" style="width: {{ pct }}%"></div>
                         </div>
                         <span class="text-xs text-muted-foreground w-12 text-right">{{ "{:.1f}".format(pct) }}%</span>
                     </div>
+                    {% endif %}
                 </div>
                 {% endfor %}
             </div>

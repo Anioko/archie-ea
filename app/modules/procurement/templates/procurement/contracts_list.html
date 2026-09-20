@@ -65,8 +65,8 @@
                         {{ item.contract.vendor.name if item.contract.vendor else '—' }}
                     </td>
                     <td class="px-4 py-3 text-sm">
-                        {% if item.contract.annual_cost %}
-                            {{ item.contract.annual_cost|format_currency if item.contract.annual_cost is not none else '—' }}
+                        {% if item.annual_cost is not none %}
+                            {{ item.annual_cost|format_currency }}
                         {% else %}
                             <span class="text-muted-foreground">—</span>
                         {% endif %}
