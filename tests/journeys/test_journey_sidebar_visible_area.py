@@ -25,10 +25,25 @@ MIN_NAV_HEIGHT = 730
 
 def _persona(app, enterprise_role):
     from app import db
+    from app.models.user import Permission, Role, User
 
     with app.app_context():
         org_id = make_org(db, "SidebarVisibleArea")
-        return make_user(db, org_id, "u", enterprise_role, role_name="Architect")
+        user_id = make_user(db, org_id, "u", enterprise_role, role_name="Architect")
+        if enterprise_role == "platform_admin":
+            # get_sidebar_zones() gates the Admin ZONE on user.is_admin() (a real Role permission check,
+            # Permission.ADMINISTER), and each admin-requires link on is_platform_admin/is_org_admin --
+            # neither is enterprise_role alone (see its own docstring). Without a Role carrying ADMINISTER,
+            # this fixture would never see its own Admin zone, same as a real platform_admin who was never
+            # granted the Administrator role.
+            user = db.session.get(User, user_id)
+            user.is_platform_admin = True
+            user.is_org_admin = True
+            user.role = Role.query.filter(
+                Role.permissions.op("&")(Permission.ADMINISTER) == Permission.ADMINISTER
+            ).first()
+            db.session.commit()
+        return user_id
 
 
 @pytest.fixture(scope="module")
@@ -187,3 +202,64 @@ def test_the_duplicated_collapse_row_is_gone(app, client, browser):
     document = client.get("/dashboard/overview").get_data(as_text=True)
     assert document.count("Collapse sidebar (Ctrl+B)") == 1
     assert "sidebar-show-all-btn" not in document
+
+
+def test_a_long_label_wraps_in_the_mobile_drawer_too(app, client, browser):
+    """T-303 AC3: the same wrapping holds at 390x844 (the mobile drawer width), not only at 1440x900."""
+    login(client, _persona(app, "enterprise_architect"))
+    path = "/dashboard/overview"
+    document = client.get(path).get_data(as_text=True)
+    pg = _open(browser, client, document, path, width=390, height=844)
+    try:
+        link = pg.locator('#sidebar-nav a[title="Transformation programmes"] span.flex-1')
+        link.wait_for(state="attached", timeout=10000)
+        info = link.evaluate("""el => ({
+            wraps: getComputedStyle(el).whiteSpace !== 'nowrap',
+            fullText: el.textContent.trim(),
+        })""")
+        assert info["wraps"], "the label still forces a single line at 390x844"
+        assert info["fullText"] == "Transformation programmes"
+    finally:
+        pg.close()
+
+
+@pytest.mark.parametrize("role", [
+    "solution_architect", "enterprise_architect", "business_architect", "cto", "security_architect",
+    "data_architect", "procurement", "application_manager", "portfolio_manager", "arb_member",
+    "platform_admin",
+])
+def test_no_zone_link_or_label_changed_for_any_persona(app, client, role):
+    """T-303 AC6: this brief repositions and restyles the sidebar; it must not add, remove or rename a link,
+    or change a zone's membership or order, for any of the eleven personas."""
+    import html as html_module
+    import re
+
+    from app.utils.role_access import get_sidebar_zones
+
+    class _StubUser:
+        """Same shape get_sidebar_zones() reads: enterprise_role, is_admin(), is_platform_admin, is_org_admin."""
+
+        def __init__(self, role):
+            self.enterprise_role = role
+            self.is_platform_admin = role == "platform_admin"
+            self.is_org_admin = role == "platform_admin"  # mirrors the fixture's is_org_admin=True
+
+        def is_admin(self):
+            return self.enterprise_role == "platform_admin"  # mirrors the fixture's granted Administrator role
+
+    login(client, _persona(app, role))
+    document = client.get("/dashboard/overview").get_data(as_text=True)
+    nav = document[document.index('id="sidebar-nav"'):]
+    nav = nav[:nav.index("</nav>")]
+    # href immediately followed by title=: only the real zone links match this shape (the search results
+    # template's <a> elements carry :href and :title, Alpine bindings, not the literal attribute name).
+    rendered_hrefs = re.findall(r'href="([^"]+)"\s+title="([^"]+)"', nav)
+    rendered_labels = [html_module.unescape(label) for _, label in rendered_hrefs]
+
+    expected_labels = []
+    for zone in get_sidebar_zones(_StubUser(role)):
+        for link in zone["links"]:
+            if link["endpoint"] in app.view_functions:
+                expected_labels.append(link["label"])
+
+    assert rendered_labels == expected_labels, (role, rendered_labels, expected_labels)
