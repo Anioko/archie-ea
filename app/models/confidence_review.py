@@ -10,6 +10,21 @@ from datetime import datetime
 from enum import Enum
 
 from .. import db
+from .mixins.core import TenantMixin, _default_org_id
+
+# ``ReviewQueueItem.item_type`` values whose ``item_id`` is the id of an
+# ApplicationComponent. Every writer of the queue sets ``item_id`` to the
+# application it analysed for these types, so the application's organisation is
+# the organisation the queue item belongs to.
+APPLICATION_ITEM_TYPES = frozenset(
+    {
+        "capability_mapping",
+        "process_classification",
+        "process_mapping",
+        "vendor_analysis",
+        "taxonomy_validation",
+    }
+)
 
 
 class ReviewStatus(Enum):
@@ -99,13 +114,31 @@ class ConfidenceThreshold(db.Model):
         }
 
 
-class ReviewQueueItem(db.Model):
-    """Individual items in the review queue for human validation."""
+class ReviewQueueItem(TenantMixin, db.Model):
+    """Individual items in the review queue for human validation.
+
+    Each item belongs to one organisation and is only visible to that
+    organisation's users; the tenant filter applies through ``TenantMixin``.
+    """
 
     __tablename__ = "review_queue_items"
     __table_args__ = {"extend_existing": True}
 
     id = db.Column(db.BigInteger, primary_key=True)
+
+    # Nullable so reconcile-schema can add the column to an existing table (it
+    # only adds nullable columns); ``flask backfill-review-queue-org`` then
+    # attributes existing rows. The mixin still applies the tenant filter, and a
+    # row with no organisation matches no organisation, so it is listed for
+    # nobody. New rows take the organisation of the creating request.
+    organization_id = db.Column(
+        db.Integer,
+        db.ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+        default=_default_org_id,
+    )
+
     threshold_id = db.Column(db.BigInteger, db.ForeignKey("confidence_thresholds.id"))
 
     # Item identification
