@@ -124,14 +124,19 @@ def test_ssh_is_strict_pinned_and_never_traced():
     assert "--logs" not in text  # post_deploy_verify --logs uses StrictHostKeyChecking=no
 
 
-def test_dry_run_baseline_and_deploy_share_one_health_budget_that_fits_the_job_timeout():
+def test_dry_run_baseline_and_deploy_share_one_health_budget_and_every_bound_is_enforced():
     workflow = load_workflow()
     steps = {s.get("id"): s for _, s in all_steps(workflow)}
 
     budgets = {sid: steps[sid]["env"]["HEALTH_TIMEOUT_SECONDS"] for sid in ("dry", "baseline", "deploy")}
     assert set(budgets.values()) == {"900"}, budgets   # a slow container must not cost the deploy its rollback target
-    baseline_minutes = int(budgets["baseline"]) / 60
-    assert baseline_minutes + steps["deploy"]["timeout-minutes"] < workflow["jobs"]["deploy"]["timeout-minutes"]
+    health_minutes = int(budgets["baseline"]) / 60
+    for sid in ("dry", "baseline"):
+        bound = steps[sid]["timeout-minutes"]           # enforced by Actions, not assumed
+        assert isinstance(bound, int) and bound >= health_minutes + 5, sid
+    # A real run is baseline then deploy (the dry run is the alternative to both).
+    sequence = steps["baseline"]["timeout-minutes"] + steps["deploy"]["timeout-minutes"]
+    assert sequence + 5 <= workflow["jobs"]["deploy"]["timeout-minutes"]
 
 
 def test_the_first_ssh_step_filters_the_droplets_stderr_like_the_others():
@@ -172,6 +177,16 @@ def test_actions_are_pinned_to_a_full_commit_sha():
     for _, step in all_steps(load_workflow()):
         if "uses" in step:
             assert re.fullmatch(r"[\w.-]+/[\w.-]+@[0-9a-f]{40}", step["uses"]), step["uses"]
+
+
+def test_both_checkouts_leave_the_job_token_out_of_the_git_config():
+    """With persist-credentials left on, the runner's .git/config would hold the job
+    token in jobs that go on to run shell scripts and an ssh wrapper."""
+    checkouts = [(job, step) for job, step in all_steps(load_workflow()) if step.get("uses", "").startswith("actions/checkout@")]
+
+    assert [job for job, _ in checkouts] == ["preflight", "deploy"]
+    for job, step in checkouts:
+        assert step["with"].get("persist-credentials") is False, job
 
 
 def test_both_jobs_run_the_preflight_and_only_from_main():
@@ -551,6 +566,16 @@ def test_a_branch_or_tag_named_like_the_sha_is_refused(preflight_env, template):
     code, text = preflight(env, FakeGitHub(shadow=[{"ref": template % commits["A"]}]))
 
     assert code == 1 and "a ref named like the SHA exists" in text and not out.exists()
+
+
+@pytest.mark.parametrize("template", ["refs/heads/%s-revert", "refs/tags/%s-rc1"])
+def test_a_ref_that_only_starts_with_the_sha_is_refused_and_the_message_says_how_to_clear_it(preflight_env, template):
+    """The refs lookup is a prefix match, so a longer name is caught too."""
+    env, commits, out = preflight_env
+    code, text = preflight(env, FakeGitHub(shadow=[{"ref": template % commits["A"]}]))
+
+    assert code == 1 and not out.exists()
+    assert "merely starts with the SHA" in text and "rename or delete that ref" in text
 
 
 def test_refs_that_merely_share_a_short_prefix_do_not_block(preflight_env):
@@ -1036,6 +1061,8 @@ def test_setup_puts_the_rehearsal_before_the_key_and_the_secrets():
     assert "never reaches the droplet" in rehearsal and "no key or secret exists" in rehearsal
     assert "Environment protection: verified" in rehearsal
     assert "could not be read" in rehearsal and "refused" in rehearsal
+    assert "not evaluated (the request was refused before the environment was read)" in rehearsal
+    assert "says nothing about the environment" in rehearsal
 
 
 def test_the_runbook_says_red_ci_refuses_every_dispatch_and_who_decides():
@@ -1074,4 +1101,129 @@ def test_claude_md_pointer_lets_a_session_dispatch_but_not_approve_its_own_run()
     assert "may dispatch but must not approve its own production run" in paragraph
     assert "deploy-in-the-same-session rule" in paragraph
     assert "not one GitHub enforces" in paragraph
+    assert "Rehearse first" in paragraph
+    assert paragraph.index("-f dry_run=true") < paragraph.index("-f dry_run=false")   # the safe form leads
     assert "Do not end a session by offering deployment as a menu option" in flat(text)   # the existing rule is intact
+
+
+# ---------------------------------------------------------------------------
+# First-parent history of main
+# ---------------------------------------------------------------------------
+@pytest.fixture()
+def merged_repo(tmp_path):
+    """main = A -> B -> M, where M merges the branch side (A -> S1 -> S2) with --no-ff.
+
+    A, B and M are first-parent commits of main. S1 and S2 are ancestors of main
+    only through the merge. U sits on a branch that was never merged.
+    """
+    path = tmp_path / "merged"
+    path.mkdir()
+    git_in(path, "init", "-q", "-b", "main")
+    commits = {}
+
+    def commit(name):
+        (path / (name + ".txt")).write_text(name)     # one file per commit, so the merge cannot conflict
+        git_in(path, "add", name + ".txt")
+        git_in(path, "commit", "-q", "-m", name)
+        commits[name] = git_in(path, "rev-parse", "HEAD")
+
+    commit("A")
+    commit("B")
+    git_in(path, "checkout", "-q", "-b", "side", commits["A"])
+    commit("S1")
+    commit("S2")
+    git_in(path, "checkout", "-q", "-b", "other", commits["A"])
+    commit("U")
+    git_in(path, "checkout", "-q", "main")
+    git_in(path, "merge", "-q", "--no-ff", "-m", "M", "side")
+    commits["M"] = git_in(path, "rev-parse", "HEAD")
+    git_in(path, "update-ref", "refs/remotes/origin/main", commits["M"])
+    return path, commits
+
+
+def in_repo(path):
+    return lambda a, **k: subprocess.run(a, cwd=path, **k)
+
+
+def test_commits_on_the_first_parent_chain_of_main_pass(merged_repo):
+    path, commits = merged_repo
+    for name in ("A", "B", "M"):
+        assert dw.check_ancestry(commits[name], "origin/main", runner=in_repo(path)) == [], name
+        assert dw.check_first_parent(commits[name], "origin/main", runner=in_repo(path)) == [], name
+
+
+def test_a_commit_that_reached_main_only_through_a_merged_branch_is_refused(merged_repo):
+    path, commits = merged_repo
+    for name in ("S1", "S2"):
+        assert dw.check_ancestry(commits[name], "origin/main", runner=in_repo(path)) == [], name   # an ancestor ...
+        problems = dw.check_first_parent(commits[name], "origin/main", runner=in_repo(path))
+        assert len(problems) == 1 and "first-parent" in problems[0] and "merged branch" in problems[0], name   # ... but refused
+
+
+def test_an_unrelated_commit_is_refused_as_not_an_ancestor(merged_repo):
+    path, commits = merged_repo
+    problems = dw.check_ancestry(commits["U"], "origin/main", runner=in_repo(path))
+    assert problems and "not an ancestor" in problems[0]
+
+
+def test_a_history_that_cannot_be_listed_is_a_refusal(merged_repo):
+    path, commits = merged_repo
+    problems = dw.check_first_parent(commits["A"], "origin/no-such-branch", runner=in_repo(path))
+    assert problems and "cannot prove" in problems[0]
+
+
+@pytest.fixture()
+def merged_env(merged_repo, tmp_path, monkeypatch):
+    path, commits = merged_repo
+    monkeypatch.chdir(path)
+    out = tmp_path / "github_output"
+    summary = tmp_path / "github_summary"
+    monkeypatch.setenv("GITHUB_OUTPUT", str(out))
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary))
+    env = {
+        "DEPLOY_REF": commits["M"], "DEPLOY_DRY_RUN": "false", "GITHUB_REPOSITORY": "owner/repo",
+        "GITHUB_REF": "refs/heads/main", "GITHUB_TOKEN": "test-token", "GITHUB_API_URL": "https://api.example.test",
+    }
+    return env, commits, out
+
+
+def test_the_preflight_refuses_a_merged_branch_commit_even_when_every_check_is_green(merged_env):
+    env, commits, out = merged_env
+    env["DEPLOY_REF"] = commits["S2"]
+    code, text = preflight(env, FakeGitHub())   # all required checks green for that SHA
+
+    assert code == 1 and "first-parent" in text and not out.exists()
+
+
+def test_the_preflight_accepts_the_merge_commit_and_a_first_parent_commit(merged_env):
+    env, commits, out = merged_env
+    for name in ("M", "B"):
+        env["DEPLOY_REF"] = commits[name]
+        code, text = preflight(env, FakeGitHub())
+        assert code == 0 and "PRE-FLIGHT OK" in text, name
+    assert out.read_text().splitlines()[-2:] == ["sha=%s" % commits["B"], "mode=deploy"]
+
+
+def test_the_preflight_refuses_an_unrelated_commit_with_the_ancestor_message_only(merged_env):
+    env, commits, _ = merged_env
+    env["DEPLOY_REF"] = commits["U"]
+    code, text = preflight(env, FakeGitHub())
+
+    assert code == 1 and "not an ancestor" in text and "first-parent history" not in text
+
+
+def test_the_runbook_states_the_first_parent_rule_the_prefix_rule_and_the_enforced_bounds():
+    runbook = flat(RUNBOOK.read_text(encoding="utf-8"))
+    steps = {s.get("id"): s for _, s in all_steps(load_workflow())}
+    job_minutes = load_workflow()["jobs"]["deploy"]["timeout-minutes"]
+
+    assert "first-parent history" in runbook and "Deploy the merge commit instead" in runbook
+    assert "no push-triggered CI run ever ran on its own tree" in runbook
+    assert "a first-parent commit of `main` with green CI" in runbook
+    assert "`<sha>-revert`" in runbook and "the refs lookup is a prefix match" in runbook
+    assert "renaming or deleting that ref clears the refusal" in runbook
+    assert "bracketed `[<ip>]:<port>` form" in runbook
+    # The numbers in the runbook are the ones the workflow enforces.
+    assert "stopped after %d minutes" % job_minutes in runbook
+    assert "each stopped after %d" % steps["baseline"]["timeout-minutes"] in runbook
+    assert "the deploy step after %d" % steps["deploy"]["timeout-minutes"] in runbook

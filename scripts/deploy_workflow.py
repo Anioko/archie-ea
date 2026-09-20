@@ -15,8 +15,10 @@ droplet are ordinary Python with unit tests, not shell embedded in YAML.
 
 preflight    Refuses (exit 1, nothing written) unless the requested ref is a
              full lowercase 40-character SHA, the workflow was dispatched from
-             main, the commit is an ancestor of origin/main, no branch or tag
-             named like the SHA (or origin/<sha>) exists (defence in depth:
+             main, the commit is on origin/main's first-parent history (so it
+             was itself a commit on main, not only part of a merged branch),
+             no branch or tag named like the SHA (or origin/<sha>) exists
+             (a name that merely starts with the SHA counts; defence in depth:
              deploy_verified.sh itself resolves a 40-hex ref as an object), and
              every job in ci.yml that is not in EXCLUDED_CHECKS has concluded
              `success` for that exact commit. It also reads the `production`
@@ -188,6 +190,28 @@ def check_ancestry(sha: str, main_ref: str = "origin/main", runner=subprocess.ru
     return ["git merge-base failed (exit %d); cannot prove the commit is on main" % result.returncode]
 
 
+def check_first_parent(sha: str, main_ref: str = "origin/main", runner=subprocess.run) -> list[str]:
+    """The commit must be on main's first-parent history.
+
+    Being an ancestor of main is not enough: a commit that reached main only as
+    the tip of a merged pull-request branch is an ancestor, but its checks ran
+    on a merge preview of that branch, and no push-triggered run of CI ever ran
+    on its own tree. A commit on the first-parent chain was itself the tip of
+    main at some point, which is when CI runs on it.
+    """
+    listing = git(["rev-list", "--first-parent", main_ref], runner)
+    if listing.returncode != 0:
+        return ["git rev-list failed (exit %d); cannot prove the commit is on the first-parent history of %s"
+                % (listing.returncode, main_ref)]
+    if sha in set((listing.stdout or "").split()):
+        return []
+    return [
+        "commit %s is reachable from %s only through a merged branch (it is not on the first-parent history), "
+        "so it was never itself a commit on main and CI never ran on its own tree as a push to main; "
+        "deploy a commit that was on main, such as the merge commit that brought it in" % (sha, main_ref)
+    ]
+
+
 # Ref namespaces, under refs/, in which a name built from the SHA could be looked
 # up instead of the commit. The real control is in deploy_verified.sh, which
 # resolves a 40-hex ref as an object and never as origin/<sha>; refusing these
@@ -209,7 +233,8 @@ def check_no_shadow_refs(repo: str, sha: str, token: str, api_base: str, opener=
                             % (template % "<sha>", response.status, response.message()))
         elif response.body:
             names = [str(r.get("ref", "?"))[:120] for r in response.body if isinstance(r, dict)][:3]
-            problems.append("a ref named like the SHA exists (%s); refused so nothing can stand in for the checked commit"
+            problems.append("a ref named like the SHA exists (%s); refused so nothing can stand in for the checked commit "
+                            "(a name that merely starts with the SHA is enough; rename or delete that ref)"
                             % ", ".join(names))
     return problems
 
@@ -342,7 +367,11 @@ def run_preflight(env, args, runner=subprocess.run, opener=None, out=print) -> i
                 else "not evaluated (the request was refused before the environment was read)")
     ci_note = "not evaluated"
     if not problems:
-        problems += check_ancestry(ref, "origin/" + (args.require_branch or "main"), runner)
+        main_ref = "origin/" + (args.require_branch or "main")
+        ancestry = check_ancestry(ref, main_ref, runner)
+        problems += ancestry
+        if not ancestry:
+            problems += check_first_parent(ref, main_ref, runner)
         problems += check_no_shadow_refs(repo, ref, token, api_base, opener)
         runs, fetch_problem = fetch_check_runs(repo, ref, token, api_base, opener)
         if runs is None:
