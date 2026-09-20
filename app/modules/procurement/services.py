@@ -137,36 +137,77 @@ def get_renewal_summary() -> Dict[str, int]:
     return summary
 
 
-def get_spend_summary() -> Dict[str, any]:
-    """Get spend analytics summary."""
-    contracts = VendorContract.query.filter(VendorContract.status == "active").all()
+def get_contract_amounts(contract: VendorContract) -> Dict[str, Optional[float]]:
+    """The amounts stated on one contract, exactly as stored.
 
-    total_value = sum(c.contract_value or 0 for c in contracts)
-    total_annual = sum(c.annual_cost or 0 for c in contracts)
+    An amount nobody entered is None, and stays None. The contracts register
+    and the spend totals both read a contract's amounts through this function,
+    so one contract cannot be a stated figure on one screen and a missing one
+    on the other. A stated zero is an amount; only None is missing.
+    """
+    return {
+        "contract_value": contract.contract_value,
+        "annual_cost": contract.annual_cost,
+    }
+
+
+def total_of_stated(amounts) -> Tuple[Optional[float], int]:
+    """Add up the amounts that were stated and count the ones that were not.
+
+    Returns (total, left_out). The total is None when no amount was stated, so
+    a screen can show an em dash instead of a zero nobody entered; left_out is
+    how many amounts were not added, for the line under the total that says so.
+    """
+    amounts = list(amounts)
+    stated = [a for a in amounts if a is not None]
+    return (sum(stated) if stated else None), len(amounts) - len(stated)
+
+
+def get_spend_summary() -> Dict[str, any]:
+    """Get spend analytics summary.
+
+    Totals add only the amounts that were stated. total_value and
+    total_annual_cost are None when no active contract states one, and
+    contracts_without_value / contracts_without_annual_cost count the active
+    contracts each total leaves out.
+    """
+    contracts = VendorContract.query.filter(VendorContract.status == "active").all()
+    amounts = [(c, get_contract_amounts(c)) for c in contracts]
+
+    total_value, without_value = total_of_stated(a["contract_value"] for _, a in amounts)
+    total_annual, without_annual = total_of_stated(a["annual_cost"] for _, a in amounts)
 
     # Group by contract type
-    by_type = {}
-    for c in contracts:
+    type_counts = {}
+    type_costs = {}
+    for c, a in amounts:
         ct = c.contract_type or "unknown"
-        if ct not in by_type:
-            by_type[ct] = {"count": 0, "annual_cost": 0}
-        by_type[ct]["count"] += 1
-        by_type[ct]["annual_cost"] += c.annual_cost or 0
+        type_counts[ct] = type_counts.get(ct, 0) + 1
+        type_costs.setdefault(ct, []).append(a["annual_cost"])
+    by_type = {
+        ct: {"count": type_counts[ct], "annual_cost": total_of_stated(costs)[0]}
+        for ct, costs in type_costs.items()
+    }
 
     # Group by vendor
-    by_vendor = {}
-    for c in contracts:
+    vendor_counts = {}
+    vendor_costs = {}
+    for c, a in amounts:
         if c.vendor:
             vname = c.vendor.name
-            if vname not in by_vendor:
-                by_vendor[vname] = {"count": 0, "annual_cost": 0}
-            by_vendor[vname]["count"] += 1
-            by_vendor[vname]["annual_cost"] += c.annual_cost or 0
+            vendor_counts[vname] = vendor_counts.get(vname, 0) + 1
+            vendor_costs.setdefault(vname, []).append(a["annual_cost"])
+    by_vendor = {
+        vname: {"count": vendor_counts[vname], "annual_cost": total_of_stated(costs)[0]}
+        for vname, costs in vendor_costs.items()
+    }
 
-    # Sort by spend
+    # Sort by spend. A vendor with no stated annual cost has nothing to rank
+    # by, so it sorts after every vendor that has one; ordering only, it is
+    # never shown as a figure.
     top_vendors = sorted(
         by_vendor.items(),
-        key=lambda x: x[1]["annual_cost"],
+        key=lambda x: (x[1]["annual_cost"] is not None, x[1]["annual_cost"] or 0),
         reverse=True
     )[:10]
 
@@ -174,6 +215,8 @@ def get_spend_summary() -> Dict[str, any]:
         "total_contracts": len(contracts),
         "total_value": total_value,
         "total_annual_cost": total_annual,
+        "contracts_without_value": without_value,
+        "contracts_without_annual_cost": without_annual,
         "by_type": by_type,
         "top_vendors": top_vendors,
     }

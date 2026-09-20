@@ -258,3 +258,25 @@ def test_a_failed_connection_stops_the_run_and_still_shows_the_clients_error(dro
     assert job.outcomes["dry"] == "skipped"
     assert "SSH setup or the connection to the droplet failed" in job.summary()
     assert not any(c.startswith("docker compose") for c in droplet.docker_calls())
+
+
+NON_RECORDING_VERIFIER = """#!/bin/bash
+# Passes a --skip-deploy verification but never records the last verified commit.
+echo "DEPLOY VERIFIED: commit $1 is running, mounted and reachable."
+exit 0
+"""
+
+
+def test_a_baseline_that_passes_but_records_no_rollback_target_is_reported_as_failed(droplet):
+    """The baseline only counts as passed when the script also left a last-verified
+    commit behind; without one there is nothing for an automatic rollback to use."""
+    job = Job(droplet, "deploy", sha(droplet, "B"))
+    (job.ws / "scripts" / "deploy_verified.sh").write_text(NON_RECORDING_VERIFIER, encoding="utf-8", newline="\n")
+    for name in ("Prepare runner directories", "ssh", "baseline"):
+        job.run_step(name)
+
+    assert "DEPLOY VERIFIED" in job.transcript["baseline"]           # the stand-in did pass (exit status 0)
+    assert job.outcomes["baseline"] == "success"                     # the step warns; it does not stop the run
+    assert job.outputs["baseline"]["result"] == "failed"
+    assert "::warning title=No known-good baseline" in job.transcript["baseline"]
+    assert not (job.temp / "deploy-state" / "last-verified-sha").exists()

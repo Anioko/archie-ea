@@ -459,11 +459,11 @@ def api_impact_analysis():
 @strategic_bp.route("/api/impact-analysis/history", methods=["GET"])
 @login_required
 def api_impact_analysis_history():
-    """Return the last 10 impact analyses stored in impact_analysis_results."""
+    """Return the last 10 impact analyses run by the caller's organisation."""
     try:
         from app.models.traceability import ImpactAnalysisResult
         records = (
-            ImpactAnalysisResult.query
+            ImpactAnalysisResult.for_organization(current_user.organization_id)
             .order_by(ImpactAnalysisResult.created_at.desc())
             .limit(10)
             .all()
