@@ -1,5 +1,5 @@
 """Journey: the sidebar's scrolling list has more room, the search box stays visible while it scrolls,
-a no-match search says so, and long labels wrap instead of being cut (T-236).
+a no-match search says so, and long labels wrap instead of being cut.
 
 Reported measurements: at 1440x900 #sidebar-nav's client height was 693px by the footer's position (652px by
 the audit's own script), against a target of at least 730px. The duplicated "Collapse sidebar (Ctrl+B)" row
@@ -7,8 +7,8 @@ inside the sidebar (the header already carries the same toggle, with the same Ct
 the search box living inside the scrolling <nav> both ate into that height for no reason.
 
 The no-match message and its two exits ("Search everywhere (Ctrl+K)", "Browse all modules") already exist
-from T-302 (docs/buckets/archie-ea-four-intelligences-extension/tasks/T-103... superseded, see PR 63); this
-file only re-confirms criterion 2 still holds after the layout change, it does not re-implement it.
+from the sidebar search rework merged in pull request 63; this file only re-confirms that state still holds
+after the layout change, it does not re-implement it.
 """
 from pathlib import Path
 from urllib.parse import parse_qsl, urlparse
@@ -205,7 +205,7 @@ def test_the_duplicated_collapse_row_is_gone(app, client, browser):
 
 
 def test_a_long_label_wraps_in_the_mobile_drawer_too(app, client, browser):
-    """T-303 AC3: the same wrapping holds at 390x844 (the mobile drawer width), not only at 1440x900."""
+    """The same wrapping holds at 390x844 (the mobile drawer width), not only at 1440x900."""
     login(client, _persona(app, "enterprise_architect"))
     path = "/dashboard/overview"
     document = client.get(path).get_data(as_text=True)
@@ -229,7 +229,7 @@ def test_a_long_label_wraps_in_the_mobile_drawer_too(app, client, browser):
     "platform_admin",
 ])
 def test_no_zone_link_or_label_changed_for_any_persona(app, client, role):
-    """T-303 AC6: this brief repositions and restyles the sidebar; it must not add, remove or rename a link,
+    """Repositioning and restyling the sidebar must not add, remove or rename a link,
     or change a zone's membership or order, for any of the eleven personas."""
     import html as html_module
     import re

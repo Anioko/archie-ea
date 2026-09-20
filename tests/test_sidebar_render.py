@@ -99,7 +99,7 @@ def _sidebar_html(app, db_session, make_org, role, label):
 
 
 def _real_link_count(sidebar_html: str) -> int:
-    """Links the sidebar really shows. An Alpine <template> (the search results and no-match state, T-302)
+    """Links the sidebar really shows. An Alpine <template> (the search results and no-match state)
     is inert markup, not a link, so it does not count against the budget."""
     without_templates = re.sub(r"<template[ >].*?</template>", "", sidebar_html, flags=re.S)
     return len(re.findall(r"<a ", without_templates))

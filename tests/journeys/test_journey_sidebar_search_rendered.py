@@ -1,4 +1,4 @@
-"""Journey: the rendered sidebar box, in a real browser with real Alpine (T-302).
+"""Journey: the rendered sidebar box, in a real browser with real Alpine.
 
 Layered the same way as the backend contract test (test_journey_sidebar_search_link_level.py):
   * app/static/js/sidebar/module_search.js in isolation, against canned responses;

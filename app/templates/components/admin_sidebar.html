@@ -95,7 +95,7 @@ DEPENDENCIES:
        custom chrome, since the sidebar's own :hover/:focus-within styling
        already handles when it should be visually quiet. #}
     <script src="{{ url_for('static', filename='js/sidebar/module_search.js') }}"></script>
-    {# T-236: #sidebar-nav's own box height is the full flex-1 space available to it regardless of what
+    {# #sidebar-nav's own box height is the full flex-1 space available to it regardless of what
        scrolls inside -- clientHeight measures the box, not its scrolled content. The search box is
        `sticky top-0` (not a sibling outside nav) so it stays on screen while the list scrolls beneath it,
        without taking height away from nav's own measured size the way a true sibling would. -#}
@@ -109,7 +109,7 @@ DEPENDENCIES:
                  this.$refs.searchInput.focus();
              },
              init() {
-                 // T-302: link-level, zone-labelled, spelling-blind results from /api/sidebar/search --
+                 // Link-level, zone-labelled, spelling-blind results from /api/sidebar/search --
                  // see app/static/js/sidebar/module_search.js. Replaces the old whole-zone client filter
                  // (matchesSearch), which showed every link in a zone on one hit and had no spelling
                  // tolerance.
@@ -123,7 +123,7 @@ DEPENDENCIES:
              searching() { return this.searchQuery.trim().length > 0; }
          }">
 
-        <!-- Search Box: sticky (T-236), stays on screen while the list below scrolls -->
+        <!-- Search Box: sticky, stays on screen while the list below scrolls -->
         <div class="sticky top-0 z-10 -mx-2 -mt-2 mb-2 bg-card px-5 pt-2 pb-3 border-b border-border sidebar-search-wrap">
             <div class="relative">
                 <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none"></i>
@@ -240,7 +240,7 @@ DEPENDENCIES:
         </a>
     </div>
     {% endif %}
-    {# T-236: the "Collapse sidebar (Ctrl+B)" row that lived here duplicated the header's own collapse
+    {# The "Collapse sidebar (Ctrl+B)" row that lived here duplicated the header's own collapse
        toggle (app/templates/components/admin_header.html), which already carries the same Ctrl+B hint in
        its `:title`/`:aria-label` bindings -- removing it reclaims height for #sidebar-nav's own scroll
        area without losing the control or the hint. #}

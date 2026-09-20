@@ -580,7 +580,7 @@ def api_global_search():
             # admin / procurement / my-applications surfaces that hard-403 for
             # most personas. A search hit that 403s on click is a dead result.
             #
-            # T-302: matching is spelling-blind (normalise_search_text folds en-GB/en-US variant pairs both
+            # Matching is spelling-blind (normalise_search_text folds en-GB/en-US variant pairs both
             # ways, app/utils/search_text.py), and every hit is labelled with a zone — the caller's own
             # SIDEBAR_ZONES if the page lives there, "All modules" otherwise (a page the persona keeps only
             # via the directory, not a sidebar zone). One map, built once per request.

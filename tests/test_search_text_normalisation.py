@@ -1,4 +1,4 @@
-"""Spelling-variant folding shared by every text search in the product (T-302).
+"""Spelling-variant folding shared by every text search in the product.
 
 A label written "Licences" and a query typed "license" are the same word to the person typing it; en-GB source
 text and a user's en-US habit should never be a reason a working page cannot be found. normalise_search_text

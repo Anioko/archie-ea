@@ -1,10 +1,10 @@
 """Journey: the sidebar's "Search navigation..." box returns individual pages, each labelled with its zone,
-matches either spelling of a variant word, and never lists a page the persona cannot open (T-302).
+matches either spelling of a variant word, and never lists a page the persona cannot open.
 
-Supersedes the earlier T-103 brief: that gave the box the module catalogue but matched whole zones (a hit on
-one label kept every link in that zone) and had no spelling tolerance. T-302's acceptance criteria are
-link-level results, en-GB/en-US equivalence, and an honest empty state with a way out (global search, or
-/modules/) when nothing matches.
+The box previously gave results the module catalogue but matched whole zones (a hit on one label
+kept every link in that zone) and had no spelling tolerance. The requirement is link-level results,
+en-GB/en-US equivalence, and an honest empty state with a way out (global search, or /modules/) when
+nothing matches.
 
 This file covers the server contract (/api/sidebar/search's zone attribution and spelling-blind matching);
 tests/journeys/test_journey_sidebar_search_rendered.py covers the rendered box in a real browser.
