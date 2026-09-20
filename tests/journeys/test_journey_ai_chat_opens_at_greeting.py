@@ -150,13 +150,18 @@ def test_the_quick_prompts_strip_has_a_top_edge_and_nothing_sits_on_its_label(ap
                 && d.textContent.trim().toLowerCase() === 'quick prompts');
             if (!label) return null;
             const r = label.getBoundingClientRect();
-            const overlapping = [...document.querySelector('%s').querySelectorAll('*')].filter(e => {
-                const b = e.getBoundingClientRect();
-                return b.height > 0 && b.width > 0 && b.left < r.right && b.right > r.left && b.top < r.bottom && b.bottom > r.top; }).length;
+            // What is really drawn at the label's position: pane content that has scrolled out of view is
+            // clipped by the pane and never covers it, so ask the browser rather than comparing raw rectangles.
+            const pane = document.querySelector('%s');
+            const cy = r.top + r.height / 2;
+            const overlapping = [0.1, 0.5, 0.9].filter(f => {
+                const hit = document.elementFromPoint(r.left + r.width * f, cy);
+                return hit && pane.contains(hit);
+            }).length;
             return {edge: parseFloat(getComputedStyle(label).borderTopWidth), overlapping: overlapping};
         }""" % PANE)
         assert info, "the Quick prompts label was not found"
         assert info["edge"] > 0, "the quick-prompts strip has no visible top edge"
-        assert info["overlapping"] == 0, "%d pane elements overlap the Quick prompts label" % info["overlapping"]
+        assert info["overlapping"] == 0, "pane content is drawn over the Quick prompts label at %d of 3 sample points" % info["overlapping"]
     finally:
         pg.close()
