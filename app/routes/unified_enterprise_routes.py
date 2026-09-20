@@ -1049,9 +1049,15 @@ def impact_analysis():
             .all()
         )
 
+        # Impact analyses have no organisation column: they belong to the
+        # organisation of the user who ran them, so every read below starts
+        # from the organisation-scoped query.
+        organization_id = current_user.organization_id
+
         # Fetch recent impact analyses (last 20)
         recent_analyses = (
-            ImpactAnalysisResult.query.order_by(ImpactAnalysisResult.created_at.desc())
+            ImpactAnalysisResult.for_organization(organization_id)
+            .order_by(ImpactAnalysisResult.created_at.desc())
             .limit(20)
             .all()
         )
@@ -1060,7 +1066,8 @@ def impact_analysis():
         filtered_analyses = None
         if selected_element_type and selected_element_id:
             filtered_analyses = (
-                ImpactAnalysisResult.query.filter_by(
+                ImpactAnalysisResult.for_organization(organization_id)
+                .filter_by(
                     trigger_element_type=selected_element_type,
                     trigger_element_id=selected_element_id,
                 )
@@ -1069,18 +1076,24 @@ def impact_analysis():
             )
 
         # Calculate summary metrics
-        total_analyses = ImpactAnalysisResult.query.count()
-        critical_count = ImpactAnalysisResult.query.filter_by(
-            overall_severity="critical"
-        ).count()
-        high_count = ImpactAnalysisResult.query.filter_by(
-            overall_severity="high"
-        ).count()
+        total_analyses = ImpactAnalysisResult.for_organization(organization_id).count()
+        critical_count = (
+            ImpactAnalysisResult.for_organization(organization_id)
+            .filter_by(overall_severity="critical")
+            .count()
+        )
+        high_count = (
+            ImpactAnalysisResult.for_organization(organization_id)
+            .filter_by(overall_severity="high")
+            .count()
+        )
 
         # Calculate average affected applications
-        avg_result = db.session.query(
-            func.avg(ImpactAnalysisResult.affected_applications_count)
-        ).scalar()
+        avg_result = (
+            ImpactAnalysisResult.for_organization(organization_id)
+            .with_entities(func.avg(ImpactAnalysisResult.affected_applications_count))
+            .scalar()
+        )
         avg_affected_applications = round(avg_result, 1) if avg_result else 0
 
         return render_template(
