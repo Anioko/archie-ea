@@ -107,7 +107,13 @@ if _FAST_INIT:
         def __repr__(self):
             return f"<ArchiMateElement {self.name} ({self.type})>"
 
-    class ArchiMateRelationship(db.Model):
+    class ArchiMateRelationship(TenantMixin, db.Model):
+        # The normal-runtime twin of this class (app/models/models.py) is
+        # tenant-scoped. Its siblings in this fast-init block, ArchiMateElement
+        # and ArchitectureModel, already carry TenantMixin -- this class was
+        # the sole exception, so a fast-init boot silently ran the ArchiMate
+        # relationship backbone unfiltered across every tenant. Mixin required
+        # to keep tenancy semantics identical between both branches.
         __tablename__ = "archimate_relationships"
         __table_args__ = {"extend_existing": True}
 

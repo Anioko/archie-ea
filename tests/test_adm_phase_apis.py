@@ -58,9 +58,13 @@ def logged_in_user_id(db_session, make_org, client):
     db_session.add(user)
     db_session.flush()
 
+    from tests._session_test_helpers import mint_test_sid
+    _sid = mint_test_sid(user.id)
     with client.session_transaction() as sess:
         sess["_user_id"] = str(user.id)
         sess["_fresh"] = True
+        if _sid:
+            sess["_sid"] = _sid
 
     # The db_session fixture holds an app context open for the whole test, and
     # test-client requests REUSE it (Flask only pushes a fresh app context when

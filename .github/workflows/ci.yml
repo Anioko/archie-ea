@@ -53,7 +53,7 @@ jobs:
           fetch-depth: 0          # full history so the scan covers every commit
       # Runs the gitleaks CLI directly instead of gitleaks/gitleaks-action@v2.
       # The action refuses to run on a GitHub *organisation* without a paid
-      # licence ("[saint-gobain-archie] is an organization. License key is
+      # licence ("[<company-org>] is an organization. License key is
       # required."), and before that it aborted on a missing GITHUB_TOKEN. Every
       # CI run had been red since mid-June for those reasons alone - never
       # because a secret was found - which made real failures indistinguishable

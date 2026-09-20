@@ -48,7 +48,7 @@
 
   {# ── Summary Counts ── #}
   <template x-if="preview">
-    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+    <div class="grid grid-cols-2 sm:grid-cols-5 gap-4">
       <div class="rounded-lg border border-border bg-card p-4 text-center">
         <p class="text-2xl font-bold text-foreground" x-text="preview.summary.total"></p>
         <p class="text-xs text-muted-foreground">Total Elements</p>
@@ -64,6 +64,11 @@
       <div class="rounded-lg border border-border bg-card p-4 text-center">
         <p class="text-2xl font-bold text-warning-emphasis" x-text="preview.summary.conflict"></p>
         <p class="text-xs text-muted-foreground">Conflicts</p>
+      </div>
+      {# DOGFOOD-001: what execute will refuse is shown here, before anything is written #}
+      <div class="rounded-lg border border-border bg-card p-4 text-center" data-testid="preview-invalid">
+        <p class="text-2xl font-bold text-destructive-emphasis" x-text="preview.summary.invalid || 0"></p>
+        <p class="text-xs text-muted-foreground">Will be refused</p>
       </div>
     </div>
   </template>
@@ -167,8 +172,9 @@
   {# ── Import Result ── #}
   <template x-if="importResult">
     <div class="rounded-lg border border-border bg-card p-6">
-      <h4 class="text-sm font-semibold text-foreground mb-3">Import Complete</h4>
-      <div class="grid grid-cols-3 gap-4 text-center">
+      <h4 class="text-sm font-semibold text-foreground mb-3"
+          x-text="(importResult.failed || 0) > 0 ? 'Import finished with refusals' : 'Import Complete'"></h4>
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center">
         <div>
           <p class="text-xl font-bold text-success" x-text="importResult.created"></p>
           <p class="text-xs text-muted-foreground">Created</p>
@@ -181,7 +187,15 @@
           <p class="text-xl font-bold text-muted-foreground" x-text="importResult.skipped"></p>
           <p class="text-xs text-muted-foreground">Skipped</p>
         </div>
+        {# DOGFOOD-001: elements refused per savepoint, never a whole-batch rollback #}
+        <div data-testid="result-failed">
+          <p class="text-xl font-bold text-destructive-emphasis" x-text="importResult.failed || 0"></p>
+          <p class="text-xs text-muted-foreground">Refused</p>
+        </div>
       </div>
+      <p class="mt-3 text-xs text-muted-foreground">
+        <a href="/architecture/elements" class="text-primary hover:underline">Open the catalog</a> to see what landed.
+      </p>
       <template x-if="importResult.errors && importResult.errors.length > 0">
         <div class="mt-4 rounded-md bg-destructive/10 border border-destructive/30 p-3">
           <p class="text-xs font-medium text-destructive-emphasis mb-1">Errors during import:</p>
@@ -324,6 +338,9 @@ function archiMateImport() {
         'Technology': 'bg-green-500/10 text-green-600 border border-green-500/30', // design-tokens-ok: layer legend
         'Physical': 'bg-teal-500/10 text-teal-600 border border-teal-500/30', // design-tokens-ok: layer legend
         'Motivation': 'bg-violet-500/10 text-violet-600 border border-violet-500/30', // design-tokens-ok: layer legend
+        // DOGFOOD-002: the importer writes the catalog's key, "Implementation"; the
+        // long form is kept for rows stored before the vocabulary was unified.
+        'Implementation': 'bg-sky-500/10 text-sky-600 border border-sky-500/30', // design-tokens-ok: layer legend
         'Implementation & Migration': 'bg-sky-500/10 text-sky-600 border border-sky-500/30', // design-tokens-ok: layer legend
       };
       return map[layer] || 'bg-muted/50 text-muted-foreground border border-muted-foreground/30';
@@ -334,12 +351,13 @@ function archiMateImport() {
         'new': 'bg-success/10 text-success-emphasis border border-success/30',
         'exists': 'bg-primary/10 text-primary border border-primary/30',
         'conflict': 'bg-warning/10 text-warning-emphasis border border-warning/30',
+        'invalid': 'bg-destructive/10 text-destructive-emphasis border border-destructive/30',
       };
       return map[status] || 'bg-muted/50 text-muted-foreground border border-muted-foreground/30';
     },
 
     statusLabel(status) {
-      const map = { 'new': 'New', 'exists': 'Exists', 'conflict': 'Conflict' };
+      const map = { 'new': 'New', 'exists': 'Exists', 'conflict': 'Conflict', 'invalid': 'Will be refused' };
       return map[status] || status;
     },
   };

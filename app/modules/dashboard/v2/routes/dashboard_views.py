@@ -131,27 +131,14 @@ def overview():
     # tabs). Six canonical layers — ArchiMate 3.2 folds Physical elements
     # (Equipment/Facility/Material) into Technology, so there is no separate
     # Physical tab. Grouped count so it is one query, not O(N).
-    _LAYER_TYPES = {
-        "motivation": {"stakeholder", "driver", "assessment", "goal", "outcome",
-                       "principle", "requirement", "constraint", "meaning", "value"},
-        "strategy": {"resource", "capability", "valuestream", "courseofaction"},
-        "business": {"businessactor", "businessrole", "businesscollaboration",
-                     "businessinterface", "businessprocess", "businessfunction",
-                     "businessinteraction", "businessevent", "businessservice",
-                     "businessobject", "contract", "representation", "product"},
-        "application": {"applicationcomponent", "applicationcollaboration",
-                        "applicationinterface", "applicationfunction",
-                        "applicationinteraction", "applicationprocess",
-                        "applicationevent", "applicationservice", "dataobject"},
-        "technology": {"node", "device", "systemsoftware", "technologycollaboration",
-                       "technologyinterface", "path", "communicationnetwork",
-                       "technologyfunction", "technologyprocess", "technologyinteraction",
-                       "technologyevent", "technologyservice", "artifact",
-                       "equipment", "facility", "distributionnetwork", "material"},
-        "implementation": {"workpackage", "deliverable", "implementationevent",
-                           "plateau", "gap"},
-    }
-    _type_to_layer = {t: layer for layer, ts in _LAYER_TYPES.items() for t in ts}
+    #
+    # LAYER_TYPES / LAYER_TYPE_TO_LAYER are the single system of record for
+    # this mapping (ADR 0008) -- imported from archimate_viewpoint_service,
+    # which the composer's `layer=` filter also reads, so this card's count
+    # and the composer's element set can never drift apart. Do not
+    # reintroduce a local copy here.
+    from app.services.archimate_viewpoint_service import LAYER_TYPES as _LAYER_TYPES
+    from app.services.archimate_viewpoint_service import LAYER_TYPE_TO_LAYER as _type_to_layer
     layer_breakdown = {layer: 0 for layer in _LAYER_TYPES}
     try:
         from app.models.archimate_core import ArchiMateElement
@@ -237,8 +224,15 @@ def overview():
                 "% Test Programme%", "%PESTLE News Analyser%",
                 "MDM Test%", "Create an architecture for%",
             ]
+            # D5 (round-4 refuter finding): also exclude soft-deleted rows
+            # ("[DELETED] ..." name prefix), matching the grain the Health
+            # Scorecard tile (dashboard_views.py total_solutions below,
+            # fixed round-2/R2-5) and the Solutions list's org_total (S-01)
+            # both already use. This was the third surface answering "how
+            # many solutions" with its own, uniquely-inflated count.
             solutions = SolutionModel.query.filter(
                 SolutionModel.name.isnot(None),
+                not_(SolutionModel.name.like("[DELETED]%")),
                 not_(or_(*[SolutionModel.name.like(p) for p in _test_name_patterns])),
             ).all()
 
@@ -970,24 +964,14 @@ def _assemble_health_scorecard_metrics():
         logger.warning("health_scorecard: ARBReviewItem unavailable: %s", exc)
 
     # 3. ArchiMate element count grouped by layer
-    _layer_map = {
-        "motivation": ["stakeholder", "driver", "assessment", "goal", "outcome", "principle",
-                       "requirement", "constraint", "meaning", "value"],
-        "strategy": ["resource", "capability", "valuestream", "courseofaction"],
-        "business": ["businessactor", "businessrole", "businesscollaboration", "businessinterface",
-                     "businessprocess", "businessfunction", "businessinteraction", "businessevent",
-                     "businessservice", "businessobject", "contract", "representation", "product"],
-        "application": ["applicationcomponent", "applicationcollaboration", "applicationinterface",
-                        "applicationfunction", "applicationinteraction", "applicationprocess",
-                        "applicationevent", "applicationservice", "dataobject"],
-        "technology": ["node", "device", "systemsoftware", "technologycollaboration",
-                       "technologyinterface", "path", "communicationnetwork", "technologyfunction",
-                       "technologyprocess", "technologyinteraction", "technologyevent",
-                       "technologyservice", "artifact"],
-        "implementation": ["workpackage", "deliverable", "implementationevent", "plateau", "gap"],
-    }
-    _type_to_layer = {t: layer for layer, types in _layer_map.items() for t in types}
-    archimate_by_layer = {layer: 0 for layer in _layer_map}
+    # LAYER_TYPES / LAYER_TYPE_TO_LAYER are the single system of record for
+    # this mapping (ADR 0008) -- imported from archimate_viewpoint_service,
+    # same as the by-layer card query above. Do not reintroduce a local copy.
+    from app.services.archimate_viewpoint_service import LAYER_TYPES as _scorecard_layer_types
+    from app.services.archimate_viewpoint_service import (
+        LAYER_TYPE_TO_LAYER as _scorecard_type_to_layer,
+    )
+    archimate_by_layer = {layer: 0 for layer in _scorecard_layer_types}
     archimate_by_layer["other"] = 0
     total_archimate = 0
     try:
@@ -995,7 +979,7 @@ def _assemble_health_scorecard_metrics():
         for (elem_type,) in ArchiMateElement.query.with_entities(ArchiMateElement.type).all():
             total_archimate += 1
             t = (elem_type or "").lower()
-            layer = _type_to_layer.get(t, "other")
+            layer = _scorecard_type_to_layer.get(t, "other")
             archimate_by_layer[layer] = archimate_by_layer.get(layer, 0) + 1
     except Exception as exc:
         logger.warning("health_scorecard: ArchiMateElement unavailable: %s", exc)
@@ -1007,7 +991,15 @@ def _assemble_health_scorecard_metrics():
     total_solutions = None
     try:
         from app.models.solution_models import Solution as SolutionModel
-        solutions_q = SolutionModel.query.with_entities(SolutionModel.adm_phase).all()
+        # R2-5 (round-3 refuter fix): the solutions list excludes soft-deleted
+        # "[DELETED] ..." rows from its org_total (solution_design_routes.py),
+        # so this tile must exclude them too or the two screens report
+        # different answers to "how many solutions exist" for the same org.
+        solutions_q = (
+            SolutionModel.query.filter(~SolutionModel.name.like("[DELETED]%"))
+            .with_entities(SolutionModel.adm_phase)
+            .all()
+        )
         total_solutions = len(solutions_q)
         maturity_scores = []
         for (phase,) in solutions_q:

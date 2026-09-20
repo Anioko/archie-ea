@@ -810,8 +810,11 @@ class CapabilityRoadmapDashboardService:
             "capability": {
                 "id": str(capability.id),
                 "name": capability.name,
-                "current_maturity": capability.current_maturity_level or 0,
-                "target_maturity": capability.target_maturity_level or 0,
+                # D-7: L0 does not exist on a 1-5 scale -- an unassessed
+                # capability must render as unassessed (None -> "-"), not a
+                # fabricated level 0.
+                "current_maturity": capability.current_maturity_level,
+                "target_maturity": capability.target_maturity_level,
             },
             "questions": questions,
             "total_weight": sum(q["weight"] for q in questions),

@@ -30,6 +30,7 @@ from app.models import (
     TechnologyStack,
     WorkflowTemplate,
 )
+from app.models.unified_capability import UnifiedCapability
 from app.services.llm_service import LLMService
 
 from app.services.archimate.archimate_prompts import ARCHIMATE_SYSTEM_PROMPT
@@ -236,18 +237,27 @@ class ImplementationContextEngine:
             for stack in tech_stacks
         ]
 
-        # Get business capabilities (what exists)
-        capabilities = BusinessCapability.query.filter(
-            BusinessCapability.maturity_level >= 3  # Established or better
-        ).all()
+        # Get business capabilities (what exists).
+        # T-002: `BusinessCapability.maturity_level` never existed as a column
+        # (it is `current_maturity_level`, the projection's source, not a
+        # current-value read target) — this query built an AttributeError on
+        # every call. Maturity is now read through the single authority
+        # accessor (`UnifiedCapability.maturity_for_sources`), batched to
+        # avoid an N+1 rather than filtering the superseded source column.
+        all_caps = BusinessCapability.query.all()
+        maturity_map = UnifiedCapability.maturity_for_sources(
+            "business_capability", [cap.id for cap in all_caps]
+        )
         context["business_capabilities"] = [
             {
                 "name": cap.name,
                 "description": cap.description,
-                "maturity_level": cap.maturity_level,
+                "maturity_level": maturity_map[str(cap.id)]["current_maturity_level"],
                 "category": cap.category,
             }
-            for cap in capabilities
+            for cap in all_caps
+            if (maturity_map[str(cap.id)]["current_maturity_level"] or 0)
+            >= 3  # Established or better; unassessed (None) is excluded, not treated as 0
         ]
 
         # Get application capabilities (existing vendors/systems)

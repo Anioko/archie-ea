@@ -1,0 +1,268 @@
+name: Production deploy
+
+# Deploys one commit that is already on main to production by running
+# scripts/deploy_verified.sh from a runner, for sessions that have GitHub access
+# but no SSH access to the droplet. Setup, rollback and revocation are in
+# deploy/DEPLOY_WORKFLOW.md. Read it, starting with "Decide first", before the
+# first dispatch.
+#
+#   gh workflow run deploy.yml --ref main -f ref=<40-character sha> -f dry_run=true
+#   gh workflow run deploy.yml --ref main -f ref=<40-character sha> -f dry_run=false
+#
+# Two jobs. `preflight` has no secrets and no approval step: it refuses bad
+# requests before a reviewer is asked anything. `deploy` declares the
+# `production` environment. The SSH key and the pinned host key are secrets of
+# that environment, so neither exists in any job that has not been approved.
+#
+# What the approval step is, and is not. With one maintainer, GitHub's "prevent
+# self-review" has to stay off or nobody could approve, and then whoever
+# dispatches a run (a person, or a session holding that person's GitHub token)
+# can also approve it. In that setup the approval is a confirmation prompt with
+# an audit trail, not a separation of duties. It becomes one only with a second
+# reviewer account and prevent_self_review switched on. That is a decision for
+# the repository owner, set out at the top of the runbook. Nothing in this file
+# can enforce it: GitHub evaluates reviewers server-side.
+#
+# The environment MUST have required reviewers. GitHub runs a job that names an
+# environment with no protection rules immediately and without asking anyone.
+# Both jobs read the environment's rules through the API and refuse if the
+# reviewers are missing or the rules cannot be read, but that read is a guard
+# against misconfiguration, not the control: the reviewers setting is.
+#
+# The repository is public, so Actions logs are world-readable. Output from the
+# droplet is therefore filtered to lines that begin like deploy_verified.sh's own
+# status lines; the unfiltered output stays on the runner and is deleted with it.
+run-name: Production deploy of ${{ inputs.ref }} (dry_run=${{ inputs.dry_run }})
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Full 40-character lowercase commit SHA that is already on main. Branch names, tags and short SHAs are refused.
+        required: true
+        type: string
+      dry_run:
+        description: true verifies what is running now and changes nothing. false deploys the commit.
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+# One production deploy at a time, and a running deploy is never cancelled by a
+# newer request: killing deploy_verified.sh part-way leaves the droplet in an
+# unknown state. GitHub keeps at most one further run pending in the group.
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  preflight:
+    name: Pre-flight checks (no secrets)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      checks: read
+      actions: read
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Refuse anything that should not reach a reviewer
+        env:
+          DEPLOY_REF: ${{ inputs.ref }}
+          DEPLOY_DRY_RUN: ${{ inputs.dry_run }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 scripts/deploy_workflow.py preflight --check-environment production --require-branch main
+
+  deploy:
+    name: Deploy to production (reviewer approval required)
+    needs: preflight
+    runs-on: ubuntu-24.04
+    # Baseline up to 15 min, deploy step up to 65, plus setup and the public-page
+    # check. A run cut off part-way leaves the droplet mid-deploy, so this is a
+    # ceiling on a hung run, not a target.
+    timeout-minutes: 100
+    environment:
+      name: production
+      url: https://165-22-125-156.sslip.io
+    permissions:
+      contents: read
+      checks: read
+      actions: read
+    env:
+      # The droplet that runs the app (not the Caddy proxy at 165.22.125.156).
+      DROPLET_HOST: 134.122.105.56
+      DROPLET: root@134.122.105.56
+      APP_DIR: /root/archie-ea
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # Approval can arrive hours after the request. Everything the pre-flight
+      # job checked is checked again now, before any secret is used.
+      - name: Repeat the pre-flight checks after approval
+        id: gate
+        env:
+          DEPLOY_REF: ${{ inputs.ref }}
+          DEPLOY_DRY_RUN: ${{ inputs.dry_run }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 scripts/deploy_workflow.py preflight --check-environment production --require-branch main
+
+      - name: Prepare runner directories
+        run: |
+          mkdir -p "$RUNNER_TEMP/deploy-state" "$RUNNER_TEMP/deploy-logs"
+          # Rollback state lives on this runner for this run only. deploy_verified.sh
+          # reads and writes it locally (see deploy/DEPLOY_WORKFLOW.md).
+          echo "DEPLOY_STATE_FILE=$RUNNER_TEMP/deploy-state/last-verified-sha" >> "$GITHUB_ENV"
+          echo "LOG_DIR=$RUNNER_TEMP/deploy-logs" >> "$GITHUB_ENV"
+
+      # The only step that references secrets. deploy_verified.sh calls plain
+      # `ssh` with fixed options, so the key and host key are supplied through a
+      # generated ssh config and an `ssh` wrapper placed first on PATH.
+      - name: Install the deploy key and the pinned host key
+        id: ssh_setup
+        env:
+          DROPLET_DEPLOY_KEY: ${{ secrets.DROPLET_DEPLOY_KEY }}
+          DROPLET_KNOWN_HOSTS: ${{ secrets.DROPLET_KNOWN_HOSTS }}
+        run: |
+          python3 scripts/deploy_workflow.py setup-ssh --dir "$RUNNER_TEMP/deploy-ssh" --host "$DROPLET_HOST"
+          echo "$RUNNER_TEMP/deploy-ssh/bin" >> "$GITHUB_PATH"
+
+      - name: Reach the droplet and record what is running
+        id: ssh
+        run: |
+          # stderr can carry text from the droplet, so it is filtered like every
+          # other droplet-facing step; ssh's own client errors pass the filter.
+          rc=0
+          before=$(ssh -o ConnectTimeout=20 "$DROPLET" bash -s -- "$APP_DIR" 2>"$LOG_DIR/ssh-check.err" <<'REMOTE'
+          cd "$1"
+          git rev-parse HEAD
+          REMOTE
+          ) || rc=$?
+          python3 scripts/deploy_workflow.py filter-log < "$LOG_DIR/ssh-check.err"
+          if [ "$rc" -ne 0 ] || ! [[ "$before" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "could not read the commit that is running on the droplet"
+            exit 1
+          fi
+          echo "before_sha=$before" >> "$GITHUB_OUTPUT"
+          echo "running before this run: $before"
+
+      # deploy_verified.sh --skip-deploy verifies whatever is running now (health,
+      # bind mount, /version build_id against the droplet's HEAD). It does not look
+      # at the requested commit; the commit was checked by the pre-flight job.
+      - name: Dry run - verify what is running now
+        id: dry
+        if: steps.gate.outputs.mode == 'dry-run'
+        env:
+          DEPLOY_SHA: ${{ steps.gate.outputs.sha }}
+          AUTO_ROLLBACK: "0"
+          # Same budget as the deploy step (the boot chain is documented as taking
+          # 8-12 minutes), so a dry run reports what the baseline would.
+          HEALTH_TIMEOUT_SECONDS: "900"
+        run: |
+          set +e
+          bash scripts/deploy_verified.sh "$DEPLOY_SHA" --skip-deploy 2>&1 \
+            | tee "$LOG_DIR/dry.log" \
+            | python3 scripts/deploy_workflow.py filter-log
+          rc=${PIPESTATUS[0]}
+          exit "$rc"
+
+      # Rollback needs a known-good commit. deploy_verified.sh keeps that in a
+      # file on the machine it runs from, which is empty on a fresh runner. A
+      # passing --skip-deploy run records the droplet's current commit there, so
+      # verifying what is running before the deploy is what gives the deploy a
+      # commit to roll back to. If it fails there is nothing to roll back to,
+      # and that is reported rather than hidden.
+      - name: Baseline - verify what is running before the deploy
+        id: baseline
+        if: steps.gate.outputs.mode == 'deploy'
+        env:
+          DEPLOY_SHA: ${{ steps.gate.outputs.sha }}
+          AUTO_ROLLBACK: "0"
+          # Same budget as the deploy step. A container that is merely slow to
+          # report healthy must not cost the deploy its rollback target.
+          HEALTH_TIMEOUT_SECONDS: "900"
+        run: |
+          set +e
+          bash scripts/deploy_verified.sh "$DEPLOY_SHA" --skip-deploy 2>&1 \
+            | tee "$LOG_DIR/baseline.log" \
+            | python3 scripts/deploy_workflow.py filter-log
+          rc=${PIPESTATUS[0]}
+          if [ "$rc" -eq 0 ] && [ -s "$DEPLOY_STATE_FILE" ]; then
+            echo "result=passed" >> "$GITHUB_OUTPUT"
+          else
+            rm -f "$DEPLOY_STATE_FILE"
+            echo "result=failed" >> "$GITHUB_OUTPUT"
+            echo "::warning title=No known-good baseline::Production did not verify healthy before this deploy, so an automatic rollback is not possible. If the deploy fails, dispatch the workflow again with the last good commit."
+          fi
+          exit 0
+
+      - name: Deploy and verify
+        id: deploy
+        if: steps.gate.outputs.mode == 'deploy'
+        timeout-minutes: 65
+        env:
+          DEPLOY_SHA: ${{ steps.gate.outputs.sha }}
+          AUTO_ROLLBACK: "1"
+          HEALTH_TIMEOUT_SECONDS: "900"
+        run: |
+          set +e
+          bash scripts/deploy_verified.sh "$DEPLOY_SHA" 2>&1 \
+            | tee "$LOG_DIR/deploy.log" \
+            | python3 scripts/deploy_workflow.py filter-log
+          rc=${PIPESTATUS[0]}
+          # Success needs exit status 0 AND the script's own "DEPLOY VERIFIED"
+          # line naming exactly the requested commit.
+          classify_rc=0
+          python3 scripts/deploy_workflow.py classify-log "$LOG_DIR/deploy.log" --rc "$rc" --sha "$DEPLOY_SHA" >> "$GITHUB_OUTPUT" || classify_rc=$?
+          if [ "$rc" -ne 0 ]; then exit "$rc"; fi
+          exit "$classify_rc"
+
+      - name: Check the public pages
+        id: post
+        if: steps.gate.outputs.mode == 'deploy'
+        run: python3 scripts/post_deploy_verify.py --json
+
+      - name: Job summary
+        id: summary
+        if: always()
+        env:
+          SUMMARY_SHA: ${{ steps.gate.outputs.sha }}
+          SUMMARY_MODE: ${{ steps.gate.outputs.mode }}
+          SUMMARY_BEFORE_SHA: ${{ steps.ssh.outputs.before_sha }}
+          SUMMARY_GATE_OUTCOME: ${{ steps.gate.outcome }}
+          SUMMARY_SSH_OUTCOME: ${{ steps.ssh.outcome }}
+          SUMMARY_DRY_OUTCOME: ${{ steps.dry.outcome }}
+          SUMMARY_BASELINE: ${{ steps.baseline.outputs.result }}
+          SUMMARY_DEPLOY_OUTCOME: ${{ steps.deploy.outcome }}
+          SUMMARY_DEPLOY_RESULT: ${{ steps.deploy.outputs.deploy_result }}
+          SUMMARY_ROLLBACK: ${{ steps.deploy.outputs.rollback }}
+          SUMMARY_POST_OUTCOME: ${{ steps.post.outcome }}
+          SUMMARY_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set +e
+          after=""
+          if [ -x "$RUNNER_TEMP/deploy-ssh/bin/ssh" ]; then
+            after=$(timeout 90 "$RUNNER_TEMP/deploy-ssh/bin/ssh" -o ConnectTimeout=20 "$DROPLET" bash -s -- "$APP_DIR" 2>/dev/null <<'REMOTE'
+          cd "$1"
+          git rev-parse HEAD
+          REMOTE
+          )
+          fi
+          SUMMARY_AFTER_SHA="$after" python3 scripts/deploy_workflow.py summary >> "$GITHUB_STEP_SUMMARY"
+          exit 0
+
+      # Runs whether the job succeeded, failed or was cancelled.
+      - name: Remove the key, the pinned host key and the raw logs
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/deploy-ssh" "$RUNNER_TEMP/deploy-state" "$RUNNER_TEMP/deploy-logs"

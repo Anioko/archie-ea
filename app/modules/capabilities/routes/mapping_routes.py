@@ -555,9 +555,15 @@ def api_unified_capabilities():
                         "business_criticality": biz_criticality or "supporting",
                         "is_core_differentiator": getattr(capability, "is_core_differentiator", False),
                         "business_impact": min(business_impact, 100),
-                        "current_maturity": getattr(capability, "current_maturity_level", None) or 1,
-                        "target_maturity": getattr(capability, "target_maturity_level", None) or 3,
-                        "maturity_gap": getattr(capability, "maturity_gap", 0) or 0,
+                        # R3-1: an unassessed capability must not render as a
+                        # fabricated "Level 1 -> Level 3" pair (same fix as
+                        # already applied at :890/:972 in this file).
+                        "current_maturity": getattr(capability, "current_maturity_level", None),
+                        "target_maturity": getattr(capability, "target_maturity_level", None),
+                        "maturity_reason_code": None
+                        if getattr(capability, "current_maturity_level", None) is not None
+                        else "no_maturity_recorded",
+                        "maturity_gap": getattr(capability, "maturity_gap", None),
                         "annual_cost": getattr(capability, "annual_cost", None),
                         "annual_revenue_impact": getattr(capability, "annual_revenue_impact", None),
                         "status": getattr(capability, "status", "defined"),
@@ -678,9 +684,26 @@ def api_unified_capabilities():
                         if capability.unified_capability
                         else False,
                         "business_impact": min(mfg_business_impact, 100),
-                        "current_maturity": getattr(capability, "lean_maturity", 1),  # model-safety-ok: field on ManufacturingCapability, defensive for mixed types
-                        "target_maturity": getattr(capability, "lean_maturity", 3),  # model-safety-ok: field on ManufacturingCapability, defensive for mixed types
-                        "maturity_gap": 0,
+                        # D-R7-1: ManufacturingCapability only carries a single
+                        # `lean_maturity` field (current, no separate target
+                        # concept on that model). The single authority for a
+                        # current/target/gap TRIPLET for this row is the linked
+                        # UnifiedCapability (`unified_cap`), same as the other 3
+                        # sites in this file (:561-566, :890, :972). Do not copy
+                        # `lean_maturity` into both current and target — that
+                        # fabricates a gap of 0 that can never be anything else.
+                        "current_maturity": unified_cap.current_maturity_level
+                        if unified_cap
+                        else None,
+                        "target_maturity": unified_cap.target_maturity_level
+                        if unified_cap
+                        else None,
+                        "maturity_reason_code": None
+                        if unified_cap and unified_cap.current_maturity_level is not None
+                        else "no_maturity_recorded",
+                        "maturity_gap": unified_cap.maturity_gap
+                        if unified_cap and unified_cap.maturity_gap is not None
+                        else None,
                         "annual_cost": None,
                         "annual_revenue_impact": None,
                         "status": getattr(capability, "status", "defined"),  # model-safety-ok: ManufacturingCapability does not have status field
@@ -885,9 +908,14 @@ def api_mappings():
                         "business_criticality": getattr(capability, "business_criticality", None) or "supporting",
                         "is_core_differentiator": getattr(capability, "is_core_differentiator", False),
                         "business_impact": business_impact,
-                        "current_maturity": getattr(capability, "current_maturity_level", None) or 1,
-                        "target_maturity": getattr(capability, "target_maturity_level", None) or 3,
-                        "maturity_gap": getattr(capability, "maturity_gap", 0) or 0,
+                        # D-7: an unassessed capability must not render as a
+                        # fabricated "Level 1 -> Level 3" pair.
+                        "current_maturity": getattr(capability, "current_maturity_level", None),
+                        "target_maturity": getattr(capability, "target_maturity_level", None),
+                        "maturity_reason_code": None
+                        if getattr(capability, "current_maturity_level", None) is not None
+                        else "no_maturity_recorded",
+                        "maturity_gap": getattr(capability, "maturity_gap", None),
                         "annual_cost": getattr(capability, "annual_cost", None),
                         "annual_revenue_impact": getattr(capability, "annual_revenue_impact", None),
                         "status": getattr(capability, "status", "defined"),
@@ -962,9 +990,14 @@ def api_mappings():
                     "business_owner": getattr(capability, "capability_owner", None) or "Unassigned",
                     "business_priority": business_priority,
                     "business_impact": business_impact,
-                    "current_maturity": getattr(capability, "current_maturity_level", None) or 1,
-                    "target_maturity": getattr(capability, "target_maturity_level", None) or 3,
-                    "maturity_gap": getattr(capability, "maturity_gap", 0) or 0,
+                    # D-7: an unassessed capability must not render as a
+                    # fabricated "Level 1 -> Level 3" pair.
+                    "current_maturity": getattr(capability, "current_maturity_level", None),
+                    "target_maturity": getattr(capability, "target_maturity_level", None),
+                    "maturity_reason_code": None
+                    if getattr(capability, "current_maturity_level", None) is not None
+                    else "no_maturity_recorded",
+                    "maturity_gap": getattr(capability, "maturity_gap", None),
                     "is_core_differentiator": getattr(capability, "is_core_differentiator", False),
                     "annual_revenue_impact": getattr(capability, "annual_revenue_impact", None),
                 }

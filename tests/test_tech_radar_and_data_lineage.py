@@ -60,9 +60,13 @@ def _make_user(db_session, org_id, label="user", role_name="Administrator"):
 def _login(client, app, user):
     from flask import g
 
+    from tests._session_test_helpers import mint_test_sid
+    _sid = mint_test_sid(user.id)
     with client.session_transaction() as sess:
         sess["_user_id"] = str(user.id)
         sess["_fresh"] = True
+        if _sid:
+            sess["_sid"] = _sid
     for cached in ("_login_user", "_current_user", "current_org_id", "current_org"):
         if hasattr(g, cached):
             delattr(g, cached)

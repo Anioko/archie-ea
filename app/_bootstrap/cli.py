@@ -296,6 +296,13 @@ def init_cli(app):
         app.logger.warning(f"⚠️  Failed to register principle tenancy backfill CLI: {e}")
 
     try:
+        from app.commands.backfill_outcome_org import init_app as init_outcome_org
+        init_outcome_org(app)
+        app.logger.info("✅ Outcome tenancy backfill CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"⚠️  Failed to register outcome tenancy backfill CLI: {e}")
+
+    try:
         from app.commands.backfill_architect_role import init_app as init_backfill_architect
         init_backfill_architect(app)
         app.logger.info("\u2705 Architect-role backfill CLI command registered")
@@ -315,6 +322,15 @@ def init_cli(app):
         app.logger.info("Capability projection CLI command registered")
     except Exception as e:
         app.logger.warning(f"Failed to register capability projection CLI: {e}")
+
+    try:
+        from app.commands.apply_unified_capability_provenance_migration import (
+            init_app as init_capability_provenance_migration,
+        )
+        init_capability_provenance_migration(app)
+        app.logger.info("Capability provenance migration CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"Failed to register capability provenance migration CLI: {e}")
 
     # CMP-01: SavedDiagram gained TenantMixin (runs on boot after reconcile-schema)
     try:
@@ -375,3 +391,10 @@ def init_cli(app):
         app.logger.info("Typed ARB waiver expiry CLI command registered")
     except Exception as e:
         app.logger.warning(f"Failed to register typed ARB waiver expiry CLI: {e}")
+
+    try:
+        from app.commands.purge_sessions import init_app as init_purge_sessions
+        init_purge_sessions(app)
+        app.logger.info("✅ Session registry purge CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"⚠️  Failed to register session registry purge CLI: {e}")

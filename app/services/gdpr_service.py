@@ -52,6 +52,20 @@ class GDPRService:
             user.status = "deleted"
         db.session.add(user)
         db.session.commit()
+        # Revoke every open session for the erased subject (D3, round 2):
+        # without this, a browser tab already logged in as this user keeps
+        # authenticating and reading/writing data after "erasure" completes,
+        # since erasure only touched the users row, not the session registry.
+        from app.services import session_registry
+
+        try:
+            session_registry.revoke_all_for_user(user_id, "gdpr_erasure")
+        except Exception:
+            import logging
+
+            logging.getLogger(__name__).error(
+                "delete_user_data: failed to revoke sessions for user_id=%s", user_id, exc_info=True
+            )
         # Log to audit
         AuditLog.log(
             user_id=requester_id,
