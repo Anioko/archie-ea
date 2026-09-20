@@ -41,7 +41,7 @@ os.environ.setdefault("FLASK_CONFIG", "testing")
 os.environ.setdefault("SECRET_KEY", "test-only-not-secret")
 
 LINK_RE = re.compile(r"<a ")
-# An Alpine <template> (the sidebar search results and no-match state, T-302) renders nothing until Alpine
+# An Alpine <template> (the sidebar search results and no-match state) renders nothing until Alpine
 # instantiates it, so an <a> inside one is not a link the sidebar shows and must not count against the budget.
 TEMPLATE_RE = re.compile(r"<template[ >].*?</template>", re.S)
 

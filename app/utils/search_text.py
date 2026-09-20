@@ -1,4 +1,4 @@
-"""Spelling-blind text comparison, shared by every search surface (T-302).
+"""Spelling-blind text comparison, shared by every search surface.
 
 The product's own copy is en-GB ("Licences", "Organisation"), but a user typing from habit may type
 either spelling. `normalise_search_text` folds both directions of the four variant pairs this product's

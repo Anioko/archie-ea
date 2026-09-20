@@ -1,5 +1,5 @@
 /*
- * Sidebar "Search navigation..." -> every page the user may open, link-level, zone-labelled (T-302).
+ * Sidebar "Search navigation..." -> every page the user may open, link-level, zone-labelled.
  *
  * The box used to filter whole zones (a hit on one label kept every link in that zone) and had no spelling
  * tolerance. It now asks /api/sidebar/search, which matches spelling-blind (en-GB/en-US variants fold both
