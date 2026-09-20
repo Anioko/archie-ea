@@ -160,17 +160,18 @@ role to the gates enforcing it, alongside the two rules that bind every agent
 with a zero in that table is being claimed, not played — `scripts/
 check_role_gate_coverage.py` measures that count.
 
-**Corrected 3 Sep 2026 — this was previously written as enforced and is not.**
-`check_role_gate_coverage.py` exists and is exercised by
-`tests/test_gates_actually_fail.py` (a meta-test that the checker itself can
-detect a regression), but it is **not** registered in `scripts/verify.py`'s
-`build_gates()` and does not run as part of `python scripts/verify.py`, CI's
-static job, or any other gate list checked while auditing this file. Nothing
-currently stops the role-to-gate table in `DELIVERY_CONTRACT.md` from drifting
-the same way this file's own gate table just had to be corrected. Wiring the
-checker in as a registered gate is a `scripts/`-only change — exempt from the
-evidence-contract's trailer requirement per `DELIVERY_CONTRACT.md` itself —
-and is still open.
+**Corrected 20 Sep 2026 — the 3 Sep 2026 correction below is itself stale.**
+`check_role_gate_coverage.py` is registered in `scripts/verify.py`'s
+`build_gates()` as the `role-gate-coverage` gate (ratchet, currently 7) and
+runs as part of both `python scripts/verify.py` and `--tag static`, so a role
+gaining an eighth zero-gate entry now fails the build. The paragraph that
+used to stand here claimed otherwise; that claim was checked directly against
+the registered gate list and found false. Seven roles genuinely read zero
+today (product architect, business architect, service designer, integration
+architect, UI/interaction architect, information architect, content
+designer, per `DELIVERY_CONTRACT.md`'s own table) — the ratchet holds that
+number from growing, it does not close the gap. Closing it is separate,
+future work.
 
 This explicitly covers **destructive data operations** when they are the correct
 remediation — deduplication, purging corrupt rows, dropping invalid
