@@ -259,6 +259,18 @@ def gate_composer_url_params(baseline: int) -> Result:
                   "", count, baseline)
 
 
+def gate_crosswalk_writer_gated(baseline: int) -> Result:
+    """A write to external_identity_crosswalk with no allowlist gate on its call path - must be 0."""
+    proc = _run([sys.executable, "scripts/check_crosswalk_writer_gated.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("crosswalk-writer-gated", FAIL,
+                      f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    return Result("crosswalk-writer-gated", PASS if count <= baseline else FAIL,
+                  "", count, baseline)
+
+
 def gate_design_tokens_extended(baseline: int) -> Result:
     """Non-banned colour families (emerald/orange/teal/...) - their own ratchet."""
     proc = _run([sys.executable, "scripts/check_design_tokens.py", "--extended", "--count"])
@@ -1509,6 +1521,13 @@ def build_gates(baseline: dict) -> list[Gate]:
              remediation="fix the param name to one of solution_id/viewpoint/layer/"
                           "viewpoint_id/prefill, route through create_diagram() for a real "
                           "viewpoint_id, or mark 'composer-url-ok: <reason>'",
+             tags=["static", "fast"]),
+        Gate("crosswalk-writer-gated",
+             "No write to external_identity_crosswalk with no allowlist gate on its call path",
+             "zero",
+             lambda: gate_crosswalk_writer_gated(baseline.get("crosswalk_writer_gated", 0)),
+             remediation="call assert_connector_permitted() before the write, or mark "
+                          "'crosswalk-gate-ok: <reason>'",
              tags=["static", "fast"]),
         Gate("raw-fetch-sites",
              "No new raw fetch() sites bypassing Platform.fetch",
