@@ -421,7 +421,7 @@ def test_impact_analysis_is_in_my_work_for_exactly_the_architect_personas(role):
 
 @pytest.mark.parametrize("role", sorted(IMPACT_PERSONAS))
 def test_impact_analysis_link_is_the_same_link_and_icon_for_every_persona(role):
-    link = next(l for l in _all_links(role) if l["label"] == "Impact Analysis")
+    link = next(entry for entry in _all_links(role) if entry["label"] == "Impact Analysis")
     assert link["endpoint"] == "strategic.impact_analysis"
     assert link["icon"] == "crosshair"
 
