@@ -1108,6 +1108,10 @@ def test_generic_zero_and_sole_org_policy_on_empty_scratch(
             item_id = board.id
             db_session.execute(text("UPDATE kanban_boards SET organization_id = NULL WHERE id = :id"), {"id": item_id})
         else:
+            db_session.execute(text(
+                "ALTER TABLE review_queue_items ALTER COLUMN organization_id DROP NOT NULL"
+            ))
+            assert next(c for c in _catalog(conn, table)["columns"] if c[0] == "organization_id")[2] is True
             item_id = _unattributed_item(db_session, "archimate_element", 0)
         db_session.commit()
         before = _catalog(conn, table)

@@ -127,7 +127,7 @@ def repair_layer_tenancy(org_id=None, dry_run=False):
             if missing:
                 actions.append("ADD COLUMN organization_id INTEGER (nullable, no default)")
             orphans = conn.execute(text(
-                f'SELECT count(*) FROM {target}'
+                f'SELECT count(*) FROM {target}'  # nosec B608 -- target quotes a validated mapped name; suffix is constant SQL
                 + ("" if missing else " WHERE organization_id IS NULL")
             )).scalar_one()
 
@@ -177,11 +177,11 @@ def repair_layer_tenancy(org_id=None, dry_run=False):
                         predicate += " AND v.organization_id IS NULL"
                     if dry_run:
                         derived = conn.execute(text(
-                            f'SELECT count(*) FROM {target} v JOIN public."{parent}" b ON {predicate}'
+                            f'SELECT count(*) FROM {target} v JOIN public."{parent}" b ON {predicate}'  # nosec B608 -- validated target; parent/link and predicate SQL are code constants
                         )).scalar_one()
                     else:
                         derived = conn.execute(text(
-                            f'UPDATE {target} v SET organization_id = b.organization_id '
+                            f'UPDATE {target} v SET organization_id = b.organization_id '  # nosec B608 -- validated target; parent/link and predicate SQL are code constants
                             f'FROM public."{parent}" b WHERE {predicate}'
                         )).rowcount
                     if derived:
@@ -190,7 +190,7 @@ def repair_layer_tenancy(org_id=None, dry_run=False):
                         orphans -= derived
                     else:
                         orphans = conn.execute(text(
-                            f'SELECT count(*) FROM {target} WHERE organization_id IS NULL'
+                            f'SELECT count(*) FROM {target} WHERE organization_id IS NULL'  # nosec B608 -- only a validated, quoted mapped table name is interpolated
                         )).scalar_one()
                 if orphans:
                     if resolved_org is None:
@@ -198,7 +198,7 @@ def repair_layer_tenancy(org_id=None, dry_run=False):
                     actions.append(f"assign {orphans} residual owner(s) to org {resolved_org}")
                     if not dry_run:
                         conn.execute(text(
-                            f'UPDATE {target} SET organization_id = :o WHERE organization_id IS NULL'
+                            f'UPDATE {target} SET organization_id = :o WHERE organization_id IS NULL'  # nosec B608 -- validated quoted target; organization value stays bound as :o
                         ), {"o": resolved_org})
                 if not has_index:
                     actions.append("add organization index")
@@ -216,7 +216,7 @@ def repair_layer_tenancy(org_id=None, dry_run=False):
                     actual = next(c for c in insp.get_columns(t, schema="public")
                                   if c["name"] == "organization_id")
                     remaining = conn.execute(text(
-                        f'SELECT count(*) FROM {target} WHERE organization_id IS NULL'
+                        f'SELECT count(*) FROM {target} WHERE organization_id IS NULL'  # nosec B608 -- only a validated, quoted mapped table name is interpolated
                     )).scalar_one()
                     if (actual["nullable"] is not False or remaining
                             or not conn.execute(text(_HAS_INDEX), index_params).first()):
