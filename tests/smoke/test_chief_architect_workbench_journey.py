@@ -58,22 +58,45 @@ def _screenshot(page, name, directory=None):
                     });
                 }
             });
-            return {height: height, clipped: clipped};
+            return {height: height, width: document.documentElement.scrollWidth, clipped: clipped};
         }"""
-    content = page.evaluate(measure)
     # The shell pins its own height and scrolls an inner element, so growing the
-    # viewport is what actually reveals the rest of the page.
+    # viewport is what actually reveals the rest of the page. Allow reflow, but
+    # bound this to four resizes, 24000 CSS px high and 32 million CSS pixels.
+    # That leaves room above the existing phone content without unbounded growth.
+    max_pixels = 32_000_000
+    max_height = min(24_000, max_pixels // original_viewport["width"])
+    max_resizes = 4
     try:
-        page.set_viewport_size({
-            "width": original_viewport["width"], "height": min(int(content["height"]) + 120, 8000),
-        })
-        page.wait_for_timeout(600)
-        remaining = page.evaluate(measure)
-        assert not remaining["clipped"], (
-            "Incomplete expanded-content capture at %r (height cap 8000): %r"
-            % (page.viewport_size, remaining)
+        content = page.evaluate(measure)
+        height = original_viewport["height"]
+        for _ in range(max_resizes):
+            target_height = min(max(height, int(content["height"]) + 120), max_height)
+            if target_height < height:
+                break
+            page.set_viewport_size({
+                "width": original_viewport["width"], "height": target_height,
+            })
+            page.wait_for_timeout(600)
+            height = target_height
+            content = page.evaluate(measure)
+            if not content["clipped"]:
+                capture_height = max(height, content["height"])
+                capture_width = max(original_viewport["width"], content["width"])
+                if capture_height <= max_height and capture_width * capture_height <= max_pixels:
+                    page.screenshot(
+                        path=os.path.join(folder, name), full_page=True,
+                        animations="disabled", scale="css",
+                    )
+                    return
+                break
+            if height == max_height:
+                break
+        raise AssertionError(
+            "Incomplete expanded-content capture at %r "
+            "(height limit %s, pixel limit %s, resize limit %s): %r"
+            % (page.viewport_size, max_height, max_pixels, max_resizes, content)
         )
-        page.screenshot(path=os.path.join(folder, name), full_page=True, animations="disabled")
     finally:
         page.set_viewport_size(original_viewport)
 
