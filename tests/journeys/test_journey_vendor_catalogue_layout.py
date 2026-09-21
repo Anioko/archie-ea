@@ -172,7 +172,7 @@ def test_no_vendors_and_no_filter_says_no_vendors_yet_with_an_add_action(app, br
         text = row.inner_text()
         assert "No vendors yet." in text, text
         assert "match these filters" not in text and "Try adjusting" not in text, text
-        assert row.get_by_role("button", name="Add Vendor").is_visible(), "no Add Vendor action inside the empty state"
+        assert row.get_by_role("button", name="Add your first vendor").is_visible(), "no Add Vendor action inside the empty state"
         assert not row.get_by_role("button", name="Clear filters").is_visible()
     finally:
         pg.close()
