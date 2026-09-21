@@ -491,7 +491,8 @@ to reconfirm the count before trusting it:**
 | `store-agreement` | two surfaces answering one question with different numbers | ratchet @ 1, boot-only |
 | `canonical-store` | a table gaining a second mapped SQLAlchemy model class | ratchet @ 0 |
 | `reuse-macro-names` | a Jinja macro name defined in a second template file (RG-1) | ratchet @ 19 |
-| `reuse-diagram-libraries` | a page loading a diagram library outside the canonical ArchiMate renderer (RG-2) | ratchet @ 16 |
+| `reuse-macro-definitions` | a rise in definitions behind an already-duplicated macro name (RG-1b) | ratchet @ 50 |
+| `reuse-diagram-libraries` | a page-level reference to a diagram library outside the canonical ArchiMate renderer's pages (RG-2) | ratchet @ 16 |
 | `fetch-guards` | a `fetch()` parsed without checking the response | ratchet @ 0 |
 | `ui-contract` | a native dialog / `onclick=` / typeless button / arbitrary `px` (DESIGN.md) | ratchet @ 0 |
 | `unrendered-model-fields` | a detail-view template never rendering a real Text/JSON model field | ratchet @ 387 |

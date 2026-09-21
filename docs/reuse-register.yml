@@ -5,15 +5,20 @@
 # implementation, and do not create anything its "forbidden" list names. If no entry fits, run the entry's
 # search_hints for the nearest concept and say what you searched.
 #
-# This is the source of truth: scripts/check_reuse.py reads it at run time (the `concepts:` list, for the
-# "Already exists" half of a finding's message) and CI reads it offline at build time, which is why the source
-# lives in this repository rather than only in the docs/artifacts mirror kept by the programme that maintains it.
+# What CI actually reads at run time, plainly: scripts/check_reuse.py loads this file for exactly one
+# thing, the `concepts:` list, to fill in the "Already exists" half of a finding's message when a
+# duplicated name or a referenced library resolves to a registered concept. Nothing else here is read
+# by code. The `rules:` block below -- every `pattern`, `scope` and `excluded` field, on every rule,
+# including RG-1 and RG-2 -- is documentation for a person: the checker's own source is what actually
+# runs, kept in step with this text by hand, and a rule not marked `status: built` has no checker at
+# all yet. Changing a pattern here changes nothing CI does; it only makes this file stop describing the
+# checker correctly. The live number for a built rule is `verification_baseline.json`, the one file a
+# gate actually compares against -- see each built rule's own note below.
 #
 # draft: true because most concepts below have decision: proposed or pending -- a canonical answer has been
-# written down for a role to review, but no role has yet recorded accepted_by against it. Only the `rules:`
-# block (the two CI ratchets this is promoted for, RG-1 and RG-2) is treated as authoritative today: their
-# pattern, scope and starting_value are exactly what scripts/check_reuse.py implements. The concepts and the
-# other ten rule definitions are carried forward as real, reviewed design work, not yet a control.
+# written down for a role to review, but no role has yet recorded accepted_by against it. The concepts and
+# the rule definitions not marked `status: built` are carried forward as real, reviewed design work, not
+# yet a control.
 #
 # Field guide (per concept):
 #   id                 stable short name; CI messages and briefs cite it
@@ -56,9 +61,12 @@ last_checked: &v
   date: 2026-09-20
 
 # ---------------------------------------------------------------------------------------------------------------
-# Machine rules. Each is a ratchet: the count may fall, never rise. starting_value is what the tree had at "tree"
-# (or, for RG-1/RG-2, at "promoted" -- see measured_at on those two entries).
-# Patterns are Python regular expressions applied line by line unless the check says otherwise.
+# Machine rules, for a person to read (see the header note above: only `concepts:`, elsewhere in this file, is
+# read by code). Each is a ratchet: the count may fall, never rise. starting_value is the measurement taken
+# when the rule was BUILT, a one-time snapshot -- verification_baseline.json is the live number a gate actually
+# compares against, and is the only one of the three copies (here, that file, and CLAUDE.md's gate table) that
+# is checked by anything. Patterns are Python regular expressions applied line by line unless the check says
+# otherwise.
 # ---------------------------------------------------------------------------------------------------------------
 rules:
   RG-0:
@@ -77,38 +85,70 @@ rules:
   RG-1:
     name: macro-names
     kind: name_collision
-    concepts: [empty-and-loading-states, permission-checks]
+    concepts: [empty-and-loading-states]
     checks: A Jinja macro name defined in more than one template file.
     pattern: |-
-      \{%-?\s*macro\s+([A-Za-z]\w*)\s*\(
+      \{%-?\s*macro\s+([A-Za-z_]\w*)\s*\(
     scope: ["app/**/*.html", "app/**/*.j2", "app/**/*.jinja"]
     excluded:
-      - "names beginning with an underscore (page-local helpers; the pattern needs a letter first)"
+      - "the page-shell per-page protocol prefix _ps_ only (each page defines its own _ps_actions and siblings by design); no other leading-underscore name is excluded"
       - "app/modules/solutions_product/templates/ (generated code for customers)"
       - "node_modules, vendor, bundles"
     allowed_places: []
     baseline_key: reuse_macro_names
     starting_value: 19
-    measured_at: {commit: f6a2ddd458da3e75aa343136cd8db23473544d26, date: 2026-09-21}
-    detail: "10 of the 19 have a definition under components/ or macros/; 50 definitions in all"
+    starting_value_is: "the measurement taken when this rule was built (see measured_at); verification_baseline.json's reuse_macro_names is the live baseline a gate checks against"
+    measured_at: {commit: bce929aa51eb2d682156d5cf667b3b361f2997e5, date: 2026-09-22}
+    detail: "10 of the 19 have a definition under components/ or macros/; 50 definitions in all; re-measured with the _ps_-narrowed exclusion, count-neutral against the wider exclusion this replaces"
+    status: built; enforced by scripts/check_reuse.py and scripts/verify.py
+
+  RG-1b:
+    name: macro-definitions
+    kind: name_collision
+    # Deliberately empty, not [empty-and-loading-states]: that concept's own rules: field
+    # (below, in concepts:) still says only [RG-1], and giving this rule a concept link the
+    # concept does not link back is the exact permission-checks-shaped inconsistency this
+    # same pass removes elsewhere. Leave both sides in sync or leave both sides empty.
+    concepts: []
+    checks: >-
+      The number of macro DEFINITIONS that belong to a name RG-1 already counts as duplicated (so a name in
+      2 files and the same name grown to 5 files count 2 and 5 here, not 1 and 1) -- the count RG-1's
+      name-level total cannot see, over the same map RG-1 builds.
+    pattern: same as RG-1; see check_reuse.py's shared macro index
+    scope: same as RG-1
+    excluded: same as RG-1
+    allowed_places: []
+    baseline_key: reuse_macro_definitions
+    starting_value: 50
+    starting_value_is: "the measurement taken when this rule was built (see measured_at); verification_baseline.json's reuse_macro_definitions is the live baseline a gate checks against"
+    measured_at: {commit: bce929aa51eb2d682156d5cf667b3b361f2997e5, date: 2026-09-22}
+    detail: "the same 19 duplicated names as RG-1, counted by definition instead of by name; matches RG-1's own detail line (50 definitions in all)"
     status: built; enforced by scripts/check_reuse.py and scripts/verify.py
 
   RG-2:
     name: diagram-libraries
     kind: pattern_outside_allowed
     concepts: [drawing]
-    checks: A template or script that loads a diagram-drawing library outside the pages of the canonical renderer.
+    checks: A template or script carrying a text reference to a diagram-drawing library outside the pages that actually load the canonical renderer.
     pattern: |-
-      vendor/(joint|d3|dagre|mermaid|cytoscape[\w.\-]*|drawflow[\w.\-]*?)(?:\.min)?\.js
-    scope: ["app/**/*.html (not app/static/)", "app/static/js/**/*.js"]
+      (?:^|["'/])(joint|d3|dagre|mermaid|cytoscape|drawflow)[\w.\-]*?(?:\.min)?\.js\b
+    scope: ["app/**/*.html (not app/static/)", "app/**/*.j2", "app/**/*.jinja", "app/static/js/**/*.js", "app/modules/**/static/**/*.js"]
     excluded: ["vendor", "bundles", "solutions_product"]
     allowed_places:
-      - "a page that also names archimate/composer_renderer.js may load joint and dagre"
+      - "a page that actually loads the renderer -- a real src/href/filename reference to archimate/composer_renderer.js, not a comment merely mentioning it -- may load joint and dagre"
       - "entries under drawing.allowed_specialisations once accepted"
     baseline_key: reuse_diagram_libraries
     starting_value: 16
-    measured_at: {commit: f6a2ddd458da3e75aa343136cd8db23473544d26, date: 2026-09-21}
-    detail: "one finding per (file, library); 15 files"
+    starting_value_is: "the measurement taken when this rule was built (see measured_at); verification_baseline.json's reuse_diagram_libraries is the live baseline a gate checks against"
+    measured_at: {commit: bce929aa51eb2d682156d5cf667b3b361f2997e5, date: 2026-09-22}
+    detail: >-
+      one finding per (file, base library name) pair, 15 files, counting a suffixed build (d3-sankey,
+      dagre-d3) under its base name and a copy outside vendor/ as well as inside it. Counts a page-level
+      TEXT reference, including one that sits inside a comment -- a comment mentioning a library the page
+      does not otherwise load still counts, because rewording the comment to make the pattern miss it would
+      lower this number without paying any of the debt it represents. What this rule does not, and cannot,
+      see: a JavaScript file that draws using a library tag already loaded on the page by something else --
+      that is a second drawing engine this count is blind to (a later rule, not this one, would catch it).
     status: built; enforced by scripts/check_reuse.py and scripts/verify.py
 
   RG-3a:

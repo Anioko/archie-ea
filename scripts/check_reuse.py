@@ -1,57 +1,83 @@
 #!/usr/bin/env python
 """A second implementation of something the tree already has, caught early.
 
-The 20 Sep 2026 Fortune 500 readiness review found two drawing engines for one
-model, four implementations of "combine a chain of relationships into one
-type", and two macros named ``empty_state`` with incompatible signatures --
-each built beside what already existed because nobody searching for the job
-found the earlier answer first. ``docs/reuse-register.yml`` is the list of
-canonical answers; this script is the ratchet that keeps a second answer from
-being added beside one that is already registered.
+Two macros can share a name across two template files with nothing at either
+call site to tell them apart: a Jinja `{% from 'x.html' import name %}`
+binds to whichever file the import names, so identical-looking call text is
+correct in one template and calls the wrong macro in another, with no error
+until the mismatched call actually executes. The same blind spot recurs for
+a diagram-drawing library: a second `<script src="vendor/d3.min.js">` loads
+a second copy of a rendering library the product already ships a canonical
+renderer for, invisible to review unless the reviewer happens to already
+know the canonical renderer's file by name.
 
-This first pass implements two rules only:
+`docs/reuse-register.yml` is the list of canonical answers a role should
+find before building a second one. This script is the ratchet that keeps
+each of these defect classes from growing once it is registered.
+
+Three rules:
 
 RG-1 macro-names
     A Jinja macro name defined in more than one template file. One finding
-    per NAME that has two or more distinct defining files (not one per file):
-    a name in three files is still a single finding, because the fix is one
-    decision -- pick the canonical file -- not three.
+    per NAME that has two or more distinct defining files (not one per
+    file): a name in three files is still a single finding, because the fix
+    is one decision -- pick the canonical file -- not three. Names under the
+    page-shell per-page protocol prefix (`_ps_...`, one intentional
+    definition per page) are excluded; no other leading-underscore name is.
+
+RG-1b macro-definitions
+    A companion count over the same map RG-1 builds: the number of macro
+    DEFINITIONS that belong to an already-duplicated name. RG-1 alone cannot
+    see a name that is already in two files gaining a third, fourth or
+    fourteenth copy, because its count is of names, not definitions; this
+    rule is that missing count.
 
 RG-2 diagram-libraries
-    A template or script that loads a diagram-drawing vendor library
-    (joint/d3/dagre/mermaid/cytoscape/drawflow) outside the pages of the
-    canonical ArchiMate renderer. One finding per (file, library) pair; a
-    page that also names ``archimate/composer_renderer.js`` may load
-    ``joint`` and ``dagre`` (the canonical renderer is built on them) without
-    being flagged.
+    A template or script that carries a text reference to a diagram-drawing
+    library (joint/d3/dagre/mermaid/cytoscape/drawflow, any build or
+    suffixed variant, anywhere in the tree, not only under `vendor/`)
+    outside the pages that actually load the canonical ArchiMate renderer.
+    One finding per (file, base library name) pair. Counts page-level
+    references, including inside a comment; it does not, and cannot, see a
+    JavaScript file that draws with a library tag already present on the
+    page from somewhere else -- that is a real, disclosed gap, not a claim
+    this rule catches every second drawing engine. A page that actually
+    loads the canonical renderer (`archimate/composer_renderer.js` named in
+    a real `src`/`href`/`filename` reference, not merely mentioned in a
+    comment) may still load `joint` and `dagre`, since the canonical
+    renderer is built on them.
 
 Both patterns, scopes and exclusions below are the same ones recorded in
-``docs/reuse-register.yml``'s ``rules:`` block -- kept in step by hand, since
-the register's ``scope``/``excluded`` fields mix glob-like paths with plain
-English ("not app/static/") that is written for a person to read, not a
-parser to execute. The register's structured ``concepts:`` list (canonical
-path and one-line use) IS read at run time, to fill in the "Already exists"
-half of a finding's message when a duplicated name or a loaded library
-resolves to a registered concept.
+``docs/reuse-register.yml``'s ``rules:`` block for a person to read -- kept
+in step by hand, since those fields mix glob-like paths with plain English
+qualifiers ("not app/static/") written for a reader, not a parser. The
+register's structured ``concepts:`` list (canonical path and one-line use)
+IS read at run time, to fill in the "Already exists" half of a finding's
+message when a duplicated name or a referenced library resolves to a
+registered concept; a name or library with no matching concept says so
+plainly instead of inventing one.
 
-Escape hatch: a line carrying ``reuse-ok: <concept-id> <reason>`` is excluded
-from both rules, matching the marker the register itself defines.
-
-Further rules (RG-3 through RG-9, and the register-integrity check RG-0) are
-out of scope for this script's first version; see the register's own
-``rules:`` block for their definitions when they are added.
+Escape hatch: a line carrying ``reuse-ok: <concept-id> <reason>`` -- an
+identifier-shaped concept id, then a reason of two or more real words --
+excuses that one definition or reference. For RG-1, a name is suppressed
+only when EVERY non-canonical definition carries a valid marker; a marker on
+the canonical definition alone changes nothing, since the canonical was
+never the problem.
 
 Usage:
     python scripts/check_reuse.py --rule RG-1
     python scripts/check_reuse.py --rule RG-1 --count [--root <tree>]
+    python scripts/check_reuse.py --rule RG-1b --count [--root <tree>]
     python scripts/check_reuse.py --rule RG-2 --count [--root <tree>]
     python scripts/check_reuse.py --summary [--root <tree>]
 
 Proven-against: a synthetic tree with a second ``{% macro empty_state( %}``
 in a second template -- red at 1 naming both files, green at 0 with the
-second file removed; and a synthetic template loading
-``vendor/d3.min.js`` with no ``archimate/composer_renderer.js`` reference
-anywhere in the tree -- red at 1, green at 0 once the reference is added.
+second file removed; a synthetic template loading ``vendor/d3.min.js`` with
+no real renderer reference anywhere in the tree -- red at 1, green at 0 once
+a genuine `src="archimate/composer_renderer.js"` reference is added; and a
+synthetic tree gaining a third copy of an already-duplicated macro name --
+RG-1's count unchanged, RG-1b's count raised by one.
 """
 from __future__ import annotations
 
@@ -70,28 +96,53 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # The one marker name the register defines for every rule (docs/reuse-register.yml's
 # top-level `marker:` field), not a per-rule name -- a builder only has to
-# remember one escape-hatch spelling.
-MARKER = re.compile(r"reuse-ok:[ \t]*\S")
+# remember one escape-hatch spelling. MARKER just detects the marker is present
+# at all (for indexing); VALID_MARKER additionally requires the shape the
+# register specifies, so a malformed marker never suppresses a finding.
+MARKER = re.compile(r"reuse-ok:")
+VALID_MARKER = re.compile(
+    r"reuse-ok:\s*([A-Za-z][\w-]*)\s+([^\s{}%#]+(?:\s+[^\s{}%#]+)+)"
+)
 
-RULE_NAMES = {"RG-1": "macro-names", "RG-2": "diagram-libraries"}
-BASELINE_KEYS = {"RG-1": "reuse_macro_names", "RG-2": "reuse_diagram_libraries"}
+RULE_NAMES = {"RG-1": "macro-names", "RG-1b": "macro-definitions", "RG-2": "diagram-libraries"}
+BASELINE_KEYS = {
+    "RG-1": "reuse_macro_names",
+    "RG-1b": "reuse_macro_definitions",
+    "RG-2": "reuse_diagram_libraries",
+}
 
-# ---------------------------------------------------------------- RG-1: macro-names
+# ---------------------------------------------------------------- RG-1 / RG-1b: macros
 
-MACRO_PATTERN = re.compile(r"\{%-?\s*macro\s+([A-Za-z]\w*)\s*\(")
+MACRO_PATTERN = re.compile(r"\{%-?\s*macro\s+([A-Za-z_]\w*)\s*\(")
 MACRO_SCOPE_EXTS = (".html", ".j2", ".jinja")
 # "node_modules, vendor, bundles" and the generated-code templates, per the
-# register's RG-1 `excluded` list. Names beginning with `_` are already
-# excluded by MACRO_PATTERN itself (it requires a letter first).
+# register's RG-1 `excluded` list.
 MACRO_EXCLUDED = ("node_modules/", "vendor/", "bundles/", "app/modules/solutions_product/templates/")
+# The page-shell per-page protocol: each page defines its own `_ps_actions`
+# (and siblings) by design, one definition per page, so these are not a
+# reuse defect. No other leading-underscore name gets this treatment -- a
+# duplicate renamed to dodge the rule (`_empty_state`, say) is still counted.
+MACRO_PROTOCOL_PREFIX = "_ps_"
 
 # ---------------------------------------------------------------- RG-2: diagram-libraries
 
+# A library name, optionally suffixed (`d3-sankey`, `dagre-d3`), as a `.js`
+# file referenced anywhere in the tree, not only under `vendor/`. The
+# boundary before the name (start of string, a quote, or a path separator)
+# stops "id3.min.js" or similar from matching mid-word; the boundary is not
+# required to be `vendor/` specifically, so a copy vendored somewhere else,
+# or loaded from a module's own static folder, is still seen.
 DIAGRAM_LIB_PATTERN = re.compile(
-    r"vendor/(joint|d3|dagre|mermaid|cytoscape[\w.\-]*|drawflow[\w.\-]*?)(?:\.min)?\.js"
+    r"""(?:^|["'/])(joint|d3|dagre|mermaid|cytoscape|drawflow)[\w.\-]*?(?:\.min)?\.js\b"""
 )
 DIAGRAM_EXCLUDED = ("vendor/", "bundles/", "solutions_product")
-COMPOSER_RENDERER_REF = "archimate/composer_renderer.js"
+# A real load of the canonical renderer: the string appears inside a quoted
+# src=/href=/filename= value (an HTML attribute, or the `filename=` keyword
+# Flask's url_for takes, or a JS object literal's `src:` key). A bare mention
+# in a comment or prose does not count -- see the module docstring.
+COMPOSER_LOAD_PATTERN = re.compile(
+    r"(?:src|href|filename)\s*[:=]\s*[\"'][^\"']*archimate/composer_renderer\.js[\"']"
+)
 COMPOSER_ALLOWED_LIBS = {"joint", "dagre"}
 
 
@@ -113,6 +164,10 @@ def _walk_files(root: str, under: str, exts: tuple[str, ...]):
 
 def _excluded(rel: str, substrings: tuple[str, ...]) -> bool:
     return any(s in rel for s in substrings)
+
+
+def _has_valid_marker(line: str) -> bool:
+    return bool(VALID_MARKER.search(line))
 
 
 # ---------------------------------------------------------------- register lookups
@@ -178,12 +233,36 @@ def _format_finding(rule: str, path: str, line: int, concept_id: str, what: str,
     )
 
 
-# ---------------------------------------------------------------- RG-1 scan
+def _unregistered_finding(rule: str, subject: str, files: list[str], locations: dict[str, int]) -> str:
+    """A finding for a name/reference with no matching register concept.
+
+    No concept id to cite, so this does not invent one, does not suggest a
+    marker naming a concept that does not exist (the register-integrity
+    check would reject it), and does not claim an order among the listed
+    files -- they are sorted alphabetically for a stable report, nothing more.
+    """
+    listing = ", ".join("%s:%d" % (f, locations[f]) for f in files)
+    first_path, first_line = files[0], locations[files[0]]
+    return (
+        "%s:%d [reuse:%s] %s is defined in %d files with no matching entry in "
+        "docs/reuse-register.yml: %s.\n"
+        "  Add a concept for it in docs/reuse-register.yml naming the canonical file "
+        "and its use, before choosing which definition to keep or appending a "
+        "reuse-ok marker."
+        % (first_path, first_line, RULE_NAMES[rule], subject, len(files), listing)
+    )
 
 
-def scan_rg1(root: str) -> list[str]:
-    register = _load_register(root)
-    by_name: dict[str, dict[str, int]] = {}
+# ---------------------------------------------------------------- RG-1 / RG-1b macro index
+
+
+def _macro_index(root: str) -> dict[str, dict[str, tuple[int, str]]]:
+    """{macro name: {file: (line, the line's text)}}, all definitions, unfiltered by marker.
+
+    RG-1 and RG-1b both read this same map -- RG-1b's whole point is that it
+    must see every definition RG-1's name-level count cannot.
+    """
+    by_name: dict[str, dict[str, tuple[int, str]]] = {}
     for path, rel in _walk_files(root, "app", MACRO_SCOPE_EXTS):
         if _excluded(rel, MACRO_EXCLUDED):
             continue
@@ -196,24 +275,32 @@ def scan_rg1(root: str) -> list[str]:
             match = MACRO_PATTERN.search(line)
             if not match:
                 continue
-            if MARKER.search(line):
-                continue
             name = match.group(1)
+            if name.startswith(MACRO_PROTOCOL_PREFIX):
+                continue
             # A file defining the same macro name twice is a redefinition
             # (ruff F811's job); only the first definition per file counts
             # toward how many DISTINCT files carry this name.
-            by_name.setdefault(name, {}).setdefault(rel, lineno)
+            by_name.setdefault(name, {}).setdefault(rel, (lineno, line))
+    return by_name
+
+
+def scan_rg1(root: str) -> list[str]:
+    register = _load_register(root)
+    by_name = _macro_index(root)
 
     findings = []
     for name in sorted(by_name):
         locations = by_name[name]
         if len(locations) < 2:
             continue
-        findings.append(_rg1_finding(name, locations, _concept_for_macro(register, name)))
+        finding = _rg1_finding(name, locations, _concept_for_macro(register, name))
+        if finding is not None:
+            findings.append(finding)
     return findings
 
 
-def _rg1_finding(name: str, locations: dict[str, int], concept: dict | None) -> str:
+def _rg1_finding(name: str, locations: dict[str, tuple[int, str]], concept: dict | None) -> str | None:
     files = sorted(locations)
     canonical_path = None
     if concept:
@@ -224,33 +311,55 @@ def _rg1_finding(name: str, locations: dict[str, int], concept: dict | None) -> 
     if canonical_path is None:
         canonical_path = files[0]
 
+    # The finding is suppressed only when EVERY non-canonical definition
+    # carries a valid marker. A marker on the canonical definition is not
+    # examined here at all -- it was never the file this rule flags.
     non_canonical = [f for f in files if f != canonical_path]
-    flagged = non_canonical[0]
-    flagged_line = locations[flagged]
+    unmarked = [f for f in non_canonical if not _has_valid_marker(locations[f][1])]
+    if not unmarked:
+        return None
+
+    flagged = unmarked[0]
+    flagged_line = locations[flagged][0]
     other_files = [f for f in files if f != flagged]
-    also_defined_in = ", ".join("%s:%d" % (f, locations[f]) for f in other_files)
 
-    if concept:
-        concept_id = concept["id"]
-        canonical_use = (concept.get("canonical") or {}).get("use", canonical_path)
-    else:
-        concept_id = "unregistered"
-        canonical_use = "first defined at %s:%d" % (canonical_path, locations[canonical_path])
+    if concept is None:
+        return _unregistered_finding(
+            "RG-1", "macro '%s'" % name, files, {f: loc[0] for f, loc in locations.items()}
+        )
 
+    also_defined_in = ", ".join("%s:%d" % (f, locations[f][0]) for f in other_files)
+    concept_id = concept["id"]
+    canonical_use = (concept.get("canonical") or {}).get("use", canonical_path)
     what = "macro '%s' is also defined in %s" % (name, also_defined_in)
     return _format_finding("RG-1", flagged, flagged_line, concept_id, what,
                             canonical_path, canonical_use)
 
 
+def scan_rg1b(root: str) -> list[str]:
+    by_name = _macro_index(root)
+    findings = []
+    for name in sorted(by_name):
+        locations = by_name[name]
+        if len(locations) < 2:
+            continue
+        files = sorted(locations)
+        for f in files:
+            lineno = locations[f][0]
+            others = ", ".join("%s:%d" % (o, locations[o][0]) for o in files if o != f)
+            findings.append(
+                "%s:%d [reuse:%s] one of %d definitions of macro '%s'; also at %s."
+                % (f, lineno, RULE_NAMES["RG-1b"], len(files), name, others)
+            )
+    return findings
+
+
 # ---------------------------------------------------------------- RG-2 scan
 
 
-def scan_rg2(root: str) -> list[str]:
-    register = _load_register(root)
-    concept = _concept_for_diagram(register)
-
+def _rg2_candidates(root: str) -> list[tuple[str, str]]:
     candidates = []
-    for path, rel in _walk_files(root, "app", (".html",)):
+    for path, rel in _walk_files(root, "app", (".html", ".j2", ".jinja")):
         if rel.startswith("app/static/"):
             continue
         if _excluded(rel, DIAGRAM_EXCLUDED):
@@ -260,23 +369,35 @@ def scan_rg2(root: str) -> list[str]:
         if _excluded(rel, DIAGRAM_EXCLUDED):
             continue
         candidates.append((path, rel))
+    for path, rel in _walk_files(root, "app/modules", (".js",)):
+        if "/static/" not in rel:
+            continue
+        if _excluded(rel, DIAGRAM_EXCLUDED):
+            continue
+        candidates.append((path, rel))
+    return candidates
+
+
+def scan_rg2(root: str) -> list[str]:
+    register = _load_register(root)
+    concept = _concept_for_diagram(register)
 
     seen: set[tuple[str, str]] = set()
     findings = []
-    for path, rel in candidates:
+    for path, rel in _rg2_candidates(root):
         try:
             with open(path, encoding="utf-8", errors="ignore") as fh:
                 text = fh.read()
         except OSError:
             continue
-        composer_page = COMPOSER_RENDERER_REF in text
+        composer_page = bool(COMPOSER_LOAD_PATTERN.search(text))
         for lineno, line in enumerate(text.splitlines(), start=1):
             match = DIAGRAM_LIB_PATTERN.search(line)
             if not match:
                 continue
-            if MARKER.search(line):
+            if _has_valid_marker(line):
                 continue
-            lib = re.split(r"[.\-]", match.group(1))[0]
+            lib = match.group(1)
             if lib in COMPOSER_ALLOWED_LIBS and composer_page:
                 continue
             key = (rel, lib)
@@ -289,27 +410,25 @@ def scan_rg2(root: str) -> list[str]:
 
 
 def _rg2_finding(rel: str, lineno: int, lib: str, concept: dict | None) -> str:
-    if concept:
-        concept_id = concept["id"]
-        canonical = concept.get("canonical") or {}
-        canonical_path = (canonical.get("paths") or [None])[0] or \
-            "app/static/js/archimate/composer_renderer.js"
-        canonical_use = canonical.get("use", "ComposerRenderer.create(...)")
-    else:
-        concept_id = "unregistered"
-        canonical_path = "app/static/js/archimate/composer_renderer.js"
-        canonical_use = "ComposerRenderer.create(containerEl, { mode: 'view' }) draws elements and relationships"
+    if concept is None:
+        return _unregistered_finding("RG-2", "a %s library reference" % lib, [rel], {rel: lineno})
 
-    what = "loads vendor/%s.min.js; model diagrams are drawn by the ArchiMate renderer" % lib
+    concept_id = concept["id"]
+    canonical = concept.get("canonical") or {}
+    canonical_path = (canonical.get("paths") or [None])[0] or \
+        "app/static/js/archimate/composer_renderer.js"
+    canonical_use = canonical.get("use", "ComposerRenderer.create(...)")
+
+    what = "references the %s library; model diagrams are drawn by the ArchiMate renderer" % lib
     return _format_finding("RG-2", rel, lineno, concept_id, what, canonical_path, canonical_use)
 
 
-SCANNERS = {"RG-1": scan_rg1, "RG-2": scan_rg2}
+SCANNERS = {"RG-1": scan_rg1, "RG-1b": scan_rg1b, "RG-2": scan_rg2}
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--rule", choices=sorted(SCANNERS), help="which rule to run (RG-1 or RG-2)")
+    parser.add_argument("--rule", choices=sorted(SCANNERS), help="which rule to run (RG-1, RG-1b or RG-2)")
     parser.add_argument("--count", action="store_true", help="print only the finding count")
     parser.add_argument("--root", default=ROOT, help="scan this tree instead of the real repository")
     parser.add_argument("--summary", action="store_true",
@@ -329,7 +448,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if not args.rule:
-        parser.error("--rule RG-1|RG-2 is required unless --summary is given")
+        parser.error("--rule RG-1|RG-1b|RG-2 is required unless --summary is given")
 
     findings = SCANNERS[args.rule](root)
 
