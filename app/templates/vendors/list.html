@@ -77,9 +77,14 @@
               x-text="hasActiveFilters ? 'No vendors match these filters.' : 'No vendors yet.'"></span>
       {% endset %}
       {% set _vendor_empty_action %}
+        {# Distinct accessible name from the header's own "Add Vendor" action (page_header's
+           `actions=`, above): both are visible together whenever the table is empty, and
+           identical names made get_by_role('button', name='Add Vendor') ambiguous -- caught by
+           tests/smoke/test_vendor_dialog_controls.py, whose own selector is (rightly) unscoped
+           since it targets the header action specifically. #}
         <span class="mt-3 block" x-show="!hasActiveFilters">
-          <button type="button" @click="Platform.modal.open('create-vendor')" aria-label="Add Vendor"
-                  class="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">Add Vendor</button>
+          <button type="button" @click="Platform.modal.open('create-vendor')" aria-label="Add your first vendor"
+                  class="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">Add your first vendor</button>
         </span>
         <span class="mt-3 block" x-show="hasActiveFilters" x-cloak>
           <button type="button" @click="clearAllFilters()" aria-label="Clear filters"
