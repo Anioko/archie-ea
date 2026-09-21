@@ -28,6 +28,7 @@
    Separator Options: chevron (default), slash, dot, arrow
 #}
 
+{% from 'components/_breadcrumb_root.html' import crumb_label %}
 {% macro breadcrumb_nav(
     items=[],
     separator='chevron',
@@ -71,7 +72,7 @@
                     {% if item.icon %}
                     <i data-lucide="{{ item.icon }}" class="w-3.5 h-3.5" aria-hidden="true"></i>
                     {% endif %}
-                    {{ item.text }}
+                    {{ crumb_label(item.text, loop.first) }}
                 </span>
             {% else %}
                 {# Link to other pages #}
@@ -82,7 +83,7 @@
                     {% if item.icon %}
                     <i data-lucide="{{ item.icon }}" class="w-3.5 h-3.5" aria-hidden="true"></i>
                     {% endif %}
-                    {{ item.text }}
+                    {{ crumb_label(item.text, loop.first) }}
                 </a>
             {% endif %}
             
