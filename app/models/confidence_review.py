@@ -13,9 +13,12 @@ from .. import db
 from .mixins.core import TenantMixin, _default_org_id
 
 # ``ReviewQueueItem.item_type`` values whose ``item_id`` is the id of an
-# ApplicationComponent. Every writer of the queue sets ``item_id`` to the
-# application it analysed for these types, so the application's organisation is
-# the organisation the queue item belongs to.
+# ApplicationComponent, the application the item is about. The import and
+# auto-mapping flows set it from the application they analyse, and the evaluate
+# route takes it from the request. It therefore says which application an item
+# concerns, not which organisation created the item: it is used to look up the
+# reviewed application's owner, and is not by itself evidence of who owns the
+# item.
 APPLICATION_ITEM_TYPES = frozenset(
     {
         "capability_mapping",
