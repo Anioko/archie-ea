@@ -24,12 +24,22 @@ MIN_NAV_HEIGHT = 730
 
 
 def _persona(app, enterprise_role):
+    from datetime import datetime
+
     from app import db
     from app.models.user import Permission, Role, User
 
     with app.app_context():
         org_id = make_org(db, "SidebarVisibleArea")
         user_id = make_user(db, org_id, "u", enterprise_role, role_name="Architect")
+        # A fresh user with an empty workspace (no seeded applications/elements/capabilities/vendors)
+        # trips admin_base.html's first-login onboarding modal, which renders on top of the real
+        # sidebar this journey drives and can intercept clicks meant for it (e.g. the header's
+        # collapse toggle, or the search box). This journey is about sidebar layout, not first-login
+        # onboarding, so the persona represents a returning user -- see PR 74's fix to the sibling
+        # sidebar-search journey file for the same issue.
+        User.query.filter_by(id=user_id).update({"onboarding_completed_at": datetime.utcnow()})
+        db.session.commit()
         if enterprise_role == "platform_admin":
             # get_sidebar_zones() gates the Admin ZONE on user.is_admin() (a real Role permission check,
             # Permission.ADMINISTER), and each admin-requires link on is_platform_admin/is_org_admin --
