@@ -1,8 +1,9 @@
 /* The Ask page.
  *
  * A person opens a question card, types a business noun, chooses a match and
- * gets that question's answer for it. Two questions today: impact (L1, "what
- * breaks") and risk (L6, "what could hurt"). One question is open at a time
+ * gets that question's answer for it. Three questions today: impact (L1,
+ * "what breaks"), risk (L6, "what could hurt") and portfolio (L3, a deep
+ * link to rationalization planning). One question is open at a time
  * (openKey), and one shared picker (fixed input id / $refs.pickerInput --
  * see _entity_picker.html) sits in whichever panel is open; onSelect()
  * dispatches by openKey rather than always loading the impact answer.
@@ -34,9 +35,19 @@ function askSurface() {
         riskState: 'idle',
         riskBusy: false,
         risks: [],
+        portfolioState: 'idle',
+        portfolioBusy: false,
+        portfolioComponentId: null,
+        rationalizationPlanningUrlBase: '',
 
         init() {
             this.twinMapUrl = this.$el.getAttribute('data-twin-map-url') || '';
+            // The route ends in a literal "/0" (a real, URL-safe int, built
+            // via url_for(..., app_id=0) since Werkzeug's int converter
+            // rejects a string placeholder at build time) -- drop that one
+            // trailing character and append the real id per lookup.
+            var base = this.$el.getAttribute('data-rationalization-planning-url-base') || '';
+            this.rationalizationPlanningUrlBase = base ? base.slice(0, -1) : '';
         },
 
         toggleQuestion(key) {
@@ -51,9 +62,15 @@ function askSurface() {
             return this.twinMapUrl + '?element=' + row.elementId;
         },
 
+        portfolioPlanningHref() {
+            return this.rationalizationPlanningUrlBase + this.portfolioComponentId;
+        },
+
         onSelect(option) {
             if (this.openKey === 'risk') {
                 this.loadRisk(option.id);
+            } else if (this.openKey === 'portfolio') {
+                this.loadPortfolio(option.id);
             } else {
                 this.load(option.id);
             }
@@ -117,6 +134,33 @@ function askSurface() {
             }
             this.riskBusy = false;
             this.$nextTick(function () { Intelligence.refreshIcons(); });
+        },
+
+        /* L3: no rows, no drawer -- just resolves whether a deep link exists
+           for the picked element and holds the id to build it. "empty" here
+           means the element genuinely is not an ApplicationComponent (the
+           honest no_application_component reason), not a fetch failure. */
+        async loadPortfolio(elementId) {
+            this.answeredKey = 'portfolio';
+            this.portfolioComponentId = null;
+            this._portfolioLoadSeq = (this._portfolioLoadSeq || 0) + 1;
+            var seq = this._portfolioLoadSeq;
+            this.portfolioBusy = true;
+            this.portfolioState = 'loading';
+            try {
+                var payload = await Intelligence.fetchPortfolioComponent(elementId);
+                if (seq !== this._portfolioLoadSeq) return;
+                if (payload.application_component_id) {
+                    this.portfolioComponentId = payload.application_component_id;
+                    this.portfolioState = 'ready';
+                } else {
+                    this.portfolioState = 'empty';
+                }
+            } catch (err) {
+                if (seq !== this._portfolioLoadSeq) return;
+                this.portfolioState = 'error';
+            }
+            this.portfolioBusy = false;
         },
 
         async recomputeNow() {

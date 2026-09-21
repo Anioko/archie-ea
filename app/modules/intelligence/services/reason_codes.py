@@ -44,6 +44,12 @@ REASON_CODES = frozenset(
         # exactly the fabrication CLAUDE.md's "never invent data" rule
         # forbids.
         "p95_above_highest_bucket",
+        # L3/L6 brief (2026-09-21) addition: Ask's Portfolio lens resolves an
+        # ArchiMate element to its ApplicationComponent (the row the
+        # rationalization/duplicate/TCO pages are keyed on) before it can
+        # offer a deep link. Not every element is one -- most are not -- and
+        # that is an honest absence, not an error.
+        "no_application_component",
     }
 )
 
