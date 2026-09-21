@@ -19,8 +19,17 @@
     {# One row that scrolls instead of a grid that squeezes. Seven equal columns gave each tab about 133px at
        1280, too little for "Implementation" plus its count; tabs now take their own width and the row scrolls
        when they do not all fit, with the same right-edge fade the workbench tables use (.workbench-table-scroll,
-       dropped by the script below once the row is scrolled to its end). #}
-    <div id="layer-spine-scroll" class="flex gap-1 overflow-x-auto workbench-table-scroll">
+       dropped by the script below once the row is scrolled to its end).
+
+       py-1 -my-1: the scroll container's content-box height otherwise matches each tab's exactly, so
+       overflow-x: auto (which computes overflow-y to auto too) clipped the focus-visible ring top and
+       bottom. The padding gives the ring room inside the clip box; the matching negative margin keeps the
+       strip's own visual height and position against the nav's padding unchanged.
+       scroll-padding-inline-end (inline style: no compiled utility for it) keeps a focused tab clear of
+       the 28px fade band instead of scrolling it flush against the right edge, where the mask fades it
+       to near-invisible despite being focused. #}
+    <div id="layer-spine-scroll" class="flex gap-1 overflow-x-auto workbench-table-scroll py-1 -my-1"
+         style="scroll-padding-inline-end: 28px;">
         {% for layer_key, layer_info in layer_config.items() %}
         <a href="{{ url_for('archimate_crud.dashboard', layer=layer_key) }}"
            aria-label="Open {{ layer_info.title }}"
@@ -29,9 +38,13 @@
            {% if layer_key == selected_layer.key %}style="border-left-color: hsl(var({{ layer_info.color_token }}));"{% endif %}
            class="flex shrink-0 items-center justify-between gap-2 whitespace-nowrap rounded-md border-l-4 px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring {% if layer_key == selected_layer.key %}border-y border-r border-border bg-muted/50 text-foreground{% else %}border-transparent text-muted-foreground hover:bg-muted/30 hover:text-foreground{% endif %}">
             <span class="truncate">{{ layer_info.short_name }}</span>
-            {# The count appears only once it is known; a dash where a count would go told nobody anything. #}
+            {# The count appears only once it is known; a dash where a count would go told nobody anything.
+               x-show reads layerCounts['{{ layer_key }}'] by bracket access (not hasOwnProperty, which
+               goes through getOwnPropertyDescriptor and Alpine's reactivity does not track that as a
+               dependency): layerCounts starts as {} and keys are added once counts load, so a
+               hasOwnProperty-based guard evaluates once at init and never re-runs when the key appears. #}
             <span class="shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs tabular-nums text-muted-foreground"
-                  x-cloak x-show="Object.prototype.hasOwnProperty.call(layerCounts, '{{ layer_key }}') && layerCounts['{{ layer_key }}'] != null"
+                  x-cloak x-show="layerCounts['{{ layer_key }}'] !== undefined && layerCounts['{{ layer_key }}'] !== null"
                   x-text="layerCounts['{{ layer_key }}']"></span>
         </a>
         {% endfor %}

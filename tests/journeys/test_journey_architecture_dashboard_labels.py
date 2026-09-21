@@ -166,12 +166,49 @@ def test_at_1280_every_label_fits_or_the_strip_scrolls_with_an_edge_fade(browser
         pg.close()
 
 
+def test_the_strip_actually_scrolls_and_the_fade_behaves_when_it_is_narrow(browser, client, document):
+    """The 1280px test above passes without ever exercising the fade path: seven tabs with this
+    fixture's real (single-digit) counts fit at 1280px, so `info["scrolls"]` is false there and the
+    scrolling/fade assertions never run. A narrow width forces genuine overflow so the mechanism this
+    PR adds is actually exercised at least once, not just at a width where it happens not to be needed."""
+    pg = _open(browser, client, document, width=480, height=800)
+    try:
+        info = pg.evaluate("""() => {
+            const strip = document.querySelector('%s');
+            return {scrolls: strip.scrollWidth > strip.clientWidth + 1,
+                    fadeClass: strip.classList.contains('workbench-table-scroll'),
+                    atEnd: strip.classList.contains('at-scroll-end-x')};
+        }""" % STRIP)
+        assert info["scrolls"], "expected the strip to overflow at 480px width: %s" % info
+        assert info["fadeClass"] and not info["atEnd"], "the strip scrolls but shows no edge cue: %s" % info
+        pg.evaluate("() => { const s = document.querySelector('%s'); s.scrollLeft = s.scrollWidth; }" % STRIP)
+        pg.wait_for_timeout(300)
+        assert pg.evaluate("() => document.querySelector('%s').classList.contains('at-scroll-end-x')" % STRIP), \
+            "the fade does not drop once the strip is scrolled to its end"
+        pg.evaluate("() => { const s = document.querySelector('%s'); s.scrollLeft = 0; }" % STRIP)
+        pg.wait_for_timeout(300)
+        assert not pg.evaluate("() => document.querySelector('%s').classList.contains('at-scroll-end-x')" % STRIP), \
+            "the fade does not come back once the strip is scrolled away from its end"
+    finally:
+        pg.close()
+
+
 def test_no_tab_shows_a_dash_where_a_count_is_unknown(browser, client, document):
     pg = _open(browser, client, document)
     try:
+        pg.wait_for_function(
+            """(sel) => [...document.querySelectorAll(sel + ' a')]
+                .map(a => a.querySelector('span:last-child'))
+                .filter(b => b && b.offsetParent !== null).length === 7""",
+            arg=STRIP, timeout=5000,
+        )
         counts = pg.evaluate("""() => [...document.querySelectorAll('%s a')]
             .map(a => a.querySelector('span:last-child'))
             .filter(b => b && b.offsetParent !== null).map(b => b.innerText.trim())""" % STRIP)
+        # A count that never becomes visible (the badge silently staying display:none once its
+        # count is known) is exactly the regression this fix is for; the wait_for_function above
+        # fails loudly on that instead of letting an empty list pass this assertion vacuously.
+        assert len(counts) == 7, "not every tab's count badge became visible: %s" % counts
         assert [c for c in counts if not c.isdigit()] == [], "tabs showing a placeholder instead of a count: %s" % counts
     finally:
         pg.close()
