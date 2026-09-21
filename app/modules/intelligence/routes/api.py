@@ -336,16 +336,37 @@ def cross_layer_impact(element_id: int):
     )
 
 
+_YIELD_PARTS = ("figures", "model-check")
+
+
 @intelligence_api.route("/yield", methods=["GET"])
 @login_required
 def derivation_yield():
     """API-5 (DE-11): US-5's "how much does derivation add", for the
     caller's own tenant. Serialises
-    ``IntelligenceQueryService.derivation_yield`` through
-    ``success_response`` -- no business logic here (task 02 constraint;
-    view function name is deliberately ``derivation_yield``, not
+    ``IntelligenceQueryService.derivation_yield`` (or ``model_check``)
+    through ``success_response`` -- no business logic here (task 02
+    constraint; view function name is deliberately ``derivation_yield``, not
     ``cross_layer_impact``, which is already taken in this file).
+
+    One optional query parameter, ``part``, chooses the read:
+
+    - absent, or ``figures``: the derivation figures. The drift detector is
+      not called, so this is the cheap answer and the default.
+    - ``model-check``: the drift detector's count for the caller's model,
+      computed only when the model is small enough (see ``model_check``).
+    - anything else, or a repeated ``part``: 400 ``INVALID_PART``, and no read
+      is made.
     """
+    parts = request.args.getlist("part")
+    if len(parts) > 1 or (parts and parts[0] not in _YIELD_PARTS):
+        return error_response(
+            "part must be \"figures\" or \"model-check\"",
+            code="INVALID_PART",
+            status_code=400,
+        )
+    part = parts[0] if parts else "figures"
+
     organization_id = _current_organization_id()
     if organization_id is None:
         return error_response(
@@ -357,8 +378,9 @@ def derivation_yield():
 
     from app.modules.intelligence.services.query_service import IntelligenceQueryService
 
-    result = IntelligenceQueryService.derivation_yield(organization_id)
-    return success_response(result)
+    if part == "model-check":
+        return success_response(IntelligenceQueryService.model_check(organization_id))
+    return success_response(IntelligenceQueryService.derivation_yield(organization_id))
 
 
 __all__ = ["intelligence_api"]

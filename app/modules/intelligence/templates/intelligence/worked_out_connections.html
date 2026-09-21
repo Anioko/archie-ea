@@ -1,0 +1,138 @@
+{% extends 'layouts/admin_base.html' %}
+{% from 'macros/page_shell.html' import page_shell %}
+{% from 'components/metrics_card.html' import metrics_card %}
+{% from 'components/skeleton.html' import skeleton_card, skeleton_text %}
+{% from 'components/provenance.html' import provenance_badge %}
+{% from 'intelligence/_parts.html' import stale_line with context %}
+{% from 'intelligence/_full_detail.html' import full_detail with context %}
+
+{% block title %}Worked-out connections{% endblock %}
+
+{% block extra_head_js %}
+<script src="{{ url_for('static', filename='js/intelligence/core.js') }}"></script>
+<script src="{{ url_for('static', filename='js/intelligence/worked_out_connections.js') }}"></script>
+{% endblock %}
+
+{% block content %}
+{% set home_url = url_for('dashboard.overview') if 'dashboard.overview' in flask.current_app.view_functions else none %}
+{# The six figures. Each is a <figure> whose caption is its title, with the value in
+   one element whose accessible name reads the title, the value and the unit
+   together ("Explicit facts: 1204 relationships"). A figure the answer does not
+   carry reads "Not recorded" in that name and on the card. The value is passed to
+   the card as markup rather than through its bound-value slot, which falls back to
+   a literal zero when the bound expression is empty. #}
+{% set figures = [
+    {'key': 'explicit', 'title': 'Explicit facts'},
+    {'key': 'derived', 'title': 'Worked-out facts'},
+    {'key': 'ratio', 'title': 'Ratio', 'note': 'We don\'t set a target for this yet — this is the first real measurement, not a borrowed benchmark.'},
+    {'key': 'stale', 'title': 'Stale count'},
+    {'key': 'workedOutAt', 'title': 'Last worked out'},
+    {'key': 'response', 'title': 'Response time'},
+] %}
+<div class="p-6 space-y-6" x-data="workedOutConnections()">
+    {{ page_shell(
+        title='Worked-out connections',
+        subtitle='How much of your business we have worked out for you, and how fresh it is.',
+        breadcrumb=[('Home', home_url), ('Worked-out connections', none)]
+    ) }}
+
+    {# What is happening with the connections: not yet worked out, out of date,
+       recalculating, already running, finished. The region is on the page from the
+       start so a screen reader announces each change to it. The action is the same one
+       Ask offers, for both states that need it. #}
+    <div role="status" aria-live="polite" aria-atomic="false" x-ref="statusRegion" tabindex="-1" data-testid="derivation-status"
+         class="focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background">
+        <div x-show="statusLine || staleLine" x-cloak class="rounded-lg border border-border bg-muted/30 p-4">
+            <p x-show="statusLine" class="text-sm text-foreground" data-testid="derivation-status-line" x-text="statusLine"></p>
+            {{ stale_line('staleLine') }}
+            <div class="mt-3 flex flex-wrap items-center gap-3" x-show="showRecompute || recomputeFailed" x-cloak>
+                <button type="button" data-recompute-button x-show="showRecompute" @click="recomputeNow()"
+                        :aria-disabled="recomputing ? 'true' : 'false'"
+                        :class="recomputing ? 'opacity-50' : ''"
+                        class="inline-flex h-9 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background">
+                    Work them out now
+                </button>
+                <span x-show="recomputeFailed" x-cloak>{{ provenance_badge('unavailable') }}</span>
+            </div>
+        </div>
+    </div>
+
+    <div x-show="loading" x-cloak data-testid="figures-loading" class="space-y-6">
+        <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {% for figure in figures %}
+            {{ skeleton_card() }}
+            {% endfor %}
+        </div>
+    </div>
+
+    <div x-show="failed" x-cloak role="status" data-testid="page-error" class="rounded-lg border border-border bg-card p-6">
+        <div class="flex flex-wrap items-center gap-3">
+            {{ provenance_badge('unavailable') }}
+            <p class="text-sm text-foreground">We could not answer that just now.</p>
+        </div>
+    </div>
+
+    <div x-show="loaded" x-cloak class="space-y-6">
+        <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3" data-testid="figure-row">
+            {% for figure in figures %}
+            {% set value %}
+            <figure class="m-0" data-metric="{{ figure.key }}">
+                <figcaption class="text-sm font-medium tracking-tight text-foreground">{{ figure.title }}</figcaption>
+                <div role="img" :aria-label="cards.{{ figure.key }}.name" data-testid="value-{{ figure.key }}"
+                     class="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                    <span x-show="!cards.{{ figure.key }}.absent" x-text="cards.{{ figure.key }}.text"
+                          :class="cards.{{ figure.key }}.plain ? 'text-base font-semibold' : 'text-2xl font-bold'"
+                          class="tabular-nums text-foreground"></span>
+                    <span x-show="!cards.{{ figure.key }}.absent" x-text="cards.{{ figure.key }}.unit"
+                          class="text-sm font-normal text-muted-foreground"></span>
+                    <span x-show="cards.{{ figure.key }}.absent" class="text-base font-normal">{{ provenance_badge('missing') }}</span>
+                </div>
+                {% if figure.key == 'workedOutAt' %}
+                <p class="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-normal text-muted-foreground" data-testid="last-recalculation">
+                    <span>Last recalculation</span>
+                    <span x-show="recalculation" x-text="recalculation" class="text-foreground"></span>
+                    <span x-show="!recalculation">{{ provenance_badge('missing') }}</span>
+                </p>
+                {% endif %}
+            </figure>
+            {% endset %}
+            {{ metrics_card(title='', value=value, description=figure.note or '', class='h-full') }}
+            {% endfor %}
+        </div>
+
+        {# The model check. It is asked for once the cards are on the page, so it shows a
+           loading treatment of its own until it answers: a count, a model too large to
+           count, or could not check. Only a real count reads as a number. #}
+        {% if 'genome_drift.index' in flask.current_app.view_functions %}
+        <div class="rounded-xl border border-border bg-card p-4" data-testid="drift-row" x-ref="driftRow" :data-state="drift.state">
+            <div x-show="drift.state === 'loading'" data-testid="drift-loading">
+                {{ skeleton_text(lines=2) }}
+            </div>
+            <div x-show="drift.linked" x-cloak class="flex flex-wrap items-center gap-x-4 gap-y-2">
+                <p class="text-sm text-foreground" data-testid="drift-text" x-text="drift.text"></p>
+                <a href="{{ url_for('genome_drift.index') }}"
+                   class="inline-flex h-8 items-center justify-center rounded-md border border-input bg-background px-3 text-sm font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background">See drift findings and fixes</a>
+            </div>
+            <div x-show="drift.state === 'unavailable'" x-cloak role="status" class="flex flex-wrap items-center gap-3">
+                {{ provenance_badge('unavailable') }}
+                <p class="text-sm text-foreground">We could not check your model just now.</p>
+            </div>
+        </div>
+        {% endif %}
+
+        {% call full_detail({'uid': "'worked-out-connections'"}) %}
+        <dl class="space-y-2 text-sm">
+            <template x-for="row in details" :key="row.label">
+                <div class="grid gap-x-4 sm:grid-cols-[9rem_1fr]" data-detail-row>
+                    <dt class="text-muted-foreground" x-text="row.label"></dt>
+                    <dd class="min-w-0 break-words text-foreground">
+                        <span x-show="row.value" x-text="row.value"></span>
+                        <span x-show="!row.value">{{ provenance_badge('missing') }}</span>
+                    </dd>
+                </div>
+            </template>
+        </dl>
+        {% endcall %}
+    </div>
+</div>
+{% endblock %}

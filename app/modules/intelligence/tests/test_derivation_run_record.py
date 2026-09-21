@@ -314,8 +314,8 @@ def test_derived_fact_aggregates_matches_direct_count_and_null_computed_at(
         agg = derived_fact_aggregates(org_populated_id)
         empty_agg = derived_fact_aggregates(org_empty_id)
 
-    assert agg["derived_count"] == direct_count
-    assert empty_agg["derived_count"] == 0
+    assert agg["current_count"] == direct_count
+    assert empty_agg["current_count"] == 0
     assert empty_agg["stale_count"] == 0
     assert empty_agg["computed_at"] is None
 
@@ -354,7 +354,7 @@ def test_derived_fact_aggregates_does_not_materialise_rows(app, db_session, make
         finally:
             event.remove(db.engine, "before_cursor_execute", _count_statements)
 
-    # A small, fixed number of aggregate SELECTs (derived_count, stale_count,
+    # A small, fixed number of aggregate SELECTs (current_count, stale_count,
     # computed_at, engine_versions, plus incidental session bookkeeping) --
     # bounded regardless of row count, never one statement per row.
     assert statement_count <= 6

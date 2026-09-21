@@ -27,6 +27,12 @@
    class="inline-flex h-9 items-center justify-center rounded-md border border-input bg-background px-3 text-sm font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background">
     <i data-lucide="search" class="mr-2 h-4 w-4" aria-hidden="true"></i>Ask
 </a>
+{% if 'intelligence_ui.worked_out_connections' in flask.current_app.view_functions %}
+<a href="{{ url_for('intelligence_ui.worked_out_connections') }}"
+   class="inline-flex h-9 items-center justify-center rounded-md border border-input bg-background px-3 text-sm font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background">
+    <i data-lucide="waypoints" class="mr-2 h-4 w-4" aria-hidden="true"></i>Worked-out connections
+</a>
+{% endif %}
 {% endmacro %}
 <div class="p-6 space-y-6" x-data="twinMapSurface()" data-initial-element="{{ initial_element_id if initial_element_id is not none else '' }}">
     {{ page_shell(

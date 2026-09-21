@@ -11,6 +11,7 @@ browser, colour only from the layer tokens.
 
 from __future__ import annotations
 
+import inspect
 import re
 import sys
 import uuid
@@ -145,6 +146,7 @@ def test_page_is_not_served_to_an_anonymous_visitor(app, client, path):
 
 
 def test_the_two_pages_are_the_only_routes_this_blueprint_serves(app):
+    """Ask and Twin map, and the Worked-out connections page they each link to."""
     rules = {
         rule.rule: sorted(rule.methods - {"HEAD", "OPTIONS"})
         for rule in app.url_map.iter_rules()
@@ -153,6 +155,7 @@ def test_the_two_pages_are_the_only_routes_this_blueprint_serves(app):
     assert rules == {
         "/intelligence/ask": ["GET"],
         "/intelligence/twin-map": ["GET"],
+        "/intelligence/worked-out-connections": ["GET"],
     }
     assert not [r for r in rules if r.startswith("/api/")]
 
@@ -383,12 +386,22 @@ def test_every_network_call_goes_through_platform_fetch():
 # --- one disclosure control -------------------------------------------------
 
 
-def test_full_detail_is_defined_once_and_called_from_exactly_three_places():
+def test_full_detail_is_defined_once_and_called_from_exactly_four_places():
+    """The three surfaces that show a connection call the macro inline; the Worked-out
+    connections page calls it with a call block. Both forms are counted, so the guard
+    sees every call site."""
     templates = _templates()
     definitions = [n for n, t in templates.items() for _ in re.findall(r"\{%\s*macro\s+full_detail\(", t)]
     assert definitions == ["_full_detail.html"]
-    calls = [n for n, t in templates.items() for _ in re.findall(r"\{\{\s*full_detail\(", t)]
-    assert sorted(calls) == ["_provenance_drawer.html", "ask.html", "twin_map.html"]
+    calls = [
+        n for n, t in templates.items()
+        for _ in re.findall(
+            r"\{\{\s*full_detail\(|\{%\s*call\s+full_detail\(", re.sub(r"\{#.*?#\}", "", t, flags=re.S)
+        )
+    ]
+    assert sorted(calls) == [
+        "_provenance_drawer.html", "ask.html", "twin_map.html", "worked_out_connections.html",
+    ]
 
 
 def test_the_disclosure_label_is_full_detail_and_it_starts_collapsed():
@@ -696,3 +709,509 @@ def test_the_side_panel_control_is_named_for_the_panel():
     assert re.search(r'id="twin-rail-toggle".*?Selected element\s*</button>', twin, re.S)
     assert 'aria-label="Selected element"' in twin
     assert ">Details<" not in twin and "Details</button>" not in twin
+
+
+# =============================================================================
+# Worked-out connections: the third page of this blueprint.
+#
+# The page is a shell that asks the yield endpoint for its figures, so what these
+# tests read is the shell as served, the script as shipped, and the rules the
+# page keeps for every render: one label, no banned word, one disclosure control,
+# one guarded link to the drift page and nothing of that page's own, no sidebar
+# entry, nothing under the drift page's address.
+# =============================================================================
+
+WORKED_OUT_PATH = "/intelligence/worked-out-connections"
+LABEL = "Worked-out connections"
+
+BANNED_WORDS = re.compile(r"\b(?:yield|health)\b", re.I)
+INTERNAL_SHAPES = re.compile(
+    r"\b(?:archie_[a-z_]+|[a-z_]+_seconds|intelligence_derivation_runs|archimate_derived_relationships)\b"
+)
+
+
+def _strip_full_detail_region(html: str) -> str:
+    """The page with the content of its one disclosure region taken out."""
+    start = re.search(r"<div [^>]*data-full-detail-region[^>]*>", html)
+    if not start:
+        return html
+    depth, position = 1, start.end()
+    for token in re.finditer(r"<div\b|</div>", html[position:]):
+        depth += 1 if token.group(0) == "<div" else -1
+        if depth == 0:
+            return html[: start.end()] + html[position + token.start():]
+    raise AssertionError("the disclosure region never closes")
+
+
+def _readable_strings(source: str) -> list[str]:
+    strings = re.findall(r"'([^'\n]{3,})'", source) + re.findall(r'"([^"\n]{3,})"', source)
+    return [s for s in strings if " " in s or s[:1].isupper()]
+
+
+def _worked_out_page(client, login_as, user):
+    login_as(client, user)
+    response = client.get(WORKED_OUT_PATH)
+    assert response.status_code == 200
+    return response.get_data(as_text=True)
+
+
+def test_the_third_page_renders_for_a_signed_in_user_with_its_own_template(
+    app, db_session, make_org, client, login_as
+):
+    org = make_org("wc-render")
+    user = _user(db_session, org.id)
+    seen, stop = _rendered_templates(app)
+    try:
+        login_as(client, user)
+        response = client.get(WORKED_OUT_PATH)
+    finally:
+        stop()
+    assert response.status_code == 200
+    assert "intelligence/worked_out_connections.html" in seen
+
+
+def test_the_third_page_is_not_served_to_an_anonymous_visitor(app, client):
+    response = client.get(WORKED_OUT_PATH)
+    assert response.status_code in (301, 302, 401)
+    if response.status_code in (301, 302):
+        assert "/account/login" in response.headers["Location"]
+
+
+def test_the_third_page_is_one_get_route_of_the_existing_blueprint(app):
+    rules = [r for r in app.url_map.iter_rules() if r.rule == WORKED_OUT_PATH]
+    assert [(r.endpoint, sorted(r.methods - {"HEAD", "OPTIONS"})) for r in rules] == [
+        ("intelligence_ui.worked_out_connections", ["GET"])
+    ]
+    assert WORKED_OUT_PATH.count("/") == 2, "two path segments: not a module root"
+    blueprints = {r.endpoint.split(".")[0] for r in app.url_map.iter_rules() if r.rule.startswith("/intelligence")}
+    assert blueprints == {"intelligence_ui"}
+
+
+def test_the_title_and_the_breadcrumb_leaf_are_the_label_and_nothing_else(
+    app, db_session, make_org, client, login_as
+):
+    org = make_org("wc-label")
+    user = _user(db_session, org.id)
+    html = _worked_out_page(client, login_as, user)
+    assert f'<h1 class="text-2xl font-bold text-foreground">{LABEL}</h1>' in html
+    assert re.search(r'<title>\s*' + re.escape(LABEL) + r'\b', html)
+    crumbs = re.search(r'<nav aria-label="Breadcrumb".*?</nav>', html, re.S).group(0)
+    assert re.findall(r'<li[^>]*aria-current="page"[^>]*>\s*<span[^>]*>([^<]+)</span>', crumbs) == [LABEL]
+    assert "p-6 space-y-6" in html
+    assert "container mx-auto" not in _main_html(html)
+
+
+def test_the_subtitle_and_the_fixed_strings_are_the_specified_ones(
+    app, db_session, make_org, client, login_as
+):
+    org = make_org("wc-strings")
+    user = _user(db_session, org.id)
+    text = _visible_text(_main_html(_worked_out_page(client, login_as, user)))
+    for wanted in (
+        "How much of your business we have worked out for you, and how fresh it is.",
+        "Explicit facts", "Worked-out facts", "Ratio", "Stale count", "Last worked out", "Response time",
+        "We don't set a target for this yet — this is the first real measurement, not a borrowed benchmark.",
+        "Work them out now", "See drift findings and fixes", "We could not answer that just now.",
+        "Full detail",
+    ):
+        assert wanted in text, wanted
+
+
+def test_neither_banned_word_is_on_the_page_or_in_the_words_the_script_writes(
+    app, db_session, make_org, client, login_as
+):
+    org = make_org("wc-banned")
+    user = _user(db_session, org.id)
+    html = _strip_full_detail_region(_main_html(_worked_out_page(client, login_as, user)))
+    text = _visible_text(html)
+    assert text
+    assert BANNED_WORDS.findall(text) == []
+    script = _scripts()["worked_out_connections.js"]
+    written = [s for s in _readable_strings(_code(script)) if not s.startswith("/api/")]
+    assert written
+    assert [s for s in written if BANNED_WORDS.search(s)] == []
+    template = re.sub(r"\{#.*?#\}", "", _templates()["worked_out_connections.html"], flags=re.S)
+    assert BANNED_WORDS.findall(_visible_text(re.sub(r"\{[{%].*?[%}]\}", "", template, flags=re.S))) == []
+
+
+def test_the_copy_carries_no_status_label_path_id_or_metric_name(
+    app, db_session, make_org, client, login_as
+):
+    org = make_org("wc-copy")
+    user = _user(db_session, org.id)
+    html = _strip_full_detail_region(_main_html(_worked_out_page(client, login_as, user)))
+    text = _visible_text(html)
+    assert text
+    assert STATUS_LABELS.findall(text) == []
+    assert FORBIDDEN_SHAPES.findall(text) == []
+    assert INTERNAL_SHAPES.findall(text) == []
+    for name in ("worked_out_connections.js",):
+        written = [s for s in _readable_strings(_code(_scripts()[name])) if not s.startswith("/api/")]
+        for line in written:
+            assert not STATUS_LABELS.search(line), line
+            assert not FORBIDDEN_SHAPES.search(line), line
+    # The technical terms live in the disclosure's rows and nowhere else on the page.
+    for internal in ("cross_layer_impact", "include_derived", "Engine version", "1.0.0"):
+        assert internal not in text
+
+
+def test_no_card_is_bound_through_the_value_slot_that_falls_back_to_a_zero(
+    app, db_session, make_org, client, login_as
+):
+    source = re.sub(r"\{#.*?#\}", "", _templates()["worked_out_connections.html"], flags=re.S)
+    assert "value_alpine" not in source
+    html = _main_html(_worked_out_page(client, login_as, _user(db_session, make_org("wc-zero").id)))
+    assert not re.search(r">\s*0\s*<", html), "the served page holds a bare zero"
+    assert "0" not in _visible_text(html).split(), "no visible zero in the served page"
+
+
+def test_six_figures_each_a_figure_with_a_caption_and_one_named_value(
+    app, db_session, make_org, client, login_as
+):
+    org = make_org("wc-figures")
+    html = _main_html(_worked_out_page(client, login_as, _user(db_session, org.id)))
+    figures = re.findall(r"<figure [^>]*data-metric=\"(\w+)\"[^>]*>\s*<figcaption[^>]*>([^<]+)</figcaption>", html)
+    assert figures == [
+        ("explicit", "Explicit facts"), ("derived", "Worked-out facts"), ("ratio", "Ratio"),
+        ("stale", "Stale count"), ("workedOutAt", "Last worked out"), ("response", "Response time"),
+    ]
+    values = re.findall(r'<div role="img" :aria-label="cards\.(\w+)\.name" data-testid="value-(\w+)"', html)
+    assert [k for k, _ in values] == [k for k, _ in figures] and all(a == b for a, b in values)
+
+
+def test_the_page_is_built_from_the_named_macros(app):
+    source = _templates()["worked_out_connections.html"]
+    for line in (
+        "{% from 'macros/page_shell.html' import page_shell %}",
+        "{% from 'components/metrics_card.html' import metrics_card %}",
+        "{% from 'components/skeleton.html' import skeleton_card, skeleton_text %}",
+        "{% from 'components/provenance.html' import provenance_badge %}",
+        "{% from 'intelligence/_full_detail.html' import full_detail with context %}",
+    ):
+        assert line in source
+    assert "{% extends 'layouts/admin_base.html' %}" in source
+    assert "from 'macros/page_shell.html' import empty_state" not in source
+    assert "animate-spin" not in source and "<svg" not in source
+    assert "onclick=" not in source and "container mx-auto" not in source
+    for state in (
+        "provenance_badge('unavailable')", "provenance_badge('missing')", "skeleton_card()",
+        "skeleton_text(lines=2)",
+    ):
+        assert state in source
+
+
+def test_the_one_disclosure_control_is_the_shared_macro_and_no_other_affordance_exists(app):
+    source = _templates()["worked_out_connections.html"]
+    assert len(re.findall(r"\{%\s*call\s+full_detail\(", source)) == 1
+    assert not re.findall(r"\{\{\s*full_detail\(", source), "the macro is called once, as a call block"
+    for banned in (
+        r"<details", r"<summary", r'role="tab', r'role="dialog"', r"aria-haspopup", r"aria-expanded",
+        r"x-collapse", r"Show more", r"Show less", r"See more", r"Read more", r"Advanced", r"Expand all",
+    ):
+        assert not re.search(banned, source, re.I), banned
+    macro = _templates()["_full_detail.html"]
+    assert len(re.findall(r"data-full-detail-toggle", macro)) == 1
+
+
+def test_the_full_detail_macro_still_renders_a_connections_detail_when_called_the_old_way(app):
+    """The content slot changed nothing for the three surfaces that read a connection."""
+    macro = _templates()["_full_detail.html"]
+    assert re.search(r"\{%\s*if caller\s*%\}\s*\{\{\s*caller\(\)\s*\}\}\s*\{%\s*else\s*%\}\s*<dl", macro)
+    for label in ("ArchiMate type", "Layer", "Depth", "Chain", "Rule", "Confidence", "Worked out at",
+                  "Engine version", "Derived record"):
+        assert f">{label}</dt>" in macro, label
+
+
+def test_the_detail_lives_in_the_disclosure_and_the_script_only(app):
+    source = re.sub(r"\{#.*?#\}", "", _templates()["worked_out_connections.html"], flags=re.S)
+    inside = re.search(r"\{%\s*call full_detail.*?\{%\s*endcall\s*%\}", source, re.S).group(0)
+    outside = source.replace(inside, "")
+    for term in ("Engine version", "Worked out at", "Response time, 95th percentile", "Response time, measured from",
+                 "cross_layer_impact", "include_derived", "1.0.0", "computed_at", "engine_version",
+                 "p95_latency_seconds"):
+        assert term not in outside, term
+    script = _scripts()["worked_out_connections.js"]
+    for term in ("Engine version", "Worked out at", "Response time, 95th percentile", "Response time, measured from"):
+        assert term in script
+    assert "Response time, exact" not in script, "the exact-figure row is gone: its number is in the first row"
+
+
+def test_the_drift_row_is_a_count_and_one_guarded_link_and_no_second_list(
+    app, db_session, make_org, client, login_as
+):
+    source = re.sub(r"\{#.*?#\}", "", _templates()["worked_out_connections.html"], flags=re.S)
+    assert len(re.findall(r"url_for\('genome_drift\.index'\)", source)) == 1
+    assert "{% if 'genome_drift.index' in flask.current_app.view_functions %}" in source
+    guarded = re.search(
+        r"\{% if 'genome_drift\.index' in flask\.current_app\.view_functions %\}(.*?)\{% endif %\}", source, re.S
+    ).group(1)
+    assert "url_for('genome_drift.index')" in guarded and "drift.text" in guarded
+    for finding_shape in ("<table", "<ul", "<ol", "<li", "severity", "by_type", "findings", "fix", "Fix", "<form",
+                          "genome_drift.", "/genome/"):
+        pool = (
+            source.replace("url_for('genome_drift.index')", "")
+            .replace("'genome_drift.index'", "")
+            .replace("See drift findings and fixes", "")
+        )
+        assert finding_shape not in pool, finding_shape
+    script = _scripts()["worked_out_connections.js"]
+    for shape in ("severity", "by_type", "spec_hash", "signals"):
+        assert shape not in script, shape
+    assert not re.search(r"\.findings\b|['\"]findings['\"]", script), "the script never reads a list of findings"
+    assert "drift_finding_count" in script
+    html = _main_html(_worked_out_page(client, login_as, _user(db_session, make_org("wc-drift").id)))
+    assert html.count('href="/genome/model-health/"') == 1
+    assert len(re.findall(r"<a [^>]*href=\"/genome/", html)) == 1
+
+
+def test_without_the_drift_page_the_row_and_its_link_are_both_omitted(
+    app, db_session, make_org, client, login_as, monkeypatch
+):
+    monkeypatch.delitem(app.view_functions, "genome_drift.index")
+    org = make_org("wc-no-drift")
+    html = _main_html(_worked_out_page(client, login_as, _user(db_session, org.id)))
+    assert "See drift findings and fixes" not in html
+    assert "/genome/" not in html
+    assert "drift-row" not in html
+    assert LABEL in html
+
+
+def test_the_header_action_is_on_ask_and_on_twin_map_and_guarded(
+    app, db_session, make_org, client, login_as, monkeypatch
+):
+    org = make_org("wc-actions")
+    user = _user(db_session, org.id)
+    for path in PAGES:
+        login_as(client, user)
+        html = _main_html(client.get(path).get_data(as_text=True))
+        links = re.findall(r'<a href="' + re.escape(WORKED_OUT_PATH) + r'"[^>]*>(.*?)</a>', html, re.S)
+        assert len(links) == 1, path
+        assert _visible_text(links[0]) == LABEL
+    monkeypatch.delitem(app.view_functions, "intelligence_ui.worked_out_connections")
+    for path in PAGES:
+        login_as(client, user)
+        response = client.get(path)
+        assert response.status_code == 200
+        assert WORKED_OUT_PATH not in response.get_data(as_text=True)
+
+
+def test_ask_and_twin_map_gained_one_header_action_each_and_nothing_else(app):
+    for name in ("ask.html", "twin_map.html"):
+        source = _templates()[name]
+        assert source.count("intelligence_ui.worked_out_connections") == 2, name  # the guard and the link
+        assert source.count("Worked-out connections") == 1, name
+
+
+def test_the_screen_has_no_sidebar_link_and_no_directory_row(app):
+    """The label, the route, the endpoint and the script appear in the intelligence
+    module and nowhere else in the product. The label is searched as a title or a
+    quoted string (prose that mentions worked-out connections is not a label)."""
+    allowed = {
+        "app/modules/intelligence/routes/ui.py",
+        "app/modules/intelligence/templates/intelligence/ask.html",
+        "app/modules/intelligence/templates/intelligence/twin_map.html",
+        "app/modules/intelligence/templates/intelligence/worked_out_connections.html",
+        "app/static/js/intelligence/worked_out_connections.js",
+    }
+    needles = re.compile(
+        r"worked-out-connections|worked_out_connections|workedOutConnections"
+        r"|(?:>|['\"])\s*Worked-out connections\s*(?:<|['\"])"
+    )
+    found = set()
+    for path in (REPO_ROOT / "app").rglob("*"):
+        if not path.is_file() or path.suffix not in {".py", ".html", ".js", ".json", ".yml", ".yaml", ".md", ".txt"}:
+            continue
+        if "tests" in path.parts or "node_modules" in path.parts or "vendor" in path.parts:
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            continue
+        if needles.search(text):
+            found.add(path.relative_to(REPO_ROOT).as_posix())
+    assert found <= allowed, sorted(found - allowed)
+    assert not [p for p in found if "sidebar" in p or "modules_directory" in p or "role_access" in p]
+
+
+def test_nothing_this_screen_added_sits_under_the_drift_pages_address_or_name(app):
+    module = REPO_ROOT / "app" / "modules" / "intelligence"
+    for path in module.rglob("*"):
+        assert "model_health" not in path.name and "drift" not in path.name.lower(), path
+    for rule in app.url_map.iter_rules():
+        if rule.endpoint.startswith("intelligence_"):
+            assert not rule.rule.startswith("/genome"), rule
+            assert "model-health" not in rule.rule and "drift" not in rule.rule, rule
+    assert not [b for b in app.blueprints if b.startswith("intelligence") and ("drift" in b or "model_health" in b)]
+    assert (
+        app.view_functions["intelligence_ui.worked_out_connections"].__module__
+        == "app.modules.intelligence.routes.ui"
+    )
+    assert "genome" not in inspect.getsource(sys.modules["app.modules.intelligence.routes.ui"])
+
+
+def test_the_script_is_a_top_level_factory_that_reads_through_platform_fetch(app):
+    script = _scripts()["worked_out_connections.js"]
+    code = _code(script)
+    assert "window.workedOutConnections = workedOutConnections;" in script
+    assert "Alpine.data(" not in code
+    assert 'x-data="workedOutConnections()"' in _templates()["worked_out_connections.html"]
+    assert "Platform.fetch.get(YIELD_URL" in code
+    assert "'/api/v1/intelligence/yield'" in code
+    assert "Intelligence.recompute()" in code
+    assert not re.search(r"(?<![.\w])fetch\(", code) and "console." not in code
+    assert "toFixed" not in code and "Math.round" not in code
+
+
+def test_the_recalculation_asks_for_the_callers_own_tenant_and_only_that():
+    core = _code(_scripts()["core.js"])
+    assert "Platform.fetch.post(RECOMPUTE_URL, { scope: 'tenant' }" in core
+    assert "RECOMPUTE_URL = '/api/v1/intelligence/derivation/recompute'" in core
+
+
+def test_the_status_region_is_polite_and_holds_the_notice_and_its_button(app):
+    source = re.sub(r"\{#.*?#\}", "", _templates()["worked_out_connections.html"], flags=re.S)
+    region = re.search(r'<div role="status" aria-live="polite"[^>]*data-testid="derivation-status"[^>]*>(.*?)\n    </div>\n\n', source, re.S)
+    assert region, "the polite status region is missing"
+    assert "data-recompute-button" in region.group(1) and "Work them out now" in region.group(1)
+    assert 'x-text="statusLine"' in region.group(1)
+    assert "aria-disabled" in region.group(1), "the button keeps keyboard focus while it works"
+    assert ":disabled" not in region.group(1)
+
+
+def test_a_percent_sign_or_progress_element_or_verdict_word_is_never_on_the_page(
+    app, db_session, make_org, client, login_as
+):
+    source = re.sub(r"\{#.*?#\}", "", _templates()["worked_out_connections.html"], flags=re.S)
+    for shape in ("<progress", "<meter", 'role="progressbar"', "aria-valuenow", "bg-success", "bg-destructive",
+                  "text-success", "text-destructive", "text-warning"):
+        assert shape not in source, shape
+    script = _code(_scripts()["worked_out_connections.js"])
+    for word in ("good", "bad", "healthy", "excellent", "poor", "on track", "behind", "target"):
+        assert not re.search(r"\b" + word + r"\b", script, re.I), word
+    assert "%" not in "".join(_readable_strings(script))
+
+
+# --- the second question, the row's states, and the action in the out-of-date state ---
+
+
+def _method(code: str, name: str) -> str:
+    """The body of one method of the page's component object (they sit at one indent)."""
+    match = re.search(r"\n        (?:async )?" + re.escape(name) + r"\([^)]*\) \{\n(.*?)\n        \}(?:,|\n)", code, re.S)
+    assert match, f"method {name} not found"
+    return match.group(1)
+
+
+def _function_body(code: str, name: str) -> str:
+    match = re.search(r"\n    function " + re.escape(name) + r"\([^)]*\) \{\n(.*?)\n    \}\n", code, re.S)
+    assert match, f"function {name} not found"
+    return match.group(1)
+
+
+def test_the_figures_and_the_model_check_are_two_named_questions_asked_in_that_order():
+    code = _code(_scripts()["worked_out_connections.js"])
+    assert len(re.findall(r"Platform\.fetch\.get\(YIELD_URL", code)) == 2
+    assert code.count("{ part: 'figures' }") == 1 and code.count("{ part: 'model-check' }") == 1
+    assert "{ part: 'model-check' }" in _method(code, "checkModel")
+    assert "{ part: 'figures' }" in _method(code, "load")
+    load = _method(code, "load")
+    assert re.search(r"if \(!refresh && self\.loaded\)", load), "asked after the first read only, and only if it drew"
+    assert "self.checkModel()" in load and "window.setTimeout(" in load
+    assert "checkModel" not in _method(code, "recomputeNow") and "checkModel" not in _method(code, "apply")
+
+
+def test_the_figures_answer_never_writes_the_drift_row_and_a_recalculation_leaves_it_alone():
+    code = _code(_scripts()["worked_out_connections.js"])
+    assert "drift" not in _method(code, "apply"), "the figures answer carries no drift count to show"
+    assert "drift" not in _method(code, "recomputeNow"), "the row keeps the value it has"
+    assert _method(code, "checkModel").count("this.drift =") == 3, "loading, the answer, or could not check"
+    assert len(re.findall(r"this\.drift =", code)) == 3, "the row is written by the model check alone"
+
+
+def test_the_model_check_is_asked_once_and_only_when_its_row_is_on_the_page():
+    code = _code(_scripts()["worked_out_connections.js"])
+    body = _method(code, "checkModel")
+    assert "this.modelChecked" in body and "!this.$refs.driftRow" in body
+    template = re.sub(r"\{#.*?#\}", "", _templates()["worked_out_connections.html"], flags=re.S)
+    guarded = re.search(
+        r"\{% if 'genome_drift\.index' in flask\.current_app\.view_functions %\}(.*?)\{% endif %\}", template, re.S
+    ).group(1)
+    assert 'x-ref="driftRow"' in guarded and template.count('x-ref="driftRow"') == 1
+
+
+def test_only_a_whole_number_is_a_count_and_the_row_has_exactly_four_states():
+    code = _code(_scripts()["worked_out_connections.js"])
+    assert re.search(r"function isWholeCount\(value\) \{\s*return isCount\(value\) && Math\.floor\(value\) === value && value >= 0;", code)
+    body = _function_body(code, "driftFrom")
+    assert body.index("isWholeCount(data.drift_finding_count)") < body.index("too_large") < body.index("unavailableDrift()")
+    assert "'counted'" in body and "data.drift_finding_count === null" in body
+    states = set(re.findall(r"state: '(\w+)'", code))
+    assert states == {"loading", "counted", "too_large", "unavailable"}, states
+    template = re.sub(r"\{#.*?#\}", "", _templates()["worked_out_connections.html"], flags=re.S)
+    assert "drift.state === 'loading'" in template and "drift.state === 'unavailable'" in template
+    assert 'x-show="drift.linked"' in template
+    assert "skeleton_text(lines=2)" in template.split("data-testid=\"drift-row\"")[1]
+
+
+def test_the_out_of_date_state_offers_the_same_recalculation_action_as_the_not_worked_out_state():
+    code = _code(_scripts()["worked_out_connections.js"])
+    assert "this.showRecompute = notWorkedOut || outOfDate;" in _method(code, "apply")
+    template = re.sub(r"\{#.*?#\}", "", _templates()["worked_out_connections.html"], flags=re.S)
+    region = re.search(r'<div role="status" aria-live="polite"[^>]*data-testid="derivation-status"[^>]*>(.*?)\n    </div>\n\n', template, re.S).group(1)
+    assert "stale_line('staleLine')" in region, "the out-of-date line and its action share the polite region"
+    assert region.index("stale_line('staleLine')") < region.index("data-recompute-button")
+    assert region.count("data-recompute-button") == 1, "one button for both states"
+    ask = _templates()["_impact_states.html"]
+    assert "data-stale-notice" in ask and "recompute_action()" in ask.split("data-stale-notice")[1]
+
+
+def test_the_response_time_card_is_chosen_by_the_answers_reason_never_by_a_null_figure():
+    code = _code(_scripts()["worked_out_connections.js"])
+    body = _function_body(code, "responseReading")
+    assert body.count("'notEnough'") == 1
+    assert re.search(
+        r"if \(hasReason\(data, 'insufficient_samples_for_p95'\)\) return \{ kind: 'notEnough'", body
+    ), "the not-enough card is chosen by its reason code alone"
+    assert body.index("'measured'") < body.index("'above'") < body.index("'notEnough'") < body.rindex("'absent'")
+    assert not re.search(r"p95_latency_seconds\s*(===|==)\s*null|!\s*isCount\(data\.p95_latency_seconds\)", body)
+
+
+def test_the_time_the_last_run_finished_never_stands_in_for_the_time_it_was_worked_out():
+    code = _code(_scripts()["worked_out_connections.js"])
+    assert "last_run_at" not in code
+    assert not re.search(r"computed_at\s*\|\|", code)
+    assert "'Worked out at'" in code
+
+
+def test_the_copy_guards_check_status_labels_shapes_and_the_two_banned_words_and_nothing_else():
+    """The guards in this file and in the browser journey are pinned to what they are for: status-label
+    words, file, path, hash and identifier shapes, and the two words this screen never uses. A guard
+    that grows a list of other vocabulary would carry that vocabulary in the repository."""
+    import ast
+
+    def _patterns(path):
+        found = {}
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if (
+                isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name)
+                and isinstance(node.value, ast.Call) and ast.unparse(node.value.func) == "re.compile"
+            ):
+                found[node.targets[0].id] = "".join(
+                    part.value for part in ast.walk(node.value.args[0]) if isinstance(part, ast.Constant)
+                )
+        return found
+
+    here = _patterns(Path(__file__))
+    journey = _patterns(REPO_ROOT / "tests" / "smoke" / "test_intelligence_us5_journey.py")
+    status_labels = r"\b(?:VERIFIED|UNVERIFIED|TBC|TODO)\b|(?i:to be confirmed)"
+    banned = r"\b(?:yield|health)\b"
+
+    assert here["STATUS_LABELS"] == status_labels and journey["STATUS_LABELS"] == status_labels
+    assert here["BANNED_WORDS"] == banned and journey["BANNED"] == banned
+    assert set(here) >= {"FORBIDDEN_SHAPES", "INTERNAL_SHAPES"} and "SHAPES" in journey
+    assert not set(here) & {"INTERNAL_WORDS", "INTERNAL"} and not set(journey) & {"INTERNAL_WORDS", "INTERNAL"}
+
+    # ...and each guard is live: it finds what it is for.
+    assert STATUS_LABELS.search("Status: TBC") and STATUS_LABELS.search("to be confirmed")
+    assert BANNED_WORDS.search("Yield") and BANNED_WORDS.search("Model health")
+    assert FORBIDDEN_SHAPES.search("see app/x.py") and FORBIDDEN_SHAPES.search("a1b2c3d4e5f6")
+    assert INTERNAL_SHAPES.search("archie_intelligence_query_seconds")

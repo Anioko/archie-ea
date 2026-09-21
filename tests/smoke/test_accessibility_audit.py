@@ -136,6 +136,9 @@ AUDIT = [
     # and with the provenance drawer open are audited separately, below.
     ("solution_architect", "/intelligence/ask"),
     ("enterprise_architect", "/intelligence/twin-map"),
+    # Worked-out connections joins at zero accepted violations as well, and is never
+    # baselined.
+    ("solution_architect", "/intelligence/worked-out-connections"),
 ]
 
 # The states of the two new surfaces that a plain page load cannot reach: the answer

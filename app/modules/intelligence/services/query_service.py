@@ -10,6 +10,7 @@ particular) this module implements.
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from app.extensions import db
@@ -19,12 +20,18 @@ from app.modules.intelligence.services.latency_probe import record_query_latency
 from app.modules.intelligence.services.plain_terms import plain_terms_sentence
 from app.modules.intelligence.services.reason_codes import validate_reason_code
 
+logger = logging.getLogger(__name__)
+
 VALID_DIRECTIONS = {"downstream", "upstream", "both"}
 
 NO_OWNERSHIP_REASON = validate_reason_code("no_ownership_recorded")
 NO_TENANT_CONTEXT_REASON = validate_reason_code("no_tenant_context")
 ELEMENT_NOT_FOUND_REASON = validate_reason_code("element_not_found")
 DERIVATION_NOT_COMPUTED_REASON = validate_reason_code("derivation_not_computed")
+NO_RECOMPUTE_DURATION_REASON = validate_reason_code("no_recompute_duration_recorded")
+SOURCE_UNAVAILABLE_REASON = validate_reason_code("source_unavailable")
+DRIFT_COUNT_NOT_REQUESTED_REASON = validate_reason_code("drift_count_not_requested")
+MODEL_TOO_LARGE_REASON = validate_reason_code("model_too_large_for_drift_check")
 
 # T-005 (D1): the NFR-5 measurement point is this exact, PINNED series --
 # never widened, never aggregated across label values.
@@ -36,6 +43,21 @@ NFR5_INCLUDE_DERIVED = "true"
 # Shape-B trigger's threshold_seconds -- never as a yield target (task 02
 # constraint: no fabricated target anywhere in the payload).
 SHAPE_B_THRESHOLD_SECONDS = 2.0
+
+# One observation per request, on the request's own series of the query-latency
+# histogram. Neither is the pinned response-time series above, which stays the
+# only one the response-time figure reads.
+DERIVATION_YIELD_SERIES = "derivation_yield"
+MODEL_DRIFT_SERIES = "model_drift_count"
+
+# The model check runs the drift detector, whose near-duplicate stage compares
+# every pair of same-layer names, so its cost grows with the square of the
+# element count: about 1.4 s at 1,000 elements, 5.7 s at 2,000 and 13 s at
+# 3,000 on a model with no findings, and past the worker's time limit near
+# 10,000. Above this many elements the model check does not run it and says so.
+# The bound is enforced before the work starts, by size, because a clock that
+# fires part way through would already have spent the worker.
+DRIFT_COUNT_MAX_ELEMENTS = 1000
 
 
 def _include_derived_gate(include_derived: bool) -> bool:
@@ -440,46 +462,95 @@ def _not_computed_counts() -> Dict[str, Any]:
     }
 
 
+def _detector_total(organization_id: int) -> Tuple[Optional[int], Optional[str]]:
+    """The drift detector's total for the tenant, or ``None`` and a reason.
+
+    This is the only place the detector is called from, and only the model
+    check reaches it (behind the size guard). Only the report's own
+    ``summary["total"]`` is read; the findings, their severities and their
+    fixes belong to the page that owns them. A detector that cannot be read is
+    reported as unavailable, never as a count of zero, which would read as "no
+    drift". A total that is not a non-negative whole number (a negative, a
+    boolean, a fraction, a string) is not a count of anything and is reported
+    the same way.
+    """
+    try:
+        from app.modules.genome.services.drift_detector import detect_model_drift
+
+        total = detect_model_drift(organization_id)["summary"]["total"]
+    except Exception:
+        logger.warning(
+            "intelligence.yield: the drift detector could not be read for organization %s",
+            organization_id,
+            exc_info=True,
+        )
+        # A failed read can leave the session mid-transaction; the rest of the
+        # request still needs it.
+        db.session.rollback()
+        return None, SOURCE_UNAVAILABLE_REASON
+    if isinstance(total, bool) or not isinstance(total, int) or total < 0:
+        logger.warning(
+            "intelligence.yield: the drift detector returned %r as its total for organization %s",
+            total,
+            organization_id,
+        )
+        return None, SOURCE_UNAVAILABLE_REASON
+    return total, None
+
+
 class IntelligenceQueryService:
     """DE-9: read-only cross-layer intelligence queries."""
 
     @staticmethod
     def derivation_yield(organization_id: int) -> Dict[str, Any]:
-        """DE-11 (US-5): "how much does derivation add", for one tenant.
+        """DE-11 (US-5): "how much does derivation add, and how fresh is it",
+        for one tenant: the figures read of the yield endpoint.
 
-        Read ``docs/buckets/t005-us5-yield-report/tasks/
-        00-verification-notes.md`` D1-D4, D8, D11, D12 before changing this
-        method -- several defects there correct the parent brief and are
-        binding.
+        Every count is the tenant's own and every absent value is ``None``
+        with a reason code in ``reasons``, never a zero:
 
-        p95 is read from the T-004 histogram at a PINNED selector (D1) via a
-        bucket-edge read (D3) -- never computed in application code, never
-        widened, never aggregated across label values. It is process-local
-        and estate-wide, not per tenant (D4), so it is reported as its own
-        nested, self-describing block on BOTH branches (it measures query
-        latency, not derivation -- suppressing it on the not-computed branch
-        would hide a real breach).
+        - ``explicit_count`` is the tenant's explicit relationship rows, the
+          same rows the derivation runner counts.
+        - ``derived_count`` is every row the derived-fact store holds for the
+          tenant, current and stale. (The aggregate's ``current_count`` is a
+          different number: the rows that are not stale.) ``stale_count`` is
+          the part of ``derived_count`` that has gone out of date. ``ratio`` is
+          ``derived_count`` over ``explicit_count``, ``None`` when there are no
+          explicit relationships.
+        - ``state`` is ``not_computed`` when derivation has never run for the
+          tenant (no run record and no stored fact), ``stale`` when any stored
+          fact is out of date, else ``current``. A run that derived nothing is
+          ``current`` with a derived count of zero: a measured zero, which
+          reads differently from never having run.
+        - ``last_recompute_duration_ms`` is the last completed run's own
+          measured duration, ``None`` with ``no_recompute_duration_recorded``
+          when there is no run to read it from.
+        - ``p95_latency_seconds`` and ``sample_count`` are read from one
+          pinned label set of the query-latency histogram (see
+          ``read_p95_bucket_edge``); the same reading is carried, with its
+          scope, in the nested ``p95`` block. It is one worker process's
+          record of one query at one depth, not a deployment-wide figure and
+          not a per-tenant one.
+        - ``drift_finding_count`` is always ``None`` here, with
+          ``drift_count_not_requested`` in ``reasons``: this read never runs
+          the drift detector. The model check (``model_check``) is the read
+          that does.
 
-        ``explicit_count``/``derived_count``/``ratio``/
-        ``last_recompute_duration_ms`` come from the tenant's
-        ``DerivationRun`` row itself -- the SAME values API-7's recompute
-        response already returns (D8: two surfaces, one answer; a store-
-        agreement test pins this). ``computed_at``/``engine_version``/
-        ``stale_count`` come from ``derived_fact_aggregates`` -- the store's
-        OWN current state (D9: never the ``ENGINE_VERSION`` module
-        constant).
+        The whole read, including the assembly of the payload, is inside its
+        one timed block, so its observation is the request's own time.
         """
         from app.modules.intelligence.services.derived_facts import (
             derived_fact_aggregates,
+            explicit_relationship_count,
             latest_derivation_run,
         )
         from app.modules.intelligence.services.latency_probe import read_p95_bucket_edge
         from app.modules.intelligence.services.observability import record_shape_b_trigger
 
-        # D2: this call is wrapped in its OWN series (query="derivation_yield")
+        # This read is wrapped in its OWN series (query="derivation_yield")
         # -- the p95 read below is pinned to "cross_layer_impact" only, and is
         # therefore unaffected by calling this endpoint repeatedly.
-        with record_query_latency("derivation_yield") as scope:
+        with record_query_latency(DERIVATION_YIELD_SERIES) as scope:
             scope.organization_id = organization_id
 
             p95_read = read_p95_bucket_edge(
@@ -497,10 +568,10 @@ class IntelligenceQueryService:
             if p95_read.get("p95_exceeds_seconds") is not None:
                 p95_block["p95_exceeds_seconds"] = p95_read["p95_exceeds_seconds"]
 
-            # D3/D11: a real value OR the honest "exceeds the highest
-            # declared bucket" fact both constitute a genuine breach signal
-            # -- the Shape-B trigger must fire on either (task 02 acceptance
-            # item 6), never only on the interpolated case.
+            # A real value OR the honest "exceeds the highest declared
+            # bucket" fact both constitute a genuine breach signal -- the
+            # Shape-B trigger fires on either, never only on the interpolated
+            # case.
             breach_value = p95_read["latency_seconds"]
             if breach_value is None and p95_read["reason"] == "p95_above_highest_bucket":
                 breach_value = p95_read.get("p95_exceeds_seconds")
@@ -518,42 +589,105 @@ class IntelligenceQueryService:
                 shape_b_trigger = record.as_dict()
 
             run = latest_derivation_run(organization_id)
-            if run is None:
-                payload: Dict[str, Any] = {
-                    "organization_id": organization_id,
-                    "state": "not_computed",
-                    "reason": DERIVATION_NOT_COMPUTED_REASON,
-                    "reasons": [],
-                    **_not_computed_counts(),
-                    "p95": p95_block,
-                    "shape_b_trigger": shape_b_trigger,
-                }
+            agg = derived_fact_aggregates(organization_id)
+            computed = run is not None or agg["total_count"] > 0
+
+            reasons: List[str] = []
+            if not computed:
+                reasons.append(DERIVATION_NOT_COMPUTED_REASON)
+            if p95_read["reason"] is not None:
+                reasons.append(validate_reason_code(p95_read["reason"]))
+            duration_ms = run.duration_ms if run is not None else None
+            if duration_ms is None:
+                reasons.append(NO_RECOMPUTE_DURATION_REASON)
+            reasons.append(DRIFT_COUNT_NOT_REQUESTED_REASON)
+
+            payload: Dict[str, Any] = {
+                "organization_id": organization_id,
+                "p95_latency_seconds": p95_read["latency_seconds"],
+                "sample_count": p95_read["sample_count"],
+                "p95": p95_block,
+                "shape_b_trigger": shape_b_trigger,
+                "last_recompute_duration_ms": duration_ms,
+                "drift_finding_count": None,
+            }
+            if not computed:
+                payload.update(
+                    {
+                        "state": "not_computed",
+                        "reason": DERIVATION_NOT_COMPUTED_REASON,
+                        **_not_computed_counts(),
+                    }
+                )
             else:
-                agg = derived_fact_aggregates(organization_id)
-                payload = {
-                    "organization_id": organization_id,
-                    "state": "computed",
-                    "explicit_count": run.explicit_count,
-                    "derived_count": run.derived_count,
-                    "ratio": float(run.ratio) if run.ratio is not None else None,
-                    "computed_at": agg["computed_at"].isoformat() if agg["computed_at"] else None,
-                    # D-5 (refuter): the derived-fact store's own computed_at
-                    # is honestly null for a tenant whose latest run produced
-                    # zero derived facts (nothing lands in
-                    # archimate_derived_relationships to stamp). last_run_at
-                    # is a distinct fact -- when derivation itself last
-                    # genuinely ran, from intelligence_derivation_runs -- so a
-                    # measured-zero tenant is not under-reporting a timestamp
-                    # the system already has. Never repurposes computed_at,
-                    # which still specifically describes store freshness.
-                    "last_run_at": run.finished_at.isoformat() if run.finished_at else None,
-                    "engine_version": agg["engine_versions"],
-                    "stale_count": agg["stale_count"],
-                    "last_recompute_duration_ms": run.duration_ms,
-                    "p95": p95_block,
-                    "shape_b_trigger": shape_b_trigger,
-                    "reasons": [],
-                }
+                explicit_count = explicit_relationship_count(organization_id)
+                derived_count = agg["total_count"]
+                payload.update(
+                    {
+                        "state": "stale" if agg["stale_count"] > 0 else "current",
+                        "explicit_count": explicit_count,
+                        "derived_count": derived_count,
+                        "ratio": (derived_count / explicit_count) if explicit_count else None,
+                        "computed_at": agg["computed_at"].isoformat() if agg["computed_at"] else None,
+                        # A run that derived nothing leaves no stored fact to
+                        # stamp, so the store's own ``computed_at`` is honestly
+                        # null for it. ``last_run_at`` is a distinct fact: when
+                        # derivation itself last finished, from the run record.
+                        # It never stands in for ``computed_at``, which
+                        # describes the freshness of the stored facts.
+                        "last_run_at": (
+                            run.finished_at.isoformat() if run is not None and run.finished_at else None
+                        ),
+                        "engine_version": (
+                            agg["engine_versions"]
+                            or ([run.engine_version] if run is not None and run.engine_version else None)
+                        ),
+                        "stale_count": agg["stale_count"],
+                    }
+                )
+            payload["reasons"] = reasons
+
+        return payload
+
+    @staticmethod
+    def model_check(organization_id: int) -> Dict[str, Any]:
+        """DE-11 (US-5): the model-check read of the yield endpoint: how many
+        things the drift detector found in the tenant's model.
+
+        The detector's cost grows with the square of the element count, so it
+        runs only when the tenant has ``DRIFT_COUNT_MAX_ELEMENTS`` elements or
+        fewer. Above that the answer is ``drift_finding_count: None`` with
+        ``model_too_large_for_drift_check``, and the detector is never called.
+        A detector that raises, or returns a total that is not a non-negative
+        whole number, is ``None`` with ``source_unavailable``. A count of zero
+        is only ever a detector's own zero.
+
+        ``element_count`` is the number of elements the size guard measured.
+        The whole read (the element count, the comparison and the detector call
+        when it happens) is inside one timed block, on the model check's own
+        series, and nothing is added to the answer after the block closes.
+        """
+        from app.modules.intelligence.services.derived_facts import active_element_count
+
+        with record_query_latency(MODEL_DRIFT_SERIES) as scope:
+            scope.organization_id = organization_id
+
+            element_count = active_element_count(organization_id)
+            reasons: List[str] = []
+            if element_count > DRIFT_COUNT_MAX_ELEMENTS:
+                drift_finding_count: Optional[int] = None
+                reasons.append(MODEL_TOO_LARGE_REASON)
+            else:
+                drift_finding_count, reason = _detector_total(organization_id)
+                if reason is not None:
+                    reasons.append(reason)
+
+            payload: Dict[str, Any] = {
+                "organization_id": organization_id,
+                "drift_finding_count": drift_finding_count,
+                "element_count": element_count,
+                "reasons": reasons,
+            }
 
         return payload
 
