@@ -116,7 +116,17 @@ DEPENDENCIES:
                  });
                  this.$watch('searchQuery', (q) => finder.search(q));
              },
-             searching() { return this.searchQuery.trim().length > 0; }
+             // >= 2, matching module_search.js's own MIN_LENGTH: below that, finder.search()
+             // publishes an empty result set without asking the server (the endpoint 400s under 2
+             // characters). A literal double-quote is not safe in this comment: the whole x-data
+             // value below is itself inside a double-quoted HTML attribute, so a quote character
+             // here -- even inside a JS comment -- ends the attribute early and truncates the
+             // object literal (the earlier wording of this comment did exactly that: it broke this
+             // predicate for every keystroke, not just under 2 characters). Before this fix, this
+             // predicate returning true on any keystroke hid every zone and showed a false no-match
+             // message on the very first character -- a not-asked state rendered as a real miss,
+             // wiping the whole sidebar navigation down to one link.
+             searching() { return this.searchQuery.trim().length >= 2; }
          }">
 
         <!-- Search Box -->

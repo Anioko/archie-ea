@@ -23,7 +23,7 @@ destination was requested with a logged-in client:
 from flask import current_app, render_template, url_for
 from flask_login import current_user, login_required
 
-from app.utils.role_access import _ZONE_TITLES, SIDEBAR_ZONES, can_access_section
+from app.utils.role_access import _ZONE_TITLES, SIDEBAR_ZONES, can_access_section, link_requires_satisfied
 
 from . import modules_directory_bp
 
@@ -41,10 +41,22 @@ _SECTION_BY_ENDPOINT_PREFIX = {
 }
 
 
-def _link_visible(endpoint: str) -> bool:
-    """False when `endpoint` belongs to a role-exclusive section this user has
-    no access to, so the directory never renders a guaranteed-403 link."""
+def _link_visible(endpoint: str, requires: str | None = None) -> bool:
+    """False when `endpoint` belongs to a role-exclusive section this user has no access to, or the
+    link itself declares a `requires` guard (role_access.py's `_link(requires=...)`) the user does not
+    satisfy, so the directory (and sidebar search, which reuses this via `visible_module_links()`)
+    never renders a guaranteed-403 link.
+
+    The prefix table below and `requires` are two different, non-overlapping gates: the prefix table
+    covers whole endpoint-prefix sections (procurement, my_applications) that have no `requires` of
+    their own, while `requires` covers individual links inside zones that are otherwise open, like
+    Errors (platform_admin) sitting in a zone most roles can see. Checking only one missed the other:
+    a search for "error" offered `error_events.errors_dashboard` to any signed-in role and hard-403'd
+    on click, because `requires="platform_admin"` was never consulted here, only by get_sidebar_zones().
+    """
     if endpoint in _NOT_RENDERED:
+        return False
+    if not link_requires_satisfied(current_user, requires):
         return False
     for prefix, section in _SECTION_BY_ENDPOINT_PREFIX.items():
         if endpoint.startswith(prefix):
@@ -181,7 +193,7 @@ def visible_module_links():
     """`all_module_links()` minus anything the *current* user is structurally
     barred from (role-exclusive sections). Global search must use this, not
     `all_module_links()`: a result that 403s on click is a dead result."""
-    return [link for link in all_module_links() if _link_visible(link["endpoint"])]
+    return [link for link in all_module_links() if _link_visible(link["endpoint"], link.get("requires"))]
 
 
 def _grouped_zone_sections():
@@ -202,7 +214,7 @@ def _grouped_zone_sections():
                 continue
             bucket = buckets.setdefault(zone["zone"], {})
             for link in zone["links"]:
-                if not _link_visible(link["endpoint"]):
+                if not _link_visible(link["endpoint"], link.get("requires")):
                     continue
                 bucket.setdefault(link["endpoint"], link)
 
