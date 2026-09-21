@@ -737,6 +737,113 @@ def test_generic_required_assignment_refusal_and_preservation(
             assert "already healthy" not in result.output
 
 
+@pytest.mark.parametrize("shape", [
+    "same_table", "other_table", "relation", "alternate", "other_schema", "long_name",
+])
+def test_generic_required_index_identity_and_preview(
+    app, db_session, make_org, monkeypatch, schema_shape, shape
+):
+    from sqlalchemy import text
+
+    from app.commands.tenant_schema import _HAS_INDEX
+    from app.models.adm_kanban import KanbanBoard
+
+    command = _generic_subset(monkeypatch, "kanban_boards")
+    org = make_org("index-owner")
+    user = _make_user(db_session, org)
+    board = KanbanBoard(name=uuid.uuid4().hex, created_by_id=user.id, organization_id=org.id)
+    db_session.add(board)
+    db_session.flush()
+    item_id, org_id = board.id, org.id
+    with schema_shape("kanban_boards", "users") as conn:
+        table = "kanban_boards"
+        if shape == "long_name":
+            # Exercise quoted case and PostgreSQL truncation of the generated
+            # index name on the same real table, within the schema savepoint.
+            table = "Board_" + uuid.uuid4().hex + "x" * 22
+            db_session.execute(text(f'ALTER TABLE public.kanban_boards RENAME TO "{table}"'))
+            monkeypatch.setattr(command, "_tenant_tables", lambda: [(table, False)])
+        target = f'"public"."{table}"'
+        index_name = f"ix_{table}_organization_id"
+        for index in _catalog(conn, table)["indexes"]:
+            if index["column_names"] and index["column_names"][0] == "organization_id":
+                quoted = conn.dialect.identifier_preparer.quote(index["name"])
+                db_session.execute(text(f'DROP INDEX public.{quoted}'))
+        db_session.execute(text(f'ALTER TABLE {target} ALTER COLUMN organization_id DROP NOT NULL'))
+        db_session.execute(text(
+            f'UPDATE {target} SET organization_id = NULL WHERE id = :id'
+        ), {"id": item_id})
+        if shape == "relation":
+            db_session.execute(text(f'CREATE VIEW public."{index_name}" AS SELECT 1 AS marker'))
+        elif shape == "other_schema":
+            temporary = f"index_shape_{uuid.uuid4().hex}"
+            db_session.execute(text(f'CREATE TEMP TABLE "{temporary}" (organization_id INTEGER)'))
+            db_session.execute(text(
+                f'CREATE INDEX "{index_name}" ON pg_temp."{temporary}" (organization_id)'
+            ))
+        else:
+            indexed_table, column = ("public.users", "email") if shape == "other_table" else (target, "name")
+            db_session.execute(text(f'CREATE INDEX "{index_name}" ON {indexed_table} ({column})'))
+        if shape == "alternate":
+            alternate = f"owner_{uuid.uuid4().hex}"
+            db_session.execute(text(f'CREATE INDEX "{alternate}" ON {target} (organization_id, id)'))
+        db_session.commit()
+
+        def snapshot():
+            return {
+                "catalogs": [_catalog(conn, table), _catalog(conn, "users")],
+                "rows": conn.execute(text(
+                    f"SELECT id, organization_id, (to_jsonb(t) - 'organization_id')::text "
+                    f'FROM {target} t ORDER BY id'
+                )).all(),
+                "relations": conn.execute(text(
+                    "SELECT c.oid, c.relnamespace, c.relname, c.relkind, i.indrelid, "
+                    "i.indkey::text, i.indisvalid FROM pg_catalog.pg_class c "
+                    "LEFT JOIN pg_catalog.pg_index i ON i.indexrelid = c.oid "
+                    "WHERE c.relname = CAST(:name AS name) ORDER BY c.oid"
+                ), {"name": index_name}).all(),
+            }
+
+        before = snapshot()
+        succeeds = shape in {"alternate", "other_schema"}
+        outputs = []
+        for args in (["--dry-run"], []):
+            result = app.test_cli_runner().invoke(
+                command.backfill_layer_tenancy, ["--org-id", str(org_id), *args]
+            )
+            outputs.append(result.output)
+            if succeeds:
+                assert result.exit_code == 0, result.output
+            else:
+                assert result.exit_code != 0 and "is occupied" in result.output
+                assert "already healthy" not in result.output
+                assert "repaired" not in result.output
+            if args or not succeeds:
+                assert snapshot() == before
+        if succeeds:
+            assert conn.execute(text(
+                f'SELECT organization_id FROM {target} WHERE id = :id'
+            ), {"id": item_id}).scalar_one() == org_id
+            assert conn.execute(text(_HAS_INDEX), {
+                "table": target, "column": "organization_id",
+            }).first() is not None
+            assert next(c for c in _catalog(conn, table)["columns"] if c[0] == "organization_id")[2] is False
+            if shape == "alternate":
+                assert _catalog(conn, table)["indexes"] == before["catalogs"][0]["indexes"]
+                assert snapshot()["relations"] == before["relations"]
+            after = snapshot()
+            assert after["catalogs"][1] == before["catalogs"][1]
+            assert all(relation in after["relations"] for relation in before["relations"])
+            assert after["rows"] == [
+                (row_id, org_id if row_id == item_id else owner, contents)
+                for row_id, owner, contents in before["rows"]
+            ]
+            assert command.repair_layer_tenancy()["repaired"] == []
+            assert snapshot() == after
+        else:
+            assert outputs[0] == outputs[1]
+
+
 @pytest.mark.parametrize("failure", ["add", "drop", "index", "set", "catalog"])
 def test_generic_sql_failure_rolls_back_and_next_invocation_works(
     app, db_session, monkeypatch, schema_shape, failure
@@ -789,9 +896,29 @@ def test_generic_sql_failure_rolls_back_and_next_invocation_works(
         assert result.exit_code == 0, result.output
 
 
+@pytest.fixture
+def ai_inspection_lock_timeout(db_session):
+    """Bound real inspection waits, including an accidental second connection."""
+    from sqlalchemy import event, text
+
+    from app import db
+
+    def bound_lock_wait(connection, cursor, statement, parameters, context, executemany):
+        if statement.lstrip().upper().startswith("SELECT"):
+            cursor.execute("SET LOCAL lock_timeout = '5s'")
+
+    engine = db.engine
+    event.listen(engine, "before_cursor_execute", bound_lock_wait)
+    try:
+        db_session.execute(text("SET LOCAL lock_timeout = '5s'"))
+        yield
+    finally:
+        event.remove(engine, "before_cursor_execute", bound_lock_wait)
+
+
 @pytest.mark.parametrize("generic_first", [False, True])
 def test_generic_preserves_ai_requester_policy_and_unresolved_failure(
-    app, db_session, make_org, monkeypatch, schema_shape, generic_first
+    app, db_session, make_org, monkeypatch, schema_shape, ai_inspection_lock_timeout, generic_first
 ):
     from datetime import datetime, timedelta
 
@@ -953,8 +1080,10 @@ def test_generic_zero_and_sole_org_policy_on_empty_scratch(
     from types import SimpleNamespace
 
     from sqlalchemy import text
+    from werkzeug.security import generate_password_hash
 
     from app.models.adm_kanban import KanbanBoard
+    from app.models.user import User
 
     if db_session.execute(text("SELECT count(*) FROM organizations")).scalar_one():
         pytest.skip("Requires an authorized scratch database with no pre-existing organizations")
@@ -965,8 +1094,15 @@ def test_generic_zero_and_sole_org_policy_on_empty_scratch(
         if required:
             db_session.execute(text("ALTER TABLE users ALTER COLUMN organization_id DROP NOT NULL"))
             db_session.execute(text("ALTER TABLE kanban_boards ALTER COLUMN organization_id DROP NOT NULL"))
-            user = _make_user(db_session, org)
-            board = KanbanBoard(name=uuid.uuid4().hex, created_by_id=user.id, organization_id=org.id)
+            # Core insertion represents a historical user without invoking the
+            # ORM listener that creates a default organization for new users.
+            user_id = db_session.execute(User.__table__.insert().values(
+                email=f"backfill-{uuid.uuid4().hex}@example.com",
+                first_name="Backfill", last_name="Tester", confirmed=True,
+                organization_id=org.id,
+                password_hash=generate_password_hash(uuid.uuid4().hex),
+            ).returning(User.__table__.c.id)).scalar_one()
+            board = KanbanBoard(name=uuid.uuid4().hex, created_by_id=user_id, organization_id=org.id)
             db_session.add(board)
             db_session.flush()
             item_id = board.id
@@ -975,7 +1111,12 @@ def test_generic_zero_and_sole_org_policy_on_empty_scratch(
             item_id = _unattributed_item(db_session, "archimate_element", 0)
         db_session.commit()
         before = _catalog(conn, table)
-        for args in (["--dry-run"], []):
+        invocations = [["--dry-run"], []]
+        if not required:
+            explicit = ["--org-id", str(org.id if org_count else -1)]
+            invocations.extend([explicit + ["--dry-run"], explicit])
+        for args in invocations:
+            assert conn.execute(text("SELECT count(*) FROM public.organizations")).scalar_one() == org_count
             result = app.test_cli_runner().invoke(command.backfill_layer_tenancy, args)
             owner = conn.execute(text(
                 f'SELECT organization_id FROM "{table}" WHERE id = :id'

@@ -149,6 +149,24 @@ def repair_layer_tenancy(org_id=None, dry_run=False):
                     "index/FK completion deferred to dedicated commands"
                 )
             else:
+                index_params = {"table": target, "column": "organization_id"}
+                has_index = conn.execute(text(_HAS_INDEX), index_params).first() is not None
+                index_name = f"ix_{t}_organization_id"
+                if not has_index:
+                    # Index names share the table's schema with all relations.
+                    # PostgreSQL's name cast applies its identifier length limit;
+                    # keep both the schema and quoted table identity exact.
+                    occupied = conn.execute(text(
+                        "SELECT c.oid FROM pg_catalog.pg_class c "
+                        "WHERE c.relnamespace = (SELECT relnamespace FROM pg_catalog.pg_class "
+                        "WHERE oid = to_regclass(:table)) "
+                        "AND c.relname = CAST(:index_name AS name)"
+                    ), {"table": target, "index_name": index_name}).first()
+                    if occupied:
+                        raise click.ClickException(
+                            f'{t}: cannot add organization index; public."{index_name}" '
+                            "is occupied and no valid organization-leading index exists"
+                        )
                 if not dry_run and missing:
                     conn.execute(text(f'ALTER TABLE {target} ADD COLUMN organization_id INTEGER'))
                 derivation = _DERIVABLE_ORG.get(t)
@@ -182,13 +200,11 @@ def repair_layer_tenancy(org_id=None, dry_run=False):
                         conn.execute(text(
                             f'UPDATE {target} SET organization_id = :o WHERE organization_id IS NULL'
                         ), {"o": resolved_org})
-                index_params = {"table": target, "column": "organization_id"}
-                has_index = conn.execute(text(_HAS_INDEX), index_params).first() is not None
                 if not has_index:
                     actions.append("add organization index")
                     if not dry_run:
                         conn.execute(text(
-                            f'CREATE INDEX IF NOT EXISTS "ix_{t}_organization_id" '
+                            f'CREATE INDEX IF NOT EXISTS "{index_name}" '
                             f'ON {target} (organization_id)'
                         ))
                 if missing or col["nullable"]:

@@ -21,7 +21,8 @@ def run_backfill(*, dry_run: bool = False):
     """Attribute NULL approval rows to their requester, safely and idempotently."""
     from sqlalchemy import inspect, text
 
-    inspector = inspect(db.engine)
+    conn = db.session.connection()
+    inspector = inspect(conn)
     if TABLE not in inspector.get_table_names():
         return {"backfilled": 0, "remaining_nulls": 0}
     columns = {column["name"] for column in inspector.get_columns(TABLE)}
@@ -30,7 +31,6 @@ def run_backfill(*, dry_run: bool = False):
             "ai_chat_crud_approvals.organization_id is absent; run reconcile-schema first"
         )
 
-    conn = db.session.connection()
     if dry_run:
         backfilled = conn.execute(
             text(
