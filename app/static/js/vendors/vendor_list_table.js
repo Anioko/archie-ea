@@ -56,6 +56,22 @@
                         this._tableInit();
                     },
 
+                    // ── Clear filters ─────────────────────────────────
+                    // clearFilters() resets the table state; the toolbar's search box and selects are plain
+                    // controls (not x-model), so reset what the user sees as well.
+                    clearAllFilters: function () {
+                        this.clearFilters();
+                        // Scoped to the table's own card, not this.$root: $root also contains the
+                        // vendor-mapping modal (components/unified_mapping_modal.html, included inside
+                        // the same x-data), whose filter selects share the "Filter by …" aria-label
+                        // convention. Querying $root directly blanked the modal's selects too, without
+                        // their own @change handlers firing, leaving its Alpine state stale.
+                        var card = this.$root.querySelector('[data-slot="card"]');
+                        if (!card) return;
+                        card.querySelectorAll('input[type="search"]').forEach(function (input) { input.value = ''; });
+                        card.querySelectorAll('select[aria-label^="Filter by"]').forEach(function (select) { select.value = ''; });
+                    },
+
                     // ── Edit modal ─────────────────────────────────────
                     openEditModal: function (row) {
                         this.editingId                 = row.id;
