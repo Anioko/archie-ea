@@ -22,7 +22,7 @@ from app.services.archimate_derivation_service import ArchiMateDerivationService
 # The module constant AA-3 requires: a later rule change bumps this, which is
 # what makes T-003's recompute selectively re-triggerable rather than a
 # blanket recompute of every tenant regardless of whether its rules changed.
-ENGINE_VERSION = "1.0.0"
+ENGINE_VERSION = "1.0.1"
 
 
 @dataclass(frozen=True)
@@ -114,9 +114,8 @@ class DerivationRunner:
 
         Additive to ``run()`` — computing without writing stays possible (the
         recompute job in task 03 is the caller that wants both). Must run
-        inside ``app.app_context()``; tenant scope is set once here and
-        covers both the compute and the persist, so no in-between window can
-        be observed from another tenant's scope.
+        inside ``app.app_context()``. Compute and persistence each enter a
+        fresh tenant scope; facts and the completed run share one commit.
 
         Upsert semantics (DA-1 natural key
         ``organization_id, source_element_id, target_element_id,

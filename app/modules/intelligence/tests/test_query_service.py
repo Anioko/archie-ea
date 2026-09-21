@@ -25,6 +25,8 @@ Also (refuter fix pass, not tied to a numbered acceptance item):
 
 from __future__ import annotations
 
+from app.modules.intelligence.services.derivation_runner import ENGINE_VERSION
+
 import uuid
 
 import pytest
@@ -70,7 +72,7 @@ def _derived(db_session, org_id, source, target, *, rule_id="R1", depth=2, chain
         depth=depth,
         confidence=1.0,
         provenance="derivation",
-        engine_version="v1",
+        engine_version=ENGINE_VERSION,
         computed_at=_dt.datetime.utcnow(),
         stale=stale,
         stale_since=_dt.datetime.utcnow() if stale else None,
@@ -681,7 +683,7 @@ def test_derived_row_carries_derived_id_and_engine_version(app, db_session, make
     assert derived
     for row in derived:
         assert row["relation"]["derived_id"] == fact.id
-        assert row["relation"]["engine_version"] == "v1"
+        assert row["relation"]["engine_version"] == ENGINE_VERSION
 
 
 def test_explicit_row_carries_null_derived_id_and_engine_version(app, db_session, make_org):

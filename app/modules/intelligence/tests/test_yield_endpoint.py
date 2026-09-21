@@ -14,6 +14,8 @@ tests.conftest (same pattern as test_impact_route.py).
 
 from __future__ import annotations
 
+from app.modules.intelligence.services.derivation_runner import ENGINE_VERSION
+
 import uuid
 
 import pytest
@@ -569,7 +571,7 @@ COUNT_FIELDS = (
 )
 
 
-def _derived_row(db_session, org_id, source, target, *, stale=False, engine_version="1.0.0"):
+def _derived_row(db_session, org_id, source, target, *, stale=False, engine_version=ENGINE_VERSION):
     import datetime
 
     from app.modules.intelligence.models.derived_relationship import DerivedRelationship
@@ -1851,3 +1853,86 @@ def test_the_not_computed_branch_is_null_not_zero_through_its_seam(app, db_sessi
         "stale_count", "last_recompute_duration_ms",
     }
     assert all(value is None for value in counts.values())
+
+
+@pytest.mark.parametrize("versions, expected", [
+    ([], "not_computed"), (["1.0.0"], "stale"), ([None], "stale"),
+    ([""], "stale"), (["9.0.0"], "stale"), ([ENGINE_VERSION], "current"),
+    (["1.0.0", ENGINE_VERSION], "current"), ([ENGINE_VERSION, "1.0.0"], "stale"),
+])
+@pytest.mark.parametrize("undated", [False, True], ids=["timestamped", "undated"])
+def test_zero_fact_yield_uses_latest_completed_run_version(
+    app, db_session, make_org, client, login_as, versions, expected, undated
+):
+    import datetime
+    from app.extensions import db
+    from app.modules.intelligence.models.derivation_run import DerivationRun
+    from app.modules.intelligence.services.query_service import IntelligenceQueryService
+
+    org_id = make_org("zero-yield").id
+    user = _user(db_session, org_id)
+    stamp = datetime.datetime(2026, 1, 2, 3, 4, 5)
+    for version in versions:
+        db_session.add(DerivationRun(
+            organization_id=org_id, started_at=None if undated else stamp,
+            finished_at=db.null() if undated else stamp,
+            explicit_count=0, derived_count=0, duration_ms=7, ratio=None,
+            engine_version=version, trigger="on_demand",
+        ))
+        db_session.flush()  # tie deliberately resolved by actual inserted ID
+    db_session.commit()
+    if undated:
+        # Read real SQL values: assigning None would invoke the Python default.
+        stored_times = db.session.execute(db.text(
+            "SELECT finished_at FROM intelligence_derivation_runs "
+            "WHERE organization_id = :org ORDER BY id"
+        ), {"org": org_id}).scalars().all()
+        assert stored_times == [None] * len(versions)
+    service = IntelligenceQueryService.derivation_yield(org_id)
+    endpoint = _yield_for(client, login_as, user)
+    for answer in (service, endpoint):
+        assert answer["state"] == expected
+        if versions:
+            assert answer["derived_count"] == answer["stale_count"] == answer["explicit_count"] == 0
+            assert answer["computed_at"] is None
+            assert answer["last_run_at"] == (None if undated else stamp.isoformat())
+            assert answer["last_recompute_duration_ms"] == 7
+            assert answer["engine_version"] == ([versions[-1]] if versions[-1] else None)
+        else:
+            assert answer["derived_count"] is None
+            assert answer["reason"] == "derivation_not_computed"
+        if expected == "stale":
+            assert answer["reason"] == "derivation_stale"
+            assert answer["reasons"].count("derivation_stale") == 1
+        else:
+            assert "derivation_stale" not in answer["reasons"]
+
+
+@pytest.mark.parametrize("versions, expected_stale", [
+    ([ENGINE_VERSION], 0), (["1.0.0"], 1), ([ENGINE_VERSION, "1.0.0"], 1),
+])
+def test_yield_counts_effectively_stale_facts_even_after_a_current_run(
+    app, db_session, make_org, client, login_as, versions, expected_stale
+):
+    from app.modules.intelligence.services.derivation_runner import DerivationRunner
+    org_id = make_org("yield-fact-versions").id
+    user = _user(db_session, org_id)
+    user_id = user.id
+    a, b, c = (_element(db_session, org_id, name) for name in "abc")
+    a_id, target_ids = a.id, [b.id, c.id]
+    _relationship(db_session, org_id, a, b)
+    db_session.commit()
+    DerivationRunner().run_and_persist(org_id, trigger="on_demand")
+    # The helper only consumes scalar endpoint IDs; avoid detached model access.
+    from types import SimpleNamespace
+    for version, target_id in zip(versions, target_ids):
+        _derived_row(db_session, org_id, SimpleNamespace(id=a_id), SimpleNamespace(id=target_id),
+                     engine_version=version)
+    db_session.commit()
+    answer = _yield_for(client, login_as, user_id)
+    assert answer["derived_count"] == len(versions)
+    assert answer["explicit_count"] == 1
+    assert answer["ratio"] == len(versions)
+    assert answer["stale_count"] == expected_stale
+    assert answer["state"] == ("stale" if expected_stale else "current")
+    assert answer["engine_version"] == sorted(set(versions))

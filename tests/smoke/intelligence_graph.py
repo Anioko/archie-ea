@@ -19,6 +19,7 @@ def seed_impact_graph(org_id, noun_prefix="Ledgerpay"):
     from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship
     from app.models.enterprise_intelligence import ApplicationOwnership, OrganizationUnit
     from app.modules.intelligence.models.derived_relationship import DerivedRelationship
+    from app.modules.intelligence.services.derivation_runner import ENGINE_VERSION
 
     app = create_app("testing")
     suffix = uuid.uuid4().hex[:6]
@@ -76,7 +77,7 @@ def seed_impact_graph(org_id, noun_prefix="Ledgerpay"):
             depth=2,
             confidence=0.82,
             provenance="derivation",
-            engine_version="1.0",
+            engine_version=ENGINE_VERSION,
             computed_at=datetime.datetime.utcnow(),
             stale=False,
         ))

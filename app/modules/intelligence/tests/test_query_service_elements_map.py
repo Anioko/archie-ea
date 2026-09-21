@@ -14,6 +14,8 @@ and, unless ``include_derived`` is true, none of the new keys.
 
 from __future__ import annotations
 
+from app.modules.intelligence.services.derivation_runner import ENGINE_VERSION
+
 import contextlib
 import datetime as _dt
 import time
@@ -101,7 +103,7 @@ def _derived(
     rule_id="R-07",
     depth=2,
     confidence=1.0,
-    engine_version="1.2.0",
+    engine_version=ENGINE_VERSION,
     stale=False,
 ):
     from app.modules.intelligence.models.derived_relationship import DerivedRelationship
@@ -664,7 +666,7 @@ def test_derived_row_carries_derived_id_and_engine_version_from_the_store(app, d
     fact = _derived(db_session, org.id, a, c, chain_element_ids=[a.id, m.id, c.id], engine_version="1.2.0")
     db_session.commit()
 
-    result = _impact(app, org.id, a.id, include_derived=True, with_owner=False)
+    result = _impact(app, org.id, a.id, include_derived=True, include_stale=True, with_owner=False)
     derived = [r for r in result["rows"] if r["relation"]["kind"] == "derived"]
     assert len(derived) == 1
     # The row shape is the contract: the internal join key used to name both
@@ -674,6 +676,7 @@ def test_derived_row_carries_derived_id_and_engine_version_from_the_store(app, d
     assert set(relation.keys()) == RELATION_KEYS
     assert relation["derived_id"] == fact.id
     assert relation["engine_version"] == "1.2.0"
+    assert relation["stale"] is True
     # Both come from the store's own values, not from a literal.
     from app.modules.intelligence.services.derived_facts import list_derived_facts
 
@@ -859,3 +862,40 @@ def test_route_degrades_to_an_empty_map_if_the_service_omits_elements(
     resp = client.get(f"/api/v1/intelligence/impact/{a_id}")
     assert resp.status_code == 200
     assert resp.get_json()["data"]["elements"] == {}
+
+
+@pytest.mark.parametrize("versions, expected_state", [
+    ([ENGINE_VERSION], "current"), (["1.0.0"], "stale"),
+    ([ENGINE_VERSION, "1.0.0"], "current"),
+])
+def test_impact_map_excludes_old_versions_and_flags_included_history(
+    app, db_session, make_org, versions, expected_state
+):
+    org_id = make_org("map-version").id
+    a = _element(db_session, org_id, "Lantern Quay source")
+    facts = []
+    for index, version in enumerate(versions):
+        middle = _element(db_session, org_id, f"Lantern Quay middle {index}")
+        target = _element(db_session, org_id, f"Lantern Quay target {index}")
+        facts.append(_derived(db_session, org_id, a, target,
+                              chain_element_ids=[a.id, middle.id, target.id], engine_version=version))
+    stored = [(f.id, f.engine_version, list(f.chain_element_ids)) for f in facts]
+    anchor = a.id
+    db_session.commit()
+    default = _impact(app, org_id, anchor, include_derived=True, with_owner=False)
+    included = _impact(app, org_id, anchor, include_derived=True, include_stale=True, with_owner=False)
+    assert default["summary"]["derivation_state"] == expected_state
+    assert included["summary"]["derivation_state"] == expected_state
+    assert default["summary"]["stale_count"] == 0
+    assert included["summary"]["stale_count"] == sum(v != ENGINE_VERSION for v in versions)
+    expected_ids = {row_id for row_id, version, _ in stored if version == ENGINE_VERSION}
+    assert {r["relation"]["derived_id"] for r in default["rows"]} == expected_ids
+    assert set(default["elements"]) == {
+        str(eid) for _, version, path in stored if version == ENGINE_VERSION for eid in path
+    }
+    assert set(included["elements"]) == {str(eid) for _, _, path in stored for eid in path}
+    for item in included["rows"]:
+        relation = item["relation"]
+        assert relation["stale"] is (relation["engine_version"] != ENGINE_VERSION)
+        if relation["stale"]:
+            assert item["reason"] == "derivation_stale"

@@ -11,6 +11,8 @@ Fixtures (app, db_session, make_org) come from this directory's conftest.
 
 from __future__ import annotations
 
+from app.modules.intelligence.services.derivation_runner import ENGINE_VERSION
+
 import datetime
 import inspect
 import re
@@ -37,7 +39,7 @@ def _relationship(db_session, org_id, source, target, type_="Serving"):
     return row
 
 
-def _derived(db_session, org_id, source, target, *, stale=False, engine_version="1.0.0", computed_at=None):
+def _derived(db_session, org_id, source, target, *, stale=False, engine_version=ENGINE_VERSION, computed_at=None):
     from app.modules.intelligence.models.derived_relationship import DerivedRelationship
 
     row = DerivedRelationship(
@@ -399,3 +401,67 @@ def test_the_element_count_runs_with_no_request_context_in_one_statement(app, db
     assert counted == 2
     assert len(selects) == 1, statements
     assert "count(" in selects[0].lower()
+
+
+@pytest.mark.parametrize("versions, physical, expected_current", [
+    ([ENGINE_VERSION], [False], 1),
+    (["1.0.0"], [False], 0),
+    ([ENGINE_VERSION, "1.0.0", "9.0.0", ""], [False] * 4, 1),
+    ([ENGINE_VERSION, ENGINE_VERSION], [False, True], 1),
+])
+def test_effective_currentness_agrees_across_lists_details_and_sql_counts(
+    app, db_session, make_org, versions, physical, expected_current
+):
+    from app.modules.intelligence.services.derived_facts import (
+        derived_fact_aggregates, get_derived_fact, list_derived_facts,
+    )
+    org_id = make_org("fact-currentness").id
+    foreign_id = make_org("fact-currentness-foreign").id
+    a, b = _element(db_session, org_id, "a"), _element(db_session, org_id, "b")
+    rows = [_derived(db_session, org_id, a, b, engine_version=v, stale=s)
+            for v, s in zip(versions, physical)]
+    stored = [(r.id, r.engine_version, r.computed_at, r.stale, r.stale_since, r.stale_reason) for r in rows]
+    db_session.commit()
+    current = list_derived_facts(org_id)
+    all_facts = list_derived_facts(org_id, include_stale=True)
+    assert len(current) == expected_current
+    assert len(all_facts) == len(versions)
+    for row_id, version, computed, stale, since, reason in stored:
+        effective_stale = stale or version != ENGINE_VERSION
+        fact = get_derived_fact(org_id, row_id)
+        assert fact == next(f for f in all_facts if f["id"] == row_id)
+        assert fact["stale"] is effective_stale
+        assert fact.get("reason") == ("derivation_stale" if effective_stale else None)
+        assert fact["engine_version"] == version
+        assert fact["computed_at"] == computed.isoformat()
+        assert get_derived_fact(org_id, row_id, include_stale=False) == (None if effective_stale else fact)
+        assert get_derived_fact(foreign_id, row_id) is None
+    agg = derived_fact_aggregates(org_id)
+    assert agg["total_count"] == len(versions)
+    assert agg["current_count"] == expected_current
+    assert agg["stale_count"] == len(versions) - expected_current
+    assert agg["engine_versions"] == sorted(set(versions))
+    assert agg["computed_at"] == max(r[2] for r in stored)
+    db_session.expire_all()
+    assert [(r.id, r.engine_version, r.computed_at, r.stale, r.stale_since, r.stale_reason)
+            for r in rows] == stored, "reads must not write flags, versions or timestamps"
+
+
+def test_null_legacy_version_is_stale_without_weakening_the_fact_schema(app, db_session):
+    from types import SimpleNamespace
+    from sqlalchemy import literal, select
+    from app.extensions import db
+    from app.modules.intelligence.services.derived_facts import _effective_current, _serialize
+
+    row = SimpleNamespace(id=1, organization_id=1, source_element_id=2, target_element_id=3,
+                          derived_type="Association", rule_id="fallback:access:access", chain=[4, 5],
+                          chain_element_ids=[2, 6, 3], depth=2, confidence=1, provenance="derivation",
+                          engine_version=None, computed_at=None, stale=False)
+    payload = _serialize(row)
+    assert payload["stale"] is True and payload["reason"] == "derivation_stale"
+    assert payload["engine_version"] is None and payload["computed_at"] is None
+    # Normal facts forbid NULL versions. Exercise null-safe SQL as scalar
+    # values rather than altering schema constraints or inventing a valid row.
+    model = SimpleNamespace(stale=literal(False), engine_version=literal(None))
+    assert db.session.execute(select(_effective_current(model))).scalar_one() is False
+    assert db.session.execute(select(~_effective_current(model))).scalar_one() is True

@@ -58,8 +58,8 @@ def _insert_stale_row(db_session, org_id, source, target, **overrides):
 # --- Acceptance item 1 (brief 8): sweep visits only stale-carrying tenants --
 
 
-def test_recompute_visits_only_stale_carrying_tenants(app, db_session, make_org):
-    from app.modules.intelligence.services.recompute_job import recompute_derived_facts
+def test_recompute_visits_only_stale_carrying_tenants(app, db_session, make_org, monkeypatch):
+    from app.modules.intelligence.services import recompute_job
 
     org_stale = make_org("rc-stale")
     org_clean = make_org("rc-clean")
@@ -67,11 +67,14 @@ def test_recompute_visits_only_stale_carrying_tenants(app, db_session, make_org)
     b = _make_element(db_session, org_stale.id, "b")
     _make_relationship(db_session, org_stale.id, a, b, "Serving")
     _insert_stale_row(db_session, org_stale.id, a, b)
+    org_stale_id, org_clean_id = org_stale.id, org_clean.id
     db_session.commit()
 
-    org_stale_id, org_clean_id = org_stale.id, org_clean.id
-
-    run = recompute_derived_facts(app)
+    real_selector = recompute_job.stale_carrying_organization_ids
+    owned = {org_stale_id, org_clean_id}
+    monkeypatch.setattr(recompute_job, "stale_carrying_organization_ids",
+                        lambda: [oid for oid in real_selector() if oid in owned])
+    run = recompute_job.recompute_derived_facts(app)
 
     visited_ids = {r.organization_id for r in run.results}
     assert org_stale_id in visited_ids
@@ -264,3 +267,104 @@ def test_recompute_reimplements_no_tenant_enumeration_or_locking():
     assert "run_for_each_tenant" in source
     assert "for organization_id in" not in source
     assert "pg_try_advisory_lock" not in source, "locking belongs to job_lock, not here"
+
+
+def test_actual_selector_uses_effective_facts_and_only_the_latest_run(
+    app, db_session, make_org, monkeypatch
+):
+    import datetime
+    from app.extensions import db
+    from app.modules.intelligence.models.derivation_run import DerivationRun
+    from app.modules.intelligence.services.derivation_runner import ENGINE_VERSION
+    from app.modules.intelligence.services.derived_facts import latest_derivation_run
+    from app.modules.intelligence.services import recompute_job
+
+    labels = ("old-fact", "graph-stale", "old-zero", "null-zero", "future-zero",
+              "current", "never", "history", "tie-old", "old-fact-new-run", "time-order",
+              "undated-old", "undated-current", "dated-current", "dated-old")
+    ids = {label: make_org("selector-" + label).id for label in labels}
+    stamp = datetime.datetime(2026, 1, 2)
+
+    def completed(label, version, finished=stamp):
+        # SQL NULL bypasses the Python finished_at default; None would not.
+        row = DerivationRun(organization_id=ids[label], started_at=finished,
+                            finished_at=db.null() if finished is None else finished,
+                            duration_ms=0, explicit_count=0, derived_count=0, engine_version=version,
+                            trigger="on_demand")
+        db_session.add(row)
+        db_session.flush()
+        if finished is None:
+            assert db.session.execute(db.text(
+                "SELECT finished_at IS NULL FROM intelligence_derivation_runs "
+                "WHERE organization_id = :org AND id = :id"
+            ), {"org": ids[label], "id": row.id}).scalar_one() is True
+        return row.id
+
+    for label, version, stale in (("old-fact", "1.0.0", False),
+                                  ("graph-stale", ENGINE_VERSION, True),
+                                  ("current", ENGINE_VERSION, False),
+                                  ("old-fact-new-run", "1.0.0", False)):
+        source = _make_element(db_session, ids[label], "source")
+        target = _make_element(db_session, ids[label], "target")
+        _insert_stale_row(db_session, ids[label], source, target, stale=stale,
+                          engine_version=version, stale_since=stamp if stale else None,
+                          stale_reason="relationship_updated" if stale else None)
+    completed("old-zero", "1.0.0")
+    completed("null-zero", None)
+    completed("future-zero", "9.0.0")
+    completed("current", ENGINE_VERSION)
+    completed("history", "1.0.0")
+    latest_current = completed("history", ENGINE_VERSION)  # same time, larger ID wins
+    completed("tie-old", ENGINE_VERSION)
+    latest_old = completed("tie-old", "1.0.0")
+    completed("old-fact-new-run", ENGINE_VERSION)
+    latest_by_time = completed("time-order", ENGINE_VERSION, stamp + datetime.timedelta(days=1))
+    completed("time-order", "1.0.0")  # larger ID but older time must lose
+    completed("undated-old", ENGINE_VERSION, None)
+    latest_undated_old = completed("undated-old", "1.0.0", None)
+    completed("undated-current", "1.0.0", None)
+    latest_undated_current = completed("undated-current", ENGINE_VERSION, None)
+    latest_dated_current = completed("dated-current", ENGINE_VERSION)
+    completed("dated-current", "1.0.0", None)  # higher ID cannot beat a known time
+    latest_dated_old = completed("dated-old", "1.0.0")
+    completed("dated-old", ENGINE_VERSION, None)
+    db_session.commit()
+    owned = set(ids.values())
+    real_selector = recompute_job.stale_carrying_organization_ids
+    selected = real_selector()
+    expected = {ids[k] for k in ("old-fact", "graph-stale", "old-zero", "null-zero",
+                                "future-zero", "tie-old", "old-fact-new-run",
+                                "undated-old", "dated-old")}
+    assert selected == sorted(set(selected))
+    assert all(type(value) is int for value in selected)
+    assert set(selected) & owned == expected
+    assert latest_derivation_run(ids["history"]).id == latest_current
+    assert latest_derivation_run(ids["tie-old"]).id == latest_old
+    assert latest_derivation_run(ids["time-order"]).id == latest_by_time
+    assert latest_derivation_run(ids["undated-old"]).id == latest_undated_old
+    assert latest_derivation_run(ids["undated-current"]).id == latest_undated_current
+    assert latest_derivation_run(ids["dated-current"]).id == latest_dated_current
+    assert latest_derivation_run(ids["dated-old"]).id == latest_dated_old
+    histories = {oid: list(db.session.execute(db.select(DerivationRun.id).where(
+        DerivationRun.organization_id == oid).order_by(DerivationRun.id)).scalars()) for oid in owned}
+    # The sweep's sessions share the rollback fixture connection. Close this
+    # read savepoint before their commits so later read cleanup cannot undo them.
+    db_session.remove()
+    # Enumeration really executes PostgreSQL; only the execution target set is
+    # intersected with positively owned fixtures, protecting shared tenants.
+    monkeypatch.setattr(recompute_job, "stale_carrying_organization_ids",
+                        lambda: [oid for oid in real_selector() if oid in owned])
+    run = recompute_job.recompute_derived_facts(app)
+    assert not run.skipped_locked
+    assert run.failed == 0
+    assert {r.organization_id for r in run.results} == expected
+    assert all(r.ok and r.value["skipped_locked"] is False for r in run.results)
+    for oid in owned:
+        rows = list(db.session.execute(db.select(DerivationRun).where(
+            DerivationRun.organization_id == oid).order_by(DerivationRun.id)).scalars())
+        assert [r.id for r in rows[:len(histories[oid])]] == histories[oid]
+        assert len(rows) == len(histories[oid]) + (1 if oid in expected else 0)
+        if oid in expected:
+            assert rows[-1].engine_version == ENGINE_VERSION
+            assert rows[-1].trigger == "scheduled"
+    assert not (set(real_selector()) & owned)

@@ -33,6 +33,17 @@ STRENGTH_ORDER = [
     "Specialization", "Association",
 ]
 STRENGTH_RANK = {r: i for i, r in enumerate(STRENGTH_ORDER)}
+_CANONICAL_RELATIONSHIP_TYPES = {r.casefold(): r for r in STRENGTH_ORDER}
+
+
+def canonical_relationship_type(raw: Any) -> str:
+    """Adapt known stored tokens only; aliases belong to the import/UI boundary."""
+    if isinstance(raw, str):
+        canonical = _CANONICAL_RELATIONSHIP_TYPES.get(raw.strip().casefold())
+        if canonical is not None:
+            return canonical
+    raise ValueError(f"Unsupported relationship type: {raw!r}")
+
 
 # "Transparent" structural relationships — they propagate without weakening
 _TRANSPARENT = frozenset({"Composition", "Aggregation", "Realization", "Assignment"})
@@ -124,7 +135,11 @@ class ArchiMateDerivationService:
             tgt = rel["target_id"]
             if src not in element_ids or tgt not in element_ids:
                 continue
-            adj.setdefault(src, []).append((tgt, rel["type"], rel["id"]))
+            try:
+                rel_type = canonical_relationship_type(rel.get("type"))
+            except ValueError as exc:
+                raise ValueError(f"Relationship {rel.get('id')!r}: {exc}") from exc
+            adj.setdefault(src, []).append((tgt, rel_type, rel["id"]))
 
         # Existing explicit pairs (source, target) to avoid duplicating
         explicit_pairs: Set[Tuple[int, int]] = set()

@@ -11,6 +11,8 @@ browser, colour only from the layer tokens.
 
 from __future__ import annotations
 
+from app.modules.intelligence.services.derivation_runner import ENGINE_VERSION
+
 import inspect
 import re
 import sys
@@ -591,7 +593,7 @@ def test_the_impact_answer_carries_the_names_and_derived_fields_the_pages_read(
         organization_id=org.id, source_element_id=a.id, target_element_id=c.id,
         derived_type="Serving", rule_id="serving-through-serving",
         chain=[first.id, second.id], chain_element_ids=[a.id, b.id, c.id], depth=2,
-        confidence=0.82, provenance="derivation", engine_version="1.0",
+        confidence=0.82, provenance="derivation", engine_version=ENGINE_VERSION,
         computed_at=datetime.datetime.utcnow(), stale=False,
     ))
     db_session.flush()
@@ -615,7 +617,7 @@ def test_the_impact_answer_carries_the_names_and_derived_fields_the_pages_read(
     assert len(derived) == 1 and len(explicit) == 2
     relation = derived[0]["relation"]
     assert isinstance(relation["derived_id"], int)
-    assert relation["engine_version"] == "1.0"
+    assert relation["engine_version"] == ENGINE_VERSION
     assert relation["plain_terms"].startswith("We worked this out because")
     for row in explicit:
         assert row["relation"]["derived_id"] is None

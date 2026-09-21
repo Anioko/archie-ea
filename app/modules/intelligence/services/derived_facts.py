@@ -1,6 +1,6 @@
 """DE-3 read path: the ONE accessor over the derived-fact store (ADR-004).
 
-Every read applies ``stale = FALSE`` by default, in this one place, so
+Every read requires ``stale = FALSE`` and the running engine version by default, so
 "forgot the filter" is not reachable from a caller. ``include_stale=True``
 returns stale rows too, each carrying ``"stale": True`` and
 ``"reason": "derivation_stale"`` (the DE-14 closed-vocabulary member).
@@ -30,13 +30,22 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 
 from app.extensions import db
+from app.modules.intelligence.services.derivation_runner import ENGINE_VERSION
 from app.modules.intelligence.services.reason_codes import validate_reason_code
 
 STALE_REASON = validate_reason_code("derivation_stale")
 
 
+def _effective_current(model):
+    """Null-safe currentness; its complement counts every non-current row."""
+    return db.and_(
+        model.stale.is_(False),
+        model.engine_version.is_not_distinct_from(ENGINE_VERSION),
+    )
+
+
 def _apply_default_staleness_filter(stmt, model, include_stale: bool):
-    """The one place the ``stale = FALSE`` default is applied (ADR-004).
+    """The one place the effective-current default is applied (ADR-004).
 
     Isolated as its own function -- not inlined in ``list_derived_facts`` --
     so the task 02 mutation-proof test (acceptance item 13) can monkeypatch
@@ -45,7 +54,7 @@ def _apply_default_staleness_filter(stmt, model, include_stale: bool):
     """
     if include_stale:
         return stmt
-    return stmt.where(model.stale.is_(False))
+    return stmt.where(_effective_current(model))
 
 
 def _serialize(row) -> Dict[str, Any]:
@@ -64,7 +73,7 @@ def _serialize(row) -> Dict[str, Any]:
         "engine_version": row.engine_version,
         "computed_at": row.computed_at.isoformat() if row.computed_at else None,
     }
-    if row.stale:
+    if row.stale is not False or row.engine_version != ENGINE_VERSION:
         payload["stale"] = True
         payload["reason"] = STALE_REASON
     else:
@@ -185,14 +194,14 @@ def derived_fact_aggregates(organization_id: int) -> Dict[str, Any]:
     current_count = db.session.execute(
         db.select(db.func.count(DerivedRelationship.id)).where(
             DerivedRelationship.organization_id == organization_id,
-            DerivedRelationship.stale.is_(False),
+            _effective_current(DerivedRelationship),
         )
     ).scalar_one()
 
     stale_count = db.session.execute(
         db.select(db.func.count(DerivedRelationship.id)).where(
             DerivedRelationship.organization_id == organization_id,
-            DerivedRelationship.stale.is_(True),
+            ~_effective_current(DerivedRelationship),
         )
     ).scalar_one()
 
@@ -267,13 +276,16 @@ def latest_derivation_run(organization_id: int):
     ``app.app_context()``; the explicit ``organization_id ==`` predicate is
     defence-in-depth on top of the tenant-isolation listener, matching this
     module's pattern.
+
+    Timestamped completions precede undated history. Equal timestamps and
+    all-undated history use descending ID, matching recompute enumeration.
     """
     from app.modules.intelligence.models.derivation_run import DerivationRun
 
     stmt = (
         db.select(DerivationRun)
         .where(DerivationRun.organization_id == organization_id)
-        .order_by(DerivationRun.finished_at.desc(), DerivationRun.id.desc())
+        .order_by(DerivationRun.finished_at.desc().nulls_last(), DerivationRun.id.desc())
         .limit(1)
     )
     return db.session.execute(stmt).scalars().first()
@@ -297,8 +309,7 @@ def get_derived_fact(
         DerivedRelationship.id == derived_id,
         DerivedRelationship.organization_id == organization_id,
     )
-    if not include_stale:
-        stmt = stmt.where(DerivedRelationship.stale.is_(False))
+    stmt = _apply_default_staleness_filter(stmt, DerivedRelationship, include_stale)
     row = db.session.execute(stmt).scalar_one_or_none()
     return _serialize(row) if row is not None else None
 

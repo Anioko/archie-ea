@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from app.modules.intelligence.services.derivation_runner import ENGINE_VERSION
+
 import datetime as _dt
 
 import pytest
@@ -46,7 +48,7 @@ def _insert_derived_row(db_session, org_id, source, target, **overrides):
         depth=2,
         confidence="1.00",
         provenance="derivation",
-        engine_version="1.0.0",
+        engine_version=ENGINE_VERSION,
         computed_at=_dt.datetime.utcnow(),
         stale=False,
         stale_since=None,

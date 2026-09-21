@@ -17,6 +17,8 @@ Maps to task 02's acceptance criteria (see
 
 from __future__ import annotations
 
+from app.modules.intelligence.services.derivation_runner import ENGINE_VERSION
+
 import uuid
 
 # Fixtures (app, db_session, make_org, tenant_ctx, client, login_as) are
@@ -114,7 +116,7 @@ def test_route_include_derived_true_and_false_at_http_layer(app, db_session, mak
         depth=2,
         confidence=1.0,
         provenance="derivation",
-        engine_version="v1",
+        engine_version=ENGINE_VERSION,
         computed_at=_dt.datetime.utcnow(),
         stale=False,
     )
