@@ -322,12 +322,12 @@ def _answer(data, status=200):
     return lambda route, request: route.fulfill(status=status, content_type="application/json", body=body)
 
 
-def _shot(target, name):
+def _shot(target, name, **options):
     """A screenshot for the evidence folder, when there is one."""
-    folder = os.environ.get("T005_EVIDENCE_DIR")
+    folder = os.environ.get("T005_EVIDENCE_DIR") or os.environ.get("SMOKE_SCREENSHOT_DIR")
     if folder:
         os.makedirs(folder, exist_ok=True)
-        target.screenshot(path=os.path.join(folder, name + ".png"))
+        target.screenshot(path=os.path.join(folder, "t005-us5-" + name + ".png"), **options)
 
 
 def _figure_row(page):
@@ -458,6 +458,53 @@ def test_twin_map_reaches_the_same_screen_with_its_own_header_action(page, live_
     _through_the_header_action(page)
     assert page.url.endswith(PATH)
     assert page.locator("h1").inner_text().strip() == LABEL
+
+
+@pytest.mark.parametrize("width,height", [(1440, 900), (1024, 900), (390, 844)])
+def test_integrated_shell_visual_evidence(width, height, page, live_server, seeded, never, stale):
+    """Collect full-page evidence for independent visual review; this is not a visual verdict."""
+    original_viewport = page.viewport_size
+    prefix = "shell-%dx%d-" % (width, height)
+    try:
+        page.set_viewport_size({"width": width, "height": height})
+        _login(page, live_server, never["emails"]["enterprise_architect"])
+        for path, factory, title, name in (
+            ("/intelligence/ask", "askSurface", "Ask", "ask-idle"),
+            ("/intelligence/twin-map", "twinMapSurface", "Twin map", "twin-map-idle"),
+        ):
+            response = page.goto(live_server + path, wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
+            assert response is not None and response.status == 200
+            assert page.url == live_server + path
+            _dismiss_first_run(page)
+            _ready(page, factory)
+            # Entry context has no selected element and therefore no impact request to await.
+            page.wait_for_function(
+                "(f) => { const d = document.querySelector('[x-data=\"' + f + '()\"]')._x_dataStack[0];"
+                " return d.state === 'idle' && d.busy === false; }",
+                arg=factory,
+            )
+            expect(page.get_by_role("heading", name=title, exact=True)).to_be_visible()
+            expect(page.get_by_role("link", name=LABEL, exact=True)).to_be_visible()
+            _shot(page, prefix + name, full_page=True, animations="disabled")
+
+        # Reach the uncomputed state through the real Twin map header action.
+        _through_the_header_action(page)
+        assert _what_the_page_holds(page)["state"] == "not_computed"
+        assert _drift_state(page) == "counted"
+        expect(page.get_by_text(NOT_WORKED_OUT)).to_be_visible()
+        expect(page.get_by_role("button", name="Work them out now")).to_be_visible()
+        _shot(page, prefix + "worked-out-not-computed", full_page=True, animations="disabled")
+
+        _open(page, live_server, stale["emails"]["enterprise_architect"])
+        assert page.url == live_server + PATH
+        assert _what_the_page_holds(page)["state"] == "stale"
+        assert _drift_state(page) == "counted"
+        expect(page.get_by_text(re.compile(r"^Last worked out .+ — may be out of date\.$"))).to_be_visible()
+        expect(page.get_by_role("button", name="Work them out now")).to_be_visible()
+        _shot(page, prefix + "worked-out-stale-action", full_page=True, animations="disabled")
+    finally:
+        page.set_viewport_size(original_viewport)
+        page.goto("about:blank")
 
 
 # --- the label ----------------------------------------------------------------
