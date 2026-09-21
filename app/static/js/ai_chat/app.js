@@ -61,6 +61,7 @@
     // Welcome UI helpers — hide suggestion chips on first user send
     function _hideWelcomeUI() {
         document.getElementById('suggestion-chips')?.classList.add('hidden');
+        document.getElementById('suggestion-chips-label')?.classList.add('hidden');
         document.getElementById('domain-welcome-grid')?.classList.add('hidden');
     }
 
@@ -894,13 +895,18 @@
     });
 
     // AI-1: wire the welcome-screen AI Architect persona cards. Setting the
-    // (otherwise hidden) persona selector + dispatching 'change' runs the
-    // existing handler, which sets state.currentPersona, the persona's default
-    // domain, and the role's sample prompts.
+    // persona selector + dispatching 'change' runs the existing handler,
+    // which sets state.currentPersona, the persona's default domain, and
+    // the role's sample prompts.
     function selectArchitectPersona(persona, samplePrompt) {
         if (personaSelector) {
+            // Only dispatch 'change' -- and so only announce "Persona switched to: ..." -- when the
+            // value actually changes. Unlike a real <select> pick (which fires no event for a re-pick
+            // of the already-selected option), setting .value programmatically and always dispatching
+            // announced a switch even when clicking the card for the persona already active.
+            const changed = personaSelector.value !== persona;
             personaSelector.value = persona;
-            personaSelector.dispatchEvent(new Event('change', { bubbles: true }));
+            if (changed) personaSelector.dispatchEvent(new Event('change', { bubbles: true }));
         } else {
             state.currentPersona = persona;
         }

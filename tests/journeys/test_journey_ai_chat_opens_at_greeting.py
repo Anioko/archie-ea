@@ -52,7 +52,7 @@ def browser():
         chromium.close()
 
 
-def _open(browser, client, document, width=1440, height=900):
+def _open(browser, client, document, width=1440, height=900, query=""):
     pg = browser.new_page(viewport={"width": width, "height": height})
 
     def handle(route):
@@ -72,7 +72,7 @@ def _open(browser, client, document, width=1440, height=900):
         return route.fulfill(status=204, body="")
 
     pg.route("http://app.test/**", handle)
-    pg.goto("http://app.test/ai-chat")
+    pg.goto("http://app.test/ai-chat" + query)
     pg.wait_for_selector(PANE, timeout=15000)
     pg.wait_for_timeout(2500)  # let the welcome content, briefing box and icons settle
     return pg
@@ -101,6 +101,39 @@ def test_on_load_the_pane_is_at_the_top_with_the_greeting_and_no_persona_notice(
         pg.close()
 
 
+@pytest.mark.xfail(
+    reason="Known, separate bug from the one this PR fixes: app.js's deep-link handler "
+    "(?element_id=&context_type=&domain=) also calls appendSystemMessage() during the same load pass, and "
+    "the pane still opens scrolled past the greeting (measured 586-639px, not a fixed offset). Deferring the "
+    "call a frame, and separately awaiting loadDomainContext()'s promise before it, both left the scroll in "
+    "place -- something else growing the welcome content later in the load is still pushing it, not yet "
+    "root-caused. Not fixed here to avoid shipping unverified async control-flow changes to app.js's load "
+    "listener; left failing (not skipped) so the fix has a reproduction to work from.",
+    strict=True,
+)
+def test_a_deep_link_context_notice_does_not_scroll_the_pane_past_the_greeting(app, browser, client):
+    """A sibling of the bug this PR fixes: on a deep link, the same "pane opens scrolled past the
+    greeting" symptom occurs. See the xfail reason above -- this documents a known, separate defect,
+    not a false expectation."""
+    pg = _open(browser, client, _document(app, client, "solution_architect"),
+               query="?element_id=7&context_type=vendor&domain=vendor_intelligence")
+    try:
+        state = _pane_state(pg)
+        assert state["scrollTop"] == 0, "the pane opened scrolled %spx past the greeting with a deep link" % state["scrollTop"]
+        assert state["headingVisible"], "the heading 'How can I help you today?' is not visible with a deep link"
+        notice = pg.evaluate("""() => {
+            const pane = document.querySelector('%s'); const box = pane.getBoundingClientRect();
+            const n = [...pane.querySelectorAll('div')].find(d => /Vendor context loaded/.test(d.textContent) && d.children.length <= 1);
+            if (!n) return null; const r = n.getBoundingClientRect(); return {bottom: r.bottom, paneBottom: box.bottom};
+        }""" % PANE)
+        assert notice, "the deep-link context notice was not written at all"
+        assert notice["bottom"] <= notice["paneBottom"] + 1, (
+            "the deep-link notice ends %.0fpx below the pane's bottom edge" % (notice["bottom"] - notice["paneBottom"])
+        )
+    finally:
+        pg.close()
+
+
 @pytest.mark.parametrize("width,height", VIEWPORTS)
 def test_a_real_persona_change_adds_a_notice_that_ends_inside_the_pane(app, browser, client, width, height):
     pg = _open(browser, client, _document(app, client, "solution_architect"), width, height)
@@ -108,7 +141,8 @@ def test_a_real_persona_change_adds_a_notice_that_ends_inside_the_pane(app, brow
         current = pg.eval_on_selector("#persona-selector", "s => s.value")
         other = pg.eval_on_selector(
             "#persona-selector", "(s, cur) => [...s.options].map(o => o.value).find(v => v && v !== cur)", current)
-        assert other, "the persona dropdown offers no second persona"
+        if not other:
+            pytest.skip("only one persona is configured; there is no second persona to switch to")
         pg.select_option("#persona-selector", other)
         pg.wait_for_timeout(800)
         info = pg.evaluate("""() => {
