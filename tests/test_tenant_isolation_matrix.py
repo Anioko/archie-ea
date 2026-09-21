@@ -35,9 +35,9 @@ pytestmark = pytest.mark.journey
 
 
 # Models that are deliberately NOT tenant-scoped by TenantMixin: they carry
-# organization_id without the mixin, or have no organisation column at all
-# because they are reached only through a scoped parent. Each needs a reason,
-# because the default answer for tenant data is the mixin.
+# organization_id without the mixin, or (WITHOUT_ORGANIZATION_COLUMN) have no
+# organisation column at all. Each needs a reason, because the default answer
+# for tenant data is the mixin.
 INTENTIONALLY_GLOBAL = {
     # Authentication and platform administration must resolve across tenants.
     "User": "login resolves by email before an org context exists",
@@ -84,9 +84,14 @@ INTENTIONALLY_GLOBAL = {
     ),
     # Review queue children. ReviewQueueItem is the tenant-scoped parent.
     "ReviewDecision": (
-        "reached only through ReviewQueueItem, which is tenant-scoped: it is read "
-        "by review_item_id after the parent is loaded under the tenant filter, and "
-        "written from a parent loaded the same way"
+        "no route or service may load a decision by id. A decision is loaded only "
+        "through its ReviewQueueItem, which is tenant-scoped: the decisions route "
+        "loads the parent under the tenant filter first and then reads by "
+        "review_item_id, and a decision is created from a parent loaded the same "
+        "way. A primary-key lookup can return a row already held in the session "
+        "without applying the tenant filter, so a lookup by decision id would not "
+        "be fenced; test_review_decisions_are_only_loaded_through_the_tenant_"
+        "scoped_parent pins this"
     ),
     "ReviewQueueStatistics": (
         "no route or service reads or writes it; the statistics endpoints count the "
@@ -103,30 +108,11 @@ INTENTIONALLY_GLOBAL = {
 }
 
 
-def _model_survey():
-    """(models with TenantMixin, models with organization_id but without it)."""
-    import io
-    import os
-    import re
-
-    tenant, unprotected = set(), {}
-    for dirpath, _dirnames, filenames in os.walk("app/models"):
-        if "__pycache__" in dirpath:
-            continue
-        for name in filenames:
-            if not name.endswith(".py"):
-                continue
-            path = os.path.join(dirpath, name)
-            src = io.open(path, encoding="utf-8", errors="ignore").read()
-            for m in re.finditer(r"^class (\w+)\(([^)]*)\):(.*?)(?=^class |\Z)", src, re.S | re.M):
-                cls, bases, body = m.group(1), m.group(2), m.group(3)
-                if "db.Model" not in bases:
-                    continue
-                if "TenantMixin" in bases:
-                    tenant.add(cls)
-                elif re.search(r"^\s{4}organization_id\s*=\s*(?:db\.)?Column", body, re.M):
-                    unprotected[cls] = path.replace(os.sep, "/")
-    return tenant, unprotected
+# Entries above that have no organization_id column on purpose: they are reached
+# only through a tenant-scoped parent, or nothing reads them. Every other entry
+# is a model that carries organization_id and deliberately does not get
+# TenantMixin, and is flagged here when it stops carrying the column.
+WITHOUT_ORGANIZATION_COLUMN = {"ReviewDecision", "ReviewQueueStatistics"}
 
 
 UNCLASSIFIED_BASELINE = os.path.join(
@@ -134,20 +120,20 @@ UNCLASSIFIED_BASELINE = os.path.join(
 )
 
 
-def _all_models():
-    """Every db.Model class under app/, as {name: {"paths": [...], "tenant": bool}}.
+def _model_survey():
+    """Every db.Model class under app/, as {name: {"paths", "tenant", "organization_column"}}.
 
-    _model_survey lists the models that declare an organization_id column; this
-    walks all of app/, including models that have none. A class is a model when
-    it lists db.Model as a base or inherits from another model class, and it is
-    tenant-scoped when TenantMixin is among its bases or it inherits from a
-    scoped class. A name defined in more than one place counts as scoped only if
-    every definition is.
+    One survey for every check in this file. A class is a model when it lists
+    db.Model as a base or inherits from another model class. It is tenant-scoped
+    when TenantMixin is among its bases or it inherits from a scoped class, and
+    it carries an organisation column when its own body assigns organization_id.
+    A name defined in more than one place counts as scoped only if every
+    definition is, and as carrying the column if any definition does.
     """
     import ast
     import io
 
-    definitions = []  # (name, path, base names, lists db.Model directly)
+    definitions = []  # (name, path, base names, lists db.Model directly, has organization_id)
     for dirpath, dirnames, filenames in os.walk("app"):
         dirnames[:] = [d for d in dirnames if d not in ("__pycache__", "tests")]
         for filename in filenames:
@@ -169,14 +155,26 @@ def _all_models():
                         bases.add(base.attr)
                         if base.attr == "Model" and getattr(base.value, "id", None) == "db":
                             direct = True
-                definitions.append((node.name, path, bases, direct))
+                column = False
+                for statement in node.body:
+                    if isinstance(statement, ast.Assign):
+                        column = column or any(
+                            isinstance(t, ast.Name) and t.id == "organization_id"
+                            for t in statement.targets
+                        )
+                    elif isinstance(statement, ast.AnnAssign):
+                        column = column or (
+                            isinstance(statement.target, ast.Name)
+                            and statement.target.id == "organization_id"
+                        )
+                definitions.append((node.name, path, bases, direct, column))
 
-    model_names = {name for name, _p, _b, direct in definitions if direct}
-    tenant_names = {name for name, _p, bases, _d in definitions if "TenantMixin" in bases}
+    model_names = {name for name, _p, _b, direct, _c in definitions if direct}
+    tenant_names = {name for name, _p, bases, _d, _c in definitions if "TenantMixin" in bases}
     changed = True
     while changed:
         changed = False
-        for name, _path, bases, _direct in definitions:
+        for name, _path, bases, _direct, _column in definitions:
             if name not in model_names and bases & model_names:
                 model_names.add(name)
                 changed = True
@@ -185,16 +183,32 @@ def _all_models():
                 changed = True
 
     models = {}
-    for name, path, bases, _direct in definitions:
+    for name, path, bases, _direct, column in definitions:
         if name not in model_names:
             continue
-        entry = models.setdefault(name, {"paths": set(), "tenant": True})
+        entry = models.setdefault(
+            name, {"paths": set(), "tenant": True, "organization_column": False}
+        )
         entry["paths"].add(path)
+        entry["organization_column"] = entry["organization_column"] or column
         if "TenantMixin" not in bases and not bases & tenant_names:
             entry["tenant"] = False
     return {
-        name: {"paths": sorted(entry["paths"]), "tenant": entry["tenant"]}
+        name: {
+            "paths": sorted(entry["paths"]),
+            "tenant": entry["tenant"],
+            "organization_column": entry["organization_column"],
+        }
         for name, entry in models.items()
+    }
+
+
+def _unprotected(models):
+    """{name: path} of models that carry organization_id without TenantMixin."""
+    return {
+        name: entry["paths"][0]
+        for name, entry in models.items()
+        if entry["organization_column"] and not entry["tenant"]
     }
 
 
@@ -202,7 +216,7 @@ def _unclassified_models():
     """Models that are neither tenant-scoped nor listed in INTENTIONALLY_GLOBAL."""
     return {
         name: entry["paths"]
-        for name, entry in _all_models().items()
+        for name, entry in _model_survey().items()
         if not entry["tenant"] and name not in INTENTIONALLY_GLOBAL
     }
 
@@ -224,7 +238,7 @@ def test_every_unscoped_model_is_a_deliberate_decision():
     the column is there. This turns the omission into a failing test that has to
     be answered with a reason.
     """
-    _tenant, unprotected = _model_survey()
+    unprotected = _unprotected(_model_survey())
     undocumented = sorted(set(unprotected) - set(INTENTIONALLY_GLOBAL))
     assert not undocumented, (
         "%d model(s) carry organization_id without TenantMixin and without a "
@@ -235,16 +249,42 @@ def test_every_unscoped_model_is_a_deliberate_decision():
 
 
 def test_the_justification_list_has_not_gone_stale():
-    """An entry for a model that now has the mixin is misleading documentation."""
-    tenant, unprotected = _model_survey()
-    stale = sorted(set(INTENTIONALLY_GLOBAL) & tenant)
-    assert not stale, (
+    """An entry that no longer describes its model is misleading documentation."""
+    models = _model_survey()
+    listed = set(INTENTIONALLY_GLOBAL)
+
+    gone = sorted(listed - set(models))
+    assert not gone, "these justifications name models that no longer exist: %s" % gone
+
+    now_tenant = sorted(name for name in listed if models[name]["tenant"])
+    assert not now_tenant, (
         "these models now have TenantMixin but are still listed as intentionally "
-        "global: %s - remove the entries" % stale
+        "global: %s - remove the entries" % now_tenant
     )
-    missing = sorted(set(INTENTIONALLY_GLOBAL) - set(unprotected) - tenant - set(_all_models()))
-    assert not missing, (
-        "these justifications name models that no longer exist: %s" % missing
+
+    lost_column = sorted(
+        name for name in listed - WITHOUT_ORGANIZATION_COLUMN
+        if not models[name]["organization_column"]
+    )
+    assert not lost_column, (
+        "these entries are for models that carry organization_id, and they no longer "
+        "do: %s - remove the entries, or, if the model has no organisation column on "
+        "purpose, add it to WITHOUT_ORGANIZATION_COLUMN with the reason in its entry"
+        % lost_column
+    )
+
+    unlisted = sorted(WITHOUT_ORGANIZATION_COLUMN - listed)
+    assert not unlisted, (
+        "WITHOUT_ORGANIZATION_COLUMN names models that have no INTENTIONALLY_GLOBAL "
+        "entry: %s" % unlisted
+    )
+    gained_column = sorted(
+        name for name in WITHOUT_ORGANIZATION_COLUMN if models[name]["organization_column"]
+    )
+    assert not gained_column, (
+        "these models have no organisation column on purpose but now declare "
+        "organization_id: %s - decide whether they should have TenantMixin, and move "
+        "them out of WITHOUT_ORGANIZATION_COLUMN" % gained_column
     )
 
 
@@ -256,8 +296,8 @@ def test_no_model_joins_the_estate_unclassified():
     are recorded in tenancy_unclassified_models.txt; a model that is not in it,
     not tenant-scoped and not in INTENTIONALLY_GLOBAL fails here.
     """
-    new = sorted(set(_unclassified_models()) - _unclassified_baseline())
     paths = _unclassified_models()
+    new = sorted(set(paths) - _unclassified_baseline())
     assert not new, (
         "%d model(s) are neither tenant-scoped nor classified:\n  %s\n\n"
         "The automatic tenant filter applies only to TenantMixin models. Either "
@@ -283,14 +323,145 @@ def test_the_unclassified_baseline_only_shrinks():
 
 def test_review_queue_models_are_classified():
     """The review queue models are tenant-scoped or explained, not unclassified."""
-    models = _all_models()
+    models = _model_survey()
     assert models["ReviewQueueItem"]["tenant"], (
         "ReviewQueueItem must inherit TenantMixin so the tenant filter applies to it")
     for name in ("ReviewDecision", "ReviewQueueStatistics"):
         assert name in INTENTIONALLY_GLOBAL, "%s needs a documented tenancy decision" % name
+        assert name in WITHOUT_ORGANIZATION_COLUMN
     unclassified = set(_unclassified_models()) | _unclassified_baseline()
     for name in ("ReviewQueueItem", "ReviewDecision", "ReviewQueueStatistics"):
         assert name not in unclassified, "%s is still awaiting a classification" % name
+
+
+def _references_to(name):
+    """{(file, function): [AST nodes]} for every use of a model class outside its module."""
+    import ast
+    import io
+
+    found = {}
+
+    class Visitor(ast.NodeVisitor):
+        def __init__(self, path):
+            self.path, self.functions = path, []
+
+        def _function(self, node):
+            self.functions.append(node.name)
+            self.generic_visit(node)
+            self.functions.pop()
+
+        visit_FunctionDef = visit_AsyncFunctionDef = _function
+
+        def _record(self, node):
+            where = (self.path, self.functions[-1] if self.functions else "<module>")
+            found.setdefault(where, []).append(node)
+
+        def visit_Name(self, node):
+            if node.id == name:
+                self._record(node)
+
+        def visit_Attribute(self, node):
+            if node.attr == name:
+                self._record(node)
+            self.generic_visit(node)
+
+    for dirpath, dirnames, filenames in os.walk("app"):
+        dirnames[:] = [d for d in dirnames if d not in ("__pycache__", "tests")]
+        for filename in filenames:
+            path = os.path.join(dirpath, filename).replace(os.sep, "/")
+            if not filename.endswith(".py") or path == "app/models/confidence_review.py":
+                continue
+            try:
+                tree = ast.parse(io.open(path, encoding="utf-8", errors="ignore").read())
+            except (OSError, SyntaxError):
+                continue
+            Visitor(path).visit(tree)
+    return found
+
+
+def _first_line(path, function, guard_call, guard_argument):
+    """Line of the first call to ``guard_call(guard_argument, ...)`` inside a function."""
+    import ast
+    import io
+
+    tree = ast.parse(io.open(path, encoding="utf-8").read())
+    lines = []
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == function:
+            for call in ast.walk(node):
+                if (
+                    isinstance(call, ast.Call)
+                    and getattr(call.func, "id", getattr(call.func, "attr", None)) == guard_call
+                    and call.args
+                    and getattr(call.args[0], "id", None) == guard_argument
+                ):
+                    lines.append(call.lineno)
+    return min(lines) if lines else None
+
+
+def test_review_decisions_are_only_loaded_through_the_tenant_scoped_parent():
+    """No route or service loads a ReviewDecision by id.
+
+    ReviewDecision has no organisation column of its own; it is fenced through
+    its tenant-scoped ReviewQueueItem. That holds only while a decision is read
+    after its parent has been loaded under the tenant filter, and only by the
+    parent's id. A primary-key lookup can return a row already held in the
+    session without applying the tenant filter, so a lookup by decision id would
+    not be fenced. This pins the two places that touch the model and the shape of
+    their use.
+    """
+    found = _references_to("ReviewDecision")
+    reader = ("app/api/confidence_review_routes.py", "get_review_item_decisions")
+    writer = ("app/services/confidence_review_service.py", "submit_review_decision")
+    assert set(found) == {reader, writer}, (
+        "ReviewDecision may only be used by the decisions route (reading) and "
+        "submit_review_decision (creating); found it in: %s. Load decisions through "
+        "their tenant-scoped ReviewQueueItem, never by the decision's own id, or give "
+        "ReviewDecision TenantMixin." % sorted(found)
+    )
+
+    # Reading: the parent is loaded first, and decisions are selected by the
+    # parent's id only.
+    parent = _first_line(reader[0], reader[1], "require_entity", "ReviewQueueItem")
+    assert parent is not None, "the decisions route must load its ReviewQueueItem first"
+    assert all(node.lineno > parent for node in found[reader])
+
+    # Creating: the parent is loaded first too, and the constructor is the only use.
+    parent = _first_line(writer[0], writer[1], "load_entity", "ReviewQueueItem")
+    assert parent is not None, "submit_review_decision must load its ReviewQueueItem first"
+    assert all(node.lineno > parent for node in found[writer])
+
+
+def test_the_decisions_route_selects_decisions_by_the_parents_id_only():
+    """The one read of ReviewDecision filters on review_item_id and nothing else."""
+    import ast
+    import io
+
+    path, function = "app/api/confidence_review_routes.py", "get_review_item_decisions"
+    tree = ast.parse(io.open(path, encoding="utf-8").read())
+    node = next(
+        n for n in ast.walk(tree)
+        if isinstance(n, ast.FunctionDef) and n.name == function
+    )
+    chains = []
+    for call in ast.walk(node):
+        if not isinstance(call, ast.Call) or not isinstance(call.func, ast.Attribute):
+            continue
+        root = call.func.value
+        while isinstance(root, (ast.Attribute, ast.Call)):
+            root = root.value if isinstance(root, ast.Attribute) else root.func
+        if getattr(root, "id", None) == "ReviewDecision":
+            chains.append(call)
+    methods = {call.func.attr for call in chains}
+    assert methods <= {"filter_by", "order_by", "desc", "all"}, (
+        "the decisions route may only filter_by, order_by, desc and all on ReviewDecision; "
+        "found %s" % sorted(methods)
+    )
+    for call in chains:
+        if call.func.attr == "filter_by":
+            assert {k.arg for k in call.keywords} == {"review_item_id"}, (
+                "decisions must be selected by review_item_id only"
+            )
 
 
 @pytest.fixture(scope="module")
