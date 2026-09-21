@@ -1,8 +1,8 @@
 """Outcome must be tenant-scoped in both the normal-runtime and fast-init classes.
 
-Live-reported-by-audit bug (not a fast-init-only trap like the rest of
-docs/buckets/model-class-deduplication/): Outcome (app/models/models.py) had
-no organization_id at all, in the class that runs in production every day.
+Live bug, not merely a fast-init-only trap: Outcome (app/models/models.py)
+had no organization_id at all, in the class that runs in production every
+day.
 Any authenticated user of any tenant could read every other tenant's
 outcomes, and any Outcome created outside a request context (CLI, scheduler)
 had no tenant to attach to. Fixed by adding TenantMixin to both the

@@ -1,11 +1,6 @@
-"""DE-9: cross-layer intelligence queries. T-004 (US-1) implements one
-method -- ``cross_layer_impact``, "if this fails, what stops and who owns
-it". Value-streams-at-risk / risk / coverage are Release 2 and are not
-added here.
-
-Read `docs/buckets/t004-us1-impact-endpoint/tasks/00-verification-notes.md`
-before changing this file -- it records the design decisions (D4 in
-particular) this module implements.
+"""Cross-layer intelligence queries. One method -- ``cross_layer_impact``,
+"if this fails, what stops and who owns it". Value-streams-at-risk / risk
+/ coverage are Release 2 and are not added here.
 """
 
 from __future__ import annotations
@@ -445,29 +440,23 @@ class IntelligenceQueryService:
 
     @staticmethod
     def derivation_yield(organization_id: int) -> Dict[str, Any]:
-        """DE-11 (US-5): "how much does derivation add", for one tenant.
+        """"How much does derivation add", for one tenant.
 
-        Read ``docs/buckets/t005-us5-yield-report/tasks/
-        00-verification-notes.md`` D1-D4, D8, D11, D12 before changing this
-        method -- several defects there correct the parent brief and are
-        binding.
-
-        p95 is read from the T-004 histogram at a PINNED selector (D1) via a
-        bucket-edge read (D3) -- never computed in application code, never
+        p95 is read from the impact-query histogram at a PINNED selector via
+        a bucket-edge read -- never computed in application code, never
         widened, never aggregated across label values. It is process-local
-        and estate-wide, not per tenant (D4), so it is reported as its own
+        and estate-wide, not per tenant, so it is reported as its own
         nested, self-describing block on BOTH branches (it measures query
         latency, not derivation -- suppressing it on the not-computed branch
         would hide a real breach).
 
         ``explicit_count``/``derived_count``/``ratio``/
         ``last_recompute_duration_ms`` come from the tenant's
-        ``DerivationRun`` row itself -- the SAME values API-7's recompute
-        response already returns (D8: two surfaces, one answer; a store-
+        ``DerivationRun`` row itself -- the SAME values the recompute
+        response already returns (two surfaces, one answer; a store-
         agreement test pins this). ``computed_at``/``engine_version``/
         ``stale_count`` come from ``derived_fact_aggregates`` -- the store's
-        OWN current state (D9: never the ``ENGINE_VERSION`` module
-        constant).
+        OWN current state (never the ``ENGINE_VERSION`` module constant).
         """
         from app.modules.intelligence.services.derived_facts import (
             derived_fact_aggregates,

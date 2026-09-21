@@ -340,10 +340,9 @@ def test_layered_viewpoint_with_no_org_context_returns_scope_required(app, db_se
     assert result["elements"] == []
 
 
-# ── dashboard-composer-layer-links: layer= filter ────────────────────────────
+# ── dashboard composer layer links: layer= filter ────────────────────────────
 # Founder-reported: the Technology tab's "32 elements" card promised elements
-# that the "Open in composer" link never actually filtered to -- see
-# docs/buckets/dashboard-composer-layer-links/tasks/01-layer-scoped-composer-link.md.
+# that the "Open in composer" link never actually filtered to.
 
 
 def test_dashboard_layer_tab_links_carry_correct_layer_param(app, db_session, make_org, login_as):

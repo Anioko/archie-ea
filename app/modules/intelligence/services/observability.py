@@ -1,15 +1,10 @@
-"""DE-3/OA-2: structured operational record for invalidation and recompute.
+"""Structured operational record for invalidation and recompute.
 
-**New module.** ``record_query_latency`` — the function the T-003 brief's
-OA-2 deliverable names as something to extend — does not exist anywhere in
-this repository (verified by full-tree grep; see
-``docs/buckets/t003-derived-fact-store/tasks/00-verification-notes-and-sr1.md``).
-There is therefore no existing OA-2 structured record to extend. This module
-is what that deliverable actually is: a new, minimal structured-logging
-helper following the same "measurement, not a log line" shape used elsewhere
-in this task (``app/jobs/tenant_safe_job.py``'s ``JobRun``,
-``app/jobs/capability_projection_job.py``'s ``CapabilityProjectionRun``) —
-a dataclass with an ``as_dict()``, logged at INFO, not a bare log string.
+A minimal structured-logging helper following the same "measurement, not a
+log line" shape used elsewhere (``app/jobs/tenant_safe_job.py``'s
+``JobRun``, ``app/jobs/capability_projection_job.py``'s
+``CapabilityProjectionRun``) — a dataclass with an ``as_dict()``, logged at
+INFO, not a bare log string.
 """
 
 from __future__ import annotations

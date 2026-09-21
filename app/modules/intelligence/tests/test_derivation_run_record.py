@@ -1,10 +1,5 @@
-"""T-005 / task 01 acceptance criteria 1-11: the derivation run-record store
-(``intelligence_derivation_runs``, DE-11) and its aggregate accessors.
-
-Read ``docs/buckets/t005-us5-yield-report/tasks/00-verification-notes.md``
-(D5-D9) and ``docs/buckets/t005-us5-yield-report/tasks/01-run-record-and-
-yield-aggregates.md`` before changing this file -- the decisions there are
-binding.
+"""The derivation run-record store (``intelligence_derivation_runs``) and
+its aggregate accessors.
 """
 
 from __future__ import annotations

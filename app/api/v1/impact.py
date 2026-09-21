@@ -206,21 +206,21 @@ def _normalise_element_result(raw: dict) -> dict:
 
 
 def _derived_elements_for_element(element_id: int, *, include_derived: bool, max_depth: int):
-    """T-004 (API-3/DE-10): read task 01's query service for derived edges.
+    """Read derived edges for an element from the shared query service.
 
     No parallel scoring logic (DESIGN.md) -- this reads
-    ``IntelligenceQueryService.cross_layer_impact``, the single DE-9 accessor,
+    ``IntelligenceQueryService.cross_layer_impact``, the single accessor,
     rather than recomputing anything. ``include_derived=False`` (the default,
     matching an unchanged request) returns an empty list and whatever real
     ``derivation_state`` the service measured, never a fabricated one.
 
     Deliberately does NOT catch exceptions here: ``not_computed`` is a real,
-    meaningful ``derivation_state`` (per acceptance item 7 -- "derivation not
-    yet computed" with a one-click run action) and must never be produced by
-    a crashed lookup. A real failure here (DB error, ``MultipleResultsFound``,
-    etc.) propagates to the caller's own ``except Exception`` block
-    (``analyze_impact``, above), which returns a proper 500 -- a bug looks
-    like a bug, not like an un-run derivation.
+    meaningful ``derivation_state`` (derivation not yet computed, with a
+    one-click run action) and must never be produced by a crashed lookup. A
+    real failure here (DB error, ``MultipleResultsFound``, etc.) propagates
+    to the caller's own ``except Exception`` block (``analyze_impact``,
+    above), which returns a proper 500 -- a bug looks like a bug, not like
+    an un-run derivation.
     """
     from app.modules.intelligence.services.query_service import IntelligenceQueryService
 

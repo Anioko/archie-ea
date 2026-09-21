@@ -285,14 +285,13 @@ def clear_data(confirm):
         ArchiMateElement.query.delete()
         ArchitectureModel.query.delete()
 
-        # T-003 belt-and-suspenders (round-1 refuter finding D2): this
-        # command deletes across every tenant with no request/tenant context
-        # set, so any T-003 derived-fact row anywhere would otherwise keep
-        # pointing at now-deleted elements/relationships while still reading
-        # as current (stale=false) forever. The generic do_orm_execute bulk
-        # listener in invalidation.py already catches the .query.delete()
-        # calls above; this explicit call is the fallback if that mechanism
-        # ever stops covering this specific command.
+        # Belt-and-suspenders: this command deletes across every tenant with
+        # no request/tenant context set, so any derived-fact row anywhere
+        # would otherwise keep pointing at now-deleted elements/relationships
+        # while still reading as current (stale=false) forever. The generic
+        # do_orm_execute bulk listener in invalidation.py already catches the
+        # .query.delete() calls above; this explicit call is the fallback if
+        # that mechanism ever stops covering this specific command.
         invalidation_failed = False
         try:
             from app.modules.intelligence.services.invalidation import mark_all_stale

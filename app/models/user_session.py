@@ -1,11 +1,10 @@
-"""Server-side session registry (finding: sessions survive logout).
+"""Server-side session registry.
 
 The default Flask session is a client-side signed cookie: once issued it is a
 self-verifying credential and nothing server-side can revoke it before its
 absolute expiry. ``UserSession`` is a minimal per-login record, keyed by a
 random ``sid`` embedded in the signed cookie, that the request path can check
-and that logout / password-change can mark revoked. See
-``docs/buckets/session-invalidation-on-logout/`` for the full writeup.
+and that logout / password-change can mark revoked.
 
 Deliberately **not** a ``TenantMixin`` model. This table is read on every
 authenticated request inside ``app/_bootstrap/session_policy.py``, including

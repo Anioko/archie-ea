@@ -525,10 +525,8 @@ _MY_WORK_LINKS = {
         # is what paid for the nav-coverage links added below without any persona
         # losing a feature.
         _link("Roadmaps", "main.capability_roadmap", "milestone"),
-        # Fix round: both were reachable from nowhere in the sidebar.
         # Opens directly into the enterprise-wide Layered viewpoint instead
-        # of a blank "Unsaved diagram" canvas — see docs/buckets/
-        # composer-opens-layered-viewpoint/brief.md.
+        # of a blank "Unsaved diagram" canvas.
         _link("ArchiMate Composer", "archimate.composer_page", "pen-tool",
               query_params={"viewpoint": "layered"}),
         _link("Traceability Matrix", "architect_ui.traceability_matrix", "git-branch"),

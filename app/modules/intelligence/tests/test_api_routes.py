@@ -332,15 +332,10 @@ def test_expanded_chain_marks_an_unresolved_link_instead_of_dropping_it(
     assert "source_id" not in expanded[1]
 
 
-# --- Acceptance item 7 (brief 14): exactly two routes, NFR-8 ---------------
-
-
 def test_module_registers_exactly_four_routes(app):
-    """T-004 added the US-1 impact route (API-1) to this existing blueprint --
-    see docs/buckets/t004-us1-impact-endpoint/tasks/00-verification-notes.md
-    defect D1. T-005 adds the US-5 yield route (API-5) -- see
-    docs/buckets/t005-us5-yield-report/tasks/00-verification-notes.md
-    section C. Still exactly one blueprint, now four routes on it.
+    """The impact and yield routes both mount on this same existing
+    blueprint rather than a new one each. Still exactly one blueprint,
+    now four routes on it.
     """
     rules = [
         rule for rule in app.url_map.iter_rules() if rule.endpoint.startswith("intelligence_api.")

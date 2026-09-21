@@ -15,8 +15,6 @@ Fixed across:
 - app/static/js/archimate/composer_search.js / composer.js -- `layer`
   threaded through `selectViewpoint`'s existing URL construction.
 
-See docs/buckets/dashboard-composer-layer-links/.
-
 This drives the real browser: click a layer tab's "Open in composer" link,
 land on the composer already scoped to that layer, and see only that
 layer's elements -- not a blank canvas, not the whole enterprise model.

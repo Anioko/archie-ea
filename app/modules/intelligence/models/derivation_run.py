@@ -1,13 +1,11 @@
-"""T-005 (D7): the derivation run-record store — ``intelligence_derivation_runs``.
+"""The derivation run-record store — ``intelligence_derivation_runs``.
 
 # migration-exempt — new table created via db.create_all() (migration freeze)
 
 Answers exactly one question, which nothing else in this codebase can answer
 after the request that produced it ends: did derivation run for this tenant,
-when, and how long did it take (D5), and is a measured-zero result
-distinguishable from "never ran" (D6). See
-``docs/buckets/t005-us5-yield-report/tasks/00-verification-notes.md`` D5-D9
-for the full reasoning; the decisions there are binding.
+when, and how long did it take, and is a measured-zero result
+distinguishable from "never ran".
 
 One row per tenant per COMPLETED ``DerivationRunner.run_and_persist`` call.
 The sole producer is ``DerivationRunner.run_and_persist`` itself

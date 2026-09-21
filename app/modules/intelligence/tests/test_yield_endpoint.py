@@ -1,11 +1,5 @@
-"""T-005 / task 02 acceptance criteria 1-13: ``GET /api/v1/intelligence/yield``,
-the p95 bucket-edge read, and the Shape-B trigger.
-
-Read ``docs/buckets/t005-us5-yield-report/tasks/00-verification-notes.md``
-(D1-D4, D8, D11, D12) and
-``docs/buckets/t005-us5-yield-report/tasks/02-yield-endpoint-p95-read-and-
-shape-b-trigger.md`` before changing this file -- the decisions there are
-binding.
+"""``GET /api/v1/intelligence/yield``, the p95 bucket-edge read, and the
+Shape-B trigger.
 
 Fixtures (app, db_session, make_org, tenant_ctx, client, login_as) are
 discovered via app/modules/intelligence/tests/conftest.py's own import of

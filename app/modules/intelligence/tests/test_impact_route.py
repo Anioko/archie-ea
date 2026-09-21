@@ -1,19 +1,4 @@
-"""T-004 / Task 02 acceptance tests: the US-1 REST route and the additive
-canonical-endpoint extension.
-
-Maps to task 02's acceptance criteria (see
-``docs/buckets/t004-us1-impact-endpoint/tasks/02-us1-route-and-canonical-endpoint-extension.md``):
-
-    1  -> test_route_returns_full_api1_payload
-    2  -> test_route_include_derived_true_and_false_at_http_layer
-    3  -> test_route_parameter_validation_returns_400
-    4  -> test_404_indistinguishability_cross_tenant_vs_nonexistent
-    5  -> test_derivation_state_values_and_stale_gating
-    6  -> test_canonical_endpoint_additive_extension_unchanged_request
-    7  -> test_projection_integrity_no_commercially_sensitive_fields
-    8  -> test_app_id_branch_characterisation_untouched
-    9  -> test_single_blueprint_bound_to_intelligence_prefix
-"""
+"""The impact REST route and the additive canonical-endpoint extension."""
 
 from __future__ import annotations
 
