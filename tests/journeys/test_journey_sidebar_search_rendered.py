@@ -125,11 +125,24 @@ def test_a_module_result_with_no_zone_defaults_to_all_modules(page):
 # ---- the real sidebar, real Alpine, real endpoint -----------------------------------------------------
 
 def _persona(app, enterprise_role):
+    from datetime import datetime
+
     from app import db
+    from app.models.user import User
 
     with app.app_context():
         org_id = make_org(db, "SidebarSearchRendered")
-        return make_user(db, org_id, "u", enterprise_role, role_name="Architect")
+        user_id = make_user(db, org_id, "u", enterprise_role, role_name="Architect")
+        # This journey tests sidebar search, not first-login onboarding. A fresh user with an
+        # empty workspace (no applications/elements/capabilities/vendors seeded) is exactly what
+        # trips admin_base.html's first-login onboarding modal (onboarding_completed_at IS NULL
+        # and the workspace is empty) -- it renders on top of the real sidebar these tests drive
+        # and can intercept the clicks/keystrokes aimed at the search box underneath. Marking the
+        # persona as already onboarded represents the returning user this journey is actually
+        # about, rather than forcing clicks past a modal that's correctly doing its job.
+        User.query.filter_by(id=user_id).update({"onboarding_completed_at": datetime.utcnow()})
+        db.session.commit()
+        return user_id
 
 
 def _serve_app_in_browser(pg, client, document, path):
@@ -201,7 +214,11 @@ def test_no_match_shows_the_two_ways_out_and_the_hint_stays_visible(app, client,
         pg.goto("http://app.test" + page_path)
         pg.fill('#sidebar-nav input[x-ref="searchInput"]', "zzzznomatch")
         pg.wait_for_selector('[data-testid="sidebar-search-results"]', state="visible")
-        pg.wait_for_timeout(400)
+        # A fixed timeout here raced the debounced request (module_search.js's 250ms debounce
+        # plus the round trip): under load the assertion below could still catch the "Searching…"
+        # loading text instead of the settled no-match state. Wait for the loading paragraph
+        # itself to clear -- the actual condition this test needs, not a guessed duration.
+        pg.locator('[data-testid="sidebar-search-results"] p', has_text="Searching").wait_for(state="hidden", timeout=5000)
         results = pg.locator('[data-testid="sidebar-search-results"]')
         assert 'No pages match "zzzznomatch"' in results.inner_text()
         assert results.get_by_role("button", name="Search everywhere (Ctrl+K)").is_visible()
