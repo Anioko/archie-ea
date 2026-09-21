@@ -214,7 +214,11 @@ class RelationshipSuggestion(db.Model):  # migration-exempt — uses db.create_a
 
 # ArchiMate 3.2 relationship validity matrix
 # Key: (relationship_type, source_layer, target_layer) → bool
-# Layers: business, application, technology, motivation, strategy, implementation, physical
+# Layers: business, application, technology, motivation, strategy,
+# implementation_migration, physical. "implementation_migration" matches the
+# spelling app/models/archimate_element_types.py's ArchiMateElementTypes uses
+# (the single authority for the layer string -- see _ELEMENT_TYPE_LAYER below);
+# it used to read "implementation" here, disagreeing with that authority.
 #
 # This layer-triple matrix is coarser than the element-type-keyed one in
 # app/config/archimate_relationship_matrix.py (via RelationshipValidator),
@@ -233,7 +237,7 @@ VALID_RELATIONSHIPS = {
     ("composition", "motivation", "motivation"): True,
     ("composition", "strategy", "strategy"): True,
     ("composition", "physical", "physical"): True,
-    ("composition", "implementation", "implementation"): True,  # Deliverable → WorkPackage
+    ("composition", "implementation_migration", "implementation_migration"): True,  # Deliverable → WorkPackage
     # Aggregation — within same layer only
     ("aggregation", "business", "business"): True,
     ("aggregation", "application", "application"): True,
@@ -250,12 +254,12 @@ VALID_RELATIONSHIPS = {
     ("realization", "technology", "application"): True,
     ("realization", "technology", "technology"): True,
     ("realization", "application", "application"): True,
-    ("realization", "implementation", "motivation"): True,
+    ("realization", "implementation_migration", "motivation"): True,
     ("realization", "motivation", "motivation"): True,  # Goal → Outcome
     ("realization", "motivation", "strategy"): True,   # Goal → Capability
     ("realization", "strategy", "motivation"): True,   # CourseOfAction → Goal
     ("realization", "strategy", "business"): True,     # Capability → BusinessProcess/Service
-    ("realization", "implementation", "implementation"): True,  # WorkPackage → Gap
+    ("realization", "implementation_migration", "implementation_migration"): True,  # WorkPackage → Gap
     # Serving — cross-layer allowed
     ("serving", "application", "business"): True,
     ("serving", "application", "application"): True,
@@ -288,7 +292,7 @@ VALID_RELATIONSHIPS = {
     ("association", "motivation", "strategy"): True,   # Requirement → Capability
     ("association", "strategy", "strategy"): True,      # ValueStream ↔ Capability (uses), stage adjacency
     ("association", "strategy", "motivation"): True,    # Capability ↔ Goal/Outcome
-    ("association", "implementation", "implementation"): True,  # WorkPackage → Plateau
+    ("association", "implementation_migration", "implementation_migration"): True,  # WorkPackage → Plateau
     ("association", "business", "application"): True,
     ("association", "application", "business"): True,
     ("association", "application", "technology"): True,
@@ -303,7 +307,10 @@ VALID_RELATIONSHIPS = {
     ("specialization", "strategy", "strategy"): True,
 }
 
-# Layer classification for element types
+# Layer classification for element types. Canonical layer string per type:
+# app/models/archimate_element_types.py's ArchiMateElementTypes is the single
+# authority (ElementTypeDefinition.layer) -- this dict must agree with it.
+# Pinned by tests/test_archimate_layer_taxonomy.py.
 _ELEMENT_TYPE_LAYER = {
     "business_actor": "business", "business_role": "business",
     "business_collaboration": "business", "business_interface": "business",
@@ -328,11 +335,20 @@ _ELEMENT_TYPE_LAYER = {
     "meaning": "motivation", "value": "motivation",
     "resource": "strategy", "capability": "strategy", "course_of_action": "strategy",
     "value_stream": "strategy",
-    "work_package": "implementation", "deliverable": "implementation",
-    "implementation_event": "implementation", "plateau": "implementation", "gap": "implementation",
+    "work_package": "implementation_migration", "deliverable": "implementation_migration",
+    "implementation_event": "implementation_migration", "plateau": "implementation_migration",
+    "gap": "implementation_migration",
     "equipment": "physical", "facility": "physical",
     "distribution_network": "physical", "material": "physical",
 }
+
+# Structural/composite element types (app/models/structural_elements.py:
+# Grouping, Junction, Location). These are not part of the 58-type,
+# 7-layer ArchiMateElementTypes registry above and are not confined to one
+# layer -- ArchiMate 3.2 allows them to relate to a concept of any type or
+# layer -- so they are intentionally absent from _ELEMENT_TYPE_LAYER rather
+# than misclassified into it.
+_STRUCTURAL_ELEMENT_TYPES = {"grouping", "junction", "location"}
 
 
 def validate_relationship(rel_type, source_type, target_type):
@@ -346,9 +362,27 @@ def validate_relationship(rel_type, source_type, target_type):
     Returns:
         Tuple of (is_valid: bool, message: str)
     """
-    source_layer = _ELEMENT_TYPE_LAYER.get((source_type or "").lower(), "unknown")
-    target_layer = _ELEMENT_TYPE_LAYER.get((target_type or "").lower(), "unknown")
+    source_type_norm = (source_type or "").lower()
+    target_type_norm = (target_type or "").lower()
     rel = (rel_type or "").lower()
+
+    # A Grouping, Junction or Location companion element (stored with
+    # layer="Reference") is valid to relate to a concept in any layer per
+    # ArchiMate 3.2 -- resolve this to a defined, explicit verdict rather
+    # than letting it fall into the "type not in the registry" unknown-layer
+    # skip below (which is for genuinely unrecognised types).
+    if (
+        source_type_norm in _STRUCTURAL_ELEMENT_TYPES
+        or target_type_norm in _STRUCTURAL_ELEMENT_TYPES
+    ):
+        return True, (
+            f"Valid: {rel} relationship touches a structural/composite element "
+            "(Grouping, Junction or Location), which ArchiMate 3.2 allows to "
+            "relate across any layer"
+        )
+
+    source_layer = _ELEMENT_TYPE_LAYER.get(source_type_norm, "unknown")
+    target_layer = _ELEMENT_TYPE_LAYER.get(target_type_norm, "unknown")
 
     if source_layer == "unknown" or target_layer == "unknown":
         return True, "Element type not in registry; validation skipped"

@@ -15,10 +15,10 @@ import pytest
 # pattern). No import needed here.
 
 
-def _element(db_session, org_id, name, layer="application"):
+def _element(db_session, org_id, name, layer="application", type_="ApplicationComponent"):
     from app.models import ArchiMateElement
 
-    el = ArchiMateElement(name=name, type="ApplicationComponent", layer=layer, organization_id=org_id)
+    el = ArchiMateElement(name=name, type=type_, layer=layer, organization_id=org_id)
     db_session.add(el)
     db_session.flush()
     return el
@@ -684,3 +684,161 @@ def test_explicit_row_carries_null_derived_id_and_engine_version(app, db_session
     for row in result["rows"]:
         assert row["relation"]["derived_id"] is None
         assert row["relation"]["engine_version"] is None
+
+
+# --- Four-layer proof: cross_layer_impact works beyond the application layer
+# (both unfiltered and with layer= set) for Motivation, Strategy,
+# Implementation & Migration and Physical elements, plus one chain crossing
+# at least four layers end to end.
+
+
+def test_cross_layer_impact_through_motivation_layer_element(app, db_session, make_org):
+    from app.modules.intelligence.services.query_service import IntelligenceQueryService
+
+    org = make_org("qs-layer-motivation")
+    a = _element(db_session, org.id, "Stakeholder-A", layer="motivation", type_="Stakeholder")
+    b = _element(db_session, org.id, "Driver-B", layer="motivation", type_="Driver")
+    c = _element(db_session, org.id, "Assessment-C", layer="motivation", type_="Assessment")
+    _relationship(db_session, org.id, a, b, type_="Influence")
+    _derived(db_session, org.id, a, c, rule_id="MOTIVATION-1")
+    db_session.commit()
+
+    with app.test_request_context("/"):
+        from flask import g
+
+        g.current_org_id = org.id
+        unfiltered = IntelligenceQueryService.cross_layer_impact(
+            a.id, include_derived=True, with_owner=False
+        )
+        filtered = IntelligenceQueryService.cross_layer_impact(
+            a.id, include_derived=True, layer="motivation", with_owner=False
+        )
+
+    unfiltered_kinds = {r["relation"]["kind"] for r in unfiltered["rows"]}
+    assert unfiltered_kinds == {"explicit", "derived"}
+
+    filtered_ids = {r["element_id"] for r in filtered["rows"]}
+    assert b.id in filtered_ids
+    assert c.id in filtered_ids
+
+
+def test_cross_layer_impact_through_strategy_layer_element(app, db_session, make_org):
+    from app.modules.intelligence.services.query_service import IntelligenceQueryService
+
+    org = make_org("qs-layer-strategy")
+    a = _element(db_session, org.id, "Resource-A", layer="strategy", type_="Resource")
+    b = _element(db_session, org.id, "Capability-B", layer="strategy", type_="Capability")
+    c = _element(db_session, org.id, "CourseOfAction-C", layer="strategy", type_="CourseOfAction")
+    _relationship(db_session, org.id, a, b, type_="Serving")
+    _derived(db_session, org.id, a, c, rule_id="STRATEGY-1")
+    db_session.commit()
+
+    with app.test_request_context("/"):
+        from flask import g
+
+        g.current_org_id = org.id
+        unfiltered = IntelligenceQueryService.cross_layer_impact(
+            a.id, include_derived=True, with_owner=False
+        )
+        filtered = IntelligenceQueryService.cross_layer_impact(
+            a.id, include_derived=True, layer="strategy", with_owner=False
+        )
+
+    unfiltered_kinds = {r["relation"]["kind"] for r in unfiltered["rows"]}
+    assert unfiltered_kinds == {"explicit", "derived"}
+
+    filtered_ids = {r["element_id"] for r in filtered["rows"]}
+    assert b.id in filtered_ids
+    assert c.id in filtered_ids
+
+
+def test_cross_layer_impact_through_implementation_and_migration_layer_element(app, db_session, make_org):
+    from app.modules.intelligence.services.query_service import IntelligenceQueryService
+
+    org = make_org("qs-layer-impl-migration")
+    a = _element(db_session, org.id, "WorkPackage-A", layer="implementation_migration", type_="WorkPackage")
+    b = _element(db_session, org.id, "Deliverable-B", layer="implementation_migration", type_="Deliverable")
+    c = _element(db_session, org.id, "Gap-C", layer="implementation_migration", type_="Gap")
+    _relationship(db_session, org.id, a, b, type_="Serving")
+    _derived(db_session, org.id, a, c, rule_id="IMPL-MIGRATION-1")
+    db_session.commit()
+
+    with app.test_request_context("/"):
+        from flask import g
+
+        g.current_org_id = org.id
+        unfiltered = IntelligenceQueryService.cross_layer_impact(
+            a.id, include_derived=True, with_owner=False
+        )
+        filtered = IntelligenceQueryService.cross_layer_impact(
+            a.id, include_derived=True, layer="implementation_migration", with_owner=False
+        )
+
+    unfiltered_kinds = {r["relation"]["kind"] for r in unfiltered["rows"]}
+    assert unfiltered_kinds == {"explicit", "derived"}
+
+    filtered_ids = {r["element_id"] for r in filtered["rows"]}
+    assert b.id in filtered_ids
+    assert c.id in filtered_ids
+
+
+def test_cross_layer_impact_through_physical_layer_element(app, db_session, make_org):
+    from app.modules.intelligence.services.query_service import IntelligenceQueryService
+
+    org = make_org("qs-layer-physical")
+    a = _element(db_session, org.id, "Equipment-A", layer="physical", type_="Equipment")
+    b = _element(db_session, org.id, "Facility-B", layer="physical", type_="Facility")
+    c = _element(db_session, org.id, "Material-C", layer="physical", type_="Material")
+    _relationship(db_session, org.id, a, b, type_="Serving")
+    _derived(db_session, org.id, a, c, rule_id="PHYSICAL-1")
+    db_session.commit()
+
+    with app.test_request_context("/"):
+        from flask import g
+
+        g.current_org_id = org.id
+        unfiltered = IntelligenceQueryService.cross_layer_impact(
+            a.id, include_derived=True, with_owner=False
+        )
+        filtered = IntelligenceQueryService.cross_layer_impact(
+            a.id, include_derived=True, layer="physical", with_owner=False
+        )
+
+    unfiltered_kinds = {r["relation"]["kind"] for r in unfiltered["rows"]}
+    assert unfiltered_kinds == {"explicit", "derived"}
+
+    filtered_ids = {r["element_id"] for r in filtered["rows"]}
+    assert b.id in filtered_ids
+    assert c.id in filtered_ids
+
+
+def test_cross_layer_impact_chain_crosses_at_least_four_layers_end_to_end(app, db_session, make_org):
+    """One chain, four elements, each on a different ArchiMate layer
+    (Motivation -> Strategy -> Implementation & Migration -> Physical):
+    cross_layer_impact's explicit walk must reach every element regardless
+    of which layer it is on.
+    """
+    from app.modules.intelligence.services.query_service import IntelligenceQueryService
+
+    org = make_org("qs-layer-four-chain")
+    a = _element(db_session, org.id, "Stakeholder-A", layer="motivation", type_="Stakeholder")
+    b = _element(db_session, org.id, "CourseOfAction-B", layer="strategy", type_="CourseOfAction")
+    c = _element(
+        db_session, org.id, "WorkPackage-C", layer="implementation_migration", type_="WorkPackage"
+    )
+    d = _element(db_session, org.id, "Equipment-D", layer="physical", type_="Equipment")
+    _relationship(db_session, org.id, a, b, type_="Serving")
+    _relationship(db_session, org.id, b, c, type_="Serving")
+    _relationship(db_session, org.id, c, d, type_="Serving")
+    db_session.commit()
+
+    with app.test_request_context("/"):
+        from flask import g
+
+        g.current_org_id = org.id
+        result = IntelligenceQueryService.cross_layer_impact(
+            a.id, include_derived=False, max_depth=3, with_owner=False
+        )
+
+    element_ids = {row["element_id"] for row in result["rows"]}
+    assert {b.id, c.id, d.id} <= element_ids
