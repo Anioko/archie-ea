@@ -633,7 +633,13 @@ def test_the_ratio_is_reported_and_never_targeted(page, live_server, seeded, der
 
 def test_below_the_floor_the_card_says_so_with_the_count_and_shows_no_number(page, live_server, seeded, never):
     _open(page, live_server, never["emails"]["solution_architect"])
-    data = _yield_api(page, live_server)
+    # The count is the one in the answer the page itself received: the shared server may answer
+    # from more than one process, each with a record of its own, so another request could differ.
+    with page.expect_response(FIGURES_URL) as received:
+        page.reload(wait_until="domcontentloaded")
+    data = received.value.json()["data"]
+    _ready(page, "workedOutConnections")
+    _settled(page)
     assert data["p95_latency_seconds"] is None and data["sample_count"] < 100
     assert "insufficient_samples_for_p95" in data["reasons"]
 
