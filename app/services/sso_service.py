@@ -274,6 +274,22 @@ class SSOService:
         sub = userinfo.get("sub", email)
 
         user = User.query.filter_by(email=email).first()
+        if user is not None and org and user.organization_id != org.id:
+            # The email matched an existing user who belongs to a different
+            # organisation than the one whose SSO config produced this login.
+            # email_domain on SSOConfig is operator-entered with no ownership
+            # verification, so one organisation's admin can configure it to
+            # claim another organisation's real domain; without this check,
+            # a login through that config would silently attach to and take
+            # over the other organisation's existing user (updating their
+            # external_id/sso_provider) rather than being refused. Refuse
+            # rather than create a second account under the same email too,
+            # since email is the identity email/password sign-in already
+            # keys on elsewhere in this codebase.
+            raise SSONotConfiguredError(
+                "This email address belongs to a different organisation's "
+                "account and cannot sign in through this organisation's SSO."
+            )
         if user is None:
             user = User(
                 email=email,
