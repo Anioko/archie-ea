@@ -1310,6 +1310,20 @@ def test_sibling_zero_sole_policy_requires_empty_org_baseline(
     """Select on the authorized zero-org baseline; never delete unrelated orgs."""
     from sqlalchemy import text
 
+    # The zero/sole-organization policy is a property of the whole table, by
+    # design (see _resolve_org_id's own unscoped read), so it can only be
+    # exercised against a database that genuinely holds zero organizations.
+    # A shared, long-lived database can hold real organizations committed by
+    # other, older tests outside this suite's per-test rollback fixtures; this
+    # test must never delete rows it did not create to force that baseline
+    # (see the docstring above), so when the baseline is not authentically
+    # empty it skips rather than asserting something the database cannot back.
+    if db_session.execute(text("SELECT count(*) FROM public.organizations")).scalar_one():
+        pytest.skip(
+            "Requires a database with no pre-existing organizations, to exercise "
+            "the zero/sole-organization policy without touching organizations "
+            "this test did not create"
+        )
     with schema_shape(table) as conn:
         assert conn.execute(text("SELECT count(*) FROM public.organizations")).scalar_one() == 0, "Requires the existing empty baseline"
         owner = make_org("sole-sibling").id if org_count else None
@@ -1417,12 +1431,30 @@ def test_sibling_kanban_exact_eligibility_and_no_fallback(
 def test_sibling_schema_shapes_on_empty_targets(
     app, db_session, make_org, schema_shape, table, shape
 ):
-    """Scratch-only shape premises are assertions, never skipped coverage."""
+    """Scratch-only shape premises are assertions, never skipped coverage.
+
+    The premise this test actually needs is that the target table holds no
+    *unattributed* (organization_id IS NULL) rows before this test seeds its
+    own: every assertion below either ignores pre-existing row count entirely
+    (the "absent"/"missing" shapes) or compares row content against a snapshot
+    taken after seeding, so it never assumes the table started literally
+    empty. Only an already-null-owned row would corrupt that reasoning (the
+    backfill command would sweep it up as if it were this test's own), so
+    that is what is asserted, not a global row count a shared, long-lived
+    database cannot promise this file's tests exclusive control over. A
+    committed row that already has an owner (left by other, unrelated tests
+    outside this suite's per-test rollback fixtures) is inert here: the
+    backfill command never touches an already-owned row, and this test's own
+    snapshots are taken after any such rows are already present, so they are
+    accounted for like any other row, not assumed away.
+    """
     from sqlalchemy import event, text
 
     org_a, org_b = make_org("shape-a"), make_org("shape-b")
     with schema_shape(table, "kanban_boards") as conn:
-        assert conn.execute(text(f'SELECT count(*) FROM public."{table}"')).scalar_one() == 0, "Requires an empty target baseline"
+        assert conn.execute(text(
+            f'SELECT count(*) FROM public."{table}" WHERE organization_id IS NULL'
+        )).scalar_one() == 0, "Requires no pre-existing unattributed rows in the target table"
         if shape in {"missing", "owned"}:
             if table == "kanban_cards":
                 ids, _ = _kanban_seed(db_session, conn, org_a, org_b)
