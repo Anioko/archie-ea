@@ -1,4 +1,7 @@
-"""Intelligence module (Four Intelligences extension) — DE-1..DE-18, sdd-v2.md AA-1.
+"""Derived-fact intelligence: computes and serves architecture insights that
+are derived from existing ArchiMate data rather than entered directly (e.g.
+transitive relationship chains), and keeps those derived facts fresh when
+the underlying elements or relationships change.
 
 ``register(app)`` is the one place this module attaches its pieces: the ORM
 invalidation hook and the API blueprint, then the UI blueprint that serves the
