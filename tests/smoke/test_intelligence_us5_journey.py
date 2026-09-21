@@ -19,20 +19,28 @@ The six cards are drawn from the first answer alone; the row beside them shows a
 treatment until the second answers.
 
 The pinned response-time series is one worker process's record and starts empty, so the
-state "not enough measurements yet" is the normal one; the last test in this file fills
-it past the floor, and must stay last for that reason.
+state "not enough measurements yet" is the normal one. The shared test server runs more
+than one worker process where the platform allows (each with its own record), so the test
+that fills the series past the floor runs against a server of its own with exactly one
+process.
 """
 
 import importlib
 import json
 import os
 import re
+import subprocess
+import sys
+import tempfile
+import time
+import urllib.error
+import urllib.request
 import uuid
 
 import pytest
 from playwright.sync_api import expect
 
-from .conftest import PAGE_TIMEOUT, PASSWORD
+from .conftest import BOOT_TIMEOUT, PAGE_TIMEOUT, PASSWORD, _free_port, _has_gunicorn, _require_explicit_test_database
 from .test_accessibility_audit import RESULT_KINDS, TAGS
 
 pytestmark = [pytest.mark.smoke, pytest.mark.journey]
@@ -1805,42 +1813,106 @@ def test_every_state_of_the_screen_has_no_violations_under_the_audits_rules(
         assert found["target_size_evaluated"], "the target-size rule did not run on %r" % label
 
 
-# --- the pinned series, last -------------------------------------------------------------------------
+# --- the response time above the floor, from the real record ------------------------------------------
 
 
-def test_above_the_floor_the_card_reads_a_figure_with_the_count_it_came_from(page, live_server, seeded, derived):
-    """Ask the pinned question more than a hundred times (a whole-model, four-hop, worked-out
-    impact query), then read the screen: the response time is a number in seconds, from at
-    least a hundred measurements, and its name says both. Must stay the last test in the
-    file: it fills a series that lives as long as the server does."""
-    _open(page, live_server, derived["emails"]["solution_architect"])
-    url = "%s/api/v1/intelligence/impact/%s?include_derived=true&max_depth=4" % (live_server, derived["first"])
-    data = _yield_api(page, live_server)
-    for _ in range(400):
-        if data["sample_count"] >= 100:
-            break
-        for _ in range(25):
-            assert page.context.request.get(url).status == 200
-        data = _yield_api(page, live_server)
-    if data["sample_count"] < 100:
-        pytest.skip("this server answered from several processes, so no one of them reached 100 measurements")
+@pytest.fixture(scope="module")
+def one_process_server(request):
+    """A second copy of the app, served by exactly ONE process.
 
+    The response time is read from the metrics record of whichever web process answers, and the
+    shared test server runs several (two workers where gunicorn is available), each with a record
+    of its own; a request can reach a different process from the one that saw the questions asked.
+    A server of one process makes "the process that answered" a single, known process, so a test
+    that fills the record and then reads it back is exact rather than a matter of luck. It uses the
+    same database, environment and start-up as the shared server, with one worker."""
+    port = _free_port()
+    env = dict(os.environ)
+    _require_explicit_test_database(env)
+    env.setdefault("SECRET_KEY", "smoke-only-not-secret-" + "x" * 16)
+    env.setdefault("FLASK_CONFIG", "testing")
+    env["FLASK_DEBUG"] = "0"
+    if _has_gunicorn():
+        cmd = [sys.executable, "-m", "gunicorn", "manage:app", "--bind", "127.0.0.1:%d" % port,
+               "--workers", "1", "--threads", "8", "--timeout", "120", "--graceful-timeout", "20",
+               "--error-logfile", "-"]
+    else:
+        cmd = [sys.executable, "-m", "flask", "--app", "manage", "run", "--host", "127.0.0.1",
+               "--port", str(port), "--no-reload"]
+    log_path = os.path.join(tempfile.gettempdir(), "smoke-one-process-server-%d.log" % port)
+    log = open(log_path, "w+b")
+    proc = subprocess.Popen(cmd, env=env, stdout=log, stderr=subprocess.STDOUT)
+
+    def stop():
+        if proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=20)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait(timeout=5)
+        log.close()
+
+    request.addfinalizer(stop)
+    base = "http://127.0.0.1:%d" % port
+    deadline = time.time() + BOOT_TIMEOUT
+    while time.time() < deadline:
+        if proc.poll() is not None:
+            log.flush()
+            with open(log_path, "rb") as fh:
+                pytest.fail("the one-process server exited during boot:\n%s" % fh.read()[-2500:].decode("utf-8", "replace"))
+        try:
+            with urllib.request.urlopen(base + "/health", timeout=5):
+                break
+        except urllib.error.HTTPError:
+            break  # any answer means it is serving; a missing cache makes /health report 503
+        except Exception:
+            time.sleep(3)
+    else:
+        proc.kill()
+        pytest.fail("the one-process server did not bind %s within %ss" % (base, BOOT_TIMEOUT))
+    urllib.request.urlopen(base + "/account/login", timeout=180).read()
+    return base
+
+
+def test_above_the_floor_the_card_reads_a_figure_with_the_count_it_came_from(page, one_process_server):
+    """Ask the pinned question exactly 120 times (a whole-model, four-hop, worked-out impact query),
+    then read the screen: the response time is a number in seconds, from 120 measurements, and its
+    name says both.
+
+    It runs on a server of one process, so the record the page reads is the record the questions
+    were counted in: the count the answer reports must equal the number of questions asked, which
+    fails loudly if more than one process is answering."""
+    tenant = _make_tenant("derived")
+    base = one_process_server
+    _open(page, base, tenant["emails"]["solution_architect"])
+    before = _yield_api(page, base)
+    assert before["sample_count"] == 0 and "insufficient_samples_for_p95" in before["reasons"], before
+
+    asked = 120
+    url = "%s/api/v1/intelligence/impact/%s?include_derived=true&max_depth=4" % (base, tenant["first"])
+    for _ in range(asked):
+        assert page.context.request.get(url).status == 200
+    data = _yield_api(page, base)
+    assert data["sample_count"] == asked, (
+        "%d questions were asked and the record holds %d: the server did not answer from one process"
+        % (asked, data["sample_count"])
+    )
     assert data["p95_latency_seconds"] is not None or "p95_above_highest_bucket" in data["reasons"]
     assert "insufficient_samples_for_p95" not in data["reasons"]
+
     page.reload(wait_until="domcontentloaded")
     _ready(page, "workedOutConnections")
     _settled(page)
     name = _names(page)["response"]
-    samples = _yield_api(page, live_server)["sample_count"]
-    assert samples >= 100
     assert re.fullmatch(
         r"Response time: (Within [\d.]+ seconds? for 95|Over [\d.]+ seconds? for more than 5) in 100 impact "
         r"questions, from \d+ recent measurements on this server",
         name,
     ), name
     assert NOT_ENOUGH not in name
-    from_count = int(re.search(r"from (\d+) recent measurements", name).group(1))
-    assert from_count >= 100
+    assert int(re.search(r"from (\d+) recent measurements", name).group(1)) == asked, name
+    assert _yield_api(page, base)["sample_count"] == asked, "reading the screen asked no further question"
     page.locator("[data-full-detail-toggle]").click()
     page.locator("[data-full-detail-region]").wait_for(state="visible")
     rows = {
