@@ -193,9 +193,29 @@ jobs:
         # enforce it immediately. This job includes rendered UI regressions;
         # the separate smoke jobs own full-app browser journeys.
         # --maxfail keeps the log readable while still surfacing many failures.
+        #
+        # -n 2, not -n auto: TestingConfig's own comment (config.py) already
+        # documents that a SERIAL run's connection count came close to
+        # Postgres's default max_connections=100 -- NullPool was adopted
+        # specifically because a pooled engine pushed it over, since many
+        # older test modules hand-roll their own module-scoped engine and
+        # never dispose it. Each xdist worker is a separate process running
+        # its own share of those same modules, so worker count multiplies
+        # that peak roughly linearly. -n auto resolved to this runner's full
+        # core count and made the job take *longer* than serial (over 3h,
+        # against a ~1h23m-2h30m serial range measured across tonight's
+        # other PRs) -- almost certainly connection contention, not a
+        # coincidence, given the documented history. GitHub Actions service
+        # containers cannot be given `-c max_connections=...` through the
+        # services: block's `options:` (that field maps to `docker create`
+        # flags, not the postgres process's own command-line args, so it
+        # cannot reach past the image name to override postgres's startup
+        # command) -- raising the ceiling isn't available without a custom
+        # image, so this keeps the worker count low enough to stay well
+        # under the existing ceiling instead. Re-measure before raising it.
         run: |
           rm -f route_verification.json
-          pytest -q --maxfail=20 --ignore=tests/smoke -n auto \
+          pytest -q --maxfail=20 --ignore=tests/smoke -n 2 \
             --cov=app --cov-report=term-missing:skip-covered --cov-report=xml \
             -o xfail_strict=true --junitxml=backend-tests.xml \
             -p scripts.route_verification_audit
