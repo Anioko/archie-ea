@@ -1,15 +1,15 @@
-"""DE-3: batched invalidation of derived facts (FR-4, DR-2/SEC-16).
+"""Batched invalidation of derived facts.
 
 An ``after_flush`` SQLAlchemy session-event listener that marks affected
 ``archimate_derived_relationships`` rows stale in **one** batched ``UPDATE``
 per (flush, tenant) pair, inside the user's own flush so staleness commits or
-rolls back with the model write it responds to (ADR-004). Never asynchronous,
+rolls back with the model write it responds to. Never asynchronous,
 never a second statement per id.
 
 A second, ``do_orm_execute`` listener covers ORM-enabled bulk ``UPDATE``/
 ``DELETE`` (e.g. ``Model.query.delete()``), which never populates
 ``session.new``/``dirty``/``deleted`` and so is invisible to the after_flush
-listener above (round-1 refuter finding D2).
+listener above.
 
 Registered once by ``app/modules/intelligence/__init__.py::register(app)`` —
 not at model-import time, so it can be skipped cleanly if the module fails to
@@ -27,11 +27,11 @@ from app.extensions import db
 
 logger = logging.getLogger(__name__)
 
-# stale_reason values are NOT members of the DE-14 closed vocabulary in
-# reason_codes.py -- that vocabulary covers user-facing absence reasons on
-# reads ("derivation_stale" is the one member relevant here, applied by the
-# read accessor in derived_facts.py, not written here). These are the
-# internal cause codes the invalidation listener stamps on the row itself.
+# stale_reason values are NOT members of the closed vocabulary of
+# user-facing absence reasons in reason_codes.py ("derivation_stale" is the
+# one member relevant here, applied by the read accessor in
+# derived_facts.py, not written here). These are the internal cause codes
+# the invalidation listener stamps on the row itself.
 _REASON_RELATIONSHIP_CREATED = "relationship_created"
 _REASON_RELATIONSHIP_UPDATED = "relationship_updated"
 _REASON_RELATIONSHIP_DELETED = "relationship_deleted"
@@ -45,7 +45,7 @@ _REASON_BULK_OPERATION = "bulk_operation"
 # belt-and-suspenders re-entrancy guard for the (untested-in-practice) case
 # of a nested flush triggered by something else during the UPDATE itself.
 #
-# THREAD-LOCAL, not a module global (round-1 refuter finding D1): gunicorn is
+# THREAD-LOCAL, not a module global: gunicorn is
 # configured with worker_class="gthread", threads=4 (gunicorn.conf.py), so a
 # single worker process runs several requests' Python code concurrently on
 # different OS threads sharing this module's globals. A module-level bool
@@ -72,7 +72,7 @@ def _collect_changes_by_org(session):
 
     Returns ``{organization_id: {stale_reason: {"relationship_ids": set(),
     "element_ids": set()}}}`` or ``{}`` when nothing watched changed in this
-    flush. Grouped by organization_id (round-1 refuter finding D3): a single
+    flush. Grouped by organization_id: a single
     flush is not guaranteed to be single-tenant -- CLAUDE.md documents
     importers/CLI commands/anything looping over tenants inside one session
     as a real, existing pattern in this repo, and a flush spanning two
@@ -134,8 +134,8 @@ def _mark_stale_for_org(session, organization_id: int, changes: dict) -> Optiona
 
     Returns the number of rows marked, or ``None`` when the database driver
     reported an unknown (negative) rowcount -- distinguished from an actual
-    zero (round-1 refuter finding D9): "unknown" and "marked none" are not
-    the same fact and must not be coerced together for the OA-2 record.
+    zero: "unknown" and "marked none" are not the same fact and must not be
+    coerced together in the invalidation record.
     """
     all_relationship_ids: set[int] = set()
     all_element_ids: set[int] = set()
@@ -203,8 +203,8 @@ def mark_stale_for_flush(session) -> int:
     flush (0 when nothing watched changed). ``None`` per-org counts (unknown
     rowcount) are recorded individually via ``record_invalidation`` but
     contribute 0 to this aggregate return value -- callers of this function
-    for a return value want a count, not an unknown; the OA-2 record is the
-    place "unknown" is preserved. Safe to call directly from a test that
+    for a return value want a count, not an unknown; the invalidation record
+    is the place "unknown" is preserved. Safe to call directly from a test that
     wants a return value without going through the event system.
     """
     if _is_marking():
@@ -235,7 +235,7 @@ def mark_stale_for_flush(session) -> int:
 def _mark_stale_bulk(
     session, organization_id: Optional[int], *, allow_global: bool = False
 ) -> Optional[int]:
-    """Conservative fallback for a bulk ORM UPDATE/DELETE (D2).
+    """Conservative fallback for a bulk ORM UPDATE/DELETE.
 
     A bulk statement (``Model.query.delete()``/``.update()``) carries no
     per-row ids the way ``session.new``/``dirty``/``deleted`` does, and its
@@ -251,10 +251,11 @@ def _mark_stale_bulk(
         store, since the write itself was genuinely global.
       * ``organization_id`` is ``None`` and ``allow_global`` is ``False`` --
         an in-request/mapper-event bulk write with no resolvable tenant
-        context (round-2 refuter finding NEW-2). Broadcasting a global
+        context. Broadcasting a global
         ``stale = TRUE`` here would blank every OTHER tenant's derived-fact
         store off the back of one tenant's ordinary write, which is a worse
-        outcome than the gap D2 fixed. Skip cleanly instead: some rows are
+        outcome than leaving a bulk write's rows unflagged. Skip cleanly
+        instead: some rows are
         left stale-but-not-flagged, which the scheduled ``mark_all_stale``
         sweep / recompute job is the designed backstop for, not this
         listener silently corrupting every other tenant's read surface.
@@ -263,7 +264,7 @@ def _mark_stale_bulk(
         logger.warning(
             "invalidation: bulk ORM write with no resolvable organization_id "
             "and allow_global=False -- skipping stale-mark rather than "
-            "broadcasting a global UPDATE (see NEW-2)"
+            "broadcasting a global UPDATE"
         )
         return None
 
@@ -295,10 +296,9 @@ def mark_all_stale(organization_id: Optional[int] = None) -> Optional[int]:
     The ``do_orm_execute`` bulk listener already catches ``Model.query.
     delete()``/``.update()`` generically, but a specific known bulk-delete
     site (``flask archimate clear``, ``app/commands/archimate_commands.py``)
-    calls this explicitly too, as belt-and-suspenders per round-1 refuter
-    finding D2: a change in how that command issues its deletes (e.g. moving
-    to raw SQL, which no ORM event can see at all) must not silently
-    reintroduce the same staleness gap.
+    calls this explicitly too, as belt-and-suspenders: a change in how that
+    command issues its deletes (e.g. moving to raw SQL, which no ORM event
+    can see at all) must not silently reintroduce the same staleness gap.
 
     ``organization_id=None`` marks every tenant's store stale -- the correct
     scope for a command that itself deletes across every tenant.
@@ -307,10 +307,8 @@ def mark_all_stale(organization_id: Optional[int] = None) -> Optional[int]:
     if _is_marking():
         # Reentrant call while a marking is already in flight on this
         # thread. This is "unknown whether anything was marked", not "marked
-        # zero rows" (round-1 refuter finding D9's Optional[int] contract,
-        # which this seam previously did not honour -- round-2 refuter
-        # finding NEW-6): a bare 0 here is indistinguishable from a genuine
-        # no-op run, and the OA-2 record must not conflate the two.
+        # zero rows": a bare 0 here is indistinguishable from a genuine
+        # no-op run, and the invalidation record must not conflate the two.
         return None
     _set_marking(True)
     try:
@@ -339,7 +337,7 @@ def _after_flush_listener(session, flush_context):
 
 
 def _do_orm_execute_bulk_listener(orm_execute_state):
-    """Catch ORM-enabled bulk UPDATE/DELETE on the two watched models (D2).
+    """Catch ORM-enabled bulk UPDATE/DELETE on the two watched models.
 
     ``Model.query.delete()`` / ``Model.query.update()`` (and the 2.0-style
     ``session.execute(delete(Model))``/``update(Model)``) never populate

@@ -61,6 +61,7 @@
     // Welcome UI helpers — hide suggestion chips on first user send
     function _hideWelcomeUI() {
         document.getElementById('suggestion-chips')?.classList.add('hidden');
+        document.getElementById('suggestion-chips-label')?.classList.add('hidden');
         document.getElementById('domain-welcome-grid')?.classList.add('hidden');
     }
 
@@ -158,7 +159,10 @@
     // click or by _syncPersonaFromSelector() on load/reload.
     function _applyPersonaChange(persona, persistChoice) {
         state.currentPersona = persona;
-        updatePersonaUI(persona);
+        // The second argument is "persist the choice": false when the page applies the preselected persona on
+        // load, true for a real user change. Only a real change is announced in the transcript; announcing the
+        // load-time sync scrolled the pane past the greeting before the welcome content had finished growing.
+        updatePersonaUI(persona, persistChoice);
         if (persistChoice && persona) {
             try {
                 localStorage.setItem(window.chatPersonaPreferenceKey, persona);
@@ -210,7 +214,7 @@
         _applyPersonaChange(personaSelector.value, false);
     }
 
-    function updatePersonaUI(persona) {
+    function updatePersonaUI(persona, announce) {
         if (!persona || !personaConfig[persona]) {
             // Reset to default
             document.getElementById('domain-description').textContent = 'Select a domain for specialized assistance';
@@ -218,7 +222,9 @@
         }
         const config = personaConfig[persona];
         document.getElementById('domain-description').textContent = config.description || config.name;
-        appendSystemMessage(`Persona switched to: ${config.name}`, 'info');
+        if (announce) {
+            appendSystemMessage(`Persona switched to: ${config.name}`, 'info');
+        }
     }
 
     function usePrompt(prompt) {
@@ -889,13 +895,18 @@
     });
 
     // AI-1: wire the welcome-screen AI Architect persona cards. Setting the
-    // (otherwise hidden) persona selector + dispatching 'change' runs the
-    // existing handler, which sets state.currentPersona, the persona's default
-    // domain, and the role's sample prompts.
+    // persona selector + dispatching 'change' runs the existing handler,
+    // which sets state.currentPersona, the persona's default domain, and
+    // the role's sample prompts.
     function selectArchitectPersona(persona, samplePrompt) {
         if (personaSelector) {
+            // Only dispatch 'change' -- and so only announce "Persona switched to: ..." -- when the
+            // value actually changes. Unlike a real <select> pick (which fires no event for a re-pick
+            // of the already-selected option), setting .value programmatically and always dispatching
+            // announced a switch even when clicking the card for the persona already active.
+            const changed = personaSelector.value !== persona;
             personaSelector.value = persona;
-            personaSelector.dispatchEvent(new Event('change', { bubbles: true }));
+            if (changed) personaSelector.dispatchEvent(new Event('change', { bubbles: true }));
         } else {
             state.currentPersona = persona;
         }

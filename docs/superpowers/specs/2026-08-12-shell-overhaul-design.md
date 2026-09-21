@@ -32,10 +32,21 @@ The customer's evaluation — calmer than a Big-4 deliverable, honest as a syste
 | Zone | Content | Who |
 |---|---|---|
 | Home | persona dashboard, Health Scorecard | all |
-| My work | persona's primary surface, 3–7 items (SA: Architecture Journey, Solutions, Programmes, AI Chat, ADM Kanban · EA: Portfolio, Capability Map, Elements, ArchiMate Composer, Traceability, Roadmaps · CTO: Health, Rationalization, Investment · Business Architect: Capability Map, Value Streams · Portfolio Mgr: Rationalization, Vendors, Applications · Procurement: Overview, Vendors, Contracts, Renewals, Spend, Licences, Compliance · App Mgr: Applications, Rationalization, Vendors) | per role |
+| My work | persona's primary surface, 3–7 items (SA: Architecture Journey, Solutions, Programmes, AI Chat, ADM Kanban, Impact Analysis · EA: Portfolio, Capability Map, Elements, ArchiMate Composer, Traceability, Roadmaps · CTO: Health, Rationalization, Investment · Business Architect: Capability Map, Value Streams, Impact Analysis · Portfolio Mgr: Rationalization, Vendors, Applications · Procurement: Overview, Vendors, Contracts, Renewals, Spend, Licences, Compliance · App Mgr: Applications, Rationalization, Vendors) | per role |
 | Library | Applications, Capabilities, Vendors, ArchiMate Elements | all |
 | Governance | ARB dashboard, Reviews, Sessions | roles on the board (EA, ARB member, CTO, admin) |
 | Admin | Command Center + admin pages | platform_admin |
+
+
+> **Amended 21 Sep 2026.** Impact Analysis was reachable in the sidebar only through the All-modules
+> directory (it already has its own top-of-My-work entry point via "Ask a question", but that page answers
+> a single cross-layer ripple-effect question, not the full analysis surface). Enterprise Architect already
+> carried an Impact Analysis My-work link (S-11, 18 Aug 2026); this adds the same endpoint and `crosshair`
+> icon to Solution Architect and Business Architect's My work, so all three architect personas have it,
+> because impact analysis is a primary job for those personas. Counting "Ask a question" (first in every
+> persona's My work, per the Ask/Twin-map amendment above) and this link together, the Solution Architect's
+> My work is now 9 items, two past the "3-7" guide above; the guide is a target, and
+> `tests/test_sidebar_budgets.py` pins the exact membership and the link budget.
 
 - Single source of truth: `app/utils/role_access.py` (role → zone → links). The sidebar template
   (`app/templates/components/admin_sidebar.html`) renders from that structure only — no
