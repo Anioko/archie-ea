@@ -146,8 +146,11 @@ def test_no_column_sits_underneath_the_actions_column(browser, client, page_and_
         pg.close()
 
 
-def test_the_wrapper_is_still_shown_when_a_vendor_is_clicked(browser, client, page_and_document):
-    """Hiding it by default must not stop it appearing: showVendorProducts adds lg:block."""
+def test_showvendorproducts_still_reveals_the_wrapper_when_called(browser, client, page_and_document):
+    """Not a user journey: nothing on this page currently calls showVendorProducts() (no row carries
+    data-vendor-id), so this does not prove a click reveals the panel. It only guards the function's own
+    contract -- that hiding the wrapper by default (this fix) did not also break its reveal path, in case
+    something is wired up to call it later."""
     pg = _open(browser, client, page_and_document)
     try:
         pg.evaluate("() => { try { window.showVendorProducts(1, 'Probe'); } catch (e) {} }")

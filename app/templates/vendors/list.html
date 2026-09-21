@@ -69,15 +69,20 @@
       {# Two empty states, chosen by hasActiveFilters (search or a filter is applied): nothing exists yet, or
          nothing matches what was asked for. The shared table only takes static text, so the message and the
          action are passed as markup and bound here. #}
-      {% set _vendor_empty %}
-        <span class="block text-sm font-medium text-foreground"
+      {# data-testid/role match the house empty-state convention used elsewhere, e.g.
+         archimate_crud/partials/_repository_workspace.html's true/filtered empty states. #}
+      {% set _vendor_empty_title %}
+        <span role="status"
+              :data-testid="hasActiveFilters ? 'vendors-filtered-empty-state' : 'vendors-true-empty-state'"
               x-text="hasActiveFilters ? 'No vendors match these filters.' : 'No vendors yet.'"></span>
+      {% endset %}
+      {% set _vendor_empty_action %}
         <span class="mt-3 block" x-show="!hasActiveFilters">
-          <button type="button" @click="Platform.modal.open('create-vendor')"
+          <button type="button" @click="Platform.modal.open('create-vendor')" aria-label="Add Vendor"
                   class="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">Add Vendor</button>
         </span>
         <span class="mt-3 block" x-show="hasActiveFilters" x-cloak>
-          <button type="button" @click="clearAllFilters()"
+          <button type="button" @click="clearAllFilters()" aria-label="Clear filters"
                   class="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium border border-input bg-background hover:bg-accent transition-colors">Clear filters</button>
         </span>
       {% endset %}
@@ -105,8 +110,8 @@
           selectable=true,
           search_placeholder='Search vendors...',
           empty_icon='building',
-          empty_message='',
-          empty_description=_vendor_empty,
+          empty_message=_vendor_empty_title,
+          empty_description=_vendor_empty_action,
           per_page_default=25
       ) %}
         {# ── Page-specific cell templates (repeated per row by Alpine x-for) ── #}
@@ -166,9 +171,12 @@
       {% endcall %}
     </div>
 
-    {# RIGHT: Products side panel — hidden until a vendor is clicked. showVendorProducts()
-       (js/vendors/list.js) adds lg:block on click; the wrapper must NOT carry lg:block itself, or an empty
-       bordered box reserves 288px from 1024px up and squeezes the table into a scrolled, overlapped state. #}
+    {# RIGHT: Products side panel. showVendorProducts() (js/vendors/list.js) is what reveals it (adds
+       lg:block), but nothing on this page currently calls it — no row carries data-vendor-id, and the
+       vendor-name button opens the edit modal instead. That gap predates this fix and is not addressed
+       here; this change only concerns the wrapper's own default state. The wrapper must NOT carry
+       lg:block itself while hidden, or an empty bordered box reserves 288px from 1024px up and squeezes
+       the table into a scrolled, overlapped state — which is the bug this PR fixes. #}
     <div id="vendor-products-wrapper" class="hidden w-72 shrink-0">
       <div id="vendor-products-panel" class="sticky top-4 rounded-xl border bg-card p-4 text-sm text-muted-foreground">
       </div>
