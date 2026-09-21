@@ -38,11 +38,15 @@ The customer's evaluation — calmer than a Big-4 deliverable, honest as a syste
 | Admin | Command Center + admin pages | platform_admin |
 
 
-> **Amended 19 Sep 2026.** Impact Analysis was reachable only through the
-> All-modules page. It is now in My work for the Solution Architect, Enterprise Architect and Business
-> Architect (same endpoint and `crosshair` icon for all three), because impact analysis is a primary job
-> for those personas. The Solution Architect's My work is now 8 links, one past the "3-7" guide above; the
-> guide is a target, and `tests/test_sidebar_budgets.py` pins the exact membership and the link budget.
+> **Amended 21 Sep 2026.** Impact Analysis was reachable in the sidebar only through the All-modules
+> directory (it already has its own top-of-My-work entry point via "Ask a question", but that page answers
+> a single cross-layer ripple-effect question, not the full analysis surface). Enterprise Architect already
+> carried an Impact Analysis My-work link (S-11, 18 Aug 2026); this adds the same endpoint and `crosshair`
+> icon to Solution Architect and Business Architect's My work, so all three architect personas have it,
+> because impact analysis is a primary job for those personas. Counting "Ask a question" (first in every
+> persona's My work, per the Ask/Twin-map amendment above) and this link together, the Solution Architect's
+> My work is now 9 items, two past the "3-7" guide above; the guide is a target, and
+> `tests/test_sidebar_budgets.py` pins the exact membership and the link budget.
 
 - Single source of truth: `app/utils/role_access.py` (role → zone → links). The sidebar template
   (`app/templates/components/admin_sidebar.html`) renders from that structure only — no

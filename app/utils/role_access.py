@@ -494,11 +494,11 @@ _MY_WORK_LINKS = {
         # surface; "cable" is distinct from the git-merge/git-branch/waypoints/
         # milestone icons already in this zone.
         _link("Interface Register", "interface_register.index", "cable"),
-        # Reported problem: the platform's own "analyse the ripple
-        # effects of a change" feature was reachable only from the All-modules
-        # page, so an architect with no training had no discoverable path to it.
-        # Same endpoint and icon as enterprise_architect's link. This is the 8th
-        # link, one past the shell-overhaul spec's "3-7"; the spec table says so.
+        # Reported problem: the full Impact Analysis page was reachable only from
+        # the All-modules page. "Ask a question" already answers one cross-layer
+        # ripple-effect question from the top of My work, but not the full
+        # analysis surface this links to. Same endpoint and icon as
+        # enterprise_architect's link, which already had it (S-11, 18 Aug 2026).
         _link("Impact Analysis", "strategic.impact_analysis", "crosshair"),
     ],
     ROLE_ENTERPRISE_ARCHITECT: [
