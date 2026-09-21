@@ -195,7 +195,7 @@ jobs:
         # --maxfail keeps the log readable while still surfacing many failures.
         run: |
           rm -f route_verification.json
-          pytest -q --maxfail=20 --ignore=tests/smoke \
+          pytest -q --maxfail=20 --ignore=tests/smoke -n auto \
             --cov=app --cov-report=term-missing:skip-covered --cov-report=xml \
             -o xfail_strict=true --junitxml=backend-tests.xml \
             -p scripts.route_verification_audit

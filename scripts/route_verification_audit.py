@@ -21,6 +21,8 @@ run is the combination that actually hurts.
 from __future__ import annotations
 
 import json
+import os
+import shutil
 import sys
 from pathlib import Path
 
@@ -28,6 +30,25 @@ REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
 RESULTS = REPO / "route_verification.json"
+
+# Under pytest-xdist, this plugin loads in every worker subprocess, each with
+# its own _seen set and its own pytest_sessionfinish call -- naively writing
+# RESULTS directly would have N processes racing to write (and clobber) the
+# same file, and whichever write lands last would silently under-report every
+# endpoint the other workers exercised. A worker writes its own partial set
+# to a file named after PYTEST_XDIST_WORKER (xdist sets this env var, e.g.
+# "gw0") in this scratch directory instead; the controller process (which
+# xdist runs pytest_sessionfinish on only after every worker has reported
+# in) merges them with its own _seen (empty under xdist, since the controller
+# does not execute tests itself) into the one RESULTS file callers read.
+# Running plain `pytest` with no `-n` never sets the env var, so PYTEST_XDIST_
+# WORKER is absent, _worker_id() returns "master", and behaviour is identical
+# to before this file learned about xdist.
+_WORKER_DIR = REPO / ".route_verification_workers"
+
+
+def _worker_id() -> str:
+    return os.environ.get("PYTEST_XDIST_WORKER", "master")
 
 # Sentinel for "the audit has never been run here", kept distinct from any real
 # count. route_verification.json is untracked and lives in exactly one working
@@ -63,8 +84,24 @@ def pytest_configure(config):  # noqa: ARG001 - pytest hook
 
 
 def pytest_sessionfinish(session, exitstatus):  # noqa: ARG001 - pytest hook
-    RESULTS.write_text(json.dumps(sorted(_seen), indent=0), encoding="utf-8")
-    print(f"\nroute-verification: {len(_seen)} endpoints exercised -> {RESULTS.name}")
+    worker = _worker_id()
+    if worker != "master":
+        # An xdist worker: hand its partial set to the controller via a
+        # per-worker file rather than writing RESULTS itself.
+        _WORKER_DIR.mkdir(exist_ok=True)
+        (_WORKER_DIR / f"{worker}.json").write_text(
+            json.dumps(sorted(_seen)), encoding="utf-8"
+        )
+        return
+
+    merged = set(_seen)
+    if _WORKER_DIR.exists():
+        for worker_file in _WORKER_DIR.glob("*.json"):
+            merged |= set(json.loads(worker_file.read_text(encoding="utf-8")))
+        shutil.rmtree(_WORKER_DIR)
+
+    RESULTS.write_text(json.dumps(sorted(merged), indent=0), encoding="utf-8")
+    print(f"\nroute-verification: {len(merged)} endpoints exercised -> {RESULTS.name}")
 
 
 # ── standalone report half ────────────────────────────────────────────────────
