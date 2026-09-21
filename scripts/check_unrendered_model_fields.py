@@ -118,9 +118,20 @@ def _model_content_fields(model_name: str) -> tuple[str, list[str]] | None:
         m = pattern.search(src)
         if not m:
             continue
-        # Class body: from the match to the next top-level `class ` or EOF.
+        # Class body: from the match to the next `class ` at ANY indentation,
+        # not just column 0. This codebase has a real, common pattern of
+        # classes nested inside a function (fast-init lazy model
+        # definitions -- app/models/models.py, archimate_core.py,
+        # architecture_review_board.py and others all do this). A body cut
+        # off only at the next top-level class kept scanning straight through
+        # a nested class's own fields and attributed them to the outer class:
+        # ARBGovernanceStandard was reported as never rendering rationale/
+        # conditions/decision_rationale/adm_phases_affected, but those
+        # columns belong to Derogation and ChangeRequest, two classes nested
+        # inside a factory function defined later in the same file -- a false
+        # positive from a boundary bug, not a real template gap.
         rest = src[m.end():]
-        next_class = re.search(r"^class\s+\w+\s*\(", rest, re.MULTILINE)
+        next_class = re.search(r"^\s*class\s+\w+\s*\(", rest, re.MULTILINE)
         body = rest[: next_class.start()] if next_class else rest
         lines = body.splitlines()
         fields = []

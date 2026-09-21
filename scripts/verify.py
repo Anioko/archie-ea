@@ -1736,7 +1736,7 @@ def build_gates(baseline: dict) -> list[Gate]:
                          "add type= to buttons, and text-xs instead of text-[Npx]",
              tags=["static", "ui"]),
         Gate("unrendered-model-fields", "a detail-view template never rendering a real model field",
-             "ratchet", lambda: gate_unrendered_model_fields(baseline.get("unrendered_model_fields", 391)),
+             "ratchet", lambda: gate_unrendered_model_fields(baseline.get("unrendered_model_fields", 387)),
              remediation="run scripts/check_unrendered_model_fields.py; render the field, "
                          "or mark 'unrendered-field-ok: <reason>' on its column line",
              tags=["static", "ui"]),
