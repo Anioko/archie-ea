@@ -36,6 +36,7 @@ from playwright.sync_api import expect
 
 from .conftest import PAGE_TIMEOUT, PASSWORD, _serve_application
 from .test_accessibility_audit import RESULT_KINDS, TAGS
+from .test_chief_architect_workbench_journey import _screenshot as _shell_screenshot
 
 pytestmark = [pytest.mark.smoke, pytest.mark.journey]
 
@@ -322,12 +323,18 @@ def _answer(data, status=200):
     return lambda route, request: route.fulfill(status=status, content_type="application/json", body=body)
 
 
-def _shot(target, name, **options):
+def _shot(target, name, full_content=False, **options):
     """A screenshot for the evidence folder, when there is one."""
     folder = os.environ.get("T005_EVIDENCE_DIR") or os.environ.get("SMOKE_SCREENSHOT_DIR")
     if folder:
         os.makedirs(folder, exist_ok=True)
-        target.screenshot(path=os.path.join(folder, "t005-us5-" + name + ".png"), **options)
+        name = "t005-us5-" + name
+        if full_content:
+            # Keep the actual viewport composition before the shell-aware helper grows it.
+            target.screenshot(path=os.path.join(folder, name + "-viewport.png"), full_page=False, **options)
+            _shell_screenshot(target, name + "-expanded-content.png", directory=folder)
+        else:
+            target.screenshot(path=os.path.join(folder, name + ".png"), **options)
 
 
 def _figure_row(page):
@@ -462,7 +469,7 @@ def test_twin_map_reaches_the_same_screen_with_its_own_header_action(page, live_
 
 @pytest.mark.parametrize("width,height", [(1440, 900), (1024, 900), (390, 844)])
 def test_integrated_shell_visual_evidence(width, height, page, live_server, seeded, never, stale):
-    """Collect full-page evidence for independent visual review; this is not a visual verdict."""
+    """Collect viewport and expanded-content evidence for independent visual review."""
     original_viewport = page.viewport_size
     prefix = "shell-%dx%d-" % (width, height)
     try:
@@ -485,7 +492,7 @@ def test_integrated_shell_visual_evidence(width, height, page, live_server, seed
             )
             expect(page.get_by_role("heading", name=title, exact=True)).to_be_visible()
             expect(page.get_by_role("link", name=LABEL, exact=True)).to_be_visible()
-            _shot(page, prefix + name, full_page=True, animations="disabled")
+            _shot(page, prefix + name, full_content=True, animations="disabled")
 
         # Reach the uncomputed state through the real Twin map header action.
         _through_the_header_action(page)
@@ -493,7 +500,7 @@ def test_integrated_shell_visual_evidence(width, height, page, live_server, seed
         assert _drift_state(page) == "counted"
         expect(page.get_by_text(NOT_WORKED_OUT)).to_be_visible()
         expect(page.get_by_role("button", name="Work them out now")).to_be_visible()
-        _shot(page, prefix + "worked-out-not-computed", full_page=True, animations="disabled")
+        _shot(page, prefix + "worked-out-not-computed", full_content=True, animations="disabled")
 
         _open(page, live_server, stale["emails"]["enterprise_architect"])
         assert page.url == live_server + PATH
@@ -501,7 +508,7 @@ def test_integrated_shell_visual_evidence(width, height, page, live_server, seed
         assert _drift_state(page) == "counted"
         expect(page.get_by_text(re.compile(r"^Last worked out .+ — may be out of date\.$"))).to_be_visible()
         expect(page.get_by_role("button", name="Work them out now")).to_be_visible()
-        _shot(page, prefix + "worked-out-stale-action", full_page=True, animations="disabled")
+        _shot(page, prefix + "worked-out-stale-action", full_content=True, animations="disabled")
     finally:
         page.set_viewport_size(original_viewport)
         page.goto("about:blank")

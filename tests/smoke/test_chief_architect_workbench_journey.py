@@ -29,36 +29,53 @@ PERSONA = "enterprise_architect"
 SCREENSHOT_DIR = os.environ.get("SMOKE_SCREENSHOT_DIR")
 
 
-def _screenshot(page, name):
-    """Capture the whole workbench, not just the first viewport.
+def _screenshot(page, name, directory=None):
+    """Capture all visible shell content at the same width, restoring the caller's viewport.
 
     ``full_page=True`` alone yields exactly one viewport here: the admin shell
     scrolls an inner ``overflow-auto`` element, so the document itself never
     grows past the window and Playwright has nothing extra to capture. Releasing
     the inner container's height first is what makes the page actually tall.
     """
-    if not SCREENSHOT_DIR:
+    folder = SCREENSHOT_DIR if directory is None else directory
+    if not folder:
         return
-    os.makedirs(SCREENSHOT_DIR, exist_ok=True)
-    width = page.viewport_size["width"]
-    content = page.evaluate(
-        """() => {
-            let tallest = document.documentElement.scrollHeight;
+    os.makedirs(folder, exist_ok=True)
+    original_viewport = page.viewport_size
+    measure = """() => {
+            let height = document.documentElement.scrollHeight;
+            const clipped = [];
             document.querySelectorAll('*').forEach(el => {
                 const s = getComputedStyle(el);
-                if (s.overflowY === 'auto' || s.overflowY === 'scroll') {
-                    if (el.scrollHeight > tallest) { tallest = el.scrollHeight; }
+                const r = el.getBoundingClientRect();
+                if ((s.overflowY === 'auto' || s.overflowY === 'scroll') &&
+                    el.clientHeight > 0 && r.right > 0 && r.left < window.innerWidth &&
+                    s.visibility !== 'hidden') {
+                    const overflow = el.scrollHeight - el.clientHeight;
+                    height = Math.max(height, window.innerHeight + overflow);
+                    if (overflow > 0) clipped.push({
+                        tag: el.tagName, id: el.id, overflow: overflow
+                    });
                 }
             });
-            return tallest;
+            return {height: height, clipped: clipped};
         }"""
-    )
+    content = page.evaluate(measure)
     # The shell pins its own height and scrolls an inner element, so growing the
     # viewport is what actually reveals the rest of the page.
-    page.set_viewport_size({"width": width, "height": min(int(content) + 120, 8000)})
-    page.wait_for_timeout(600)
-    page.screenshot(path=os.path.join(SCREENSHOT_DIR, name), full_page=True)
-    page.set_viewport_size({"width": width, "height": 900})
+    try:
+        page.set_viewport_size({
+            "width": original_viewport["width"], "height": min(int(content["height"]) + 120, 8000),
+        })
+        page.wait_for_timeout(600)
+        remaining = page.evaluate(measure)
+        assert not remaining["clipped"], (
+            "Incomplete expanded-content capture at %r (height cap 8000): %r"
+            % (page.viewport_size, remaining)
+        )
+        page.screenshot(path=os.path.join(folder, name), full_page=True, animations="disabled")
+    finally:
+        page.set_viewport_size(original_viewport)
 
 
 def test_workbench_renders_and_boots(page, live_server, seeded):
