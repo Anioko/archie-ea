@@ -247,7 +247,7 @@ def test_no_zone_link_or_label_changed_for_any_persona(app, client, role):
     from app.utils.role_access import get_sidebar_zones
 
     class _StubUser:
-        """Same shape get_sidebar_zones() reads: enterprise_role, is_admin(), is_platform_admin, is_org_admin."""
+        """Same shape get_sidebar_zones() reads: enterprise_role, is_admin(), is_platform_admin, is_org_admin, can()."""
 
         def __init__(self, role):
             self.enterprise_role = role
@@ -256,6 +256,16 @@ def test_no_zone_link_or_label_changed_for_any_persona(app, client, role):
 
         def is_admin(self):
             return self.enterprise_role == "platform_admin"  # mirrors the fixture's granted Administrator role
+
+        def can(self, permission):
+            # _persona() below grants every fixture user Role="Architect", whose
+            # permissions carry Permission.GENERAL (app/models/user.py's SEED_ROLES) --
+            # mirror that specific grant rather than returning True unconditionally,
+            # so a future permission this stub doesn't know about still surfaces as a
+            # real mismatch instead of silently matching.
+            from app.models.user import Permission
+
+            return permission == Permission.GENERAL
 
     login(client, _persona(app, role))
     document = client.get("/dashboard/overview").get_data(as_text=True)

@@ -70,20 +70,31 @@ def test_modules_directory_returns_200(app, db_session, make_org):
 
 
 def test_modules_directory_includes_zone_sourced_link(app, db_session, make_org):
-    """Stakeholder Map now lives in the curated More-tools section (it isn't
-    in any role's SIDEBAR_ZONES), but the directory must also surface real
-    zone-sourced links — assert one that is unambiguously zone-only and
-    common to most roles: ArchiMate Elements (library zone, every role)."""
+    """Assert the directory surfaces real zone-sourced links — one that is
+    unambiguously zone-only and common to most roles: ArchiMate Elements
+    (library zone, every role)."""
     client = _make_logged_in_client(app, db_session, make_org)
     html = client.get("/modules").get_data(as_text=True)
     assert "ArchiMate Elements" in html
 
 
 def test_modules_directory_includes_curated_more_tools(app, db_session, make_org):
+    """Corrected 20 Sep 2026 — this test previously asserted "Stakeholder Map"
+    and "Batch Import" as proof the More-tools section itself renders.
+    Neither actually proves that: Stakeholder Map IS a zone link
+    (role_access.py's _MY_WORK_LINKS, several roles) and Batch Import IS a
+    zone link too (_ADMIN_LINKS, platform_admin's zone) — both are only
+    absent from More-tools for the default `enterprise_architect` test user
+    because the zone-vs-More-tools dedup correctly drops the More-tools copy
+    for whichever roles already have the zone copy. "Chief Architect
+    Synthesis" (solution_design.architect_synthesis) is verified absent from
+    every entry in role_access.py's SIDEBAR_ZONES (_HOME_LINKS,
+    _LIBRARY_LINKS, _GOVERNANCE_LINKS, _ADMIN_LINKS, _MY_WORK_LINKS) — it is
+    genuinely More-tools-only, so it actually tests what this test claims to
+    test."""
     client = _make_logged_in_client(app, db_session, make_org)
     html = client.get("/modules").get_data(as_text=True)
-    assert "Stakeholder Map" in html
-    assert "Batch Import" in html
+    assert "Chief Architect Synthesis" in html
 
 
 def test_modules_directory_composer_link_carries_viewpoint_query_param(app, db_session, make_org):
@@ -234,7 +245,19 @@ def _rendered_hrefs(client):
 
 @pytest.mark.parametrize(
     "enterprise_role",
-    ["enterprise_architect", "solution_architect", "business_architect"],
+    [
+        "enterprise_architect",
+        "solution_architect",
+        "business_architect",
+        # security_architect added after the Policy Monitoring gap: its zone
+        # link had no `requires=` predicate, so a Viewer-role assignment of
+        # this persona specifically would 403 on a link the directory still
+        # advertised. This param, with the persona's DEFAULT (non-Viewer)
+        # role, guards the ordinary case; the narrower Viewer-role exposure
+        # has its own dedicated test below
+        # (test_policy_monitoring_not_advertised_to_viewer_role_security_architect).
+        "security_architect",
+    ],
 )
 def test_no_advertised_destination_is_forbidden(
     app, db_session, org, client, login_as, enterprise_role
@@ -367,6 +390,163 @@ def test_not_rendered_endpoints_are_absent_from_the_page_and_search(
 # --------------------------------------------------------------------------
 # The 500 that started this: an empty_state kwarg the macro does not accept.
 # --------------------------------------------------------------------------
+
+
+# --------------------------------------------------------------------------
+# A module in both a persona zone and the More-tools catch-all must render
+# once, not twice — index() now subtracts zone endpoints from _MORE_TOOLS the
+# same way all_module_links() already does for global search.
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "enterprise_role,platform_admin",
+    [
+        ("enterprise_architect", False),
+        ("solution_architect", False),
+        ("business_architect", False),
+        ("security_architect", False),
+        ("platform_admin", True),
+    ],
+)
+def test_no_module_endpoint_rendered_twice(
+    app, db_session, org, client, login_as, enterprise_role, platform_admin
+):
+    user = _make_user(
+        db_session, org, enterprise_role=enterprise_role, platform_admin=platform_admin
+    )
+    login_as(client, user)
+
+    hrefs = _rendered_hrefs(client)
+    duplicates = {h for h in hrefs if hrefs.count(h) > 1}
+    assert not duplicates, f"{enterprise_role} saw the same destination twice: {duplicates}"
+
+
+def _section_bodies(html):
+    """Split the directory page into {section title: body html} using the
+    real <h2> heading markup (whitespace between the tag and the title text
+    means a plain ">Title<" substring match never hits)."""
+    import re
+
+    headings = list(re.finditer(r'<h2[^>]*>\s*([^<]+?)\s*</h2>', html))
+    bodies = {}
+    for i, m in enumerate(headings):
+        start = m.end()
+        end = headings[i + 1].start() if i + 1 < len(headings) else len(html)
+        bodies[m.group(1).strip()] = html[start:end]
+    return bodies
+
+
+def test_arb_dashboard_resolves_under_governance_not_my_work(
+    app, db_session, org, client, login_as
+):
+    """arb.dashboard is assigned to _GOVERNANCE_LINKS ("ARB Dashboard") AND to
+    solution_architect's _MY_WORK_LINKS ("Review Board"). The cross-bucket
+    tie-break must prefer the shared "governance" placement over the
+    persona-specific "my_work" one, or the Governance section loses its ARB
+    dashboard entirely for every persona whose zones include both (the exact
+    findability regression this fix exists to prevent)."""
+    from flask import url_for
+
+    user = _make_user(db_session, org, enterprise_role="solution_architect")
+    login_as(client, user)
+
+    html = client.get("/modules/").get_data(as_text=True)
+
+    with app.test_request_context():
+        arb_url = url_for("arb.dashboard")
+
+    sections = _section_bodies(html)
+    assert "Governance" in sections, f"Governance section missing from /modules: {list(sections)}"
+
+    governance_body = sections["Governance"]
+    assert arb_url in governance_body, (
+        "ARB Dashboard must render under Governance, not My work "
+        f"(arb_url={arb_url!r} not found in Governance section body)"
+    )
+    assert "ARB Dashboard" in governance_body
+
+    my_work_body = sections.get("My work", "")
+    assert arb_url not in my_work_body, (
+        "arb.dashboard must not also render under My work once Governance owns it"
+    )
+
+
+def test_health_scorecard_still_resolves_under_home(
+    app, db_session, org, client, login_as
+):
+    """Regression guard for the tie-break reorder above: Health Scorecard
+    lives only in _HOME_LINKS, so it must stay under Home regardless of the
+    tie-break preference order change."""
+    user = _make_user(db_session, org, enterprise_role="enterprise_architect")
+    login_as(client, user)
+
+    html = client.get("/modules/").get_data(as_text=True)
+
+    sections = _section_bodies(html)
+    assert "Home" in sections, f"Home section missing from /modules: {list(sections)}"
+    assert "Health Scorecard" in sections["Home"], (
+        "Health Scorecard must still render under Home"
+    )
+
+
+def test_policy_monitoring_not_advertised_to_viewer_role_security_architect(
+    app, db_session, org, client, login_as
+):
+    """A security_architect assigned the read-only Viewer Role (permissions=0)
+    fails the underlying route's require_roles() check (Permission.GENERAL),
+    so the directory must not advertise it — an advertised link that hard
+    403s is a dead control."""
+    from flask import url_for
+
+    from app.models.user import Role
+
+    Role.insert_roles()
+    viewer_role = Role.query.filter_by(name="Viewer").first()
+    assert viewer_role is not None
+
+    user = _make_user(db_session, org, enterprise_role="security_architect")
+    user.role = viewer_role
+    db_session.flush()
+    login_as(client, user)
+
+    with app.test_request_context():
+        live_url = url_for("policy_monitoring.policy_dashboard")
+
+    hrefs = set(_rendered_hrefs(client))
+    assert live_url not in hrefs, (
+        "Policy Monitoring must not be advertised to a Viewer-role user who "
+        "would 403 on it"
+    )
+
+    login_as(client, user)
+    assert client.get(live_url).status_code == 403
+
+
+def test_policy_monitoring_shows_only_the_live_endpoint(
+    app, db_session, org, client, login_as
+):
+    """Impact-analysis-style duplicate, but by two DIFFERENT endpoints sharing
+    the "Policy Monitoring" label so plain endpoint-dedup can't merge them.
+    unified_low_priority.policy_monitoring_dashboard renders the same template
+    with no data at all; policy_monitoring.policy_dashboard is the real
+    governance dashboard (monitoring_data + compliance_report) and is what the
+    security-architect zone now points at. Only that one should be advertised."""
+    from flask import url_for
+
+    user = _make_user(db_session, org, enterprise_role="security_architect")
+    login_as(client, user)
+
+    with app.test_request_context():
+        live_url = url_for("policy_monitoring.policy_dashboard")
+        stub_url = url_for("unified_low_priority.policy_monitoring_dashboard")
+
+    hrefs = set(_rendered_hrefs(client))
+    assert live_url in hrefs, "the real Policy Monitoring dashboard must stay reachable"
+    assert stub_url not in hrefs, "the empty-shell duplicate must not also be advertised"
+
+    login_as(client, user)
+    assert client.get(live_url).status_code == 200
 
 
 def test_maturity_heatmap_renders_with_no_capabilities(
