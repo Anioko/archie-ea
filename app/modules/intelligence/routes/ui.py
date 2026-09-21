@@ -1,9 +1,10 @@
-"""Ask and Twin map: the two pages of the intelligence module's user interface.
+"""Ask, Twin map and Worked-out connections: the pages of the intelligence
+module's user interface.
 
-Both routes only render a page shell. The data is fetched in the browser from
+Every route only renders a page shell. The data is fetched in the browser from
 endpoints that already exist: element search from the ArchiMate picker
-endpoint and the impact answer from the intelligence API, so the pages carry no
-query of their own and no way to read another tenant's rows.
+endpoint, the impact answer and the yield answer from the intelligence API, so
+the pages carry no query of their own and no way to read another tenant's rows.
 
 The provenance drawer is not a route. It opens over either page.
 """
@@ -66,6 +67,18 @@ def twin_map():
         initial_element_id=initial_element_id,
         workspace_counts_available=_workspace_counts_available(),
     )
+
+
+@intelligence_ui.route("/worked-out-connections", methods=["GET"])
+@login_required
+def worked_out_connections():
+    """Show how much has been worked out for the tenant, and how fresh it is.
+
+    The page is a shell; its figures are fetched in the browser from the yield
+    endpoint. It has no sidebar entry: it is reached from a header action on
+    Ask and on Twin map.
+    """
+    return render_template("intelligence/worked_out_connections.html")
 
 
 __all__ = ["intelligence_ui"]

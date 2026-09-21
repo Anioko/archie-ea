@@ -29,36 +29,76 @@ PERSONA = "enterprise_architect"
 SCREENSHOT_DIR = os.environ.get("SMOKE_SCREENSHOT_DIR")
 
 
-def _screenshot(page, name):
-    """Capture the whole workbench, not just the first viewport.
+def _screenshot(page, name, directory=None):
+    """Capture all visible shell content at the same width, restoring the caller's viewport.
 
     ``full_page=True`` alone yields exactly one viewport here: the admin shell
     scrolls an inner ``overflow-auto`` element, so the document itself never
     grows past the window and Playwright has nothing extra to capture. Releasing
     the inner container's height first is what makes the page actually tall.
     """
-    if not SCREENSHOT_DIR:
+    folder = SCREENSHOT_DIR if directory is None else directory
+    if not folder:
         return
-    os.makedirs(SCREENSHOT_DIR, exist_ok=True)
-    width = page.viewport_size["width"]
-    content = page.evaluate(
-        """() => {
-            let tallest = document.documentElement.scrollHeight;
+    os.makedirs(folder, exist_ok=True)
+    original_viewport = page.viewport_size
+    measure = """() => {
+            let height = document.documentElement.scrollHeight;
+            const clipped = [];
             document.querySelectorAll('*').forEach(el => {
                 const s = getComputedStyle(el);
-                if (s.overflowY === 'auto' || s.overflowY === 'scroll') {
-                    if (el.scrollHeight > tallest) { tallest = el.scrollHeight; }
+                const r = el.getBoundingClientRect();
+                if ((s.overflowY === 'auto' || s.overflowY === 'scroll') &&
+                    el.clientHeight > 0 && r.right > 0 && r.left < window.innerWidth &&
+                    s.visibility !== 'hidden') {
+                    const overflow = el.scrollHeight - el.clientHeight;
+                    height = Math.max(height, window.innerHeight + overflow);
+                    if (overflow > 0) clipped.push({
+                        tag: el.tagName, id: el.id, overflow: overflow
+                    });
                 }
             });
-            return tallest;
+            return {height: height, width: document.documentElement.scrollWidth, clipped: clipped};
         }"""
-    )
     # The shell pins its own height and scrolls an inner element, so growing the
-    # viewport is what actually reveals the rest of the page.
-    page.set_viewport_size({"width": width, "height": min(int(content) + 120, 8000)})
-    page.wait_for_timeout(600)
-    page.screenshot(path=os.path.join(SCREENSHOT_DIR, name), full_page=True)
-    page.set_viewport_size({"width": width, "height": 900})
+    # viewport is what actually reveals the rest of the page. Allow reflow, but
+    # bound this to four resizes, 24000 CSS px high and 32 million CSS pixels.
+    # That leaves room above the existing phone content without unbounded growth.
+    max_pixels = 32_000_000
+    max_height = min(24_000, max_pixels // original_viewport["width"])
+    max_resizes = 4
+    try:
+        content = page.evaluate(measure)
+        height = original_viewport["height"]
+        for _ in range(max_resizes):
+            target_height = min(max(height, int(content["height"]) + 120), max_height)
+            if target_height < height:
+                break
+            page.set_viewport_size({
+                "width": original_viewport["width"], "height": target_height,
+            })
+            page.wait_for_timeout(600)
+            height = target_height
+            content = page.evaluate(measure)
+            if not content["clipped"]:
+                capture_height = max(height, content["height"])
+                capture_width = max(original_viewport["width"], content["width"])
+                if capture_height <= max_height and capture_width * capture_height <= max_pixels:
+                    page.screenshot(
+                        path=os.path.join(folder, name), full_page=True,
+                        animations="disabled", scale="css",
+                    )
+                    return
+                break
+            if height == max_height:
+                break
+        raise AssertionError(
+            "Incomplete expanded-content capture at %r "
+            "(height limit %s, pixel limit %s, resize limit %s): %r"
+            % (page.viewport_size, max_height, max_pixels, max_resizes, content)
+        )
+    finally:
+        page.set_viewport_size(original_viewport)
 
 
 def test_workbench_renders_and_boots(page, live_server, seeded):

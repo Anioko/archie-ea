@@ -55,6 +55,11 @@ POLICY = {
     # impact endpoint they read, not by the page.
     "/intelligence/ask":       set(ARCHETYPES),
     "/intelligence/twin-map":  set(ARCHETYPES),
+    # Worked-out connections: the third page of the same blueprint, reached from a
+    # header action on each of the two above. It carries @login_required and no
+    # role gate, so every one of the eleven archetypes is expected to reach it. The
+    # figures it shows are fenced per tenant by the yield endpoint it reads.
+    "/intelligence/worked-out-connections": set(ARCHETYPES),
     # ArchiMate OEF import (dogfood-import-fixes, Task 01): the route carries
     # only @login_required -- no role gate at all -- despite update_existing
     # being able to overwrite elements across the whole enterprise model, per
@@ -674,9 +679,13 @@ def test_intelligence_yield_route_authorisation(archetype, page, live_server, se
 
 def test_intelligence_yield_route_rejects_anonymous_browser_session(page, live_server):
     path = "/api/v1/intelligence/yield"
-    response = page.goto(live_server + path, wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
+    # Check the API response without waiting for the browser's JSON document lifecycle.
+    response = page.goto(live_server + path, wait_until="commit", timeout=PAGE_TIMEOUT)
     assert response is not None
     assert response.status == 401
+    body = response.json()
+    assert body["success"] is False
+    assert body["error"] == "Authentication required"
 
 
 def test_transformation_api_rejects_anonymous_browser_session(page, live_server):

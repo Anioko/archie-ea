@@ -135,6 +135,10 @@ def ai_protocol_stub():
 
 @pytest.fixture(scope="session")
 def live_server(request, ai_protocol_stub, app):
+    yield from _serve_application(request, ai_protocol_stub, app)
+
+
+def _serve_application(request, ai_protocol_stub, app, *, workers=2):
     """Boot the real application on a free port and yield its base URL.
 
     Runs the app as a subprocess rather than via the test client, because a test
@@ -165,7 +169,7 @@ def live_server(request, ai_protocol_stub, app):
     if _has_gunicorn():
         cmd = [sys.executable, "-m", "gunicorn", "manage:app",
                "--bind", "127.0.0.1:%d" % port,
-               "--workers", "2", "--threads", "8",
+               "--workers", str(workers), "--threads", "8",
                "--timeout", "120", "--graceful-timeout", "20",
                # No access log: one line per request, and the errors are what matter.
                "--error-logfile", "-"]
@@ -182,19 +186,27 @@ def live_server(request, ai_protocol_stub, app):
     # the server log survives to be printed when a test fails.
     log_path = os.path.join(tempfile.gettempdir(), "smoke-server-%d.log" % port)
     log_handle = open(log_path, "w+b")
-    proc = subprocess.Popen(cmd, env=env, stdout=log_handle, stderr=subprocess.STDOUT)
+    try:
+        proc = subprocess.Popen(cmd, env=env, stdout=log_handle, stderr=subprocess.STDOUT)
+    except BaseException:
+        log_handle.close()
+        raise
 
     def stop_server():
         # Register before boot checks so an early failure cannot leave the
         # subprocess using a protocol listener that has already been closed.
-        if proc.poll() is None:
-            proc.terminate()
-            try:
-                proc.wait(timeout=20)
-            except subprocess.TimeoutExpired:
-                proc.kill()
+        try:
+            if proc.poll() is None:
+                proc.terminate()
+                try:
+                    proc.wait(timeout=20)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.wait(timeout=5)
+            else:
                 proc.wait(timeout=5)
-        log_handle.close()
+        finally:
+            log_handle.close()
 
     request.addfinalizer(stop_server)
     base = "http://127.0.0.1:%d" % port
@@ -202,8 +214,8 @@ def live_server(request, ai_protocol_stub, app):
     deadline = time.time() + BOOT_TIMEOUT
     while time.time() < deadline:
         if proc.poll() is not None:
-            out = (proc.stdout.read() or b"").decode("utf-8", "replace")[-2500:]
-            pytest.fail("app exited during boot:\n%s" % out)
+            log_handle.flush()
+            pytest.fail("app exited during boot:\n%s" % _tail(log_path))
         try:
             import urllib.error
             import urllib.request
@@ -221,8 +233,8 @@ def live_server(request, ai_protocol_stub, app):
             pass
         time.sleep(3)
     else:
-        proc.kill()
-        pytest.fail("app did not bind %s within %ss" % (base, BOOT_TIMEOUT))
+        log_handle.flush()
+        pytest.fail("app did not bind %s within %ss:\n%s" % (base, BOOT_TIMEOUT, _tail(log_path)))
 
     # Warm the first template render. Jinja compiles lazily and several services
     # import on first request, so a cold /account/login can take a minute on a

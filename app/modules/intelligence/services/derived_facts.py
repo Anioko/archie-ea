@@ -168,8 +168,11 @@ def derived_fact_aggregates(organization_id: int) -> Dict[str, Any]:
     function correct when called with no ambient request context too.
 
     Returns:
-      - ``derived_count`` -- non-stale row count.
+      - ``current_count`` -- rows that are not stale. The yield answer's own
+        ``derived_count`` is a different number: it is ``total_count`` below.
       - ``stale_count`` -- stale row count.
+      - ``total_count`` -- every stored row for the tenant, current or stale:
+        the number of worked-out connections the store holds.
       - ``computed_at`` -- ``MAX(computed_at)`` over the tenant's rows
         (across stale and non-stale), ``None`` when there are none -- never a
         fabricated date.
@@ -179,7 +182,7 @@ def derived_fact_aggregates(organization_id: int) -> Dict[str, Any]:
     """
     from app.modules.intelligence.models.derived_relationship import DerivedRelationship
 
-    derived_count = db.session.execute(
+    current_count = db.session.execute(
         db.select(db.func.count(DerivedRelationship.id)).where(
             DerivedRelationship.organization_id == organization_id,
             DerivedRelationship.stale.is_(False),
@@ -206,11 +209,52 @@ def derived_fact_aggregates(organization_id: int) -> Dict[str, Any]:
     ).scalars().all()
 
     return {
-        "derived_count": int(derived_count),
+        "current_count": int(current_count),
         "stale_count": int(stale_count),
+        "total_count": int(current_count) + int(stale_count),
         "computed_at": computed_at,
         "engine_versions": sorted(v for v in engine_versions if v is not None),
     }
+
+
+def explicit_relationship_count(organization_id: int) -> int:
+    """How many explicit relationships the tenant has recorded.
+
+    The same number the derivation runner counts as ``explicit_count``: every
+    ``ArchiMateRelationship`` row of the tenant, unfiltered. A ``COUNT`` in SQL,
+    never the rows loaded and measured in Python. The explicit
+    ``organization_id ==`` predicate is defence in depth on top of the tenant
+    isolation listener, and keeps the function correct with no request context.
+    """
+    from app.models import ArchiMateRelationship
+
+    count = db.session.execute(
+        db.select(db.func.count(ArchiMateRelationship.id)).where(
+            ArchiMateRelationship.organization_id == organization_id
+        )
+    ).scalar_one()
+    return int(count)
+
+
+def active_element_count(organization_id: int) -> int:
+    """How many ArchiMate elements the tenant has that are not deleted.
+
+    The same rows the drift detector loads and with the same predicate (the
+    tenant's own, with no deletion stamp), so the number measures the thing
+    that drives the detector's cost. One ``COUNT`` in SQL, never the rows
+    loaded. The explicit ``organization_id ==`` predicate is defence in depth
+    on top of the tenant isolation listener, and keeps the function correct
+    with no request context.
+    """
+    from app.models import ArchiMateElement
+
+    count = db.session.execute(
+        db.select(db.func.count(ArchiMateElement.id)).where(
+            ArchiMateElement.organization_id == organization_id,
+            ArchiMateElement.deleted_at.is_(None),
+        )
+    ).scalar_one()
+    return int(count)
 
 
 def latest_derivation_run(organization_id: int):
@@ -261,7 +305,9 @@ def get_derived_fact(
 
 __all__ = [
     "STALE_REASON",
+    "active_element_count",
     "derived_fact_aggregates",
+    "explicit_relationship_count",
     "get_derived_fact",
     "latest_derivation_run",
     "list_derived_facts",

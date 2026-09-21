@@ -11,8 +11,8 @@ gate enforces this mechanically at the template layer, out of scope here).
 
 from __future__ import annotations
 
-# sdd-v2.md § API-8 — the original sixteen members, plus the two T-004
-# additions below (eighteen total), exactly, nothing invented.
+# sdd-v2.md § API-8 — the original sixteen members, plus the additions below
+# (twenty-two in all), exactly, nothing invented.
 REASON_CODES = frozenset(
     {
         "no_ownership_recorded",
@@ -44,6 +44,17 @@ REASON_CODES = frozenset(
         # exactly the fabrication CLAUDE.md's "never invent data" rule
         # forbids.
         "p95_above_highest_bucket",
+        # The yield endpoint's last-recompute duration is absent for a tenant
+        # with no recorded run, and for a stored run that carries no duration.
+        "no_recompute_duration_recorded",
+        # The model-check count is a separate read of the yield endpoint. The
+        # figures read does not run the drift detector, so its count is absent
+        # because it was not asked for, not because the detector failed.
+        "drift_count_not_requested",
+        # A model above the size the model check will spend time on is not
+        # counted. The detector is available and working; the read chose not
+        # to run it, which is a different fact from ``source_unavailable``.
+        "model_too_large_for_drift_check",
     }
 )
 
