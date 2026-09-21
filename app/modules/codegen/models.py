@@ -446,6 +446,15 @@ class SolutionConnector(db.Model):
         return f"<SolutionConnector id={self.id} solution={self.solution_id} type={self.connector_type}>"
 
 
+# ConnectorCredential (codegen_connector_credentials) lives in credential_vault.py,
+# a services module never imported at boot, so db.create_all() (via `flask
+# init-db`) never registered it and the table was never created on a fresh
+# database -- CredentialVault.store() would raise UndefinedTable the first
+# time anything actually called it. Imported here, next to its sibling
+# SolutionConnector, so init-db picks it up the same way.
+from app.modules.codegen.services.credential_vault import ConnectorCredential  # noqa: E402,F401
+
+
 class SolutionVersion(db.Model):
     """Tracks a versioned deployment of a solution.
     migration-exempt — table created via db.create_all()
