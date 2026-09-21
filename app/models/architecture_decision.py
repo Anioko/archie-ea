@@ -80,6 +80,8 @@ class ArchitectureDecision(TenantMixin, db.Model):
 
     # Relationships
     created_by = db.relationship("User", foreign_keys=[created_by_id])
+    decided_by = db.relationship("User", foreign_keys=[decided_by_id])
+    approved_by = db.relationship("User", foreign_keys=[approved_by_id])
     superseded_by = db.relationship('ArchitectureDecision', foreign_keys=[superseded_by_id], remote_side='ArchitectureDecision.id', uselist=False)
 
     def to_dict(self):
