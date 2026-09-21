@@ -3,13 +3,19 @@
    Every surface that shows a connection -- an Ask row, the Twin map panel and
    the provenance drawer -- reveals its technical detail through this single
    control: collapsed until asked, in place, at the bottom right, never a page,
-   a tab or a second pattern. This macro is defined once and called from exactly
-   those three places.
+   a tab or a second pattern. The Worked-out connections page reveals its own
+   detail through the same control. This macro is defined once and called from
+   exactly those four places.
 
    `entry` names two Alpine expressions:
      detail  the detail model of the row or panel (built in the browser from the
              answer's own payload)
      uid     a unique suffix for the region's id
+
+   A page whose detail is not a connection's calls the macro with a call block
+   (`{% call full_detail({'uid': ...}) %}...{% endcall %}`): the block is the
+   region's content, and the button, its states and its place stay this
+   macro's. Without a block the region reads `entry.detail`, as above.
 
    The ArchiMate type, the layer, the rule, the raw confidence, the chain, the
    depth, when it was worked out, the engine version and the derived record all
@@ -29,6 +35,9 @@
     </button>
     <div :id="'full-detail-' + {{ entry.uid }}" data-full-detail-region x-show="open" x-cloak
          class="mt-2 w-full rounded-md border border-border bg-muted/30 p-3">
+        {% if caller %}
+        {{ caller() }}
+        {% else %}
         <dl class="space-y-2 text-sm">
             <div class="grid gap-x-4 sm:grid-cols-[9rem_1fr]">
                 <dt class="text-muted-foreground">ArchiMate type</dt>
@@ -88,6 +97,7 @@
                 <dd class="text-foreground" x-text="{{ entry.detail }}.derivedId"></dd>
             </div>
         </dl>
+        {% endif %}
     </div>
 </div>
 {% endmacro %}

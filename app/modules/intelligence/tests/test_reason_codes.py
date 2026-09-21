@@ -1,7 +1,7 @@
 """T-001 acceptance criterion 13: the DE-14 reason-code vocabulary is closed.
 
 Mapping:
-    13 -> test_reason_codes_has_exactly_nineteen_members,
+    13 -> test_reason_codes_has_exactly_twenty_two_members,
           test_unknown_reason_code_is_rejected_not_passed_through
 
 T-004 (US-1) added two members -- ``no_tenant_context`` and
@@ -12,7 +12,12 @@ p95 bucket-edge read having no honest number to report when the 95th
 percentile falls in the histogram's +Inf overflow bucket. "Closed" means no
 endpoint may invent an absence string inline, not that the set is frozen at
 sixteen forever; the module's own docstring says a new absence condition
-adds a member here, and nowhere else. This test is updated in lockstep.
+adds a member here, and nowhere else. The worked-out connections screen added
+``no_recompute_duration_recorded``, for a last-recompute duration that has no
+recorded run behind it, and two for the model check: ``drift_count_not_requested``
+(the figures read does not ask for the drift count) and
+``model_too_large_for_drift_check`` (a model above the size the check will spend
+time on is not counted). This test is updated in lockstep.
 """
 
 from __future__ import annotations
@@ -48,11 +53,14 @@ _EXPECTED = {
     "no_tenant_context",
     "element_not_found",
     "p95_above_highest_bucket",
+    "no_recompute_duration_recorded",
+    "drift_count_not_requested",
+    "model_too_large_for_drift_check",
 }
 
 
-def test_reason_codes_has_exactly_nineteen_members():
-    assert len(REASON_CODES) == 19
+def test_reason_codes_has_exactly_twenty_two_members():
+    assert len(REASON_CODES) == 22
     assert REASON_CODES == frozenset(_EXPECTED)
 
 
