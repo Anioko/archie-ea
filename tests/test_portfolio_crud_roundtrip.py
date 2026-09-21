@@ -25,27 +25,22 @@ documented there at length:
     render layouts/admin_base.html are checked separately for status only,
     since full-page rendering pulls in sidebar context processors this suite
     does not otherwise exercise.
+
+Fixtures: this file used to hand-roll its own module-scoped ``app`` and a
+``client`` on top of it, and every test committed real organisation, user,
+initiative and programme rows that outlived the test — nothing here ever
+deleted them. It now uses the shared ``db_session`` (tests/conftest.py): the
+helpers below take ``db_session`` and flush rather than commit outright, and
+every row they create sits inside the per-test savepoint that ``db_session``
+always rolls back, so nothing survives the test regardless of how it ends.
+The per-request round trip through ``client.post(...)`` still behaves like a
+real commit from the app's point of view (that is what ``db_session``'s
+savepoint join is for) — only the outer, test-owning transaction is
+discarded.
 """
 import uuid
 
 import pytest
-
-
-@pytest.fixture(scope="module")
-def app():
-    from app import create_app, db
-
-    app = create_app("testing")
-    app.config["TESTING"] = True
-    app.config["WTF_CSRF_ENABLED"] = False
-    with app.app_context():
-        db.create_all()
-    return app
-
-
-@pytest.fixture
-def client(app):
-    return app.test_client()
 
 
 def _login(client, user_id):
@@ -67,17 +62,17 @@ def _login(client, user_id):
         ctx.g.pop(attr, None)
 
 
-def _make_org_id(db, label):
+def _make_org_id(db_session, label):
     from app.models.organization import Organization
 
     suffix = uuid.uuid4().hex[:8]
     org = Organization(name=f"{label} Org {suffix}", slug=f"{label.lower()}-org-{suffix}")
-    db.session.add(org)
-    db.session.commit()
+    db_session.add(org)
+    db_session.flush()
     return org.id
 
 
-def _make_user_id(db, org_id, label):
+def _make_user_id(db_session, org_id, label):
     """A user pinned explicitly to org_id.
 
     The User.before_insert listener reassigns an unset organization_id to the
@@ -99,21 +94,21 @@ def _make_user_id(db, org_id, label):
     )
     if hasattr(user, "set_password"):
         user.set_password("x" * 12)
-    db.session.add(user)
-    db.session.commit()
+    db_session.add(user)
+    db_session.flush()
     return user.id
 
 
-def _make_initiative_id(db, org_id, name="Portfolio CRUD Initiative"):
+def _make_initiative_id(db_session, org_id, name="Portfolio CRUD Initiative"):
     from app.models.vendor.vendor_organization import EnterpriseInitiative
 
     init = EnterpriseInitiative(name=f"{name} {uuid.uuid4().hex[:6]}", organization_id=org_id)
-    db.session.add(init)
-    db.session.commit()
+    db_session.add(init)
+    db_session.flush()
     return init.id
 
 
-def _make_programme_id(db, org_id, owner_id, name="Portfolio CRUD Programme"):
+def _make_programme_id(db_session, org_id, owner_id, name="Portfolio CRUD Programme"):
     from app.models.strategic import StrategicInitiative
 
     programme = StrategicInitiative(
@@ -122,24 +117,21 @@ def _make_programme_id(db, org_id, owner_id, name="Portfolio CRUD Programme"):
         owner_id=owner_id,
         record_kind="transformation_programme",
     )
-    db.session.add(programme)
-    db.session.commit()
+    db_session.add(programme)
+    db_session.flush()
     return programme.id
 
 
 @pytest.fixture
-def org_a(app):
-    from app import db
-
-    with app.app_context():
-        org_id = _make_org_id(db, "CrudA")
-        user_id = _make_user_id(db, org_id, "CrudA")
-        return {
-            "org_id": org_id,
-            "user_id": user_id,
-            "initiative_id": _make_initiative_id(db, org_id),
-            "programme_id": _make_programme_id(db, org_id, user_id),
-        }
+def org_a(db_session):
+    org_id = _make_org_id(db_session, "CrudA")
+    user_id = _make_user_id(db_session, org_id, "CrudA")
+    return {
+        "org_id": org_id,
+        "user_id": user_id,
+        "initiative_id": _make_initiative_id(db_session, org_id),
+        "programme_id": _make_programme_id(db_session, org_id, user_id),
+    }
 
 
 # ==========================================================================
@@ -450,14 +442,15 @@ class TestAssumptionLifecycle:
 # ==========================================================================
 
 class TestWritePathTenantIsolation:
-    def test_cannot_add_a_benefit_to_another_orgs_initiative(self, app, client, org_a):
+    def test_cannot_add_a_benefit_to_another_orgs_initiative(
+        self, app, client, org_a, db_session
+    ):
         """The check that stops one tenant writing into another's programme."""
         from app import db
         from app.models.benefit import Benefit
 
-        with app.app_context():
-            org_b = _make_org_id(db, "CrudB")
-            attacker = _make_user_id(db, org_b, "CrudB")
+        org_b = _make_org_id(db_session, "CrudB")
+        attacker = _make_user_id(db_session, org_b, "CrudB")
 
         _login(client, attacker)
         name = f"Injected {uuid.uuid4().hex[:6]}"
@@ -631,12 +624,11 @@ class TestPagesRender:
                     db.session.delete(row)
             db.session.commit()
 
-    def test_index_renders_when_an_initiative_has_no_figures(self, app, client, org_a):
+    def test_index_renders_when_an_initiative_has_no_figures(
+        self, app, client, org_a, db_session
+    ):
         """The em-dash path: nulls must not raise on a comparison or a format."""
-        from app import db
-
-        with app.app_context():
-            bare = _make_initiative_id(db, org_a["org_id"], name="Bare")
+        bare = _make_initiative_id(db_session, org_a["org_id"], name="Bare")
 
         _login(client, org_a["user_id"])
         assert client.get("/portfolio/").status_code == 200

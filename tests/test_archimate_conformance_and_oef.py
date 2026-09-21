@@ -31,15 +31,13 @@ import pytest
 
 NS = "{http://www.opengroup.org/xsd/archimate/3.0/}"
 
-
-@pytest.fixture(scope="module")
-def app():
-    from app import create_app
-
-    application = create_app("testing")
-    application.config["TESTING"] = True
-    application.config["WTF_CSRF_ENABLED"] = False
-    return application
+# Tests below that need the app (the OEF export fixture, and the empty-model
+# export test) use the shared session-scoped ``app`` fixture from
+# tests/conftest.py rather than defining their own — a hand-rolled copy used
+# to live here, and the OEF fixture also used to insert its own Organization
+# row (falling back to "seed one if the table is empty") through a plain
+# request context with no cleanup, which was the leak this file used to leave
+# behind on every run against an empty database.
 
 
 # ---------------------------------------------------------------- conformance
@@ -168,12 +166,19 @@ class TestRelationshipConformance:
 # ---------------------------------------------------------------- OEF export
 
 
-@pytest.fixture(scope="module")
-def exported_model(app):
-    """Build a small model with properties and a laid-out diagram, then export it."""
+@pytest.fixture
+def exported_model(db_session, make_org):
+    """Build a small model with properties and a laid-out diagram, then export it.
+
+    Function-scoped (was module-scoped): every row this creates now lives
+    inside ``db_session``'s per-test savepoint, which is always rolled back,
+    so nothing needs manual deletion. ``service.export_to_xml`` reads through
+    the same session, so the export sees the flushed-but-uncommitted rows.
+    """
     import xml.etree.ElementTree as ET
 
-    from app import db
+    from flask import g
+
     from app.models import ArchitectureModel
     from app.models.archimate_core import (
         SavedDiagram,
@@ -184,98 +189,62 @@ def exported_model(app):
     from app.modules.architecture.services import archimate_xml_export_service as service
 
     suffix = uuid.uuid4().hex[:8]
-    created = {}
 
-    with app.test_request_context("/"):
-        from flask import g
+    org = make_org("oef")
+    g.current_org_id = org.id
 
-        org = db.session.execute(
-            db.text("SELECT id FROM organizations ORDER BY id LIMIT 1")
-        ).scalar()
-        if org is None:
-            from app.models.organization import Organization
+    model = ArchitectureModel(name=f"OEF Test Model {suffix}")
+    db_session.add(model)
+    db_session.flush()
 
-            seeded = Organization(name=f"OEF Org {suffix}", slug=f"oef-{suffix}")
-            db.session.add(seeded)
-            db.session.flush()
-            org = seeded.id
-        g.current_org_id = org
+    component = ArchiMateElement(
+        name="Order Management",
+        type="application_component",
+        architecture_id=model.id,
+        description="Core ordering application",
+        # `properties` is a Text column holding JSON, not a JSON column.
+        properties=json.dumps({"Owner": "Alice", "Criticality": "High"}),
+    )
+    record = ArchiMateElement(
+        name="Customer Record", type="business_object", architecture_id=model.id
+    )
+    db_session.add_all([component, record])
+    db_session.flush()
 
-        model = ArchitectureModel(name=f"OEF Test Model {suffix}")
-        db.session.add(model)
-        db.session.flush()
+    rel = ArchiMateRelationship(
+        type="access",
+        architecture_id=model.id,
+        source_id=component.id,
+        target_id=record.id,
+    )
+    db_session.add(rel)
+    db_session.flush()
 
-        component = ArchiMateElement(
-            name="Order Management",
-            type="application_component",
-            architecture_id=model.id,
-            description="Core ordering application",
-            # `properties` is a Text column holding JSON, not a JSON column.
-            properties=json.dumps({"Owner": "Alice", "Criticality": "High"}),
-        )
-        record = ArchiMateElement(
-            name="Customer Record", type="business_object", architecture_id=model.id
-        )
-        db.session.add_all([component, record])
-        db.session.flush()
+    diagram = SavedDiagram(name=f"Layout {suffix}")
+    db_session.add(diagram)
+    db_session.flush()
+    db_session.add_all(
+        [
+            SavedDiagramElement(
+                diagram_id=diagram.id,
+                element_id=component.id,
+                position_x=10,
+                position_y=20,
+                width=200,
+                height=80,
+            ),
+            SavedDiagramElement(
+                diagram_id=diagram.id, element_id=record.id, position_x=300, position_y=20
+            ),
+            SavedDiagramRelationship(diagram_id=diagram.id, relationship_id=rel.id),
+        ]
+    )
+    db_session.commit()
 
-        rel = ArchiMateRelationship(
-            type="access",
-            architecture_id=model.id,
-            source_id=component.id,
-            target_id=record.id,
-        )
-        db.session.add(rel)
-        db.session.flush()
+    created = {"model": model.id, "diagram": diagram.id}
+    xml = service.export_to_xml(model.id)
 
-        diagram = SavedDiagram(name=f"Layout {suffix}")
-        db.session.add(diagram)
-        db.session.flush()
-        db.session.add_all(
-            [
-                SavedDiagramElement(
-                    diagram_id=diagram.id,
-                    element_id=component.id,
-                    position_x=10,
-                    position_y=20,
-                    width=200,
-                    height=80,
-                ),
-                SavedDiagramElement(
-                    diagram_id=diagram.id, element_id=record.id, position_x=300, position_y=20
-                ),
-                SavedDiagramRelationship(diagram_id=diagram.id, relationship_id=rel.id),
-            ]
-        )
-        db.session.commit()
-
-        created = {"model": model.id, "diagram": diagram.id}
-        xml = service.export_to_xml(model.id)
-
-    yield ET.fromstring(xml), xml, created
-
-    with app.test_request_context("/"):
-        from flask import g
-
-        g.current_org_id = org
-        for sql in (
-            "DELETE FROM saved_diagram_relationships WHERE diagram_id=:d",
-            "DELETE FROM saved_diagram_elements WHERE diagram_id=:d",
-            "DELETE FROM saved_diagrams WHERE id=:d",
-        ):
-            db.session.execute(db.text(sql), {"d": created["diagram"]})
-        db.session.execute(
-            db.text("DELETE FROM archimate_relationships WHERE architecture_id=:a"),
-            {"a": created["model"]},
-        )
-        db.session.execute(
-            db.text("DELETE FROM archimate_elements WHERE architecture_id=:a"),
-            {"a": created["model"]},
-        )
-        db.session.execute(
-            db.text("DELETE FROM architecture_models WHERE id=:a"), {"a": created["model"]}
-        )
-        db.session.commit()
+    return ET.fromstring(xml), xml, created
 
 
 class TestOpenExchangeExport:
