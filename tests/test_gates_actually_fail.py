@@ -40,12 +40,19 @@ check_evidence_contract.py reads real git history and the verify.py registry,
 and has no --root, so a synthetic tree cannot drive it. Its rule-2 substance is covered directly instead, by
 test_every_registered_checker_carries_its_proof below. Naming the exclusion is
 the point -- a hollow case in THIS file would defeat the file.
+
+check_reuse.py DOES take --root, but it also takes a required --rule (RG-1 or
+RG-2), which the shared CASES/_run_checker convention above has no room for --
+_run_checker always calls a script with exactly --count --root. Rather than
+widen that helper for one checker, its two rules are pinned red-and-green
+directly, below the CASES-driven test.
 """
 
 import json
 import os
 import subprocess
 import sys
+import tempfile
 
 import pytest
 
@@ -512,6 +519,127 @@ def test_every_registered_checker_carries_its_proof():
     assert not missing, (
         "these checkers carry no Proven-against: line, so nobody recorded "
         "watching them fail: %s" % ", ".join(missing)
+    )
+
+
+def _run_reuse_checker(rule, root):
+    """check_reuse.py's --count output, for a given --rule, against a synthetic tree."""
+    proc = subprocess.run(
+        [sys.executable, os.path.join(SCRIPTS, "check_reuse.py"),
+         "--rule", rule, "--count", "--root", str(root)],
+        capture_output=True, text=True, cwd=REPO,
+    )
+    trailing = (proc.stdout or "").strip().splitlines()
+    assert trailing, (
+        "check_reuse.py --rule %s produced no count for root=%s\nstdout=%r\nstderr=%r"
+        % (rule, root, proc.stdout, proc.stderr[:400])
+    )
+    try:
+        return int(trailing[-1])
+    except ValueError:
+        raise AssertionError(
+            "check_reuse.py --rule %s did not end with a count: %r (stderr=%r)"
+            % (rule, trailing[-1], proc.stderr[:400])
+        )
+
+
+def test_reuse_macro_names_detects_a_second_definition():
+    """RG-1: the same macro name defined in a second template file.
+
+    Proven-against the register's own named example -- two templates each
+    defining ``empty_state`` -- rather than a bare probe name, since that is
+    the exact finding the Fortune 500 readiness review reported.
+    """
+    root = tempfile.mkdtemp()
+    bad = os.path.join(root, "bad", "app", "templates", "macros")
+    good = os.path.join(root, "good", "app", "templates", "macros")
+    os.makedirs(bad)
+    os.makedirs(good)
+
+    with open(os.path.join(bad, "a.html"), "w", encoding="utf-8") as fh:
+        fh.write("{% macro empty_state(x) %}A{% endmacro %}\n")
+    with open(os.path.join(bad, "b.html"), "w", encoding="utf-8") as fh:
+        fh.write("{% macro empty_state(y) %}B{% endmacro %}\n")
+
+    with open(os.path.join(good, "a.html"), "w", encoding="utf-8") as fh:
+        fh.write("{% macro empty_state(x) %}A{% endmacro %}\n")
+    with open(os.path.join(good, "b.html"), "w", encoding="utf-8") as fh:
+        fh.write("{% macro different_name(y) %}B{% endmacro %}\n")
+
+    bad_count = _run_reuse_checker("RG-1", os.path.join(root, "bad"))
+    good_count = _run_reuse_checker("RG-1", os.path.join(root, "good"))
+
+    assert bad_count == 1, (
+        "two templates defining the same macro name reported %d, not 1 -- "
+        "the gate is decoration if it cannot see its own named example" % bad_count
+    )
+    assert good_count == 0, (
+        "two templates defining DIFFERENT macro names reported %d against the "
+        "clean tree" % good_count
+    )
+
+
+def test_reuse_macro_names_escape_hatch_excludes_the_marked_line():
+    """A 'reuse-ok: <concept-id> <reason>' line is excluded, both directions."""
+    root = tempfile.mkdtemp()
+    base = os.path.join(root, "app", "templates", "macros")
+    os.makedirs(base)
+    with open(os.path.join(base, "a.html"), "w", encoding="utf-8") as fh:
+        fh.write("{% macro probe_thing(x) %}A{% endmacro %}\n")
+    with open(os.path.join(base, "b.html"), "w", encoding="utf-8") as fh:
+        fh.write("{% macro probe_thing(y) %}{# reuse-ok: probe deliberate local copy #}{% endmacro %}\n")
+
+    count = _run_reuse_checker("RG-1", root)
+    assert count == 0, (
+        "a marked 'reuse-ok:' definition still counted toward the distinct-file "
+        "total: %d" % count
+    )
+
+
+def test_reuse_diagram_libraries_detects_a_vendor_load_outside_the_composer():
+    """RG-2: a page loading a diagram vendor library with no ComposerRenderer reference.
+
+    Proven-against the review's own named example -- a page loading
+    vendor/d3.min.js to draw the model, exactly the Twin map finding.
+    """
+    root = tempfile.mkdtemp()
+    bad = os.path.join(root, "bad", "app", "templates", "probe")
+    good = os.path.join(root, "good", "app", "templates", "probe")
+    os.makedirs(bad)
+    os.makedirs(good)
+
+    with open(os.path.join(bad, "map.html"), "w", encoding="utf-8") as fh:
+        fh.write('<script src="/static/vendor/d3.min.js"></script>\n')
+
+    with open(os.path.join(good, "map.html"), "w", encoding="utf-8") as fh:
+        fh.write('<script src="/static/js/archimate/composer_renderer.js"></script>\n')
+
+    bad_count = _run_reuse_checker("RG-2", os.path.join(root, "bad"))
+    good_count = _run_reuse_checker("RG-2", os.path.join(root, "good"))
+
+    assert bad_count == 1, (
+        "a page loading vendor/d3.min.js with no composer_renderer.js reference "
+        "reported %d, not 1" % bad_count
+    )
+    assert good_count == 0, "a page drawing through the canonical renderer reported %d" % good_count
+
+
+def test_reuse_diagram_libraries_allows_joint_and_dagre_on_a_composer_page():
+    """The one allowed place: joint/dagre alongside a composer_renderer.js reference."""
+    root = tempfile.mkdtemp()
+    base = os.path.join(root, "app", "templates", "probe")
+    os.makedirs(base)
+    with open(os.path.join(base, "composer_like.html"), "w", encoding="utf-8") as fh:
+        fh.write(
+            '<script src="/static/vendor/joint.min.js"></script>\n'
+            '<script src="/static/vendor/dagre.min.js"></script>\n'
+            '<script src="/static/js/archimate/composer_renderer.js"></script>\n'
+        )
+
+    count = _run_reuse_checker("RG-2", root)
+    assert count == 0, (
+        "joint and dagre alongside a composer_renderer.js reference should be "
+        "an allowed place, not a finding: %d" % count
     )
 
 

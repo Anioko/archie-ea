@@ -674,6 +674,46 @@ def gate_canonical_store(baseline: int) -> Result:
                   detail, count, baseline)
 
 
+def gate_reuse_macro_names(baseline: int) -> Result:
+    """No NEW Jinja macro name defined in a second template file. RATCHET.
+
+    RG-1 of docs/reuse-register.yml: two macros named ``empty_state`` with
+    incompatible signatures were one of the Fortune 500 readiness review's
+    named findings (20 Sep 2026). Static, source-level, no app boot needed.
+    See scripts/check_reuse.py's module docstring for the pattern, scope and
+    exclusions, which are the same ones recorded in the register.
+    """
+    proc = _run([sys.executable, "scripts/check_reuse.py", "--rule", "RG-1", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("reuse-macro-names", FAIL,
+                      f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    detail = "" if count <= baseline else "run scripts/check_reuse.py --rule RG-1 to list them"
+    return Result("reuse-macro-names", PASS if count <= baseline else FAIL,
+                  detail, count, baseline)
+
+
+def gate_reuse_diagram_libraries(baseline: int) -> Result:
+    """No NEW page loads a diagram-drawing library outside the canonical renderer. RATCHET.
+
+    RG-2 of docs/reuse-register.yml: two drawing engines for one model (the
+    Composer's JointJS renderer and the Twin map's own D3 drawing) was
+    another named finding of the same review. A page that also names
+    ``archimate/composer_renderer.js`` may still load ``joint`` and
+    ``dagre`` -- the canonical renderer is built on them.
+    """
+    proc = _run([sys.executable, "scripts/check_reuse.py", "--rule", "RG-2", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("reuse-diagram-libraries", FAIL,
+                      f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    detail = "" if count <= baseline else "run scripts/check_reuse.py --rule RG-2 to list them"
+    return Result("reuse-diagram-libraries", PASS if count <= baseline else FAIL,
+                  detail, count, baseline)
+
+
 def gate_dead_interactions() -> Result:
     """No control that looks like it works and does nothing. Gated at ZERO.
 
@@ -1724,6 +1764,18 @@ def build_gates(baseline: dict) -> list[Gate]:
              "ratchet", lambda: gate_canonical_store(baseline.get("canonical_store", 0)),
              remediation="run scripts/check_canonical_store.py; choose the canonical "
                          "class and repoint callers, or mark 'canonical-store-ok: <reason>'",
+             tags=["static"]),
+        Gate("reuse-macro-names", "no NEW Jinja macro name defined in a second template file (RG-1)",
+             "ratchet", lambda: gate_reuse_macro_names(baseline.get("reuse_macro_names", 19)),
+             remediation="run scripts/check_reuse.py --rule RG-1; use the canonical macro, "
+                         "add a register specialisation, or mark 'reuse-ok: <concept-id> <reason>'",
+             tags=["static"]),
+        Gate("reuse-diagram-libraries",
+             "no NEW page loads a diagram library outside the canonical ArchiMate renderer (RG-2)",
+             "ratchet", lambda: gate_reuse_diagram_libraries(baseline.get("reuse_diagram_libraries", 16)),
+             remediation="run scripts/check_reuse.py --rule RG-2; draw through "
+                         "ComposerRenderer, add a register specialisation, or mark "
+                         "'reuse-ok: <concept-id> <reason>'",
              tags=["static"]),
         Gate("fetch-guards", "no fetch parsed without checking the response", "ratchet",
              lambda: gate_fetch_guards(baseline.get("fetch_guards", 107)),

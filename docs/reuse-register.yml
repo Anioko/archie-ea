@@ -1,0 +1,835 @@
+# Reuse register for archie-ea.
+#
+# One entry per thing the product does that must be done in one place. Before adding a new module, service,
+# macro, script, table, route or screen, find the entry for what you are about to build, use its canonical
+# implementation, and do not create anything its "forbidden" list names. If no entry fits, run the entry's
+# search_hints for the nearest concept and say what you searched.
+#
+# This is the source of truth: scripts/check_reuse.py reads it at run time (the `concepts:` list, for the
+# "Already exists" half of a finding's message) and CI reads it offline at build time, which is why the source
+# lives in this repository rather than only in the docs/artifacts mirror kept by the programme that maintains it.
+#
+# draft: true because most concepts below have decision: proposed or pending -- a canonical answer has been
+# written down for a role to review, but no role has yet recorded accepted_by against it. Only the `rules:`
+# block (the two CI ratchets this is promoted for, RG-1 and RG-2) is treated as authoritative today: their
+# pattern, scope and starting_value are exactly what scripts/check_reuse.py implements. The concepts and the
+# other ten rule definitions are carried forward as real, reviewed design work, not yet a control.
+#
+# Field guide (per concept):
+#   id                 stable short name; CI messages and briefs cite it
+#   decision           chosen | proposed | pending  (pending = cannot be chosen from the code alone)
+#   decision_owner     role that decides; retirement or merge calls go to the product-manager
+#   canonical.kind     implementation | store | pattern | hygiene
+#   canonical.paths    the implementation to use
+#   canonical.use      one line to copy: the import, macro call or function
+#   canonical.write_path  for a stored concept: the one place that writes it, or "none"
+#   candidates         when pending: the records or files under consideration
+#   allowed_specialisations  a second implementation that is allowed: path, reason, accepted_by (tech-lead or
+#                      solution-architect; null until accepted), review_by
+#   forbidden          what must not be created beside the canonical
+#   rules              CI rules that enforce part of it
+#   known_duplicates   the list that has to shrink: path, verdict, converge
+#                      verdict: true_duplicate | specialisation | shim | unreferenced | to_judge
+#   converge_effort    S up to 2 days, M 3 to 8 days, L more than 8 days
+#   owner_role         role that keeps the entry true
+#   search_hints       commands that find candidates
+
+schema_version: 1
+draft: true
+tree:
+  repository: archie-ea
+  branch: main
+  commit: cb0bf5d72ec656eb7db8b6fdf1e3598b28e0fd10
+  measured: 2026-09-20
+promoted:
+  commit: f6a2ddd458da3e75aa343136cd8db23473544d26
+  date: 2026-09-21
+  note: >-
+    RG-1 and RG-2 (only) were re-measured on this commit, the branch point for the CI ratchets built here. The
+    other ten rule definitions and all concept data below are carried forward from the draft's original
+    measurement at cb0bf5d7 unchanged; they describe real design work, not yet built into a check.
+roles_that_may_accept: [tech-lead, solution-architect]
+marker: "reuse-ok: <concept-id> <reason>"
+
+last_checked: &v
+  commit: cb0bf5d7
+  date: 2026-09-20
+
+# ---------------------------------------------------------------------------------------------------------------
+# Machine rules. Each is a ratchet: the count may fall, never rise. starting_value is what the tree had at "tree"
+# (or, for RG-1/RG-2, at "promoted" -- see measured_at on those two entries).
+# Patterns are Python regular expressions applied line by line unless the check says otherwise.
+# ---------------------------------------------------------------------------------------------------------------
+rules:
+  RG-0:
+    name: register
+    kind: zero
+    concepts: [all]
+    checks: >-
+      The register parses; every concept has the required fields; every path named in canonical.paths,
+      allowed_specialisations and known_duplicates exists; a concept that is chosen or proposed with kind
+      implementation or store has canonical.paths; a chosen store has a write_path other than none; every rule id
+      named by a concept is defined here; every reuse-ok marker in the tree names an existing concept and gives a
+      reason; every allowed_specialisations entry that has accepted_by names a role in roles_that_may_accept.
+    starting_value: 0
+    status: not built (out of scope for the RG-1/RG-2 build)
+
+  RG-1:
+    name: macro-names
+    kind: name_collision
+    concepts: [empty-and-loading-states, permission-checks]
+    checks: A Jinja macro name defined in more than one template file.
+    pattern: |-
+      \{%-?\s*macro\s+([A-Za-z]\w*)\s*\(
+    scope: ["app/**/*.html", "app/**/*.j2", "app/**/*.jinja"]
+    excluded:
+      - "names beginning with an underscore (page-local helpers; the pattern needs a letter first)"
+      - "app/modules/solutions_product/templates/ (generated code for customers)"
+      - "node_modules, vendor, bundles"
+    allowed_places: []
+    baseline_key: reuse_macro_names
+    starting_value: 19
+    measured_at: {commit: f6a2ddd458da3e75aa343136cd8db23473544d26, date: 2026-09-21}
+    detail: "10 of the 19 have a definition under components/ or macros/; 50 definitions in all"
+    status: built; enforced by scripts/check_reuse.py and scripts/verify.py
+
+  RG-2:
+    name: diagram-libraries
+    kind: pattern_outside_allowed
+    concepts: [drawing]
+    checks: A template or script that loads a diagram-drawing library outside the pages of the canonical renderer.
+    pattern: |-
+      vendor/(joint|d3|dagre|mermaid|cytoscape[\w.\-]*|drawflow[\w.\-]*?)(?:\.min)?\.js
+    scope: ["app/**/*.html (not app/static/)", "app/static/js/**/*.js"]
+    excluded: ["vendor", "bundles", "solutions_product"]
+    allowed_places:
+      - "a page that also names archimate/composer_renderer.js may load joint and dagre"
+      - "entries under drawing.allowed_specialisations once accepted"
+    baseline_key: reuse_diagram_libraries
+    starting_value: 16
+    measured_at: {commit: f6a2ddd458da3e75aa343136cd8db23473544d26, date: 2026-09-21}
+    detail: "one finding per (file, library); 15 files"
+    status: built; enforced by scripts/check_reuse.py and scripts/verify.py
+
+  RG-3a:
+    name: identical-files
+    kind: similar_files
+    concepts: [whole-file-copies]
+    checks: Two Python files with the same file name in different folders whose text is identical.
+    pattern: |-
+      same base name; each file has at least 60 distinct non-blank stripped lines; text equal after replacing CRLF with LF
+    scope: ["app/**/*.py"]
+    excluded: ["__init__.py", "tests/", "migrations/"]
+    allowed_places: ["a file whose first five lines contain: # reuse-ok: <reason>"]
+    baseline_key: reuse_identical_files
+    starting_value: 3
+    status: not built (out of scope for the RG-1/RG-2 build)
+
+  RG-3b:
+    name: similar-files
+    kind: similar_files
+    concepts: [whole-file-copies]
+    checks: Two Python files with the same file name in different folders with 80 percent or more identical lines.
+    pattern: |-
+      same base name; each file has at least 60 distinct non-blank stripped lines; Jaccard similarity of the sets of stripped non-blank lines is 0.80 or more
+    scope: ["app/**/*.py"]
+    excluded: ["__init__.py", "tests/", "migrations/"]
+    allowed_places: ["a file whose first five lines contain: # reuse-ok: <reason>"]
+    baseline_key: reuse_similar_files
+    starting_value: 21
+    status: not built (out of scope for the RG-1/RG-2 build)
+
+  RG-4a:
+    name: escape-helpers
+    kind: pattern_outside_allowed
+    concepts: [small-front-end-helpers]
+    checks: A script or template that defines its own HTML-escape function.
+    pattern: |-
+      (function\s+(escapeHtml|escapeHTML|escHtml|esc|escape_html|htmlEscape)\s*\(|(const|let|var)\s+(escapeHtml|escapeHTML|escHtml|esc|htmlEscape)\s*=\s*(function|\(|[a-z]+\s*=>)|\b(escapeHtml|escapeHTML|escHtml)\s*:\s*(function|\())
+    scope: ["app/static/js/**/*.js", "app/templates/**/*.html", "app/modules/**/*.html", "app/modules/**/*.js"]
+    excluded: ["vendor", "bundles", "solutions_product"]
+    allowed_places: ["app/static/js/core/02-sanitize.js", "a line carrying reuse-ok"]
+    baseline_key: reuse_escape_helpers
+    starting_value: 20
+    status: not built (out of scope for the RG-1/RG-2 build)
+
+  RG-4b:
+    name: date-strftime
+    kind: pattern_outside_allowed
+    concepts: [dates]
+    checks: A template that formats a date with strftime instead of the date filters.
+    pattern: |-
+      \.strftime\(\s*(['"])(.*?)\1\s*\)
+    scope: ["app/templates/**/*.html", "app/modules/**/*.html"]
+    excluded:
+      - "solutions_product"
+      - "the machine formats %Y-%m-%d, %Y-%m-%dT%H:%M and %Y-%m-%dT%H:%M:%S (values for date inputs)"
+    allowed_places: ["a line carrying reuse-ok"]
+    baseline_key: reuse_date_strftime
+    starting_value: 85
+    detail: "47 files; 115 lines call strftime in all, 30 of them with the machine format %Y-%m-%d"
+    status: not built (out of scope for the RG-1/RG-2 build)
+
+  RG-5:
+    name: owner-columns
+    kind: column_family
+    concepts: [ownership]
+    checks: A mapped model class that declares an owner-named column.
+    pattern: |-
+      ^(?:[a-z0-9]+_)*owner(?:_[a-z0-9]+)*$
+    scope: ["app/models/**/*.py", "app/modules/*/models/**/*.py"]
+    excluded: ["tests"]
+    allowed_places: ["entries under ownership.allowed_specialisations naming the class and column"]
+    baseline_key: reuse_owner_columns
+    starting_value: 88
+    detail: "AST scan of class bodies: name = Column(...) | db.Column(...) | mapped_column(...); 50 files, 42 names; the word ownership does not match"
+    status: not built (out of scope for the RG-1/RG-2 build)
+
+  RG-5b:
+    name: maturity-columns
+    kind: column_family
+    concepts: [health-and-maturity]
+    checks: A mapped model class that declares a maturity-named column.
+    pattern: |-
+      ^(?:current_|target_)?maturity(?:_level|_score)?$
+    scope: ["app/models/**/*.py", "app/modules/*/models/**/*.py"]
+    excluded: ["tests"]
+    allowed_places: ["entries under health-and-maturity.allowed_specialisations naming the class and column"]
+    baseline_key: reuse_maturity_columns
+    starting_value: 22
+    detail: "12 files"
+    status: not built (out of scope for the RG-1/RG-2 build)
+
+  RG-6:
+    name: impact-defs
+    kind: pattern_outside_allowed
+    concepts: [impact-analysis]
+    checks: A function that works out what is affected by a change, defined outside the module that answers it.
+    pattern: |-
+      ^\s*(?:async\s+)?def\s+((?:analy[sz]e|simulate|assess)_(?:change_|application_|portfolio_|end_to_end_)?impact[a-z_]*|get_impact_summary|build_impact_graph|calculate_impact_score|get_impact_analysis)\s*\(
+    scope: ["app/**/*.py"]
+    excluded: ["tests"]
+    allowed_places: ["app/modules/intelligence/", "entries under impact-analysis.allowed_specialisations"]
+    baseline_key: reuse_impact_defs
+    starting_value: 23
+    detail: "18 files"
+    status: not built (out of scope for the RG-1/RG-2 build)
+
+  RG-7:
+    name: unreferenced-js
+    kind: unreferenced_file
+    concepts: [unreferenced-files]
+    checks: A JavaScript file that no template, script, test or module refers to by name.
+    pattern: |-
+      the base name of each app/static/js/**/*.js file must occur as text in another .html, .py, .js, .json, .yml, .yaml, .jinja or .j2 file under app/, tests/ or scripts/
+    scope: ["app/static/js/**/*.js"]
+    excluded: ["vendor", "bundles"]
+    allowed_places: ["a first line containing: reuse-ok: loaded from <where>"]
+    baseline_key: reuse_unreferenced_js
+    starting_value: 40
+    detail: "18,072 lines"
+    status: not built (out of scope for the RG-1/RG-2 build)
+
+  RG-8:
+    name: layer-colour-tables
+    kind: pattern_outside_allowed
+    concepts: [notation]
+    checks: A file that defines its own colours for three or more of the six ArchiMate layers.
+    pattern: |-
+      ['"]?(business|application|technology|strategy|motivation|implementation)['"]?\s*[:=]\s*['"]?\s*(#[0-9a-fA-F]{3,8}|rgb|hsl|var\()
+    scope: ["app/static/js", "app/static/css", "app/templates", "app/modules (.html .py .js)", "app/services (.py)"]
+    excluded: ["tests", "solutions_product"]
+    allowed_places: ["app/static/js/archimate/composer_renderer.js", "app/static/css/shadcn_tokens.css"]
+    baseline_key: reuse_layer_colour_tables
+    starting_value: 16
+    detail: "a file matches when at least three distinct layer names are bound to a colour"
+    status: not built (out of scope for the RG-1/RG-2 build)
+
+  RG-9:
+    name: derivation
+    kind: pattern_outside_allowed
+    concepts: [derivation]
+    checks: A function or endpoint that derives a relationship from a chain of relationships, outside the canonical engine.
+    pattern: |-
+      ^\s*(?:async\s+)?def\s+(derive_relationship(?:_chain)?|can_derive_relationship)\s*\(|route\(\s*['"][^'"]*deriv[a-z]*[-_/]?relationship
+    scope: ["app/**/*.py"]
+    excluded: ["tests"]
+    allowed_places: ["app/services/archimate_derivation_service.py", "app/modules/intelligence/"]
+    baseline_key: reuse_derivation
+    starting_value: 4
+    detail: "3 functions and 1 route"
+    status: not built (out of scope for the RG-1/RG-2 build)
+
+# ---------------------------------------------------------------------------------------------------------------
+# Concepts
+# ---------------------------------------------------------------------------------------------------------------
+concepts:
+
+  - id: drawing
+    name: Drawing the architecture model as nodes and links
+    plain_words: Put elements and the connections between them on screen as a picture.
+    decision: proposed
+    decision_owner: solution-architect
+    canonical:
+      kind: implementation
+      paths: [app/static/js/archimate/composer_renderer.js]
+      use: "ComposerRenderer.create(containerEl, { mode: 'view', height: 400 }); renderer.loadElements(elements, relationships); renderer.fitToContent()"
+    allowed_specialisations:
+      - path: app/static/js/intelligence/graph.js
+        reason: Draws the answer for one element in six reading bands with a real button on every node and a text table for keyboard and screen-reader use; the shared renderer does not have these yet.
+        accepted_by: null
+        review_by: 2026-12-31
+      - path: app/static/js/organization/org_chart.js
+        reason: Organisation hierarchy chart, not the architecture model.
+        accepted_by: null
+        review_by: 2026-12-31
+      - path: app/static/js/codegen/workflow_designer.js
+        reason: Designs a workflow for code generation, not the architecture model.
+        accepted_by: null
+        review_by: 2026-12-31
+    forbidden:
+      - A new script or template that loads a drawing library (d3, joint, dagre, mermaid, cytoscape, drawflow) to draw elements and relationships of the architecture model.
+      - A new copy of the ArchiMate notation (colours, shapes, line styles); read the shared tables (see notation).
+    rules: [RG-2]
+    known_duplicates:
+      - {path: app/static/js/impact_graph.js, verdict: true_duplicate, converge: M}
+      - {path: app/static/js/archimate_diagram_renderer.js, verdict: unreferenced, converge: S}
+      - {path: app/static/js/knowledge_graph_viewer.js, verdict: unreferenced, converge: S}
+      - {path: app/static/js/solution_composer_cytoscape.js, verdict: unreferenced, converge: S}
+      - {path: app/static/js/reteLikeExtensions.js, verdict: unreferenced, converge: S}
+      - {path: app/static/js/codegen/workflow_builder.js, verdict: unreferenced, converge: S}
+      - {path: app/templates/archimate_views/element_traceability.html, verdict: to_judge, converge: M}
+      - {path: app/templates/stakeholders/map.html, verdict: to_judge, converge: M}
+      - {path: app/templates/capability_map/network.html, verdict: to_judge, converge: M}
+      - {path: app/templates/solutions/program_view.html, verdict: to_judge, converge: M}
+      - {path: app/templates/applications/dashboard.html, verdict: specialisation, converge: S}
+    converge_effort: L
+    owner_role: solution-architect
+    search_hints:
+      - "grep -rlE \"vendor/(joint|d3|dagre|mermaid)\" app --include=*.html"
+      - "grep -rn ComposerRenderer app --include=*.js --include=*.html"
+    last_checked: *v
+
+  - id: notation
+    name: ArchiMate layer colours and notation
+    plain_words: Which colour, shape and line style means which ArchiMate layer, element type or relationship.
+    decision: proposed
+    decision_owner: solution-architect
+    canonical:
+      kind: implementation
+      paths: [app/static/js/archimate/composer_renderer.js, app/static/css/shadcn_tokens.css]
+      use: "ComposerRenderer.layerColor(layer), ComposerRenderer.LAYER_COLORS, REL_STYLES, TYPE_ICONS; CSS tints come from the --layer-* tokens"
+    allowed_specialisations:
+      - path: app/static/css/shadcn_tokens.css
+        reason: Interface tints for bands and cards; not for the fill of an element that stands for an ArchiMate type.
+        accepted_by: null
+        review_by: 2026-12-31
+    forbidden:
+      - A new table of colours keyed by ArchiMate layer name (business, application, technology, strategy, motivation, implementation).
+    rules: [RG-8]
+    known_duplicates:
+      - {path: app/static/js/impact_graph.js, verdict: true_duplicate, converge: S}
+      - {path: app/static/js/archimate/composer_persistence.js, verdict: true_duplicate, converge: S}
+      - {path: app/static/js/archimate_views/traceability_sankey.js, verdict: true_duplicate, converge: S}
+      - {path: app/static/js/solutions/traceability_sankey.js, verdict: true_duplicate, converge: S}
+      - {path: app/templates/archimate_views/element_traceability.html, verdict: true_duplicate, converge: S}
+      - {path: app/templates/solutions/partials/_archimate_footprint.html, verdict: true_duplicate, converge: S}
+      - {path: app/templates/solutions/partials/_layer_sankey.html, verdict: true_duplicate, converge: S}
+      - {path: app/modules/architecture/services/viewpoint_builder.py, verdict: true_duplicate, converge: S}
+      - {path: app/services/composer_export_formats.py, verdict: true_duplicate, converge: S}
+      - {path: app/services/archimate_diagram_service.py, verdict: true_duplicate, converge: S}
+    converge_effort: M
+    owner_role: solution-architect
+    search_hints:
+      - "python reuse-measure-v1.py --root . --list RG-8"
+    last_checked: *v
+
+  - id: derivation
+    name: Deriving a relationship from a chain of relationships
+    plain_words: Work out the connection that follows from A serves B and B serves C.
+    decision: proposed
+    decision_owner: product-manager
+    canonical:
+      kind: implementation
+      paths:
+        - app/services/archimate_derivation_service.py
+        - app/modules/intelligence/services/derivation_runner.py
+        - app/modules/intelligence/services/derived_facts.py
+      use: "ArchiMateDerivationService.compute_derived(...) holds the rule table; stored results are read through the intelligence module (derived_facts, query_service)"
+    allowed_specialisations: []
+    forbidden:
+      - A second table of derivation rules, or a second endpoint or table that stores or returns derived relationships.
+      - The APQC and model-generation services below are a different job; do not add relationship-type derivation to them.
+    rules: [RG-9]
+    known_duplicates:
+      - {path: app/modules/architecture/routes/archimate_routes.py, verdict: true_duplicate, converge: M}
+      - {path: app/config/archimate_relationship_matrix.py, verdict: unreferenced, converge: S}
+      - {path: app/models/archimate_metamodel.py, verdict: unreferenced, converge: S}
+      - {path: app/modules/architecture/services/relationship_derivation_service.py, verdict: specialisation, converge: S}
+      - {path: app/modules/architecture/services/unified_derivation_service.py, verdict: specialisation, converge: S}
+      - {path: app/modules/architecture_assistant/capability_derivation.py, verdict: specialisation, converge: S}
+    converge_effort: M
+    owner_role: solution-architect
+    search_hints:
+      - "grep -rnE \"def \\w*deriv\\w*\\(\" app --include=*.py"
+      - "grep -rn \"derived-relationships\" app --include=*.py --include=*.js"
+    last_checked: *v
+
+  - id: impact-analysis
+    name: What is affected if this changes
+    plain_words: Given an element, list what depends on it, how far away it is and how sure we are.
+    decision: proposed
+    decision_owner: product-manager
+    canonical:
+      kind: implementation
+      paths: [app/modules/intelligence/services/query_service.py]
+      use: "IntelligenceQueryService in intelligence/services/query_service.py; over HTTP the /impact/<element_id> route of app/modules/intelligence/routes/api.py"
+    allowed_specialisations:
+      - path: app/modules/solutions_strategic/v2/services/impact_analysis_service.py
+        reason: Adds change types, scenarios and history on top of the dependency set; the dependency set itself should come from the canonical service.
+        accepted_by: null
+        review_by: 2026-12-31
+      - path: app/modules/ai_chat/services/ai_impact_analysis_service.py
+        reason: Written narrative by a language model; it should state facts read from the canonical service.
+        accepted_by: null
+        review_by: 2026-12-31
+    forbidden:
+      - A new function, service or route that walks relationships to find what depends on an element.
+      - A new screen that answers the same question without linking to the recorded answer.
+    rules: [RG-6]
+    known_duplicates:
+      - {path: app/services/impact_analysis_service.py, verdict: true_duplicate, converge: M}
+      - {path: app/services/archimate_impact_service.py, verdict: true_duplicate, converge: M}
+      - {path: app/modules/architecture/services/relationship_service.py, verdict: true_duplicate, converge: M}
+      - {path: app/modules/architecture/services/inference_engine_service.py, verdict: to_judge, converge: M}
+      - {path: app/services/impact_graph.py, verdict: to_judge, converge: M}
+      - {path: app/application_mgmt/impact_routes.py, verdict: to_judge, converge: M}
+      - {path: app/services/architecture_change_impact_service.py, verdict: specialisation, converge: S}
+      - {path: app/api/v1/impact.py, verdict: specialisation, converge: S}
+    converge_effort: L
+    owner_role: solution-architect
+    search_hints:
+      - "python reuse-measure-v1.py --root . --list RG-6"
+      - "grep -rnE \"def \\w*impact\\w*\\(\" app --include=*.py"
+    last_checked: *v
+
+  - id: ownership
+    name: Who owns it
+    plain_words: The person or team answerable for an application or element.
+    decision: pending
+    decision_owner: product-manager
+    canonical:
+      kind: store
+      paths: []
+      write_path: none
+      use: "Not chosen. Do not add an owner column or table; ask the product-manager which record is the record."
+    candidates:
+      - app/models/application_owner.py
+      - app/models/enterprise_intelligence.py
+      - app/models/organization_model.py
+      - app/models/transformation_programme.py
+    allowed_specialisations: []
+    forbidden:
+      - A new owner column or a new owner table on any model.
+      - A new screen that reads an owner record that nothing in the application writes.
+    rules: [RG-5]
+    known_duplicates:
+      - {path: app/models/application_owner.py, verdict: to_judge, converge: M}
+      - {path: app/models/enterprise_intelligence.py, verdict: to_judge, converge: M}
+      - {path: app/models/organization_model.py, verdict: specialisation, converge: S}
+      - {path: app/models/transformation_programme.py, verdict: specialisation, converge: S}
+      - {path: app/models/application_portfolio.py, verdict: true_duplicate, converge: M}
+      - {path: app/models/unified_capability.py, verdict: true_duplicate, converge: M}
+    converge_effort: M
+    owner_role: product-manager
+    search_hints:
+      - "python reuse-measure-v1.py --root . --list RG-5"
+      - "grep -rnE \"(^|[^A-Za-z_])ApplicationOwnership\\(\" app tests --include=*.py"
+    last_checked: *v
+
+  - id: element-picker
+    name: Element picker (search as you type)
+    plain_words: The box where you type a few letters and pick an element from a list.
+    decision: proposed
+    decision_owner: solution-architect
+    canonical:
+      kind: implementation
+      paths:
+        - app/modules/intelligence/templates/intelligence/_entity_picker.html
+        - app/static/js/intelligence/picker.js
+        - app/modules/architecture/routes/archimate_routes.py
+      use: "{% from 'intelligence/_entity_picker.html' import entity_picker with context %} for the widget; data from GET /archimate/api/elements/search?q=&limit="
+    allowed_specialisations:
+      - path: app/static/js/archimate/composer_search.js
+        reason: The Composer palette filters by element type and places the pick on a canvas.
+        accepted_by: null
+        review_by: 2026-12-31
+    forbidden:
+      - A new endpoint that searches ArchiMate elements by name.
+      - A new hand-built dropdown for picking an element.
+    rules: []
+    known_duplicates:
+      - {path: app/modules/architecture/routes/adm_kanban_view_routes.py, verdict: true_duplicate, converge: S}
+      - {path: app/modules/architecture/routes/architecture_crud_routes.py, verdict: true_duplicate, converge: S}
+      - {path: app/modules/solutions_strategic/v2/routes/solution_design_routes.py, verdict: true_duplicate, converge: S}
+      - {path: app/static/js/architecture_assistant/stores/autocomplete-store.js, verdict: to_judge, converge: M}
+      - {path: app/static/js/solutions/blueprint.js, verdict: to_judge, converge: M}
+    converge_effort: M
+    owner_role: tech-lead
+    search_hints:
+      - "grep -rn \"elements/search\" app --include=*.js --include=*.html --include=*.py"
+    last_checked: *v
+
+  - id: empty-and-loading-states
+    name: Empty and loading states
+    plain_words: What a screen shows when there is nothing yet, and while it loads.
+    decision: proposed
+    decision_owner: tech-lead
+    canonical:
+      kind: implementation
+      paths: [app/templates/components/empty_state.html, app/templates/components/skeleton.html]
+      use: "{% from 'components/empty_state.html' import empty_state %} then empty_state(icon=..., title=..., description=..., cta_text=..., cta_href=...); loading: {% from 'components/skeleton.html' import skeleton_table %}"
+    allowed_specialisations: []
+    forbidden:
+      - A second macro named empty_state, or another macro that renders the same icon, title, hint and action block.
+      - A hand-typed "No ... found" block with the same shape as the macro.
+    rules: [RG-1]
+    known_duplicates:
+      - {path: app/templates/macros/page_shell.html, verdict: true_duplicate, converge: S}
+      - {path: app/templates/components/loading_state.html, verdict: unreferenced, converge: S}
+      - {path: app/templates/components/table.html, verdict: unreferenced, converge: S}
+    converge_effort: S
+    owner_role: tech-lead
+    search_hints:
+      - "grep -rnE \"macro empty_state\" app --include=*.html"
+      - "grep -rliE \">\\s*No [a-z ]+ (found|yet|available|recorded)\" app --include=*.html"
+    last_checked: *v
+
+  - id: health-and-maturity
+    name: Health score and maturity
+    plain_words: One number for how healthy something is, and the maturity level of a capability.
+    decision: proposed
+    decision_owner: product-manager
+    canonical:
+      kind: implementation
+      paths:
+        - app/modules/dashboard/v2/services/executive_dashboard_service.py
+        - app/modules/capabilities/services/capability_health_service.py
+        - app/modules/capabilities/routes/maturity_routes.py
+      use: "ExecutiveDashboardService for the portfolio score; format_health_score(score) to display it; health_score_basis(score, unavailable) for the sentence saying what was measured"
+    allowed_specialisations:
+      - path: app/modules/monitoring/services/health_service.py
+        reason: Technical health of the running system, a different meaning of health.
+        accepted_by: null
+        review_by: 2026-12-31
+      - path: app/modules/my_applications/health_ai_service.py
+        reason: Health of one application for its owner.
+        accepted_by: null
+        review_by: 2026-12-31
+    forbidden:
+      - A second score for the same subject computed a different way.
+      - A new column that stores a capability's maturity level.
+    rules: [RG-5b]
+    known_duplicates:
+      - {path: app/modules/architecture/services/unified_archimate_services.py, verdict: true_duplicate, converge: S}
+      - {path: app/modules/architecture/services/archimate_metrics_service.py, verdict: to_judge, converge: S}
+      - {path: app/services/archimate_health_service.py, verdict: unreferenced, converge: S}
+      - {path: app/services/gap_analysis_service.py, verdict: true_duplicate, converge: S}
+      - {path: app/unified_vendors/services.py, verdict: true_duplicate, converge: S}
+      - {path: app/models/capability_models.py, verdict: to_judge, converge: M}
+      - {path: app/models/unified_capability.py, verdict: to_judge, converge: M}
+    converge_effort: M
+    owner_role: product-manager
+    search_hints:
+      - "grep -rnE \"def \\w*(health_score|maturity_score|maturity_gap)\\w*\\(\" app --include=*.py"
+      - "python reuse-measure-v1.py --root . --list RG-5b"
+    last_checked: *v
+
+  - id: module-and-page-search
+    name: Module and page search
+    plain_words: Find a page or module by typing part of its name.
+    decision: proposed
+    decision_owner: product-manager
+    canonical:
+      kind: implementation
+      paths: [app/modules/modules_directory/routes.py, app/utils/role_access.py]
+      use: "visible_module_links() in modules_directory/routes.py returns the pages the signed-in user may reach; persona sidebars are defined in role_access.py"
+    allowed_specialisations:
+      - path: app/templates/components/admin_sidebar.html
+        reason: Filters only the links in the signed-in persona's own sidebar, by design.
+        accepted_by: null
+        review_by: 2026-12-31
+    forbidden:
+      - A new hand-kept list of pages for search or for an index.
+      - A new keyboard shortcut for search that opens something other than the search palette.
+    rules: []
+    known_duplicates:
+      - {path: app/templates/components/admin_header.html, verdict: true_duplicate, converge: S}
+      - {path: app/templates/components/global_search_modal.html, verdict: unreferenced, converge: S}
+      - {path: app/static/js/sidebar.js, verdict: unreferenced, converge: S}
+      - {path: app/static/js/sidebar_hardened.js, verdict: unreferenced, converge: S}
+      - {path: app/templates/layouts/base.html, verdict: to_judge, converge: S}
+    converge_effort: M
+    owner_role: product-manager
+    search_hints:
+      - "grep -rnE \"ctrlKey|metaKey\" app/static/js app/templates --include=*.js --include=*.html"
+    last_checked: *v
+
+  - id: export-and-download
+    name: Export and download
+    plain_words: Give the user a file such as CSV, PDF, PowerPoint, ArchiMate exchange XML or an image.
+    decision: pending
+    decision_owner: solution-architect
+    canonical:
+      kind: pattern
+      paths:
+        - app/modules/architecture/services/archimate_xml_export_service.py
+        - app/static/js/shared/export-utils.js
+      use: "ArchiMate XML: archimate_xml_export_service; images: ExportManager in shared/export-utils.js. There is no shared helper yet for a CSV attachment response or a browser download; create one of each before adding more sites."
+    candidates:
+      - app/services/archimate_export_service.py
+      - app/services/archimate_oef_export_service.py
+    allowed_specialisations: []
+    forbidden:
+      - A new hand-built Content-Disposition response for a CSV once the shared helper exists.
+      - A third exporter for the ArchiMate exchange format.
+    rules: []
+    known_duplicates:
+      - {path: app/services/archimate_xml_export_service.py, verdict: unreferenced, converge: S}
+      - {path: app/services/archimate_oef_export_service.py, verdict: to_judge, converge: S}
+      - {path: app/services/arb_export_service.py, verdict: unreferenced, converge: S}
+    converge_effort: M
+    owner_role: solution-architect
+    search_hints:
+      - "grep -rnE \"Content-Disposition\" app --include=*.py"
+      - "grep -rnE \"URL\\.createObjectURL\" app/static/js app/templates --include=*.js --include=*.html"
+    last_checked: *v
+
+  - id: ai-chat-entry-points
+    name: Places a user starts a conversation with the AI architect
+    plain_words: The pages and panels where a person can ask the AI architect something.
+    decision: proposed
+    decision_owner: product-manager
+    canonical:
+      kind: implementation
+      paths: [app/modules/ai_chat/routes/chat_views.py, app/modules/ai_chat/services/llm_service_impl.py]
+      use: "Link to the chat page with url_for('unified_ai_chat.index'); do not embed a new chat panel"
+    allowed_specialisations:
+      - path: app/static/js/blueprint_chat.js
+        reason: Chat panel inside the solution blueprint and journey pages; reused by the journey page.
+        accepted_by: null
+        review_by: 2026-12-31
+      - path: app/static/js/archimate/composer_ai.js
+        reason: Assistant panel inside the Composer.
+        accepted_by: null
+        review_by: 2026-12-31
+      - path: app/templates/components/page_guide_drawer.html
+        reason: Per-page guide, shown only where a guide is registered.
+        accepted_by: null
+        review_by: 2026-12-31
+    forbidden:
+      - A new chat panel with its own transport to the chat backend.
+      - A new page that answers "what breaks" with a language model without a link to the recorded answer.
+    rules: []
+    known_duplicates:
+      - {path: app/templates/codegen/partials/_wb_chat_panel.html, verdict: to_judge, converge: M}
+      - {path: app/static/js/ai_chat/inline_chat.js, verdict: to_judge, converge: M}
+    converge_effort: S
+    owner_role: product-manager
+    search_hints:
+      - "grep -rlE \"unified_ai_chat\\.index\" app"
+    last_checked: *v
+
+  - id: dates
+    name: Date and time formatting
+    plain_words: Show a date or time in the one house style.
+    decision: proposed
+    decision_owner: tech-lead
+    canonical:
+      kind: implementation
+      paths: [app/_bootstrap/context_processors.py]
+      use: "{{ value|format_date }} and {{ value|format_datetime }}; pass a format only when the default does not fit: {{ value|format_date('%b %Y') }}"
+    allowed_specialisations: []
+    forbidden:
+      - Calling strftime in a template to display a date.
+      - A second filter registered under the name format_date or format_datetime.
+    rules: [RG-4b]
+    known_duplicates:
+      - {path: app/utils/template_utils.py, verdict: true_duplicate, converge: S}
+    converge_effort: M
+    owner_role: tech-lead
+    search_hints:
+      - "grep -rnE \"\\.strftime\\(\" app/templates app/modules --include=*.html"
+      - "grep -rnE \"toLocale(Date|Time)?String\\(\" app/static/js --include=*.js"
+    last_checked: *v
+
+  - id: permission-checks
+    name: Permission and role checks
+    plain_words: Stop a person who lacks a role or permission from reaching a route.
+    decision: proposed
+    decision_owner: solution-architect
+    canonical:
+      kind: implementation
+      paths: [app/decorators/__init__.py, app/decorators/requires_role.py, app/middleware/tenant_decorators.py]
+      use: "from app.decorators import admin_required, requires_role; from app.middleware.tenant_decorators import platform_admin_required, org_admin_required"
+    allowed_specialisations: []
+    forbidden:
+      - A new decorator or helper that checks a role or permission.
+      - Checking a role by string comparison in a route body.
+    rules: []
+    known_duplicates:
+      - {path: app/utils/decorators.py, verdict: true_duplicate, converge: M}
+      - {path: app/core/auth/decorators.py, verdict: true_duplicate, converge: M}
+      - {path: app/auth/decorators.py, verdict: unreferenced, converge: S}
+      - {path: app/utils/rbac.py, verdict: to_judge, converge: M}
+      - {path: app/security/rbac.py, verdict: to_judge, converge: M}
+    converge_effort: M
+    owner_role: solution-architect
+    search_hints:
+      - "grep -rnE \"^def (admin_required|role_required|requires_role|require_role|permission_required|requires_permission|require_permission|login_required)\\b\" app --include=*.py"
+    last_checked: *v
+
+  - id: whole-file-copies
+    name: Whole-file copies of services
+    plain_words: A file copied into a second folder and left there.
+    decision: proposed
+    decision_owner: tech-lead
+    canonical:
+      kind: pattern
+      paths: [app/services/llm_service.py]
+      use: "Keep one implementation under app/modules/<module>/. In the old path leave a shim of at most 15 lines that re-exports it and names the canonical file in its docstring (see app/services/llm_service.py)."
+    allowed_specialisations: []
+    forbidden:
+      - Copying a file to a second folder instead of importing it.
+      - Creating a v2 or hardened copy of a file beside the original.
+    rules: [RG-3a, RG-3b]
+    known_duplicates:
+      - {path: app/services/roadmap_automation.py, verdict: true_duplicate, converge: S}
+      - {path: app/services/roadmap_validator.py, verdict: true_duplicate, converge: S}
+      - {path: app/services/adm_to_composer_bridge.py, verdict: true_duplicate, converge: S}
+      - {path: app/services/policy_monitoring_service.py, verdict: true_duplicate, converge: S}
+      - {path: app/services/strategic_service.py, verdict: true_duplicate, converge: M}
+      - {path: app/services/gap_analysis_service.py, verdict: true_duplicate, converge: M}
+      - {path: app/services/ai_import_service.py, verdict: true_duplicate, converge: M}
+    converge_effort: M
+    owner_role: tech-lead
+    search_hints:
+      - "python reuse-measure-v1.py --root . --list RG-3b"
+      - "find app -name '*_service.py' -not -path '*/tests/*'"
+    last_checked: *v
+
+  - id: small-front-end-helpers
+    name: Small front-end helpers
+    plain_words: Escape text for HTML, read the CSRF token, show a toast, debounce a handler, make a request.
+    decision: proposed
+    decision_owner: tech-lead
+    canonical:
+      kind: implementation
+      paths:
+        - app/static/js/core/02-sanitize.js
+        - app/static/js/core/03-fetch.js
+        - app/static/js/core/04-toast.js
+        - app/static/js/shared/debounce.js
+      use: "Platform.sanitize.escape(text); Platform.fetch (adds the CSRF token); Platform.toast.success(message) and .error(message); window.debounce(fn, ms)"
+    allowed_specialisations: []
+    forbidden:
+      - A local function that escapes HTML, reads the CSRF token, shows a toast or debounces.
+      - A direct call to fetch(), alert() or console.log().
+    rules: [RG-4a]
+    known_duplicates:
+      - {path: app/static/js/batch_import/batch_review.js, verdict: true_duplicate, converge: S}
+      - {path: app/static/js/capability_map/index.js, verdict: true_duplicate, converge: S}
+      - {path: app/static/js/components/roadmap_widget.js, verdict: true_duplicate, converge: S}
+      - {path: app/static/js/market_intelligence/index.js, verdict: true_duplicate, converge: S}
+      - {path: app/static/js/roadmap_builder/index.js, verdict: true_duplicate, converge: S}
+    converge_effort: S
+    owner_role: tech-lead
+    search_hints:
+      - "python reuse-measure-v1.py --root . --list RG-4a"
+      - "cat app/static/js/core/load-order.js"
+    last_checked: *v
+
+  - id: language-model-calls
+    name: Calling a language model
+    plain_words: Send a prompt to a hosted model and get text back.
+    decision: proposed
+    decision_owner: solution-architect
+    canonical:
+      kind: implementation
+      paths:
+        - app/modules/ai_chat/services/llm_service_impl.py
+        - app/modules/ai_chat/services/model_defaults.py
+      use: "from app.services.llm_service import LLMService (re-exports the implementation); model ids come from model_defaults.py"
+    allowed_specialisations:
+      - path: app/services/vector_embedding_service.py
+        reason: Embeddings are a different call from text generation.
+        accepted_by: null
+        review_by: 2026-12-31
+    forbidden:
+      - Building a provider client (Anthropic, OpenAI, Google) or posting to a completions URL outside the service.
+      - Writing a model id anywhere except model_defaults.py.
+    rules: []
+    known_duplicates:
+      - {path: app/modules/ai_chat/services/agent_runner.py, verdict: to_judge, converge: M}
+      - {path: app/modules/ai_chat/services/ai_chat_multi_model.py, verdict: to_judge, converge: M}
+      - {path: app/modules/ai_chat/services/multi_domain_chat_service.py, verdict: to_judge, converge: M}
+      - {path: app/modules/architecture/services/inference_providers.py, verdict: to_judge, converge: M}
+      - {path: app/modules/architecture/services/ai_architecture_service.py, verdict: true_duplicate, converge: M}
+    converge_effort: M
+    owner_role: solution-architect
+    search_hints:
+      - "grep -rlE \"(Async)?Anthropic\\(|(Async)?OpenAI\\(\" app --include=*.py"
+      - "grep -rlE \"chat/completions|/v1/messages\" app --include=*.py"
+    last_checked: *v
+
+  - id: navigation-definitions
+    name: Navigation definitions
+    plain_words: The list of pages and how they are grouped for each persona.
+    decision: proposed
+    decision_owner: product-manager
+    canonical:
+      kind: implementation
+      paths: [app/utils/role_access.py, app/modules/modules_directory/routes.py]
+      use: "Persona sidebars are defined in role_access.py; the module index in modules_directory/routes.py; add a page in those two places only"
+    allowed_specialisations: []
+    forbidden:
+      - A new navigation registry or a new version of an existing one.
+    rules: []
+    known_duplicates:
+      - {path: app/config/navigation_registry_v2.py, verdict: unreferenced, converge: S}
+      - {path: app/config/navigation_sections_v2.py, verdict: unreferenced, converge: S}
+      - {path: app/config/navigation_registry_v3_hardened.py, verdict: unreferenced, converge: S}
+      - {path: app/config/navigation_sections_v3_hardened.py, verdict: unreferenced, converge: S}
+      - {path: app/config/navigation_setup.py, verdict: unreferenced, converge: S}
+      - {path: app/config/navigation_registry.py, verdict: to_judge, converge: M}
+      - {path: app/services/sidebar_discovery_service.py, verdict: to_judge, converge: S}
+    converge_effort: S
+    owner_role: product-manager
+    search_hints:
+      - "ls app/config | grep navigation"
+    last_checked: *v
+
+  - id: unreferenced-files
+    name: Files nothing refers to
+    plain_words: Code that no page or module loads or imports and that still looks live to a reader.
+    decision: proposed
+    decision_owner: tech-lead
+    canonical:
+      kind: hygiene
+      paths: []
+      use: "Delete a file nothing refers to, or mark its first line 'reuse-ok: loaded from <where>' if a path is built at run time."
+    allowed_specialisations: []
+    forbidden:
+      - Leaving a replaced implementation in the tree beside its replacement.
+    rules: [RG-7]
+    known_duplicates:
+      - {path: app/static/js/reteLikeExtensions.js, verdict: unreferenced, converge: S}
+      - {path: app/static/js/archimate_diagram_renderer.js, verdict: unreferenced, converge: S}
+      - {path: app/static/js/capability_map/capability_map.js, verdict: unreferenced, converge: S}
+      - {path: app/static/js/capability_roadmap/capability_roadmap.js, verdict: unreferenced, converge: S}
+      - {path: app/static/js/architecture-analytics.js, verdict: unreferenced, converge: S}
+    converge_effort: S
+    owner_role: tech-lead
+    search_hints:
+      - "python reuse-measure-v1.py --root . --list RG-7"
+    last_checked: *v
