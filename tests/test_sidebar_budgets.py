@@ -6,6 +6,8 @@ no app/db fixtures needed, the structure is plain Python data.
 
 from collections import Counter
 
+import pytest
+
 from app.models.user import (
     ROLE_APPLICATION_MANAGER,
     ROLE_ARB_MEMBER,
@@ -185,6 +187,11 @@ def test_solution_architect_my_work_membership():
         # my_work link was added at role_access.py:469; this test asserted
         # exact equality and had gone red on main until this line was added.
         "Interface Register",
+        # Reported problem: the platform's own "analyse the ripple effects of a
+        # change" feature was reachable only from the 83-item All-modules page, so an architect
+        # with no training had no discoverable path to it. Impact analysis is a primary job for
+        # this persona. This is the 8th link, one past the spec table's "3-7"; the spec now says so.
+        "Impact Analysis",
     ]
 
 
@@ -280,6 +287,7 @@ def test_business_architect_my_work_membership():
         "Work Packages",
         "Traceability Matrix",
         "Capability Health",
+        "Impact Analysis",  # Same link and icon as enterprise_architect
         "Data Architecture",
         # NAV-1 (27 Aug 2026): nav-coverage outputs 5, 6 and 10 — information/
         # data maps, strategy-to-execution and products & services — all had
@@ -434,3 +442,32 @@ def test_admin_zone_shown_for_real_platform_admin():
     user = _StubUser(ROLE_PLATFORM_ADMIN, is_platform_admin=True)
     zones = get_sidebar_zones(user)
     assert "admin" in {z["zone"] for z in zones}
+
+
+IMPACT_PERSONAS = {ROLE_SOLUTION_ARCHITECT, ROLE_ENTERPRISE_ARCHITECT, ROLE_BUSINESS_ARCHITECT}
+
+
+@pytest.mark.parametrize("role", sorted(SIDEBAR_ZONES))
+def test_impact_analysis_is_in_my_work_for_exactly_the_architect_personas(role):
+    """The reported problem: the three architect personas get it under My work; nobody else gains it."""
+    assert ("Impact Analysis" in _my_work_labels(role)) == (role in IMPACT_PERSONAS)
+
+
+@pytest.mark.parametrize("role", sorted(IMPACT_PERSONAS))
+def test_impact_analysis_link_is_the_same_link_and_icon_for_every_persona(role):
+    link = next(entry for entry in _all_links(role) if entry["label"] == "Impact Analysis")
+    assert link["endpoint"] == "strategic.impact_analysis"
+    assert link["icon"] == "crosshair"
+
+
+@pytest.mark.parametrize("role", sorted(IMPACT_PERSONAS))
+def test_architect_collapsed_sidebar_icons_are_unambiguous(role):
+    """A collapsed rail must not use one glyph for different destinations (adding a link must not break this).
+
+    Judged per destination, not per link: business_architect's My work "Capability Map" and Library
+    "Capabilities" are the same endpoint with the same glyph, which is a duplicate link (a separate,
+    product-level question) rather than two buttons that look alike but go to different pages."""
+    endpoints_by_icon = {}
+    for link in _all_links(role):
+        endpoints_by_icon.setdefault(link["icon"], set()).add(link["endpoint"])
+    assert {i: sorted(e) for i, e in endpoints_by_icon.items() if len(e) > 1} == {}

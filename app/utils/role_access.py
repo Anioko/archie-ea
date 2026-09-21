@@ -494,6 +494,12 @@ _MY_WORK_LINKS = {
         # surface; "cable" is distinct from the git-merge/git-branch/waypoints/
         # milestone icons already in this zone.
         _link("Interface Register", "interface_register.index", "cable"),
+        # Reported problem: the full Impact Analysis page was reachable only from
+        # the All-modules page. "Ask a question" already answers one cross-layer
+        # ripple-effect question from the top of My work, but not the full
+        # analysis surface this links to. Same endpoint and icon as
+        # enterprise_architect's link, which already had it (S-11, 18 Aug 2026).
+        _link("Impact Analysis", "strategic.impact_analysis", "crosshair"),
     ],
     ROLE_ENTERPRISE_ARCHITECT: [
         _link("Transformation programmes", "solution_design.programmes_list", "waypoints"),
@@ -609,6 +615,8 @@ _MY_WORK_LINKS = {
         _link("Work Packages", "enterprise.work_packages", "package"),
         _link("Traceability Matrix", "architect_ui.traceability_matrix", "git-compare"),
         _link("Capability Health", "strategic.capability_health", "activity"),
+        # Same link and icon as enterprise_architect's.
+        _link("Impact Analysis", "strategic.impact_analysis", "crosshair"),
         _link("Data Architecture", "data_architecture.data_architecture_dashboard", "database"),
         # NAV-1 (27 Aug 2026, nav-coverage gate 4 -> 0). Three of Iain's twelve
         # business-architecture outputs had working routes and no sidebar link
