@@ -30,6 +30,7 @@ import re
 import uuid
 
 import pytest
+from playwright.sync_api import expect
 
 from .conftest import PAGE_TIMEOUT, PASSWORD
 from .test_accessibility_audit import RESULT_KINDS, TAGS
@@ -263,6 +264,39 @@ def _drift_settled(page):
         " const d = el && el._x_dataStack && el._x_dataStack[0];"
         " return !!d && !!d.drift && d.drift.state !== 'loading'; }"
     )
+
+
+def _what_the_page_holds(page):
+    """The component's own state, for a failure message: what it believes the answer said."""
+    return page.evaluate(
+        """() => {
+            const el = document.querySelector('[x-data="workedOutConnections()"]');
+            const d = el && el._x_dataStack && el._x_dataStack[0];
+            if (!d) return null;
+            const button = document.querySelector('[data-recompute-button]');
+            return {
+                state: d.state, showRecompute: d.showRecompute, recomputing: d.recomputing,
+                recomputeFailed: d.recomputeFailed, statusLine: d.statusLine, staleLine: d.staleLine,
+                loaded: d.loaded, failed: d.failed,
+                buttonDisplay: button ? getComputedStyle(button).display : null,
+            };
+        }"""
+    )
+
+
+def _the_action_is_gone(page, base, after):
+    """The page no longer offers "Work them out now". This waits for the page to settle rather than
+    reading it at one instant, and fails if the action never goes. When it fails, the message says
+    what the page holds and what the server says the state is, so a failure on a slower machine
+    explains itself."""
+    action = page.get_by_role("button", name="Work them out now")
+    try:
+        expect(action).to_have_count(0, timeout=15000)
+    except AssertionError as err:
+        raise AssertionError(
+            "the action is still offered after %s. The page holds %r; the server says the state is %r.\n%s"
+            % (after, _what_the_page_holds(page), _yield_api(page, base, "figures")["state"], err)
+        ) from err
 
 
 def _yield_api(page, base, part=None):
@@ -957,7 +991,7 @@ def test_the_out_of_date_state_offers_the_action_and_working_them_out_posts_once
         re.compile(r"may be out of date")
     ).first.is_visible()
     assert page.get_by_role("img", name="Last worked out", exact=True).count() == 0
-    assert page.get_by_role("button", name="Work them out now").count() == 0
+    _the_action_is_gone(page, live_server, "working the connections out")
     assert _names(page)["stale"] == "Stale count: 0 relationships"
     assert page.evaluate("document.activeElement && document.activeElement.getAttribute('data-testid')") == "derivation-status"
     figures = [(m, u) for m, u in requests if "/intelligence/yield" in u]
@@ -1006,8 +1040,8 @@ def test_working_the_connections_out_posts_the_tenant_scope_updates_the_region_a
         page.wait_for_timeout(50)
     assert _status_text(page) == FINISHED
     assert _names(page)["explicit"] == "Explicit facts: 2 relationships"
-    assert page.get_by_role("button", name="Work them out now").is_visible() is False
-    assert page.get_by_text(NOT_WORKED_OUT).is_visible() is False
+    _the_action_is_gone(page, live_server, "the recalculation finished")
+    expect(page.get_by_text(NOT_WORKED_OUT)).to_be_hidden()
     assert page.evaluate("document.activeElement && document.activeElement.getAttribute('data-testid')") == "derivation-status"
     data = _yield_api(page, live_server)
     assert data["state"] == "current" and data["explicit_count"] == 2
