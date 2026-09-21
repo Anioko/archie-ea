@@ -42,3 +42,16 @@ def test_matching_uses_the_normalised_forms_on_both_sides():
     label = normalise_search_text("Licences")
     query = normalise_search_text("licence")
     assert query in label
+
+
+@pytest.mark.parametrize("prefix,label", [
+    ("lic", "Licences"), ("licen", "Licences"), ("licenc", "Licences"),
+    ("organis", "Organisations"), ("organisatio", "Organisations"),
+    ("programm", "Programmes"),
+    ("rationalisatio", "Rationalisation"),
+])
+def test_a_partial_british_spelling_still_matches_while_typing(prefix, label):
+    # A query is typed one character at a time. The British and American spellings diverge partway
+    # through each word ("licen" then "c" vs "s"), so a prefix that has diverged but not yet completed
+    # the British word (e.g. "licenc") must still match -- not just the finished word.
+    assert normalise_search_text(prefix) in normalise_search_text(label)

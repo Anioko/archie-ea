@@ -813,22 +813,33 @@ def get_sidebar_zones(user) -> List[Dict]:
         is_admin = bool(user.is_admin())
     except Exception:  # anonymous / unexpected user object
         is_admin = False
-    is_super = bool(getattr(user, "is_platform_admin", False))
-    is_org_admin = bool(getattr(user, "is_org_admin", False))
 
     visible = []
     for z in zones:
         if z["zone"] == "admin" and not is_admin:
             continue
-        links = [
-            link for link in z["links"]
-            if link.get("requires") is None
-            or (link["requires"] == "admin" and is_admin)
-            or (link["requires"] == "org_admin" and is_org_admin)
-            or (link["requires"] == "platform_admin" and is_super)
-        ]
+        links = [link for link in z["links"] if link_requires_satisfied(user, link.get("requires"))]
         visible.append({**z, "links": links})
     return visible
+
+
+def link_requires_satisfied(user, requires):
+    """True when `user` satisfies a sidebar link's `requires` guard (see `_link`'s docstring), or
+    `requires` is None. The one predicate `get_sidebar_zones` uses per-link, pulled out so any other
+    surface that lists the same links (the All-modules directory, sidebar/global search) filters them
+    identically instead of re-deriving its own, partial version of the same rule."""
+    if requires is None:
+        return True
+    if requires == "admin":
+        try:
+            return bool(user.is_admin())
+        except Exception:  # anonymous / unexpected user object
+            return False
+    if requires == "org_admin":
+        return bool(getattr(user, "is_org_admin", False))
+    if requires == "platform_admin":
+        return bool(getattr(user, "is_platform_admin", False))
+    return False
 
 
 # Context processor for templates

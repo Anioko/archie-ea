@@ -67,6 +67,16 @@ def test_a_module_the_persona_cannot_open_is_never_offered(app, client):
     assert not [h for h in _modules(client, "organizations") if "/admin/" in h["url"]]
 
 
+def test_a_requires_gated_module_outside_admin_is_never_offered_either(app, client):
+    """Errors (role_access.py: requires="platform_admin") sits in a zone most roles can otherwise see and
+    is not under /admin/, so the endpoint-prefix guard above does not cover it -- it needs the same
+    requires= check get_sidebar_zones() applies, or a non-admin gets a labelled, clickable link to a page
+    that hard-403s."""
+    login(client, _persona(app, "solution_architect"))
+    hits = _modules(client, "error")
+    assert not [h for h in hits if h["id"] == "error_events.errors_dashboard"], hits
+
+
 def test_every_module_result_has_every_field_the_client_renders(app, client):
     login(client, _persona(app, "solution_architect"))
     hits = _modules(client, "impact")
