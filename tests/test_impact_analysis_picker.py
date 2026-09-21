@@ -96,7 +96,7 @@ def test_picker_uses_the_canonical_element_search_not_a_layer_listing(
     endpoint, limit, html = _picker_request(client, login_as, user)
 
     assert endpoint == "/archimate/api/elements/search"
-    assert limit == 50, "each keystroke asks for at most this many rows"
+    assert limit == 25, "each keystroke asks for at most this many rows"
     script = html[html.index("function impactAnalysis()"):html.index("window.impactAnalysis = impactAnalysis;")]
     assert "/architecture/api/layer/" not in script, "the picker must not read the layer-scoped listing"
     # "All layers" is the default, and it sends no layer at all.
