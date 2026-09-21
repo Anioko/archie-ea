@@ -40,6 +40,7 @@
                       belong to the header but are not actions.
 
    Passing both `subtitle` and `subtitle_caller` renders the caller only. #}
+{% from 'components/_breadcrumb_root.html' import crumb_label %}
 {% macro page_shell(title, subtitle=None, breadcrumb=[], actions_caller=None, tabs=[], icon=None, subtitle_caller=None, meta_caller=None, stack_actions=False) %}
 <div class="mb-6">
     {% if breadcrumb %}
@@ -48,12 +49,12 @@
             {% for label, href in breadcrumb %}
             <li class="flex items-center gap-1.5{% if stack_actions %} min-w-0{% endif %}"{% if loop.last %} aria-current="page"{% endif %}>
                 {% if loop.last %}
-                    <span class="text-foreground font-medium{% if stack_actions %} break-words min-w-0{% endif %}">{{ label }}</span>
+                    <span class="text-foreground font-medium{% if stack_actions %} break-words min-w-0{% endif %}">{{ crumb_label(label, loop.first) }}</span>
                 {% elif href %}
-                    <a href="{{ href }}" class="hover:text-foreground transition-colors">{{ label }}</a>
+                    <a href="{{ href }}" class="hover:text-foreground transition-colors">{{ crumb_label(label, loop.first) }}</a>
                     <i data-lucide="chevron-right" class="w-3.5 h-3.5 shrink-0" aria-hidden="true"></i>
                 {% else %}
-                    <span>{{ label }}</span>
+                    <span>{{ crumb_label(label, loop.first) }}</span>
                     <i data-lucide="chevron-right" class="w-3.5 h-3.5 shrink-0" aria-hidden="true"></i>
                 {% endif %}
             </li>
