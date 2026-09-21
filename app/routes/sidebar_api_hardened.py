@@ -579,11 +579,23 @@ def api_global_search():
             # unions every role's zones, so the unfiltered list includes the
             # admin / procurement / my-applications surfaces that hard-403 for
             # most personas. A search hit that 403s on click is a dead result.
+            #
+            # Matching is spelling-blind (normalise_search_text folds en-GB/en-US variant pairs both
+            # ways, app/utils/search_text.py), and every hit is labelled with a zone — the caller's own
+            # SIDEBAR_ZONES if the page lives there, "All modules" otherwise (a page the persona keeps only
+            # via the directory, not a sidebar zone). One map, built once per request.
             from app.modules.modules_directory.routes import visible_module_links
+            from app.utils.role_access import get_sidebar_zones
+            from app.utils.search_text import normalise_search_text
 
-            q_lower = q.lower()
+            endpoint_zone = {}
+            for zone in get_sidebar_zones(current_user):
+                for link in zone["links"]:
+                    endpoint_zone.setdefault(link["endpoint"], zone["title"])
+
+            q_norm = normalise_search_text(q)
             for link in visible_module_links():
-                if q_lower not in link["label"].lower():
+                if q_norm not in normalise_search_text(link["label"]):
                     continue
                 if link["endpoint"] not in current_app.view_functions:
                     continue
@@ -597,6 +609,7 @@ def api_global_search():
                         "id": link["endpoint"],
                         "name": link["label"],
                         "url": module_url,
+                        "zone": endpoint_zone.get(link["endpoint"], "All modules"),
                     }
                 )
         except Exception as e:

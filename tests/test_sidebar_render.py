@@ -22,6 +22,7 @@ import uuid
 import pytest
 
 from app.utils.role_access import SIDEBAR_LINK_BUDGET
+from scripts.check_sidebar_links import count_links as _real_link_count
 
 pytestmark = pytest.mark.usefixtures("db_session")
 
@@ -108,7 +109,7 @@ def _sidebar_html(app, db_session, make_org, role, label):
 )
 def test_flagship_persona_sidebar_within_budget(app, db_session, make_org, role, label):
     sidebar_html = _sidebar_html(app, db_session, make_org, role, label)
-    link_count = len(re.findall(r"<a ", sidebar_html))
+    link_count = _real_link_count(sidebar_html)
     assert link_count <= SIDEBAR_BUDGET, (
         f"{role} sidebar renders {link_count} links, budget is {SIDEBAR_BUDGET}"
     )
@@ -145,7 +146,7 @@ def test_platform_admin_hits_the_link_budget_exactly(app, db_session, make_org):
     links to 22 and the total — and SIDEBAR_LINK_BUDGET — to 25.
     """
     sidebar_html = _sidebar_html(app, db_session, make_org, "platform_admin", "pa-budget")
-    link_count = len(re.findall(r"<a ", sidebar_html))
+    link_count = _real_link_count(sidebar_html)
     assert link_count == SIDEBAR_BUDGET, (
         f"platform_admin sidebar renders {link_count} links, expected exactly "
         f"{SIDEBAR_BUDGET} (0 headroom left — see role_access.py's "

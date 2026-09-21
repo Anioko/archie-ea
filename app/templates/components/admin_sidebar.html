@@ -94,18 +94,39 @@ DEPENDENCIES:
        scrollbar is the affordance — restored rather than replaced with
        custom chrome, since the sidebar's own :hover/:focus-within styling
        already handles when it should be visually quiet. #}
+    <script src="{{ url_for('static', filename='js/sidebar/module_search.js') }}"></script>
     <nav id="sidebar-nav" class="flex-1 px-2 py-4 space-y-2 overflow-y-auto min-h-0"
          x-data="{
              searchQuery: '',
              searchFocused: false,
+             moduleSearch: { query: '', results: [], loading: false, error: false },
              clearSearch() {
                  this.searchQuery = '';
                  this.$refs.searchInput.focus();
              },
-             matchesSearch(text) {
-                 if (!this.searchQuery) return true;
-                 return text.toLowerCase().includes(this.searchQuery.toLowerCase());
-             }
+             init() {
+                 // Link-level, zone-labelled, spelling-blind results from /api/sidebar/search --
+                 // see app/static/js/sidebar/module_search.js. Replaces the old whole-zone client filter
+                 // (matchesSearch), which showed every link in a zone on one hit and had no spelling
+                 // tolerance.
+                 if (!window.SidebarModuleSearch) return;
+                 const finder = window.SidebarModuleSearch.create({
+                     fetchJson: (q) => Platform.fetch.get('/api/sidebar/search', { q: q }, { silent: true }),
+                     onChange: (state) => { this.moduleSearch = state; }
+                 });
+                 this.$watch('searchQuery', (q) => finder.search(q));
+             },
+             // >= 2, matching module_search.js's own MIN_LENGTH: below that, finder.search()
+             // publishes an empty result set without asking the server (the endpoint 400s under 2
+             // characters). A literal double-quote is not safe in this comment: the whole x-data
+             // value below is itself inside a double-quoted HTML attribute, so a quote character
+             // here -- even inside a JS comment -- ends the attribute early and truncates the
+             // object literal (the earlier wording of this comment did exactly that: it broke this
+             // predicate for every keystroke, not just under 2 characters). Before this fix, this
+             // predicate returning true on any keystroke hid every zone and showed a false no-match
+             // message on the very first character -- a not-asked state rendered as a real miss,
+             // wiping the whole sidebar navigation down to one link.
+             searching() { return this.searchQuery.trim().length >= 2; }
          }">
 
         <!-- Search Box -->
@@ -130,14 +151,46 @@ DEPENDENCIES:
                     <i data-lucide="x" class="h-3 w-3 text-muted-foreground"></i>
                 </button>
             </div>
-            <div x-cloak x-show="!searchQuery" class="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
+            <div class="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
                 <kbd class="px-1.5 py-0.5 rounded bg-muted border border-border font-mono text-xs text-foreground">Ctrl+K</kbd>
                 <span>for global search</span>
             </div>
-            <div x-cloak x-show="searchQuery && searchQuery.length > 0" class="mt-2 text-xs text-muted-foreground">
-                <span x-text="`Searching for: ${searchQuery}`"></span>
-            </div>
         </div>
+
+        {# ── Search results: link-level, zone-labelled, replaces the zone-grouped nav while searching ── #}
+        <div x-cloak x-show="searching()" data-testid="sidebar-search-results">
+            <p x-show="moduleSearch.loading" class="px-3 py-2 text-xs text-muted-foreground">Searching&hellip;</p>
+            <div x-show="!moduleSearch.loading && !moduleSearch.error && moduleSearch.results.length" class="space-y-1">
+                <template x-for="hit in moduleSearch.results" :key="hit.url">
+                    <a :href="hit.url" :title="hit.name"
+                       class="flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground">
+                        <span class="flex-1 truncate" x-text="hit.name"></span>
+                        <span class="shrink-0 text-xs text-muted-foreground/70" x-text="hit.zone"></span>
+                    </a>
+                </template>
+            </div>
+            {# <template>, not a plain div: its content (including the "Browse all modules" <a>) does not
+               exist in the DOM until Alpine instantiates it, so it never counts against the sidebar's
+               rendered link budget (scripts/check_sidebar_links.py, tests/test_sidebar_render.py) while a
+               search is not in this empty state. #}
+            <template x-if="!moduleSearch.loading && !moduleSearch.error && moduleSearch.results.length === 0">
+                <div class="px-3 py-4 text-center">
+                    <p class="text-sm text-muted-foreground" x-text="`No pages match &quot;${searchQuery}&quot;`"></p>
+                    <div class="mt-3 flex flex-col items-center gap-2">
+                        <button type="button" @click="window.openSearchModal && window.openSearchModal(searchQuery)"
+                                class="inline-flex items-center gap-1.5 rounded-md border border-input bg-background px-3 py-1.5 text-xs font-medium hover:bg-accent transition-colors">
+                            Search everywhere (Ctrl+K)
+                        </button>
+                        {% if 'modules_directory.index' in flask.current_app.view_functions %}
+                        <a href="{{ url_for('modules_directory.index') }}" class="text-xs text-primary hover:underline">Browse all modules</a>
+                        {% endif %}
+                    </div>
+                </div>
+            </template>
+            <p x-show="moduleSearch.error" role="alert" class="px-3 py-2 text-xs text-destructive">Search is unavailable. Try again.</p>
+        </div>
+
+        <div x-show="!searching()">
 
         {% set ns = namespace(has_all_modules=false) %}
         {% for zone in get_sidebar_zones(current_user) %}
@@ -149,7 +202,7 @@ DEPENDENCIES:
            zone, heading included, on that list being non-empty. #}
         {% set visible_links = zone.links | selectattr('endpoint', 'in', flask.current_app.view_functions) | list %}
         {% if visible_links %}
-        <div class="px-3 py-2" x-cloak x-show="matchesSearch('{{ zone.title }} {{ visible_links | map(attribute='label') | join(' ') }}')">
+        <div class="px-3 py-2">
             <div class="mb-2 px-2 text-xs font-semibold tracking-tight text-muted-foreground uppercase" role="heading" aria-level="3">
                 {{ zone.title }}
             </div>
@@ -170,6 +223,7 @@ DEPENDENCIES:
         </div>
         {% endif %}
         {% endfor %}
+        </div>
     </nav>
 
     <!-- Sidebar Footer -->
