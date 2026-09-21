@@ -380,6 +380,11 @@ def _link(label, endpoint, icon, requires=None, query_params=None):
       "admin"          — route is @admin_required (Permission.ADMINISTER)
       "platform_admin" — route is @platform_admin_required (the cross-tenant
                          is_platform_admin super-admin flag)
+      "general"        — route requires Permission.GENERAL (require_roles()
+                         only grants access when current_user.can(GENERAL)
+                         holds), which a read-only Viewer role (permissions=0)
+                         fails even though enterprise_role puts the link in
+                         their zone — see Policy Monitoring below.
     Navigation must be driven by the same predicate the route checks, not by
     enterprise_role alone.
 
@@ -710,11 +715,17 @@ _MY_WORK_LINKS = {
     # here is a page that already ships, previously reachable only from another
     # persona's zone or from the module catalogue.
     ROLE_SECURITY_ARCHITECT: [
-        # The policy_monitoring blueprint is only registered under governance v2,
-        # which is not active; the live endpoint is the unified one, and
-        # navigation_registry.py already records exactly this alias.
+        # Points at the real governance dashboard (monitoring_data +
+        # compliance_report), not unified_low_priority.policy_monitoring_dashboard
+        # -- that one renders the same template with no context at all, an empty
+        # shell that happened to survive because it carried no role gate. The
+        # governance blueprint is registered by default (USE_GOVERNANCE_GUARDRAILS
+        # defaults on), and require_roles("admin", "architect", "compliance_officer")
+        # already accepts every `*_architect` enterprise_role, so this persona
+        # reaches it directly.
         _link("Policy Monitoring",
-              "unified_low_priority.policy_monitoring_dashboard", "shield-alert"),
+              "policy_monitoring.policy_dashboard", "shield-alert",
+              requires="general"),
         # Security architects have read-only access to the page and list API;
         # mutation endpoints remain ADMINISTER-only.
         _link("Governance Gates", "admin.governance_gates", "shield-check"),
@@ -845,6 +856,13 @@ def link_requires_satisfied(user, requires):
         return bool(getattr(user, "is_org_admin", False))
     if requires == "platform_admin":
         return bool(getattr(user, "is_platform_admin", False))
+    if requires == "general":
+        try:
+            from app.models.user import Permission
+
+            return bool(user.can(Permission.GENERAL))
+        except Exception:  # anonymous / unexpected user object
+            return False
     return False
 
 
