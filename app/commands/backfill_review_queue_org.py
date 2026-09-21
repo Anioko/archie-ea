@@ -32,6 +32,7 @@ import click
 from flask.cli import with_appcontext
 
 from app import db
+from app.commands.tenant_schema import ensure_organization_index_and_fk
 from app.models.confidence_review import APPLICATION_ITEM_TYPES
 
 TABLE = "review_queue_items"
@@ -97,38 +98,13 @@ def run_backfill(*, dry_run: bool = False):
     if dry_run:
         db.session.rollback()
     else:
-        _add_index_and_fk(conn)
+        ensure_organization_index_and_fk(conn, TABLE, strict=True)
         db.session.commit()
     return {
         "by_application": by_application,
         "by_reviewer": by_reviewer,
         "remaining_nulls": remaining,
     }
-
-
-def _add_index_and_fk(conn):
-    """Match the model metadata on databases where reconcile added only a column."""
-    from sqlalchemy import text
-
-    conn.execute(
-        text(
-            "CREATE INDEX IF NOT EXISTS ix_review_queue_items_organization_id "
-            "ON review_queue_items (organization_id)"
-        )
-    )
-    conn.execute(
-        text(
-            "DO $$ BEGIN "
-            "IF NOT EXISTS (SELECT 1 FROM pg_constraint c "
-            "JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = ANY (c.conkey) "
-            "WHERE c.conrelid = 'review_queue_items'::regclass AND c.contype = 'f' "
-            "AND a.attname = 'organization_id') THEN "
-            "ALTER TABLE review_queue_items "
-            "ADD CONSTRAINT fk_review_queue_items_organization "
-            "FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE; "
-            "END IF; END $$"
-        )
-    )
 
 
 @click.command("backfill-review-queue-org")

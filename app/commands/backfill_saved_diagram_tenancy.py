@@ -30,6 +30,7 @@ import click
 from flask.cli import with_appcontext
 
 from app import db
+from app.commands.tenant_schema import ensure_organization_index_and_fk
 
 TABLE = "saved_diagrams"
 ELEMENTS = "saved_diagram_elements"
@@ -95,7 +96,7 @@ def backfill_saved_diagram_tenancy(dry_run, org_id):
     if not orphans:
         click.echo("  no orphaned rows — nothing to assign")
         if not dry_run:
-            _add_index_and_fk(conn, dry_run)
+            ensure_organization_index_and_fk(conn, TABLE, echo=click.echo)
             db.session.commit()
         else:
             db.session.rollback()
@@ -161,29 +162,9 @@ def backfill_saved_diagram_tenancy(dry_run, org_id):
         db.session.rollback()
         return
 
-    _add_index_and_fk(conn, dry_run)
+    ensure_organization_index_and_fk(conn, TABLE, echo=click.echo)
     db.session.commit()
     click.echo(f"backfill {TABLE}: done.")
-
-
-def _add_index_and_fk(conn, dry_run):
-    """reconcile-schema adds neither an index nor the FK for the new column."""
-    from sqlalchemy import text
-
-    if dry_run:
-        return
-    for ddl, label in (
-        (f'CREATE INDEX IF NOT EXISTS ix_{TABLE}_organization_id ON "{TABLE}" (organization_id)',
-         "index"),
-        (f'ALTER TABLE "{TABLE}" ADD CONSTRAINT fk_{TABLE}_organization '
-         'FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE',
-         "foreign key"),
-    ):
-        try:
-            conn.execute(text(ddl))
-            click.echo(f"  + {TABLE}: {label}")
-        except Exception as exc:  # noqa: BLE001
-            click.echo(f"  ! {TABLE}: {label} skipped ({str(exc)[:100]})")
 
 
 def init_app(app):

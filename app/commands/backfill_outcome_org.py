@@ -35,6 +35,7 @@ import click
 from flask.cli import with_appcontext
 
 from app import db
+from app.commands.tenant_schema import ensure_organization_index_and_fk
 
 
 def _backfill_outcome_org(dry_run):
@@ -68,7 +69,7 @@ def _backfill_outcome_org(dry_run):
     if not total_orphans:
         click.echo("  no orphaned rows — nothing to assign")
         if not dry_run:
-            _add_index_and_fk(conn, TABLE)
+            ensure_organization_index_and_fk(conn, TABLE, echo=click.echo)
             db.session.commit()
         else:
             db.session.rollback()
@@ -109,27 +110,9 @@ def _backfill_outcome_org(dry_run):
                 "every tenant-scoped view until assigned manually"
             )
 
-    _add_index_and_fk(conn, TABLE)
+    ensure_organization_index_and_fk(conn, TABLE, echo=click.echo)
     db.session.commit()
     click.echo(f"backfill {TABLE}: done.")
-
-
-def _add_index_and_fk(conn, table):
-    from sqlalchemy import text
-
-    for ddl, label in (
-        (f'CREATE INDEX IF NOT EXISTS ix_{table}_organization_id ON "{table}" (organization_id)', "index"),
-        (
-            f'ALTER TABLE "{table}" ADD CONSTRAINT fk_{table}_organization '
-            "FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE",
-            "foreign key",
-        ),
-    ):
-        try:
-            conn.execute(text(ddl))
-            click.echo(f"  + {table}: {label}")
-        except Exception as exc:  # noqa: BLE001
-            click.echo(f"  ! {table}: {label} skipped ({str(exc)[:100]})")
 
 
 @click.command("backfill-outcome-org")

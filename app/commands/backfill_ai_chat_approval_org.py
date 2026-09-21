@@ -11,6 +11,7 @@ import click
 from flask.cli import with_appcontext
 
 from app import db
+from app.commands.tenant_schema import ensure_organization_index_and_fk
 
 
 TABLE = "ai_chat_crud_approvals"
@@ -49,7 +50,7 @@ def run_backfill(*, dry_run: bool = False):
                 "AND u.organization_id IS NOT NULL"
             )
         ).rowcount or 0
-        _add_index_and_fk(conn)
+        ensure_organization_index_and_fk(conn, TABLE, strict=True)
 
     remaining = conn.execute(
         text("SELECT count(*) FROM ai_chat_crud_approvals WHERE organization_id IS NULL")
@@ -59,29 +60,6 @@ def run_backfill(*, dry_run: bool = False):
     else:
         db.session.commit()
     return {"backfilled": backfilled, "remaining_nulls": remaining}
-
-
-def _add_index_and_fk(conn):
-    """Match model metadata on databases where reconcile added only a column."""
-    from sqlalchemy import text
-
-    conn.execute(
-        text(
-            "CREATE INDEX IF NOT EXISTS ix_ai_chat_crud_approvals_organization_id "
-            "ON ai_chat_crud_approvals (organization_id)"
-        )
-    )
-    conn.execute(
-        text(
-            "DO $$ BEGIN "
-            "IF NOT EXISTS (SELECT 1 FROM pg_constraint "
-            "WHERE conname = 'fk_ai_chat_crud_approvals_organization') THEN "
-            "ALTER TABLE ai_chat_crud_approvals "
-            "ADD CONSTRAINT fk_ai_chat_crud_approvals_organization "
-            "FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE; "
-            "END IF; END $$"
-        )
-    )
 
 
 @click.command("backfill-ai-chat-approval-org")
