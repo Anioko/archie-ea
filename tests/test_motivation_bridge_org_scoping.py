@@ -1,7 +1,6 @@
 """motivation_bridge_service must pass organization_id when creating Outcome/Principle.
 
-Refuter-found regression (docs/buckets/model-class-deduplication/): once
-Outcome and Principle gained TenantMixin (organization_id nullable), the
+Once Outcome and Principle gained TenantMixin (organization_id nullable), the
 existing _find_or_create_outcome()/_find_or_create_principle() -- which run
 under the request-context-free `flask bridge-motivation` CLI -- silently
 started writing organization_id=NULL on every multi-org install, because

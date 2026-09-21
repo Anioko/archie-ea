@@ -1,27 +1,6 @@
-"""T-004 / Task 01 acceptance tests for ``IntelligenceQueryService.cross_layer_impact``.
-
-Maps to task 01's acceptance criteria (see
-``docs/buckets/t004-us1-impact-endpoint/tasks/01-query-service-owner-attach-and-latency-probe.md``):
-
-    1  -> test_include_derived_true_returns_explicit_and_derived_in_one_payload
-    2  -> test_include_derived_false_returns_only_explicit_rows
-    3  -> test_derived_row_carries_chain_and_rule_id
-    4  -> test_owner_attaches_when_chain_resolves_and_tenant_matches
-    5  -> test_owner_absent_is_indistinguishable_and_cross_tenant_does_not_leak
-    7  -> test_derivation_state_not_computed_when_tenant_has_no_derived_rows
-    8  -> test_stale_rows_only_appear_with_include_stale_true
-    9  -> test_no_write_to_ownership_or_unit_tables,
-         test_cross_tenant_component_pointer_does_not_leak_unit_name
-    10 -> test_latency_record_and_histogram_populated,
-         test_latency_histogram_labels_include_derived_true_separately (M4)
-    12 -> test_mutation_proof_sec09_and_include_derived_filter (include_derived
-         mutation only -- see B2 correction),
-         test_sec09_tenant_check_blocks_real_cross_tenant_resolution,
-         test_mutation_proof_sec09_real_path (real SEC-09 mutation proof)
-
-Also (refuter fix pass, not tied to a numbered acceptance item):
-    B3 -> test_duplicate_component_pointer_resolves_deterministically_not_500
-"""
+"""Tests for ``IntelligenceQueryService.cross_layer_impact``: derived vs
+explicit rows, owner attachment and tenant scoping, staleness, latency
+recording, and mutation-proof coverage for the tenant check."""
 
 from __future__ import annotations
 

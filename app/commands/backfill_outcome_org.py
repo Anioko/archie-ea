@@ -2,9 +2,8 @@
 Tenancy backfill: backfill-outcome-org.
 
 `Outcome` (app/models/models.py) shipped with no organization_id column at
-all -- not the fast-init-only asymmetry seen elsewhere in this bucket
-(docs/buckets/model-class-deduplication/), but a live gap present in the
-model that has always run in production. The tenant filter in
+all -- a live gap present in the model that has always run in production.
+The tenant filter in
 app/middleware/tenant_isolation.py attaches
 ``organization_id == g.current_org_id`` to every SELECT on a TenantMixin
 model, so a model without the column was not merely unfiltered -- it was

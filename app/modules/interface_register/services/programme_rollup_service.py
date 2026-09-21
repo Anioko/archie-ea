@@ -1,4 +1,4 @@
-"""One authority for S/4HANA programme costing against the initiative's investment_budget -- see docs/adr/0008-one-system-of-record.md and Task 04's brief (docs/buckets/sap-s4-interface-register/tasks/04-workpackage-rollup-and-bands.md). Every screen answering 'what is committed against the S/4HANA budget' must call interface_programme_rollup(); a second implementation of this sum is a defect even if it currently agrees (store-agreement gate)."""
+"""One authority for S/4HANA programme costing against the initiative's investment_budget -- see docs/adr/0008-one-system-of-record.md. Every screen answering 'what is committed against the S/4HANA budget' must call interface_programme_rollup(); a second implementation of this sum is a defect even if it currently agrees (store-agreement gate)."""
 
 from flask import g
 

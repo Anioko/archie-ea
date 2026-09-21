@@ -5,7 +5,7 @@ Fixed across app/utils/role_access.py (the REAL, live sidebar mechanism --
 app/config/navigation_registry_v2.py turned out to be dead code, unreferenced
 by any template) and app/services/archimate_viewpoint_service.py (the
 'layered'/'basic' viewpoints now declare enterprise_scope=True and no longer
-require a solution_id). See docs/buckets/composer-opens-layered-viewpoint/.
+require a solution_id).
 
 This drives the real browser end-to-end: click the sidebar link, land on the
 composer, and see real elements -- not a blank canvas, not a "select a

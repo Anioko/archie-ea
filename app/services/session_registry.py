@@ -2,8 +2,7 @@
 
 Everything that mints, checks or revokes a session record goes through this
 module — no inline ``UserSession.query`` in routes or other services (ADR
-0008: one accessor per concept). See
-``docs/buckets/session-invalidation-on-logout/`` for the design writeup.
+0008: one accessor per concept).
 """
 
 import logging

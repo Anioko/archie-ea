@@ -598,13 +598,12 @@ def gate_store_agreement(baseline: int) -> Result:
     `/api/v1/capabilities/` answering 0 against `business_capability` holding
     461 rows) were invisible to every other gate here.
 
-    Registered 17 Sep 2026 (`docs/buckets/unified-capabilities-producer/`) after
-    `flask project-capabilities` was wired into the deploy chain and a write-time
-    sync listener was added on `BusinessCapability` — see that bucket's tasks
-    01/02. It was NOT registered before this: CLAUDE.md claimed it was
-    "registered ... and ratcheted at 1", but `grep 'Gate("' scripts/verify.py`
-    never returned `store-agreement`, so nothing enforced it. See the bucket's
-    task 03 brief for the full re-verification.
+    Registered 17 Sep 2026 after `flask project-capabilities` was wired into
+    the deploy chain and a write-time sync listener was added on
+    `BusinessCapability`. It was NOT registered before this: CLAUDE.md
+    claimed it was "registered ... and ratcheted at 1", but
+    `grep 'Gate("' scripts/verify.py` never returned `store-agreement`, so
+    nothing enforced it.
 
     NOT tagged "static" — same reason as `broken-surfaces` and
     `dynamic-link-prefixes` immediately above: it boots Flask and needs a real
@@ -629,11 +628,10 @@ def gate_canonical_store(baseline: int) -> Result:
     docstring for why two classes on one table is how screens disagree even when
     every individual line of code is correct.
 
-    Registered 17 Sep 2026 alongside `store-agreement`
-    (`docs/buckets/unified-capabilities-producer/`) — both checkers existed and
-    worked, and neither was registered in `build_gates()`, which is the same
-    "checker exists, enforces nothing" gap CLAUDE.md's `docs/known-issues/`
-    section warns about.
+    Registered 17 Sep 2026 alongside `store-agreement` — both checkers
+    existed and worked, and neither was registered in `build_gates()`, which
+    is the same "checker exists, enforces nothing" gap CLAUDE.md's
+    `docs/known-issues/` section warns about.
     """
     proc = _run([sys.executable, "scripts/check_canonical_store.py", "--count"])
     try:
@@ -811,6 +809,29 @@ def gate_docs_drift() -> Result:
     if count:
         detail = _run([sys.executable, "scripts/check_docs_drift.py"]).stdout[-1800:]
     return Result("docs-drift", PASS if count == 0 else FAIL, detail, count, 0)
+
+
+def gate_public_repo_hygiene() -> Result:
+    """No private-planning-bucket directory or path reference in this public
+    repository (see scripts/check_public_repo_hygiene.py's own docstring
+    for the exact pattern). Gated at ZERO.
+
+    21 Sep 2026: found 82 tracked files (17,550 lines) of the orchestrator
+    repository's private planning artifacts committed directly here, plus
+    scattered path references to that structure in comments and docstrings
+    across the tree that survived even after the files themselves were
+    removed. See scripts/check_public_repo_hygiene.py.
+    """
+    proc = _run([sys.executable, "scripts/check_public_repo_hygiene.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("public-repo-hygiene", FAIL,
+                      f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    detail = ""
+    if count:
+        detail = _run([sys.executable, "scripts/check_public_repo_hygiene.py"]).stdout[-1800:]
+    return Result("public-repo-hygiene", PASS if count == 0 else FAIL, detail, count, 0)
 
 
 def gate_unregistered_checks(baseline: int) -> Result:
@@ -1720,6 +1741,12 @@ def build_gates(baseline: dict) -> list[Gate]:
              "zero", gate_docs_drift,
              remediation="run scripts/check_docs_drift.py; update the doc's number "
                          "to match verify.py, or mark the line 'docs-drift-ok: <reason>'",
+             tags=["static", "qa"]),
+        Gate("public-repo-hygiene",
+             "no docs/buckets/ directory or path reference in this public repository",  # hygiene-ok: this gate's own description
+             "zero", gate_public_repo_hygiene,
+             remediation="run scripts/check_public_repo_hygiene.py; remove the "
+                         "content/reference, or mark the line 'hygiene-ok: <reason>'",
              tags=["static", "qa"]),
         Gate("unregistered-checks",
              "no scripts/check_*.py exists with no Gate(...) entry in build_gates()",

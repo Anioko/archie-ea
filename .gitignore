@@ -1,5 +1,8 @@
 .webassets-cache/
 webassets-external/
+# Planning/provenance artifacts belong in the orchestrator repository, not
+# this one -- see CLAUDE.md's public-repository conventions.
+docs/buckets/
 .DS_Store
 *.pyc
 *.pyo

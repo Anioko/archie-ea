@@ -1,10 +1,9 @@
-"""Regression tests for the session-invalidation-on-logout finding.
+"""Regression tests for session invalidation on logout.
 
-Reproduces the exact pentest steps from
-``docs/buckets/session-invalidation-on-logout/brief.md`` against a real test
-client: log in, capture the raw session cookie, hit an authenticated route,
-log out, replay the captured cookie against the same route. Pre-fix this
-still returns 200; post-fix it must not.
+Reproduces the exact pentest steps against a real test client: log in,
+capture the raw session cookie, hit an authenticated route, log out,
+replay the captured cookie against the same route. Pre-fix this still
+returns 200; post-fix it must not.
 
 Written against the shared fixtures in ``tests/conftest.py`` — ``db_session``
 rolls everything back, ``app`` is session-scoped.

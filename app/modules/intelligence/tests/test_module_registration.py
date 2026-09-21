@@ -64,12 +64,9 @@ def test_register_mounts_exactly_the_api_and_ui_blueprints():
     only other blueprint is the UI one, which serves the two pages under
     ``/intelligence`` and no route under ``/api/``.
 
-    T-004 added a third route (API-1, US-1 impact) to this SAME blueprint --
-    see docs/buckets/t004-us1-impact-endpoint/tasks/00-verification-notes.md
-    defect D1. T-005 adds a fourth (API-5, US-5 yield) -- see
-    docs/buckets/t005-us5-yield-report/tasks/00-verification-notes.md
-    section C -- so the route count below moved from 3 to 4, but the
-    one-blueprint invariant this test exists to pin is unchanged.
+    The impact and yield endpoints both mount on this same blueprint rather
+    than a new one each, so the route count below has grown over time, but
+    the one-blueprint invariant this test exists to pin is unchanged.
     """
     from app.modules.intelligence import register
 

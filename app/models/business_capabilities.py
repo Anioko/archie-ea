@@ -615,23 +615,20 @@ def create_capability_archimate_element(mapper, connection, target):
 # capability store) current with every business_capability write.
 # ============================================================================
 #
-# Task 01 (docs/buckets/unified-capabilities-producer/) backfills the 461+
-# existing rows via `flask project-capabilities --apply`. That backfill does
-# nothing for the *next* row: without these listeners, `unified_capabilities`
-# drifts back to stale the moment a user creates, edits or deletes a capability
-# through the UI. These listeners are the same pattern as
-# `create_capability_archimate_element` above -- a second-store mirror during
-# flush -- extended to the canonical store rather than invented as a new
-# mechanism.
+# `flask project-capabilities --apply` backfills the existing rows into
+# unified_capabilities. That backfill does nothing for the *next* row:
+# without these listeners, `unified_capabilities` drifts back to stale the
+# moment a user creates, edits or deletes a capability through the UI.
+# These listeners are the same pattern as `create_capability_archimate_element`
+# above -- a second-store mirror during flush -- extended to the canonical
+# store rather than invented as a new mechanism.
 #
 # One SQL definition, deliberately: these listeners execute `_PROJECT_SQL` /
 # `_PARENT_SQL` from `app.commands.project_capabilities` verbatim, parameterised
 # to a single row via `single_id`, rather than re-expressing the column mapping
 # in Python. Two independent mappings would compute two different
 # `source_checksum` values for the same row, and every later CLI run would
-# report phantom drift and rewrite rows forever -- see that module's docstring
-# and `docs/buckets/unified-capabilities-producer/implementation-plan.md`
-# section 2.
+# report phantom drift and rewrite rows forever -- see that module's docstring.
 
 _logger = logging.getLogger(__name__)
 

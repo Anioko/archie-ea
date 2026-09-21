@@ -1,12 +1,9 @@
-"""DE-18/OA-2: structured latency record + Prometheus histogram for US-1 reads.
+"""Structured latency record + Prometheus histogram for impact-query reads.
 
-``record_query_latency`` does not exist anywhere in this repository prior to
-T-004 (confirmed by full-tree grep, see
-``docs/buckets/t004-us1-impact-endpoint/tasks/00-verification-notes.md``).
-This module is the OA-2 structured-logging helper for
-``IntelligenceQueryService`` queries, following the same shape as
-``services/observability.py``'s ``InvalidationRecord``: a frozen dataclass
-with ``as_dict()``, logged at INFO -- not a bare log string.
+The structured-logging helper for ``IntelligenceQueryService`` queries,
+following the same shape as ``services/observability.py``'s
+``InvalidationRecord``: a frozen dataclass with ``as_dict()``, logged at
+INFO -- not a bare log string.
 """
 
 from __future__ import annotations

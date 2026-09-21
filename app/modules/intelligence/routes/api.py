@@ -1,17 +1,13 @@
-"""T-003/T-004/T-005: the intelligence module's query surfaces
-(API-7, API-2, API-1, API-5).
+"""The intelligence module's query surfaces.
 
-  POST /api/v1/intelligence/derivation/recompute   (DE-4, API-7)
-  GET  /api/v1/intelligence/derived/<derived_id>    (DE-3 read path, API-2)
-  GET  /api/v1/intelligence/impact/<element_id>     (DE-9, API-1 -- T-004)
-  GET  /api/v1/intelligence/yield                   (DE-11, API-5 -- T-005)
+  POST /api/v1/intelligence/derivation/recompute
+  GET  /api/v1/intelligence/derived/<derived_id>
+  GET  /api/v1/intelligence/impact/<element_id>
+  GET  /api/v1/intelligence/yield
 
-T-004 and T-005 both add their route to this EXISTING blueprint rather than a
-new module/blueprint on the same URL prefix -- see
-``docs/buckets/t004-us1-impact-endpoint/tasks/00-verification-notes.md``
-defect D1 (ADR 0008 rule 3: two blueprints on one prefix), reverified for
-T-005 in ``docs/buckets/t005-us5-yield-report/tasks/00-verification-notes.md``
-section A.
+Each new route was added to this EXISTING blueprint rather than a new
+module/blueprint on the same URL prefix (ADR 0008 rule 3: two blueprints
+on one prefix).
 
 CSRF is covered by Flask-WTF's global ``CSRFProtect`` (see
 ``app/_bootstrap/extensions.py``); no per-route decorator is needed for a

@@ -182,11 +182,9 @@ CONCEPTS = {
     # projection becomes a permanent orphan that project_capabilities.py's
     # upsert-only projection logic can never clean up, and this ratchet
     # could creep back to a nonzero count with no code remedy currently
-    # available. Full explanation and suggested remedies (a periodic
-    # orphan-reaping pass, or an after_bulk_delete hook) are in
-    # docs/buckets/t002-maturity-single-authority/build-report.md, sections
-    # "D-R5-2" and "D-R7-6" -- read that before assuming a regression here
-    # is a fresh bug rather than this known, documented gap resurfacing.
+    # available (a periodic orphan-reaping pass, or an after_bulk_delete
+    # hook, would close it) -- a regression here may be this known,
+    # documented gap resurfacing rather than a fresh bug.
     "capability maturity assessed": [
         Surface("orm:BusinessCapability(maturity recorded)", "orm",
                 "app.models.business_capabilities.BusinessCapability",
