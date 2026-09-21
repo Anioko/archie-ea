@@ -52,6 +52,9 @@ def stale_carrying_organization_ids() -> list[int]:
     ``organization_id`` is in this raw-SQL grouping explicitly, and nothing
     here enters an identity map a later lookup could serve under the wrong
     tenant.
+
+    Known completion times precede undated history, then descending ID
+    breaks ties, matching the canonical latest-run reader.
     """
     rows = db.session.execute(
         db.text(
@@ -59,7 +62,7 @@ def stale_carrying_organization_ids() -> list[int]:
             WITH latest_runs AS (
                 SELECT DISTINCT ON (organization_id) organization_id, engine_version
                 FROM intelligence_derivation_runs
-                ORDER BY organization_id, finished_at DESC, id DESC
+                ORDER BY organization_id, finished_at DESC NULLS LAST, id DESC
             )
             SELECT organization_id FROM archimate_derived_relationships
             WHERE stale IS NOT FALSE OR engine_version IS DISTINCT FROM :engine_version

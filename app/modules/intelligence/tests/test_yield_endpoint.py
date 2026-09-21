@@ -1860,24 +1860,34 @@ def test_the_not_computed_branch_is_null_not_zero_through_its_seam(app, db_sessi
     ([""], "stale"), (["9.0.0"], "stale"), ([ENGINE_VERSION], "current"),
     (["1.0.0", ENGINE_VERSION], "current"), ([ENGINE_VERSION, "1.0.0"], "stale"),
 ])
+@pytest.mark.parametrize("undated", [False, True], ids=["timestamped", "undated"])
 def test_zero_fact_yield_uses_latest_completed_run_version(
-    app, db_session, make_org, client, login_as, versions, expected
+    app, db_session, make_org, client, login_as, versions, expected, undated
 ):
     import datetime
+    from app.extensions import db
     from app.modules.intelligence.models.derivation_run import DerivationRun
     from app.modules.intelligence.services.query_service import IntelligenceQueryService
 
-    org_id = make_org("d1-zero-yield").id
+    org_id = make_org("zero-yield").id
     user = _user(db_session, org_id)
     stamp = datetime.datetime(2026, 1, 2, 3, 4, 5)
     for version in versions:
         db_session.add(DerivationRun(
-            organization_id=org_id, started_at=stamp, finished_at=stamp,
+            organization_id=org_id, started_at=None if undated else stamp,
+            finished_at=db.null() if undated else stamp,
             explicit_count=0, derived_count=0, duration_ms=7, ratio=None,
             engine_version=version, trigger="on_demand",
         ))
         db_session.flush()  # tie deliberately resolved by actual inserted ID
     db_session.commit()
+    if undated:
+        # Read real SQL values: assigning None would invoke the Python default.
+        stored_times = db.session.execute(db.text(
+            "SELECT finished_at FROM intelligence_derivation_runs "
+            "WHERE organization_id = :org ORDER BY id"
+        ), {"org": org_id}).scalars().all()
+        assert stored_times == [None] * len(versions)
     service = IntelligenceQueryService.derivation_yield(org_id)
     endpoint = _yield_for(client, login_as, user)
     for answer in (service, endpoint):
@@ -1885,7 +1895,7 @@ def test_zero_fact_yield_uses_latest_completed_run_version(
         if versions:
             assert answer["derived_count"] == answer["stale_count"] == answer["explicit_count"] == 0
             assert answer["computed_at"] is None
-            assert answer["last_run_at"] == stamp.isoformat()
+            assert answer["last_run_at"] == (None if undated else stamp.isoformat())
             assert answer["last_recompute_duration_ms"] == 7
             assert answer["engine_version"] == ([versions[-1]] if versions[-1] else None)
         else:
@@ -1905,7 +1915,7 @@ def test_yield_counts_effectively_stale_facts_even_after_a_current_run(
     app, db_session, make_org, client, login_as, versions, expected_stale
 ):
     from app.modules.intelligence.services.derivation_runner import DerivationRunner
-    org_id = make_org("d1-yield-facts").id
+    org_id = make_org("yield-fact-versions").id
     user = _user(db_session, org_id)
     user_id = user.id
     a, b, c = (_element(db_session, org_id, name) for name in "abc")

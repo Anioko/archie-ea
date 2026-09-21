@@ -276,13 +276,16 @@ def latest_derivation_run(organization_id: int):
     ``app.app_context()``; the explicit ``organization_id ==`` predicate is
     defence-in-depth on top of the tenant-isolation listener, matching this
     module's pattern.
+
+    Timestamped completions precede undated history. Equal timestamps and
+    all-undated history use descending ID, matching recompute enumeration.
     """
     from app.modules.intelligence.models.derivation_run import DerivationRun
 
     stmt = (
         db.select(DerivationRun)
         .where(DerivationRun.organization_id == organization_id)
-        .order_by(DerivationRun.finished_at.desc(), DerivationRun.id.desc())
+        .order_by(DerivationRun.finished_at.desc().nulls_last(), DerivationRun.id.desc())
         .limit(1)
     )
     return db.session.execute(stmt).scalars().first()

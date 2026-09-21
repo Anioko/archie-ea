@@ -412,8 +412,8 @@ def test_impact_row_derived_id_addresses_the_provenance_endpoint(
 def test_old_clean_flag_provenance_is_visible_only_as_stale_and_is_tenant_fenced(
     app, db_session, make_org, client, login_as
 ):
-    org = make_org("d1-proof")
-    other = make_org("d1-proof-other")
+    org = make_org("versioned-proof")
+    other = make_org("versioned-proof-other")
     user = _make_user(db_session, org)
     foreign_user = _make_user(db_session, other)
     a, b, c = (_make_element(db_session, org.id, name) for name in "abc")

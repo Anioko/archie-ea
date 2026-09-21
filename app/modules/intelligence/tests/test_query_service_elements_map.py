@@ -871,7 +871,7 @@ def test_route_degrades_to_an_empty_map_if_the_service_omits_elements(
 def test_impact_map_excludes_old_versions_and_flags_included_history(
     app, db_session, make_org, versions, expected_state
 ):
-    org_id = make_org("d1-map-version").id
+    org_id = make_org("map-version").id
     a = _element(db_session, org_id, "Lantern Quay source")
     facts = []
     for index, version in enumerate(versions):

@@ -167,21 +167,21 @@ def test_pruning_is_scoped_to_one_tenant(app, db_session, make_org):
     assert len(_rows(db_session, org_b.id)) == rows_b_before
 
 
-# D1: actual OEF parser/importer -> normal models -> actual tenant job/readers.
+# Actual OEF parser/importer -> normal models -> actual tenant job/readers.
 def _oef_model(elements, edges):
     from xml.etree.ElementTree import Element, SubElement, tostring
 
     root = Element("model", {"xmlns": "http://www.opengroup.org/xsd/archimate/3.0/",
-                             "identifier": "lantern-quay-d1"})
+                             "identifier": "lantern-quay-import-regression"})
     node = SubElement(root, "elements")
     for key, name, kind in elements:
         element = SubElement(node, "element", identifier=key, type=kind)
         SubElement(element, "name").text = name
-        SubElement(element, "documentation").text = "Fictional Lantern Quay D1 regression input."
+        SubElement(element, "documentation").text = "Fictional Lantern Quay regression input."
     node = SubElement(root, "relationships")
     for key, source, target, kind in edges:
         edge = SubElement(node, "relationship", identifier=key, source=source, target=target, type=kind)
-        SubElement(edge, "documentation").text = "Fictional Lantern Quay D1 explicit connection."
+        SubElement(edge, "documentation").text = "Fictional Lantern Quay explicit connection."
     return tostring(root, encoding="unicode")
 
 
@@ -286,7 +286,7 @@ def test_lantern_quay_oef_to_job_proofs_reimport_and_foreign_isolation(
     from app.modules.intelligence.services.derived_facts import get_derived_fact, list_derived_facts
     from app.modules.intelligence.services.recompute_job import recompute_derived_facts_on_demand
 
-    mine, theirs = make_org("d1-lantern-a"), make_org("d1-lantern-b")
+    mine, theirs = make_org("import-lantern-a"), make_org("import-lantern-b")
     mine_id, theirs_id = mine.id, theirs.id
     db_session.commit()
     xml = _lantern_quay_model()
@@ -354,7 +354,7 @@ def test_oef_aliases_and_terminal_suffix_keep_canonical_meaning(
     from app.modules.intelligence.services.derived_facts import list_derived_facts
     from app.modules.intelligence.services.recompute_job import recompute_derived_facts_on_demand
 
-    org_id = make_org("d1-alias").id
+    org_id = make_org("import-alias").id
     db_session.commit()
     token = {"alias": raw, "suffix": canonical + "ReLaTiOnShIp",
              "alias_suffix": raw + "Relationship"}[form]
@@ -385,7 +385,7 @@ def test_oef_invalid_types_and_endpoints_are_rejected_upstream(
     from app.services.archimate_import_service import ArchiMateImportService
     from app.modules.intelligence.services.derived_facts import latest_derivation_run
 
-    org_id = make_org("d1-invalid-import").id
+    org_id = make_org("invalid-import").id
     db_session.commit()
     with tenant_scope(org_id):
         importer = ArchiMateImportService()
@@ -414,8 +414,12 @@ def test_legacy_fact_repair_is_atomic_and_retryable(app, db_session, make_org, m
         per_tenant_lock_name, recompute_derived_facts_on_demand, stale_carrying_organization_ids,
     )
 
-    org_id = make_org("d1-repair").id
+    org_id = make_org("legacy-repair").id
+    foreign_id = make_org("legacy-repair-foreign").id
     db_session.commit()
+    _import_oef(foreign_id, _lantern_quay_model())
+    _job_succeeded(recompute_derived_facts_on_demand(app, foreign_id), foreign_id)
+    foreign_before = _stored_snapshot(foreign_id)
     nodes, edges, _ = _import_oef(org_id, _lantern_quay_model())
     _job_succeeded(recompute_derived_facts_on_demand(app, org_id), org_id)
     original = _stored_snapshot(org_id)
@@ -442,6 +446,9 @@ def test_legacy_fact_repair_is_atomic_and_retryable(app, db_session, make_org, m
     before = _stored_snapshot(org_id)
     assert list_derived_facts(org_id) == []
     assert all(f["stale"] and f["reason"] == "derivation_stale" for f in before["facts"])
+    # End the outer read savepoint BEFORE the job's separate app context.
+    # Otherwise later snapshot cleanup could hide writes made by a failed job.
+    db_session.remove()
 
     with monkeypatch.context() as patch:
         if failure in ("persist", "record"):
@@ -451,13 +458,13 @@ def test_legacy_fact_repair_is_atomic_and_retryable(app, db_session, make_org, m
             def fail_after_write(self, *args, **kwargs):
                 real_method(self, *args, **kwargs)
                 db.session.flush()
-                raise RuntimeError("D1 injected transaction failure")
+                raise RuntimeError("Injected transaction failure")
 
             patch.setattr(DerivationRunner, method, fail_after_write)
         elif failure == "commit":
             def fail_commit():
                 db.session.flush()
-                raise RuntimeError("D1 injected commit failure")
+                raise RuntimeError("Injected commit failure")
             patch.setattr(db.session, "commit", fail_commit)
         held = job_lock(per_tenant_lock_name(org_id), required=True) if failure == "lock" else nullcontext()
         with held:
@@ -473,8 +480,11 @@ def test_legacy_fact_repair_is_atomic_and_retryable(app, db_session, make_org, m
                 assert str(edge_id) in failed.results[0].error
                 assert "DataFlow" in failed.results[0].error
     assert _stored_snapshot(org_id) == before
+    assert _stored_snapshot(foreign_id) == foreign_before
     assert list_derived_facts(org_id) == []
     assert org_id in stale_carrying_organization_ids()
+    # Retry must not be nested under the preceding read savepoint either.
+    db_session.remove()
     if failure == "invalid_type":
         with tenant_scope(org_id):
             db.session.execute(db.text("UPDATE archimate_relationships SET type = 'assignment' "
@@ -497,3 +507,102 @@ def test_legacy_fact_repair_is_atomic_and_retryable(app, db_session, make_org, m
     assert (repaired["derived_type"], repaired["rule_id"]) == ("Access", "transparent:Assignment:Access")
     assert all(f["engine_version"] == ENGINE_VERSION and not f["stale"] for f in after["facts"])
     assert org_id not in stale_carrying_organization_ids()
+    db_session.remove()
+    assert _stored_snapshot(foreign_id) == foreign_before
+
+
+@pytest.mark.parametrize("populated", [False, True], ids=["zero-result", "imported-graph"])
+def test_real_recompute_supersedes_undated_history_without_rewriting_it(
+    app, db_session, make_org, monkeypatch, populated
+):
+    from app.modules.intelligence.models.derivation_run import DerivationRun
+    from app.modules.intelligence.services.derivation_runner import ENGINE_VERSION
+    from app.modules.intelligence.services.derived_facts import latest_derivation_run, list_derived_facts
+    from app.modules.intelligence.services.query_service import IntelligenceQueryService
+    from app.modules.intelligence.services import recompute_job
+
+    org_id = make_org("undated-history").id
+    foreign_id = make_org("undated-history-foreign").id
+    db_session.commit()
+    _import_oef(foreign_id, _lantern_quay_model())
+    _job_succeeded(recompute_job.recompute_derived_facts_on_demand(app, foreign_id), foreign_id)
+    foreign_before = _stored_snapshot(foreign_id)
+    assert foreign_before["facts"]
+    if populated:
+        _import_oef(org_id, _lantern_quay_model())
+
+    # Explicit SQL NULL avoids the model's Python timestamp default. This is
+    # historical input, not an invented completion time or a patched clock.
+    legacy = DerivationRun(organization_id=org_id, finished_at=db.null(), engine_version="1.0.0")
+    db_session.add(legacy)
+    db_session.flush()
+    legacy_id = legacy.id
+    db_session.commit()
+    history_sql = db.text(
+        "SELECT * FROM intelligence_derivation_runs WHERE organization_id = :org AND id = :id"
+    )
+    history_params = {"org": org_id, "id": legacy_id}
+    legacy_before = dict(db.session.execute(history_sql, history_params).mappings().one())
+    assert db.session.execute(db.text(
+        "SELECT finished_at IS NULL FROM intelligence_derivation_runs "
+        "WHERE organization_id = :org AND id = :id"
+    ), history_params).scalar_one() is True
+    assert legacy_before["finished_at"] is None
+    assert latest_derivation_run(org_id).id == legacy_id
+    answer = IntelligenceQueryService.derivation_yield(org_id)
+    assert answer["state"] == "stale"
+    assert answer["reason"] == "derivation_stale"
+    assert answer["derived_count"] == answer["stale_count"] == 0
+    assert answer["last_run_at"] is None
+    assert answer["computed_at"] is None
+    assert answer["engine_version"] == ["1.0.0"]
+    assert list_derived_facts(org_id) == []
+    assert org_id in recompute_job.stale_carrying_organization_ids()
+    db_session.remove()  # close reads before the separate job app context
+    before = _stored_snapshot(org_id)
+
+    run = recompute_job.recompute_derived_facts_on_demand(app, org_id)
+    _job_succeeded(run, org_id)
+    after = _stored_snapshot(org_id)
+    assert after["elements"] == before["elements"]
+    assert after["edges"] == before["edges"]
+    assert after["runs"][:-1] == before["runs"]
+    assert len(after["runs"]) == 2
+    assert dict(db.session.execute(history_sql, history_params).mappings().one()) == legacy_before
+    latest = latest_derivation_run(org_id)
+    assert latest.id == after["runs"][-1][0] != legacy_id
+    assert latest.finished_at is not None
+    assert latest.engine_version == ENGINE_VERSION
+    assert latest.trigger == "on_demand"
+    answer = IntelligenceQueryService.derivation_yield(org_id)
+    assert answer["state"] == "current"
+    assert "derivation_stale" not in answer["reasons"]
+    assert answer["last_run_at"] == latest.finished_at.isoformat()
+    assert answer["last_recompute_duration_ms"] == latest.duration_ms
+    assert answer["derived_count"] == latest.derived_count == run.results[0].value["derived_count"]
+    assert answer["stale_count"] == 0
+    assert answer["engine_version"] == [ENGINE_VERSION]
+    assert sorted(list_derived_facts(org_id), key=lambda fact: fact["id"]) == after["facts"]
+    assert all(f["engine_version"] == ENGINE_VERSION and not f["stale"] for f in after["facts"])
+    if populated:
+        assert answer["derived_count"] > 0
+        assert answer["computed_at"] is not None
+    else:
+        assert answer["derived_count"] == answer["explicit_count"] == 0
+        assert answer["computed_at"] is None
+        assert answer["ratio"] is None
+
+    real_selector = recompute_job.stale_carrying_organization_ids
+    owned = {org_id, foreign_id}
+    for _ in range(2):
+        assert not (set(real_selector()) & owned)
+    db_session.remove()
+    # The actual SQL still enumerates; only execution is limited to owned data.
+    monkeypatch.setattr(recompute_job, "stale_carrying_organization_ids",
+                        lambda: [oid for oid in real_selector() if oid in owned])
+    sweep = recompute_job.recompute_derived_facts(app)
+    assert not sweep.skipped_locked
+    assert sweep.failed == 0
+    assert sweep.results == []
+    assert _stored_snapshot(org_id) == after
+    assert _stored_snapshot(foreign_id) == foreign_before

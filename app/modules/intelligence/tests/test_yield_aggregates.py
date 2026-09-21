@@ -415,8 +415,8 @@ def test_effective_currentness_agrees_across_lists_details_and_sql_counts(
     from app.modules.intelligence.services.derived_facts import (
         derived_fact_aggregates, get_derived_fact, list_derived_facts,
     )
-    org_id = make_org("d1-currentness").id
-    foreign_id = make_org("d1-currentness-foreign").id
+    org_id = make_org("fact-currentness").id
+    foreign_id = make_org("fact-currentness-foreign").id
     a, b = _element(db_session, org_id, "a"), _element(db_session, org_id, "b")
     rows = [_derived(db_session, org_id, a, b, engine_version=v, stale=s)
             for v, s in zip(versions, physical)]

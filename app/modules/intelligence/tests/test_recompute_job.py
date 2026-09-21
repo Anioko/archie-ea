@@ -67,9 +67,8 @@ def test_recompute_visits_only_stale_carrying_tenants(app, db_session, make_org,
     b = _make_element(db_session, org_stale.id, "b")
     _make_relationship(db_session, org_stale.id, a, b, "Serving")
     _insert_stale_row(db_session, org_stale.id, a, b)
-    db_session.commit()
-
     org_stale_id, org_clean_id = org_stale.id, org_clean.id
+    db_session.commit()
 
     real_selector = recompute_job.stale_carrying_organization_ids
     owned = {org_stale_id, org_clean_id}
@@ -281,16 +280,24 @@ def test_actual_selector_uses_effective_facts_and_only_the_latest_run(
     from app.modules.intelligence.services import recompute_job
 
     labels = ("old-fact", "graph-stale", "old-zero", "null-zero", "future-zero",
-              "current", "never", "history", "tie-old", "old-fact-new-run", "time-order")
-    ids = {label: make_org("d1-" + label).id for label in labels}
+              "current", "never", "history", "tie-old", "old-fact-new-run", "time-order",
+              "undated-old", "undated-current", "dated-current", "dated-old")
+    ids = {label: make_org("selector-" + label).id for label in labels}
     stamp = datetime.datetime(2026, 1, 2)
 
     def completed(label, version, finished=stamp):
-        row = DerivationRun(organization_id=ids[label], started_at=finished, finished_at=finished,
+        # SQL NULL bypasses the Python finished_at default; None would not.
+        row = DerivationRun(organization_id=ids[label], started_at=finished,
+                            finished_at=db.null() if finished is None else finished,
                             duration_ms=0, explicit_count=0, derived_count=0, engine_version=version,
                             trigger="on_demand")
         db_session.add(row)
         db_session.flush()
+        if finished is None:
+            assert db.session.execute(db.text(
+                "SELECT finished_at IS NULL FROM intelligence_derivation_runs "
+                "WHERE organization_id = :org AND id = :id"
+            ), {"org": ids[label], "id": row.id}).scalar_one() is True
         return row.id
 
     for label, version, stale in (("old-fact", "1.0.0", False),
@@ -313,20 +320,36 @@ def test_actual_selector_uses_effective_facts_and_only_the_latest_run(
     completed("old-fact-new-run", ENGINE_VERSION)
     latest_by_time = completed("time-order", ENGINE_VERSION, stamp + datetime.timedelta(days=1))
     completed("time-order", "1.0.0")  # larger ID but older time must lose
+    completed("undated-old", ENGINE_VERSION, None)
+    latest_undated_old = completed("undated-old", "1.0.0", None)
+    completed("undated-current", "1.0.0", None)
+    latest_undated_current = completed("undated-current", ENGINE_VERSION, None)
+    latest_dated_current = completed("dated-current", ENGINE_VERSION)
+    completed("dated-current", "1.0.0", None)  # higher ID cannot beat a known time
+    latest_dated_old = completed("dated-old", "1.0.0")
+    completed("dated-old", ENGINE_VERSION, None)
     db_session.commit()
     owned = set(ids.values())
     real_selector = recompute_job.stale_carrying_organization_ids
     selected = real_selector()
     expected = {ids[k] for k in ("old-fact", "graph-stale", "old-zero", "null-zero",
-                                "future-zero", "tie-old", "old-fact-new-run")}
+                                "future-zero", "tie-old", "old-fact-new-run",
+                                "undated-old", "dated-old")}
     assert selected == sorted(set(selected))
     assert all(type(value) is int for value in selected)
     assert set(selected) & owned == expected
     assert latest_derivation_run(ids["history"]).id == latest_current
     assert latest_derivation_run(ids["tie-old"]).id == latest_old
     assert latest_derivation_run(ids["time-order"]).id == latest_by_time
+    assert latest_derivation_run(ids["undated-old"]).id == latest_undated_old
+    assert latest_derivation_run(ids["undated-current"]).id == latest_undated_current
+    assert latest_derivation_run(ids["dated-current"]).id == latest_dated_current
+    assert latest_derivation_run(ids["dated-old"]).id == latest_dated_old
     histories = {oid: list(db.session.execute(db.select(DerivationRun.id).where(
         DerivationRun.organization_id == oid).order_by(DerivationRun.id)).scalars()) for oid in owned}
+    # The sweep's sessions share the rollback fixture connection. Close this
+    # read savepoint before their commits so later read cleanup cannot undo them.
+    db_session.remove()
     # Enumeration really executes PostgreSQL; only the execution target set is
     # intersected with positively owned fixtures, protecting shared tenants.
     monkeypatch.setattr(recompute_job, "stale_carrying_organization_ids",
