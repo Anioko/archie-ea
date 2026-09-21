@@ -29,18 +29,12 @@ import importlib
 import json
 import os
 import re
-import subprocess
-import sys
-import tempfile
-import time
-import urllib.error
-import urllib.request
 import uuid
 
 import pytest
 from playwright.sync_api import expect
 
-from .conftest import BOOT_TIMEOUT, PAGE_TIMEOUT, PASSWORD, _free_port, _has_gunicorn, _require_explicit_test_database
+from .conftest import PAGE_TIMEOUT, PASSWORD, _serve_application
 from .test_accessibility_audit import RESULT_KINDS, TAGS
 
 pytestmark = [pytest.mark.smoke, pytest.mark.journey]
@@ -1823,7 +1817,7 @@ def test_every_state_of_the_screen_has_no_violations_under_the_audits_rules(
 
 
 @pytest.fixture(scope="module")
-def one_process_server(request):
+def one_process_server(request, ai_protocol_stub, app):
     """A second copy of the app, served by exactly ONE process.
 
     The response time is read from the metrics record of whichever web process answers, and the
@@ -1832,53 +1826,7 @@ def one_process_server(request):
     A server of one process makes "the process that answered" a single, known process, so a test
     that fills the record and then reads it back is exact rather than a matter of luck. It uses the
     same database, environment and start-up as the shared server, with one worker."""
-    port = _free_port()
-    env = dict(os.environ)
-    _require_explicit_test_database(env)
-    env.setdefault("SECRET_KEY", "smoke-only-not-secret-" + "x" * 16)
-    env.setdefault("FLASK_CONFIG", "testing")
-    env["FLASK_DEBUG"] = "0"
-    if _has_gunicorn():
-        cmd = [sys.executable, "-m", "gunicorn", "manage:app", "--bind", "127.0.0.1:%d" % port,
-               "--workers", "1", "--threads", "8", "--timeout", "120", "--graceful-timeout", "20",
-               "--error-logfile", "-"]
-    else:
-        cmd = [sys.executable, "-m", "flask", "--app", "manage", "run", "--host", "127.0.0.1",
-               "--port", str(port), "--no-reload"]
-    log_path = os.path.join(tempfile.gettempdir(), "smoke-one-process-server-%d.log" % port)
-    log = open(log_path, "w+b")
-    proc = subprocess.Popen(cmd, env=env, stdout=log, stderr=subprocess.STDOUT)
-
-    def stop():
-        if proc.poll() is None:
-            proc.terminate()
-            try:
-                proc.wait(timeout=20)
-            except subprocess.TimeoutExpired:
-                proc.kill()
-                proc.wait(timeout=5)
-        log.close()
-
-    request.addfinalizer(stop)
-    base = "http://127.0.0.1:%d" % port
-    deadline = time.time() + BOOT_TIMEOUT
-    while time.time() < deadline:
-        if proc.poll() is not None:
-            log.flush()
-            with open(log_path, "rb") as fh:
-                pytest.fail("the one-process server exited during boot:\n%s" % fh.read()[-2500:].decode("utf-8", "replace"))
-        try:
-            with urllib.request.urlopen(base + "/health", timeout=5):
-                break
-        except urllib.error.HTTPError:
-            break  # any answer means it is serving; a missing cache makes /health report 503
-        except Exception:
-            time.sleep(3)
-    else:
-        proc.kill()
-        pytest.fail("the one-process server did not bind %s within %ss" % (base, BOOT_TIMEOUT))
-    urllib.request.urlopen(base + "/account/login", timeout=180).read()
-    return base
+    yield from _serve_application(request, ai_protocol_stub, app, workers=1)
 
 
 def test_above_the_floor_the_card_reads_a_figure_with_the_count_it_came_from(page, one_process_server):
