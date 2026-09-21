@@ -191,17 +191,49 @@ def test_anonymous_page_request_never_counts_or_detects(app, client, monkeypatch
 
 @pytest.mark.parametrize("selection", ["own", "foreign", "invalid"])
 def test_remediation_request_still_queues_only_an_own_valid_element(
-    app, db_session, make_org, client, login_as, selection
+    app, db_session, make_org, client, login_as, tenant_ctx, selection
 ):
+    from datetime import datetime, timedelta
+
     from app.models.ai_chat_crud_approval import AIChatCRUDApproval, ApprovalStatus
+    from app.modules.genome.patch.proposer import APPLY_ENTITY_TYPE
 
     org, other = make_org("remediation-own"), make_org("remediation-other")
     user = _page_user(db_session, org.id)
+    other_user = _page_user(db_session, other.id)
     own = _make_element(db_session, org.id, "Own orphan", "Node", "technology")
     foreign = _make_element(db_session, other.id, "Foreign orphan", "Node", "technology")
+    unrelated = AIChatCRUDApproval(
+        user_id=other_user.id,
+        organization_id=other.id,
+        operation_type="create",
+        entity_type="capability",
+        original_command="Unrelated capability request",
+        operation_payload=json.dumps({"name": "Unrelated capability"}),
+        summary="Unrelated capability request",
+        status=ApprovalStatus.PENDING,
+        expires_at=datetime.utcnow() + timedelta(minutes=5),
+    )
+    db_session.add(unrelated)
     db_session.commit()
     before_own, before_foreign = own.status, foreign.status
-    before = db_session.query(AIChatCRUDApproval).count()
+
+    def approvals_for(org_id):
+        # Both reads establish the same scope, even when the POST leaves its
+        # tenant context on the shared fixture's application context.
+        with tenant_ctx(org_id):
+            rows = db_session.query(AIChatCRUDApproval).filter_by(
+                organization_id=org_id
+            ).populate_existing().all()
+            return {
+                row.id: {column.name: getattr(row, column.name)
+                         for column in AIChatCRUDApproval.__table__.columns}
+                for row in rows
+            }
+
+    before = approvals_for(org.id)
+    before_other = approvals_for(other.id)
+    assert unrelated.id in before_other
     login_as(client, user)
     response = client.post("/genome/model-health/remediate", data={
         "finding_type": FINDING_ORPHANED,
@@ -209,13 +241,29 @@ def test_remediation_request_still_queues_only_an_own_valid_element(
         "organization_id": other.id,
     })
     assert response.status_code == 302
-    assert db_session.query(AIChatCRUDApproval).count() == before + (selection == "own")
+    after = approvals_for(org.id)
+    assert approvals_for(other.id) == before_other
+    assert {key: after[key] for key in before} == before
+    new_ids = after.keys() - before.keys()
+    assert len(new_ids) == (selection == "own")
     if selection == "own":
-        approval = db_session.query(AIChatCRUDApproval).order_by(AIChatCRUDApproval.id.desc()).first()
-        assert approval.status == ApprovalStatus.PENDING
-    db_session.refresh(own)
-    db_session.refresh(foreign)
-    assert (own.status, foreign.status) == (before_own, before_foreign)
+        approval = after[new_ids.pop()]
+        assert approval["status"] == ApprovalStatus.PENDING
+        assert approval["organization_id"] == org.id and approval["user_id"] == user.id
+        assert approval["operation_type"] == "tool_use" and approval["entity_type"] == APPLY_ENTITY_TYPE
+        assert approval["original_command"] == f"Remediate drift finding '{FINDING_ORPHANED}' on element #{own.id}"
+        patch = json.loads(approval["operation_payload"])
+        assert patch["target"]["organization_id"] == org.id
+        assert patch["operation"] == "modify"
+        assert patch["element"]["element_id"] == own.id
+        assert patch["element"]["name"] == own.name
+        assert patch["element"]["fields"]["drift_signal"] == FINDING_ORPHANED
+        assert patch["provenance"]["source"] == "genome_drift_detector"
+        assert patch["provenance"]["proposed_by"] == f"drift_detector:user_{user.id}"
+    for element, org_id, status in ((own, org.id, before_own), (foreign, other.id, before_foreign)):
+        with tenant_ctx(org_id):
+            db_session.refresh(element)
+            assert element.status == status
 
 
 # --------------------------------------------------------------------------- #
