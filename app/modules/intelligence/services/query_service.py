@@ -1,6 +1,7 @@
-"""Cross-layer intelligence queries. One method -- ``cross_layer_impact``,
-"if this fails, what stops and who owns it". Value-streams-at-risk / risk
-/ coverage are Release 2 and are not added here.
+"""Cross-layer intelligence queries. ``cross_layer_impact`` (L1, "if this
+fails, what stops and who owns it") and ``risk_for_element`` (L6, "what
+could hurt this, and what does it touch" -- reuses the same traversal per
+risk seed). Value-streams-at-risk / coverage remain unbuilt.
 """
 
 from __future__ import annotations
@@ -20,6 +21,7 @@ NO_OWNERSHIP_REASON = validate_reason_code("no_ownership_recorded")
 NO_TENANT_CONTEXT_REASON = validate_reason_code("no_tenant_context")
 ELEMENT_NOT_FOUND_REASON = validate_reason_code("element_not_found")
 DERIVATION_NOT_COMPUTED_REASON = validate_reason_code("derivation_not_computed")
+NO_RISK_RECORDED_REASON = validate_reason_code("no_risk_recorded")
 
 # T-005 (D1): the NFR-5 measurement point is this exact, PINNED series --
 # never widened, never aggregated across label values.
@@ -695,6 +697,105 @@ class IntelligenceQueryService:
 
         summary["latency_ms"] = scope.latency_ms
         return {"rows": rows, "summary": summary, "reasons": reasons, "elements": elements}
+
+    @staticmethod
+    def risk_for_element(
+        element_id: int,
+        *,
+        max_depth: int = 3,
+        include_derived: bool = True,
+    ) -> Dict[str, Any]:
+        """L6, "what could hurt <element>, and what does it touch": every
+        ``Risk`` seeded directly on this element (``Risk.archimate_element_id
+        == element_id``), each with the SAME blast-radius traversal
+        ``cross_layer_impact`` already runs for L1 -- no second traversal
+        algorithm, per the platform convention against parallel scoring
+        logic.
+
+        Scope note, not silently dropped: ``RiskEntityLink`` (a risk
+        threatening an Application/Solution/Programme with no direct
+        ``archimate_element_id`` of its own on this element) is not resolved
+        here -- none of those three models carry an ArchiMate mirror id
+        today, so there is no element to seed a traversal from. Only
+        directly-mirrored risks are answered; an indirect risk is invisible
+        to this query, not wrongly reported as "none". Tracked as a
+        follow-up, not implemented speculatively.
+
+        Score is a **display** label, not a stored fact (per
+        ``intelligence-lenses-v1.md`` L6): each risk's own
+        ``likelihood x impact`` is shown on its row; when a risk's blast
+        radius reaches other elements, the chain's aggregate score is the
+        single worst (max) risk reaching it, the conservative choice
+        documented in the L3/L6 brief, not a summed exposure figure.
+        """
+        from app.models.risk import Risk
+
+        org_id = current_org_id()
+
+        with record_query_latency("risk_for_element") as scope:
+            scope.organization_id = org_id
+
+            if org_id is None:
+                return {
+                    "risks": [],
+                    "reasons": [NO_TENANT_CONTEXT_REASON],
+                    "elements": {},
+                }
+
+            from app.models import ArchiMateElement
+
+            element = db.session.execute(
+                db.select(ArchiMateElement).where(ArchiMateElement.id == element_id)
+            ).scalar_one_or_none()
+            if element is None:
+                return {
+                    "risks": [],
+                    "reasons": [ELEMENT_NOT_FOUND_REASON],
+                    "elements": {},
+                }
+
+            seed_risks = (
+                db.session.execute(
+                    db.select(Risk).where(Risk.archimate_element_id == element_id)
+                )
+                .scalars()
+                .all()
+            )
+
+            if not seed_risks:
+                return {
+                    "risks": [],
+                    "reasons": [NO_RISK_RECORDED_REASON],
+                    "elements": {},
+                }
+
+            all_elements: Dict[str, Dict[str, Any]] = {}
+            risk_payloads: List[Dict[str, Any]] = []
+            for risk in seed_risks:
+                blast = IntelligenceQueryService.cross_layer_impact(
+                    element_id,
+                    include_derived=include_derived,
+                    max_depth=max_depth,
+                    with_owner=True,
+                )
+                all_elements.update(blast.get("elements") or {})
+                risk_payloads.append(
+                    {
+                        "risk_id": risk.id,
+                        "title": risk.title,
+                        "status": risk.status.value if risk.status else None,
+                        "likelihood": risk.likelihood,
+                        "impact": risk.impact,
+                        "risk_score": risk.risk_score,
+                        "risk_level": risk.risk_level,
+                        "owner": risk.owner,
+                        "mitigation_plan": risk.mitigation_plan,
+                        "affected_rows": blast.get("rows", []),
+                        "affected_summary": blast.get("summary", {}),
+                    }
+                )
+
+        return {"risks": risk_payloads, "reasons": [], "elements": all_elements}
 
 
 __all__ = ["IntelligenceQueryService"]
