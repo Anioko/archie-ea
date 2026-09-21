@@ -1254,6 +1254,20 @@ def test_an_unavailable_detector_is_null_with_a_reason_never_zero(app, db_sessio
     assert set(data) == MODEL_CHECK_FIELDS
 
 
+def test_a_failed_size_read_cannot_reach_the_detector_or_return_a_zero(app, make_org, monkeypatch):
+    from app.modules.intelligence.services import derived_facts as facts
+    from app.modules.intelligence.services.query_service import IntelligenceQueryService
+
+    def unavailable(_org_id):
+        raise RuntimeError("Size unavailable")
+
+    monkeypatch.setattr(facts, "active_element_count", unavailable)
+    calls = _patch_drift(monkeypatch, raises=AssertionError("must not run without a size"))
+    with pytest.raises(RuntimeError, match="Size unavailable"):
+        IntelligenceQueryService.model_check(make_org("failed-size").id)
+    assert calls == []
+
+
 @pytest.mark.parametrize(
     "total",
     [-5, -1, True, False, 3.0, 2.5, "7", None, [3], {"n": 3}],

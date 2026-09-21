@@ -1271,12 +1271,14 @@ def test_the_drift_row_is_the_detectors_count_beside_one_link_and_nothing_else(p
     _shot(page.locator("main"), "figures-with-the-model-check-counted")
 
 
-def test_a_model_above_the_size_limit_says_so_offers_the_link_and_shows_no_number_for_it(
-    page, live_server, seeded, large
+@pytest.mark.parametrize("width", [1440, 390])
+def test_a_model_above_the_size_limit_says_so_without_a_findings_action_or_number(
+    page, live_server, seeded, large, width
 ):
     """A real model one element above the limit. The server does not run the detector; the row reads
-    the sentence, offers the link, renders no zero, and the sentence is ordinary text in the
+    the sentence, offers no link, renders no zero, and the sentence is ordinary text in the
     accessibility tree (no badge, no status region)."""
+    page.set_viewport_size({"width": width, "height": 900})
     _open(page, live_server, large["emails"]["solution_architect"])
     data = _model_check_api(page, live_server)
     assert data["drift_finding_count"] is None and data["reasons"] == ["model_too_large_for_drift_check"]
@@ -1287,7 +1289,10 @@ def test_a_model_above_the_size_limit_says_so_offers_the_link_and_shows_no_numbe
     assert _drift_state(page) == "too_large"
     assert row.get_by_test_id("drift-text").inner_text().strip() == sentence
     link = row.get_by_role("link", name="See drift findings and fixes")
-    assert link.is_visible() and link.get_attribute("href") == MODEL_HEALTH_PATH
+    assert link.count() == 0
+    assert row.locator("a, button, input, select, textarea, [tabindex]").count() == 0
+    assert len(_names(page)) == 6
+    assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
     text = row.inner_text()
     assert not re.search(r"\bthings? to look at\b", text) and "Could not measure" not in text
     assert DRIFT_UNAVAILABLE not in text
@@ -1295,7 +1300,7 @@ def test_a_model_above_the_size_limit_says_so_offers_the_link_and_shows_no_numbe
     snapshot = row.aria_snapshot()
     assert "- paragraph: %s" % sentence in snapshot, snapshot
     assert "status" not in snapshot and "Could not measure" not in snapshot, snapshot
-    assert snapshot.index("paragraph") < snapshot.index("link"), "the sentence, then the link"
+    assert "link" not in snapshot
     assert row.locator("[role=status]:visible").count() == 0
     _shot(page.locator("main"), "figures-with-the-model-check-too-large")
 
@@ -1357,7 +1362,11 @@ def test_the_model_check_row_reads_exactly_as_worded_in_every_state(page, live_s
             assert not re.search(r"\bthings? to look at\b", row.inner_text()), label
         else:
             assert row.get_by_test_id("drift-text").inner_text().strip() == sentence, label
-            assert link.is_visible(), label
+            if state == "counted":
+                assert link.is_visible(), label
+            else:
+                assert link.count() == 0, label
+                assert row.locator("a, button, [tabindex]").count() == 0, label
             assert row.get_by_text("Could not measure").count() == 0 or not row.get_by_text("Could not measure").is_visible()
         if label == "a measured zero":
             _shot(page.locator("main"), "figures-with-the-model-check-zero")

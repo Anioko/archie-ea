@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import uuid
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 
@@ -27,6 +28,194 @@ from app.modules.genome.services.drift_detector import (
     FINDING_ORPHANED,
     detect_model_drift,
 )
+
+
+def _page_user(db_session, org_id):
+    from app.models.user import User
+
+    user = User(email=f"model-check-{uuid.uuid4().hex}@example.com",
+                organization_id=org_id, confirmed=True, enterprise_role="enterprise_architect")
+    db_session.add(user)
+    db_session.flush()
+    return user
+
+
+@pytest.mark.parametrize("size,total", [(0, 0), (1000, 7), (1001, None), (10000, None)])
+def test_page_and_count_share_the_active_element_budget(
+    app, db_session, make_org, client, login_as, monkeypatch, size, total
+):
+    from sqlalchemy import insert
+
+    from app.models import ArchiMateElement
+    from app.modules.genome.routes import drift_routes as routes
+    from app.modules.intelligence.services import derived_facts as facts
+
+    org = make_org("page-budget")
+    user = _page_user(db_session, org.id)
+    if size:
+        db_session.execute(insert(ArchiMateElement), [
+            {"name": f"Element {i}", "type": "ApplicationComponent", "layer": "application",
+             "organization_id": org.id} for i in range(size)
+        ])
+    db_session.commit()
+    events = []
+    original_count = facts.active_element_count
+
+    def count(org_id):
+        events.append(("count", org_id))
+        return original_count(org_id)
+
+    def detect(org_id):
+        events.append(("detect", org_id))
+        assert size <= 1000, "an oversized request reached the detector"
+        return {"summary": {"total": total}}
+
+    emit = Mock(side_effect=lambda report: f"<p>Measured findings: {report['summary']['total']}</p>")
+    monkeypatch.setattr(facts, "active_element_count", count)
+    monkeypatch.setattr(routes, "detect_model_drift", detect)
+    monkeypatch.setattr(dd, "detect_model_drift", detect)
+    monkeypatch.setattr(routes, "emit_drift_report_html", emit)
+
+    login_as(client, user)
+    response = client.get("/genome/model-health/")
+    assert response.status_code == 200
+    html = response.get_data(as_text=True)
+    expected = [("count", org.id)]
+    if total is None:
+        assert "Your model is too large to check here." in html
+        assert "1,000 active elements" in html
+        assert "No findings were calculated." in html
+        assert "No report yet" not in html and "Measured findings:" not in html
+        emit.assert_not_called()
+    else:
+        expected.append(("detect", org.id))
+        assert f"Measured findings: {total}" in html
+        emit.assert_called_once_with({"summary": {"total": total}})
+    assert events == expected
+    events.clear()
+
+    login_as(client, user)
+    response = client.get("/api/v1/intelligence/yield?part=model-check")
+    assert response.status_code == 200
+    data = response.get_json()["data"]
+    assert events == expected
+    assert data["element_count"] == size and data["drift_finding_count"] == total
+    assert data["reasons"] == (["model_too_large_for_drift_check"] if total is None else [])
+
+
+def test_page_rechecks_size_and_ignores_foreign_scope_and_deleted_rows(
+    app, db_session, make_org, client, login_as, monkeypatch
+):
+    from app.modules.genome.routes import drift_routes as routes
+    from app.modules.intelligence.services import query_service as service
+
+    small, big = make_org("page-small"), make_org("page-big")
+    small_user, big_user = _page_user(db_session, small.id), _page_user(db_session, big.id)
+    _make_element(db_session, small.id, "Active", "Node", "technology")
+    _make_element(db_session, small.id, "Deleted", "Node", "technology", deleted=True)
+    for i in range(3):
+        _make_element(db_session, big.id, f"Big {i}", "Node", "technology")
+    db_session.commit()
+    monkeypatch.setattr(service, "DRIFT_COUNT_MAX_ELEMENTS", 1)
+    detector = Mock(wraps=detect_model_drift)
+    monkeypatch.setattr(routes, "detect_model_drift", detector)
+    monkeypatch.setattr(dd, "detect_model_drift", detector)
+
+    login_as(client, small_user)
+    response = client.get(f"/api/v1/intelligence/yield?part=model-check&organization_id={big.id}")
+    assert response.status_code == 200
+    assert response.get_json()["data"]["element_count"] == 1
+    assert response.get_json()["data"]["drift_finding_count"] >= 1
+    detector.assert_called_once_with(small.id)
+    detector.reset_mock()
+    login_as(client, small_user)
+    page = client.get(f"/genome/model-health/?organization_id={big.id}", json={"organization_id": big.id})
+    assert page.status_code == 200
+    detector.assert_called_once_with(small.id)
+    assert "Active" in page.get_data(as_text=True)
+    detector.reset_mock()
+
+    # A successful count cannot authorise the next request after the model grows.
+    _make_element(db_session, small.id, "New", "Node", "technology")
+    db_session.commit()
+    for user, foreign_id in ((small_user, big.id), (big_user, small.id)):
+        login_as(client, user)
+        page = client.get(f"/genome/model-health/?organization_id={foreign_id}", json={"organization_id": foreign_id})
+        assert "Your model is too large to check here." in page.get_data(as_text=True)
+    detector.assert_not_called()
+
+
+@pytest.mark.parametrize("failure", ["count", "detector", "no_org"])
+def test_page_unavailable_never_emits_a_report(
+    app, db_session, make_org, client, login_as, monkeypatch, failure
+):
+    from app.modules.genome.routes import drift_routes as routes
+    from app.modules.intelligence.services import derived_facts as facts
+
+    user = _page_user(db_session, make_org("page-unavailable").id)
+    db_session.commit()
+    count = Mock(return_value=0)
+    detector = Mock(side_effect=RuntimeError("Cannot read the model"))
+    emit = Mock()
+    monkeypatch.setattr(facts, "active_element_count", count)
+    monkeypatch.setattr(routes, "detect_model_drift", detector)
+    monkeypatch.setattr(routes, "emit_drift_report_html", emit)
+    if failure == "count":
+        count.side_effect = RuntimeError("Cannot read the size")
+    elif failure == "no_org":
+        monkeypatch.setattr(routes, "_active_org_id", lambda: None)
+    login_as(client, user)
+    response = client.get("/genome/model-health/")
+    assert response.status_code == 200
+    html = response.get_data(as_text=True)
+    assert ("No active organization" if failure == "no_org" else "report could not be built") in html
+    assert "No report yet" not in html
+    emit.assert_not_called()
+    if failure != "detector":
+        detector.assert_not_called()
+    if failure == "no_org":
+        count.assert_not_called()
+
+
+def test_anonymous_page_request_never_counts_or_detects(app, client, monkeypatch):
+    from app.modules.genome.routes import drift_routes as routes
+    from app.modules.intelligence.services import derived_facts as facts
+
+    count, detector = Mock(), Mock()
+    monkeypatch.setattr(facts, "active_element_count", count)
+    monkeypatch.setattr(routes, "detect_model_drift", detector)
+    assert client.get("/genome/model-health/").status_code in (302, 401)
+    count.assert_not_called()
+    detector.assert_not_called()
+
+
+@pytest.mark.parametrize("selection", ["own", "foreign", "invalid"])
+def test_remediation_request_still_queues_only_an_own_valid_element(
+    app, db_session, make_org, client, login_as, selection
+):
+    from app.models.ai_chat_crud_approval import AIChatCRUDApproval, ApprovalStatus
+
+    org, other = make_org("remediation-own"), make_org("remediation-other")
+    user = _page_user(db_session, org.id)
+    own = _make_element(db_session, org.id, "Own orphan", "Node", "technology")
+    foreign = _make_element(db_session, other.id, "Foreign orphan", "Node", "technology")
+    db_session.commit()
+    before_own, before_foreign = own.status, foreign.status
+    before = db_session.query(AIChatCRUDApproval).count()
+    login_as(client, user)
+    response = client.post("/genome/model-health/remediate", data={
+        "finding_type": FINDING_ORPHANED,
+        "element_id": {"own": own.id, "foreign": foreign.id, "invalid": "not-an-id"}[selection],
+        "organization_id": other.id,
+    })
+    assert response.status_code == 302
+    assert db_session.query(AIChatCRUDApproval).count() == before + (selection == "own")
+    if selection == "own":
+        approval = db_session.query(AIChatCRUDApproval).order_by(AIChatCRUDApproval.id.desc()).first()
+        assert approval.status == ApprovalStatus.PENDING
+    db_session.refresh(own)
+    db_session.refresh(foreign)
+    assert (own.status, foreign.status) == (before_own, before_foreign)
 
 
 # --------------------------------------------------------------------------- #

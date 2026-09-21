@@ -94,18 +94,27 @@ def index():
     report_html = None
     error = None
     summary = None
+    size_limit = None
     if org_id is None:
         error = "No active organization for the current user."
     else:
         try:
-            report = detect_model_drift(org_id)
-            summary = report.get("summary")
-            html = emit_drift_report_html(report)
-            # Substitute the CSRF placeholder AFTER the deterministic emit.
-            html = html.replace(DRIFT_CSRF_PLACEHOLDER, _csrf_input())
-            # The emitter escapes model data; the only substitution is a
-            # server-generated CSRF input, never request-controlled HTML.
-            report_html = Markup(html)  # nosec B704
+            from app.modules.intelligence.services.derived_facts import active_element_count
+            from app.modules.intelligence.services.query_service import DRIFT_COUNT_MAX_ELEMENTS
+
+            # Recheck on every page request: the model may have grown since
+            # the count was read on Worked-out connections.
+            if active_element_count(org_id) > DRIFT_COUNT_MAX_ELEMENTS:
+                size_limit = DRIFT_COUNT_MAX_ELEMENTS
+            else:
+                report = detect_model_drift(org_id)
+                summary = report.get("summary")
+                html = emit_drift_report_html(report)
+                # Substitute the CSRF placeholder AFTER the deterministic emit.
+                html = html.replace(DRIFT_CSRF_PLACEHOLDER, _csrf_input())
+                # The emitter escapes model data; the only substitution is a
+                # server-generated CSRF input, never request-controlled HTML.
+                report_html = Markup(html)  # nosec B704
         except Exception as exc:  # surface, never render a fabricated report
             logger.warning("Drift detection failed for org %s: %s", org_id, exc)
             error = f"Model-health report could not be built: {exc}"
@@ -114,6 +123,7 @@ def index():
         report_html=report_html,
         summary=summary,
         error=error,
+        size_limit=size_limit,
         org_id=org_id,
     )
 

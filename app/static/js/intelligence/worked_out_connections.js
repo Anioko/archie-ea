@@ -266,7 +266,7 @@ function workedOutConnections() {
             };
         }
         if (data.drift_finding_count === null && hasReason(data, 'model_too_large_for_drift_check')) {
-            return { state: 'too_large', linked: true, text: tooLargeText(data.element_count) };
+            return { state: 'too_large', linked: false, text: tooLargeText(data.element_count) };
         }
         return unavailableDrift();
     }

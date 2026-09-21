@@ -1148,7 +1148,9 @@ def test_only_a_whole_number_is_a_count_and_the_row_has_exactly_four_states():
     assert states == {"loading", "counted", "too_large", "unavailable"}, states
     template = re.sub(r"\{#.*?#\}", "", _templates()["worked_out_connections.html"], flags=re.S)
     assert "drift.state === 'loading'" in template and "drift.state === 'unavailable'" in template
-    assert 'x-show="drift.linked"' in template
+    assert '<template x-if="drift.linked">' in template
+    assert "drift.state === 'counted' || drift.state === 'too_large'" in template
+    assert "state: 'too_large', linked: false" in body
     assert "skeleton_text(lines=2)" in template.split("data-testid=\"drift-row\"")[1]
 
 

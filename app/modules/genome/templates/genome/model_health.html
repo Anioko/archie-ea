@@ -18,6 +18,13 @@
         subtitle='Deterministic drift and staleness detection across the enterprise genome — every finding links to the ArchiMate element it is about (zero LLM). Fixes are queued for human approval, never applied silently.',
         actions_caller=_ps_actions) }}
 
+    {% if size_limit is not none %}
+    <div class="p-4 border border-border bg-muted rounded-lg text-sm text-foreground">
+        Your model is too large to check here. Model checks are available for up to
+        {{ '{:,}'.format(size_limit) }} active elements. No findings were calculated.
+    </div>
+    {% endif %}
+
     {% if error %}
     <div class="p-4 border border-destructive/50 bg-destructive/10 rounded-lg text-sm text-destructive">
         {{ error }}
@@ -34,7 +41,7 @@
         the proposal and files it for a human to approve; nothing is written to the model here.
     </p>
     {% else %}
-    {% if not error %}
+    {% if not error and size_limit is none %}
     <div class="p-8 text-center text-muted-foreground border border-dashed border-border rounded-lg">
         <i data-lucide="activity" class="w-8 h-8 mx-auto mb-3 opacity-60"></i>
         <p>No report yet. Click <span class="font-medium text-foreground">Re-scan for drift</span>

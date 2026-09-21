@@ -108,10 +108,12 @@
             <div x-show="drift.state === 'loading'" data-testid="drift-loading">
                 {{ skeleton_text(lines=2) }}
             </div>
-            <div x-show="drift.linked" x-cloak class="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <div x-show="drift.state === 'counted' || drift.state === 'too_large'" x-cloak class="flex flex-wrap items-center gap-x-4 gap-y-2">
                 <p class="text-sm text-foreground" data-testid="drift-text" x-text="drift.text"></p>
+                <template x-if="drift.linked">
                 <a href="{{ url_for('genome_drift.index') }}"
                    class="inline-flex h-8 items-center justify-center rounded-md border border-input bg-background px-3 text-sm font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background">See drift findings and fixes</a>
+                </template>
             </div>
             <div x-show="drift.state === 'unavailable'" x-cloak role="status" class="flex flex-wrap items-center gap-3">
                 {{ provenance_badge('unavailable') }}
