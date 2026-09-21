@@ -1181,3 +1181,699 @@ def test_generic_keeps_arb_workflow_attribution_with_its_dedicated_command(
     run_backfill(org_id=org_b.id)
     assert db_session.execute(text("SELECT organization_id FROM ea_workflow_instances WHERE id = :id"), {"id": ids[1]}).scalar_one() == org_b.id
     assert db_session.execute(text("SELECT organization_id FROM ea_workflow_definitions WHERE id = :id"), {"id": definition_id}).scalar_one() is None
+
+
+_SIBLING_CLIS = {
+    "principles": "backfill-principle-org",
+    "enterprise_initiatives": "backfill-initiative-org",
+    "kanban_cards": "backfill-kanban-card-org",
+}
+
+
+def _sibling_rows(conn, table):
+    from sqlalchemy import text
+
+    return conn.execute(text(f'SELECT to_jsonb(t) FROM public."{table}" t ORDER BY id')).scalars().all()
+
+
+def _sibling_snapshot(conn, *tables):
+    from sqlalchemy import text
+
+    return {table: {
+        "rows": _sibling_rows(conn, table), "catalog": _catalog(conn, table),
+        "identities": conn.execute(text(
+            "SELECT c.oid, c.conname, pg_get_constraintdef(c.oid) FROM pg_constraint c "
+            "WHERE c.conrelid = to_regclass(:table) ORDER BY c.oid"
+        ), {"table": f'public."{table}"'}).all(),
+        "index_ids": conn.execute(text(
+            "SELECT indexrelid, pg_get_indexdef(indexrelid) FROM pg_index "
+            "WHERE indrelid = to_regclass(:table) ORDER BY indexrelid"
+        ), {"table": f'public."{table}"'}).all(),
+    } for table in tables}
+
+
+def _sibling_seed(conn, table, owners):
+    """Core legacy rows avoid model ownership defaults and writer listeners."""
+    from sqlalchemy import text
+
+    assert table in {"principles", "enterprise_initiatives"}
+    ids = []
+    for owner in owners:
+        columns = "name, organization_id" + (", statement" if table == "principles" else "")
+        values = ":name, :org" + (", :name" if table == "principles" else "")
+        ids.append(conn.execute(text(
+            f'INSERT INTO public."{table}" ({columns}) VALUES ({values}) RETURNING id'
+        ), {"name": uuid.uuid4().hex, "org": owner}).scalar_one())
+    return ids
+
+
+def _drop_owner_schema(conn, table, *, indexes=True, foreign_keys=True):
+    from sqlalchemy import text
+
+    catalog = _catalog(conn, table)
+    quote = conn.dialect.identifier_preparer.quote
+    if foreign_keys:
+        for fk in catalog["foreign_keys"]:
+            if "organization_id" in fk["constrained_columns"]:
+                conn.execute(text(f'ALTER TABLE public."{table}" DROP CONSTRAINT {quote(fk["name"])}'))
+    if indexes:
+        for index in catalog["indexes"]:
+            if index["column_names"] and index["column_names"][0] == "organization_id":
+                conn.execute(text(f'DROP INDEX public.{quote(index["name"])}'))
+
+
+def _sibling_invoke(app, table, args=()):
+    return app.test_cli_runner().invoke(args=[_SIBLING_CLIS[table], *args])
+
+
+@pytest.mark.parametrize("table", ["principles", "enterprise_initiatives"])
+@pytest.mark.parametrize("selection", ["a", "b", "multi", "invalid"])
+def test_sibling_fallback_atomic_preview_preservation_and_rerun(
+    app, db_session, make_org, schema_shape, table, selection
+):
+    from sqlalchemy import event, text
+
+    org_a, org_b = make_org("fallback-a").id, make_org("fallback-b").id
+    with schema_shape(table) as conn:
+        conn.execute(text(f'ALTER TABLE public."{table}" ALTER COLUMN organization_id DROP NOT NULL'))
+        _drop_owner_schema(conn, table, indexes=False)
+        conn.execute(text(
+            f'ALTER TABLE public."{table}" ADD CONSTRAINT "fk_{table}_organization" '
+            'FOREIGN KEY (organization_id) REFERENCES public.organizations(id) ON DELETE NO ACTION'
+        ))
+        ids = _sibling_seed(conn, table, [None, org_a, org_b])
+        before = _sibling_snapshot(conn, table)
+        expected = sum(row["organization_id"] is None for row in before[table]["rows"])
+        selected = {"a": org_a, "b": org_b, "invalid": -1}.get(selection)
+        args = [] if selection == "multi" else ["--org-id", str(selected)]
+        writes = []
+
+        def observe(connection, cursor, statement, parameters, context, executemany):
+            if statement.lstrip().split()[0].upper() not in {"SELECT", "SHOW", "SAVEPOINT", "ROLLBACK", "RELEASE"}:
+                writes.append(statement)
+
+        event.listen(conn, "before_cursor_execute", observe)
+        try:
+            dry = _sibling_invoke(app, table, [*args, "--dry-run"])
+        finally:
+            event.remove(conn, "before_cursor_execute", observe)
+        assert not db_session().in_transaction()
+        assert writes == []
+        assert _sibling_snapshot(conn, table) == before
+        result = _sibling_invoke(app, table, args)
+        assert not db_session().in_transaction()
+        if selection in {"multi", "invalid"}:
+            assert dry.exit_code != 0 and result.exit_code != 0
+            assert "done." not in result.output and "  + " not in result.output
+            assert _sibling_snapshot(conn, table) == before
+        else:
+            assert dry.exit_code == result.exit_code == 0, result.output
+            assert f"would attribute={expected}" in dry.output
+            assert f"attributed={expected} remaining_nulls=0" in result.output
+            after = _sibling_snapshot(conn, table)
+            assert after[table]["rows"] == [
+                {**row, "organization_id": selected if row["organization_id"] is None else row["organization_id"]}
+                for row in before[table]["rows"]
+            ]
+            assert after[table]["identities"] == before[table]["identities"]
+            assert {row["id"]: row["organization_id"] for row in after[table]["rows"] if row["id"] in ids} == dict(zip(ids, [selected, org_a, org_b]))
+            repeat = _sibling_invoke(app, table, ["--org-id", "-1"])
+            assert repeat.exit_code == 0 and "attributed=0" in repeat.output
+            assert _sibling_snapshot(conn, table) == after
+
+
+@pytest.mark.parametrize("table", ["principles", "enterprise_initiatives"])
+@pytest.mark.parametrize("org_count", [0, 1])
+def test_sibling_zero_sole_policy_requires_empty_org_baseline(
+    app, db_session, make_org, schema_shape, table, org_count
+):
+    """Select on the authorized zero-org baseline; never delete unrelated orgs."""
+    from sqlalchemy import text
+
+    with schema_shape(table) as conn:
+        assert conn.execute(text("SELECT count(*) FROM public.organizations")).scalar_one() == 0, "Requires the existing empty baseline"
+        owner = make_org("sole-sibling").id if org_count else None
+        db_session.commit()
+        conn.execute(text(f'ALTER TABLE public."{table}" ALTER COLUMN organization_id DROP NOT NULL'))
+        _sibling_seed(conn, table, [None])
+        before = _sibling_snapshot(conn, table)
+        for args in (["--dry-run"], [], []):
+            assert conn.execute(text("SELECT count(*) FROM public.organizations")).scalar_one() == org_count
+            result = _sibling_invoke(app, table, args)
+            assert not db_session().in_transaction()
+            if not org_count:
+                assert result.exit_code != 0 and "No organizations exist" in result.output
+                assert _sibling_snapshot(conn, table) == before
+            else:
+                assert result.exit_code == 0, result.output
+                if args:
+                    assert _sibling_snapshot(conn, table) == before
+                else:
+                    assert _sibling_rows(conn, table) == [
+                        {**row, "organization_id": owner} for row in before[table]["rows"]
+                    ]
+
+
+def _kanban_seed(db_session, conn, org_a, org_b):
+    from sqlalchemy import text
+
+    from app.models.adm_kanban import ADMPhase, KanbanBoard, KanbanCard
+
+    org_a_id, org_b_id = org_a.id, org_b.id
+    user_id = _make_user(db_session, org_a).id
+    # Release setup into schema_shape's enclosing boundary, so a command's
+    # rollback cannot erase its own failure premise.
+    db_session.commit()
+    phase = ADMPhase.__table__
+    phase_id = conn.execute(phase.insert().values(
+        name=uuid.uuid4().hex, code=uuid.uuid4().hex[:8], order=1,
+    ).returning(phase.c.id)).scalar_one()
+    boards = KanbanBoard.__table__
+    board_ids = [conn.execute(boards.insert().values(
+        name=uuid.uuid4().hex, created_by_id=user_id, organization_id=org_id,
+    ).returning(boards.c.id)).scalar_one() for org_id in (org_a_id, org_b_id, org_a_id)]
+    conn.execute(text("ALTER TABLE public.kanban_boards ALTER COLUMN organization_id DROP NOT NULL"))
+    conn.execute(text("UPDATE public.kanban_boards SET organization_id = NULL WHERE id = :id"), {"id": board_ids[2]})
+    conn.execute(text("ALTER TABLE public.kanban_cards ALTER COLUMN organization_id DROP NOT NULL"))
+    cards = KanbanCard.__table__
+    card_ids = [conn.execute(cards.insert().values(
+        title=uuid.uuid4().hex, adm_phase_id=phase_id, board_id=board,
+        card_type="requirement", created_by_id=user_id, organization_id=owner,
+    ).returning(cards.c.id)).scalar_one() for board, owner in (
+        (board_ids[0], None), (board_ids[1], None), (board_ids[2], None),
+        (board_ids[0], org_b_id), (board_ids[0], None),
+    )]
+    for fk in _catalog(conn, "kanban_cards")["foreign_keys"]:
+        if fk["constrained_columns"] == ["board_id"]:
+            quoted = conn.dialect.identifier_preparer.quote(fk["name"])
+            conn.execute(text(f'ALTER TABLE public.kanban_cards DROP CONSTRAINT {quoted}'))
+    assert conn.execute(text("SELECT 1 FROM public.kanban_boards WHERE id = -1")).first() is None
+    conn.execute(text("UPDATE public.kanban_cards SET board_id = -1 WHERE id = :id"), {"id": card_ids[4]})
+    return card_ids, board_ids
+
+
+@pytest.mark.parametrize("generic_first", [False, True])
+def test_sibling_kanban_exact_eligibility_and_no_fallback(
+    app, db_session, make_org, schema_shape, monkeypatch, generic_first
+):
+    from sqlalchemy import text
+
+    from app.commands.backfill_principle_org import _backfill_from_parent
+
+    org_a, org_b = make_org("kanban-a"), make_org("kanban-b")
+    with schema_shape("kanban_cards", "kanban_boards") as conn:
+        ids, _ = _kanban_seed(db_session, conn, org_a, org_b)
+        before = _sibling_snapshot(conn, "kanban_cards", "kanban_boards")
+        generic = _generic_subset(monkeypatch, "kanban_cards")
+        if generic_first:
+            generic.repair_layer_tenancy(org_id=org_b.id)
+            assert _sibling_snapshot(conn, "kanban_cards", "kanban_boards") == before
+        eligible = conn.execute(text(
+            "SELECT count(*) FROM public.kanban_cards c JOIN public.kanban_boards p ON c.board_id = p.id "
+            "WHERE c.organization_id IS NULL AND p.organization_id IS NOT NULL"
+        )).scalar_one()
+        dry = _backfill_from_parent("kanban_cards", "kanban_boards", "board_id", True)
+        assert dry["eligible"] == eligible and dry["attributed"] == 0
+        assert dry["remaining_nulls"] == dry["examined_null"] - eligible
+        assert _sibling_snapshot(conn, "kanban_cards", "kanban_boards") == before
+        result = _sibling_invoke(app, "kanban_cards")
+        assert result.exit_code == 0, result.output
+        assert f"attributed={eligible} remaining_nulls={dry['remaining_nulls']}" in result.output
+        assert "unresolved rows remain NULL" in result.output
+        rows = _sibling_rows(conn, "kanban_cards")
+        assert {r["id"]: r["organization_id"] for r in rows if r["id"] in ids} == dict(zip(ids, [org_a.id, org_b.id, None, org_b.id, None]))
+        assert [{k: v for k, v in r.items() if k != "organization_id"} for r in rows] == [
+            {k: v for k, v in r.items() if k != "organization_id"} for r in before["kanban_cards"]["rows"]
+        ]
+        assert _sibling_snapshot(conn, "kanban_boards")["kanban_boards"] == before["kanban_boards"]
+        after = _sibling_snapshot(conn, "kanban_cards", "kanban_boards")
+        generic.repair_layer_tenancy(org_id=org_a.id)
+        assert _sibling_invoke(app, "kanban_cards").exit_code == 0
+        assert _sibling_snapshot(conn, "kanban_cards", "kanban_boards") == after
+
+
+@pytest.mark.parametrize("table", list(_SIBLING_CLIS))
+@pytest.mark.parametrize("shape", ["absent", "missing", "empty", "owned"])
+def test_sibling_schema_shapes_on_empty_targets(
+    app, db_session, make_org, schema_shape, table, shape
+):
+    """Scratch-only shape premises are assertions, never skipped coverage."""
+    from sqlalchemy import event, text
+
+    org_a, org_b = make_org("shape-a"), make_org("shape-b")
+    with schema_shape(table, "kanban_boards") as conn:
+        assert conn.execute(text(f'SELECT count(*) FROM public."{table}"')).scalar_one() == 0, "Requires an empty target baseline"
+        if shape in {"missing", "owned"}:
+            if table == "kanban_cards":
+                ids, _ = _kanban_seed(db_session, conn, org_a, org_b)
+                if shape == "owned":
+                    conn.execute(text("UPDATE public.kanban_cards SET organization_id = :org WHERE id = ANY(:ids)"), {"org": org_a.id, "ids": ids})
+            else:
+                _sibling_seed(conn, table, [org_a.id])
+        if shape == "absent":
+            conn.execute(text(f'ALTER TABLE public."{table}" RENAME TO "{table}_shape"'))
+        elif shape == "missing":
+            conn.execute(text(f'ALTER TABLE public."{table}" DROP COLUMN organization_id CASCADE'))
+        else:
+            _drop_owner_schema(conn, table)
+            conn.execute(text(f'ALTER TABLE public."{table}" ALTER COLUMN organization_id SET NOT NULL'))
+        db_session.commit()
+        before = None if shape == "absent" else _sibling_snapshot(conn, table)
+        args = [] if table == "kanban_cards" else ["--org-id", str(org_a.id if shape == "missing" else -1)]
+        writes = []
+
+        def observe(connection, cursor, statement, parameters, context, executemany):
+            if statement.lstrip().split()[0].upper() in {"ALTER", "CREATE", "UPDATE", "LOCK", "SET", "INSERT", "DELETE", "DROP"}:
+                writes.append(statement)
+
+        event.listen(conn, "before_cursor_execute", observe)
+        try:
+            dry = _sibling_invoke(app, table, [*args, "--dry-run"])
+        finally:
+            event.remove(conn, "before_cursor_execute", observe)
+        assert dry.exit_code == 0, dry.output
+        assert writes == [] and not db_session().in_transaction()
+        if before is not None:
+            assert _sibling_snapshot(conn, table) == before
+        result = _sibling_invoke(app, table, args)
+        assert result.exit_code == 0, result.output
+        assert not db_session().in_transaction()
+        if shape == "absent":
+            assert conn.execute(text("SELECT to_regclass(:table)"), {"table": f"public.{table}"}).scalar_one() is None
+        else:
+            owner = next(c for c in _catalog(conn, table)["columns"] if c[0] == "organization_id")
+            assert owner[2] is True
+            if shape == "missing":
+                assert owner[3] is None
+            if shape in {"empty", "owned"}:
+                assert _sibling_rows(conn, table) == before[table]["rows"]
+            after = _sibling_snapshot(conn, table)
+            assert _sibling_invoke(app, table, args).exit_code == 0
+            assert _sibling_snapshot(conn, table) == after
+
+
+@pytest.mark.parametrize("shape", ["absent", "missing_column", "invalid_owner"])
+def test_sibling_parent_reconciliation_is_explicit_and_atomic(
+    app, db_session, make_org, schema_shape, shape
+):
+    from sqlalchemy import text
+
+    from app.commands.backfill_principle_org import _backfill_from_parent
+
+    org_a, org_b = make_org("parent-a"), make_org("parent-b")
+    with schema_shape("kanban_cards", "kanban_boards") as conn:
+        _, boards = _kanban_seed(db_session, conn, org_a, org_b)
+        if shape == "absent":
+            conn.execute(text("ALTER TABLE public.kanban_boards RENAME TO kanban_boards_shape"))
+        elif shape == "missing_column":
+            conn.execute(text("ALTER TABLE public.kanban_boards DROP COLUMN organization_id CASCADE"))
+        else:
+            _drop_owner_schema(conn, "kanban_boards", indexes=False)
+            conn.execute(text("UPDATE public.kanban_boards SET organization_id = -1 WHERE id = :id"), {"id": boards[0]})
+        tables = ("kanban_cards", "kanban_boards_shape" if shape == "absent" else "kanban_boards")
+        before = _sibling_snapshot(conn, *tables)
+        for args in (["--dry-run"], []):
+            result = _sibling_invoke(app, "kanban_cards", args)
+            assert (result.exit_code == 0) is (shape == "absent"), result.output
+            assert "done." not in result.output
+            assert _sibling_snapshot(conn, *tables) == before
+            assert not db_session().in_transaction()
+        if shape == "absent":
+            stats = _backfill_from_parent("kanban_cards", "kanban_boards", "board_id", False)
+            remaining = sum(row["organization_id"] is None for row in before["kanban_cards"]["rows"])
+            assert stats["examined_null"] == stats["remaining_nulls"] == remaining
+            assert stats["eligible"] == stats["attributed"] == 0 and stats["schema"] == {}
+            assert not db_session().in_transaction()
+            assert _sibling_snapshot(conn, *tables) == before
+
+
+@pytest.mark.parametrize("table", list(_SIBLING_CLIS))
+@pytest.mark.parametrize("fault", ["update", "add_column", "index", "fk", "catalog", "postcondition", "deferred_commit"])
+def test_sibling_real_sql_failures_rollback_all_work_and_retry(
+    app, db_session, make_org, schema_shape, table, fault
+):
+    """Deferred checks run at the session commit boundary, not durable COMMIT.
+
+    The enclosing fixture deliberately owns the real outer transaction. A
+    separate committed subprocess exercise is required for durable evidence.
+    """
+    from sqlalchemy import event, text
+
+    org_a, org_b = make_org("fault-a"), make_org("fault-b")
+    org_id = org_a.id
+    with schema_shape(table, "kanban_boards") as conn:
+        conn.execute(text(f'ALTER TABLE public."{table}" ALTER COLUMN organization_id DROP NOT NULL'))
+        if table == "kanban_cards":
+            ids, _ = _kanban_seed(db_session, conn, org_a, org_b)
+        else:
+            ids = _sibling_seed(conn, table, [None, org_id])
+        _drop_owner_schema(conn, table)
+        if fault == "add_column":
+            conn.execute(text(f'ALTER TABLE public."{table}" DROP COLUMN organization_id CASCADE'))
+        if fault == "deferred_commit":
+            conn.execute(text(f'ALTER TABLE public."{table}" ADD COLUMN commit_probe INTEGER'))
+            conn.execute(text(
+                f'ALTER TABLE public."{table}" ADD CONSTRAINT sibling_commit_probe '
+                'FOREIGN KEY (commit_probe) REFERENCES public.organizations(id) DEFERRABLE INITIALLY DEFERRED'
+            ))
+            assert conn.execute(text("SELECT 1 FROM public.organizations WHERE id = -1")).first() is None
+        db_session.commit()
+        before = _sibling_snapshot(conn, table, "kanban_boards")
+        prior_timeout = conn.execute(text("SHOW lock_timeout")).scalar_one()
+        fired, steps = [], []
+
+        def fail_statement(connection, cursor, statement, parameters, context, executemany):
+            sql = statement.upper()
+            if sql.startswith(("UPDATE", "ALTER TABLE", "CREATE INDEX")):
+                steps.append(sql)
+            trigger = ((fault == "update" and sql.startswith("UPDATE"))
+                       or (fault == "add_column" and "ADD COLUMN" in sql)
+                       or (fault == "index" and sql.startswith("CREATE INDEX"))
+                       or (fault == "fk" and "ADD CONSTRAINT" in sql)
+                       or (fault == "catalog" and any(s.startswith("CREATE INDEX") for s in steps)
+                           and "PG_CATALOG" in sql))
+            if trigger and not fired:
+                fired.append(statement)
+                cursor.execute("SELECT 1 / 0")
+
+        def remove_fk(connection, cursor, statement, parameters, context, executemany):
+            if fault == "postcondition" and "ADD CONSTRAINT" in statement and not fired:
+                cursor.execute(f'ALTER TABLE public."{table}" DROP CONSTRAINT "fk_{table}_organization"')
+                fired.append(statement)
+
+        def fail_deferred(session):
+            if fault == "deferred_commit" and not fired:
+                fired.append("deferred FK check at session commit")
+                session.connection().execute(text(
+                    f'UPDATE public."{table}" SET commit_probe = -1 WHERE id = :id'
+                ), {"id": ids[0]})
+                session.connection().execute(text("SET CONSTRAINTS sibling_commit_probe IMMEDIATE"))
+
+        event.listen(conn, "before_cursor_execute", fail_statement)
+        event.listen(conn, "after_cursor_execute", remove_fk)
+        session = db_session()
+        event.listen(session, "before_commit", fail_deferred)
+        args = [] if table == "kanban_cards" else ["--org-id", str(org_id)]
+        try:
+            result = _sibling_invoke(app, table, args)
+        finally:
+            event.remove(conn, "before_cursor_execute", fail_statement)
+            event.remove(conn, "after_cursor_execute", remove_fk)
+            event.remove(session, "before_commit", fail_deferred)
+        assert fired, result.output
+        assert result.exit_code != 0 and "transaction rolled back" in result.output
+        assert "done." not in result.output and "  + " not in result.output
+        assert "attributed=" not in result.output and "outcome unknown" not in result.output
+        assert not db_session().in_transaction()
+        assert _sibling_snapshot(conn, table, "kanban_boards") == before
+        assert conn.execute(text("SHOW lock_timeout")).scalar_one() == prior_timeout
+        assert conn.execute(text("SELECT 1")).scalar_one() == 1
+        if fault in {"fk", "catalog", "postcondition", "deferred_commit"}:
+            assert any(s.startswith("UPDATE") for s in steps)
+            assert any(s.startswith("CREATE INDEX") for s in steps)
+        retry = _sibling_invoke(app, table, args)
+        assert retry.exit_code == 0, retry.output
+        after = _sibling_snapshot(conn, table, "kanban_boards")
+        assert after[table]["rows"] != before[table]["rows"]
+        assert after["kanban_boards"] == before["kanban_boards"]
+        assert _sibling_invoke(app, table, args).exit_code == 0
+        assert _sibling_snapshot(conn, table, "kanban_boards") == after
+
+
+@pytest.mark.parametrize("table", list(_SIBLING_CLIS))
+@pytest.mark.parametrize("acknowledged_by_server", [False, True])
+def test_sibling_lost_commit_acknowledgement_is_unknown(
+    app, db_session, make_org, schema_shape, monkeypatch, table, acknowledged_by_server
+):
+    """Simulate both sides of lost acknowledgement around real session.commit.
+
+    Its successful side releases a fixture savepoint; this is deliberately not
+    described as a proven durable database commit or network disconnect test.
+    """
+    from sqlalchemy import text
+    from sqlalchemy.exc import OperationalError
+
+    org_a, org_b = make_org("ack-a"), make_org("ack-b")
+    org_id = org_a.id
+    with schema_shape(table, "kanban_boards") as conn:
+        conn.execute(text(f'ALTER TABLE public."{table}" ALTER COLUMN organization_id DROP NOT NULL'))
+        if table == "kanban_cards":
+            _kanban_seed(db_session, conn, org_a, org_b)
+        else:
+            _sibling_seed(conn, table, [None, org_id])
+        db_session.commit()
+        before = _sibling_snapshot(conn, table, "kanban_boards")
+        session = db_session()
+        commit = session.commit
+
+        def lost_ack():
+            if acknowledged_by_server:
+                commit()
+            raise OperationalError("COMMIT", {}, OSError("connection closed"), connection_invalidated=True)
+
+        args = [] if table == "kanban_cards" else ["--org-id", str(org_id)]
+        with monkeypatch.context() as patch:
+            patch.setattr(session, "commit", lost_ack)
+            result = _sibling_invoke(app, table, args)
+        assert result.exit_code != 0 and "commit outcome unknown" in result.output
+        assert "new connection before retry" in result.output
+        assert "rolled back" not in result.output and "done." not in result.output
+        assert "  + " not in result.output and "attributed=" not in result.output
+        assert not db_session().in_transaction()
+        observed = _sibling_snapshot(conn, table, "kanban_boards")
+        assert (observed == before) is (not acknowledged_by_server)
+        retry = _sibling_invoke(app, table, args)
+        assert retry.exit_code == 0, retry.output
+        if acknowledged_by_server:
+            assert "attributed=0" in retry.output
+            assert _sibling_snapshot(conn, table, "kanban_boards") == observed
+
+
+@pytest.mark.parametrize("table", list(_SIBLING_CLIS))
+def test_sibling_apply_lock_order_and_success_output_after_commit(
+    app, db_session, make_org, schema_shape, monkeypatch, table
+):
+    import click
+    from sqlalchemy import event, text
+
+    org_a, org_b = make_org("locks-a"), make_org("locks-b")
+    org_id = org_a.id
+    with schema_shape(table, "kanban_boards") as conn:
+        conn.execute(text(f'ALTER TABLE public."{table}" ALTER COLUMN organization_id DROP NOT NULL'))
+        if table == "kanban_cards":
+            _kanban_seed(db_session, conn, org_a, org_b)
+        else:
+            _sibling_seed(conn, table, [None])
+        db_session.commit()
+        statements, emitted = [], []
+
+        def observe(connection, cursor, statement, parameters, context, executemany):
+            statements.append(statement)
+            if statement.startswith("LOCK TABLE"):
+                cursor.execute("SHOW lock_timeout")
+                assert cursor.fetchone()[0] == "5s"
+
+        echo = click.echo
+
+        def observe_echo(message=None, *args, **kwargs):
+            emitted.append((message, db_session().in_transaction()))
+            return echo(message, *args, **kwargs)
+
+        event.listen(conn, "before_cursor_execute", observe)
+        try:
+            with monkeypatch.context() as patch:
+                patch.setattr(click, "echo", observe_echo)
+                result = _sibling_invoke(app, table, [] if table == "kanban_cards" else ["--org-id", str(org_id)])
+        finally:
+            event.remove(conn, "before_cursor_execute", observe)
+        assert result.exit_code == 0, result.output
+        names = sorted({table, "organizations"} | ({"kanban_boards"} if table == "kanban_cards" else set()))
+        assert [sql for sql in statements if sql.startswith("LOCK TABLE")] == [
+            f'LOCK TABLE "public"."{name}" IN {"ACCESS EXCLUSIVE" if name == table else "SHARE"} MODE'
+            for name in names
+        ]
+        assert emitted and all(not active for _, active in emitted)
+        assert any("RETURNING" in sql for sql in statements if sql.startswith("UPDATE"))
+
+
+@pytest.mark.parametrize("table", ["principles", "enterprise_initiatives"])
+@pytest.mark.parametrize("conflict", ["index", "fk", "orphan"])
+def test_sibling_predictable_conflicts_refuse_before_writes(
+    app, db_session, make_org, schema_shape, table, conflict
+):
+    from sqlalchemy import event, text
+
+    org_id = make_org("conflict").id
+    with schema_shape(table) as conn:
+        conn.execute(text(f'ALTER TABLE public."{table}" ALTER COLUMN organization_id DROP NOT NULL'))
+        _drop_owner_schema(conn, table)
+        _sibling_seed(conn, table, [None, org_id])
+        if conflict == "index":
+            conn.execute(text(f'CREATE INDEX "ix_{table}_organization_id" ON public."{table}" (id)'))
+        elif conflict == "fk":
+            conn.execute(text(
+                f'ALTER TABLE public."{table}" ADD CONSTRAINT "fk_{table}_organization" '
+                'FOREIGN KEY (organization_id) REFERENCES public.organizations(id) NOT VALID'
+            ))
+        else:
+            _sibling_seed(conn, table, [-1])
+        before = _sibling_snapshot(conn, table)
+        writes = []
+
+        def observe(connection, cursor, statement, parameters, context, executemany):
+            if statement.lstrip().split()[0].upper() in {"UPDATE", "ALTER", "CREATE", "DROP", "INSERT", "DELETE"}:
+                writes.append(statement)
+
+        event.listen(conn, "before_cursor_execute", observe)
+        try:
+            for args in (["--dry-run"], []):
+                result = _sibling_invoke(app, table, ["--org-id", str(org_id), *args])
+                assert result.exit_code != 0
+                assert "done." not in result.output and "  + " not in result.output
+                assert _sibling_snapshot(conn, table) == before
+        finally:
+            event.remove(conn, "before_cursor_execute", observe)
+        assert writes == []
+
+
+@pytest.mark.parametrize("table", list(_SIBLING_CLIS))
+def test_sibling_lock_contention_is_bounded_and_retryable(
+    app, db_session, make_org, schema_shape, table
+):
+    from sqlalchemy import text
+
+    from app import db
+
+    org_a, org_b = make_org("contention-a"), make_org("contention-b")
+    org_id = org_a.id
+    with schema_shape(table, "kanban_boards") as conn:
+        conn.execute(text(f'ALTER TABLE public."{table}" ALTER COLUMN organization_id DROP NOT NULL'))
+        if table == "kanban_cards":
+            _kanban_seed(db_session, conn, org_a, org_b)
+        else:
+            _sibling_seed(conn, table, [None])
+        db_session.commit()
+        before = _sibling_snapshot(conn, table, "kanban_boards")
+        prior_timeout = conn.execute(text("SHOW lock_timeout")).scalar_one()
+        args = [] if table == "kanban_cards" else ["--org-id", str(org_id)]
+        # A second connection owns only a table lock, no data or schema writes.
+        # ROW EXCLUSIVE is compatible with the fixture's inserts but conflicts
+        # with the command's SHARE lock protecting the organization inventory.
+        with db.engine.connect() as blocker:
+            transaction = blocker.begin()
+            try:
+                blocker.execute(text("SET LOCAL lock_timeout = '1s'"))
+                blocker.execute(text("LOCK TABLE public.organizations IN ROW EXCLUSIVE MODE"))
+                result = _sibling_invoke(app, table, args)
+                assert result.exit_code != 0 and "lock timeout" in result.output
+                assert "retry" in result.output and "done." not in result.output
+                assert "  + " not in result.output and "attributed=" not in result.output
+                assert not db_session().in_transaction()
+                assert _sibling_snapshot(conn, table, "kanban_boards") == before
+                assert conn.execute(text("SHOW lock_timeout")).scalar_one() == prior_timeout
+            finally:
+                transaction.rollback()
+        retry = _sibling_invoke(app, table, args)
+        assert retry.exit_code == 0, retry.output
+        assert _sibling_rows(conn, table) != before[table]["rows"]
+
+
+@pytest.mark.parametrize("table", ["principles", "enterprise_initiatives"])
+@pytest.mark.parametrize("generic_first", [False, True])
+def test_sibling_fallback_composes_with_nullable_generic_policy(
+    app, db_session, make_org, schema_shape, monkeypatch, table, generic_first
+):
+    from sqlalchemy import text
+
+    org_a, org_b = make_org("compose-a").id, make_org("compose-b").id
+    generic = _generic_subset(monkeypatch, table)
+    with schema_shape(table) as conn:
+        conn.execute(text(f'ALTER TABLE public."{table}" ALTER COLUMN organization_id DROP NOT NULL'))
+        _sibling_seed(conn, table, [None, org_a, org_b])
+        before = _sibling_snapshot(conn, table)
+        if generic_first:
+            generic.repair_layer_tenancy(org_id=org_a)
+            assert _sibling_snapshot(conn, table) == before
+        result = _sibling_invoke(app, table, ["--org-id", str(org_b)])
+        assert result.exit_code == 0, result.output
+        assert _sibling_rows(conn, table) == [
+            {**row, "organization_id": org_b if row["organization_id"] is None else row["organization_id"]}
+            for row in before[table]["rows"]
+        ]
+        after = _sibling_snapshot(conn, table)
+        generic.repair_layer_tenancy(org_id=org_a)
+        assert _sibling_invoke(app, table, ["--org-id", str(org_a)]).exit_code == 0
+        assert _sibling_snapshot(conn, table) == after
+
+
+@pytest.mark.parametrize("table", ["principles", "enterprise_initiatives"])
+def test_sibling_update_returning_count_mismatch_rolls_back(
+    app, db_session, make_org, schema_shape, table
+):
+    from sqlalchemy import event, text
+
+    org_id = make_org("count-fault").id
+    with schema_shape(table) as conn:
+        conn.execute(text(f'ALTER TABLE public."{table}" ALTER COLUMN organization_id DROP NOT NULL'))
+        _sibling_seed(conn, table, [None])
+        before = _sibling_snapshot(conn, table)
+        fired = []
+
+        def suppress_update(connection, cursor, statement, parameters, context, executemany):
+            if statement.startswith("UPDATE") and not fired:
+                fired.append(statement)
+                # Fault injection still executes an actual PostgreSQL UPDATE
+                # and RETURNING, but makes its result disagree with the plan.
+                return statement.replace("RETURNING", "AND FALSE RETURNING"), parameters
+            return statement, parameters
+
+        event.listen(conn, "before_cursor_execute", suppress_update, retval=True)
+        try:
+            result = _sibling_invoke(app, table, ["--org-id", str(org_id)])
+        finally:
+            event.remove(conn, "before_cursor_execute", suppress_update)
+        assert fired and result.exit_code != 0 and "count postcondition failed" in result.output
+        assert "done." not in result.output and "attributed=" not in result.output
+        assert _sibling_snapshot(conn, table) == before
+        assert _sibling_invoke(app, table, ["--org-id", str(org_id)]).exit_code == 0
+
+
+@pytest.mark.parametrize("table", list(_SIBLING_CLIS))
+def test_sibling_structured_counts_match_unchanged_preview(
+    db_session, make_org, schema_shape, table
+):
+    from sqlalchemy import text
+
+    from app.commands.backfill_principle_org import _backfill, _backfill_from_parent
+
+    org_a, org_b = make_org("counts-a"), make_org("counts-b")
+    org_id = org_a.id
+    with schema_shape(table, "kanban_boards") as conn:
+        conn.execute(text(f'ALTER TABLE public."{table}" ALTER COLUMN organization_id DROP NOT NULL'))
+        if table == "kanban_cards":
+            _kanban_seed(db_session, conn, org_a, org_b)
+        else:
+            _sibling_seed(conn, table, [None, org_id])
+        db_session.commit()
+        before = _sibling_snapshot(conn, table, "kanban_boards")
+
+        def run(dry_run):
+            if table == "kanban_cards":
+                return _backfill_from_parent(table, "kanban_boards", "board_id", dry_run)
+            return _backfill(table, dry_run, org_id)
+
+        dry = run(True)
+        assert not db_session().in_transaction()
+        assert set(dry) == {"examined_null", "eligible", "attributed", "remaining_nulls", "schema", "dry_run"}
+        assert dry["dry_run"] is True and dry["attributed"] == 0
+        assert dry["examined_null"] == sum(row["organization_id"] is None for row in before[table]["rows"])
+        assert _sibling_snapshot(conn, table, "kanban_boards") == before
+        applied = run(False)
+        assert not db_session().in_transaction()
+        assert applied["dry_run"] is False
+        assert applied["attributed"] == applied["eligible"] == dry["eligible"]
+        assert applied["examined_null"] == dry["examined_null"]
+        assert applied["remaining_nulls"] == dry["remaining_nulls"]
+        assert applied["remaining_nulls"] == sum(row["organization_id"] is None for row in _sibling_rows(conn, table))
+        assert applied["schema"]["index"] in {"added", "present"}
+        assert applied["schema"]["foreign_key"] in {"added", "present"}
