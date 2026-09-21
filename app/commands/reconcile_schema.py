@@ -521,6 +521,67 @@ def _ensure_transformation_foreign_keys(*, dry_run, existing_tables, added, fail
             failed.append(f"{label}: {str(exc)[:120]}")
 
 
+def _ensure_connector_config_organization_fk_and_index(
+    *, dry_run, existing_tables, added, failed
+):
+    """Install the FK and index on connector_configs.organization_id.
+
+    ADD COLUMN IF NOT EXISTS carries the column but not its constraint or
+    index on a long-lived schema, the same gap _ensure_transformation_foreign_keys
+    exists to close for other tables.
+    """
+    from sqlalchemy import inspect, text
+
+    table = "connector_configs"
+    if table not in existing_tables:
+        return
+    inspector = inspect(db.engine)
+    live_columns = {item["name"] for item in inspector.get_columns(table)}
+    if "organization_id" not in live_columns:
+        return
+
+    existing_fks = inspector.get_foreign_keys(table)
+    has_fk = any(
+        fk.get("constrained_columns") == ["organization_id"]
+        and fk.get("referred_table") == "organizations"
+        for fk in existing_fks
+    )
+    if not has_fk:
+        label = "constraint.fk_connector_configs_organization_id"
+        if dry_run:
+            added.append(f"{label} :: FOREIGN KEY")
+        else:
+            try:
+                db.session.execute(text(
+                    'ALTER TABLE "connector_configs" '
+                    'ADD CONSTRAINT "fk_connector_configs_organization_id" '
+                    'FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") '
+                    "ON DELETE CASCADE"
+                ))
+                db.session.commit()
+                added.append(f"{label} :: FOREIGN KEY")
+            except Exception as exc:  # noqa: BLE001
+                db.session.rollback()
+                failed.append(f"{label}: {str(exc)[:120]}")
+
+    existing_indexes = {idx["name"] for idx in inspector.get_indexes(table)}
+    if "ix_connector_configs_organization_id" not in existing_indexes:
+        label = "index.ix_connector_configs_organization_id"
+        if dry_run:
+            added.append(f"{label} :: CREATE INDEX")
+        else:
+            try:
+                db.session.execute(text(
+                    'CREATE INDEX IF NOT EXISTS "ix_connector_configs_organization_id" '
+                    'ON "connector_configs" ("organization_id")'
+                ))
+                db.session.commit()
+                added.append(f"{label} :: CREATE INDEX")
+            except Exception as exc:  # noqa: BLE001
+                db.session.rollback()
+                failed.append(f"{label}: {str(exc)[:120]}")
+
+
 def _ensure_evidence_waiver_constraint(
     *, dry_run, existing_tables, added, failed
 ):
@@ -1262,6 +1323,12 @@ def _reconcile(dry_run=False):
         failed=failed,
     )
     _ensure_transformation_foreign_keys(
+        dry_run=dry_run,
+        existing_tables=existing_tables,
+        added=added,
+        failed=failed,
+    )
+    _ensure_connector_config_organization_fk_and_index(
         dry_run=dry_run,
         existing_tables=existing_tables,
         added=added,

@@ -234,12 +234,12 @@ class ServiceNowConnectorService:
 
     @staticmethod
     def _get_config(org_id: int | None, connector_type: str):
-        """Load ConnectorConfig for the org; returns None if not found."""
+        """Load the org's ServiceNow OrgConnectorConfig; returns None if not found."""
         if org_id is None:
             return None
-        from app.models.connector_config import ConnectorConfig
+        from app.models.connector_config import OrgConnectorConfig
 
-        return ConnectorConfig.query.filter_by(
+        return OrgConnectorConfig.query.filter_by(
             organization_id=org_id, connector_type=connector_type
         ).first()
 

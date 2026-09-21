@@ -1,11 +1,14 @@
-"""Fail-closed allowlist gate for connector types reaching the crosswalk write path.
+"""Fail-closed allowlist gate for connector types reaching a data-entry boundary.
 
-The crosswalk resolves an external identity (a ServiceNow sys_id, a Jira key,
-a device object from an AD/M365 sync, ...) to an internal element. That write
-is the point where a connected system's data enters the model, so it is also
-the point where a source with no recorded lawful basis for the data it
-carries (HR systems, security/SIEM tooling, arbitrary "mystery" sources
-nobody has reviewed) must be refused rather than silently accepted.
+Two boundaries call this today. The crosswalk resolves an external identity
+(a ServiceNow sys_id, a Jira key, a device object from an AD/M365 sync, ...)
+to an internal element -- that write is the point where a connected system's
+data enters the model. Storing a connector's credentials and creating its
+sync workflow (`ConnectorOrchestrator.create_sync_workflow`) is the point
+where a connected system is first wired up at all. Both are places where a
+source with no recorded lawful basis for the data it carries (HR systems,
+security/SIEM tooling, arbitrary "mystery" sources nobody has reviewed) must
+be refused rather than silently accepted.
 
 The mechanism is an allowlist, not a denylist: an unrecognised connector
 type is refused by default, because the failure mode of a denylist here is
@@ -14,18 +17,22 @@ is exactly backwards for data that may carry personal or security
 information. Only a source that is either hard-coded below or explicitly
 approved via configuration is permitted through.
 
-This module ships ahead of the crosswalk write path it guards. There is no
-crosswalk table or writer yet, so `assert_connector_permitted` currently has
-no caller in this codebase -- it exists now so that when the crosswalk
-writer is built, the gate is already in place rather than being retrofitted
-onto a write path that has already shipped without it. See
+This module shipped ahead of the crosswalk write path it guards (there was
+no crosswalk table or writer yet), so `assert_connector_permitted` had no
+caller for a time -- it existed so that when the crosswalk writer was built,
+the gate would already be in place rather than being retrofitted onto a
+write path that had already shipped without it. See
 `scripts/check_crosswalk_writer_gated.py`, which fails the build the day a
 crosswalk writer appears without a call to this function on its path.
 
-This module claims exactly one boundary: the crosswalk write. It does not
-gate, and must not be read as gating, how a connector is *configured*
-(credentials, endpoint URLs, etc. accepted at connector-setup time) -- that
-is a separate, currently unfenced, surface tracked outside this module.
+Scoping how a connector is *configured* (credentials, endpoint URLs, etc.
+accepted at connector-setup time) through this same gate is a deliberate
+choice, not scope creep: the permitted set is a security decision about
+which sources are reviewed, and applying it at storage/wiring time closes it
+before the crosswalk boundary rather than only at it. A type recognised by
+`ConnectorOrchestrator`'s own workflow-builder table (Salesforce, SAP,
+SharePoint, ...) but not on this allowlist is refused all the same -- add it
+to `COMPLIANCE_APPROVED_CONNECTOR_TYPES` once it has been reviewed.
 """
 
 from __future__ import annotations

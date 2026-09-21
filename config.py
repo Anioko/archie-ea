@@ -224,6 +224,14 @@ class Config:
 
     # ARCHIE Deploy: Credential encryption + Coolify PaaS + n8n connector sync
     CREDENTIAL_ENCRYPTION_KEY = os.environ.get("CREDENTIAL_ENCRYPTION_KEY", "")
+    if not CREDENTIAL_ENCRYPTION_KEY:
+        print(
+            "WARNING: CREDENTIAL_ENCRYPTION_KEY env var not set. Any connector "
+            "credential save (M365, Jira, DevOps, Lucidchart) will refuse to "
+            "store the secret rather than store it unencrypted. Generate one: "
+            'python -c "from cryptography.fernet import Fernet; '
+            'print(Fernet.generate_key().decode())"'
+        )
     COOLIFY_API_URL = os.environ.get("COOLIFY_API_URL", "http://localhost:8000")
     COOLIFY_API_TOKEN = os.environ.get("COOLIFY_API_TOKEN", "")
     COOLIFY_DOMAIN_SUFFIX = os.environ.get("COOLIFY_DOMAIN_SUFFIX", "archie.example.com")
@@ -454,6 +462,12 @@ class TestingConfig(Config):
     WTF_CSRF_ENABLED = False
     TRANSFORMATION_COMMAND_CAPABILITY_SECRET = "74" * 32
     TRANSFORMATION_COMMAND_CAPABILITY_PREVIOUS_SECRETS = ""
+
+    # credential_encryption.py raises RuntimeError when this is unset, by
+    # design (it must not silently store a credential in plaintext). Generated
+    # at import time rather than a literal, so nothing here reads as a real key.
+    from cryptography.fernet import Fernet as _Fernet
+    CREDENTIAL_ENCRYPTION_KEY = _Fernet.generate_key().decode()
 
     # Brute-force protection is a production control; under test it throttles the
     # suite instead of an attacker. /account/login is capped at 10 POSTs per

@@ -12,6 +12,9 @@ from flask import current_app
 from app.extensions import db
 from app.modules.codegen.models import SolutionConnector
 from app.modules.codegen.services.credential_vault import CredentialVault
+from app.modules.intelligence.services.connector_allowlist import (
+    assert_connector_permitted,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -401,7 +404,13 @@ class ConnectorOrchestrator:
         Credentials are stored encrypted via CredentialVault, then injected
         into the n8n workflow JSON at creation time. They are never persisted
         in n8n's own credential store.
+
+        Raises ``ConnectorNotPermitted`` before anything is stored when
+        *connector_type* is not on the allowlist -- this is the boundary
+        that holds for any caller, whether or not it checked first.
         """
+        assert_connector_permitted(connector_type)
+
         # Store credentials in vault (encrypted at rest)
         vault = CredentialVault()
         vault.store(solution_id, connector_type, credentials)
@@ -440,6 +449,11 @@ class ConnectorOrchestrator:
 
         Returns {"success": bool, "message": str}.
         """
+        try:
+            assert_connector_permitted(connector_type)
+        except Exception as e:
+            return {"success": False, "message": str(e)}
+
         try:
             if connector_type == "rest_api":
                 resp = requests.get(

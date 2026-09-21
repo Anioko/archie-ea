@@ -99,6 +99,16 @@ def create_connector(solution_id):
     if not connector_type:
         return jsonify({"success": False, "error": "connector_type is required"}), 400
 
+    from app.modules.intelligence.services.connector_allowlist import (
+        ConnectorNotPermitted,
+        assert_connector_permitted,
+    )
+
+    try:
+        assert_connector_permitted(connector_type)
+    except ConnectorNotPermitted as exc:
+        return jsonify({"success": False, "error": str(exc)}), 403
+
     try:
         orch = ConnectorOrchestrator()
         connector = orch.create_sync_workflow(
