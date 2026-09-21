@@ -679,9 +679,13 @@ def test_intelligence_yield_route_authorisation(archetype, page, live_server, se
 
 def test_intelligence_yield_route_rejects_anonymous_browser_session(page, live_server):
     path = "/api/v1/intelligence/yield"
-    response = page.goto(live_server + path, wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
+    # Check the API response without waiting for the browser's JSON document lifecycle.
+    response = page.goto(live_server + path, wait_until="commit", timeout=PAGE_TIMEOUT)
     assert response is not None
     assert response.status == 401
+    body = response.json()
+    assert body["success"] is False
+    assert body["error"] == "Authentication required"
 
 
 def test_transformation_api_rejects_anonymous_browser_session(page, live_server):
