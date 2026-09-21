@@ -1,15 +1,4 @@
-"""Existing review queue items are attributed to an organisation, safely.
-
-``backfill-review-queue-org`` attributes an item from the users named on it (the
-assigned reviewer and the user who decided it), never from the application it is
-about: ``item_id`` is supplied by whoever queues the item, so it says which
-application an item concerns, not who created it. The application only checks the
-users. An item whose users all belong to the application's organisation takes
-that organisation; so does an item with no known application whose users share
-one organisation. Every other item keeps no organisation and is listed for
-nobody. The command only touches items without an organisation, so it can run
-again, on an empty table, and after new items exist.
-"""
+"""Historical review references leave ownership unassigned until it is established."""
 
 from __future__ import annotations
 
@@ -141,12 +130,12 @@ def seeded(db_session, make_org):
         "orgs": (org_a, org_b),
         "leftover": leftover,
         "expected": {
-            "application_and_reviewer": org_a.id,
-            "application_and_both_reviewers": org_b.id,
-            "assigned_reviewer": org_a.id,
-            "deciding_user": org_b.id,
-            "reviewers_agree": org_a.id,
-            "application_that_does_not_exist": org_a.id,
+            "application_and_reviewer": None,
+            "application_and_both_reviewers": None,
+            "assigned_reviewer": None,
+            "deciding_user": None,
+            "reviewers_agree": None,
+            "application_that_does_not_exist": None,
             "application_only": None,
             "other_application_only": None,
             "application_of_another_organisation": None,
@@ -156,14 +145,16 @@ def seeded(db_session, make_org):
             "no_reviewers": None,
         },
         "counts": {
-            "attributed": {"reviewers_and_application": 2, "reviewers": 4},
+            "attributed": {},
             "left": {
+                "reviewers_and_application": 2,
+                "reviewers": 4,
                 "application_only": 2,
                 "no_evidence": 1,
                 "reviewers_disagree": 2,
                 "application_conflict": 2,
             },
-            "by_organisation": {org_a.id: 4, org_b.id: 2},
+            "by_organisation": {},
         },
     }
 
@@ -189,6 +180,24 @@ def test_each_outcome_attributes_or_leaves_its_items(db_session, seeded):
     assert result == _expected_stats(seeded)
     for name, item_id in seeded["items"].items():
         assert _organisation_of(db_session, item_id) == seeded["expected"][name], name
+
+
+def test_all_unowned_reference_shapes_are_hidden_through_routes(
+    db_session, seeded, client, login_as
+):
+    from app.commands.backfill_review_queue_org import run_backfill
+
+    run_backfill()
+    hidden_ids = set(seeded["items"].values())
+    for org in seeded["orgs"]:
+        user = _make_user(db_session, org)
+        for item_id in hidden_ids:
+            login_as(client, user)
+            response = client.get(f"/api/confidence/queue/{item_id}")
+            assert (response.status_code, response.get_json()) == (404, NOT_FOUND)
+        login_as(client, user)
+        listing = client.get("/api/confidence/queue?limit=100").get_json()
+        assert hidden_ids.isdisjoint(item["id"] for item in listing["items"])
 
 
 def test_an_application_alone_never_attributes_an_item(db_session, seeded):
@@ -236,19 +245,16 @@ def test_an_item_naming_another_organisations_application_is_visible_to_neither_
     run_backfill()
 
     assert _organisation_of(db_session, other_org_item) is None
-    assert _organisation_of(db_session, owned_item) == org_owner.id
+    assert _organisation_of(db_session, owned_item) is None
     for user in (owner, author):
         login_as(client, user)
-        response = client.get(f"/api/confidence/queue/{other_org_item}")
-        assert (response.status_code, response.get_json()) == (404, NOT_FOUND)
+        for item_id in (other_org_item, owned_item):
+            login_as(client, user)
+            response = client.get(f"/api/confidence/queue/{item_id}")
+            assert (response.status_code, response.get_json()) == (404, NOT_FOUND)
         login_as(client, user)
         listing = client.get("/api/confidence/queue?limit=100").get_json()
-        assert other_org_item not in {item["id"] for item in listing["items"]}
-    # The owning organisation reads the item its own user was assigned; the author does not.
-    login_as(client, owner)
-    assert client.get(f"/api/confidence/queue/{owned_item}").status_code == 200
-    login_as(client, author)
-    assert client.get(f"/api/confidence/queue/{owned_item}").status_code == 404
+        assert {other_org_item, owned_item}.isdisjoint(item["id"] for item in listing["items"])
 
 
 def test_running_the_backfill_again_changes_nothing(db_session, seeded):
@@ -258,8 +264,8 @@ def test_running_the_backfill_again_changes_nothing(db_session, seeded):
     stored = {name: _organisation_of(db_session, i) for name, i in seeded["items"].items()}
     second = run_backfill()
 
-    # Only the items still without an organisation are examined the second time.
-    assert second["attributed"] == {"reviewers_and_application": 0, "reviewers": 0}
+    # All unowned items remain unowned on every run.
+    assert second["attributed"] == {}
     assert second["left"] == first["left"]
     assert second["by_organisation"] == {}
     assert second["remaining_nulls"] == first["remaining_nulls"]
@@ -287,15 +293,19 @@ def test_an_item_that_already_has_an_organisation_is_left_alone(db_session, seed
     assert _organisation_of(db_session, item_id) == org_b.id
 
 
-def test_a_dry_run_reports_the_counts_and_changes_nothing(db_session, seeded):
-    from app.commands.backfill_review_queue_org import run_backfill
+def test_a_dry_run_reports_the_counts_and_changes_nothing(db_session, seeded, monkeypatch):
+    from app.commands import backfill_review_queue_org as command
 
-    dry = run_backfill(dry_run=True)
+    with monkeypatch.context() as patch:
+        def unexpected_schema_change(*args, **kwargs):
+            pytest.fail("A dry run must not change the schema")
 
+        patch.setattr(command, "ensure_organization_index_and_fk", unexpected_schema_change)
+        dry = command.run_backfill(dry_run=True)
     assert dry == _expected_stats(seeded)
     for item_id in seeded["items"].values():
         assert _organisation_of(db_session, item_id) is None
-    assert run_backfill() == dry
+    assert command.run_backfill() == dry
 
 
 def test_a_dry_run_prints_each_outcome_and_where_items_would_land(app, db_session, seeded):
@@ -304,7 +314,6 @@ def test_a_dry_run_prints_each_outcome_and_where_items_would_land(app, db_sessio
     result = app.test_cli_runner().invoke(backfill_review_queue_org, ["--dry-run"])
 
     assert result.exit_code == 0, result.output
-    org_a, org_b = seeded["orgs"]
     assert "(dry-run)" in result.output
     for name in (
         "reviewers_and_application",
@@ -315,8 +324,8 @@ def test_a_dry_run_prints_each_outcome_and_where_items_would_land(app, db_sessio
         "application_conflict",
     ):
         assert name in result.output
-    placed = "would attribute to: organisation %d: 4, organisation %d: 2" % (org_a.id, org_b.id)
-    assert placed in result.output
+    assert "would attribute to no organisation" in result.output
+    assert "ownership withheld" in result.output
     # Nothing was written.
     for item_id in seeded["items"].values():
         assert _organisation_of(db_session, item_id) is None
@@ -331,8 +340,10 @@ def test_the_backfill_runs_on_an_empty_table(db_session):
     db_session.execute(text("DELETE FROM review_queue_items"))
 
     empty = {
-        "attributed": {"reviewers_and_application": 0, "reviewers": 0},
+        "attributed": {},
         "left": {
+            "reviewers_and_application": 0,
+            "reviewers": 0,
             "application_only": 0,
             "no_evidence": 0,
             "reviewers_disagree": 0,
@@ -370,3 +381,38 @@ def test_the_backfill_leaves_one_index_and_one_foreign_key_on_the_column(db_sess
     ).scalar()
     assert foreign_keys == 1
     assert indexes == 1
+
+
+@pytest.mark.parametrize(
+    "reviewer_orgs, reviewer_org, application_org",
+    [
+        pytest.param(1, 202, 202, id="matching-application-reviewer"),
+        pytest.param(1, 202, None, id="reviewer-only"),
+        pytest.param(2, 101, 202, id="conflicting-reviewers"),
+        pytest.param(0, None, 202, id="null-org-reviewer"),
+        pytest.param(0, None, None, id="absent-users"),
+        pytest.param(1, 101, None, id="missing-application"),
+        pytest.param(0, None, None, id="no-references"),
+        pytest.param(1, 101, 101, id="matching-historical-references"),
+    ],
+)
+def test_reference_shapes_do_not_establish_historical_ownership(
+    reviewer_orgs, reviewer_org, application_org
+):
+    from app.commands.backfill_review_queue_org import classify
+
+    assert classify(reviewer_orgs, reviewer_org, application_org)[1] is None
+
+
+def test_missing_organisation_column_requires_reconciliation(db_session):
+    from sqlalchemy import text
+
+    from app.commands.backfill_review_queue_org import run_backfill
+
+    # Transactional DDL restores the original column and its constraints.
+    with db_session.begin_nested() as savepoint:
+        db_session.execute(text("ALTER TABLE review_queue_items DROP COLUMN organization_id CASCADE"))
+        for dry_run in (True, False):
+            with pytest.raises(RuntimeError, match="run reconcile-schema first"):
+                run_backfill(dry_run=dry_run)
+        savepoint.rollback()

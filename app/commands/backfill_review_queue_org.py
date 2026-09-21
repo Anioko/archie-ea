@@ -1,36 +1,20 @@
-"""Attribute existing review queue items to an organisation.
+"""Report unowned review queue items and complete the tenant schema.
 
 ``ReviewQueueItem.organization_id`` is nullable because ``reconcile-schema`` can
 only add nullable columns, so items created before the column existed have none.
 The tenant filter compares with ``=``, so an item without an organisation is
-listed for nobody until this command gives it one.
+listed for nobody until ownership is independently established.
 
-An item is attributed from the users named on it: the assigned reviewer and the
-user who decided it. It is never attributed from the application it is about.
-``item_id`` is supplied by whoever queues the item, so it says which application
-an item concerns, not who created it; here it is only used to check the users'
-organisation against the application's.
+Historical application and reviewer references describe an item's subject and
+participants, but do not establish its originating organisation. All items
+without an organisation remain unassigned until independent ownership evidence
+is available. Matching references, including genuine-looking historical rows,
+do not change that rule. Already-attributed rows are preserved.
 
-The outcome for each item without an organisation:
-
-* ``reviewers_and_application`` - the item is about an application, and every
-  user named on it belongs to that application's organisation. The item takes it.
-* ``reviewers`` - the item is not about a known application, and every user named
-  on it belongs to one organisation. The item takes it.
-* ``application_only`` - the item is about an application and names no user.
-  Left without an organisation.
-* ``no_evidence`` - names no user and is not about a known application. Left
-  without an organisation.
-* ``reviewers_disagree`` - the users named on it belong to different
-  organisations. Left without an organisation.
-* ``application_conflict`` - the users named on it belong to a different
-  organisation than the application. Left without an organisation.
-
-An item left without an organisation stays hidden from every organisation:
-nothing is assigned to a guessed organisation and no row is deleted. Only rows
-whose organisation is NULL are examined, so the command is safe to run again, on
-an empty table, and after new items exist. ``--dry-run`` classifies the same rows
-and prints where each outcome would land, changing nothing.
+The command reports the reference shapes for planning: reviewers and application
+agree, reviewers only, application only, no evidence, reviewers disagree, or
+application conflict. These are diagnostic categories, not attribution rules.
+No queue row is changed or deleted. Dry runs also leave the schema untouched.
 
 It also gives the column the index and foreign key the model declares, which
 ``reconcile-schema`` does not add.
@@ -50,8 +34,11 @@ from app.models.confidence_review import APPLICATION_ITEM_TYPES
 
 TABLE = "review_queue_items"
 
-ATTRIBUTED = ("reviewers_and_application", "reviewers")
-LEFT_UNATTRIBUTED = ("application_only", "no_evidence", "reviewers_disagree", "application_conflict")
+ATTRIBUTED = ()
+LEFT_UNATTRIBUTED = (
+    "reviewers_and_application", "reviewers", "application_only", "no_evidence",
+    "reviewers_disagree", "application_conflict",
+)
 
 DESCRIPTIONS = {
     "reviewers_and_application": "reviewers belong to the reviewed application's organisation",
@@ -78,27 +65,22 @@ _CLASSIFY_SQL = (
     "GROUP BY q.id"
 )
 
-_ATTRIBUTE_SQL = (
-    "UPDATE review_queue_items SET organization_id = :org "
-    "WHERE id = ANY(:ids) AND organization_id IS NULL"
-)
-
 
 def classify(reviewer_orgs, reviewer_org, application_org):
-    """Return ``(outcome, organisation id or None)`` for one item."""
+    """Return the reference shape and no owner without independent evidence."""
     if reviewer_orgs > 1:
         return "reviewers_disagree", None
     if reviewer_orgs == 0:
         return ("application_only" if application_org is not None else "no_evidence"), None
     if application_org is None:
-        return "reviewers", reviewer_org
+        return "reviewers", None
     if application_org == reviewer_org:
-        return "reviewers_and_application", reviewer_org
+        return "reviewers_and_application", None
     return "application_conflict", None
 
 
 def run_backfill(*, dry_run: bool = False):
-    """Attribute items that have no organisation, idempotently.
+    """Report unowned items and complete their tenant schema, idempotently.
 
     Returns how many items each outcome covers, how many items each organisation
     receives, and how many items have no organisation afterwards. With
@@ -108,7 +90,8 @@ def run_backfill(*, dry_run: bool = False):
     from sqlalchemy import bindparam, inspect, text
 
     outcomes = {name: 0 for name in ATTRIBUTED + LEFT_UNATTRIBUTED}
-    inspector = inspect(db.engine)
+    conn = db.session.connection()
+    inspector = inspect(conn)
     if TABLE not in inspector.get_table_names():
         return {
             "attributed": {name: 0 for name in ATTRIBUTED},
@@ -121,30 +104,21 @@ def run_backfill(*, dry_run: bool = False):
     if "organization_id" not in columns:
         raise RuntimeError("review_queue_items.organization_id is absent; run reconcile-schema first")
 
-    conn = db.session.connection()
     rows = conn.execute(
         text(_CLASSIFY_SQL).bindparams(bindparam("types", expanding=True)),
         {"types": sorted(APPLICATION_ITEM_TYPES)},
     ).all()
 
-    targets = {}
-    for item_id, reviewer_orgs, reviewer_org, application_org in rows:
-        outcome, organisation = classify(reviewer_orgs, reviewer_org, application_org)
+    for _item_id, reviewer_orgs, reviewer_org, application_org in rows:
+        outcome, _ = classify(reviewer_orgs, reviewer_org, application_org)
         outcomes[outcome] += 1
-        if organisation is not None:
-            targets.setdefault(organisation, []).append(item_id)
 
     if not dry_run:
-        for organisation, item_ids in targets.items():
-            conn.execute(text(_ATTRIBUTE_SQL), {"org": organisation, "ids": item_ids})
         ensure_organization_index_and_fk(conn, TABLE, strict=True)
 
-    attributed = sum(outcomes[name] for name in ATTRIBUTED)
     total_nulls = conn.execute(
         text("SELECT count(*) FROM review_queue_items WHERE organization_id IS NULL")
     ).scalar() or 0
-    # A dry run has written nothing, so the items it would attribute still count.
-    remaining = total_nulls - attributed if dry_run else total_nulls
 
     if dry_run:
         db.session.rollback()
@@ -153,9 +127,9 @@ def run_backfill(*, dry_run: bool = False):
     return {
         "attributed": {name: outcomes[name] for name in ATTRIBUTED},
         "left": {name: outcomes[name] for name in LEFT_UNATTRIBUTED},
-        "by_organisation": {organisation: len(ids) for organisation, ids in sorted(targets.items())},
+        "by_organisation": {},
         "examined": len(rows),
-        "remaining_nulls": remaining,
+        "remaining_nulls": total_nulls,
     }
 
 
@@ -168,6 +142,7 @@ def format_report(stats, dry_run=False):
         "review_queue_items: attributed=%d left=%d remaining_nulls=%d%s"
         % (attributed, left, stats["remaining_nulls"], suffix),
         "  examined %d item(s) without an organisation" % stats["examined"],
+        "  ownership withheld: legacy references do not establish the originating organisation",
         "  attributed: %d" % attributed,
     ]
     lines += ["    %-26s %d  %s" % (name, stats["attributed"][name], DESCRIPTIONS[name]) for name in ATTRIBUTED]
@@ -189,7 +164,7 @@ def format_report(stats, dry_run=False):
 @click.option("--dry-run", is_flag=True, help="Report where items would land without changing rows.")
 @with_appcontext
 def backfill_review_queue_org(dry_run):
-    """Attribute existing review queue items to an organisation."""
+    """Report unowned items and complete the review queue tenant schema."""
     for line in format_report(run_backfill(dry_run=dry_run), dry_run=dry_run):
         click.echo(line)
 

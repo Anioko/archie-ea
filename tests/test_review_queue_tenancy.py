@@ -91,7 +91,8 @@ def _row(db_session, item_id):
     row = db_session.execute(
         text(
             "SELECT status, assigned_to_id, reviewed_by_id, review_notes, "
-            "review_decision, rejection_reason, organization_id "
+            "review_decision, rejection_reason, organization_id, assigned_at, reviewed_at, "
+            "quality_score, accuracy_rating "
             "FROM review_queue_items WHERE id = :id"
         ),
         {"id": item_id},
@@ -313,13 +314,13 @@ def _processed_assign(stored, answer, user):
 
 
 def _processed_decision(stored, answer, user):
-    # The request reached the item: it was not answered as an unknown id.
-    return answer[1] != NOT_FOUND
+    return answer[1]["success"] is True and stored["reviewed_by_id"] == user.id
 
 
 def _processed_take(stored, answer, user):
     # Approve and reject take a pending item into review under the caller.
-    return answer[1] != NOT_FOUND and stored["assigned_to_id"] == user.id
+    return (answer[1]["success"] is True and stored["assigned_to_id"] == user.id
+            and stored["reviewed_by_id"] == user.id)
 
 
 # name -> (url, body factory, status the item starts in, check that the request was processed)
@@ -393,21 +394,22 @@ def test_bulk_decision_acts_only_on_the_callers_items(
     # Another organisation's ids read as an unknown id, like the id that is not there.
     assert results[1] == results[3] == results[4] == NOT_FOUND
     # The caller's own ids were processed.
-    assert results[0] != NOT_FOUND and results[2] != NOT_FOUND
+    assert results[0]["success"] is True and results[2]["success"] is True
+    assert body["successful_count"] == 2 and body["failed_count"] == 3
     assert body["successful_count"] + body["failed_count"] == len(ids)
     for item in b_items:
         assert item.item_name not in json.dumps(body)
 
     for item in a_items:
         assert _row(db_session, item.id)["assigned_to_id"] == user_a.id
+        assert _row(db_session, item.id)["reviewed_by_id"] == user_a.id
+        assert _decision_count(db_session, item.id) == 1
     for item in b_items:
         assert _row(db_session, item.id) == before[item.id]
         assert _decision_count(db_session, item.id) == 0
 
 
 def _decision_data(item, reviewer):
-    from decimal import Decimal
-
     from app.services.confidence_review_service import ReviewDecisionData
 
     return ReviewDecisionData(
@@ -420,7 +422,7 @@ def _decision_data(item, reviewer):
         quality_assessment={},
         identified_issues=[],
         suggested_improvements=[],
-        human_confidence_estimate=Decimal("0.9"),
+        human_confidence_estimate=0.9,
         ai_accuracy_assessment=4,
         correction_made=False,
         corrected_data={},
@@ -604,17 +606,11 @@ def test_item_queued_outside_a_request_takes_the_reviewed_applications_organisat
 def test_item_with_no_known_organisation_is_listed_for_nobody(
     db_session, client, login_as, make_org
 ):
-    from sqlalchemy import text
-
     org_a, org_b = make_org("none-a"), make_org("none-b")
     user_a, user_b = _make_user(db_session, org_a), _make_user(db_session, org_b)
     # An item type whose item_id does not identify an application, queued with no
     # request: nothing says which organisation owns it.
     item_id = _queue(_queue_item(item_type="archimate_element", item_id=7))
-    db_session.execute(
-        text("UPDATE review_queue_items SET organization_id = NULL WHERE id = :id"),
-        {"id": item_id},
-    )
     assert _row(db_session, item_id)["organization_id"] is None
 
     for user in (user_a, user_b):
@@ -624,3 +620,124 @@ def test_item_with_no_known_organisation_is_listed_for_nobody(
         assert item_id not in {item["id"] for item in listing["items"]}
         _, stats = _call(client, login_as, user, "get", "/api/confidence/statistics")
         assert stats["statistics"]["total_items"] == 0
+
+
+@pytest.mark.parametrize("operation", ["assign", "review"])
+@pytest.mark.parametrize("reviewer_kind", ["foreign", "absent", "unowned"])
+def test_reviewer_must_belong_to_the_items_organisation_before_route_writes(
+    db_session, client, login_as, make_org, operation, reviewer_kind
+):
+    from sqlalchemy import text
+
+    from app.models.confidence_review import ReviewStatus
+
+    org_a, org_b = make_org("identity-a"), make_org("identity-b")
+    caller, reviewer = _make_user(db_session, org_a), _make_user(db_session, org_b)
+    reviewer_id = reviewer.id
+    if reviewer_kind == "absent":
+        reviewer_id = db_session.execute(text("SELECT MAX(id) + 1000000 FROM users")).scalar()
+    elif reviewer_kind == "unowned":
+        # The shared fixture rolls back this historical schema shape too.
+        db_session.execute(text("ALTER TABLE users ALTER COLUMN organization_id DROP NOT NULL"))
+        db_session.execute(
+            text("UPDATE users SET organization_id = NULL WHERE id = :id"), {"id": reviewer_id}
+        )
+    status = ReviewStatus.PENDING if operation == "assign" else ReviewStatus.IN_REVIEW
+    item = _add_item(db_session, org_a, status=status)
+    before = _row(db_session, item.id)
+
+    code, body = _call(
+        client, login_as, caller, "post", f"/api/confidence/queue/{item.id}/{operation}",
+        {**DECISION, "reviewer_id": reviewer_id},
+    )
+
+    assert (code, body) == (200, {"success": False, "error": "Reviewer not found"})
+    assert _row(db_session, item.id) == before
+    assert _decision_count(db_session, item.id) == 0
+
+
+def test_same_organisation_delegation_persists_the_named_reviewers_decision(
+    db_session, client, login_as, make_org
+):
+    from decimal import Decimal
+    from sqlalchemy import text
+
+    org = make_org("delegate")
+    caller, delegate = _make_user(db_session, org), _make_user(db_session, org)
+    item = _add_item(db_session, org)
+
+    code, assignment = _call(
+        client, login_as, caller, "post", f"/api/confidence/queue/{item.id}/assign",
+        {"reviewer_id": delegate.id},
+    )
+    assert code == 200 and assignment["success"] is True
+    code, decision = _call(
+        client, login_as, caller, "post", f"/api/confidence/queue/{item.id}/review",
+        {**DECISION, "reviewer_id": delegate.id, "human_confidence_estimate": 0.9},
+    )
+    assert code == 200 and decision["success"] is True
+    stored = _row(db_session, item.id)
+    assert stored["assigned_to_id"] == stored["reviewed_by_id"] == delegate.id
+    assert stored["status"] == "APPROVED"
+    persisted = db_session.execute(
+        text("SELECT reviewer_id, confidence_adjustment FROM review_decisions WHERE review_item_id = :id"),
+        {"id": item.id},
+    ).one()
+    assert persisted == (delegate.id, Decimal("0.35"))
+
+
+@pytest.mark.parametrize("operation", ["approve_item", "reject_item"])
+def test_wrappers_return_assignment_failure_before_submitting_a_decision(
+    db_session, make_org, monkeypatch, operation
+):
+    from app.services.confidence_review_service import ConfidenceReviewService
+
+    org = make_org("assignment-failure")
+    user = _make_user(db_session, org)
+    item = _add_item(db_session, org)
+    before = _row(db_session, item.id)
+    service = ConfidenceReviewService()
+    failure = {"success": False, "error": "Reviewer not found"}
+    monkeypatch.setattr(service, "assign_review_item", lambda *args: failure)
+
+    def unexpected_decision(*args):
+        pytest.fail("A failed assignment must end the wrapper call")
+
+    monkeypatch.setattr(service, "submit_review_decision", unexpected_decision)
+    assert getattr(service, operation)(item.id, user.id) == failure
+    assert _row(db_session, item.id) == before
+    assert _decision_count(db_session, item.id) == 0
+
+
+@pytest.mark.parametrize("operation", ["assign_review_item", "submit_review_decision"])
+def test_shared_writes_require_an_owned_item_outside_a_request(db_session, make_org, operation):
+    from app.models.confidence_review import ReviewStatus
+    from app.services.confidence_review_service import ConfidenceReviewService
+
+    user = _make_user(db_session, make_org("unowned-service"))
+    status = ReviewStatus.PENDING if operation == "assign_review_item" else ReviewStatus.IN_REVIEW
+    item = _add_item(db_session, None, status=status)
+    before = _row(db_session, item.id)
+    service = ConfidenceReviewService()
+    if operation == "assign_review_item":
+        result = service.assign_review_item(item.id, user.id)
+    else:
+        result = service.submit_review_decision(_decision_data(item, user))
+    assert result == {"success": False, "error": "Reviewer not found"}
+    assert _row(db_session, item.id) == before
+    assert _decision_count(db_session, item.id) == 0
+
+
+def test_request_without_tenant_context_does_not_derive_application_ownership(
+    app, db_session, make_org
+):
+    from flask import g
+    from app.models.confidence_review import ReviewQueueItem
+
+    application = _application(db_session, make_org("missing-context"))
+    with app.test_request_context():
+        g.current_org_id = None
+        item_id = _queue(_queue_item(item_id=application.id))
+    assert _row(db_session, item_id)["organization_id"] is None
+    # No column default may select the sole organisation on a single-org install.
+    assert ReviewQueueItem.__table__.c.organization_id.default is None

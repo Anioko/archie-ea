@@ -18,6 +18,7 @@ import json
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
 
@@ -332,7 +333,9 @@ class ConfidenceReviewService:
         if not review_item:
             return {"success": False, "error": "Review item not found"}
         if review_item.status == ReviewStatus.PENDING:
-            self.assign_review_item(item_id, reviewer_id)
+            assignment = self.assign_review_item(item_id, reviewer_id)
+            if not assignment.get("success"):
+                return assignment
 
         decision = ReviewDecisionData(
             review_item_id=item_id,
@@ -360,7 +363,9 @@ class ConfidenceReviewService:
         if not review_item:
             return {"success": False, "error": "Review item not found"}
         if review_item.status == ReviewStatus.PENDING:
-            self.assign_review_item(item_id, reviewer_id)
+            assignment = self.assign_review_item(item_id, reviewer_id)
+            if not assignment.get("success"):
+                return assignment
 
         decision = ReviewDecisionData(
             review_item_id=item_id,
@@ -684,9 +689,7 @@ class ConfidenceReviewService:
         ``None`` when neither is known; such an item is listed for nobody.
         """
         if has_request_context():
-            org_id = getattr(g, "current_org_id", None)
-            if org_id is not None:
-                return org_id
+            return getattr(g, "current_org_id", None)
         if item_data.item_type in APPLICATION_ITEM_TYPES and item_data.item_id:
             from app.models.application_portfolio import ApplicationComponent
 
@@ -814,10 +817,16 @@ class ConfidenceReviewService:
         """
         try:
             from app.models.confidence_review import ReviewQueueItem, ReviewStatus
+            from app.models.user import User
 
             review_item = load_entity(ReviewQueueItem, review_item_id)
             if not review_item:
                 return {"success": False, "error": "Review item not found"}
+
+            if review_item.organization_id is None or not User.query.filter_by(
+                id=reviewer_id, organization_id=review_item.organization_id
+            ).first():
+                return {"success": False, "error": "Reviewer not found"}
 
             if review_item.status != ReviewStatus.PENDING:
                 return {
@@ -857,10 +866,16 @@ class ConfidenceReviewService:
         """
         try:
             from app.models.confidence_review import ReviewDecision, ReviewQueueItem, ReviewStatus
+            from app.models.user import User
 
             review_item = load_entity(ReviewQueueItem, decision_data.review_item_id)
             if not review_item:
                 return {"success": False, "error": "Review item not found"}
+
+            if review_item.organization_id is None or not User.query.filter_by(
+                id=decision_data.reviewer_id, organization_id=review_item.organization_id
+            ).first():
+                return {"success": False, "error": "Reviewer not found"}
 
             if review_item.status != ReviewStatus.IN_REVIEW:
                 return {
@@ -887,8 +902,8 @@ class ConfidenceReviewService:
                 review_item_id=decision_data.review_item_id,
                 decision_type=decision_data.decision_type,
                 decision_reason=decision_data.decision_reason,
-                confidence_adjustment=decision_data.human_confidence_estimate
-                - review_item.confidence_score,
+                confidence_adjustment=Decimal(str(decision_data.human_confidence_estimate))
+                - Decimal(str(review_item.confidence_score)),
                 quality_assessment=json.dumps(decision_data.quality_assessment),
                 identified_issues=json.dumps(decision_data.identified_issues),
                 suggested_improvements=json.dumps(decision_data.suggested_improvements),

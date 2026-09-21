@@ -10,7 +10,7 @@ from datetime import datetime
 from enum import Enum
 
 from .. import db
-from .mixins.core import TenantMixin, _default_org_id
+from .mixins.core import TenantMixin
 
 # ``ReviewQueueItem.item_type`` values whose ``item_id`` is the id of an
 # ApplicationComponent, the application the item is about. The import and
@@ -130,16 +130,15 @@ class ReviewQueueItem(TenantMixin, db.Model):
     id = db.Column(db.BigInteger, primary_key=True)
 
     # Nullable so reconcile-schema can add the column to an existing table (it
-    # only adds nullable columns); ``flask backfill-review-queue-org`` then
-    # attributes existing rows. The mixin still applies the tenant filter, and a
+    # only adds nullable columns). The mixin still applies the tenant filter, and a
     # row with no organisation matches no organisation, so it is listed for
-    # nobody. New rows take the organisation of the creating request.
+    # nobody. New rows take the organisation of the creating request or the
+    # background service's reviewed application; there is no default owner.
     organization_id = db.Column(
         db.Integer,
         db.ForeignKey("organizations.id", ondelete="CASCADE"),
         nullable=True,
         index=True,
-        default=_default_org_id,
     )
 
     threshold_id = db.Column(db.BigInteger, db.ForeignKey("confidence_thresholds.id"))
