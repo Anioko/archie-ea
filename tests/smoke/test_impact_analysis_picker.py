@@ -14,9 +14,9 @@ What the checks below guard, each one seen in a real browser:
 What the picker matches: an element's name, the way the global search does. The layer-scoped listing it
 replaced also matched words in an element's description; the picker no longer does, on purpose.
 
-How many it lists: at most 50, in name order. A text that matches 50 elements or fewer lists every one of
-them; a text that matches more lists the first 50 by name and says so, and the other-layer counts that an
-empty result offers read "at least N" when they come from a full list.
+How many it lists: at most 25 (readiness table A-16), in name order. A text that matches 25 elements or
+fewer lists every one of them; a text that matches more lists the first 25 by name and says so, and the
+other-layer counts that an empty result offers read "at least N" when they come from a full list.
 
 The typed text is matched literally: percent, underscore and backslash are escaped before it is sent.
 
@@ -220,7 +220,7 @@ def _status_text(page):
 
 SEARCH_URL = "**/archimate/api/elements/search*"
 ANALYSIS_URL = "**/strategic/api/impact-analysis"
-LIMIT = 50
+LIMIT = 25
 CAP_NOTE = "Showing the first %d matches. Type more of the name to narrow the list." % LIMIT
 
 
