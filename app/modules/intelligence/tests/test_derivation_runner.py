@@ -24,6 +24,8 @@ Mapping to the T-001 brief's numbered Acceptance Criteria:
 
 from __future__ import annotations
 
+from app.modules.intelligence.services.derivation_runner import ENGINE_VERSION
+
 import pathlib
 
 import pytest
@@ -160,7 +162,7 @@ def test_derivation_result_shape_and_ratio_is_none_when_no_explicit_relationship
     assert result.ratio is None
     assert isinstance(result.duration_ms, int)
     assert result.duration_ms >= 0
-    assert result.engine_version == ENGINE_VERSION == "1.0.0"
+    assert result.engine_version == ENGINE_VERSION == "1.0.1"
     assert result.derived == []
 
 
@@ -181,7 +183,7 @@ def test_derivation_result_shape_with_a_populated_model(app, db_session, make_or
     assert result.explicit_count == 2
     assert result.derived_count == 1
     assert result.ratio == pytest.approx(0.5)
-    assert result.engine_version == "1.0.0"
+    assert result.engine_version == ENGINE_VERSION
     assert len(result.derived) == 1
     assert result.derived[0]["type"] == "Serving"
     assert result.derived[0]["depth"] == 2

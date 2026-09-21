@@ -22,12 +22,65 @@ carries the same mapping against actual test ids):
 from __future__ import annotations
 
 import pytest
+from copy import deepcopy
 
 from app.services.archimate_derivation_service import (
     ArchiMateDerivationService,
+    STRENGTH_ORDER,
+    canonical_relationship_type,
     _DERIVATION_TABLE,
     _TRANSPARENT,
 )
+
+
+@pytest.mark.parametrize("canonical", STRENGTH_ORDER)
+@pytest.mark.parametrize("form", [str, str.lower, str.upper, str.swapcase])
+@pytest.mark.parametrize("padding", ["", " \t\n"])
+def test_known_tokens_normalize_without_mutating_input(canonical, form, padding):
+    raw = padding + form(canonical) + padding
+    assert canonical_relationship_type(raw) == canonical
+    elements = [_el(1), _el(2), _el(3)]
+    relationships = [_rel(10, 1, 2, " assignment "), _rel(20, 2, 3, raw)]
+    before = deepcopy((elements, relationships))
+    actual = ArchiMateDerivationService().compute_derived(elements, relationships)
+    assert actual == [_two_hop_row("Assignment", canonical)]
+    assert (elements, relationships) == before
+
+
+@pytest.mark.parametrize("raw", [
+    None, "", " \t", 1, True, [], {}, ["Serving"], "Servng", "DataFlow",
+    "realizes", "serves", "uses", "triggers", "flows", "composes", "aggregates",
+    "assigns", "specializes", "associates", "ServingRelationship", "Realisation",
+])
+def test_unsupported_eligible_type_fails_visibly_even_without_a_chain(raw):
+    with pytest.raises(ValueError, match="Unsupported relationship type"):
+        canonical_relationship_type(raw)
+    with pytest.raises(ValueError, match="Relationship 731"):
+        ArchiMateDerivationService().compute_derived(
+            [_el(1), _el(2)], [_rel(731, 1, 2, raw)]
+        )
+
+
+def test_missing_type_rejects_but_absent_endpoints_still_skip():
+    edge = {"id": 732, "source_id": 1, "target_id": 2}
+    with pytest.raises(ValueError, match="Relationship 732"):
+        ArchiMateDerivationService().compute_derived([_el(1), _el(2)], [edge])
+    assert ArchiMateDerivationService().compute_derived([_el(1)], [edge]) == []
+
+
+def test_mixed_case_equal_length_paths_retain_first_proof():
+    edges = [
+        _rel(10, 1, 2, "serving"), _rel(20, 2, 4, "SERVING"),
+        _rel(30, 1, 3, "flow"), _rel(40, 3, 4, "Flow"),
+    ]
+    row = _only_row(ArchiMateDerivationService().compute_derived(
+        [_el(i) for i in range(1, 5)], edges
+    ), 1, 4)
+    assert row == {
+        "source_id": 1, "target_id": 4, "type": "Serving", "depth": 2,
+        "chain": [1, 2, 4], "relationship_chain": [10, 20],
+        "rule_id": "table:Serving:Serving",
+    }
 
 
 def _el(id_: int) -> dict:

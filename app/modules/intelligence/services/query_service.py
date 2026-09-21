@@ -519,8 +519,8 @@ class IntelligenceQueryService:
           explicit relationships.
         - ``state`` is ``not_computed`` when derivation has never run for the
           tenant (no run record and no stored fact), ``stale`` when any stored
-          fact is out of date, else ``current``. A run that derived nothing is
-          ``current`` with a derived count of zero: a measured zero, which
+          fact or the latest run is out of date, else ``current``. A current
+          engine run that derived nothing has a measured count of zero, which
           reads differently from never having run.
         - ``last_recompute_duration_ms`` is the last completed run's own
           measured duration, ``None`` with ``no_recompute_duration_recorded``
@@ -540,10 +540,12 @@ class IntelligenceQueryService:
         one timed block, so its observation is the request's own time.
         """
         from app.modules.intelligence.services.derived_facts import (
+            STALE_REASON,
             derived_fact_aggregates,
             explicit_relationship_count,
             latest_derivation_run,
         )
+        from app.modules.intelligence.services.derivation_runner import ENGINE_VERSION
         from app.modules.intelligence.services.latency_probe import read_p95_bucket_edge
         from app.modules.intelligence.services.observability import record_shape_b_trigger
 
@@ -591,10 +593,15 @@ class IntelligenceQueryService:
             run = latest_derivation_run(organization_id)
             agg = derived_fact_aggregates(organization_id)
             computed = run is not None or agg["total_count"] > 0
+            stale = agg["stale_count"] > 0 or (
+                run is not None and run.engine_version != ENGINE_VERSION
+            )
 
             reasons: List[str] = []
             if not computed:
                 reasons.append(DERIVATION_NOT_COMPUTED_REASON)
+            if stale:
+                reasons.append(STALE_REASON)
             if p95_read["reason"] is not None:
                 reasons.append(validate_reason_code(p95_read["reason"]))
             duration_ms = run.duration_ms if run is not None else None
@@ -624,7 +631,7 @@ class IntelligenceQueryService:
                 derived_count = agg["total_count"]
                 payload.update(
                     {
-                        "state": "stale" if agg["stale_count"] > 0 else "current",
+                        "state": "stale" if stale else "current",
                         "explicit_count": explicit_count,
                         "derived_count": derived_count,
                         "ratio": (derived_count / explicit_count) if explicit_count else None,
@@ -645,6 +652,8 @@ class IntelligenceQueryService:
                         "stale_count": agg["stale_count"],
                     }
                 )
+            if stale:
+                payload["reason"] = STALE_REASON
             payload["reasons"] = reasons
 
         return payload

@@ -27,6 +27,7 @@ import logging
 
 from app.extensions import db
 from app.jobs.tenant_safe_job import JobRun, job_lock, run_for_each_tenant
+from app.modules.intelligence.services.derivation_runner import ENGINE_VERSION
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +46,7 @@ def per_tenant_lock_name(organization_id: int) -> str:
 
 
 def stale_carrying_organization_ids() -> list[int]:
-    """Organisation ids with at least one stale row -- plain ints, no ORM.
+    """Ids with effectively stale facts or an outdated latest completed run.
 
     Runs with NO tenant context, like ``active_organization_ids`` --
     ``organization_id`` is in this raw-SQL grouping explicitly, and nothing
@@ -54,9 +55,21 @@ def stale_carrying_organization_ids() -> list[int]:
     """
     rows = db.session.execute(
         db.text(
-            "SELECT DISTINCT organization_id FROM archimate_derived_relationships "
-            "WHERE stale = TRUE ORDER BY organization_id"
-        )
+            """
+            WITH latest_runs AS (
+                SELECT DISTINCT ON (organization_id) organization_id, engine_version
+                FROM intelligence_derivation_runs
+                ORDER BY organization_id, finished_at DESC, id DESC
+            )
+            SELECT organization_id FROM archimate_derived_relationships
+            WHERE stale IS NOT FALSE OR engine_version IS DISTINCT FROM :engine_version
+            UNION
+            SELECT organization_id FROM latest_runs
+            WHERE engine_version IS DISTINCT FROM :engine_version
+            ORDER BY organization_id
+            """
+        ),
+        {"engine_version": ENGINE_VERSION},
     ).all()
     return [int(row[0]) for row in rows]
 

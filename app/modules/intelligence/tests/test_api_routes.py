@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from app.modules.intelligence.services.derivation_runner import ENGINE_VERSION
+
 import uuid
 
 
@@ -66,7 +68,7 @@ def _insert_derived_row(db_session, org_id, source, target, **overrides):
         depth=1,
         confidence="1.00",
         provenance="derivation",
-        engine_version="1.0.0",
+        engine_version=ENGINE_VERSION,
         computed_at=_dt.datetime.utcnow(),
         stale=False,
         stale_since=None,
@@ -389,7 +391,7 @@ def test_impact_row_derived_id_addresses_the_provenance_endpoint(
     row_id = row.id
 
     login_as(client, user)
-    impact = client.get(f"/api/v1/intelligence/impact/{a.id}?include_derived=true")
+    impact = client.get(f"/api/v1/intelligence/impact/{a.id}?include_derived=true&include_stale=true")
     assert impact.status_code == 200
     derived_rows = [
         r for r in impact.get_json()["data"]["rows"] if r["relation"]["kind"] == "derived"
@@ -405,3 +407,35 @@ def test_impact_row_derived_id_addresses_the_provenance_endpoint(
     fact = provenance.get_json()["data"]
     assert fact["id"] == relation["derived_id"]
     assert fact["engine_version"] == relation["engine_version"]
+
+
+def test_old_clean_flag_provenance_is_visible_only_as_stale_and_is_tenant_fenced(
+    app, db_session, make_org, client, login_as
+):
+    org = make_org("d1-proof")
+    other = make_org("d1-proof-other")
+    user = _make_user(db_session, org)
+    foreign_user = _make_user(db_session, other)
+    a, b, c = (_make_element(db_session, org.id, name) for name in "abc")
+    ab = _make_relationship(db_session, org.id, a, b, "assignment")
+    bc = _make_relationship(db_session, org.id, b, c, "access")
+    db_session.commit()
+    row = _insert_derived_row(db_session, org.id, a, c, engine_version="1.0.0", stale=False,
+                              chain=[ab.id, bc.id], chain_element_ids=[a.id, b.id, c.id], depth=2)
+    row_id, anchor, computed = row.id, a.id, row.computed_at.isoformat()
+    db_session.commit()
+    login_as(client, user)
+    impact = client.get(f"/api/v1/intelligence/impact/{anchor}?include_derived=true")
+    assert impact.status_code == 200
+    assert not [r for r in impact.get_json()["data"]["rows"] if r["relation"]["kind"] == "derived"]
+    login_as(client, user)
+    proof = client.get(f"/api/v1/intelligence/derived/{row_id}")
+    assert proof.status_code == 200
+    fact = proof.get_json()["data"]
+    assert fact["stale"] is True
+    assert fact["reason"] == "derivation_stale"
+    assert fact["engine_version"] == "1.0.0"
+    assert fact["computed_at"] == computed
+    assert fact["derived_type"] == "Association"
+    login_as(client, foreign_user)
+    assert client.get(f"/api/v1/intelligence/derived/{row_id}").status_code == 404

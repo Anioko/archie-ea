@@ -11,6 +11,8 @@ sentence's wording in ``plain_terms.py`` alone.
 
 from __future__ import annotations
 
+from app.modules.intelligence.services.derivation_runner import ENGINE_VERSION
+
 import datetime as _dt
 import os
 import re
@@ -261,7 +263,7 @@ def _derived(db_session, org_id, source, target, chain_element_ids, *, confidenc
         depth=depth,
         confidence=confidence,
         provenance="derivation",
-        engine_version="1.2.0",
+        engine_version=ENGINE_VERSION,
         computed_at=_dt.datetime.utcnow(),
         stale=False,
         stale_since=None,
