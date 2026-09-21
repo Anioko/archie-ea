@@ -74,6 +74,12 @@ aside.sidebar-collapsed .sidebar-collapse-btn i[data-lucide="panel-left"] {
 #sidebar-nav {
     -webkit-mask-image: linear-gradient(to bottom, black calc(100% - 28px), transparent 100%);
     mask-image: linear-gradient(to bottom, black calc(100% - 28px), transparent 100%);
+    /* T-236: app.css's legacy `nav { margin-bottom: 40px !important; }` (a Semantic-UI-era rule with no
+       sidebar-specific exclusion) applies to every <nav>, this one included, eating 40px of the scrolling
+       list's own height for no visual reason -- it sits inside a flex column with its own footer below it,
+       not free-floating content that needs bottom margin. !important is required to win against app.css's
+       own !important. */
+    margin-bottom: 0 !important;
 }
 #sidebar-nav.at-scroll-end {
     -webkit-mask-image: none;

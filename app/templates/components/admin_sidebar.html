@@ -95,7 +95,11 @@ DEPENDENCIES:
        custom chrome, since the sidebar's own :hover/:focus-within styling
        already handles when it should be visually quiet. #}
     <script src="{{ url_for('static', filename='js/sidebar/module_search.js') }}"></script>
-    <nav id="sidebar-nav" class="flex-1 px-2 py-4 space-y-2 overflow-y-auto min-h-0"
+    {# #sidebar-nav's own box height is the full flex-1 space available to it regardless of what
+       scrolls inside -- clientHeight measures the box, not its scrolled content. The search box is
+       `sticky top-0` (not a sibling outside nav) so it stays on screen while the list scrolls beneath it,
+       without taking height away from nav's own measured size the way a true sibling would. -#}
+    <nav id="sidebar-nav" class="flex-1 px-2 py-2 space-y-2 overflow-y-auto min-h-0"
          x-data="{
              searchQuery: '',
              searchFocused: false,
@@ -129,8 +133,8 @@ DEPENDENCIES:
              searching() { return this.searchQuery.trim().length >= 2; }
          }">
 
-        <!-- Search Box -->
-        <div class="px-3 pb-3 mb-2 border-b border-border sidebar-search-wrap">
+        <!-- Search Box: sticky, stays on screen while the list below scrolls -->
+        <div class="sticky top-0 z-10 -mx-2 -mt-2 mb-2 bg-card px-5 pt-2 pb-3 border-b border-border sidebar-search-wrap">
             <div class="relative">
                 <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none"></i>
                 <input
@@ -214,9 +218,9 @@ DEPENDENCIES:
                    tooltip is the only way to learn what this link is. #}
                 <a href="{{ url_for(link.endpoint, **(link.query_params or {})) }}"
                    title="{{ link.label }}"
-                   class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint == link.endpoint %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}" {%- if request.endpoint == link.endpoint -%} aria-current="page"{%- endif -%}>
+                   class="flex items-start gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint == link.endpoint %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}" {%- if request.endpoint == link.endpoint -%} aria-current="page"{%- endif -%}>
                     <i data-lucide="{{ link.icon }}" class="h-4 w-4 flex-shrink-0"></i>
-                    <span class="flex-1 truncate">{{ link.label }}</span>
+                    <span class="flex-1 leading-snug break-words line-clamp-2">{{ link.label }}</span>
                 </a>
                 {% endfor %}
             </div>
@@ -246,17 +250,10 @@ DEPENDENCIES:
         </a>
     </div>
     {% endif %}
-    <!-- Desktop collapse toggle -->
-    <div class="hidden lg:block px-4 py-2 border-t border-border sidebar-show-all-btn">
-        <button type="button"
-                @click="$store.sidebar.toggle()"
-                class="w-full flex items-center gap-2 rounded-md px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-                title="Collapse sidebar (Ctrl+B)">
-            <i data-lucide="panel-left" class="h-3.5 w-3.5 flex-shrink-0"></i>
-            <span>Collapse sidebar</span>
-            <kbd class="ml-auto px-1.5 py-0.5 rounded bg-muted border border-border font-mono text-xs text-foreground">Ctrl+B</kbd>
-        </button>
-    </div>
+    {# The "Collapse sidebar (Ctrl+B)" row that lived here duplicated the header's own collapse
+       toggle (app/templates/components/admin_header.html), which already carries the same Ctrl+B hint in
+       its `:title`/`:aria-label` bindings -- removing it reclaims height for #sidebar-nav's own scroll
+       area without losing the control or the hint. #}
     <div class="border-t border-border p-4">
         {% if current_user.is_authenticated %}
         <div class="flex items-center gap-3">
@@ -264,8 +261,8 @@ DEPENDENCIES:
                 <span class="text-sm font-medium sidebar-footer-text">{{ current_user.first_name[0] if current_user.first_name }}</span>
             </div>
             <div class="flex-1 min-w-0 sidebar-footer-text">
-                <p class="text-sm font-medium truncate">{{ current_user.full_name() }}</p>
-                <p class="text-xs text-muted-foreground truncate">{{ current_user.email }}</p>
+                <p class="text-sm font-medium truncate" title="{{ current_user.full_name() }}">{{ current_user.full_name() }}</p>
+                <p class="text-xs text-muted-foreground truncate" title="{{ current_user.email }}">{{ current_user.email }}</p>
             </div>
             <a href="{{ url_for('account.logout') }}"
                class="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors sidebar-footer-text"
