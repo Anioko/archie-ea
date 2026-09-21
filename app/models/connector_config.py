@@ -6,26 +6,153 @@ Unique per (organization_id, connector_type).
 """
 
 import logging
-import os
 import uuid
 from datetime import datetime
+from enum import Enum
+
+from sqlalchemy import JSON, Column, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy.orm import declared_attr
 
 from app.extensions import db
+from app.models.mixins.core import TenantMixin
+from app.modules.codegen.services.credential_encryption import (
+    decrypt_credential,
+    encrypt_credential,
+)
 
 logger = logging.getLogger(__name__)
 
+# All Fernet tokens start with this byte (same check as app/models/models.py's
+# EncryptedAPIKey type). The setters below used to store plaintext whenever
+# no key was configured -- which, since nothing in this codebase ever set
+# FERNET_KEY, was the only path any of them ever took -- so every existing
+# stored value predates this fix and is plaintext, not a Fernet token.
+_FERNET_PREFIX = b"gAAAAA"
 
-def _fernet():
-    """Return a Fernet instance using FERNET_KEY env var, or None if absent."""
-    key = os.environ.get("FERNET_KEY")
-    if not key:
-        return None
-    try:
-        from cryptography.fernet import Fernet
-        return Fernet(key.encode() if isinstance(key, str) else key)
-    except Exception as exc:
-        logger.warning("Failed to initialise Fernet for credential encryption: %s", exc)
-        return None
+
+def _decrypt_or_legacy_plaintext(encrypted: str) -> str | None:
+    """Decrypt a stored credential, tolerating a pre-fix plaintext value.
+
+    A value that doesn't look like a Fernet token is returned as-is (it
+    predates this fix); one that does but fails to decrypt (corrupted, or
+    encrypted under a since-rotated key) is also returned as-is rather than
+    silently discarded, with a warning logged, matching the same tolerance
+    app/models/models.py's EncryptedAPIKey already applies. Either way the
+    value is re-encrypted correctly the next time its setter runs.
+    """
+    raw = encrypted.encode() if isinstance(encrypted, str) else encrypted
+    if not raw.startswith(_FERNET_PREFIX):
+        return encrypted
+    decrypted = decrypt_credential(raw)
+    if decrypted is None:
+        logger.warning(
+            "Failed to decrypt a stored connector credential — returning the "
+            "raw value (may be legacy plaintext or encrypted under a "
+            "different key)."
+        )
+        return encrypted
+    return decrypted
+
+
+class ConnectorType(str, Enum):
+    """Supported connector types."""
+
+    CMDB = "cmdb"
+    ALM = "alm"
+    APM = "apm"
+    CLM = "clm"  # Kept for future use
+    ERP = "erp"
+    CRM = "crm"
+    ITSM = "itsm"
+    EA_TOOL = "ea_tool"  # Enterprise Architecture tools (Abacus, Ardoq, LeanIX, etc.)
+
+
+class SyncMode(str, Enum):
+    """Synchronization modes."""
+
+    BATCH = "batch"
+    EVENT = "event"
+    HYBRID = "hybrid"
+
+
+class ConnectorStatus(str, Enum):
+    """Connector operational status."""
+
+    ACTIVE = "active"
+    INACTIVE = "inactive"
+    ERROR = "error"
+    MAINTENANCE = "maintenance"
+
+
+class ConnectorConfig(TenantMixin, db.Model):
+    """Connector configuration storage, scoped to the organisation that saved it.
+
+    Inherits ``TenantMixin`` so the ORM tenant filter (do_orm_execute) and
+    the before_flush auto-set both apply, but overrides its
+    ``organization_id`` column to be nullable: existing rows had no
+    organisation column at all, and a row whose origin cannot be determined
+    (no audit trail recorded who saved it) is backfilled to NULL rather
+    than guessed. NULL is not "shared" here -- the mixin's equality filter
+    (``WHERE organization_id = g.current_org_id``) never matches NULL, so
+    such a row is invisible to every organisation, not visible to all of
+    them. A row assigned to the wrong organisation is worse than a row
+    nobody can load.
+    """
+
+    __tablename__ = "connector_configs"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+
+    @declared_attr
+    def organization_id(cls):
+        from app.models.mixins.core import _default_org_id
+
+        return Column(
+            Integer,
+            ForeignKey("organizations.id", ondelete="CASCADE"),
+            nullable=True,
+            index=True,
+            # Same belt-and-suspenders as TenantMixin's own column: an insert
+            # that bypasses the before_flush listener (raw Table.insert(),
+            # a seeder, a background thread with no request context) still
+            # gets an org when one can be inferred. Nullable, unlike the
+            # mixin's own column, because an existing row whose origin
+            # cannot be determined is backfilled to NULL, not guessed.
+            default=_default_org_id,
+        )
+
+    connector_type = Column(String(50), nullable=False)
+    name = Column(String(100), nullable=False)
+    description = Column(Text)
+    config = Column(JSON, nullable=False)  # API endpoints, credentials, etc.
+    field_mappings = Column(JSON)  # Field mapping DSL
+    sync_schedule = Column(JSON)  # Cron expressions for batch sync
+    webhook_config = Column(JSON)  # Webhook endpoints and secrets
+    status = Column(String(20), default=ConnectorStatus.INACTIVE.value)
+    last_sync = Column(DateTime)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def __repr__(self) -> str:
+        return f"<ConnectorConfig {self.connector_type} org={self.organization_id}>"
+
+
+class SyncLog(db.Model):
+    """Synchronization log entries for :class:`ConnectorConfig`."""
+
+    __tablename__ = "sync_logs"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    connector_id = Column(String(36), ForeignKey("connector_configs.id"))
+    sync_type = Column(String(20), nullable=False)  # batch, event, manual
+    status = Column(String(20), nullable=False)  # success, error, partial
+    records_processed = Column(Integer, default=0)
+    records_created = Column(Integer, default=0)
+    records_updated = Column(Integer, default=0)
+    records_deleted = Column(Integer, default=0)
+    error_message = Column(Text)
+    started_at = Column(DateTime, default=datetime.utcnow)
+    completed_at = Column(DateTime)
 
 
 class OrgConnectorConfig(db.Model):
@@ -71,33 +198,18 @@ class OrgConnectorConfig(db.Model):
 
     @property
     def client_secret(self) -> str | None:
-        """Return decrypted client secret, or plaintext if no FERNET_KEY."""
+        """Return the decrypted client secret."""
         if not self._client_secret_encrypted:
             return None
-        f = _fernet()
-        if f is None:
-            return self._client_secret_encrypted
-        try:
-            return f.decrypt(self._client_secret_encrypted.encode()).decode()
-        except Exception as exc:
-            logger.error("Failed to decrypt client_secret: %s", exc)
-            return None
+        return _decrypt_or_legacy_plaintext(self._client_secret_encrypted)
 
     @client_secret.setter
     def client_secret(self, value: str | None) -> None:
-        """Encrypt and store client secret.  Falls back to plaintext + warning."""
+        """Encrypt and store client secret. Raises if no encryption key is configured."""
         if value is None:
             self._client_secret_encrypted = None
             return
-        f = _fernet()
-        if f is None:
-            logger.warning(
-                "FERNET_KEY not set — storing connector client_secret as plaintext. "
-                "Set FERNET_KEY in production."
-            )
-            self._client_secret_encrypted = value
-        else:
-            self._client_secret_encrypted = f.encrypt(value.encode()).decode()
+        self._client_secret_encrypted = encrypt_credential(value).decode()
 
     def __repr__(self) -> str:
         return f"<ConnectorConfig {self.connector_type} org={self.organization_id}>"
@@ -106,9 +218,8 @@ class OrgConnectorConfig(db.Model):
 class DevOpsConnectorConfig(db.Model):  # migration-exempt — COM-018
     """Per-org GitHub / Azure DevOps connector configuration.
 
-    One record per organisation.  Access token is Fernet-encrypted using
-    the ``FERNET_KEY`` environment variable (graceful plaintext fallback
-    when the key is absent, e.g. in development).
+    One record per organisation. Access token is Fernet-encrypted using
+    ``CREDENTIAL_ENCRYPTION_KEY``; the setter raises if no key is configured.
     """
 
     __tablename__ = "devops_connector_configs"
@@ -155,30 +266,15 @@ class DevOpsConnectorConfig(db.Model):  # migration-exempt — COM-018
         """Decrypt and return the stored access token."""
         if not self._access_token_encrypted:
             return None
-        f = _fernet()
-        if f is None:
-            return self._access_token_encrypted
-        try:
-            return f.decrypt(self._access_token_encrypted.encode()).decode("utf-8")
-        except Exception as exc:
-            logger.error("DevOpsConnectorConfig: failed to decrypt access_token: %s", exc)
-            return self._access_token_encrypted
+        return _decrypt_or_legacy_plaintext(self._access_token_encrypted)
 
     @access_token.setter
     def access_token(self, value: str | None) -> None:
-        """Encrypt and store the access token."""
+        """Encrypt and store the access token. Raises if no encryption key is configured."""
         if not value:
             self._access_token_encrypted = None
             return
-        f = _fernet()
-        if f is None:
-            logger.warning(
-                "FERNET_KEY not set — storing DevOps access_token as plaintext. "
-                "Set FERNET_KEY for production use."
-            )
-            self._access_token_encrypted = value
-        else:
-            self._access_token_encrypted = f.encrypt(value.encode("utf-8")).decode("ascii")
+        self._access_token_encrypted = encrypt_credential(value).decode()
 
     def __repr__(self) -> str:
         return f"<DevOpsConnectorConfig {self.provider} org={self.organization_id}>"
@@ -242,90 +338,45 @@ class LucidchartConnectorConfig(db.Model):  # migration-exempt — LUC-001
         """Decrypt and return the stored OAuth client secret."""
         if not self._client_secret_encrypted:
             return None
-        f = _fernet()
-        if f is None:
-            return self._client_secret_encrypted
-        try:
-            return f.decrypt(self._client_secret_encrypted.encode()).decode("utf-8")
-        except Exception as exc:
-            logger.error("LucidchartConnectorConfig: failed to decrypt client_secret: %s", exc)
-            return self._client_secret_encrypted
+        return _decrypt_or_legacy_plaintext(self._client_secret_encrypted)
 
     @client_secret.setter
     def client_secret(self, value: str | None) -> None:
-        """Encrypt and store the OAuth client secret."""
+        """Encrypt and store the OAuth client secret. Raises if no encryption key is configured."""
         if not value:
             self._client_secret_encrypted = None
             return
-        f = _fernet()
-        if f is None:
-            logger.warning(
-                "FERNET_KEY not set — storing Lucidchart client_secret as plaintext. "
-                "Set FERNET_KEY for production use."
-            )
-            self._client_secret_encrypted = value
-        else:
-            self._client_secret_encrypted = f.encrypt(value.encode("utf-8")).decode("ascii")
+        self._client_secret_encrypted = encrypt_credential(value).decode()
 
     @property
     def access_token(self) -> str | None:
         """Decrypt and return the stored Lucidchart access token."""
         if not self._access_token_encrypted:
             return None
-        f = _fernet()
-        if f is None:
-            return self._access_token_encrypted
-        try:
-            return f.decrypt(self._access_token_encrypted.encode()).decode("utf-8")
-        except Exception as exc:
-            logger.error("LucidchartConnectorConfig: failed to decrypt access_token: %s", exc)
-            return self._access_token_encrypted
+        return _decrypt_or_legacy_plaintext(self._access_token_encrypted)
 
     @access_token.setter
     def access_token(self, value: str | None) -> None:
-        """Encrypt and store the Lucidchart access token."""
+        """Encrypt and store the Lucidchart access token. Raises if no encryption key is configured."""
         if not value:
             self._access_token_encrypted = None
             return
-        f = _fernet()
-        if f is None:
-            logger.warning(
-                "FERNET_KEY not set — storing Lucidchart access_token as plaintext. "
-                "Set FERNET_KEY for production use."
-            )
-            self._access_token_encrypted = value
-        else:
-            self._access_token_encrypted = f.encrypt(value.encode("utf-8")).decode("ascii")
+        self._access_token_encrypted = encrypt_credential(value).decode()
 
     @property
     def refresh_token(self) -> str | None:
         """Decrypt and return the stored Lucidchart refresh token."""
         if not self._refresh_token_encrypted:
             return None
-        f = _fernet()
-        if f is None:
-            return self._refresh_token_encrypted
-        try:
-            return f.decrypt(self._refresh_token_encrypted.encode()).decode("utf-8")
-        except Exception as exc:
-            logger.error("LucidchartConnectorConfig: failed to decrypt refresh_token: %s", exc)
-            return self._refresh_token_encrypted
+        return _decrypt_or_legacy_plaintext(self._refresh_token_encrypted)
 
     @refresh_token.setter
     def refresh_token(self, value: str | None) -> None:
-        """Encrypt and store the Lucidchart refresh token."""
+        """Encrypt and store the Lucidchart refresh token. Raises if no encryption key is configured."""
         if not value:
             self._refresh_token_encrypted = None
             return
-        f = _fernet()
-        if f is None:
-            logger.warning(
-                "FERNET_KEY not set — storing Lucidchart refresh_token as plaintext. "
-                "Set FERNET_KEY for production use."
-            )
-            self._refresh_token_encrypted = value
-        else:
-            self._refresh_token_encrypted = f.encrypt(value.encode("utf-8")).decode("ascii")
+        self._refresh_token_encrypted = encrypt_credential(value).decode()
 
     def token_is_expired(self, now: datetime | None = None) -> bool:
         """Return True when the stored access token is missing or expired."""

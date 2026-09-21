@@ -61,9 +61,14 @@ def m365_config_save():
     if not client_secret_raw and cfg:
         client_secret_stored = (cfg.config or {}).get("client_secret", "")
     else:
-        client_secret_stored = (
-            encrypt_credential(client_secret_raw).decode() if client_secret_raw else ""
-        )
+        try:
+            client_secret_stored = (
+                encrypt_credential(client_secret_raw).decode() if client_secret_raw else ""
+            )
+        except RuntimeError:
+            logger.exception("COM-017: Failed to encrypt M365 client secret")
+            flash("Failed to encrypt client secret — check CREDENTIAL_ENCRYPTION_KEY.", "error")
+            return redirect(url_for("m365_connector.m365_config"))
 
     config_data = {
         "tenant_id": tenant_id,

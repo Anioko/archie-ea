@@ -12,83 +12,26 @@ Priority Connectors: ServiceNow CMDB, Jira ALM, Datadog APM
 """
 
 import logging
-import uuid
 from abc import ABC, abstractmethod
 from datetime import datetime
-from enum import Enum
 from typing import Any, Callable, Dict, List, Optional
-
-from sqlalchemy import JSON, Column, DateTime, ForeignKey, Integer, String, Text
 
 from app import db
 
+# ConnectorConfig carries per-organisation credentials, so it lives under
+# app/models/ where the tenancy checks (the isolation matrix and the static
+# tenant-scoping gate) can see it. Re-exported here so existing imports of
+# `app.services.connector_framework.ConnectorConfig` (and its enums and
+# SyncLog) keep working unchanged.
+from app.models.connector_config import (  # noqa: F401
+    ConnectorConfig,
+    ConnectorStatus,
+    ConnectorType,
+    SyncLog,
+    SyncMode,
+)
+
 logger = logging.getLogger(__name__)
-
-
-class ConnectorType(str, Enum):
-    """Supported connector types."""
-
-    CMDB = "cmdb"
-    ALM = "alm"
-    APM = "apm"
-    CLM = "clm"  # Kept for future use
-    ERP = "erp"
-    CRM = "crm"
-    ITSM = "itsm"
-    EA_TOOL = "ea_tool"  # Enterprise Architecture tools (Abacus, Ardoq, LeanIX, etc.)
-
-
-class SyncMode(str, Enum):
-    """Synchronization modes."""
-
-    BATCH = "batch"
-    EVENT = "event"
-    HYBRID = "hybrid"
-
-
-class ConnectorStatus(str, Enum):
-    """Connector operational status."""
-
-    ACTIVE = "active"
-    INACTIVE = "inactive"
-    ERROR = "error"
-    MAINTENANCE = "maintenance"
-
-
-class ConnectorConfig(db.Model):
-    """Connector configuration storage."""
-
-    __tablename__ = "connector_configs"
-
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    connector_type = Column(String(50), nullable=False)
-    name = Column(String(100), nullable=False)
-    description = Column(Text)
-    config = Column(JSON, nullable=False)  # API endpoints, credentials, etc.
-    field_mappings = Column(JSON)  # Field mapping DSL
-    sync_schedule = Column(JSON)  # Cron expressions for batch sync
-    webhook_config = Column(JSON)  # Webhook endpoints and secrets
-    status = Column(String(20), default=ConnectorStatus.INACTIVE.value)
-    last_sync = Column(DateTime)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
-class SyncLog(db.Model):
-    """Synchronization log entries."""
-
-    __tablename__ = "sync_logs"
-
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    connector_id = Column(String(36), ForeignKey("connector_configs.id"))
-    sync_type = Column(String(20), nullable=False)  # batch, event, manual
-    status = Column(String(20), nullable=False)  # success, error, partial
-    records_processed = Column(Integer, default=0)
-    records_created = Column(Integer, default=0)
-    records_updated = Column(Integer, default=0)
-    records_deleted = Column(Integer, default=0)
-    error_message = Column(Text)
-    started_at = Column(DateTime, default=datetime.utcnow)
-    completed_at = Column(DateTime)
 
 
 class FieldMapping:
