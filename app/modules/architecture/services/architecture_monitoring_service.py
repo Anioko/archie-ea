@@ -116,6 +116,10 @@ class ArchitectureBaseline:
     vendor_snapshot: List[Dict[str, Any]]
     checksum: str
     metadata: Dict[str, Any] = field(default_factory=dict)
+    # None means "captured before the model dimension existed" -- never {}.
+    # A baseline captured after this change always has a dict here (even an
+    # empty-estate one), so the drift comparison can tell the two cases apart.
+    model_snapshot: Optional[Dict[str, Any]] = None
 
 
 @dataclass
@@ -133,6 +137,7 @@ class DriftAnalysis:
     health_drift: Dict[str, Any]
     gap_drift: Dict[str, Any]
     vendor_drift: Dict[str, Any]
+    model_drift: Dict[str, Any]
     alerts: List[Dict[str, Any]]
     summary: str
 
@@ -274,6 +279,10 @@ class ArchitectureMonitoringService:
                     vendor_snapshot=snapshot.get("vendors", []),
                     checksum=row.checksum,
                     metadata=snapshot.get("metadata", {}),
+                    # No default {}: a JSON blob with no "model" key was
+                    # written before this dimension existed, and that is a
+                    # different fact from an empty snapshot.
+                    model_snapshot=snapshot.get("model"),
                 )
                 self._state.baselines[row.baseline_id] = baseline
                 if row.is_active:
@@ -325,6 +334,7 @@ class ArchitectureMonitoringService:
                 "gaps": baseline.gap_snapshot,
                 "vendors": baseline.vendor_snapshot,
                 "metadata": baseline.metadata,
+                "model": baseline.model_snapshot,
             })
 
             existing = MBModel.query.filter_by(
@@ -600,6 +610,10 @@ class ArchitectureMonitoringService:
             # Capture vendor status
             vendor_snapshot = self._capture_vendor_snapshot()
 
+            # Capture the model itself: element/relationship ids and the
+            # derived-fact aggregates (the sixth dimension).
+            model_snapshot = self._capture_model_snapshot()
+
             # Calculate checksum for integrity
             checksum = self._calculate_baseline_checksum(
                 capabilities_snapshot,
@@ -607,6 +621,7 @@ class ArchitectureMonitoringService:
                 health_snapshot,
                 gap_snapshot,
                 vendor_snapshot,
+                model_snapshot,
             )
 
             baseline = ArchitectureBaseline(
@@ -620,6 +635,7 @@ class ArchitectureMonitoringService:
                 health_snapshot=health_snapshot,
                 gap_snapshot=gap_snapshot,
                 vendor_snapshot=vendor_snapshot,
+                model_snapshot=model_snapshot,
                 checksum=checksum,
             )
 
@@ -831,6 +847,80 @@ class ArchitectureMonitoringService:
             self._state.status = MonitoringStatus.ERROR
             return {"success": False, "error": str(e)}
 
+    def compare_to_baseline(self, baseline_id: Optional[str] = None) -> DriftAnalysis:
+        """Pure comparison: capture the current state, diff it against a
+        baseline, and return the result. Writes nothing -- no alert
+        persistence, no cache mutation, no ``_last_scan_time`` update
+        (ADR-OP-2). A GET through this seam never writes.
+
+        Raises:
+            LookupError: no baseline id was given and none is active, or the
+                given id names no baseline this tenant holds.
+        """
+        target_baseline_id = baseline_id or self._state.active_baseline_id
+
+        if not target_baseline_id or target_baseline_id not in self._state.baselines:
+            raise LookupError("No valid baseline for comparison")
+
+        baseline = self._state.baselines[target_baseline_id]
+        analysis_time = datetime.utcnow()
+
+        # Capture current state, all six dimensions.
+        current_capabilities = self._capture_capabilities_snapshot()
+        current_coverage = self._capture_coverage_snapshot()
+        current_health = self._capture_health_snapshot()
+        current_gaps = self._capture_gap_snapshot()
+        current_vendors = self._capture_vendor_snapshot()
+        current_model = self._capture_model_snapshot()
+
+        # Analyze each dimension
+        coverage_drift = self._analyze_coverage_drift(
+            baseline.coverage_snapshot, current_coverage
+        )
+
+        health_drift = self._analyze_health_drift(baseline.health_snapshot, current_health)
+
+        gap_drift = self._analyze_gap_drift(baseline.gap_snapshot, current_gaps)
+
+        vendor_drift = self._analyze_vendor_drift(baseline.vendor_snapshot, current_vendors)
+
+        capability_drift = self._analyze_capability_drift(
+            baseline.capabilities_snapshot, current_capabilities
+        )
+
+        model_drift = self._analyze_model_drift(baseline.model_snapshot, current_model)
+
+        # Generate alerts based on drift -- in memory only; this seam does
+        # not persist them (no alert type reads the model dimension yet).
+        alerts = self._generate_drift_alerts(
+            coverage_drift, health_drift, gap_drift, vendor_drift, capability_drift
+        )
+
+        critical_count = sum(1 for a in alerts if a.severity == AlertSeverity.CRITICAL.value)
+        warning_count = sum(1 for a in alerts if a.severity == AlertSeverity.WARNING.value)
+        info_count = sum(1 for a in alerts if a.severity == AlertSeverity.INFO.value)
+
+        summary = self._generate_drift_summary(
+            coverage_drift, health_drift, gap_drift, len(alerts)
+        )
+
+        return DriftAnalysis(
+            baseline_id=baseline.id,
+            baseline_name=baseline.name,
+            analysis_timestamp=analysis_time.isoformat(),
+            total_drifts=len(alerts),
+            critical_drifts=critical_count,
+            warning_drifts=warning_count,
+            info_drifts=info_count,
+            coverage_drift=coverage_drift,
+            health_drift=health_drift,
+            gap_drift=gap_drift,
+            vendor_drift=vendor_drift,
+            model_drift=model_drift,
+            alerts=[asdict(a) for a in alerts],
+            summary=summary,
+        )
+
     def analyze_drift(self, baseline_id: Optional[str] = None) -> Dict[str, Any]:
         """
         Analyze architecture drift against a baseline.
@@ -856,6 +946,7 @@ class ArchitectureMonitoringService:
             current_health = self._capture_health_snapshot()
             current_gaps = self._capture_gap_snapshot()
             current_vendors = self._capture_vendor_snapshot()
+            current_model = self._capture_model_snapshot()
 
             # Analyze each dimension
             coverage_drift = self._analyze_coverage_drift(
@@ -871,6 +962,8 @@ class ArchitectureMonitoringService:
             capability_drift = self._analyze_capability_drift(
                 baseline.capabilities_snapshot, current_capabilities
             )
+
+            model_drift = self._analyze_model_drift(baseline.model_snapshot, current_model)
 
             # Generate alerts based on drift
             alerts = self._generate_drift_alerts(
@@ -904,6 +997,7 @@ class ArchitectureMonitoringService:
                 health_drift=health_drift,
                 gap_drift=gap_drift,
                 vendor_drift=vendor_drift,
+                model_drift=model_drift,
                 alerts=[asdict(a) for a in alerts],
                 summary=summary,
             )
@@ -1302,6 +1396,61 @@ class ArchitectureMonitoringService:
             logger.warning(f"Could not capture vendor snapshot: {e}")
             return []
 
+    def _capture_model_snapshot(self) -> Dict[str, Any]:
+        """Capture the model's own drift surface: this tenant's element and
+        relationship ids, plus the derived-fact aggregates -- so a
+        comparison can say whether the model itself moved since the
+        baseline, not only the intelligence built on it (UC-S2-06).
+
+        Ids and timestamps only (SDD S9); no element or relationship names,
+        descriptions or other properties. Reads with the explicit
+        organisation predicate ``detect_model_drift`` uses
+        (app/modules/genome/services/drift_detector.py), so a call with no
+        Flask request on the stack -- a job, or this service's own callers
+        outside a request -- is scoped too, not relying only on the
+        request-scoped ``do_orm_execute`` filter.
+
+        ArchiMateElement carries no per-row modification timestamp in this
+        schema (deleted_at, but no updated_at or created_at); only
+        ArchiMateRelationship does. Every element's value here is therefore
+        None rather than a fabricated time -- adding a column is out of
+        this task's scope (Constraints item 2). See _analyze_model_drift
+        for what that means for elements_changed.
+        """
+        from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship
+        from app.modules.intelligence.services.derived_facts import derived_fact_aggregates
+
+        elements = ArchiMateElement.query.filter(
+            ArchiMateElement.organization_id == self.organization_id,
+            ArchiMateElement.deleted_at.is_(None),
+        ).all()
+        # ArchiMateRelationship has no soft-delete column (detect_model_drift
+        # filters it by organization_id only, the same predicate here).
+        relationships = ArchiMateRelationship.query.filter(
+            ArchiMateRelationship.organization_id == self.organization_id,
+        ).all()
+
+        derived = derived_fact_aggregates(self.organization_id)
+        computed_at = derived.get("computed_at")
+
+        return {
+            "elements": {str(el.id): None for el in elements},
+            "relationships": {
+                str(rel.id): {
+                    "type": rel.type,
+                    "source_id": rel.source_id,
+                    "target_id": rel.target_id,
+                }
+                for rel in relationships
+            },
+            "derived": {
+                "derived_count": derived.get("derived_count"),
+                "stale_count": derived.get("stale_count"),
+                "computed_at": computed_at.isoformat() if computed_at else None,
+            },
+            "captured_at": datetime.utcnow().isoformat(),
+        }
+
     def _calculate_baseline_checksum(self, *snapshots) -> str:
         """Calculate checksum of baseline data for integrity."""
         data = json.dumps(snapshots, sort_keys=True, default=str)
@@ -1433,6 +1582,94 @@ class ArchitectureMonitoringService:
             "has_changes": len(new_caps) > 0
             or len(removed_caps) > 0
             or len(maturity_regressions) > 0,
+        }
+
+    def _analyze_model_drift(
+        self,
+        baseline_model: Optional[Dict[str, Any]],
+        current_model: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Analyze drift in the model itself: which element/relationship ids
+        were added or removed, which elements changed in place, and whether
+        derivation has recomputed since the baseline.
+
+        A baseline captured before this dimension existed carries no
+        "model" key in its persisted snapshot (``_ensure_loaded`` reads it
+        back as ``None``, never ``{}``) -- every count is ``None`` with the
+        ``baseline_lacks_model_snapshot`` reason in that case, not a
+        fabricated ``0``: a ``0`` means a real comparison ran and found no
+        change, whereas ``None`` means no comparison could run at all.
+
+        No alert is generated from this dimension in this task.
+        """
+        if baseline_model is None:
+            return {
+                "reason": "baseline_lacks_model_snapshot",
+                "elements_changed": None,
+                "relationships_added": None,
+                "relationships_removed": None,
+                "derived_recomputed": None,
+                "changed_element_ids": [],
+                "added_relationship_ids": [],
+                "removed_relationship_ids": [],
+            }
+
+        baseline_elements = baseline_model.get("elements", {}) or {}
+        current_elements = current_model.get("elements", {}) or {}
+        baseline_element_ids = set(baseline_elements)
+        current_element_ids = set(current_elements)
+
+        # ArchiMateElement carries no per-row modification timestamp in
+        # this schema (see _capture_model_snapshot), so every value here is
+        # None and this can never find a "later updated_at" -- it stays an
+        # honest, always-zero measurement of a signal that does not exist
+        # yet, not a fabricated one. elements_added/elements_removed are
+        # real, id-set measurements.
+        common_element_ids = baseline_element_ids & current_element_ids
+        changed_element_ids = sorted(
+            eid
+            for eid in common_element_ids
+            if baseline_elements.get(eid) is not None
+            and current_elements.get(eid) is not None
+            and current_elements[eid] > baseline_elements[eid]
+        )
+        added_element_ids = sorted(current_element_ids - baseline_element_ids)
+        removed_element_ids = sorted(baseline_element_ids - current_element_ids)
+
+        baseline_relationships = baseline_model.get("relationships", {}) or {}
+        current_relationships = current_model.get("relationships", {}) or {}
+        baseline_relationship_ids = set(baseline_relationships)
+        current_relationship_ids = set(current_relationships)
+        added_relationship_ids = sorted(current_relationship_ids - baseline_relationship_ids)
+        removed_relationship_ids = sorted(baseline_relationship_ids - current_relationship_ids)
+
+        baseline_derived = baseline_model.get("derived", {}) or {}
+        current_derived = current_model.get("derived", {}) or {}
+        baseline_computed_at = baseline_derived.get("computed_at")
+        current_computed_at = current_derived.get("computed_at")
+        derived_recomputed = (
+            1
+            if current_computed_at is not None
+            and (baseline_computed_at is None or current_computed_at > baseline_computed_at)
+            else 0
+        )
+
+        return {
+            "elements_changed": len(changed_element_ids),
+            "elements_added": len(added_element_ids),
+            "elements_removed": len(removed_element_ids),
+            "relationships_added": len(added_relationship_ids),
+            "relationships_removed": len(removed_relationship_ids),
+            "derived_recomputed": derived_recomputed,
+            "derived_computed_at": {
+                "baseline": baseline_computed_at,
+                "current": current_computed_at,
+            },
+            "changed_element_ids": changed_element_ids,
+            "added_element_ids": added_element_ids,
+            "removed_element_ids": removed_element_ids,
+            "added_relationship_ids": added_relationship_ids,
+            "removed_relationship_ids": removed_relationship_ids,
         }
 
     def _run_gap_discovery(self) -> Dict[str, Any]:

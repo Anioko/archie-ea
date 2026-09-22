@@ -68,6 +68,12 @@ REASON_CODES = frozenset(
         # itself is not reused here so each code stays tied to one field
         # pair's own absence condition.
         "no_budget_recorded",
+        # T-OP-1 addition: the baseline-drift engine's model dimension (the
+        # element/relationship ids and derived-fact aggregates captured
+        # alongside the other five snapshots) has nothing to compare against
+        # on a baseline captured before that dimension existed -- an honest
+        # absence, not a fabricated zero-drift result.
+        "baseline_lacks_model_snapshot",
     }
 )
 

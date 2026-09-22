@@ -1,7 +1,7 @@
 """T-001 acceptance criterion 13: the DE-14 reason-code vocabulary is closed.
 
 Mapping:
-    13 -> test_reason_codes_has_exactly_twenty_three_members,
+    13 -> test_reason_codes_has_exactly_twenty_four_members,
           test_unknown_reason_code_is_rejected_not_passed_through
 
 T-004 (US-1) added two members -- ``no_tenant_context`` and
@@ -15,11 +15,14 @@ sixteen forever; the module's own docstring says a new absence condition
 adds a member here, and nowhere else. This test is updated in lockstep.
 
 This ``_EXPECTED`` list drifted out of sync with reality some time before
-this fix -- the L3/L5 briefs each added a member to ``reason_codes.py``
+a fix -- the L3/L5 briefs each added a member to ``reason_codes.py``
 (``no_application_component``, ``no_work_package_recorded``, ``not_costed``)
 without updating this ratchet, only the two route-count ratchets. Found
 while adding the L2 brief's own ``no_budget_recorded`` member; corrected to
-the real, current set (23) rather than bumped by one on top of a stale base.
+the real, then-current set (23) rather than bumped by one on top of a stale
+base. The baseline-drift engine's model dimension then added
+``baseline_lacks_model_snapshot`` for a baseline captured before that
+dimension existed, taking the set to 24.
 """
 
 from __future__ import annotations
@@ -33,8 +36,9 @@ from app.modules.intelligence.services.reason_codes import (
     validate_reason_code,
 )
 
-# sdd-v2.md § API-8's original sixteen, T-004's two additions, plus T-005's
-# one addition (p95_above_highest_bucket, D3).
+# sdd-v2.md § API-8's original sixteen, T-004's two additions, T-005's one
+# addition (p95_above_highest_bucket, D3), the L2/L3/L5 additions, and the
+# baseline-drift engine's model-dimension addition (T-OP-1).
 _EXPECTED = {
     "no_ownership_recorded",
     "no_maturity_recorded",
@@ -59,11 +63,12 @@ _EXPECTED = {
     "no_work_package_recorded",
     "not_costed",
     "no_budget_recorded",
+    "baseline_lacks_model_snapshot",
 }
 
 
-def test_reason_codes_has_exactly_twenty_three_members():
-    assert len(REASON_CODES) == 23
+def test_reason_codes_has_exactly_twenty_four_members():
+    assert len(REASON_CODES) == 24
     assert REASON_CODES == frozenset(_EXPECTED)
 
 
