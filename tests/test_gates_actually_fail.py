@@ -897,6 +897,72 @@ def test_public_repo_hygiene_commit_message_catches_co_authored_by(tmpdir):
     assert _run_hygiene_checker(good, "commits") == 0
 
 
+def test_public_repo_hygiene_commit_message_catches_generated_with_footer(tmpdir):
+    """A free-text 'Generated with ...' footer line, the shape several
+    coding tools append instead of (or beside) a Co-Authored-By trailer."""
+    bad = tmpdir.mkdir("bad")
+    _init_repo_with_commit(
+        bad,
+        "Fix the timeout on the retry path\n\n"
+        "\U0001F916 Generated with [an assistant](https://example.com)\n",
+    )
+    good = tmpdir.mkdir("good")
+    _init_repo_with_commit(good, "Fix the timeout on the retry path")
+
+    assert _run_hygiene_checker(bad, "commits") > 0
+    assert _run_hygiene_checker(good, "commits") == 0
+
+
+_ASSISTANT_PRODUCT_NAME_CASES = [
+    ("Claude", "Reviewed-by: Claude\n"),
+    ("Codex", "Reviewed-by: Codex\n"),
+    ("Kilo", "Reviewed-by: Kilo\n"),
+    ("Copilot", "Reviewed-by: Copilot\n"),
+]
+
+
+@pytest.mark.parametrize(
+    "label, trailer_line", _ASSISTANT_PRODUCT_NAME_CASES,
+    ids=[c[0] for c in _ASSISTANT_PRODUCT_NAME_CASES],
+)
+def test_public_repo_hygiene_commit_message_catches_assistant_product_name_on_trailer_line(tmpdir, label, trailer_line):
+    """Each assistant product name, as a whole word on its own trailer
+    line, independent of the Co-Authored-By and generated-with checks."""
+    root = tmpdir.mkdir("assistant-%s" % label.lower())
+    _init_repo_with_commit(root, "Fix the timeout on the retry path\n\n" + trailer_line)
+    assert _run_hygiene_checker(root, "commits") > 0, "row %r (%r) was not caught" % (label, trailer_line)
+
+
+def test_public_repo_hygiene_commit_message_assistant_product_name_needs_a_trailer_line(tmpdir):
+    """An assistant product name mentioned in ordinary prose -- not on a
+    trailer or footer line -- is an unrelated, legitimate mention (turning
+    a feature on or off, a comparison, a changelog entry) and must not
+    fire."""
+    root = tmpdir.mkdir("assistant-prose")
+    _init_repo_with_commit(root, "Disable the Copilot suggestions panel in the editor settings")
+    assert _run_hygiene_checker(root, "commits") == 0
+
+
+def test_public_repo_hygiene_commit_message_ordinary_trailer_line_is_clean(tmpdir):
+    """An ordinary Key: value trailer, naming neither an attribution
+    convention nor an assistant product, is not a hit on its own."""
+    root = tmpdir.mkdir("ordinary-trailer")
+    _init_repo_with_commit(root, "Fix the timeout on the retry path\n\nFixes: #482\n")
+    assert _run_hygiene_checker(root, "commits") == 0
+
+
+def test_public_repo_hygiene_commit_message_generated_with_footer_cannot_be_escaped(tmpdir):
+    """A generated-with footer line is never excused, marker or not -- the
+    same rule the Co-Authored-By trailer already follows."""
+    root = tmpdir.mkdir("footer-with-marker")
+    _init_repo_with_commit(
+        root,
+        "Fix the timeout on the retry path\n\n"
+        "Generated with an assistant  # hygiene-ok: disclosure is required here\n",
+    )
+    assert _run_hygiene_checker(root, "commits") > 0
+
+
 def test_public_repo_hygiene_commit_message_hygiene_ok_excuses_its_own_line(tmpdir):
     """The hygiene-ok: escape hatch excuses the physical line it sits on."""
     root = tmpdir.mkdir("escaped")

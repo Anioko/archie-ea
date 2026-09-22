@@ -201,6 +201,18 @@ def _role_word_hits(text: str) -> list[str]:
 # what the escape hatch exists to let a genuinely necessary role word or
 # record id through, not a trailer.
 _TRAILER_RE = re.compile(r"co-authored-by", re.IGNORECASE)
+# A free-text attribution footer some tools append instead of (or beside) a
+# Co-authored-by trailer -- "Generated with <tool>", with or without a
+# leading emoji or a markdown link. The wording after "with" is not
+# checked; a footer disclosing generation by anything is the thing being
+# excluded here, not only a named one.
+_GENERATED_WITH_RE = re.compile(r"generated\s+with", re.IGNORECASE)
+# git's own trailer shape: a short "Key: value" line, case-insensitive on
+# the key (Co-authored-by:, Signed-off-by:, Reviewed-by:, and so on).
+_TRAILER_LINE_RE = re.compile(r"^\s*[A-Za-z][A-Za-z -]*:\s+\S")
+# An assistant coding tool's own product name, whole word only -- so this
+# never fires on an unrelated word that merely contains one of them.
+_ASSISTANT_PRODUCT_RE = re.compile(r"\b(?:claude|codex|kilo|copilot)\b", re.IGNORECASE)
 
 # .js so app/static's authored JS is covered; vendor/bundles/*.min.js are
 # third-party or built output, never authored comments, and would be pure
@@ -559,12 +571,14 @@ def _iter_commit_messages(root: str, rev_range: str | None) -> list[tuple[str, s
 
 
 def _scan_commit_messages(root: str, rev_range: str | None = None) -> list[str] | None:
-    """Rule 3, commit-message half: pipeline role words and a
-    Co-Authored-By trailer in the commit message itself -- not the diff.
-    The escape hatch excuses only the physical line it sits on, not the
-    whole message; a Co-Authored-By line is checked before the escape hatch
-    and is never excused by it, marker or not. Zero tolerance, scoped to
-    the commits under review -- see verify.py's
+    """Rule 3, commit-message half: pipeline role words, a Co-Authored-By
+    trailer, a generated-with footer, and an assistant product name sitting
+    on a trailer or footer line, in the commit message itself -- not the
+    diff. The escape hatch excuses only the physical line it sits on, not
+    the whole message; none of the three attribution checks below is ever
+    excused by it, marker or not -- each is checked, and can report, before
+    the escape hatch is even read. Zero tolerance, scoped to the commits
+    under review -- see verify.py's
     ``gate_public_repo_hygiene_commit_messages`` for why a full-history
     count cannot be a stable measurement here.
 
@@ -578,6 +592,12 @@ def _scan_commit_messages(root: str, rev_range: str | None = None) -> list[str] 
         for line in message.splitlines():
             if _TRAILER_RE.search(line):
                 problems.append(f"{sha[:8]}: 'Co-Authored-By' in the commit message")
+                continue
+            if _GENERATED_WITH_RE.search(line):
+                problems.append(f"{sha[:8]}: a 'generated with' footer line in the commit message")
+                continue
+            if _ASSISTANT_PRODUCT_RE.search(line) and _TRAILER_LINE_RE.match(line):
+                problems.append(f"{sha[:8]}: an assistant product name on a trailer line in the commit message")
                 continue
             if ESCAPE_HATCH in line:
                 continue
