@@ -623,7 +623,12 @@ def test_generic_inventory_follows_all_declared_policies(db_session, monkeypatch
     inventory = command._tenant_tables()
     assert inventory == sorted(expected.items())
     if os.environ.get("APP_FAST_INIT") != "1":
-        assert len([policy for policy in expected.values() if policy]) == 19
+        # Not a literal: this must move with every legitimate TenantMixin
+        # addition or removal, on its own, without a manual bump, while still
+        # failing if the inventory drops (or gains) a nullable policy the
+        # declared-policy walk above knows about.
+        assert (len([policy for policy in expected.values() if policy])
+                == len([nullable for _, nullable in inventory if nullable]))
     for table in ("outcomes", "principles", "review_queue_items", "ai_chat_crud_approvals"):
         assert expected[table] is True
     for table in ("kanban_boards", "vendor_contracts", "license_entitlements", "vendor_product_capabilities"):
