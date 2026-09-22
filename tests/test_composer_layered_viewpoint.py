@@ -4,11 +4,9 @@ elements / 159 relationships across all layers).
 
 Two parts fixed, verified here:
 
-1. Nav plumbing (app/config/navigation_registry_v2.py,
-   app/config/navigation_sections_v2.py) -- ``NavigationItemV2`` gained a
-   ``query_params`` field threaded into ``url_for(endpoint, **query_params)``
-   so the "ArchiMate Composer" link resolves to
-   ``...composer?viewpoint=layered`` instead of the bare composer URL.
+1. The sidebar link is defined in app/utils/role_access.py (the live
+   mechanism); the former v2 nav-registry and nav-sections modules were
+   unreferenced code and have been removed.
 
 2. Backend scope (app/services/archimate_viewpoint_service.py) --
    ``get_viewpoint_data`` used to require a ``solution_id`` for every
@@ -28,12 +26,8 @@ tenant's own rows.
 def test_composer_sidebar_link_carries_viewpoint_query_param(app, db_session, make_org, login_as):
     """The REAL, live sidebar (``app/utils/role_access.py::get_sidebar_zones``,
     rendered by ``app/templates/components/admin_sidebar.html``) is what a
-    user actually clicks -- not the NavigationRegistryV2/navigation_sections_v2
-    module, which turned out to be dead code: nothing in app/_bootstrap or any
-    template imports it (``grep -rln 'get_navigation_sections\\|NavigationRegistryV2'
-    app/templates/`` returns nothing), so the "changes already made" to that
-    module in this bucket's brief never reached the rendered page. This test
-    hits the real route and asserts the actual anchor href.
+    user actually clicks. This test hits the real route and asserts the
+    actual anchor href.
     """
     import uuid
 
@@ -65,58 +59,6 @@ def test_composer_sidebar_link_carries_viewpoint_query_param(app, db_session, ma
         "blank canvas the founder reported. Sidebar HTML did not contain "
         "the expected href."
     )
-
-
-def test_composer_nav_link_resolves_to_layered_viewpoint(app):
-    """The sidebar "ArchiMate Composer" item must resolve to a URL carrying
-    ``viewpoint=layered``, not the bare composer URL a blank canvas is
-    served from.
-
-    Exercises the real NavigationRegistryV2 resolution path (_resolve_url ->
-    _safe_url_for -> url_for(endpoint, **query_params)), not just the
-    presence of the right key in the section config dict.
-    """
-    from app.config.navigation_registry_v2 import NavigationRegistryV2
-    from app.config.navigation_sections_v2 import ARCHITECTURE_TOOLS_SECTION
-
-    registry = NavigationRegistryV2()
-    registry.register_section(ARCHITECTURE_TOOLS_SECTION)
-
-    composer_item = next(
-        item for item in ARCHITECTURE_TOOLS_SECTION.items
-        if item.label == "ArchiMate Composer"
-    )
-    assert composer_item.query_params == {"viewpoint": "layered"}, (
-        "sanity check: the nav item itself must declare the query param "
-        f"before resolution is even attempted, got {composer_item.query_params!r}"
-    )
-
-    with app.test_request_context("/"):
-        resolved_url = registry._resolve_url(composer_item)
-
-    assert "viewpoint=layered" in resolved_url, (
-        f"composer nav link resolved to {resolved_url!r}, missing "
-        "viewpoint=layered -- clicking it would land on the blank canvas "
-        "the founder reported, not the layered viewpoint"
-    )
-    assert resolved_url.startswith("/archimate/composer"), resolved_url
-
-
-# NOTE: NavigationRegistryV2.get_navigation_sections() -- the section-level
-# entrypoint -- is not exercised here. It hits a third, separate pre-existing
-# bug in this dead-code module: _is_visible() reads `config.disabled` but
-# NavigationSectionV2 (unlike NavigationItemV2) declares no `disabled` field
-# at all, so any get_navigation_sections() call raises AttributeError. Left
-# undocumented as a known-issue rather than fixed here: this module is not
-# imported by any template or app/_bootstrap file (confirmed by grep -rln
-# 'get_navigation_sections\|NavigationRegistryV2' app/templates/ returning
-# nothing), so it is not the code path the rendered sidebar actually uses --
-# see test_composer_sidebar_link_carries_viewpoint_query_param above for the
-# real, live mechanism. Fixing every bug in unexercised code is scope creep
-# this bucket's brief did not ask for; the two bugs fixed above (regex= ->
-# pattern=, and the disabled-item endpoint validator field-ordering bug) were
-# fixed only because they blocked even importing the file the brief's diff
-# touched.
 
 
 def test_layered_viewpoint_returns_elements_without_solution_id(app, db_session, make_org, tenant_ctx):
