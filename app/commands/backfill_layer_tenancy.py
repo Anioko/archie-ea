@@ -58,16 +58,18 @@ _DERIVABLE_ORG = {
     """,
     # roadmap_tasks rows predate the tenant column and carry no single
     # provenance link; each statement fills only NULLs, in precedence order.
+    # The per-object links (the work package's creator, the consolidation
+    # entry's application) are checked before the task's own creating user:
+    # a user can be moved to a different organisation after the task was
+    # created (an admin route reassigns a removed user to another
+    # organisation), which would misattribute the task if the creating-user
+    # statement ran first. The work package's creator can move too, but it
+    # is ordinarily a different user than the task's own creator, and the
+    # consolidation entry's application is not read off a user at all, so
+    # checking both first is strictly safer than checking the task's own
+    # creator first.
     "roadmap_tasks": [
-        # 1. the user who created the task (set by the roadmap UI route)
-        """
-        UPDATE roadmap_tasks t
-           SET organization_id = u.organization_id
-          FROM users u
-         WHERE u.id = t.created_by
-           AND t.organization_id IS NULL
-        """,
-        # 2. the creator of the work package the task belongs to
+        # 1. the creator of the work package the task belongs to
         """
         UPDATE roadmap_tasks t
            SET organization_id = u.organization_id
@@ -76,7 +78,7 @@ _DERIVABLE_ORG = {
          WHERE w.id = t.unified_work_package_id
            AND t.organization_id IS NULL
         """,
-        # 3. the application whose consolidation entry created the task
+        # 2. the application whose consolidation entry created the task
         """
         UPDATE roadmap_tasks t
            SET organization_id = a.organization_id
@@ -85,6 +87,16 @@ _DERIVABLE_ORG = {
          WHERE e.roadmap_item_id = t.id
            AND t.organization_id IS NULL
            AND a.organization_id IS NOT NULL
+        """,
+        # 3. the user who created the task (set by the roadmap UI route);
+        # checked last because this user's own organization_id can change
+        # after the task was created
+        """
+        UPDATE roadmap_tasks t
+           SET organization_id = u.organization_id
+          FROM users u
+         WHERE u.id = t.created_by
+           AND t.organization_id IS NULL
         """,
     ],
 }
