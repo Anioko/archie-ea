@@ -216,6 +216,10 @@ _HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 _JINJA_COMMENT_RE = re.compile(r"\{#.*?#\}", re.DOTALL)
 _JS_BLOCK_COMMENT_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
 _JS_LINE_COMMENT_RE = re.compile(r"//[^\r\n]*")
+_HTML_SCRIPT_BLOCK_RE = re.compile(r"<script\b[^>]*>(.*?)</script\s*>", re.DOTALL | re.IGNORECASE)
+_HTML_STYLE_BLOCK_RE = re.compile(r"<style\b[^>]*>.*?</style\s*>", re.DOTALL | re.IGNORECASE)
+_JINJA_EXPR_OR_STMT_RE = re.compile(r"\{\{.*?\}\}|\{%.*?%\}", re.DOTALL)
+_HTML_TAG_RE = re.compile(r"<[^>]*>", re.DOTALL)
 
 
 def _spans_to_lines(text: str, spans: list[tuple[int, str]]):
@@ -271,21 +275,66 @@ def _markup_comment_lines(path: str):
     yield from _spans_to_lines(text, spans)
 
 
-def _js_comment_lines(path: str):
-    """(lineno, text) for every `//` and `/* */` comment, .js. A `//`
-    already inside a matched `/* */` block is not counted a second time."""
-    try:
-        with open(path, encoding="utf-8", errors="ignore") as fh:
-            text = fh.read()
-    except OSError:
-        return
+def _js_comment_spans(text: str) -> list[tuple[int, str]]:
+    """(start_offset, matched_text) for every `//` and `/* */` comment in
+    `text` -- a `//` already inside a matched `/* */` block is not counted
+    a second time. Shared by .js files and an inline <script> body in
+    .html/.j2, which is JavaScript in every way that matters here."""
     blocks = [(m.start(), m.end(), m.group(0)) for m in _JS_BLOCK_COMMENT_RE.finditer(text)]
     spans = [(start, matched) for start, _end, matched in blocks]
     for m in _JS_LINE_COMMENT_RE.finditer(text):
         if any(start <= m.start() < end for start, end, _ in blocks):
             continue
         spans.append((m.start(), m.group(0)))
-    yield from _spans_to_lines(text, spans)
+    return spans
+
+
+def _js_comment_lines(path: str):
+    """(lineno, text) for every `//` and `/* */` comment, .js."""
+    try:
+        with open(path, encoding="utf-8", errors="ignore") as fh:
+            text = fh.read()
+    except OSError:
+        return
+    yield from _spans_to_lines(text, _js_comment_spans(text))
+
+
+def _blank(segment: str) -> str:
+    """`segment`, with every character replaced by a space except a
+    newline, which stays a newline -- same length, same line breaks, so a
+    match found in the surviving text keeps its true line number."""
+    return "".join(ch if ch == "\n" else " " for ch in segment)
+
+
+def _html_script_and_text_lines(path: str):
+    """(lineno, text) for an HTML/Jinja file's inline <script> body --
+    scanned with the same comment rules as a .js file, because a script
+    element's content is JavaScript, not markup -- and its visible text
+    nodes: the literal text a browser actually renders between tags. A
+    <!-- --> / {# #} comment (scanned separately by _markup_comment_lines),
+    a <script> or <style> block, a `{{ }}` expression or `{% %}` statement,
+    and every tag and its attributes are none of those -- blanked out
+    (length-preserving, see `_blank`) before what is left is read as the
+    visible-text lines."""
+    try:
+        with open(path, encoding="utf-8", errors="ignore") as fh:
+            text = fh.read()
+    except OSError:
+        return
+
+    script_spans: list[tuple[int, str]] = []
+    for m in _HTML_SCRIPT_BLOCK_RE.finditer(text):
+        inner, offset = m.group(1), m.start(1)
+        script_spans.extend((offset + start, matched) for start, matched in _js_comment_spans(inner))
+    yield from _spans_to_lines(text, script_spans)
+
+    masked = text
+    for pattern in (
+        _HTML_COMMENT_RE, _JINJA_COMMENT_RE, _HTML_SCRIPT_BLOCK_RE,
+        _HTML_STYLE_BLOCK_RE, _JINJA_EXPR_OR_STMT_RE, _HTML_TAG_RE,
+    ):
+        masked = pattern.sub(lambda mo: _blank(mo.group(0)), masked)
+    yield from enumerate(masked.split("\n"), start=1)
 
 
 def _whole_file_lines(path: str):
@@ -305,6 +354,7 @@ def _scannable_lines(path: str):
         yield from _python_comment_and_string_lines(path)
     elif path.endswith((".html", ".j2")):
         yield from _markup_comment_lines(path)
+        yield from _html_script_and_text_lines(path)
     elif path.endswith(".js"):
         yield from _js_comment_lines(path)
     elif path.endswith(".md"):

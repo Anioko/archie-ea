@@ -627,6 +627,47 @@ def test_public_repo_hygiene_content_scan_fstring_expression_itself_is_not_scann
     assert _run_hygiene_checker(root, "content") == 0
 
 
+def test_public_repo_hygiene_html_scans_inline_script_comments(tmpdir):
+    """A `//` comment inside an inline <script> body is JavaScript, not
+    markup -- scanned with the JS comment rules, not dropped because the
+    surrounding file is .html."""
+    root = tmpdir.mkdir("inline-script")
+    _write(root, "app/templates/probe.html",
+           "<script>\n"
+           "  document.addEventListener('DOMContentLoaded', function () {\n"
+           "    // Round-2 hardening: guard against an unresolved value\n"  # hygiene-ok: probe data for the inline-<script> scan test, not a real hit
+           "  });\n"
+           "</script>\n")
+    assert _run_hygiene_checker(root, "content") >= 1
+
+
+def test_public_repo_hygiene_html_scans_visible_text_nodes(tmpdir):
+    """The literal text a browser renders between tags is content, not
+    code -- scanned like a string literal, not dropped along with the tags
+    and expressions around it."""
+    root = tmpdir.mkdir("visible-text")
+    _write(root, "app/templates/probe.html",
+           '<div class="mt-4 p-2">\n'
+           "  <p>Fixed in round-3, per the build report.</p>\n"  # hygiene-ok: probe data for the visible-text scan test, not a real hit
+           "</div>\n")
+    assert _run_hygiene_checker(root, "content") >= 1
+
+
+def test_public_repo_hygiene_html_visible_text_ignores_tags_and_jinja_code(tmpdir):
+    """A tag, its attributes, and a `{{ }}`/`{% %}` Jinja expression or
+    statement are markup and code respectively, not visible text -- a role
+    word or record-id-shaped value reachable only through one of those must
+    not fire."""
+    root = tmpdir.mkdir("visible-text-clean")
+    _write(root, "app/templates/probe.html",
+           '<div data-orchestrator-id="D-99" class="builder-panel">\n'
+           "  {{ builder_orchestrator_label }}\n"
+           "  {% if round_number %}{{ round_number }}{% endif %}\n"
+           "  <p>Ordinary page copy.</p>\n"
+           "</div>\n")
+    assert _run_hygiene_checker(root, "content") == 0
+
+
 def test_public_repo_hygiene_record_id_ignores_regex_character_class(tmpdir):
     """A record-id-shaped token immediately inside [ ] is a regex character
     class, not a review record id."""
