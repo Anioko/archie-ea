@@ -368,6 +368,28 @@ def settings():
     return render_template("settings/index.html")
 
 
+@main.route("/settings/analytics-opt-out", methods=["POST"])
+@login_required
+def set_analytics_opt_out():
+    """Turn usage-page-view tracking off (or back on) for the signed-in user.
+
+    Deliberately `@login_required` only, not `@admin_required`: the page-view
+    tracker applies to every signed-in user's own requests, not only a
+    platform admin's, so the control that turns it off must be reachable by
+    every signed-in user too. Stored through the model's own preference
+    setter, which merges into the existing preference dict rather than
+    replacing it, so saving some other preference elsewhere never silently
+    turns tracking back on.
+    """
+    data = request.get_json(silent=True) or request.form
+    raw = data.get("enabled", "true") if data else "true"
+    enabled = str(raw).strip().lower() not in ("false", "0", "off", "")
+    current_user.set_notification_preferences({"analytics_opt_out": not enabled})
+    db.session.add(current_user)
+    db.session.commit()
+    return jsonify({"status": "ok", "analytics_opt_out": not enabled})
+
+
 @main.route("/api/system-settings", methods=["GET"])
 @login_required
 # system_settings is a GLOBAL table with no organization_id, so this is not
@@ -394,13 +416,6 @@ def get_system_settings():
                 return v
 
         result = {row[0]: _parse(row[1]) for row in rows}
-        # "Enable Analytics" is a per-user opt-out stored on the signed-in
-        # user (see save_system_settings below), not a row in this global
-        # table, so every user's own page must reflect their own choice
-        # rather than one shared value.
-        result["analytics"] = not current_user.get_notification_preference(
-            "analytics_opt_out"
-        )
         return jsonify({"settings": result, "status": "ok"})
     except Exception as e:
         current_app.logger.exception(f"Error loading system settings: {e}")
@@ -437,16 +452,6 @@ def save_system_settings():
             }), 400
 
         for key, value in settings_data.items():
-            if key == "analytics":
-                # Per-user opt-out, stored on the signed-in user
-                # (User.notification_preferences), not this global table —
-                # see get_system_settings above. Merge in place so this save
-                # never drops the user's other stored preferences.
-                prefs = dict(current_user.notification_preferences or {})
-                prefs["analytics_opt_out"] = not bool(value)
-                current_user.notification_preferences = prefs
-                db.session.add(current_user)
-                continue
             db.session.execute(
                 db.text(
                     "INSERT INTO system_settings (key, value, updated_at) "

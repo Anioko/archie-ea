@@ -125,6 +125,34 @@ def test_opted_out_user_writes_nothing(
     assert after == before
 
 
+def test_analytics_opt_out_route_available_to_any_signed_in_user(
+    db_session, make_org, client, login_as, analytics_on
+):
+    org = make_org("usage-opt-out-route")
+    user = _user(org, "opt-out-route")  # no role, no admin flags
+    login_as(client, user)
+
+    resp = client.post("/settings/analytics-opt-out", json={"enabled": False})
+    assert resp.status_code == 200
+    assert resp.get_json()["analytics_opt_out"] is True
+
+    db.session.refresh(user)
+    assert user.get_notification_preference("analytics_opt_out") is True
+
+    login_as(client, user)
+    before = UsageAnalytics.query.count()
+    client.get("/usage-analytics/")
+    after = UsageAnalytics.query.count()
+    assert after == before
+
+    # Turning it back on re-enables tracking.
+    login_as(client, user)
+    resp = client.post("/settings/analytics-opt-out", json={"enabled": True})
+    assert resp.get_json()["analytics_opt_out"] is False
+    db.session.refresh(user)
+    assert user.get_notification_preference("analytics_opt_out") is False
+
+
 def test_summary_api_counts_rows_by_feature_name(
     db_session, make_org, client, login_as, analytics_on
 ):
