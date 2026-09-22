@@ -25,6 +25,7 @@ Reuses:
 import hashlib
 import json
 import logging
+import time
 from collections import defaultdict
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
@@ -153,12 +154,31 @@ class _TenantState:
     scan_interval_minutes: int = 60
     active_baseline_id: Optional[str] = None
     db_loaded: bool = False
+    # Set on every instantiation that reuses this entry and on every active-
+    # baseline change; read by _evict_stale_state's TTL check below.
+    last_touched: float = field(default_factory=time.time)
 
 
 # Per-organisation cache, one entry per tenant that has instantiated the
 # service in this process. Replaces the old class-level _baselines / _alerts /
-# _status / ... attributes, which every tenant's instance shared.
+# _status / ... attributes, which every tenant's instance shared. Unlike
+# _health_metrics_cache (capability_health_service.py, TTL 60s, capped at 256
+# tenants) this had no eviction at all until this entry grew without bound
+# for the life of the process; it now shares that cache's TTL and is also
+# dropped the moment a tenant's active baseline changes, since that is the
+# one field most likely to be read stale by a concurrent worker process that
+# made the change.
 _STATE: Dict[int, _TenantState] = {}
+
+_STATE_TTL_SECONDS = 60
+
+
+def _evict_stale_state(organization_id: int) -> None:
+    """Drop ``organization_id``'s entry if it has not been touched inside
+    the TTL, so the next access reloads a fresh one from the database."""
+    entry = _STATE.get(organization_id)
+    if entry is not None and (time.time() - entry.last_touched) >= _STATE_TTL_SECONDS:
+        _STATE.pop(organization_id, None)
 
 
 def _tenant_capability_filter(organization_id: int):
@@ -207,15 +227,18 @@ class ArchitectureMonitoringService:
         if organization_id is None:
             raise ValueError("ArchitectureMonitoringService requires an organization_id")
         self.organization_id = organization_id
+        _evict_stale_state(organization_id)
         self._state = _STATE.setdefault(organization_id, _TenantState())
+        self._state.last_touched = time.time()
         self._ensure_loaded()
 
     @classmethod
     def reset_state(cls, organization_id: Optional[int] = None) -> None:
         """Clear the cached monitoring state for one organisation, or all of them.
 
-        Test-only: production code never needs to evict this cache, since it
-        is keyed by organization_id for the life of the process.
+        Test-only for the *manual, immediate* form: production code relies on
+        the TTL and active-baseline-change eviction above instead of calling
+        this directly.
         """
         if organization_id is None:
             _STATE.clear()
@@ -410,6 +433,14 @@ class ArchitectureMonitoringService:
                     organization_id=self.organization_id,
                 ).update({MBModel.is_active: True})
             db.session.commit()
+            # The active baseline is the one field in this cache another
+            # worker process is most likely to change concurrently (a second
+            # gunicorn worker handling the same tenant's activate/delete
+            # call). Drop this tenant's entry now rather than wait out the
+            # TTL, so the next instantiation -- in this process or, after the
+            # next request lands here, any other -- reloads it from the
+            # database instead of serving what this process last cached.
+            _STATE.pop(self.organization_id, None)
         except Exception as e:
             logger.error("Failed to update active baseline in DB: %s", e)
             db.session.rollback()
