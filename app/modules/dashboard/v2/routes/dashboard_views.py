@@ -140,10 +140,11 @@ def overview():
     # which the composer's `layer=` filter also reads, so this card's count
     # and the composer's element set can never drift apart. Do not
     # reintroduce a local copy here.
-    import app.services.archimate_viewpoint_service as _archimate_viewpoint_service
+    from app.modules.dashboard.v2.services.archimate_viewpoint_service_v2 import (
+        LAYER_TYPES as _LAYER_TYPES,
+        LAYER_TYPE_TO_LAYER as _type_to_layer,
+    )
 
-    _LAYER_TYPES = _archimate_viewpoint_service.LAYER_TYPES
-    _type_to_layer = _archimate_viewpoint_service.LAYER_TYPE_TO_LAYER
     layer_breakdown = {layer: 0 for layer in _LAYER_TYPES}
     try:
         from app.models.archimate_core import ArchiMateElement
@@ -973,10 +974,11 @@ def _assemble_health_scorecard_metrics():
     # LAYER_TYPES / LAYER_TYPE_TO_LAYER are the single system of record for
     # this mapping (ADR 0008) -- imported from archimate_viewpoint_service,
     # same as the by-layer card query above. Do not reintroduce a local copy.
-    import app.services.archimate_viewpoint_service as _archimate_viewpoint_service
+    from app.modules.dashboard.v2.services.archimate_viewpoint_service_v2 import (
+        LAYER_TYPES as _scorecard_layer_types,
+        LAYER_TYPE_TO_LAYER as _scorecard_type_to_layer,
+    )
 
-    _scorecard_layer_types = _archimate_viewpoint_service.LAYER_TYPES
-    _scorecard_type_to_layer = _archimate_viewpoint_service.LAYER_TYPE_TO_LAYER
     archimate_by_layer = {layer: 0 for layer in _scorecard_layer_types}
     archimate_by_layer["other"] = 0
     total_archimate = 0
@@ -1066,9 +1068,7 @@ def ai_executive_briefing():
     Health Scorecard's own metrics: a headline, what changed, risks, and
     recommended focus areas. Advisory only — nothing here is persisted.
     """
-    import app.services.feature_flag_service as _feature_flag_service
-
-    FeatureFlagService = _feature_flag_service.FeatureFlagService
+    from app.modules.dashboard.v2.services.feature_flag_service_v2 import FeatureFlagService
 
     feature_guard = FeatureFlagService.require_ai_for_route(
         FeatureFlagService.FEATURE_SUGGESTIONS,
