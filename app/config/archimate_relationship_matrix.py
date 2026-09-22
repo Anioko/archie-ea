@@ -1079,7 +1079,7 @@ VALID_RELATIONSHIPS: Dict[Tuple[str, str], List[str]] = {
     ("Goal", "Resource"): ["influence", "association"],
     # Outcome relationships
     ("Outcome", "Stakeholder"): ["association"],
-    ("Outcome", "Goal"): ["association"],
+    ("Outcome", "Goal"): ["realization", "association"],  # ArchiMate 3.2 §6.3: an outcome realizes a goal
     ("Outcome", "Outcome"): [
         "composition",
         "aggregation",
@@ -1185,6 +1185,10 @@ VALID_RELATIONSHIPS: Dict[Tuple[str, str], List[str]] = {
     ("WorkPackage", "TechnologyService"): ["realization", "association"],
     ("WorkPackage", "Capability"): ["realization", "association"],
     ("WorkPackage", "CourseOfAction"): ["realization", "association"],
+    # ArchiMate 3.2 §12.4 with Appendix B: a work package realizes a
+    # deliverable, a deliverable realizes an outcome, and the §5.7
+    # derivation of a realization chain is realization.
+    ("WorkPackage", "Outcome"): ["realization", "association"],
     # ImplementationEvent relationships
     ("ImplementationEvent", "WorkPackage"): ["triggering", "association"],
     ("ImplementationEvent", "ImplementationEvent"): [
@@ -1366,6 +1370,22 @@ for _element in LAYERED_ELEMENTS + OTHER_ELEMENTS + CONNECTOR_ELEMENTS:
     _add_rule("Junction", _element, list(_JUNCTION_RELATIONSHIPS))
     _add_rule(_element, "Junction", list(_JUNCTION_RELATIONSHIPS))
 
+# Association between any two concepts (ArchiMate 3.2 §5.2.4: "an association
+# relationship... may be used whenever no other relationship in the
+# specification applies" between any two elements). Encoded as one derived
+# pass over every ordered pair of ALL_ELEMENTS, appending "association" where
+# a row lacks it (and creating the row where it is missing entirely), for the
+# same reason the Grouping/Location/Junction passes above are generated
+# rather than hand-authored: an element added to ALL_ELEMENTS gets its
+# association rows automatically, with nothing to fall out of sync.
+for _assoc_source in ALL_ELEMENTS:
+    for _assoc_target in ALL_ELEMENTS:
+        _assoc_entry = VALID_RELATIONSHIPS.setdefault((_assoc_source, _assoc_target), [])
+        if "association" not in _assoc_entry:
+            _assoc_entry.append("association")
+
+del _assoc_source, _assoc_target, _assoc_entry
+
 # Dynamic relationships between ACTIVE STRUCTURE elements.
 #
 # The matrix allowed triggering and flow between behaviour elements
@@ -1443,6 +1463,28 @@ DERIVABLE_RELATIONSHIPS = {
 # =============================================================================
 # Utility Functions
 # =============================================================================
+
+
+def normalize_element_type(value: str) -> str:
+    """Convert a stored element type to the PascalCase keys this matrix uses.
+
+    Handles snake_case ("application_component") and kebab-case
+    ("application-component") from the database, and leaves an already
+    PascalCase value ("ApplicationComponent") alone.
+
+    ``str.capitalize()`` lowercases the remainder of the string, so a value
+    already stored as "ApplicationComponent" became "Applicationcomponent"
+    and matched nothing in this matrix. That refused a legal relationship
+    between two elements whose types were already PascalCase -- a validator
+    that blocks correct modelling is worse than no validator. The same fix
+    existed twice under different names (one call site's ``_pascal``,
+    another's ``_normalize_type``); it lives here once now, and both call
+    sites use this.
+    """
+    text = str(value or "").replace("-", "_")
+    if "_" not in text and text[:1].isupper():
+        return text  # already PascalCase
+    return "".join(part[:1].upper() + part[1:] for part in text.split("_") if part)
 
 
 def get_valid_relationships(source_type: str, target_type: str) -> List[str]:
@@ -1886,6 +1928,7 @@ __all__ = [
     "RelationshipCategory",
     "AccessMode",
     # Functions
+    "normalize_element_type",
     "get_valid_relationships",
     "is_valid_relationship",
     "get_cardinality",
