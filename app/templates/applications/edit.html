@@ -1,5 +1,6 @@
 {% extends "layouts/admin_base.html" %}
 {% from 'macros/page_shell.html' import page_shell %}
+{% from 'macros/_user_picker.html' import user_picker, user_picker_script %}
 {% block title %}Edit — {{ application.name }}{% endblock %}
 
 {% block breadcrumb %}
@@ -56,24 +57,19 @@
     </section>
 
     {# ── Ownership ── #}
+    {{ user_picker_script() }}
     <section class="rounded-xl border border-border bg-card p-6 space-y-4">
       <h2 class="text-lg font-semibold">Ownership</h2>
-      <p class="text-sm text-muted-foreground">Assign owners to enable governance and accountability.</p>
+      <p class="text-sm text-muted-foreground">Assign owners to enable governance and accountability. Search by name or email; leave blank to clear a role. Additional roles (primary, backup) are set from the application record's Owners section.</p>
 
       <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div>
-          <label for="business_owner" class="block text-sm font-medium mb-1">Business Owner</label>
-          <!-- entity-picker-ok: owners are free-text names, not platform users — Abacus has no structured user data -->
-          <input type="text" id="business_owner" name="business_owner" value="{{ application.business_owner or '' }}"
-                 placeholder="e.g. Jane Smith"
-                 class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+          <label for="business_owner_picker" class="block text-sm font-medium mb-1">Business Owner</label>
+          {{ user_picker('business_owner_picker', 'business_owner_user_id', initial_id=business_owner_current_id|default(''), initial_label=business_owner_current_label|default('')) }}
         </div>
         <div>
-          <label for="technical_owner" class="block text-sm font-medium mb-1">Technical Owner</label>
-          <!-- entity-picker-ok: owners are free-text names -->
-          <input type="text" id="technical_owner" name="technical_owner" value="{{ application.technical_owner or '' }}"
-                 placeholder="e.g. John Doe"
-                 class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+          <label for="technical_owner_picker" class="block text-sm font-medium mb-1">Technical Owner</label>
+          {{ user_picker('technical_owner_picker', 'technical_owner_user_id', initial_id=technical_owner_current_id|default(''), initial_label=technical_owner_current_label|default('')) }}
         </div>
         <div>
           <label for="business_purpose" class="block text-sm font-medium mb-1">Business Purpose</label>

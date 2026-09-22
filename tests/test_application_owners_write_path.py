@@ -13,10 +13,6 @@ tests/test_admin_org_member_idor.py:92-118 uses for the same reason. Setting
 it universally does not weaken the ``is_org_admin`` / primary-owner
 assertions below: they exercise a second, independent permission check this
 task adds, not the RBAC role.
-
-This module builds up across three commits, matching decisions A, then B/C/E,
-then D; this second commit adds the write routes, the Owners section and its
-text-owner confirm, and the no-backfill proof.
 """
 
 from __future__ import annotations
@@ -230,7 +226,7 @@ def test_add_owner_duplicate_is_a_flash_not_a_500(db_session, make_org, client, 
 
 
 def test_add_owner_without_explicit_org_id_carries_acting_org(db_session, make_org, client, login_as):
-    """The add route never sets organization_id itself (decision B) --
+    """The add route never sets organization_id itself (fact/decision B) --
     TenantMixin's before_flush listener must stamp it from the request."""
     from app.models.application_owner import ApplicationOwner
 
@@ -342,6 +338,39 @@ def test_cross_tenant_select_returns_only_tenant_rows(db_session, make_org, tena
         "TENANT LEAK: org A's request returned org B's ApplicationOwner row"
     )
     assert all(row.organization_id == org_a.id for row in visible)
+
+
+# ──────────────────────────────────────────────────── decision D: edit form
+
+
+def test_edit_form_person_chosen_writes_row_leaves_text_untouched(db_session, make_org, client, login_as):
+    from app.models.application_owner import ApplicationOwner
+
+    org = make_org("edit-form")
+    editor = _make_user(db_session, org, is_org_admin=True, label="edit-admin")
+    target = _make_user(db_session, org, label="edit-target")
+    app_row = _make_app(db_session, org, business_owner="Old Text Owner")
+    db_session.commit()
+
+    login_as(client, editor)
+    resp = client.post(
+        f"/applications/{app_row.id}/edit",
+        data={
+            "name": app_row.name,
+            "business_owner_user_id": str(target.id),
+        },
+    )
+    assert resp.status_code == 302, resp.get_data(as_text=True)
+
+    db_session.expire_all()
+    row = ApplicationOwner.query.filter_by(
+        application_id=app_row.id, ownership_type="business"
+    ).first()
+    assert row is not None
+    assert row.user_id == target.id
+    assert app_row.business_owner == "Old Text Owner", (
+        "the text column must never be written by this form"
+    )
 
 
 # ───────────────────────────────────────────── decision C: text-owner confirm

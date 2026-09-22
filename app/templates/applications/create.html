@@ -3,6 +3,7 @@
 {% from 'components/button.html' import button %}
 {% from 'components/card.html' import card, card_header, card_title, card_content %}
 {% from 'components/input.html' import input, label, textarea %}
+{% from 'macros/_user_picker.html' import user_picker, user_picker_script %}
 
 {% block title %}Create Application{% endblock %}
 
@@ -58,46 +59,16 @@
                     {{ form.technology_stack(id='technology_stack', class='flex min-h-[60px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2', rows=2, placeholder='e.g., React, Node.js, PostgreSQL') if form.technology_stack is defined else '' }}
                 </div>
 
+                {{ user_picker_script() }}
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {% for field_id, field_label in [('business_owner', 'Business Owner'), ('technical_owner', 'Technical Owner')] %}
-                    <div class="space-y-2" x-data="{
-                        ures: [], ushow: false, uErrorShown: false,
-                        usearch() {
-                            const self = this;
-                            const q = document.getElementById('{{ field_id }}').value;
-                            if (q.length < 2) { this.ures = []; this.ushow = false; return Promise.resolve(); }
-                            return Platform.fetch.get('/api/users', {}, { silent: true })
-                                .then(function (d) {
-                                    if (d.success) { const lq = q.toLowerCase(); self.ures = d.users.filter(u => u.name.toLowerCase().includes(lq) || u.email.toLowerCase().includes(lq)).slice(0, 5); self.ushow = self.ures.length > 0; }
-                                    self.uErrorShown = false;
-                                })
-                                .catch(function (e) {
-                                    // Debounced on every keystroke — toast once per outage, not on every retry.
-                                    // The field still accepts free text, so this only disables suggestions.
-                                    self.ures = [];
-                                    self.ushow = false;
-                                    if (!self.uErrorShown) {
-                                        self.uErrorShown = true;
-                                        if (window.Platform && Platform.toast) Platform.toast.error('User search failed.');
-                                    }
-                                });
-                        },
-                        uselect(u) { document.getElementById('{{ field_id }}').value = u.name; this.ushow = false; this.ures = []; }
-                    }" @click.outside="ushow = false">
-                        {% call label(for=field_id) %}{{ field_label }}{% endcall %}
-                        <div class="relative">
-                            {{ form[field_id](id=field_id, class='flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2', placeholder='Search by name or email...', autocomplete='off', **{'@input.debounce.300ms': 'usearch()', '@focus': 'usearch()'}) if form[field_id] is defined else '' }}
-                            <div x-show="ushow" x-cloak class="absolute z-20 mt-1 w-full bg-popover border border-border rounded-md shadow-lg max-h-40 overflow-y-auto">
-                                <template x-for="u in ures" :key="u.id">
-                                    <button type="button" @click="uselect(u)" class="w-full px-3 py-1.5 text-left text-sm hover:bg-muted flex items-center justify-between">
-                                        <span x-text="u.name" class="font-medium"></span>
-                                        <span x-text="u.email" class="text-xs text-muted-foreground"></span>
-                                    </button>
-                                </template>
-                            </div>
-                        </div>
+                    <div class="space-y-2">
+                        {% call label(for='business_owner_picker') %}Business Owner{% endcall %}
+                        {{ user_picker('business_owner_picker', 'business_owner_user_id') }}
                     </div>
-                    {% endfor %}
+                    <div class="space-y-2">
+                        {% call label(for='technical_owner_picker') %}Technical Owner{% endcall %}
+                        {{ user_picker('technical_owner_picker', 'technical_owner_user_id') }}
+                    </div>
                 </div>
 
                 <div class="space-y-2">

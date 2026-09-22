@@ -271,15 +271,10 @@ def update_overview(id):
         if not is_valid:
             validation_errors.append(error)
 
-        # Validate business_owner
-        owner_raw = request.form.get("businessOwner")
-        is_valid, business_owner, error = validate_string(
-            owner_raw, max_length=255, field_name="businessOwner"
-        )
-        if not is_valid:
-            validation_errors.append(error)
-        elif business_owner:
-            business_owner = sanitize_html(business_owner)
+        # businessOwner: no longer written from this form. A submitted value
+        # is ignored (not validated, not saved) and noted in the flash below
+        # -- the field moved to the application record's Owners section.
+        business_owner_submitted = bool((request.form.get("businessOwner") or "").strip())
 
         # Validate technical_lead
         tech_owner_raw = request.form.get("techOwner")
@@ -344,7 +339,6 @@ def update_overview(id):
             "applicationCategory": app.application_category,
             "businessCriticality": app.business_criticality,
             "userCount": app.user_count,
-            "businessOwner": app.business_owner,
             "techLead": app.technical_lead,
             "devTeam": app.development_team,
             "businessDomain": app.business_domain,
@@ -354,12 +348,13 @@ def update_overview(id):
         }
 
         # Apply updates to fields that actually exist on the model
+        # (businessOwner is no longer among them -- it moved to the Owners
+        # section; a submitted value is not written here.)
         app.name = name or app.name
         app.version = version or app.version
         app.application_category = application_category or app.application_category
         app.business_criticality = business_criticality or app.business_criticality
         app.user_count = user_count if user_count is not None else app.user_count
-        app.business_owner = business_owner or app.business_owner
         app.technical_lead = (
             technical_lead or app.technical_lead
         )  # Fixed: was technical_owner
@@ -420,8 +415,6 @@ def update_overview(id):
             changed_fields.append("businessCriticality")
         if (orig["userCount"] or None) != (app.user_count or None):
             changed_fields.append("userCount")
-        if (orig["businessOwner"] or None) != (app.business_owner or None):
-            changed_fields.append("businessOwner")
         if (orig["techLead"] or None) != (app.technical_lead or None):
             changed_fields.append("techLead")
         if (orig["devTeam"] or None) != (app.development_team or None):
@@ -451,8 +444,14 @@ def update_overview(id):
             if updated_components
             else ""
         )
+        owner_msg = (
+            " Business owner has moved to the application's Owners section;"
+            " the value submitted here was not saved."
+            if business_owner_submitted
+            else ""
+        )
         flash(
-            f"Overview updated successfully ({change_count} changes).{vendor_msg}",
+            f"Overview updated successfully ({change_count} changes).{vendor_msg}{owner_msg}",
             "success",
         )
     except Exception as exc:
@@ -599,8 +598,11 @@ def update_resources(id):
     # csrf-ok: global CSRFProtect active
 
     try:
-        # Update personnel/key resource fields
-        business_owner = request.form.get("business_owner")
+        # Update personnel/key resource fields. business_owner is read but
+        # never written here -- it moved to the application record's Owners
+        # section (a "Business Owner" changes entry would otherwise claim a
+        # save that never happened).
+        business_owner_submitted = bool((request.form.get("business_owner") or "").strip())
         technical_lead = request.form.get("technical_lead")
         development_team = request.form.get("development_team")
         support_team = request.form.get("support_team")
@@ -609,10 +611,6 @@ def update_resources(id):
 
         # Track changes
         changes = []
-
-        if business_owner is not None and business_owner != app.business_owner:
-            app.business_owner = business_owner.strip() or None
-            changes.append("Business Owner")
 
         if technical_lead is not None and technical_lead != app.technical_lead:
             app.technical_lead = technical_lead.strip() or None
@@ -636,8 +634,16 @@ def update_resources(id):
 
         db.session.commit()
 
+        owner_note = (
+            " Business owner is assigned from the Owners section now; the"
+            " value submitted here was not saved."
+            if business_owner_submitted
+            else ""
+        )
         if changes:
-            flash(f"Resources updated successfully: {', '.join(changes)}", "success")
+            flash(f"Resources updated successfully: {', '.join(changes)}.{owner_note}", "success")
+        elif owner_note:
+            flash(f"No other changes made.{owner_note}", "info")
         else:
             flash("No changes made.", "info")
 
@@ -690,11 +696,11 @@ def application_quick_update(id):
                 data["business_criticality"], data["business_criticality"]
             )
 
-        # Business Context & Ownership
+        # Business Context & Ownership. business_owner is intentionally not
+        # applied here -- it moved to the application record's Owners
+        # section; the response below says so when a value was submitted.
         if "business_domain" in data:
             app.business_domain = data["business_domain"]
-        if "business_owner" in data:
-            app.business_owner = data["business_owner"]
         if "product_manager" in data:
             app.product_manager = data["product_manager"]
         if "technical_lead" in data:
@@ -815,7 +821,13 @@ def application_quick_update(id):
         app.updated_at = datetime.utcnow()
         db.session.commit()
 
-        return jsonify({"success": True, "message": "Application updated successfully"})
+        message = "Application updated successfully"
+        if "business_owner" in data:
+            message += (
+                ". Business owner is assigned from the Owners section now;"
+                " the submitted value was not saved"
+            )
+        return jsonify({"success": True, "message": message})
 
     except Exception as e:
         db.session.rollback()
