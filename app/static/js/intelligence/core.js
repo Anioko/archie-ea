@@ -16,6 +16,7 @@
     var IMPACT_URL = '/api/v1/intelligence/impact/';
     var RISK_URL = '/api/v1/intelligence/risk/';
     var PORTFOLIO_URL = '/api/v1/intelligence/portfolio/';
+    var PROGRAMME_URL = '/api/v1/intelligence/programme/';
     var RECOMPUTE_URL = '/api/v1/intelligence/derivation/recompute';
 
     var ERROR_LINE = 'We could not answer that just now.';
@@ -113,6 +114,45 @@
         return Platform.fetch.get(PORTFOLIO_URL + elementId, {}, { silent: true }).then(function (resp) {
             return resp && resp.data ? resp.data : {};
         });
+    }
+
+    /* L5: work packages seeded on an element, each with its own blast-radius.
+       Same request shape as fetchRisk. See
+       app/modules/intelligence/routes/api.py:programme_for_element for what
+       "reasons" can carry (element_not_found, no_tenant_context,
+       no_work_package_recorded). */
+    function fetchProgramme(elementId, options) {
+        return Platform.fetch.get(PROGRAMME_URL + elementId, {
+            include_derived: options && options.includeDerived ? 'true' : 'false',
+            max_depth: (options && options.maxDepth) || 3
+        }, { silent: true }).then(function (resp) {
+            return resp && resp.data ? resp.data : {};
+        });
+    }
+
+    /* One work package's server payload turned into the flat camelCase shape
+       ask.js's template reads -- costVariancePct is null (not 0) when the
+       package was never costed, matching the server's own not_costed
+       reason rather than inventing a number. */
+    function workPackageModel(wp) {
+        return {
+            workPackageId: wp.work_package_id,
+            name: wp.name,
+            status: wp.status,
+            progressPercentage: wp.progress_percentage,
+            startDate: wp.start_date,
+            endDate: wp.end_date,
+            isOverdue: wp.is_overdue,
+            owner: wp.owner || null,
+            costVariancePct: wp.cost_variance_pct != null ? wp.cost_variance_pct : null,
+            costReason: wp.cost_reason || null,
+            affectedRows: wp.affected_rows || [],
+            affectedSummary: wp.affected_summary || {}
+        };
+    }
+
+    function buildWorkPackages(payload) {
+        return (payload.work_packages || []).map(workPackageModel);
     }
 
     // ── small helpers ─────────────────────────────────────────────────────
@@ -342,6 +382,8 @@
         fetchRisk: fetchRisk,
         buildRisks: buildRisks,
         fetchPortfolioComponent: fetchPortfolioComponent,
+        fetchProgramme: fetchProgramme,
+        buildWorkPackages: buildWorkPackages,
         recompute: recompute,
         timeText: timeText,
         refreshIcons: refreshIcons,

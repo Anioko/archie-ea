@@ -50,6 +50,14 @@ REASON_CODES = frozenset(
         # offer a deep link. Not every element is one -- most are not -- and
         # that is an honest absence, not an error.
         "no_application_component",
+        # L5 brief (2026-09-22) additions: Ask's Programme lens seeds from
+        # UnifiedWorkPackage rows linked to the picked element. Most
+        # elements have none -- an honest absence, matching L6's
+        # no_risk_recorded precedent -- and a real work package with no
+        # estimated_cost is a distinct fact from "unknown": nobody budgeted
+        # it, not that the figure failed to load.
+        "no_work_package_recorded",
+        "not_costed",
     }
 )
 
