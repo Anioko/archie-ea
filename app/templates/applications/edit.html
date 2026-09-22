@@ -61,6 +61,7 @@
     {{ user_picker_script() }}
     <section class="rounded-xl border border-border bg-card p-6 space-y-4">
       <h2 class="text-lg font-semibold">Ownership</h2>
+      {% if can_assign_owners %}
       <p class="text-sm text-muted-foreground">Assign owners to enable governance and accountability. Search by name or email; leave blank to clear a role. Additional roles (primary, backup) are set from the application record's Owners section.</p>
 
       <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -79,6 +80,26 @@
                  class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
         </div>
       </div>
+      {% else %}
+      <p class="text-sm text-muted-foreground">Only an organisation admin or this application's primary owner can assign owners. Assignment moved to the application record's Owners section.</p>
+
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div>
+          <p class="block text-sm font-medium mb-1">Business Owner</p>
+          <p class="text-sm text-foreground">{{ business_owner_current_label|default('') or 'Not recorded' }}</p>
+        </div>
+        <div>
+          <p class="block text-sm font-medium mb-1">Technical Owner</p>
+          <p class="text-sm text-foreground">{{ technical_owner_current_label|default('') or 'Not recorded' }}</p>
+        </div>
+        <div>
+          <label for="business_purpose" class="block text-sm font-medium mb-1">Business Purpose</label>
+          <input type="text" id="business_purpose" name="business_purpose" value="{{ application.business_purpose or '' }}"
+                 placeholder="e.g. Customer data management"
+                 class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+        </div>
+      </div>
+      {% endif %}
     </section>
 
     {# ── Classification ── #}

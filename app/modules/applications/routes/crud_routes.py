@@ -297,10 +297,14 @@ def application_create():
         db.session.commit()
 
         # Business/technical owner: the create form's picker posts a chosen
-        # person's id, not a name string (decision D). request.form is empty
-        # for a JSON create, so both calls below are no-ops in that case.
-        _sync_owner_role(app, "business", request.form.get("business_owner_user_id"))
-        _sync_owner_role(app, "technical", request.form.get("technical_owner_user_id"))
+        # person's id, not a name string. Only someone who could already
+        # assign an owner on an existing application may do so here too --
+        # the same rule application_edit applies; a caller who cannot is
+        # silently ignored rather than 403ed, since the application itself
+        # was just created successfully.
+        if _can_assign_owners(app):
+            _sync_owner_role(app, "business", request.form.get("business_owner_user_id"))
+            _sync_owner_role(app, "technical", request.form.get("technical_owner_user_id"))
         db.session.commit()
 
         if is_json:
@@ -790,10 +794,14 @@ def application_edit(id):
             db.session.commit()
 
             # Business/technical owner: the edit form's picker posts a
-            # chosen person's id (decision D). Applied after the rest of the
-            # application is saved, so both operations share one page action.
-            _sync_owner_role(app, "business", request.form.get("business_owner_user_id"))
-            _sync_owner_role(app, "technical", request.form.get("technical_owner_user_id"))
+            # chosen person's id. Applied after the rest of the application
+            # is saved, so both operations share one page action -- but only
+            # for someone who may assign owners at all; anyone else's picker
+            # fields are ignored entirely, submitted or not (the template
+            # itself never shows the picker to them, ruling below).
+            if _can_assign_owners(app):
+                _sync_owner_role(app, "business", request.form.get("business_owner_user_id"))
+                _sync_owner_role(app, "technical", request.form.get("technical_owner_user_id"))
             db.session.commit()
 
             flash("Application updated successfully!", "success")
@@ -1356,7 +1364,13 @@ def accept_capability_suggestion(id):
 # ─────────────────────────────────────────────────────────────────────────
 
 def _owner_picker_context(app_obj):
-    """Pre-fill kwargs for the edit page's business/technical owner pickers."""
+    """Pre-fill kwargs for the create/edit page's business/technical owner
+    pickers. ``_can_assign_owners`` and ``_sync_owner_role`` live in
+    ``._helpers`` now, alongside ``owners_section_context`` (the Owners
+    section's own context assembly, called from
+    app.application_mgmt.routes.render_application_detail) — one Python
+    definition of each rule, imported wherever it is needed, instead of a
+    copy per caller."""
     business_id, business_label = _current_picker_value(app_obj, "business")
     technical_id, technical_label = _current_picker_value(app_obj, "technical")
     return {
@@ -1364,6 +1378,7 @@ def _owner_picker_context(app_obj):
         "business_owner_current_label": business_label,
         "technical_owner_current_id": technical_id,
         "technical_owner_current_label": technical_label,
+        "can_assign_owners": _can_assign_owners(app_obj),
     }
 
 
