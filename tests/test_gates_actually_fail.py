@@ -790,16 +790,39 @@ def test_public_repo_hygiene_commit_message_catches_co_authored_by(tmpdir):
     assert _run_hygiene_checker(good, "commits") == 0
 
 
-def test_public_repo_hygiene_hygiene_ok_escapes_a_commit_message(tmpdir):
-    """The same hygiene-ok: escape hatch source lines use, honoured in a
-    commit message too."""
+def test_public_repo_hygiene_commit_message_hygiene_ok_excuses_its_own_line(tmpdir):
+    """The hygiene-ok: escape hatch excuses the physical line it sits on."""
     root = tmpdir.mkdir("escaped")
     _init_repo_with_commit(
         root,
-        "Fix the timeout (round-1 refuter finding D4)\n\n"  # hygiene-ok: deliberate probe content, escaped by the next line's marker at runtime
-        "hygiene-ok: quoting the original finding for the changelog\n",
+        "Fix the timeout\n\n"
+        "Fix the timeout (round-1 refuter finding D4)  # hygiene-ok: quoting the original finding for the changelog\n",  # hygiene-ok: deliberate probe content, escaped by the marker on the same line at runtime
     )
     assert _run_hygiene_checker(root, "commits") == 0
+
+
+def test_public_repo_hygiene_commit_message_hygiene_ok_does_not_reach_other_lines(tmpdir):
+    """A marker on one line does not excuse a role word on another."""
+    root = tmpdir.mkdir("marker-elsewhere")
+    _init_repo_with_commit(
+        root,
+        "Fix the timeout\n\n"
+        "hygiene-ok: unrelated note\n"
+        "Fix the timeout (round-1 refuter finding D4)\n",  # hygiene-ok: deliberate probe content, the marker above is on a different line and must not reach this one
+    )
+    assert _run_hygiene_checker(root, "commits") > 0
+
+
+def test_public_repo_hygiene_commit_message_trailer_cannot_be_escaped(tmpdir):
+    """A Co-Authored-By line is never excused, marker or not -- the trailer
+    check runs before the escape check."""
+    root = tmpdir.mkdir("trailer-with-marker")
+    _init_repo_with_commit(
+        root,
+        "Fix the timeout on the retry path\n\n"
+        "Co-Authored-By: Example <e@example.com>  # hygiene-ok: attribution is required here\n",
+    )
+    assert _run_hygiene_checker(root, "commits") > 0
 
 
 def test_every_registered_checker_carries_its_proof():

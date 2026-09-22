@@ -532,8 +532,8 @@ silent — every one greppable as `<name>-ok` in `scripts/verify.py`/`scripts/ch
 `raw-fetch-ok`, `shell-ok`, `breadcrumb-ok`, `stale-model-ok`, `error-signalling-ok`,
 `silent-data-ok`, `ui-contract-ok`, `fetch-guard-ok`, `token-migration-ok`
 (design-tokens only), `hygiene-ok` (public-repo-hygiene and its record-id/role-word
-and commit-message extensions; a commit-message hit takes it anywhere in the
-message, not on a specific line), each taking `: <reason>` where the gate requires
+and commit-message extensions; a commit-message hit takes it on the same line —
+a trailer cannot be excused), each taking `: <reason>` where the gate requires
 one.
 
 `pre-commit install` gives the same feedback at commit time on changed files only.

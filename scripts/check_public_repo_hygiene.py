@@ -221,9 +221,11 @@ def _role_word_hits(text: str) -> list[str]:
     return [label for pattern, label in ROLE_WORDS if pattern.search(masked)]
 
 
-COMMIT_MESSAGE_PATTERNS = ROLE_WORDS + [
-    (re.compile(r"co-authored-by", re.IGNORECASE), "Co-Authored-By"),
-]
+# Checked before the escape hatch, on every commit-message line, and never
+# excused by one: an attribution trailer on a line of its own is exactly
+# what the escape hatch exists to let a genuinely necessary role word or
+# record id through, not a trailer.
+_TRAILER_RE = re.compile(r"co-authored-by", re.IGNORECASE)
 
 # .js so app/static's authored JS is covered; vendor/bundles/*.min.js are
 # third-party or built output, never authored comments, and would be pure
@@ -476,14 +478,21 @@ def _iter_commit_messages(root: str, rev_range: str | None):
 def _scan_commit_messages(root: str, rev_range: str | None = None) -> list[str]:
     """Rule 3, commit-message half: pipeline role words and a
     Co-Authored-By trailer in the commit message itself -- not the diff.
-    Ratchet: see the module docstring for why past commits are frozen debt,
-    not something a later cleanup commit can lower."""
+    The escape hatch excuses only the physical line it sits on, not the
+    whole message; a Co-Authored-By line is checked before the escape hatch
+    and is never excused by it, marker or not. Zero tolerance, scoped to
+    the commits under review -- see verify.py's
+    ``gate_public_repo_hygiene_commit_messages`` for why a full-history
+    count cannot be a stable measurement here."""
     problems = []
     for sha, message in _iter_commit_messages(root, rev_range):
-        if ESCAPE_HATCH in message:
-            continue
-        for word_pattern, label in COMMIT_MESSAGE_PATTERNS:
-            if word_pattern.search(message):
+        for line in message.splitlines():
+            if _TRAILER_RE.search(line):
+                problems.append(f"{sha[:8]}: 'Co-Authored-By' in the commit message")
+                continue
+            if ESCAPE_HATCH in line:
+                continue
+            for label in _role_word_hits(line):
                 problems.append(f"{sha[:8]}: '{label}' in the commit message")
     return problems
 
