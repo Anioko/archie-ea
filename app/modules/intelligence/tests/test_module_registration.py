@@ -78,9 +78,18 @@ def test_register_mounts_exactly_the_api_and_ui_blueprints():
     # Blueprint.deferred_functions holds the registration callables, not the
     # rules directly (rules only materialise once bound to a real app); count
     # them instead, which is stable without booting a real Flask app.
-    assert len(bp.deferred_functions) == 4, (
-        "exactly four routes: POST .../recompute, GET .../derived/<id>, "
-        "GET .../impact/<element_id>, GET .../yield"
+    # This ratchet drifted out of sync with reality some time before this fix
+    # (risk/portfolio/programme were each added without updating it, only
+    # the two OTHER route-count ratchets in test_api_routes.py and
+    # test_yield_endpoint.py) -- found while adding the strategy (L2) route,
+    # confirmed pre-existing by running this test against main with the L2
+    # diff stashed out (it already failed there: 7 != 4). Corrected to the
+    # real count rather than only bumped for this brief's own addition.
+    assert len(bp.deferred_functions) == 8, (
+        "exactly eight routes: POST .../recompute, GET .../derived/<id>, "
+        "GET .../impact/<element_id>, GET .../risk/<element_id>, "
+        "GET .../portfolio/<element_id>, GET .../programme/<element_id>, "
+        "GET .../strategy/<element_id>, GET .../yield"
     )
 
 

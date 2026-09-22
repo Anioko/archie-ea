@@ -6,6 +6,7 @@
   GET  /api/v1/intelligence/risk/<element_id>
   GET  /api/v1/intelligence/portfolio/<element_id>
   GET  /api/v1/intelligence/programme/<element_id>
+  GET  /api/v1/intelligence/strategy/<element_id>
   GET  /api/v1/intelligence/yield
 
 Each new route was added to this EXISTING blueprint rather than a new
@@ -511,6 +512,76 @@ def programme_for_element(element_id: int):
     return success_response(
         {
             "work_packages": result["work_packages"],
+            "reasons": result.get("reasons") or [],
+            "elements": result.get("elements") or {},
+        }
+    )
+
+
+@intelligence_api.route("/strategy/<int:element_id>", methods=["GET"])
+@login_required
+def strategy_for_element(element_id: int):
+    """L2: "what are we trying to achieve, and how's it tracking?"
+    Serialises ``IntelligenceQueryService.strategy_for_element`` through
+    ``success_response`` -- same shape/error-handling pattern as
+    ``programme_for_element`` above, no business logic here.
+    """
+    include_derived, err = _parse_bool_param(
+        request.args.get("include_derived"), default=True, param_name="include_derived"
+    )
+    if err is not None:
+        return err
+
+    max_depth_raw = request.args.get("max_depth")
+    if max_depth_raw is None:
+        max_depth = 3
+    else:
+        try:
+            max_depth = int(max_depth_raw)
+        except (TypeError, ValueError):
+            return error_response(
+                "max_depth must be an integer between 1 and 5",
+                code="INVALID_PARAMETER",
+                status_code=400,
+            )
+        if not (1 <= max_depth <= 5):
+            return error_response(
+                "max_depth must be between 1 and 5",
+                code="INVALID_PARAMETER",
+                status_code=400,
+            )
+
+    organization_id = _current_organization_id()
+    if organization_id is None:
+        return error_response(
+            "no tenant context for this request",
+            code="NO_TENANT_CONTEXT",
+            details={"reason": _NO_TENANT_CONTEXT_REASON},
+            status_code=400,
+        )
+
+    from app.models import ArchiMateElement
+
+    element = ArchiMateElement.query.filter_by(id=element_id).first()
+    if element is None:
+        return error_response(
+            "Element not found",
+            code="NOT_FOUND",
+            details={"reason": _ELEMENT_NOT_FOUND_REASON},
+            status_code=404,
+        )
+
+    from app.modules.intelligence.services.query_service import IntelligenceQueryService
+
+    result = IntelligenceQueryService.strategy_for_element(
+        element_id,
+        max_depth=max_depth,
+        include_derived=include_derived,
+    )
+
+    return success_response(
+        {
+            "initiatives": result["initiatives"],
             "reasons": result.get("reasons") or [],
             "elements": result.get("elements") or {},
         }
