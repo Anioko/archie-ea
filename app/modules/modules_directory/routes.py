@@ -176,10 +176,12 @@ _NOT_RENDERED = {
     "architect_ui.roadmap_builder": "302 -> Roadmaps",
 }
 
-# Real, working pages, still reachable by their own URL and by any deep link
-# that points at them directly, that no persona's sidebar zone and no row on
-# this page currently point at, because no segment's day-to-day work asks the
-# question they answer. A later change can put one back in a zone or in
+# Real, working pages, still reachable by their own URL, that no persona's
+# sidebar zone and no row on this page currently point at, because no
+# segment's day-to-day work asks the question they answer today. Reachable by
+# URL only -- no other page in the product links to one of these; a claimed
+# in-app deep link belongs in its own brief once one is actually built, not
+# in this reason string. A later change can put one back in a zone or in
 # _MORE_TOOLS; nothing about the route, template or data behind it changes
 # here. Each is still returned by `all_module_links()` below, so the same
 # discoverability check that watches `_MORE_TOOLS` and every zone keeps
@@ -189,8 +191,8 @@ _DARK = {
     "architecture_journey.index": "a second guided front door; onboarding already covers that job",
     "main.hybrid_mapping_dashboard": "capability-vendor-application mapping statistics nobody asks for today",
     "data_architecture.data_architecture_dashboard": "model counts by tier nobody asks for today",
-    "data_architecture.data_lineage_view": "derived lineage; still reachable from the twin map's application view",
-    "tech_radar.index": "technology rings; still reachable from the twin map's technology view",
+    "data_architecture.data_lineage_view": "derived lineage; reachable by URL only, no in-app link to it",
+    "tech_radar.index": "technology rings; reachable by URL only, no in-app link to it",
     "main.ea_workflows_dashboard": "a workflow-engine dashboard nobody asks for today",
     "dynamic_dashboards.model_registry_index": "developer tooling behind the platform, not a persona page",
     "usage_analytics.analytics_root": "shows nothing while usage tracking stays off",
