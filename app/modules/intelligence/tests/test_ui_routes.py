@@ -363,10 +363,18 @@ def test_names_come_only_from_the_impact_answers_element_map():
     for name, source in _everything().items():
         assert "/detail" not in source, name
         assert "localStorage" not in source and "sessionStorage" not in source, name
+    # The risk lens (L6) added a fourth endpoint, but not a second source of
+    # names: fetchRisk()/riskModel() in core.js carry a risk's own title and
+    # its affected rows/summary straight from the server payload, not an
+    # element-id lookup, so the impact answer's element map stays the only
+    # place a rendered name comes from (core.js's own module docstring: "every
+    # name a person reads comes from the element map the impact answer
+    # carries").
     urls = set(re.findall(r"'(/[a-z0-9_/.-]*)'", _scripts()["core.js"]))
     assert urls == {
         "/archimate/api/elements/search",
         "/api/v1/intelligence/impact/",
+        "/api/v1/intelligence/risk/",
         "/api/v1/intelligence/derivation/recompute",
     }
 

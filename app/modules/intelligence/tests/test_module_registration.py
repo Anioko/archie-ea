@@ -64,9 +64,10 @@ def test_register_mounts_exactly_the_api_and_ui_blueprints():
     only other blueprint is the UI one, which serves the two pages under
     ``/intelligence`` and no route under ``/api/``.
 
-    The impact and yield endpoints both mount on this same blueprint rather
-    than a new one each, so the route count below has grown over time, but
-    the one-blueprint invariant this test exists to pin is unchanged.
+    The impact, risk and yield endpoints all mount on this same blueprint
+    rather than a new one each, so the route count below has grown over
+    time, but the one-blueprint invariant this test exists to pin is
+    unchanged.
     """
     from app.modules.intelligence import register
 
@@ -78,9 +79,9 @@ def test_register_mounts_exactly_the_api_and_ui_blueprints():
     # Blueprint.deferred_functions holds the registration callables, not the
     # rules directly (rules only materialise once bound to a real app); count
     # them instead, which is stable without booting a real Flask app.
-    assert len(bp.deferred_functions) == 4, (
-        "exactly four routes: POST .../recompute, GET .../derived/<id>, "
-        "GET .../impact/<element_id>, GET .../yield"
+    assert len(bp.deferred_functions) == 5, (
+        "exactly five routes: POST .../recompute, GET .../derived/<id>, "
+        "GET .../impact/<element_id>, GET .../risk/<element_id>, GET .../yield"
     )
 
 

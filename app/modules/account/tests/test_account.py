@@ -30,10 +30,10 @@ class TestAccountService:
             assert hasattr(AccountService, 'register_user')
 
     def test_queue_email_callable(self, app):
-        """queue_email() is callable."""
+        """_queue_email() is callable."""
         with app.app_context():
-            from app.modules.account.services.account_service import AccountService
-            assert callable(AccountService.queue_email)
+            from app.modules.account.services.account_service import _queue_email
+            assert callable(_queue_email)
 
     def test_change_password_method_exists(self, app):
         """change_password() method exists on AccountService."""
@@ -184,8 +184,24 @@ class TestAccountRoutes:
         assert resp.status_code == 302
 
     def test_before_request_hook_exists(self, app):
-        """before_app_request hook is registered on the blueprint."""
-        with app.app_context():
-            from app.modules.account.routes.account_routes import account_bp
-            # before_app_request hooks are stored in before_app_request_funcs
-            assert account_bp.before_app_request_funcs is not None
+        """The account blueprint's before_app_request hook runs on every request.
+
+        ``@account_bp.before_app_request`` registers the function against the
+        app-wide key (``None``), not the blueprint's own key, in Flask's
+        ``before_request_funcs`` dict -- so this checks for the real hook
+        function by module and name there, not merely that the dict exists
+        (which is true for every blueprint, hook or no hook).
+
+        ``USE_ACCOUNT_GUARDRAILS`` defaults on (``app/_bootstrap/blueprints.py``'s
+        ``_init_blueprints``), so the account v2 module -- not v1 -- is the one
+        this app fixture actually registers as "account", and its own
+        ``before_request`` (preserved from v1, same decorator) is the hook that
+        runs.
+        """
+        from app.modules.account.v2.routes import account_routes
+
+        hooks = app.before_request_funcs.get(None, [])
+        assert any(
+            fn.__module__ == account_routes.__name__ and fn.__name__ == "before_request"
+            for fn in hooks
+        ), "account_routes.before_request is not registered as a before_app_request hook"
