@@ -45,7 +45,7 @@ def _orphan_link_choice(orphan_layer, connected_layers, valid_relationships):
                 if valid_relationships.get((rtype, orphan_layer, try_layer), False):
                     chosen_layer = try_layer
                     break
-            if chosen_layer:
+            if chosen_layer is not None:
                 break
 
     if chosen_layer is None:

@@ -336,6 +336,11 @@ def test_compute_derived_output_is_invariant_under_element_layer():
         return ArchiMateDerivationService().compute_derived(elements, relationships)
 
     baseline = _chain(["application", "application", "application"])
+    assert len(baseline) == 1, (
+        "the two-hop Serving+Serving chain must derive exactly one row "
+        f"(1 -> 3); a vacuous baseline would make every comparison below "
+        f"pass trivially: {baseline}"
+    )
 
     for layer in ArchiMateLayer.ALL:
         assert _chain([layer, layer, layer]) == baseline

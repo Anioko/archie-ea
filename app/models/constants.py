@@ -224,6 +224,14 @@ class ArchiMateLayer:
         stripped and lower-cased, unchanged otherwise, and a non-string is
         returned untouched. This is deliberately not a general-purpose
         layer normaliser.
+
+        Two other normalisers elsewhere in the product fold the same pair
+        the opposite way: the ArchiMate CRUD route's layer aliases treat
+        ``"implementation_migration"`` as one more spelling of
+        ``"implementation"``, and the architecture validation service's own
+        layer aliases fold every long-form spelling onto ``"implementation"``
+        too. Reconciling all of these onto one shared spelling is a separate,
+        already-recorded piece of work this function does not attempt.
         """
         if not isinstance(value, str):
             return value
