@@ -1359,8 +1359,7 @@ def accept_capability_suggestion(id):
 
 # ─────────────────────────────────────────────────────────────────────────
 # Owners write path (application_owners) — the record's first production
-# writer (fact 1: every existing construction of ApplicationOwner is a test
-# fixture). Reused throughout: ApplicationOwner + TenantMixin for the store,
+# writer. Reused throughout: ApplicationOwner + TenantMixin for the store,
 # /api/users + the lifted user-picker macro for search, is_org_admin + a
 # recorded primary-owner row for permission.
 # ─────────────────────────────────────────────────────────────────────────
@@ -1387,9 +1386,8 @@ def _owner_picker_context(app_obj):
 @unified_applications_bp.route("/<int:id>/owners", methods=["POST"])
 @login_required
 def add_application_owner(id):
-    """Add one ApplicationOwner row — decision B. The one production writer
-    this table has ever had (fact 1: every prior construction is a test
-    fixture)."""
+    """Add one ApplicationOwner row -- the one production writer this table
+    has ever had; every prior construction was a test fixture."""
     app_obj = ApplicationComponent.query.get_or_404(id)
 
     if not _can_assign_owners(app_obj):
@@ -1440,7 +1438,7 @@ def add_application_owner(id):
 @unified_applications_bp.route("/<int:id>/owners/<int:owner_id>/remove", methods=["POST"])
 @login_required
 def remove_application_owner(id, owner_id):
-    """Remove one ApplicationOwner row — decision B."""
+    """Remove one ApplicationOwner row."""
     app_obj = ApplicationComponent.query.get_or_404(id)
 
     if not _can_assign_owners(app_obj):

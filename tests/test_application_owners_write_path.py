@@ -109,7 +109,7 @@ def test_model_is_tenant_mixin_with_no_explicit_org_column():
     assert "organization_id" in ApplicationOwner.__table__.columns
 
 
-# ───────────────────────────────────────────────────── decision B: add owner
+# ───────────────────────────────────────────────────────────── add owner
 
 
 def test_add_owner_by_admin(db_session, make_org, client, login_as):
@@ -203,6 +203,30 @@ def test_add_owner_from_another_org_is_404_no_row(db_session, make_org, client, 
     assert ApplicationOwner.query.filter_by(application_id=app_row.id).first() is None
 
 
+def test_add_owner_cross_tenant_application_id_is_404(db_session, make_org, client, login_as):
+    """The reverse of the case above: the acting user belongs to org B and
+    posts org A's own application id -- the tenant fence on
+    ApplicationComponent itself must 404 before any owner row is touched."""
+    from app.models.application_owner import ApplicationOwner
+
+    org_a = make_org("add-app-cross-a")
+    org_b = make_org("add-app-cross-b")
+    admin_b = _make_user(db_session, org_b, is_org_admin=True, label="add-app-cross-admin-b")
+    target_b = _make_user(db_session, org_b, label="add-app-cross-target-b")
+    app_a = _make_app(db_session, org_a)
+    db_session.commit()
+
+    login_as(client, admin_b)
+    resp = client.post(
+        f"/applications/{app_a.id}/owners",
+        data={"user_id": target_b.id, "ownership_type": "technical"},
+    )
+    assert resp.status_code == 404
+
+    db_session.expire_all()
+    assert ApplicationOwner.query.filter_by(application_id=app_a.id).first() is None
+
+
 def test_add_owner_duplicate_is_a_flash_not_a_500(db_session, make_org, client, login_as):
     from app.models.application_owner import ApplicationOwner
 
@@ -230,7 +254,7 @@ def test_add_owner_duplicate_is_a_flash_not_a_500(db_session, make_org, client, 
 
 
 def test_add_owner_without_explicit_org_id_carries_acting_org(db_session, make_org, client, login_as):
-    """The add route never sets organization_id itself (fact/decision B) --
+    """The add route never sets organization_id itself --
     TenantMixin's before_flush listener must stamp it from the request."""
     from app.models.application_owner import ApplicationOwner
 
@@ -255,7 +279,7 @@ def test_add_owner_without_explicit_org_id_carries_acting_org(db_session, make_o
     assert row.organization_id == org.id
 
 
-# ────────────────────────────────────────────────── decision B: remove owner
+# ────────────────────────────────────────────────────────── remove owner
 
 
 def test_remove_owner(db_session, make_org, client, login_as):
@@ -317,6 +341,31 @@ def test_remove_owner_cross_tenant_row_is_404(db_session, make_org, client, logi
     assert db_session.get(ApplicationOwner, owner_id_b) is not None
 
 
+def test_remove_owner_cross_tenant_application_id_is_404(db_session, make_org, client, login_as):
+    """The reverse of the case above: the acting user belongs to org B and
+    posts org A's own application id, with org B's own row id -- the tenant
+    fence on ApplicationComponent itself must 404 before the row is looked
+    up at all."""
+    from app.models.application_owner import ApplicationOwner
+
+    org_a = make_org("remove-app-cross-a")
+    org_b = make_org("remove-app-cross-b")
+    admin_b = _make_user(db_session, org_b, is_org_admin=True, label="remove-app-cross-admin-b")
+    user_b = _make_user(db_session, org_b, label="remove-app-cross-user-b")
+    app_a = _make_app(db_session, org_a)
+    app_b = _make_app(db_session, org_b)
+    owner_row_b = _make_owner_row(db_session, app_b, user_b, "technical")
+    owner_id_b = owner_row_b.id
+    db_session.commit()
+
+    login_as(client, admin_b)
+    resp = client.post(f"/applications/{app_a.id}/owners/{owner_id_b}/remove")
+    assert resp.status_code == 404
+
+    db_session.expire_all()
+    assert db_session.get(ApplicationOwner, owner_id_b) is not None
+
+
 # ───────────────────────────────────────── the tenant fence, positive control
 
 
@@ -344,7 +393,7 @@ def test_cross_tenant_select_returns_only_tenant_rows(db_session, make_org, tena
     assert all(row.organization_id == org_a.id for row in visible)
 
 
-# ──────────────────────────────────────────────────── decision D: edit form
+# ──────────────────────────────────────────────────────────── edit form
 
 
 def test_edit_form_person_chosen_writes_row_leaves_text_untouched(db_session, make_org, client, login_as):
@@ -377,7 +426,7 @@ def test_edit_form_person_chosen_writes_row_leaves_text_untouched(db_session, ma
     )
 
 
-# ───────────────────────────────────────────── decision C: text-owner confirm
+# ───────────────────────────────────────────────────── text-owner confirm
 
 
 def test_text_owner_unique_match_renders_confirm_and_confirm_writes_row(
@@ -413,9 +462,9 @@ def test_text_owner_unique_match_renders_confirm_and_confirm_writes_row(
 
 
 def test_rendering_the_section_never_writes_a_row(db_session, make_org, app):
-    """Decision E: the match is a suggestion computed at render time. Viewing
-    the page must never itself create an ApplicationOwner row (no automatic
-    backfill anywhere)."""
+    """The match is a suggestion computed at render time. Viewing the page
+    must never itself create an ApplicationOwner row (no automatic backfill
+    anywhere)."""
     from app.models.application_owner import ApplicationOwner
 
     org = make_org("no-backfill")
@@ -434,7 +483,7 @@ def test_rendering_the_section_never_writes_a_row(db_session, make_org, app):
     assert after == before == 0
 
 
-# ───────────────────────────────────────────────── decision fact 9: deletion
+# ──────────────────────────────────────────────────────────────── deletion
 
 
 def test_deleting_user_removes_row_and_section_shows_not_recorded(db_session, make_org, app):
