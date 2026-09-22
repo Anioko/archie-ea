@@ -141,6 +141,19 @@ def test_summary_api_counts_rows_by_feature_name(
     assert summary["usage_analytics.analytics_root"]["total_events"] >= 2
 
 
+def test_dashboard_renders_privacy_sentence(db_session, make_org, client, login_as):
+    org = make_org("usage-privacy-sentence")
+    user = _user(org, "privacy-sentence")
+    login_as(client, user)
+
+    resp = client.get("/usage-analytics/dashboard")
+    assert resp.status_code == 200
+    assert (
+        b"Collect anonymous usage analytics to improve the application"
+        in resp.data
+    )
+
+
 def test_dashboard_requires_login(client):
     resp = client.get("/usage-analytics/dashboard")
     assert resp.status_code in (302, 401)
