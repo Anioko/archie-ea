@@ -65,7 +65,6 @@ HTML_ROUTES = [
     f"/solutions/{MISSING_ID}/communications",
     f"/architecture-assistant/solution/{MISSING_ID}",
     f"/vendors/applications-portfolio/{MISSING_ID}",
-    f"/vendors/technical/analytics/{MISSING_ID}",
     f"/dashboard/vendor-analysis/{MISSING_ID}",
 ]
 

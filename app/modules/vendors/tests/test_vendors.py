@@ -165,12 +165,14 @@ class TestVendorsRouteCount:
     """Test that route counts match expectations for key blueprints."""
 
     def test_vendor_management_route_count(self):
-        """vendor_management_bp should have routes (deferred functions)."""
+        """vendor_management_bp: six routes remain after T-VEND-1 retired the
+        four page-rendering duplicates (vendor_dashboard, search_vendors,
+        vendor_analytics, import_vendors) that nothing linked to."""
         from app.modules.vendors.routes.vendor_management_routes import vendor_management_bp
 
         count = len(vendor_management_bp.deferred_functions)
-        assert count >= 9, (
-            f"Expected >= 9 deferred functions on vendor_management_bp, got {count}"
+        assert count == 6, (
+            f"Expected 6 deferred functions on vendor_management_bp, got {count}"
         )
 
     def test_vendor_product_route_count(self):
@@ -201,12 +203,13 @@ class TestVendorsRouteCount:
         )
 
     def test_unified_vendors_route_count(self):
-        """unified_vendors_bp should have routes."""
+        """unified_vendors_bp: ten routes remain after T-VEND-1 retired the
+        eighteen page-rendering duplicates that nothing linked to."""
         from app.modules.vendors.routes.unified_vendor_views import unified_vendors_bp
 
         count = len(unified_vendors_bp.deferred_functions)
-        assert count >= 20, (
-            f"Expected >= 20 deferred functions on unified_vendors_bp, got {count}"
+        assert count == 10, (
+            f"Expected 10 deferred functions on unified_vendors_bp, got {count}"
         )
 
     def test_unified_vendors_api_route_count(self):

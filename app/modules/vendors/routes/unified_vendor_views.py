@@ -94,14 +94,6 @@ unified_vendors_bp = Blueprint(
 # =============================================================================
 
 
-@unified_vendors_bp.route("/integration")
-@login_required
-def integration_dashboard():
-    """Integration Architect dashboard - renders vendor catalog."""
-    stats, vendors = _get_vendor_list_context()
-    return render_template("vendors/list.html", stats=stats, vendors=vendors, pagination=None)
-
-
 @unified_vendors_bp.route("/integration/mapping")
 @login_required
 def vendor_mapping_tool():
@@ -135,14 +127,6 @@ def vendor_mapping_tool():
     )
 
 
-@unified_vendors_bp.route("/integration/patterns")
-@login_required
-def integration_patterns():
-    """Vendor-specific integration pattern library - renders vendor list."""
-    stats, vendors = _get_vendor_list_context()
-    return render_template("vendors/list.html", stats=stats, vendors=vendors, pagination=None)
-
-
 # =============================================================================
 # Technical Architect Dashboard
 # =============================================================================
@@ -152,14 +136,6 @@ def integration_patterns():
 @login_required
 def technical_dashboard():
     """Technical Architect dashboard - renders vendor list."""
-    stats, vendors = _get_vendor_list_context()
-    return render_template("vendors/list.html", stats=stats, vendors=vendors, pagination=None)
-
-
-@unified_vendors_bp.route("/technical/comparison")
-@login_required
-def vendor_comparison():
-    """Vendor comparison workbench - renders vendor list."""
     stats, vendors = _get_vendor_list_context()
     return render_template("vendors/list.html", stats=stats, vendors=vendors, pagination=None)
 
@@ -218,27 +194,6 @@ def _get_vendor_apps(vendor_id):
     return apps, stats
 
 
-@unified_vendors_bp.route("/technical/analytics/<int:vendor_id>")
-@login_required
-def vendor_analytics(vendor_id):
-    """Vendor analytics - renders vendor applications portfolio."""
-    # A synthesised "Vendor #<id>" placeholder with "Total Applications: 0" is
-    # fabricated data — the user cannot tell it from a real vendor with no
-    # applications. A vendor that does not exist is a 404.
-    from app.utils.route_guards import require_entity
-
-    vendor = require_entity(
-        VendorOrganization, vendor_id, description="Vendor not found"
-    )
-    applications, stats = _get_vendor_apps(vendor_id)
-    return render_template(
-        "vendors/vendor_applications_portfolio.html",
-        vendor=vendor,
-        stats=stats,
-        applications=applications,
-    )
-
-
 @unified_vendors_bp.route("/applications-portfolio/<int:vendor_id>")
 @login_required
 def vendor_applications_portfolio(vendor_id):
@@ -260,117 +215,9 @@ def vendor_applications_portfolio(vendor_id):
     )
 
 
-@unified_vendors_bp.route("/technical/scenarios")
-@login_required
-def scenario_analyzer():
-    """What-if scenario analyzer - renders vendor list."""
-    stats, vendors = _get_vendor_list_context()
-    return render_template("vendors/list.html", stats=stats, vendors=vendors, pagination=None)
-
-
-# =============================================================================
-# Data Architect Dashboard
-# =============================================================================
-
-
-@unified_vendors_bp.route("/data")
-@login_required
-def data_dashboard():
-    """Data Architect dashboard - renders vendor list."""
-    stats, vendors = _get_vendor_list_context()
-    return render_template("vendors/list.html", stats=stats, vendors=vendors, pagination=None)
-
-
-@unified_vendors_bp.route("/data/quality")
-@login_required
-def data_quality():
-    """Vendor data quality dashboard - renders vendor list."""
-    stats, vendors = _get_vendor_list_context()
-    return render_template("vendors/list.html", stats=stats, vendors=vendors, pagination=None)
-
-
-@unified_vendors_bp.route("/data/duplicates")
-@login_required
-def duplicate_management():
-    """Duplicate vendor management - redirects to duplicate detection."""
-    return redirect(url_for("unified_duplicate.simple_dashboard"))
-
-
-@unified_vendors_bp.route("/data/import", methods=["GET", "POST"])
-@login_required
-def vendor_import():
-    """Bulk vendor import - renders vendor list for GET, processes import for POST."""
-    if request.method == "GET":
-        stats = {"total": 0, "active": 0, "strategic": 0, "total_products": 0, "domain_distribution": {}}
-        return render_template("vendors/list.html", stats=stats, vendors=[], pagination=None)
-    return import_vendors()
-
-
-@unified_vendors_bp.route("/data/reconciliation")
-@login_required
-def vendor_reconciliation():
-    """Vendor reconciliation - renders vendor list."""
-    stats, vendors = _get_vendor_list_context()
-    return render_template("vendors/list.html", stats=stats, vendors=vendors, pagination=None)
-
-
-# =============================================================================
-# Solution Architect Dashboard
-# =============================================================================
-
-
-@unified_vendors_bp.route("/selection")
-@login_required
-def selection_dashboard():
-    """Solution Architect dashboard - renders vendor list."""
-    stats, vendors = _get_vendor_list_context()
-    return render_template("vendors/list.html", stats=stats, vendors=vendors, pagination=None)
-
-
-@unified_vendors_bp.route("/selection/requirements")
-@login_required
-def requirements_definition():
-    """Define requirements - renders vendor list."""
-    stats, vendors = _get_vendor_list_context()
-    return render_template("vendors/list.html", stats=stats, vendors=vendors, pagination=None)
-
-
-@unified_vendors_bp.route("/selection/discovery")
-@login_required
-def vendor_discovery():
-    """AI-powered vendor discovery - renders vendor list."""
-    stats, vendors = _get_vendor_list_context()
-    return render_template("vendors/list.html", stats=stats, vendors=vendors, pagination=None)
-
-
-@unified_vendors_bp.route("/selection/analysis")
-@login_required
-def selection_analysis():
-    """Vendor selection analysis - renders vendor list."""
-    stats, vendors = _get_vendor_list_context()
-    return render_template("vendors/list.html", stats=stats, vendors=vendors, pagination=None)
-
-
 # =============================================================================
 # Vendor Management Actions (Consolidated from vendor_management_routes.py)
 # =============================================================================
-
-
-@unified_vendors_bp.route("/catalog", methods=["GET"])
-@login_required
-def vendor_catalog():
-    """Vendor catalog - redirects to working vendor list."""
-    return redirect(url_for("unified_applications.vendors"))
-
-
-@unified_vendors_bp.route("/create", methods=["GET", "POST"])
-@login_required
-@require_roles("admin", "architect")
-def create_vendor():
-    """Create new vendor - renders simple create form."""
-    return render_template(
-        "vendors/create_simple.html",
-    )
 
 
 @unified_vendors_bp.route("/<int:vendor_id>", methods=["GET"])
@@ -540,39 +387,6 @@ def deploy_vendor_product(vendor_id, product_id):
             return jsonify({"success": False, "error": "An internal error occurred. Please try again."}), 400
         flash("An internal error occurred. Please try again.", "error")
         return redirect(url_for("unified_applications.vendor_detail", vendor_id=vendor_id))
-
-
-@unified_vendors_bp.route("/<int:vendor_id>/deployment-portfolio")
-@login_required
-def vendor_deployment_portfolio(vendor_id):
-    """Deprecated ORPHAN. Redirect to canonical /vendors/<id>. No inbound links."""
-    return redirect(url_for("unified_vendors.vendor_detail", vendor_id=vendor_id), code=301)
-
-
-@unified_vendors_bp.route("/<int:vendor_id>/delete", methods=["DELETE", "POST"])
-@login_required
-@require_roles("admin")
-@audit_log("vendor_delete")
-def delete_vendor(vendor_id):
-    """Delete vendor - directly deletes and shows success message."""
-    vendor = VendorOrganization.query.get_or_404(vendor_id)
-
-    vendor_name = vendor.name
-    db.session.delete(vendor)
-    db.session.commit()
-
-    current_app.logger.info(
-        f"[VENDOR DELETED] {vendor_name} (ID: {vendor_id}) by {current_user.email}"
-    )
-
-    if request.headers.get("Accept") == "application/json":
-        return jsonify(
-            {"status": "success", "message": f"Vendor '{vendor_name}' deleted"}
-        ), 200
-
-    flash(f"Vendor '{vendor_name}' deleted successfully", "success")
-    stats, vendors = _get_vendor_list_context()
-    return render_template("vendors/list.html", stats=stats, vendors=vendors, pagination=None)
 
 
 @unified_vendors_bp.route("/import", methods=["GET", "POST"])

@@ -18,6 +18,12 @@ vendor_comparison, legacy_vendor_redirects, ai_vendor_discovery and
 advanced_vendor were deliberately deleted in the consolidation into
 unified_vendors_api (COM-015, BPM-001 waves 1-2, zero callers) -- see
 app/_bootstrap/blueprints.py's _register_vendors().
+
+Twenty-two page routes inside unified_vendors_bp and vendor_management_bp
+that duplicated a page already served under its own name, and that nothing
+in the tree linked to, were retired the same way. The blueprints themselves
+are unchanged; the ten remaining unified_vendors_bp routes and six remaining
+vendor_management_bp routes are unaffected in body or decorator.
 """
 
 from flask import Flask
@@ -66,4 +72,4 @@ def register(app: Flask) -> None:
 
     register_vendor_discovery_routes(app)
 
-    app.logger.info("[MODULE] vendors registered (9 blueprints, ~138 routes)")
+    app.logger.info("[MODULE] vendors registered (9 blueprints, 116 routes)")
