@@ -34,11 +34,12 @@ for _canonical_flag in (
     "USE_NEW_ARCHITECTURE",
     "USE_AI_CHAT_GUARDRAILS",
     "USE_NEW_AI_CHAT",
-    # NOTE: vendors are intentionally NOT defaulted to the v2/guardrail path.
-    # The always-on unified vendor blueprints serve the vendor pages AND the
-    # /api/vendors/* JSON the vendor dashboard widgets call (list, ranking).
-    # Forcing USE_VENDORS_GUARDRAILS switches to v2-only and drops the unified
-    # API, 404-ing those widgets ("not found" in the UI).
+    # NOTE: USE_VENDORS_GUARDRAILS is not in this tuple, but
+    # app/_bootstrap/blueprints.py's own _init_blueprints defaults it on too,
+    # so the nine vendors blueprints register on a default boot the same as
+    # the flags above. The always-on registration of unified_vendors_api_bp
+    # and vendor_management_bp there is the fallback for an explicit
+    # USE_VENDORS_GUARDRAILS=false, not the default.
 ):
     os.environ.setdefault(_canonical_flag, "true")
 
