@@ -91,10 +91,15 @@ def _resolve_owners_batch(
     ``ApplicationComponent`` carries ``TenantMixin`` so the component select
     below is already fenced by ``do_orm_execute`` (a cross-tenant row is
     simply not returned in a normal request); ``_sec09_tenant_check`` is the
-    belt-and-braces assertion applied on top of that ORM fencing.
-    ``ApplicationOwnership`` and ``OrganizationUnit`` carry no
-    ``organization_id`` column at all, so they are reached ONLY through the
-    already-fenced, already-asserted component -- never queried first.
+    belt-and-braces assertion applied on top of that ORM fencing -- kept for
+    the session-scoped-caller drift it defends against even now that
+    ``ApplicationOwnership`` and ``OrganizationUnit`` carry ``TenantMixin``
+    too and are fenced by the same listener.
+
+    Only CURRENT ownership is attached: a row whose ``end_date`` has already
+    passed is excluded from the select below, the same rule
+    ``accountability_for_element`` applies, so the two owner-resolution
+    paths agree on one element.
 
     ``archimate_element_id`` is indexed but NOT unique (a component created
     before the maintaining listener existed, or by a raw-SQL/import path,
@@ -103,6 +108,8 @@ def _resolve_owners_batch(
     same "first" component every time instead of risking
     ``MultipleResultsFound``.
     """
+    from datetime import date
+
     from app.models.application_portfolio import ApplicationComponent
     from app.models.enterprise_intelligence import ApplicationOwnership, OrganizationUnit
 
@@ -142,8 +149,13 @@ def _resolve_owners_batch(
     component_ids = [comp.id for comp in guarded_components.values()]
     ownerships = (
         db.session.execute(
-            db.select(ApplicationOwnership).where(
-                ApplicationOwnership.application_id.in_(component_ids)
+            db.select(ApplicationOwnership)
+            .where(ApplicationOwnership.application_id.in_(component_ids))
+            .where(
+                db.or_(
+                    ApplicationOwnership.end_date.is_(None),
+                    ApplicationOwnership.end_date >= date.today(),
+                )
             )
         )
         .scalars()
@@ -1171,6 +1183,7 @@ class IntelligenceQueryService:
         with record_query_latency("accountability_for_element") as scope:
             org_id = current_org_id()
             scope.organization_id = org_id
+            today = date.today()
 
             component_result = IntelligenceQueryService.portfolio_component_for_element(element_id)
             if component_result.get("reasons"):
@@ -1192,7 +1205,7 @@ class IntelligenceQueryService:
                     .where(
                         db.or_(
                             ApplicationOwnership.end_date.is_(None),
-                            ApplicationOwnership.end_date >= date.today(),
+                            ApplicationOwnership.end_date >= today,
                         )
                     )
                 )
@@ -1205,6 +1218,7 @@ class IntelligenceQueryService:
                     "owners": [],
                     "capacity_not_available": True,
                     "reasons": [NO_OWNERSHIP_RECORDS_REASON, CAPACITY_NOT_AVAILABLE_REASON],
+                    "as_of": today.isoformat(),
                 }
 
             owner_payloads: List[Dict[str, Any]] = []
@@ -1244,6 +1258,7 @@ class IntelligenceQueryService:
             "owners": owner_payloads,
             "capacity_not_available": True,
             "reasons": [CAPACITY_NOT_AVAILABLE_REASON],
+            "as_of": today.isoformat(),
         }
 
 

@@ -241,6 +241,7 @@ def test_expired_ownership_row_is_excluded(app, db_session, make_org):
 
     assert result["owners"] == []
     assert result["reasons"] == ["no_ownership_records", "capacity_not_available"]
+    assert result["as_of"] == date.today().isoformat()
 
 
 def test_ownership_row_with_no_end_date_or_future_end_date_is_current(app, db_session, make_org):
@@ -265,6 +266,7 @@ def test_ownership_row_with_no_end_date_or_future_end_date_is_current(app, db_se
         g.current_org_id = org.id
         result = IntelligenceQueryService.accountability_for_element(a.id)
 
+    assert result["as_of"] == date.today().isoformat()
     end_dates = {row["ownership_type"]: row["end_date"] for row in result["owners"]}
     assert end_dates == {
         "Business Owner": None,

@@ -230,6 +230,37 @@ def test_owner_absent_is_indistinguishable_and_cross_tenant_does_not_leak(app, d
         assert "OrgB-Secret-Unit" not in str(row)
 
 
+def test_owner_absent_when_ownership_has_ended(app, db_session, make_org):
+    """An ownership row whose end_date has already passed is not current
+    ownership -- same absence shape as no link at all, not the ended row's
+    unit."""
+    import datetime as _dt
+
+    from app.modules.intelligence.services.query_service import IntelligenceQueryService
+
+    org = make_org("qs-owner-ended")
+    a = _element(db_session, org.id, "A")
+    b = _element(db_session, org.id, "B")
+    _relationship(db_session, org.id, a, b)
+    comp = _application_component(db_session, org.id, b.id, name="Formerly Owned App")
+    unit = _org_unit(db_session, org.id, "Ended-Unit")
+    _ownership(
+        db_session, org.id, comp.id, unit.id,
+        end_date=_dt.date.today() - _dt.timedelta(days=1),
+    )
+    db_session.commit()
+
+    with app.test_request_context("/"):
+        from flask import g
+
+        g.current_org_id = org.id
+        result = IntelligenceQueryService.cross_layer_impact(a.id, include_derived=False, with_owner=True)
+
+    row = result["rows"][0]
+    assert row["owner"] is None
+    assert row["reason"] == "no_ownership_recorded"
+
+
 # --- Acceptance criterion 7: derivation_state ---------------------------------
 
 
