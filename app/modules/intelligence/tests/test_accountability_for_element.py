@@ -209,6 +209,62 @@ def test_multiple_owners_on_one_component_each_get_their_own_row(app, db_session
     assert types == {"Business Owner", "Technical Owner"}
 
 
+def test_expired_ownership_row_is_excluded(app, db_session, make_org):
+    """A row whose end_date has already passed is not current ownership --
+    it must not render as the accountable owner."""
+    from datetime import date, timedelta
+
+    from app.modules.intelligence.services.query_service import IntelligenceQueryService
+
+    org = make_org("accountability-lens-expired")
+    a = _element(db_session, org.id, "A")
+    component = _component(db_session, org.id, a)
+    unit = _unit(db_session, name="Legacy Unit")
+    _ownership(
+        db_session, component, unit=unit, ownership_type="Business Owner",
+        end_date=date.today() - timedelta(days=1),
+    )
+    db_session.commit()
+
+    with app.test_request_context("/"):
+        from flask import g
+
+        g.current_org_id = org.id
+        result = IntelligenceQueryService.accountability_for_element(a.id)
+
+    assert result["owners"] == []
+    assert result["reasons"] == ["no_ownership_records", "capacity_not_available"]
+
+
+def test_ownership_row_with_no_end_date_or_future_end_date_is_current(app, db_session, make_org):
+    from datetime import date, timedelta
+
+    from app.modules.intelligence.services.query_service import IntelligenceQueryService
+
+    org = make_org("accountability-lens-current")
+    a = _element(db_session, org.id, "A")
+    component = _component(db_session, org.id, a)
+    unit = _unit(db_session, name="Active Unit")
+    _ownership(db_session, component, unit=unit, ownership_type="Business Owner")
+    _ownership(
+        db_session, component, unit=unit, ownership_type="Technical Owner",
+        end_date=date.today() + timedelta(days=30),
+    )
+    db_session.commit()
+
+    with app.test_request_context("/"):
+        from flask import g
+
+        g.current_org_id = org.id
+        result = IntelligenceQueryService.accountability_for_element(a.id)
+
+    end_dates = {row["ownership_type"]: row["end_date"] for row in result["owners"]}
+    assert end_dates == {
+        "Business Owner": None,
+        "Technical Owner": (date.today() + timedelta(days=30)).isoformat(),
+    }
+
+
 def test_unit_hidden_when_component_tenant_check_fails(app, db_session, make_org, monkeypatch):
     """SEC-09 belt-and-braces companion to
     test_query_service.py::test_sec09_tenant_check_blocks_real_cross_tenant_resolution:

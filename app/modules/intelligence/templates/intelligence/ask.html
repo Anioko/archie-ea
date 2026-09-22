@@ -240,7 +240,13 @@
                     </div>
                     <p class="mt-1 text-sm text-foreground" x-show="owner.primaryContact"><span x-text="owner.primaryContact"></span></p>
                     <p class="mt-1 text-sm text-muted-foreground" x-show="!owner.primaryContact">No contact recorded</p>
-                    <p class="mt-1 text-sm text-muted-foreground" x-show="owner.startDate"><span x-text="'Since ' + owner.startDate"></span></p>
+                    {# end_date is now filtered server-side, so a row reaching
+                       here should never already be expired -- this stays as
+                       a defensive rendering rule (not the primary defence)
+                       so an expired row surfacing through any other path is
+                       never shown as if it were current ownership. #}
+                    <p class="mt-1 text-sm text-muted-foreground" x-show="owner.startDate && !(owner.endDate && owner.endDate < new Date().toISOString().slice(0,10))"><span x-text="'Since ' + owner.startDate"></span></p>
+                    <p class="mt-1 text-sm text-destructive" x-show="owner.endDate && owner.endDate < new Date().toISOString().slice(0,10)"><span x-text="'Ended ' + owner.endDate"></span></p>
                 </li>
             </template>
         </ul>

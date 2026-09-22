@@ -1137,8 +1137,9 @@ class IntelligenceQueryService:
         accountability half only -- resolves the element to its
         ``ApplicationComponent`` (reusing ``portfolio_component_for_element``
         verbatim, no second resolution implementation) and lists every
-        ``ApplicationOwnership`` row for it, each with its owning
-        ``OrganizationUnit``.
+        CURRENT ``ApplicationOwnership`` row for it (``end_date`` unset or
+        not yet passed -- an ownership row whose ``end_date`` has already
+        passed is not returned), each with its owning ``OrganizationUnit``.
 
         No blast-radius traversal here -- unlike every other lens, this is a
         pure ownership lookup, not a change/risk/programme question, so
@@ -1170,6 +1171,8 @@ class IntelligenceQueryService:
         shape an orphaned FK already produces below -- instead of reading
         ``OrganizationUnit`` at all.
         """
+        from datetime import date
+
         from app.models.application_portfolio import ApplicationComponent
         from app.models.enterprise_intelligence import ApplicationOwnership, OrganizationUnit
 
@@ -1198,10 +1201,18 @@ class IntelligenceQueryService:
                 component.organization_id, org_id
             )
 
+            # Expired ownership is not current ownership: a row whose
+            # end_date has passed must not render as the accountable owner
+            # with no indication it ended.
             ownership_rows = (
                 db.session.execute(
-                    db.select(ApplicationOwnership).where(
-                        ApplicationOwnership.application_id == application_id
+                    db.select(ApplicationOwnership)
+                    .where(ApplicationOwnership.application_id == application_id)
+                    .where(
+                        db.or_(
+                            ApplicationOwnership.end_date.is_(None),
+                            ApplicationOwnership.end_date >= date.today(),
+                        )
                     )
                 )
                 .scalars()
