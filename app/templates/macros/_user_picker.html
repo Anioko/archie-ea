@@ -1,3 +1,4 @@
+{# smoke-coverage-ok: a macro file with no route of its own; exercised through the pages that call it (applications/create.html, applications/edit.html, applications/rationalization.html). #}
 {#
   Organisation-scoped user search picker.
 
@@ -13,7 +14,14 @@
 #}
 
 {% macro user_picker_script() %}
-<script>
+{#
+  Nonce is required: without it the CSP refuses this block and
+  userSearchWidget is never defined. Every caller imports this file
+  `with context` (enforced by scripts/check_macro_import_context.py), so
+  csp_nonce resolves here, exactly as components/drawer.html documents for
+  the same reason.
+#}
+<script nonce="{{ csp_nonce }}">
   // User-search autocomplete widget — reusable across owner/reviewer fields.
   // getVal()/setVal(v) read and write the field shown to the person
   // searching (a free-text name, by default). Pass onSelect(user) to do

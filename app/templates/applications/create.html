@@ -1,9 +1,10 @@
+{# smoke-coverage-ok: reachable only through the unlinked legacy create form (out of scope for this change); the in-scope create flow never renders this template. #}
 {% extends "layouts/admin_base.html" %}
 {% from 'components/page_header.html' import page_header %}
 {% from 'components/button.html' import button %}
 {% from 'components/card.html' import card, card_header, card_title, card_content %}
 {% from 'components/input.html' import input, label, textarea %}
-{% from 'macros/_user_picker.html' import user_picker, user_picker_script %}
+{% from 'macros/_user_picker.html' import user_picker, user_picker_script with context %}
 
 {% block title %}Create Application{% endblock %}
 

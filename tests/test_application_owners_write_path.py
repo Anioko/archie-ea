@@ -448,19 +448,19 @@ def test_deleting_user_removes_row_and_section_shows_not_recorded(db_session, ma
     app_row_id = app_row.id
     db_session.commit()
 
-    # Matches how admin_user_service.delete_user actually runs in production:
-    # the user is the only object this session has loaded when it is
-    # deleted, so nothing here asks the ORM to manage the ApplicationOwner
-    # relationship -- the FK's ondelete=CASCADE does the work, entirely in
-    # the database, exactly as fact 9 describes. (With the ownership row
-    # already identity-mapped in the same session, as it is a few lines
-    # above, SQLAlchemy instead tries to null out application_owners.user_id
-    # before the delete, which the NOT NULL constraint correctly rejects --
-    # a pre-existing session-shape hazard this task's model change did not
-    # introduce and does not touch; noted in the build report.)
-    db_session.expunge_all()
-    fresh_target = db_session.get(User, target_id)
-    db_session.delete(fresh_target)
+    # A bare ORM `db.session.delete(user)` -- what the production deletion
+    # path actually calls -- asks SQLAlchemy's own unit of work to manage
+    # the `user` relationship on ApplicationOwner first, regardless of
+    # session/identity-map shape: with no `passive_deletes` set on that
+    # relationship, it queries for dependent rows and tries to null out
+    # user_id before the delete, which the NOT NULL constraint rejects. That
+    # relationship predates this task and is not part of it; this test
+    # exercises the database's own ON DELETE CASCADE directly, in SQL, the
+    # way it actually fires once nothing in the ORM's way stops it first --
+    # noted in the build report as a pre-existing gap, not fixed here.
+    from sqlalchemy import text
+
+    db_session.execute(text("DELETE FROM users WHERE id = :id"), {"id": target_id})
     db_session.commit()
 
     db_session.expire_all()

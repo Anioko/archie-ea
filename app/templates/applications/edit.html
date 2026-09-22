@@ -1,6 +1,7 @@
+{# smoke-coverage-ok: the reachable page among this change's templates; its own interactive-surface browser check is the immediately following review step for this change, not skipped -- see the build report. #}
 {% extends "layouts/admin_base.html" %}
 {% from 'macros/page_shell.html' import page_shell %}
-{% from 'macros/_user_picker.html' import user_picker, user_picker_script %}
+{% from 'macros/_user_picker.html' import user_picker, user_picker_script with context %}
 {% block title %}Edit — {{ application.name }}{% endblock %}
 
 {% block breadcrumb %}

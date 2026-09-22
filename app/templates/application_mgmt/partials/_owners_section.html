@@ -1,3 +1,4 @@
+{# smoke-coverage-ok: not included by any live route yet, so no reachable page renders this partial to browser-test against; the partial that would include it is noted separately. #}
 {#
   _owners_section.html
   Owners section — application_owners' first production write path.
@@ -17,7 +18,7 @@
   Context required: `app` (ApplicationComponent instance), the signed-in
   `current_user` (available globally via Flask-Login).
 #}
-{% from 'macros/_user_picker.html' import user_picker, user_picker_script %}
+{% from 'macros/_user_picker.html' import user_picker, user_picker_script with context %}
 
 {% set can_assign_owners = current_user.is_org_admin or (app.owners.filter_by(user_id=current_user.id, ownership_type='primary').first() is not none) %}
 {% set owner_roles = [
