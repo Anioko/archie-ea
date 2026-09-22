@@ -92,10 +92,24 @@ def test_dark_endpoint_still_answers_by_url(app, db_session, make_org, login_as,
     with app.test_request_context():
         path = url_for(endpoint)
     resp = client.get(path)
-    assert resp.status_code == 200 or 300 <= resp.status_code < 400, (
-        f"{endpoint} ({path}) returned {resp.status_code} for a logged-in user "
-        "-- it must keep answering by its own URL"
-    )
+    if endpoint == "usage_analytics.analytics_root":
+        # This route's whole job is to redirect to the dashboard -- assert
+        # the exact target, not just "some 3xx", or a redirect to the wrong
+        # place (or to nowhere) would pass this test.
+        assert resp.status_code in (301, 302, 303, 307, 308), (
+            f"{endpoint} ({path}) returned {resp.status_code}, expected a redirect"
+        )
+        with app.test_request_context():
+            target = url_for("usage_analytics.analytics_dashboard")
+        location = resp.headers.get("Location", "")
+        assert target in location, (
+            f"{endpoint} ({path}) redirected to {location!r}, expected {target!r}"
+        )
+    else:
+        assert resp.status_code == 200, (
+            f"{endpoint} ({path}) returned {resp.status_code} for a logged-in user "
+            "-- it must keep answering by its own URL"
+        )
 
 
 # ── (2) absent from visible_module_links() and every persona's sidebar ──────
@@ -163,7 +177,12 @@ def test_dark_endpoint_has_no_row_on_the_rendered_directory(
     login_as(client, user)
     with app.test_request_context():
         own_url = url_for(endpoint)
-    html = client.get("/modules/").get_data(as_text=True)
+    resp = client.get("/modules/")
+    assert resp.status_code == 200, (
+        f"/modules/ returned {resp.status_code} for a logged-in user -- a silently "
+        "failed login would otherwise pass this test against an empty or error page"
+    )
+    html = resp.get_data(as_text=True)
     row_hrefs = re.findall(ROW_HREF, html)
     assert own_url not in row_hrefs, (
         f"{endpoint} ({own_url}) still has a directory row on the /modules page"
