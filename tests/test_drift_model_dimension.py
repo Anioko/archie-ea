@@ -342,6 +342,58 @@ def test_group5_baseline_without_a_model_key_yields_reason_and_null_counts(
     assert md["removed_relationship_ids"] == []
 
 
+# --------------------------------------- (6) the seam writes nothing, analyze_drift does
+
+
+def test_group6_compare_to_baseline_writes_nothing_analyze_drift_persists_what_it_found(
+    db_session, make_org, tenant_ctx
+):
+    from app.modules.architecture.services.architecture_monitoring_service import (
+        ArchitectureMonitoringService,
+    )
+
+    suffix = uuid.uuid4().hex[:8]
+    org_a = make_org("op1-g6-a")
+
+    _seed_health_bearing_capability(db_session, org_a.id, suffix)
+    cap = _make_unified_capability(db_session, org_a.id, suffix, current_maturity_level=3)
+
+    with tenant_ctx(org_a.id):
+        service_a = ArchitectureMonitoringService(org_a.id)
+        baseline_a = service_a.capture_baseline(
+            name="A baseline", created_by="tester-a", set_as_active=True
+        )
+        assert baseline_a["success"] is True, baseline_a
+        baseline_a_id = baseline_a["baseline"]["id"]
+
+    # A real maturity regression -- capture_baseline saw current_maturity_level
+    # == 3; this drop makes _generate_drift_alerts produce at least one alert.
+    cap.current_maturity_level = 1
+    db_session.flush()
+
+    alerts_before = _alert_count(db_session, org_a.id)
+
+    with tenant_ctx(org_a.id):
+        service_a = ArchitectureMonitoringService(org_a.id)
+        state_alerts_before = dict(service_a._state.alerts)
+
+        analysis = service_a.compare_to_baseline(baseline_a_id)
+        assert analysis.total_drifts >= 1, "need at least one alert for this proof to mean anything"
+
+        alerts_after_compare = _alert_count(db_session, org_a.id)
+        assert alerts_after_compare == alerts_before
+        assert dict(service_a._state.alerts) == state_alerts_before
+
+        result = service_a.analyze_drift(baseline_a_id)
+        assert result["success"] is True, result
+        new_alert_count = len(result["alerts"])
+        assert new_alert_count >= 1
+
+        alerts_after_analyze = _alert_count(db_session, org_a.id)
+        assert alerts_after_analyze == alerts_before + new_alert_count
+        assert len(service_a._state.alerts) == len(state_alerts_before) + new_alert_count
+
+
 # ------------------------------------------------- (7) derived_recomputed
 
 
