@@ -332,10 +332,11 @@ def test_expanded_chain_marks_an_unresolved_link_instead_of_dropping_it(
     assert "source_id" not in expanded[1]
 
 
-def test_module_registers_exactly_eight_routes(app):
-    """The impact, risk, portfolio, programme, strategy and yield routes all
-    mount on this same existing blueprint rather than a new one each. Still
-    exactly one blueprint, now eight routes on it.
+def test_module_registers_exactly_nine_routes(app):
+    """The impact, risk, portfolio, programme, strategy, accountability and
+    yield routes all mount on this same existing blueprint rather than a
+    new one each. Still exactly one blueprint, now nine routes on it -- all
+    six lenses of the catalogue plus recompute/derived/yield.
     """
     rules = [
         rule for rule in app.url_map.iter_rules() if rule.endpoint.startswith("intelligence_api.")
@@ -349,6 +350,7 @@ def test_module_registers_exactly_eight_routes(app):
         "intelligence_api.portfolio_component_for_element",
         "intelligence_api.programme_for_element",
         "intelligence_api.strategy_for_element",
+        "intelligence_api.accountability_for_element",
         "intelligence_api.derivation_yield",
     }
 
@@ -728,5 +730,103 @@ def test_strategy_endpoint_cross_tenant_element_is_404_not_leak(
 
     login_as(client, user_b)
     resp = client.get(f"/api/v1/intelligence/strategy/{a.id}")
+    assert resp.status_code == 404
+    assert resp.get_json()["error"]["details"]["reason"] == "element_not_found"
+
+
+def test_accountability_endpoint_requires_login(client):
+    resp = client.get("/api/v1/intelligence/accountability/1")
+    assert resp.status_code in (302, 401)
+
+
+def test_accountability_endpoint_unknown_element_is_404(app, db_session, make_org, client, login_as):
+    org = make_org("accountability-route-404")
+    user = _make_user(db_session, org)
+    db_session.commit()
+
+    login_as(client, user)
+    resp = client.get("/api/v1/intelligence/accountability/999999999")
+    assert resp.status_code == 404
+    assert resp.get_json()["error"]["details"]["reason"] == "element_not_found"
+
+
+def test_accountability_endpoint_element_with_no_ownership_returns_honest_empty(
+    app, db_session, make_org, client, login_as
+):
+    from app.models.application_portfolio import ApplicationComponent
+
+    org = make_org("accountability-route-empty")
+    user = _make_user(db_session, org)
+    a = _make_element(db_session, org.id, "A")
+    component = ApplicationComponent(name="A App", organization_id=org.id, archimate_element_id=a.id)
+    db_session.add(component)
+    db_session.commit()
+
+    login_as(client, user)
+    resp = client.get(f"/api/v1/intelligence/accountability/{a.id}")
+    assert resp.status_code == 200
+    data = resp.get_json()["data"]
+    assert data["owners"] == []
+    assert data["capacity_not_available"] is True
+    assert "no_ownership_records" in data["reasons"]
+    assert "capacity_not_available" in data["reasons"]
+
+
+def test_accountability_endpoint_returns_owner_with_organization_unit(
+    app, db_session, make_org, client, login_as
+):
+    from app.models.application_portfolio import ApplicationComponent
+    from app.models.enterprise_intelligence import ApplicationOwnership, OrganizationUnit
+
+    org = make_org("accountability-route-owner")
+    user = _make_user(db_session, org)
+    a = _make_element(db_session, org.id, "A")
+    component = ApplicationComponent(name="A App", organization_id=org.id, archimate_element_id=a.id)
+    db_session.add(component)
+    db_session.flush()
+    unit = OrganizationUnit(name="Finance", unit_type="Department")
+    db_session.add(unit)
+    db_session.flush()
+    ownership = ApplicationOwnership(
+        application_id=component.id, organization_unit_id=unit.id,
+        ownership_type="Business Owner", primary_contact="Jordan Owner",
+    )
+    db_session.add(ownership)
+    db_session.commit()
+
+    login_as(client, user)
+    resp = client.get(f"/api/v1/intelligence/accountability/{a.id}")
+    assert resp.status_code == 200
+    data = resp.get_json()["data"]
+    assert data["capacity_not_available"] is True
+    assert len(data["owners"]) == 1
+    row = data["owners"][0]
+    assert row["ownership_type"] == "Business Owner"
+    assert row["organization_unit"]["name"] == "Finance"
+
+
+def test_accountability_endpoint_cross_tenant_element_is_404_not_leak(
+    app, db_session, make_org, client, login_as
+):
+    from app.models.application_portfolio import ApplicationComponent
+    from app.models.enterprise_intelligence import ApplicationOwnership, OrganizationUnit
+
+    org_a = make_org("accountability-route-tenant-a")
+    org_b = make_org("accountability-route-tenant-b")
+    user_b = _make_user(db_session, org_b)
+    a = _make_element(db_session, org_a.id, "A")
+    component = ApplicationComponent(name="A App", organization_id=org_a.id, archimate_element_id=a.id)
+    db_session.add(component)
+    db_session.flush()
+    unit = OrganizationUnit(name="Tenant A Finance", unit_type="Department")
+    db_session.add(unit)
+    db_session.flush()
+    db_session.add(ApplicationOwnership(
+        application_id=component.id, organization_unit_id=unit.id, ownership_type="Business Owner",
+    ))
+    db_session.commit()
+
+    login_as(client, user_b)
+    resp = client.get(f"/api/v1/intelligence/accountability/{a.id}")
     assert resp.status_code == 404
     assert resp.get_json()["error"]["details"]["reason"] == "element_not_found"

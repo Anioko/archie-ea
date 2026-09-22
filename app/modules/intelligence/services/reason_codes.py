@@ -68,6 +68,20 @@ REASON_CODES = frozenset(
         # itself is not reused here so each code stays tied to one field
         # pair's own absence condition.
         "no_budget_recorded",
+        # L4 brief (2026-09-22) additions: Ask's Accountability lens resolves
+        # an element to its ApplicationComponent (reusing L3's own
+        # resolution) then lists ApplicationOwnership rows for it.
+        # no_ownership_records covers the honest-empty case -- a real
+        # component with zero ownership rows -- distinct from the
+        # pre-existing no_ownership_recorded (a single element's owner
+        # field inside the L1 impact traversal, a different table and a
+        # different absence condition). capacity_not_available is not a
+        # per-request absence at all: no Workforce/Skill/Headcount model
+        # exists anywhere in this codebase, so every accountability
+        # response, success included, honestly discloses that gap rather
+        # than silently answering only half the lens's own question.
+        "no_ownership_records",
+        "capacity_not_available",
     }
 )
 

@@ -7,6 +7,7 @@
   GET  /api/v1/intelligence/portfolio/<element_id>
   GET  /api/v1/intelligence/programme/<element_id>
   GET  /api/v1/intelligence/strategy/<element_id>
+  GET  /api/v1/intelligence/accountability/<element_id>
   GET  /api/v1/intelligence/yield
 
 Each new route was added to this EXISTING blueprint rather than a new
@@ -584,6 +585,49 @@ def strategy_for_element(element_id: int):
             "initiatives": result["initiatives"],
             "reasons": result.get("reasons") or [],
             "elements": result.get("elements") or {},
+        }
+    )
+
+
+@intelligence_api.route("/accountability/<int:element_id>", methods=["GET"])
+@login_required
+def accountability_for_element(element_id: int):
+    """L4: "who's accountable for ___, and can they take on more?"
+    Serialises ``IntelligenceQueryService.accountability_for_element``
+    through ``success_response`` -- same error-handling pattern as the
+    other lenses, no business logic here. No max_depth/include_derived
+    params: this lens is a pure ownership lookup, not a blast-radius
+    traversal, unlike every other lens on this blueprint.
+    """
+    organization_id = _current_organization_id()
+    if organization_id is None:
+        return error_response(
+            "no tenant context for this request",
+            code="NO_TENANT_CONTEXT",
+            details={"reason": _NO_TENANT_CONTEXT_REASON},
+            status_code=400,
+        )
+
+    from app.models import ArchiMateElement
+
+    element = ArchiMateElement.query.filter_by(id=element_id).first()
+    if element is None:
+        return error_response(
+            "Element not found",
+            code="NOT_FOUND",
+            details={"reason": _ELEMENT_NOT_FOUND_REASON},
+            status_code=404,
+        )
+
+    from app.modules.intelligence.services.query_service import IntelligenceQueryService
+
+    result = IntelligenceQueryService.accountability_for_element(element_id)
+
+    return success_response(
+        {
+            "owners": result["owners"],
+            "capacity_not_available": result.get("capacity_not_available", True),
+            "reasons": result.get("reasons") or [],
         }
     )
 
