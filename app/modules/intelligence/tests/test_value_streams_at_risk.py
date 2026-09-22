@@ -494,7 +494,7 @@ def test_resolver_carries_explicit_tenant_predicate(app, db_session, make_org, t
 def test_value_stream_id_narrows_to_that_stream(app, db_session, make_org):
     """This is the test that would fail if the ``value_stream_id`` ``where``
     were dropped -- mutation-proved once (comment out the ``where``, confirm
-    this goes red, restore, confirm green), recorded in the build report."""
+    this goes red, restore, confirm green)."""
     from app.modules.intelligence.services.query_service import IntelligenceQueryService
 
     org = make_org("vsr-d10")
@@ -1067,6 +1067,11 @@ def test_mutation_proof_foreign_vs_missing_message_diverges(
         # goes through the same tenant `do_orm_execute` with_loader_criteria
         # as the scoped query below, so it could never actually diverge --
         # only a non-ORM statement can see "exists for another tenant".
+        # tenancy-ok: deliberately unscoped -- this is the "ignore tenant"
+        # half of a mutation-proof test helper, and must NOT filter by
+        # organization_id, or it could never diverge from the real, scoped
+        # resolver it exists to test the divergence against. Read-only,
+        # test-only, never a production code path.
         raw_exists = db.session.execute(
             db.text("SELECT 1 FROM value_streams WHERE id = :id"),
             {"id": value_stream_id},
