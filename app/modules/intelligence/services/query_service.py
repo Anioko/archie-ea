@@ -1252,12 +1252,24 @@ class IntelligenceQueryService:
         for the distinct capability ids; maturity through the accessor.
         Never one select per row.
 
-        Tenancy (design § 3.2): ``ValueStream``,
-        ``CapabilityValueStreamMapping`` and ``ValueStreamStage`` each carry
-        the strict, explicit predicate through
-        ``_value_stream_tenant_predicate``. ``UnifiedCapability`` is read
-        TWICE with two deliberately different predicates -- identity uses
-        the permissive ``or_(... is_(None))``, written out in full below,
+        Tenancy (design § 3.2, § 9): ``ValueStream`` and
+        ``CapabilityValueStreamMapping`` carry the strict, explicit predicate
+        through ``_value_stream_tenant_predicate``. ``ValueStreamStage`` does
+        NOT carry its own ``organization_id`` predicate -- it is scoped
+        through its parent: a stage is reachable only through a tenant-owned
+        mapping on a tenant-owned value stream (``value_stream_id.in_(vs_ids)``,
+        where every id in ``vs_ids`` already came from the fenced value-stream
+        select). The join to it is an OUTER join whose ``ON`` clause checks
+        both the stage id AND that the stage belongs to the mapping's own
+        value stream -- a mapping pointing at a stage of a different stream
+        (this tenant's or another's) must not have that stage's name
+        attributed to a stream it is not part of. A mapping whose stage does
+        not survive the join (null-owner, another tenant's, or a different
+        own stream) is listed and counted with ``dependency.stage: null``,
+        never dropped and never reported as "nothing recorded" -- a recorded
+        dependency is not an absence. ``UnifiedCapability`` is read TWICE
+        with two deliberately different predicates -- identity uses the
+        permissive ``or_(... is_(None))``, written out in full below,
         because a tenant's own mapping row may name a shared catalogue
         capability and that mapping is honoured; maturity uses the strict
         accessor (``maturity_for_capability_ids``, ``organization_id``
@@ -1265,6 +1277,44 @@ class IntelligenceQueryService:
         never its maturity -- a shared number is not this tenant's
         assessment. Maturity is read only through the accessor; no module on
         this path reads ``current_maturity_level`` off a row directly.
+
+        Counts -- every count in this payload is a count of
+        DISTINCT capability ids, never of mapping rows:
+
+        ================================ =====================================
+        Field                            Carries
+        ================================ =====================================
+        ``rows[].capabilities[]``        one entry per mapping row on that
+                                          value stream, ordered by mapping id;
+                                          a capability mapped on N stages
+                                          appears N times, with identical
+                                          ``id``, ``current_maturity``,
+                                          ``target_maturity``, ``at_risk`` and
+                                          ``reason`` on every entry and a
+                                          different ``dependency`` object on
+                                          each
+        ``rows[].at_risk_capability_count`` number of DISTINCT capability ids
+                                          on that row whose ``at_risk`` is
+                                          ``true``
+        ``rows[].reason``                ``no_capability_linked`` when
+                                          ``capabilities[]`` is empty;
+                                          otherwise ``null``
+        ``summary.value_streams_considered`` number of rows
+        ``summary.value_streams_at_risk`` rows whose ``at_risk_capability_count``
+                                          is above zero
+        ``summary.capabilities_considered`` distinct capability ids reached
+                                          anywhere in the answer
+        ``summary.capabilities_below_threshold`` distinct capability ids whose
+                                          ``at_risk`` is ``true`` anywhere in
+                                          the answer; a capability at risk on
+                                          two value streams counts once
+        ``summary.capabilities_with_no_maturity`` distinct capability ids
+                                          whose ``current_maturity`` is
+                                          ``null`` anywhere in the answer
+        ================================ =====================================
+
+        Invariant: ``capabilities_below_threshold + capabilities_with_no_maturity
+        <= capabilities_considered``.
         """
         from app.models.unified_capability import (
             CapabilityValueStreamMapping,
@@ -1303,18 +1353,19 @@ class IntelligenceQueryService:
 
                 mapping_stmt = (
                     db.select(CapabilityValueStreamMapping, ValueStreamStage)
-                    .join(
+                    .outerjoin(
                         ValueStreamStage,
-                        CapabilityValueStreamMapping.value_stream_stage_id
-                        == ValueStreamStage.id,
+                        db.and_(
+                            ValueStreamStage.id
+                            == CapabilityValueStreamMapping.value_stream_stage_id,
+                            ValueStreamStage.value_stream_id
+                            == CapabilityValueStreamMapping.value_stream_id,
+                        ),
                     )
                     .where(
                         CapabilityValueStreamMapping.value_stream_id.in_(vs_ids),
                         IntelligenceQueryService._value_stream_tenant_predicate(
                             CapabilityValueStreamMapping, organization_id
-                        ),
-                        IntelligenceQueryService._value_stream_tenant_predicate(
-                            ValueStreamStage, organization_id
                         ),
                     )
                     .order_by(CapabilityValueStreamMapping.id)
@@ -1357,9 +1408,18 @@ class IntelligenceQueryService:
 
                 rows = []
                 value_streams_at_risk_count = 0
+                # Every count below is a count of DISTINCT capability
+                # ids -- never a count of mapping rows. capability_rows[] (the
+                # serialised list) still holds one entry per mapping row, so a
+                # capability mapped on N stages appears N times there with an
+                # identical id/maturity/at_risk/reason and a different
+                # dependency object each time; these sets de-duplicate that
+                # back down to "how many distinct capabilities", which is
+                # what the summary and each row's at_risk_capability_count
+                # both promise.
                 capabilities_considered: set = set()
-                capabilities_below_threshold = 0
-                capabilities_with_no_maturity = 0
+                capabilities_below_threshold_ids: set = set()
+                capabilities_with_no_maturity_ids: set = set()
                 value_streams_not_linked_to_model = 0
 
                 for vs in value_streams:
@@ -1367,7 +1427,7 @@ class IntelligenceQueryService:
                         value_streams_not_linked_to_model += 1
 
                     capability_rows: List[Dict[str, Any]] = []
-                    at_risk_count = 0
+                    at_risk_ids_in_row: set = set()
                     for mapping, stage in mappings_by_vs.get(vs.id, []):
                         identity = identity_by_id.get(mapping.capability_id)
                         if identity is None:
@@ -1389,13 +1449,13 @@ class IntelligenceQueryService:
                             current, threshold
                         )
                         if current is None:
-                            capabilities_with_no_maturity += 1
+                            capabilities_with_no_maturity_ids.add(mapping.capability_id)
                             cap_reason = maturity["reason_code"]
                         else:
                             cap_reason = None
                             if at_risk:
-                                at_risk_count += 1
-                                capabilities_below_threshold += 1
+                                at_risk_ids_in_row.add(mapping.capability_id)
+                                capabilities_below_threshold_ids.add(mapping.capability_id)
 
                         capability_rows.append(
                             {
@@ -1411,6 +1471,13 @@ class IntelligenceQueryService:
                                     "support_type": mapping.support_type,
                                     "support_level": mapping.support_level,
                                     "impact_level": mapping.impact_level,
+                                    "stage_criticality": mapping.stage_criticality,
+                                    "assessed_by": mapping.assessor,
+                                    "assessed_at": (
+                                        mapping.last_assessed.isoformat()
+                                        if mapping.last_assessed is not None
+                                        else None
+                                    ),
                                     "stage": (
                                         {"id": stage.id, "name": stage.name}
                                         if stage is not None
@@ -1427,6 +1494,7 @@ class IntelligenceQueryService:
                         else None
                     )
 
+                    at_risk_count = len(at_risk_ids_in_row)
                     rows.append(
                         {
                             "value_stream": {
@@ -1447,8 +1515,8 @@ class IntelligenceQueryService:
                     "value_streams_considered": len(value_streams),
                     "value_streams_at_risk": value_streams_at_risk_count,
                     "capabilities_considered": len(capabilities_considered),
-                    "capabilities_below_threshold": capabilities_below_threshold,
-                    "capabilities_with_no_maturity": capabilities_with_no_maturity,
+                    "capabilities_below_threshold": len(capabilities_below_threshold_ids),
+                    "capabilities_with_no_maturity": len(capabilities_with_no_maturity_ids),
                     "value_streams_not_linked_to_model": value_streams_not_linked_to_model,
                 }
                 reasons = []

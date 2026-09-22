@@ -235,12 +235,20 @@ def seed_strategic_demo(org_id: int, dry_run: bool = False) -> dict:
             )
             cap = cap_by_code.get(mapping_spec["capability_code"])
 
-            if dry_run or vs is None or stage is None or cap is None:
-                # dry-run: nothing above was actually created, so there is
-                # nothing concrete to upsert against -- counted only.
+            if vs is None or stage is None or cap is None:
+                # dry-run on a FRESH organisation: nothing above was actually
+                # created, so there is nothing concrete to look an existing
+                # mapping up against -- counted only. This branch is not
+                # reachable outside dry-run, because a real run always
+                # resolves all three from the rows it just created above.
                 stats["mappings_created"] += 1
                 continue
 
+            # Look up the existing row BEFORE branching on dry_run: on an
+            # already-seeded organisation, vs/stage/cap above are all
+            # resolved from EXISTING rows even under --dry-run, so the
+            # lookup below is real and "would create" must not claim work
+            # that is already done.
             existing_mapping = CapabilityValueStreamMapping.query.filter_by(
                 capability_id=cap.id,
                 value_stream_id=vs.id,
@@ -256,6 +264,12 @@ def seed_strategic_demo(org_id: int, dry_run: bool = False) -> dict:
                 # call entirely so a re-run does not even touch updated_at
                 # (constraint: re-running changes nothing).
                 stats["already_present"] += 1
+                continue
+
+            if dry_run:
+                # Absent, or present with different values: real work this
+                # run would do, reported honestly, but not written.
+                stats["mappings_created"] += 1
                 continue
 
             value_stream_service.upsert_mapping_cell(
