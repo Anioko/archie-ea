@@ -544,8 +544,9 @@
         return div;
     }
 
-    function appendSystemMessage(text, type) {
+    function appendSystemMessage(text, type, opts) {
         type = type || 'info';
+        var noScroll = opts && opts.noScroll;
         var div = document.createElement('div');
         div.className = 'flex justify-center my-4';
 
@@ -561,7 +562,7 @@
 
         var container = messages();
         if (container) container.appendChild(div);
-        scrollToBottom();
+        if (!noScroll) scrollToBottom();
         if (window.lucide) lucide.createIcons();
         return div;
     }
