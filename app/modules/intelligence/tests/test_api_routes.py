@@ -6,7 +6,7 @@ import uuid
 
 
 
-def _make_user(db_session, org, *, email=None):
+def _make_user(db_session, org, *, email=None, enterprise_role=None):
     from app.models.user import Role, User
 
     admin_role = Role.query.filter_by(name="Administrator").first()
@@ -22,6 +22,7 @@ def _make_user(db_session, org, *, email=None):
         role=admin_role,
         is_org_admin=True,
         confirmed=True,
+        enterprise_role=enterprise_role,
     )
     db_session.add(user)
     db_session.flush()
@@ -625,6 +626,48 @@ def test_programme_endpoint_returns_work_package_with_its_own_blast_radius(
     assert row["affected_rows"][0]["element_id"] == b.id
 
 
+def test_programme_endpoint_redacts_cost_for_a_role_without_budget_authority(
+    app, db_session, make_org, client, login_as
+):
+    from app.models.unified_work_package import UnifiedWorkPackage
+
+    org = make_org("programme-route-redact")
+    user = _make_user(db_session, org, enterprise_role="solution_architect")
+    a = _make_element(db_session, org.id, "A")
+    db_session.add(UnifiedWorkPackage(
+        name="Migrate A", archimate_element_id=a.id, business_capability="Test",
+        estimated_cost=50000.0, actual_cost=45000.0,
+    ))
+    db_session.commit()
+
+    login_as(client, user)
+    resp = client.get(f"/api/v1/intelligence/programme/{a.id}")
+    row = resp.get_json()["data"]["work_packages"][0]
+    assert row["cost_variance_pct"] is None
+    assert row["cost_reason"] == "financial_data_restricted"
+
+
+def test_programme_endpoint_does_not_redact_cost_for_cto(
+    app, db_session, make_org, client, login_as
+):
+    from app.models.unified_work_package import UnifiedWorkPackage
+
+    org = make_org("programme-route-no-redact")
+    user = _make_user(db_session, org, enterprise_role="cto")
+    a = _make_element(db_session, org.id, "A")
+    db_session.add(UnifiedWorkPackage(
+        name="Migrate A", archimate_element_id=a.id, business_capability="Test",
+        estimated_cost=50000.0, actual_cost=45000.0,
+    ))
+    db_session.commit()
+
+    login_as(client, user)
+    resp = client.get(f"/api/v1/intelligence/programme/{a.id}")
+    row = resp.get_json()["data"]["work_packages"][0]
+    assert row["cost_variance_pct"] == -10.0
+    assert row["cost_reason"] is None
+
+
 def test_programme_endpoint_cross_tenant_element_is_404_not_leak(
     app, db_session, make_org, client, login_as
 ):
@@ -711,6 +754,48 @@ def test_strategy_endpoint_returns_initiative_with_its_own_blast_radius(
     assert round(row["budget_variance_pct"], 2) == -10.0
     assert len(row["affected_rows"]) == 1
     assert row["affected_rows"][0]["element_id"] == b.id
+
+
+def test_strategy_endpoint_redacts_budget_for_a_role_without_budget_authority(
+    app, db_session, make_org, client, login_as
+):
+    from app.models.enterprise_intelligence import PortfolioInitiative
+
+    org = make_org("strategy-route-redact")
+    user = _make_user(db_session, org, enterprise_role="business_architect")
+    a = _make_element(db_session, org.id, "A")
+    db_session.add(PortfolioInitiative(
+        name="Transform A", archimate_element_id=a.id, status="Active",
+        total_budget=50000.0, spent_to_date=45000.0,
+    ))
+    db_session.commit()
+
+    login_as(client, user)
+    resp = client.get(f"/api/v1/intelligence/strategy/{a.id}")
+    row = resp.get_json()["data"]["initiatives"][0]
+    assert row["budget_variance_pct"] is None
+    assert row["budget_reason"] == "financial_data_restricted"
+
+
+def test_strategy_endpoint_does_not_redact_budget_for_portfolio_manager(
+    app, db_session, make_org, client, login_as
+):
+    from app.models.enterprise_intelligence import PortfolioInitiative
+
+    org = make_org("strategy-route-no-redact")
+    user = _make_user(db_session, org, enterprise_role="portfolio_manager")
+    a = _make_element(db_session, org.id, "A")
+    db_session.add(PortfolioInitiative(
+        name="Transform A", archimate_element_id=a.id, status="Active",
+        total_budget=50000.0, spent_to_date=45000.0,
+    ))
+    db_session.commit()
+
+    login_as(client, user)
+    resp = client.get(f"/api/v1/intelligence/strategy/{a.id}")
+    row = resp.get_json()["data"]["initiatives"][0]
+    assert row["budget_variance_pct"] == -10.0
+    assert row["budget_reason"] is None
 
 
 def test_strategy_endpoint_cross_tenant_element_is_404_not_leak(
