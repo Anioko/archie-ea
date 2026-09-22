@@ -66,4 +66,4 @@ def register(app: Flask) -> None:
 
     register_vendor_discovery_routes(app)
 
-    app.logger.info("[MODULE] vendors registered (9 blueprints, ~166 routes)")
+    app.logger.info("[MODULE] vendors registered (9 blueprints, ~138 routes)")
