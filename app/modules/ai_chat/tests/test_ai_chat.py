@@ -201,7 +201,7 @@ class TestAiChatEndpointParity:
         """Key endpoints from other AI chat blueprints must exist."""
         endpoints = set(app.view_functions.keys())
         must_have = [
-            "ai_data_interaction.create_capability",
+            "unified_ai_chat.create_capability",
             "ai_data_interaction.create_application",
             "ai_data_interaction.bulk_create_applications",
             "ai_assistance.suggest_field_value",

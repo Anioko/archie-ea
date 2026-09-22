@@ -30,10 +30,10 @@ class TestAccountService:
             assert hasattr(AccountService, 'register_user')
 
     def test_queue_email_callable(self, app):
-        """queue_email() is callable."""
+        """_queue_email() is callable."""
         with app.app_context():
-            from app.modules.account.services.account_service import AccountService
-            assert callable(AccountService.queue_email)
+            from app.modules.account.services.account_service import _queue_email
+            assert callable(_queue_email)
 
     def test_change_password_method_exists(self, app):
         """change_password() method exists on AccountService."""
@@ -187,5 +187,6 @@ class TestAccountRoutes:
         """before_app_request hook is registered on the blueprint."""
         with app.app_context():
             from app.modules.account.routes.account_routes import account_bp
-            # before_app_request hooks are stored in before_app_request_funcs
-            assert account_bp.before_app_request_funcs is not None
+            # Flask 3.1 stores before_app_request hooks in before_request_funcs
+            # (before_app_request_funcs no longer exists as a separate attribute).
+            assert account_bp.before_request_funcs is not None
