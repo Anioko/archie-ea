@@ -78,7 +78,14 @@ class ApplicationOwner(TenantMixin, db.Model):
     )
     user = db.relationship(
         "User",
-        backref=db.backref("owned_applications", lazy="dynamic"),
+        # passive_deletes=True: the FK already carries ON DELETE CASCADE and
+        # the schema baseline agrees, so the database removes this row when
+        # its user goes. Without this, the ORM's own unit of work tries to
+        # null out user_id (NOT NULL) before the delete instead of letting
+        # the database cascade, and AdminUserService.delete_user's bare
+        # db.session.delete(user) fails. user_sessions is the precedent for
+        # letting the database do it (see its own module docstring).
+        backref=db.backref("owned_applications", lazy="dynamic", passive_deletes=True),
         foreign_keys=[user_id],
     )
     assigner = db.relationship(
