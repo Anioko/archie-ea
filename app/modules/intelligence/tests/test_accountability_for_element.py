@@ -209,6 +209,57 @@ def test_multiple_owners_on_one_component_each_get_their_own_row(app, db_session
     assert types == {"Business Owner", "Technical Owner"}
 
 
+def test_unit_hidden_when_component_tenant_check_fails(app, db_session, make_org, monkeypatch):
+    """SEC-09 belt-and-braces companion to
+    test_query_service.py::test_sec09_tenant_check_blocks_real_cross_tenant_resolution:
+    accountability_for_element must not read OrganizationUnit off an
+    ownership row's application_id alone -- it re-checks the resolved
+    component's own organization_id against the caller's tenant first, the
+    same assertion _resolve_owners_batch already applies before it will
+    trust an owner/unit chain.
+
+    Positive control first: an ordinary, unpatched request for org B's own
+    element returns org B's own unit. Then current_org_id() (what the new
+    assertion reads) is made to diverge from g.current_org_id (what the ORM
+    tenant filter reads) -- the same drift the precedent test above
+    constructs, the only way to reach the assertion with real, unmodified
+    resolution logic, since both sources read the same value in any single
+    live request today.
+    """
+    from app.modules.intelligence.services import query_service
+    from app.modules.intelligence.services.query_service import IntelligenceQueryService
+
+    org_a = make_org("accountability-lens-tenancy-a")
+    org_b = make_org("accountability-lens-tenancy-b")
+
+    b_element = _element(db_session, org_b.id, "B App")
+    b_component = _component(db_session, org_b.id, b_element, name="B App Component")
+    b_unit = _unit(db_session, name="OrgB-Finance", head_of_unit="Blair Head")
+    _ownership(db_session, b_component, unit=b_unit, ownership_type="Business Owner")
+    db_session.commit()
+
+    with app.test_request_context("/"):
+        from flask import g
+
+        g.current_org_id = org_b.id
+        control = IntelligenceQueryService.accountability_for_element(b_element.id)
+
+    assert len(control["owners"]) == 1
+    assert control["owners"][0]["organization_unit"]["name"] == "OrgB-Finance"
+
+    monkeypatch.setattr(query_service, "current_org_id", lambda: org_a.id)
+    with app.test_request_context("/"):
+        from flask import g
+
+        g.current_org_id = org_b.id
+        leaked = IntelligenceQueryService.accountability_for_element(b_element.id)
+
+    assert len(leaked["owners"]) == 1
+    assert leaked["owners"][0]["organization_unit"] is None
+    assert "OrgB-Finance" not in str(leaked)
+    assert "Blair Head" not in str(leaked)
+
+
 def test_no_second_element_resolution_implementation(app, db_session, make_org):
     """The resolution step must be portfolio_component_for_element's own
     logic reused, not a second implementation -- pinned by checking both

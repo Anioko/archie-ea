@@ -1153,23 +1153,29 @@ class IntelligenceQueryService:
         -- it is a permanent, honest disclosure of a real product gap, not
         a per-request absence condition like every other reason code here.
 
-        Tenant-safety note, verified not assumed: neither
-        ``OrganizationUnit`` nor ``ApplicationOwnership`` carries a
-        ``TenantMixin``/``organization_id`` of its own (same gap already
-        flagged for ``UnifiedWorkPackage``, L5, and ``PortfolioInitiative``,
-        L2). This method never queries ``ApplicationOwnership`` except by an
-        ``application_id`` obtained from ``portfolio_component_for_element``,
-        which only ever resolves through an already-tenant-validated
-        ``ArchiMateElement`` -- so no independently untenanted read of
-        either table is exposed here. Not attempting to add tenant scoping
-        to either table itself -- a fourth instance of the same pre-existing
-        gap is stronger evidence it needs its own dedicated fix, not
-        stronger reason to patch it inside one more lens.
+        Tenant-safety note: neither ``OrganizationUnit`` nor
+        ``ApplicationOwnership`` carries a ``TenantMixin``/``organization_id``
+        of its own (same gap already flagged for ``UnifiedWorkPackage``, L5,
+        and ``PortfolioInitiative``, L2). ``application_id`` only ever comes
+        from ``portfolio_component_for_element``, which resolves through an
+        already-tenant-filtered ``ArchiMateElement``/``ApplicationComponent``
+        pair -- but that ORM-level fencing alone is not an application-level
+        assertion. Before any ``ApplicationOwnership``/``OrganizationUnit``
+        row is read, the resolved component is re-fetched and checked with
+        ``_sec09_tenant_check`` against the caller's own ``current_org_id()``
+        -- the same belt-and-braces assertion ``_resolve_owners_batch``
+        applies before it will trust an owner/unit chain. When that check
+        fails (or the component can no longer be found), every ownership
+        row's ``organization_unit`` comes back ``None`` -- the same absence
+        shape an orphaned FK already produces below -- instead of reading
+        ``OrganizationUnit`` at all.
         """
+        from app.models.application_portfolio import ApplicationComponent
         from app.models.enterprise_intelligence import ApplicationOwnership, OrganizationUnit
 
         with record_query_latency("accountability_for_element") as scope:
-            scope.organization_id = current_org_id()
+            org_id = current_org_id()
+            scope.organization_id = org_id
 
             component_result = IntelligenceQueryService.portfolio_component_for_element(element_id)
             if component_result.get("reasons"):
@@ -1180,6 +1186,17 @@ class IntelligenceQueryService:
                 }
 
             application_id = component_result["application_component_id"]
+
+            # SEC-09 belt-and-braces (mirrors _resolve_owners_batch): re-check
+            # the component this application_id names against the caller's
+            # own tenant before anything reached only through it -- the
+            # ownership row's organization_unit_id -- is trusted enough to
+            # read OrganizationUnit, a table with no organization_id column
+            # of its own.
+            component = db.session.get(ApplicationComponent, application_id)
+            component_is_current_tenant = component is not None and _sec09_tenant_check(
+                component.organization_id, org_id
+            )
 
             ownership_rows = (
                 db.session.execute(
@@ -1203,11 +1220,16 @@ class IntelligenceQueryService:
                 # organization_unit_id is NOT NULL with a real FK constraint
                 # on this table (the database itself refuses to delete a
                 # referenced OrganizationUnit), so `unit` cannot actually be
-                # None today. The defensive lookup/None-branch below is kept
-                # anyway -- same discipline every other lens's owner/user
-                # lookup uses -- in case that constraint is ever loosened;
-                # it does not currently have a reachable test case.
-                unit = db.session.get(OrganizationUnit, row.organization_unit_id)
+                # None today once component_is_current_tenant is True. The
+                # defensive lookup/None-branch below is kept anyway -- same
+                # discipline every other lens's owner/user lookup uses -- in
+                # case that constraint is ever loosened; it does not
+                # currently have a reachable test case on its own.
+                unit = (
+                    db.session.get(OrganizationUnit, row.organization_unit_id)
+                    if component_is_current_tenant
+                    else None
+                )
                 owner_payloads.append(
                     {
                         "owner_id": row.id,
