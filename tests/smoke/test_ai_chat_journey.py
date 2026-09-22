@@ -274,6 +274,52 @@ def test_persona_switch_system_message_is_not_clipped(page, live_server, seeded)
     assert not _js_errors(page), _js_errors(page)
 
 
+def test_deep_link_context_notice_is_not_pushed_below_the_greeting(page, live_server, seeded):
+    """A deep-link arrival (?element_id=&context_type=&domain=) must not bury its own
+    context notice hundreds of px below the fold behind the full suggestion-card grid.
+
+    Companion to test_persona_switch_system_message_is_not_clipped above, and to the
+    scrollTop assertion in tests/journeys/test_journey_ai_chat_opens_at_greeting.py::
+    test_a_deep_link_context_notice_does_not_scroll_the_pane_past_the_greeting -- this
+    is the real-server browser leg for the same fix. Two parts: appendSystemMessage's
+    opts.noScroll keeps the pane at scrollTop 0, and app.js's _hideWelcomeSuggestions()
+    collapses the ~1000px persona/domain suggestion grid (index.html's new
+    #domain-welcome-suggestions wrapper) while leaving the greeting heading itself
+    visible, so the notice lands inside the pane instead of below the collapsed grid.
+    """
+    page.console_errors.clear()
+    page.page_errors.clear()
+    response = page.goto(
+        live_server + "/ai-chat?element_id=7&context_type=vendor&domain=vendor_intelligence",
+        wait_until="domcontentloaded", timeout=PAGE_TIMEOUT,
+    )
+    status = response.status if response else 0
+    assert status < 400, "/ai-chat (deep link) -> HTTP %d\n%s" % (status, live_server.tail())
+    page.wait_for_timeout(1500)
+
+    container = page.locator("#messages-container")
+    assert container.evaluate("el => el.scrollTop") == 0, (
+        "the pane scrolled past the greeting on a deep-link load"
+    )
+    suggestions = page.locator("#domain-welcome-suggestions")
+    assert suggestions.count() == 0 or not suggestions.first.is_visible(), (
+        "the persona/domain suggestion grid is still visible on a deep-link load"
+    )
+
+    notice = page.locator("#messages-container div", has_text="Vendor context loaded").last
+    assert notice.count() > 0, "no deep-link context notice was appended"
+    box = notice.bounding_box()
+    container_box = container.bounding_box()
+    assert box is not None and container_box is not None
+    container_bottom = container_box["y"] + container_box["height"]
+    assert box["y"] + box["height"] <= container_bottom + 1, (
+        "the deep-link notice extends %.1fpx past the pane's bottom edge (notice "
+        "bottom=%.1f, pane bottom=%.1f)"
+        % (box["y"] + box["height"] - container_bottom, box["y"] + box["height"], container_bottom)
+    )
+    assert not _js_errors(page), _js_errors(page)
+
+
 def test_approval_modal_distinguishes_loading_failure_stale_and_retry(page, live_server, seeded):
     """Reviewers never mistake a failed approval fetch for an empty queue."""
     state_timeout = 10_000

@@ -65,6 +65,16 @@
         document.getElementById('domain-welcome-grid')?.classList.add('hidden');
     }
 
+    // A deep link arrives already headed somewhere specific — collapse only the
+    // browse-and-pick suggestion cards (portfolio briefing, persona/domain grids),
+    // keeping the "How can I help you today?" heading itself visible, unlike
+    // _hideWelcomeUI() above which hides the whole welcome block including it.
+    function _hideWelcomeSuggestions() {
+        document.getElementById('domain-welcome-suggestions')?.classList.add('hidden');
+        document.getElementById('suggestion-chips')?.classList.add('hidden');
+        document.getElementById('suggestion-chips-label')?.classList.add('hidden');
+    }
+
     function setSuggestion(text) {
         const ta = document.getElementById('user-input');
         if (ta) {
@@ -1081,7 +1091,12 @@ Would you like me to provide more details about the extracted elements or help y
             if (userInput) {
                 userInput.value = `/generate-archimate ${appId}`;
             }
-            appendSystemMessage(`Application context loaded (ID: ${appId}). Ready to generate ArchiMate model.`, 'info');
+            // A deep link arrives ready to act, not to browse the suggestion cards —
+            // collapse them (keeping the greeting heading itself visible) so the notice
+            // below lands inside the pane's visible area instead of hundreds of px below
+            // the ~1000px of persona/domain cards.
+            _hideWelcomeSuggestions();
+            appendSystemMessage(`Application context loaded (ID: ${appId}). Ready to generate ArchiMate model.`, 'info', { noScroll: true });
         } else if (elementId && contextType && !isNaN(parseInt(elementId))) {
             // Generic entity deep-link: ?element_id=<id>&context_type=<type>&domain=<domain>
             const entityId = parseInt(elementId);
@@ -1101,7 +1116,9 @@ Would you like me to provide more details about the extracted elements or help y
                     userInput.value = `Analyze this vendor — what are the key risks, capability gaps, and strategic recommendations?`;
                 }
             }
-            appendSystemMessage(`${entityLabel} context loaded (ID: ${entityId}). Ask me anything about this ${contextType.replace(/_/g, ' ')}.`, 'info');
+            // Same reasoning as the application deep-link branch above.
+            _hideWelcomeSuggestions();
+            appendSystemMessage(`${entityLabel} context loaded (ID: ${entityId}). Ask me anything about this ${contextType.replace(/_/g, ' ')}.`, 'info', { noScroll: true });
         }
     });
 
