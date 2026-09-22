@@ -28,6 +28,24 @@ pytestmark = pytest.mark.usefixtures("db_session")
 
 DARK_ENDPOINTS = sorted(_DARK)
 
+# Every persona the product defines today, checked against get_sidebar_zones
+# directly rather than through a rendered page — the same approach
+# tests/test_sidebar_budgets.py and the journeys test for two of these
+# personas already take.
+ALL_ROLES = [
+    "solution_architect",
+    "enterprise_architect",
+    "business_architect",
+    "arb_member",
+    "portfolio_manager",
+    "cto",
+    "application_manager",
+    "procurement",
+    "platform_admin",
+    "security_architect",
+    "data_architect",
+]
+
 
 def _user(db_session, make_org, label, role="enterprise_architect"):
     from app.models.user import User
@@ -88,6 +106,24 @@ def test_dark_endpoint_is_not_in_visible_module_links(app, endpoint):
     with app.test_request_context("/"):
         visible = {link["endpoint"] for link in visible_module_links()}
     assert endpoint not in visible, f"{endpoint} is still returned by visible_module_links()"
+
+
+@pytest.mark.parametrize("endpoint", DARK_ENDPOINTS)
+@pytest.mark.parametrize("role", ALL_ROLES)
+def test_dark_endpoint_is_not_in_any_personas_sidebar(app, role, endpoint):
+    from app.utils.role_access import get_sidebar_zones
+
+    class _StubUser:
+        enterprise_role = role
+        is_platform_admin = role == "platform_admin"
+
+        def is_admin(self):
+            return self.is_platform_admin
+
+    with app.app_context():
+        zones = get_sidebar_zones(_StubUser())
+        linked = {link["endpoint"] for zone in zones for link in zone["links"]}
+    assert endpoint not in linked, f"{endpoint} is still in {role}'s sidebar"
 
 
 # ── (3) still known to all_module_links() (or in _DARK directly) ────────────

@@ -62,10 +62,6 @@ NAV_PAGES = {
         "/dashboard/rationalization/scorecard",
         "Executive Rationalization Scorecard",
     ),
-    "data_architecture.data_architecture_dashboard": (
-        "/architecture/data-architecture",
-        "Data Architecture Dashboard",
-    ),
     "main.capability_roadmap": ("/capability-roadmap", "Enterprise Capability Roadmap"),
     "main.settings": ("/settings", "System Settings"),
     # NAV-1: the sidebar used to name solution_prompt_admin.
