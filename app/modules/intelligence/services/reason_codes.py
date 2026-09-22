@@ -13,8 +13,8 @@ from __future__ import annotations
 
 # sdd-v2.md § API-8 — the original sixteen members, the two T-004 additions,
 # the one T-005 addition, the Portfolio and Programme lenses' three
-# additions and the four T-S1 additions below (twenty-six total), exactly,
-# nothing invented.
+# additions, the four T-S1 additions and the two T-S4 additions below
+# (twenty-eight total), exactly, nothing invented.
 REASON_CODES = frozenset(
     {
         "no_ownership_recorded",
@@ -64,13 +64,31 @@ REASON_CODES = frozenset(
         # conditions the original vocabulary has no member for. T-S1 emits
         # the first two -- no value stream recorded for this tenant, and a
         # value stream with no capability recorded against it by any path.
-        # The other two are reserved for T-S3, which adds the graph path
-        # (an explicit or derived dependency) this task deliberately does
-        # not read -- they are not reachable until that task lands.
+        # ``value_stream_not_linked_to_model`` is emitted on two different
+        # keys by two different tasks: T-S4 emits it on
+        # ``rows[].value_stream_initiatives_reason`` (the stream's element is
+        # what the initiative join needs), and T-S3 emits it on the row's own
+        # ``reason`` (the graph path needs the same element and has none to
+        # walk from). ``dependency_direction_unknown`` is reserved for T-S3,
+        # which adds the graph path (an explicit or derived dependency) this
+        # task deliberately does not read -- it is not reachable until that
+        # task lands.
         "no_value_stream_recorded",
         "no_capability_linked",
         "value_stream_not_linked_to_model",
         "dependency_direction_unknown",
+        # T-S4 (initiatives and success metrics) additions: two absence
+        # conditions Path C needs that no existing member states.
+        # ``capability_not_linked_to_model`` is the mirror of
+        # ``value_stream_not_linked_to_model`` for a capability entry -- the
+        # capability has no element, so no initiative can be tied to it.
+        # ``no_success_metric_recorded`` is for an initiative that IS tied to
+        # the model but carries no success metric row. Deliberately NOT
+        # added here: a member for "initiative has no element link" --
+        # ADR-S4 keeps that condition unreachable from any payload, so no
+        # reason code, count or key describes it anywhere.
+        "capability_not_linked_to_model",
+        "no_success_metric_recorded",
     }
 )
 

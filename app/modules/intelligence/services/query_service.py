@@ -990,11 +990,12 @@ class IntelligenceQueryService:
 
     @staticmethod
     def _value_stream_tenant_predicate(model, organization_id: int):
-        """The explicit ``organization_id ==`` predicate applied at three
+        """The explicit ``organization_id ==`` predicate applied at five
         call sites on this path -- the tenant's own ``ValueStream`` select,
-        the ``CapabilityValueStreamMapping`` select, and the not-found
-        resolver's ``ValueStream`` select in ``routes/api.py`` -- isolated
-        as its own seam -- the same pattern as
+        the ``CapabilityValueStreamMapping`` select, the not-found resolver's
+        ``ValueStream`` select in ``routes/api.py``, and Path C's two
+        ``ArchiMateElement`` selects (the initiative select and the metric
+        select, T-S4) -- isolated as its own seam -- the same pattern as
         ``derived_facts._apply_default_staleness_filter`` -- so the
         cross-tenant mutation-proof test can monkeypatch exactly this one
         function to a no-op and confirm the named test goes red, without
@@ -1007,11 +1008,15 @@ class IntelligenceQueryService:
         checked by stream membership (``ValueStreamStage.value_stream_id ==
         CapabilityValueStreamMapping.value_stream_id``), not by calling this
         function a fourth time. See ``value_streams_at_risk``'s own
-        docstring for why.
+        docstring for why. Likewise, Path C writes no predicate on
+        ``PortfolioInitiative`` or ``InitiativeSuccessMetric`` -- neither
+        carries a tenant column, and the inner join through the
+        fenced ``ArchiMateElement`` this function does scope **is** their
+        predicate.
 
-        All three models this function is actually called with already carry
-        ``TenantMixin``, so this predicate is defence in depth inside a
-        request and is what keeps a caller correct when called with no
+        Every model this function is actually called with directly already
+        carries ``TenantMixin``, so this predicate is defence in depth inside
+        a request and is what keeps a caller correct when called with no
         ambient request context (a job, a CLI command, a test looping
         tenants in one session), where the ORM listener would otherwise
         no-op entirely.
@@ -1047,13 +1052,15 @@ class IntelligenceQueryService:
         explicit-relationship walk) and no ``include_derived`` /
         ``include_stale`` / ``max_depth`` parameter -- those belong to T-S3.
 
-        Four batched selects regardless of row count, in this order,
-        following ``_resolve_owners_batch``'s own collect-then-resolve shape:
-        value streams for the tenant (narrowed by ``value_stream_id`` when
-        given); mapping rows for those value-stream ids, joined to
+        Four batched selects for the curated path, plus at most two for
+        initiatives and their metrics, regardless of row count, in this
+        order, following ``_resolve_owners_batch``'s own collect-then-resolve
+        shape: value streams for the tenant (narrowed by ``value_stream_id``
+        when given); mapping rows for those value-stream ids, joined to
         ``ValueStreamStage`` for the stage id and name; capability identity
-        for the distinct capability ids; maturity through the accessor.
-        Never one select per row.
+        for the distinct capability ids, now also reading
+        ``archimate_element_id`` as a fourth column; maturity through the
+        accessor. Never one select per row.
 
         Tenancy (design § 3.2, § 9): ``ValueStream`` and
         ``CapabilityValueStreamMapping`` carry the strict, explicit predicate
@@ -1118,7 +1125,60 @@ class IntelligenceQueryService:
 
         Invariant: ``capabilities_below_threshold + capabilities_with_no_maturity
         <= capabilities_considered``.
+
+        Path C (T-S4, DA-S3): initiatives and their success metrics, attached
+        to each value-stream row and each capability entry through
+        ``PortfolioInitiative.archimate_element_id``. Two batched selects at
+        most, both starting from the tenant-fenced ``ArchiMateElement``
+        (``select_from``) and joining OUTWARD with inner joins only, never
+        the reverse and never an outer join, because neither
+        ``PortfolioInitiative`` nor ``InitiativeSuccessMetric`` carries a
+        tenant column -- the join through the fenced element **is** their
+        predicate. Select 5, issued only when at least one element id is
+        known (the union of every row's ``value_stream.archimate_element_id``
+        and every resolved capability's ``archimate_element_id``): the
+        element id and ``PortfolioInitiative``, joined on
+        ``PortfolioInitiative.archimate_element_id == ArchiMateElement.id``.
+        Select 6, issued only when select 5 returned at least one initiative:
+        ``InitiativeSuccessMetric``, from ``ArchiMateElement`` joined to
+        ``PortfolioInitiative`` on the element id and to
+        ``InitiativeSuccessMetric`` on ``initiative_id`` -- both joins kept
+        even though the initiative ids are already fenced, because DA-S3
+        rule 2 makes the two-hop join itself the metric's predicate, not an
+        optimisation to drop. Results are grouped in memory by element id,
+        then by initiative id; never one select per row or per initiative.
+
+        Reason rules, exhaustive. For a capability entry:
+        ``capability_not_linked_to_model`` when the capability's
+        ``archimate_element_id`` is null; otherwise ``no_initiative_linked``
+        when no initiative joined through the fenced element; otherwise
+        ``null``. For a row: ``value_stream_not_linked_to_model`` when the
+        stream's ``archimate_element_id`` is null; otherwise
+        ``no_initiative_linked`` when nothing joined; otherwise ``null``. For
+        an initiative: ``no_success_metric_recorded`` when its metrics list
+        is empty; otherwise ``null``. An element id that does not resolve
+        inside the tenant's fence (another tenant's element, a deleted
+        element) yields ``no_initiative_linked``, deliberately
+        indistinguishable from an element that has no initiative -- the
+        fence is not an existence oracle. Each initiatives list carries its
+        own reason beside it (``capabilities[].initiatives_reason``,
+        ``rows[].value_stream_initiatives_reason``,
+        ``initiatives[].success_metrics_reason``): T-S1's ``reason`` key
+        stays reserved for capability linkage on a row and maturity on a
+        capability entry, never repurposed for a second meaning. An
+        initiative with no element link is never counted, keyed or reasoned
+        about anywhere in the payload (ADR-S4) -- no
+        ``excluded_unlinked_count``, no ``initiative_not_linked_to_model``.
+
+        An assessment is a row whose ``assessed_by`` is set; a column
+        default (``assessed_at``, and here, the initiative's and metric's own
+        ``created_at`` / ``updated_at``) is never serialised as evidence of
+        anything. The same rule applies to a metric: it is measured when its
+        ``actual_value`` is not null; ``completion_percentage`` and the
+        initiative's timestamps are not in the payload for the same reason.
         """
+        from app.models import ArchiMateElement
+        from app.models.enterprise_intelligence import InitiativeSuccessMetric, PortfolioInitiative
         from app.models.unified_capability import (
             CapabilityValueStreamMapping,
             UnifiedCapability,
@@ -1149,6 +1209,7 @@ class IntelligenceQueryService:
                     "capabilities_below_threshold": 0,
                     "capabilities_with_no_maturity": 0,
                     "value_streams_not_linked_to_model": 0,
+                    "initiative_link_basis": "archimate_element_id",
                 }
                 reasons = [validate_reason_code("no_value_stream_recorded")]
             else:
@@ -1183,6 +1244,7 @@ class IntelligenceQueryService:
                         UnifiedCapability.id,
                         UnifiedCapability.name,
                         UnifiedCapability.code,
+                        UnifiedCapability.archimate_element_id,
                     ).where(
                         UnifiedCapability.id.in_(capability_ids),
                         # Permissive predicate, written out in full (§ 3.2):
@@ -1193,8 +1255,13 @@ class IntelligenceQueryService:
                             UnifiedCapability.organization_id.is_(None),
                         ),
                     )
-                    for cap_id, name, code in db.session.execute(identity_stmt).all():
-                        identity_by_id[cap_id] = {"id": cap_id, "name": name, "code": code}
+                    for cap_id, name, code, cap_element_id in db.session.execute(identity_stmt).all():
+                        identity_by_id[cap_id] = {
+                            "id": cap_id,
+                            "name": name,
+                            "code": code,
+                            "archimate_element_id": cap_element_id,
+                        }
 
                 # Maturity through the accessor -- never off the columns.
                 # Strict predicate, required kwarg: a shared catalogue row's
@@ -1202,6 +1269,116 @@ class IntelligenceQueryService:
                 maturity_by_id = UnifiedCapability.maturity_for_capability_ids(
                     capability_ids, organization_id=organization_id
                 )
+
+                # -- Path C (T-S4, DA-S3): initiatives and their success
+                # metrics, at most two more batched selects, both starting
+                # from the tenant-fenced ArchiMateElement and joining
+                # outward with inner joins only. See this method's own
+                # docstring for the full shape and the reason rules.
+                element_ids: set = set()
+                for vs in value_streams:
+                    if vs.archimate_element_id is not None:
+                        element_ids.add(vs.archimate_element_id)
+                for identity in identity_by_id.values():
+                    if identity["archimate_element_id"] is not None:
+                        element_ids.add(identity["archimate_element_id"])
+
+                initiatives_by_element: Dict[int, List[Dict[str, Any]]] = {}
+                if element_ids:
+                    initiative_stmt = (
+                        db.select(ArchiMateElement.id, PortfolioInitiative)
+                        .select_from(ArchiMateElement)
+                        .join(
+                            PortfolioInitiative,
+                            PortfolioInitiative.archimate_element_id == ArchiMateElement.id,
+                        )
+                        .where(
+                            ArchiMateElement.id.in_(element_ids),
+                            IntelligenceQueryService._value_stream_tenant_predicate(
+                                ArchiMateElement, organization_id
+                            ),
+                        )
+                        .order_by(PortfolioInitiative.id)
+                    )
+                    initiative_rows = db.session.execute(initiative_stmt).all()
+
+                    initiative_ids = sorted({pi.id for _eid, pi in initiative_rows})
+                    metrics_by_initiative: Dict[int, List[Dict[str, Any]]] = {}
+                    if initiative_ids:
+                        metric_stmt = (
+                            db.select(InitiativeSuccessMetric)
+                            .select_from(ArchiMateElement)
+                            .join(
+                                PortfolioInitiative,
+                                PortfolioInitiative.archimate_element_id == ArchiMateElement.id,
+                            )
+                            .join(
+                                InitiativeSuccessMetric,
+                                InitiativeSuccessMetric.initiative_id == PortfolioInitiative.id,
+                            )
+                            .where(
+                                PortfolioInitiative.id.in_(initiative_ids),
+                                IntelligenceQueryService._value_stream_tenant_predicate(
+                                    ArchiMateElement, organization_id
+                                ),
+                            )
+                            .order_by(InitiativeSuccessMetric.id)
+                        )
+                        for metric in db.session.execute(metric_stmt).scalars().all():
+                            metrics_by_initiative.setdefault(metric.initiative_id, []).append(
+                                {
+                                    "metric_name": metric.metric_name,
+                                    "metric_type": metric.metric_type,
+                                    "baseline_value": metric.baseline_value,
+                                    "target_value": metric.target_value,
+                                    "actual_value": metric.actual_value,
+                                    "unit_of_measure": metric.unit_of_measure,
+                                    "status": metric.status,
+                                }
+                            )
+
+                    for element_id, pi in initiative_rows:
+                        metrics = metrics_by_initiative.get(pi.id, [])
+                        initiatives_by_element.setdefault(element_id, []).append(
+                            {
+                                "id": pi.id,
+                                "name": pi.name,
+                                "code": pi.code,
+                                "status": pi.status,
+                                "health_status": pi.health_status,
+                                "expected_roi_percentage": (
+                                    float(pi.expected_roi_percentage)
+                                    if pi.expected_roi_percentage is not None
+                                    else None
+                                ),
+                                "business_value_score": pi.business_value_score,
+                                "risk_score": pi.risk_score,
+                                "strategic_alignment_score": pi.strategic_alignment_score,
+                                "success_metrics": metrics,
+                                "success_metrics_reason": (
+                                    None
+                                    if metrics
+                                    else validate_reason_code("no_success_metric_recorded")
+                                ),
+                            }
+                        )
+
+                def _initiatives_for_element(element_id, not_linked_reason):
+                    """Reason rules for an initiatives list, exhaustive (see
+                    the method docstring): no element -> *not_linked_reason*
+                    (the caller's own "not linked to model" member -- a
+                    capability and a row each have their own); an element
+                    with nothing joined -> no_initiative_linked, the same
+                    member and deliberately indistinguishable from a foreign
+                    or deleted element id, since the fence is not an
+                    existence oracle; otherwise the real list and no reason.
+                    """
+                    if element_id is None:
+                        return [], validate_reason_code(not_linked_reason)
+                    found = initiatives_by_element.get(element_id, [])
+                    if not found:
+                        return [], validate_reason_code("no_initiative_linked")
+                    return found, None
 
                 mappings_by_vs: Dict[int, List[Tuple[Any, Any]]] = {}
                 for mapping, stage in mapping_rows:
@@ -1260,11 +1437,17 @@ class IntelligenceQueryService:
                                 at_risk_ids_in_row.add(mapping.capability_id)
                                 capabilities_below_threshold_ids.add(mapping.capability_id)
 
+                        cap_element_id = identity["archimate_element_id"]
+                        cap_initiatives, cap_initiatives_reason = _initiatives_for_element(
+                            cap_element_id, "capability_not_linked_to_model"
+                        )
+
                         capability_rows.append(
                             {
                                 "id": identity["id"],
                                 "name": identity["name"],
                                 "code": identity["code"],
+                                "archimate_element_id": cap_element_id,
                                 "current_maturity": current,
                                 "target_maturity": target,
                                 "maturity_source": "unified_capabilities",
@@ -1288,6 +1471,8 @@ class IntelligenceQueryService:
                                     ),
                                 },
                                 "reason": cap_reason,
+                                "initiatives": cap_initiatives,
+                                "initiatives_reason": cap_initiatives_reason,
                             }
                         )
 
@@ -1295,6 +1480,10 @@ class IntelligenceQueryService:
                         validate_reason_code("no_capability_linked")
                         if not capability_rows
                         else None
+                    )
+
+                    vs_initiatives, vs_initiatives_reason = _initiatives_for_element(
+                        vs.archimate_element_id, "value_stream_not_linked_to_model"
                     )
 
                     at_risk_count = len(at_risk_ids_in_row)
@@ -1309,6 +1498,8 @@ class IntelligenceQueryService:
                             "at_risk_capability_count": at_risk_count,
                             "capabilities": capability_rows,
                             "reason": row_reason,
+                            "value_stream_initiatives": vs_initiatives,
+                            "value_stream_initiatives_reason": vs_initiatives_reason,
                         }
                     )
                     if at_risk_count > 0:
@@ -1321,6 +1512,7 @@ class IntelligenceQueryService:
                     "capabilities_below_threshold": len(capabilities_below_threshold_ids),
                     "capabilities_with_no_maturity": len(capabilities_with_no_maturity_ids),
                     "value_streams_not_linked_to_model": value_streams_not_linked_to_model,
+                    "initiative_link_basis": "archimate_element_id",
                 }
                 reasons = []
 
