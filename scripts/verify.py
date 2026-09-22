@@ -1864,7 +1864,7 @@ def build_gates(baseline: dict) -> list[Gate]:
         Gate("public-repo-hygiene-record-ids",
              "no new review-record-id token or pipeline role word in app/scripts/tests/templates/static JS",
              "ratchet",
-             lambda: gate_public_repo_hygiene_record_ids(baseline.get("public_repo_hygiene_record_ids", 659)),
+             lambda: gate_public_repo_hygiene_record_ids(baseline.get("public_repo_hygiene_record_ids", 668)),
              remediation="run scripts/check_public_repo_hygiene.py --rule content; reword the "
                          "line, or mark it 'hygiene-ok: <reason>'",
              tags=["static", "qa"]),

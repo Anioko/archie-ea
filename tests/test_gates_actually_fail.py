@@ -604,6 +604,29 @@ def test_public_repo_hygiene_content_scan_still_catches_comments_and_docstrings(
     assert _run_hygiene_checker(root, "content") >= 2
 
 
+def test_public_repo_hygiene_content_scan_reads_fstring_literal_text(tmpdir):
+    """An f-string's own literal text tokenises as one or more
+    FSTRING_MIDDLE tokens on the interpreter this codebase runs, never as a
+    single STRING token the way every other string literal does -- it must
+    still be scanned, not skipped because of the expression it
+    interpolates."""
+    root = tmpdir.mkdir("fstring")
+    _write(root, "app/probe.py",
+           'x = 1\ny = f"per the brief, round 2 {x}"\n')  # hygiene-ok: probe data for the f-string scan test, not a real hit
+    assert _run_hygiene_checker(root, "content") >= 2
+
+
+def test_public_repo_hygiene_content_scan_fstring_expression_itself_is_not_scanned(tmpdir):
+    """The `{expression}` part of an f-string is code, not literal text --
+    a role word spelled only inside the interpolated expression (an
+    identifier, not the surrounding text) must not fire, matching the same
+    code/comment boundary the narrowing already draws for plain code."""
+    root = tmpdir.mkdir("fstring-clean")
+    _write(root, "app/probe.py",
+           'x = 1\ny = f"value is {x}"\n')
+    assert _run_hygiene_checker(root, "content") == 0
+
+
 def test_public_repo_hygiene_record_id_ignores_regex_character_class(tmpdir):
     """A record-id-shaped token immediately inside [ ] is a regex character
     class, not a review record id."""

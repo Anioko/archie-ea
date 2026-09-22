@@ -228,18 +228,31 @@ def _spans_to_lines(text: str, spans: list[tuple[int, str]]):
             yield start_line + offset, line_text
 
 
+# An f-string's own literal text tokenises as one or more FSTRING_MIDDLE
+# tokens, one per span between `{expression}` parts, never as a single
+# STRING token the way every other string literal does -- present from the
+# tokenizer version that ships with this codebase's interpreter, absent on
+# an older one, so read defensively rather than assumed.
+_FSTRING_MIDDLE = getattr(tokenize, "FSTRING_MIDDLE", None)
+_PY_STRING_TOKEN_TYPES = (tokenize.COMMENT, tokenize.STRING) + (
+    (_FSTRING_MIDDLE,) if _FSTRING_MIDDLE is not None else ()
+)
+
+
 def _python_comment_and_string_lines(path: str):
-    """(lineno, text) for every COMMENT and STRING token -- a docstring is
-    a STRING token, so this covers both without a separate case. A file
-    that fails to tokenise (a syntax error) yields nothing rather than
-    falling back to a whole-file scan."""
+    """(lineno, text) for every COMMENT, STRING and FSTRING_MIDDLE token --
+    a docstring is a STRING token, so this covers both without a separate
+    case, and an f-string's literal text needs FSTRING_MIDDLE specifically
+    (see above) to be scanned at all. A file that fails to tokenise (a
+    syntax error) yields nothing rather than falling back to a whole-file
+    scan."""
     try:
         with open(path, "rb") as fh:
             tokens = list(tokenize.tokenize(fh.readline))
     except (tokenize.TokenError, SyntaxError, IndentationError, OSError, UnicodeDecodeError):
         return
     for tok in tokens:
-        if tok.type not in (tokenize.COMMENT, tokenize.STRING):
+        if tok.type not in _PY_STRING_TOKEN_TYPES:
             continue
         start_line = tok.start[0]
         for offset, line_text in enumerate(tok.string.split("\n")):
