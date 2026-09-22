@@ -762,6 +762,20 @@ map is in `DESIGN.md`. A plain textarea is not an acceptable substitute — the 
   Remember `fetch` does **not** reject on 404: `if (response.ok)` with no `else` silently
   leaves metrics at their `0` initialiser. Use `if (!response.ok) throw`.
   Enforced by the `fabricated-data` gate; escape hatch is `fabricated-ok: <reason>`.
+- **Derived/composite scores need a governed formula, not just a real input.** A single number
+  that combines several fields (a health score, a maturity index, a priority ranking) is a
+  distinct risk from the single-field case above: every input can be real and the composite
+  can still be fabricated, if the *weighting* was invented rather than decided. Before any such
+  score ships: (1) name every input field and where it comes from — an existing table, a
+  derived fact, or (per `enterprise-intelligence-graph-strategic-vision-v1.md` in the
+  orchestrator repo) an externally-mastered record synchronised in; (2) write the formula down
+  as a reviewable artifact (a brief or an ADR, not a code comment) and get it reviewed the way
+  a metamodel or SRS change is; (3) an unmeasurable input makes the *whole* score `None`
+  (rendered `—`), not a component silently defaulted to 0 or 1 — this exact bug (`total or 1`,
+  `max(x, 1)` denominators turning "nothing to measure" into a confident 0%) already shipped
+  and was found and fixed once in the dashboard health score; don't reintroduce the shape
+  elsewhere. `ApplicationRationalizationScore`'s TIME-framework dimensions are the one existing
+  precedent for doing this correctly — read it before inventing a new pattern.
 - **Entity fields** for user / application / vendor / ArchiMate element must use a debounced
   live-search picker against the documented endpoint, not a free-text input (see `DESIGN.md`).
 - **Staging:** `git add <file>` — never `git add -A`. Untracked scratch scripts are common at the repo
