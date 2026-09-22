@@ -377,6 +377,7 @@ def test_names_come_only_from_the_impact_answers_element_map():
         "/api/v1/intelligence/portfolio/",
         "/api/v1/intelligence/programme/",
         "/api/v1/intelligence/strategy/",
+        "/api/v1/intelligence/accountability/",
     }
 
 

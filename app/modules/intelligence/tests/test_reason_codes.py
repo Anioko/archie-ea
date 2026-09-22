@@ -59,11 +59,13 @@ _EXPECTED = {
     "no_work_package_recorded",
     "not_costed",
     "no_budget_recorded",
+    "no_ownership_records",
+    "capacity_not_available",
 }
 
 
-def test_reason_codes_has_exactly_twenty_three_members():
-    assert len(REASON_CODES) == 23
+def test_reason_codes_has_exactly_twenty_five_members():
+    assert len(REASON_CODES) == 25
     assert REASON_CODES == frozenset(_EXPECTED)
 
 
