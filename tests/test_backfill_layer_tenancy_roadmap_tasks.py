@@ -341,6 +341,12 @@ def test_backfill_leaves_unprovenanced_roadmap_task_null_with_two_orgs(app):
 
 
 def test_backfill_dry_run_changes_nothing(db_session, make_org, app):
+    """Also proves the dry-run "no provenance" count is accurate: with two
+    derivable rows and one truly unprovenanced row in the same pass,
+    ``unresolved`` must count only the unprovenanced one, not all three --
+    which is what it did before the derivation statements ran in dry-run
+    too.
+    """
     from app.commands.backfill_layer_tenancy import repair_layer_tenancy
 
     org_a, org_b = make_org("bf-dr-a"), make_org("bf-dr-b")
@@ -350,8 +356,11 @@ def test_backfill_dry_run_changes_nothing(db_session, make_org, app):
     _relax_not_null(app)
     task_a_id = _insert_roadmap_task(db_session, created_by=user_a.id, title="A task")
     task_b_id = _insert_roadmap_task(db_session, created_by=user_b.id, title="B task")
+    orphan_task_id = _insert_roadmap_task(db_session, title="orphan task")
 
-    repair_layer_tenancy(dry_run=True)
+    stats = repair_layer_tenancy(dry_run=True)
 
     assert _org_id_of(db_session, task_a_id) is None
     assert _org_id_of(db_session, task_b_id) is None
+    assert _org_id_of(db_session, orphan_task_id) is None
+    assert stats["unresolved"] == {"roadmap_tasks": 1}

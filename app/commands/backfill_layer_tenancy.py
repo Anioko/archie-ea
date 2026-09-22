@@ -199,13 +199,19 @@ def repair_layer_tenancy(org_id=None, dry_run=False):
             col = {"nullable": True}
 
         # A table that can state its own tenant does so first, so those rows
-        # never reach the guess-based orphan pass below.
-        if not dry_run and t in _DERIVABLE_ORG:
+        # never reach the guess-based orphan pass below. Run this in dry-run
+        # too (it is rolled back with everything else at the end of this
+        # function): the orphan count taken right after must reflect rows
+        # with no provenance at all, not rows a real run would derive a
+        # moment later, or the "would leave NULL" line below overstates how
+        # many rows actually have no provenance.
+        if t in _DERIVABLE_ORG:
             stmts = _DERIVABLE_ORG[t]
             stmts = [stmts] if isinstance(stmts, str) else stmts
             derived = sum(conn.execute(text(s)).rowcount for s in stmts)
             if derived:
-                click.echo(f"  + {t}: derived org for {derived} row(s) from the linked entity")
+                verb, prefix = ("would derive", "-") if dry_run else ("derived", "+")
+                click.echo(f"  {prefix} {t}: {verb} org for {derived} row(s) from the linked entity")
 
         orphans = conn.execute(
             text(f'SELECT count(*) FROM "{t}" WHERE organization_id IS NULL')
