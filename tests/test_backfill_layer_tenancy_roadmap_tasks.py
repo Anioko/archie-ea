@@ -201,10 +201,16 @@ def test_backfill_leaves_unprovenanced_roadmap_task_null_with_two_orgs(app):
     it, the same shape of self-conflict `_relax_not_null` avoids for
     roadmap_tasks specifically. This test commits for real instead and cleans
     up explicitly.
+
+    Positive controls: two provenanced rows (one per organisation) sit in the
+    same pass as the unprovenanced one, so the assertions prove the run
+    derives what it can and only leaves the truly unprovenanced row NULL --
+    not that nothing in this run happens to be assigned at all.
     """
     from app import db
     from app.commands.backfill_layer_tenancy import repair_layer_tenancy
     from app.models.organization import Organization
+    from app.models.user import User
     import uuid
 
     with app.app_context():
@@ -214,8 +220,23 @@ def test_backfill_leaves_unprovenanced_roadmap_task_null_with_two_orgs(app):
         db.session.add_all([org_a, org_b])
         db.session.commit()
 
+        user_a = User(
+            email=f"bf-np-a-{suffix}@example.com",
+            first_name="Test",
+            last_name="A",
+            organization_id=org_a.id,
+        )
+        user_b = User(
+            email=f"bf-np-b-{suffix}@example.com",
+            first_name="Test",
+            last_name="B",
+            organization_id=org_b.id,
+        )
+        db.session.add_all([user_a, user_b])
+        db.session.commit()
+
         _relax_not_null(app)
-        task_id = db.session.execute(
+        orphan_task_id = db.session.execute(
             text(
                 """
                 INSERT INTO roadmap_tasks
@@ -226,25 +247,64 @@ def test_backfill_leaves_unprovenanced_roadmap_task_null_with_two_orgs(app):
                 """
             )
         ).scalar()
+        provenanced_a_id = db.session.execute(
+            text(
+                """
+                INSERT INTO roadmap_tasks
+                    (title, organization_id, archimate_element_id, created_by, unified_work_package_id)
+                VALUES
+                    ('Provenanced A task', NULL, NULL, :created_by, NULL)
+                RETURNING id
+                """
+            ),
+            {"created_by": user_a.id},
+        ).scalar()
+        provenanced_b_id = db.session.execute(
+            text(
+                """
+                INSERT INTO roadmap_tasks
+                    (title, organization_id, archimate_element_id, created_by, unified_work_package_id)
+                VALUES
+                    ('Provenanced B task', NULL, NULL, :created_by, NULL)
+                RETURNING id
+                """
+            ),
+            {"created_by": user_b.id},
+        ).scalar()
         db.session.commit()
+        task_ids = [orphan_task_id, provenanced_a_id, provenanced_b_id]
 
         try:
             stats_no_org = repair_layer_tenancy()
-            after_first = db.session.execute(
-                text("SELECT organization_id FROM roadmap_tasks WHERE id = :id"), {"id": task_id}
-            ).scalar()
-            assert after_first is None
+
+            def _org_of(task_id):
+                return db.session.execute(
+                    text("SELECT organization_id FROM roadmap_tasks WHERE id = :id"), {"id": task_id}
+                ).scalar()
+
+            assert _org_of(orphan_task_id) is None
+            assert _org_of(provenanced_a_id) == org_a.id
+            assert _org_of(provenanced_b_id) == org_b.id
             assert stats_no_org["unresolved"] == {"roadmap_tasks": 1}
 
             stats_with_org = repair_layer_tenancy(org_id=org_a.id)
-            after_second = db.session.execute(
-                text("SELECT organization_id FROM roadmap_tasks WHERE id = :id"), {"id": task_id}
-            ).scalar()
-            assert after_second is None
+
+            # the orphan is still left NULL, never handed to the operator-
+            # chosen organisation, and the already-provenanced rows are
+            # untouched (their statements fill NULLs only, and they are no
+            # longer NULL)
+            assert _org_of(orphan_task_id) is None
+            assert _org_of(provenanced_a_id) == org_a.id
+            assert _org_of(provenanced_b_id) == org_b.id
             assert stats_with_org["unresolved"] == {"roadmap_tasks": 1}
         finally:
             db.session.rollback()
-            db.session.execute(text("DELETE FROM roadmap_tasks WHERE id = :id"), {"id": task_id})
+            db.session.execute(
+                text("DELETE FROM roadmap_tasks WHERE id = ANY(:ids)"), {"ids": task_ids}
+            )
+            db.session.execute(
+                text("DELETE FROM users WHERE id IN (:a, :b)"), {"a": user_a.id, "b": user_b.id}
+            )
             db.session.execute(
                 text("DELETE FROM organizations WHERE id IN (:a, :b)"),
                 {"a": org_a.id, "b": org_b.id},
