@@ -1,9 +1,11 @@
 """Cross-layer intelligence queries. ``cross_layer_impact`` (L1, "if this
 fails, what stops and who owns it"), ``risk_for_element`` (L6, "what could
 hurt this, and what does it touch" -- reuses the same traversal per risk
-seed) and ``portfolio_component_for_element`` (L3, resolves an element to
-its ApplicationComponent for the one existing deep link). Value-streams-
-at-risk / coverage remain unbuilt.
+seed), ``portfolio_component_for_element`` (L3, resolves an element to its
+ApplicationComponent for the one existing deep link) and
+``programme_for_element`` (L5, "what are we changing, is it on time and
+on budget" -- reuses the same traversal per work-package seed).
+Value-streams-at-risk / coverage remain unbuilt.
 """
 
 from __future__ import annotations
@@ -25,6 +27,8 @@ ELEMENT_NOT_FOUND_REASON = validate_reason_code("element_not_found")
 DERIVATION_NOT_COMPUTED_REASON = validate_reason_code("derivation_not_computed")
 NO_RISK_RECORDED_REASON = validate_reason_code("no_risk_recorded")
 NO_APPLICATION_COMPONENT_REASON = validate_reason_code("no_application_component")
+NO_WORK_PACKAGE_RECORDED_REASON = validate_reason_code("no_work_package_recorded")
+NOT_COSTED_REASON = validate_reason_code("not_costed")
 
 # T-005 (D1): the NFR-5 measurement point is this exact, PINNED series --
 # never widened, never aggregated across label values.
@@ -847,6 +851,133 @@ class IntelligenceQueryService:
             return {"application_component_id": None, "reasons": [NO_APPLICATION_COMPONENT_REASON]}
 
         return {"application_component_id": component.id, "reasons": []}
+
+    @staticmethod
+    def programme_for_element(
+        element_id: int,
+        *,
+        max_depth: int = 3,
+        include_derived: bool = True,
+    ) -> Dict[str, Any]:
+        """L5, "what are we changing, is it on time and on budget, what does
+        each change touch?": every ``UnifiedWorkPackage`` seeded directly on
+        the picked element (``archimate_element_id`` FK), each with the SAME
+        blast-radius traversal L1/L6 already run -- no second traversal
+        algorithm.
+
+        Tenant-safety note, verified not assumed: ``UnifiedWorkPackage``
+        carries no ``TenantMixin``/``organization_id`` of its own. This
+        method never lists work packages independently of an element --
+        every row it returns is filtered by ``archimate_element_id ==
+        element_id``, and ``element_id`` is only ever reached here after
+        the element itself was confirmed to belong to the caller's tenant
+        (below). A cross-tenant work package cannot share a seed element id
+        with the wrong org's element, since ``archimate_elements.id`` is a
+        real primary key each row of which belongs to exactly one tenant.
+        This does not make ``UnifiedWorkPackage`` itself tenant-safe for any
+        OTHER read path against it -- flagged as a separate, pre-existing
+        gap in the L5 brief, not fixed here.
+
+        Cost variance is read from the model's own ``estimated_cost``/
+        ``actual_cost`` fields directly, NOT via
+        ``UnifiedWorkPackage.calculate_budget_variance()`` -- that helper
+        returns a bare 0 both when there is no cost data and when the
+        package is exactly on budget, the same not-computed-vs-measured-
+        zero collision CLAUDE.md's no-fabrication rule exists to catch.
+        Variance is only reported when ``estimated_cost`` is a real
+        positive number; otherwise the row carries the honest
+        ``not_costed`` reason.
+        """
+        from app.models import ArchiMateElement
+        from app.models.unified_work_package import UnifiedWorkPackage
+
+        org_id = current_org_id()
+
+        with record_query_latency("programme_for_element") as scope:
+            scope.organization_id = org_id
+
+            if org_id is None:
+                return {
+                    "work_packages": [],
+                    "reasons": [NO_TENANT_CONTEXT_REASON],
+                    "elements": {},
+                }
+
+            element = db.session.execute(
+                db.select(ArchiMateElement).where(ArchiMateElement.id == element_id)
+            ).scalar_one_or_none()
+            if element is None:
+                return {
+                    "work_packages": [],
+                    "reasons": [ELEMENT_NOT_FOUND_REASON],
+                    "elements": {},
+                }
+
+            seed_packages = (
+                db.session.execute(
+                    db.select(UnifiedWorkPackage).where(
+                        UnifiedWorkPackage.archimate_element_id == element_id
+                    )
+                )
+                .scalars()
+                .all()
+            )
+
+            if not seed_packages:
+                return {
+                    "work_packages": [],
+                    "reasons": [NO_WORK_PACKAGE_RECORDED_REASON],
+                    "elements": {},
+                }
+
+            from app.models.user import User
+
+            owner_ids = {wp.owner_id for wp in seed_packages if wp.owner_id}
+            owners_by_id: Dict[int, str] = {}
+            if owner_ids:
+                for user in db.session.execute(
+                    db.select(User).where(User.id.in_(owner_ids))
+                ).scalars():
+                    owners_by_id[user.id] = user.full_name or user.email
+
+            all_elements: Dict[str, Dict[str, Any]] = {}
+            wp_payloads: List[Dict[str, Any]] = []
+            for wp in seed_packages:
+                blast = IntelligenceQueryService.cross_layer_impact(
+                    element_id,
+                    include_derived=include_derived,
+                    max_depth=max_depth,
+                    with_owner=True,
+                )
+                all_elements.update(blast.get("elements") or {})
+
+                if wp.estimated_cost and wp.estimated_cost > 0:
+                    cost_variance_pct = (
+                        (wp.actual_cost or 0.0) - wp.estimated_cost
+                    ) / wp.estimated_cost * 100
+                    cost_reason = None
+                else:
+                    cost_variance_pct = None
+                    cost_reason = NOT_COSTED_REASON
+
+                wp_payloads.append(
+                    {
+                        "work_package_id": wp.id,
+                        "name": wp.name,
+                        "status": wp.status,
+                        "progress_percentage": wp.progress_percentage,
+                        "start_date": wp.start_date.isoformat() if wp.start_date else None,
+                        "end_date": wp.end_date.isoformat() if wp.end_date else None,
+                        "is_overdue": wp.is_overdue(),
+                        "owner": owners_by_id.get(wp.owner_id),
+                        "cost_variance_pct": cost_variance_pct,
+                        "cost_reason": cost_reason,
+                        "affected_rows": blast.get("rows", []),
+                        "affected_summary": blast.get("summary", {}),
+                    }
+                )
+
+        return {"work_packages": wp_payloads, "reasons": [], "elements": all_elements}
 
 
 __all__ = ["IntelligenceQueryService"]

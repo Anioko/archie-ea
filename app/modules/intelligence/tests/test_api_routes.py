@@ -332,10 +332,10 @@ def test_expanded_chain_marks_an_unresolved_link_instead_of_dropping_it(
     assert "source_id" not in expanded[1]
 
 
-def test_module_registers_exactly_six_routes(app):
-    """The impact, risk, portfolio and yield routes all mount on this same
-    existing blueprint rather than a new one each. Still exactly one
-    blueprint, now six routes on it.
+def test_module_registers_exactly_seven_routes(app):
+    """The impact, risk, portfolio, programme and yield routes all mount on
+    this same existing blueprint rather than a new one each. Still exactly
+    one blueprint, now seven routes on it.
     """
     rules = [
         rule for rule in app.url_map.iter_rules() if rule.endpoint.startswith("intelligence_api.")
@@ -347,6 +347,7 @@ def test_module_registers_exactly_six_routes(app):
         "intelligence_api.cross_layer_impact",
         "intelligence_api.risk_for_element",
         "intelligence_api.portfolio_component_for_element",
+        "intelligence_api.programme_for_element",
         "intelligence_api.derivation_yield",
     }
 
@@ -548,3 +549,95 @@ def test_portfolio_endpoint_resolves_the_linked_component(
     data = resp.get_json()["data"]
     assert data["application_component_id"] == component_id
     assert data["reasons"] == []
+
+
+# --- L5: GET /api/v1/intelligence/programme/<element_id> --------------------
+
+
+def test_programme_endpoint_requires_login(client):
+    resp = client.get("/api/v1/intelligence/programme/1")
+    assert resp.status_code in (302, 401)
+
+
+def test_programme_endpoint_unknown_element_is_404(app, db_session, make_org, client, login_as):
+    org = make_org("programme-route-404")
+    user = _make_user(db_session, org)
+    db_session.commit()
+
+    login_as(client, user)
+    resp = client.get("/api/v1/intelligence/programme/999999999")
+    assert resp.status_code == 404
+    assert resp.get_json()["error"]["details"]["reason"] == "element_not_found"
+
+
+def test_programme_endpoint_element_with_no_work_package_returns_honest_empty(
+    app, db_session, make_org, client, login_as
+):
+    org = make_org("programme-route-empty")
+    user = _make_user(db_session, org)
+    a = _make_element(db_session, org.id, "A")
+    db_session.commit()
+
+    login_as(client, user)
+    resp = client.get(f"/api/v1/intelligence/programme/{a.id}")
+    assert resp.status_code == 200
+    data = resp.get_json()["data"]
+    assert data["work_packages"] == []
+    assert data["reasons"] == ["no_work_package_recorded"]
+
+
+def test_programme_endpoint_returns_work_package_with_its_own_blast_radius(
+    app, db_session, make_org, client, login_as
+):
+    from app.models.unified_work_package import UnifiedWorkPackage
+
+    org = make_org("programme-route-blast")
+    user = _make_user(db_session, org)
+    a = _make_element(db_session, org.id, "A")
+    b = _make_element(db_session, org.id, "B")
+    _make_relationship(db_session, org.id, a, b, "Serving")
+    wp = UnifiedWorkPackage(
+        name="Migrate A",
+        archimate_element_id=a.id,
+        business_capability="Test",
+        status="in_progress",
+        progress_percentage=25.0,
+        estimated_cost=50000.0,
+        actual_cost=45000.0,
+    )
+    db_session.add(wp)
+    db_session.commit()
+
+    login_as(client, user)
+    resp = client.get(f"/api/v1/intelligence/programme/{a.id}?include_derived=true")
+    assert resp.status_code == 200
+    data = resp.get_json()["data"]
+    assert data["reasons"] == []
+    assert len(data["work_packages"]) == 1
+    row = data["work_packages"][0]
+    assert row["name"] == "Migrate A"
+    assert row["cost_reason"] is None
+    assert round(row["cost_variance_pct"], 2) == -10.0
+    assert len(row["affected_rows"]) == 1
+    assert row["affected_rows"][0]["element_id"] == b.id
+
+
+def test_programme_endpoint_cross_tenant_element_is_404_not_leak(
+    app, db_session, make_org, client, login_as
+):
+    from app.models.unified_work_package import UnifiedWorkPackage
+
+    org_a = make_org("programme-route-tenant-a")
+    org_b = make_org("programme-route-tenant-b")
+    user_b = _make_user(db_session, org_b)
+    a = _make_element(db_session, org_a.id, "A")
+    wp = UnifiedWorkPackage(
+        name="Tenant A's work", archimate_element_id=a.id, business_capability="Test",
+    )
+    db_session.add(wp)
+    db_session.commit()
+
+    login_as(client, user_b)
+    resp = client.get(f"/api/v1/intelligence/programme/{a.id}")
+    assert resp.status_code == 404
+    assert resp.get_json()["error"]["details"]["reason"] == "element_not_found"

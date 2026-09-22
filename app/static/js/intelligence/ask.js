@@ -1,9 +1,10 @@
 /* The Ask page.
  *
  * A person opens a question card, types a business noun, chooses a match and
- * gets that question's answer for it. Three questions today: impact (L1,
- * "what breaks"), risk (L6, "what could hurt") and portfolio (L3, a deep
- * link to rationalization planning). One question is open at a time
+ * gets that question's answer for it. Four questions today: impact (L1,
+ * "what breaks"), risk (L6, "what could hurt"), portfolio (L3, a deep link
+ * to rationalization planning) and programme (L5, "what's changing"). One
+ * question is open at a time
  * (openKey), and one shared picker (fixed input id / $refs.pickerInput --
  * see _entity_picker.html) sits in whichever panel is open; onSelect()
  * dispatches by openKey rather than always loading the impact answer.
@@ -39,6 +40,9 @@ function askSurface() {
         portfolioBusy: false,
         portfolioComponentId: null,
         rationalizationPlanningUrlBase: '',
+        programmeState: 'idle',
+        programmeBusy: false,
+        workPackages: [],
 
         init() {
             this.twinMapUrl = this.$el.getAttribute('data-twin-map-url') || '';
@@ -71,6 +75,8 @@ function askSurface() {
                 this.loadRisk(option.id);
             } else if (this.openKey === 'portfolio') {
                 this.loadPortfolio(option.id);
+            } else if (this.openKey === 'programme') {
+                this.loadProgramme(option.id);
             } else {
                 this.load(option.id);
             }
@@ -161,6 +167,31 @@ function askSurface() {
                 this.portfolioState = 'error';
             }
             this.portfolioBusy = false;
+        },
+
+        /* L5 counterpart of loadRisk(). No provenance-drawer sync, same
+           reasoning as risk cards. costVariancePct/costReason on each row
+           already carry the not_costed distinction from the server --
+           this method does not recompute or guess a variance. */
+        async loadProgramme(elementId) {
+            this.answeredKey = 'programme';
+            this.programmeCentreId = elementId;
+            this._programmeLoadSeq = (this._programmeLoadSeq || 0) + 1;
+            var seq = this._programmeLoadSeq;
+            this.programmeBusy = true;
+            this.programmeState = 'loading';
+            try {
+                var payload = await Intelligence.fetchProgramme(elementId, { maxDepth: 3, includeDerived: true });
+                if (seq !== this._programmeLoadSeq) return;
+                this.workPackages = Intelligence.buildWorkPackages(payload);
+                this.programmeState = this.workPackages.length ? 'ready' : 'empty';
+            } catch (err) {
+                if (seq !== this._programmeLoadSeq) return;
+                this.workPackages = [];
+                this.programmeState = 'error';
+            }
+            this.programmeBusy = false;
+            this.$nextTick(function () { Intelligence.refreshIcons(); });
         },
 
         async recomputeNow() {
