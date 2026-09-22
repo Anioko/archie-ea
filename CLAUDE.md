@@ -523,7 +523,7 @@ to reconfirm the count before trusting it:**
 | `docs-drift` | CLAUDE.md/DELIVERY_CONTRACT.md gate claims disagreeing with build_gates() | must be 0 |
 | `public-repo-hygiene` | a docs/buckets/ directory or path reference in this public repository | must be 0 |
 | `public-repo-hygiene-record-ids` | a review-record-id token or pipeline role word in app/scripts/tests/templates/static JS | ratchet @ 1728 |
-| `public-repo-hygiene-commit-messages` | a pipeline role word or Co-Authored-By trailer in a commit message | ratchet @ 1031 |
+| `public-repo-hygiene-commit-messages` | a pipeline role word or Co-Authored-By trailer in a commit message | must be 0 over the commits under review |
 | `unregistered-checks` | a scripts/check_\*.py with no Gate(...) entry (F500-008) | ratchet @ 33 |
 
 Per-line escape hatches, each of which makes the exception reviewable rather than

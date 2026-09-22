@@ -507,12 +507,12 @@ def test_the_gate_fires_on_its_own_defect(script, builder, tmpdir):
 # --------------------------------------------------------------------------
 
 
-def _run_hygiene_checker(root, rule):
-    proc = subprocess.run(
-        [sys.executable, os.path.join(SCRIPTS, "check_public_repo_hygiene.py"),
-         "--count", "--root", str(root), "--rule", rule],
-        capture_output=True, text=True, cwd=REPO,
-    )
+def _run_hygiene_checker(root, rule, rev_range=None):
+    cmd = [sys.executable, os.path.join(SCRIPTS, "check_public_repo_hygiene.py"),
+           "--count", "--root", str(root), "--rule", rule]
+    if rev_range:
+        cmd += ["--range", rev_range]
+    proc = subprocess.run(cmd, capture_output=True, text=True, cwd=REPO)
     trailing = (proc.stdout or "").strip().splitlines()
     assert trailing, (
         "check_public_repo_hygiene.py --rule %s produced no count for root=%s\n"
@@ -610,6 +610,28 @@ def test_public_repo_hygiene_commit_message_gate_fires_on_its_own_defect(tmpdir)
     assert bad_count > 0, "a pipeline role word in a commit message was not flagged"
     assert good_count == 0, "the checker fired on a clean commit message"
     assert bad_count > good_count
+
+
+def test_public_repo_hygiene_commit_message_range_excludes_the_base(tmpdir):
+    """A --range scan reports only the commits under review, not the base's
+    own history -- the shape gate_public_repo_hygiene_commit_messages relies
+    on (base..HEAD): a bad commit already on the base branch must not make
+    every review of every later branch fail forever."""
+    root = tmpdir.mkdir("range")
+    _init_repo_with_commit(root, "Fix the timeout on the retry path (refuter finding)")  # hygiene-ok: deliberate probe commit message, in a synthetic tmpdir repo this checker never scans
+    base_sha = _git(root, "rev-parse", "HEAD").strip()
+    _write(root, "second.txt", "second\n")
+    _git(root, "add", "second.txt")
+    _git(root, "commit", "-q", "-m", "Add second.txt (tech-lead approved)")  # hygiene-ok: deliberate probe commit message, in a synthetic tmpdir repo this checker never scans
+
+    full_count = _run_hygiene_checker(root, "commits")
+    ranged_count = _run_hygiene_checker(root, "commits", rev_range="%s..HEAD" % base_sha)
+
+    assert full_count == 2, "expected one hit on each of the two commits, got %d" % full_count
+    assert ranged_count == 1, (
+        "a --range scan counted %d hits; it should see only the commit made after "
+        "the range's base, not the base's own history" % ranged_count
+    )
 
 
 def test_public_repo_hygiene_commit_message_catches_co_authored_by(tmpdir):

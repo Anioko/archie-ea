@@ -892,27 +892,62 @@ def gate_public_repo_hygiene_record_ids(baseline: int) -> Result:
     return Result("public-repo-hygiene-record-ids", PASS if count <= baseline else FAIL, detail, count, baseline)
 
 
-def gate_public_repo_hygiene_commit_messages(baseline: int) -> Result:
-    """Pipeline role words and a Co-Authored-By trailer in a commit message
-    itself (not the diff), across this branch's full history.
+def _resolve_hygiene_commit_range() -> tuple[str | None, str]:
+    """The range of commits actually under review: ``origin/$GITHUB_BASE_REF..HEAD``
+    inside a pull request, else ``origin/main..HEAD`` on a full clone, else no
+    range at all -- never a guess, never something that would pass by construction.
 
-    RATCHET, and for a different reason than the record-ids gate above: a
-    commit message cannot be edited after the fact without rewriting already-
-    pushed public history, which this repository's own standing instructions
-    forbid except on a role's own not-yet-merged branch. The baseline below
-    is today's frozen count of history that predates this gate; only a
-    future commit with a bad message can raise it.
+    A full-history count cannot be a ratchet here: GitHub's squash merge appends
+    its own ``Co-authored-by:`` trailers to the merge commit after every gate has
+    already run on the pull request, so history keeps moving under a baseline
+    that was never meant to describe it, and every multi-author merge would force
+    the baseline up again. Scoping to the commits under review sidesteps that
+    entirely: a `push` to the default branch resolves ``origin/main..HEAD`` to
+    nothing (HEAD already is the just-merged commit), so the gate passes on zero
+    commits by construction -- correct, because the default branch is not what a
+    review is over.
     """
-    proc = _run([sys.executable, "scripts/check_public_repo_hygiene.py", "--rule", "commits", "--count"])
+    base_ref = os.environ.get("GITHUB_BASE_REF")
+    base = f"origin/{base_ref}" if base_ref else "origin/main"
+    check = subprocess.run(
+        ["git", "-C", str(REPO_ROOT), "rev-parse", "--verify", "--quiet", base],
+        capture_output=True, encoding="utf-8", errors="replace",
+    )
+    if check.returncode != 0:
+        return None, (
+            f"{base} does not resolve in this clone (shallow clone, or no "
+            f"matching remote-tracking branch) -- cannot determine which "
+            f"commits are under review"
+        )
+    return f"{base}..HEAD", ""
+
+
+def gate_public_repo_hygiene_commit_messages() -> Result:
+    """A pipeline role word or a Co-Authored-By trailer in a commit message
+    itself (not the diff), among the commits under review.
+
+    ZERO, not a ratchet, and scoped to a range rather than full history -- see
+    ``_resolve_hygiene_commit_range``'s own docstring for why counting all of
+    history cannot be a stable measurement here. SKIPs, rather than passing,
+    when the range cannot be determined (e.g. a shallow clone with no
+    ``origin/main``): a gate that silently measures zero commits because it
+    could not find any is not the same thing as a clean review.
+    """
+    rev_range, reason = _resolve_hygiene_commit_range()
+    if rev_range is None:
+        return Result("public-repo-hygiene-commit-messages", SKIP, reason)
+    proc = _run([sys.executable, "scripts/check_public_repo_hygiene.py",
+                 "--rule", "commits", "--range", rev_range, "--count"])
     try:
         count = int(proc.stdout.strip().splitlines()[-1])
     except (ValueError, IndexError):
         return Result("public-repo-hygiene-commit-messages", FAIL,
                       f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
     detail = ""
-    if count > baseline:
-        detail = _run([sys.executable, "scripts/check_public_repo_hygiene.py", "--rule", "commits"]).stdout[-1800:]
-    return Result("public-repo-hygiene-commit-messages", PASS if count <= baseline else FAIL, detail, count, baseline)
+    if count:
+        detail = _run([sys.executable, "scripts/check_public_repo_hygiene.py",
+                        "--rule", "commits", "--range", rev_range]).stdout[-1800:]
+    return Result("public-repo-hygiene-commit-messages", PASS if count == 0 else FAIL, detail, count, 0)
 
 
 def gate_unregistered_checks(baseline: int) -> Result:
@@ -1842,11 +1877,12 @@ def build_gates(baseline: dict) -> list[Gate]:
                          "line, or mark it 'hygiene-ok: <reason>'",
              tags=["static", "qa"]),
         Gate("public-repo-hygiene-commit-messages",
-             "no new pipeline role word or Co-Authored-By trailer in a commit message",
-             "ratchet",
-             lambda: gate_public_repo_hygiene_commit_messages(baseline.get("public_repo_hygiene_commit_messages", 1031)),
-             remediation="run scripts/check_public_repo_hygiene.py --rule commits; word the next "
-                         "commit message without them (history is not rewritten to fix old ones)",
+             "no pipeline role word or Co-Authored-By trailer in a commit message under review",
+             "zero",
+             gate_public_repo_hygiene_commit_messages,
+             remediation="run scripts/check_public_repo_hygiene.py --rule commits --range "
+                         "<base>..HEAD; reword the commit message (a trailer cannot be excused "
+                         "with hygiene-ok:)",
              tags=["static", "qa"]),
         Gate("unregistered-checks",
              "no scripts/check_*.py exists with no Gate(...) entry in build_gates()",
