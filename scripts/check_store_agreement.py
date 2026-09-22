@@ -145,6 +145,16 @@ CONCEPTS = {
         Surface("GET /api/v1/capabilities/", "http",
                 "/api/v1/capabilities/?per_page=1",
                 extract="data.pagination.total"),
+        # /architecture/dashboard?layer=strategy&element_type=Capability is a
+        # third, previously untracked surface answering the same question --
+        # it filters app.models.archimate_core.ArchiMateElement (the generic
+        # ArchiMate-element store) to element_type="Capability", not either
+        # BusinessCapability or UnifiedCapability above. Same underlying data
+        # endpoint the dashboard's own tab badge calls.
+        Surface("GET /architecture/api/layer/strategy/elements?element_type=Capability",
+                "http",
+                "/architecture/api/layer/strategy/elements?element_type=Capability&per_page=1",
+                extract="pagination.total"),
     ],
     "applications": [
         Surface("orm:ApplicationComponent", "orm",
