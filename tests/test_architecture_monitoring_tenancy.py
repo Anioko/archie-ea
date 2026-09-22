@@ -5,13 +5,15 @@ Before this fix ``monitoring_baselines``/``monitoring_alerts`` carried no
 single process-wide dict shared by every tenant's instance, and its capability
 and vendor snapshots read the whole catalogue with ``.query.all()``. This file
 proves two organisations cannot see, mutate or be deactivated by each other's
-monitoring data, that the per-tenant cache is actually per-tenant, and that the
+monitoring data, that the per-tenant cache is actually per-tenant, that the
 capability and vendor snapshots carry an explicit predicate (so a call with no
-Flask request on the stack is scoped too).
+Flask request on the stack is scoped too), and that the canonical backfill
+command derives or defers ``organization_id`` on pre-existing rows correctly.
 
 Follows the ``db_session`` / ``make_org`` / ``tenant_ctx`` fixtures in
 ``tests/conftest.py`` -- see ``tests/test_arb_ea_tenant_isolation.py`` for the
-pattern this repo standardizes on.
+pattern this repo standardizes on, and ``tests/test_backfill_layer_tenancy_
+roadmap_tasks.py`` for the backfill test's shape.
 """
 
 from __future__ import annotations
@@ -20,6 +22,11 @@ import uuid
 
 import pytest
 from sqlalchemy import text
+
+# No module-level usefixtures("db_session"): the backfill test below calls
+# repair_layer_tenancy() twice and needs real commits between the two calls
+# (see its docstring), so it deliberately does not take db_session. Every
+# other test in this module requests it directly instead.
 
 
 @pytest.fixture(autouse=True)
@@ -422,6 +429,184 @@ def test_mixin_stamps_organization_id_on_insert_without_explicit_value(
 
     assert explicit.organization_id == org_b.id
     assert implicit.organization_id == org_a.id  # unaffected by the second insert
+
+
+# ------------------------------------------------------------------ (8) backfill
+
+
+def _relax_monitoring_not_null(app):
+    """Allow NULL organization_id inserts on both monitoring tables, committed
+    on a connection of its own.
+
+    There is no shared "relax not null" fixture on this branch's base (see
+    ``tests/test_backfill_layer_tenancy_roadmap_tasks.py``'s own copy of this
+    same helper, scoped to ``roadmap_tasks``); this duplicates its reasoning
+    for the same two tables. It cannot run on ``db_session``'s own connection:
+    that fixture's transaction is never really committed until the whole test
+    rolls back, so the ACCESS EXCLUSIVE lock an ALTER TABLE takes would still
+    be held when ``repair_layer_tenancy`` reflects these tables' columns on a
+    second, independent connection a moment later (schema reflection is
+    engine-bound, not session-bound) -- same process, same thread, so it
+    blocks forever against itself. Doing the ALTER on its own autocommitting
+    connection commits and releases the lock immediately.
+    """
+    from app import db
+
+    with app.app_context():
+        with db.engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+            conn.execute(text("ALTER TABLE monitoring_baselines ALTER COLUMN organization_id DROP NOT NULL"))
+            conn.execute(text("ALTER TABLE monitoring_alerts ALTER COLUMN organization_id DROP NOT NULL"))
+
+
+def _restore_monitoring_not_null(app):
+    """Undo `_relax_monitoring_not_null` once this test's own cleanup has run."""
+    from app import db
+
+    with app.app_context():
+        with db.engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+            conn.execute(text("ALTER TABLE monitoring_baselines ALTER COLUMN organization_id SET NOT NULL"))
+            conn.execute(text("ALTER TABLE monitoring_alerts ALTER COLUMN organization_id SET NOT NULL"))
+
+
+def test_backfill_derives_monitoring_provenance_and_leaves_unprovenanced_rows_null(app):
+    """Calls ``repair_layer_tenancy()`` twice, so this cannot use the
+    ``db_session`` fixture (nor ``make_org``, which depends on it) -- the same
+    reason ``test_backfill_leaves_unprovenanced_roadmap_task_null_with_two_orgs``
+    in ``tests/test_backfill_layer_tenancy_roadmap_tasks.py`` does not: on the
+    first call, ``repair_layer_tenancy`` hardens (SET NOT NULL / CREATE INDEX
+    on) every other tenant table it visits along the way, on the same
+    connection ``db_session`` would own, and that lock would stay held
+    (uncommitted) until the whole test rolls back, deadlocking the second
+    call's own schema reflection of that same table. This test commits for
+    real and cleans up explicitly instead, the same shape that test uses.
+
+    One provenanced and one unprovenanced row per table: a baseline created
+    by a real user and one whose ``created_by`` names no user (the literal
+    string ``"system"``, predating this backfill); an alert acknowledged by a
+    real user and one never acknowledged at all.
+    """
+    from app import db
+    from app.commands.backfill_layer_tenancy import repair_layer_tenancy
+    from app.models.organization import Organization
+    from app.models.user import User
+
+    suffix = uuid.uuid4().hex[:10]
+    with app.app_context():
+        org_a = Organization(name=f"Test dr3-bf-a {suffix}", slug=f"test-dr3-bf-a-{suffix}")
+        org_b = Organization(name=f"Test dr3-bf-b {suffix}", slug=f"test-dr3-bf-b-{suffix}")
+        db.session.add_all([org_a, org_b])
+        db.session.commit()
+
+        user_a = User(
+            email=f"dr3-bf-a-{suffix}@example.com",
+            first_name="Test",
+            last_name="A",
+            organization_id=org_a.id,
+        )
+        user_b = User(
+            email=f"dr3-bf-b-{suffix}@example.com",
+            first_name="Test",
+            last_name="B",
+            organization_id=org_b.id,
+        )
+        db.session.add_all([user_a, user_b])
+        db.session.commit()
+
+        _relax_monitoring_not_null(app)
+
+        baseline_provenanced_id = db.session.execute(
+            text(
+                """
+                INSERT INTO monitoring_baselines
+                    (baseline_id, organization_id, name, snapshot_data, checksum, created_by, is_active, created_at)
+                VALUES
+                    (:baseline_id, NULL, 'Provenanced baseline', '{}', 'chk-prov', :created_by, false, now())
+                RETURNING id
+                """
+            ),
+            {"baseline_id": f"dr3-bl-prov-{suffix}", "created_by": str(user_a.id)},
+        ).scalar()
+        baseline_unprovenanced_id = db.session.execute(
+            text(
+                """
+                INSERT INTO monitoring_baselines
+                    (baseline_id, organization_id, name, snapshot_data, checksum, created_by, is_active, created_at)
+                VALUES
+                    (:baseline_id, NULL, 'System baseline', '{}', 'chk-sys', 'system', false, now())
+                RETURNING id
+                """
+            ),
+            {"baseline_id": f"dr3-bl-sys-{suffix}"},
+        ).scalar()
+        alert_provenanced_id = db.session.execute(
+            text(
+                """
+                INSERT INTO monitoring_alerts
+                    (alert_id, organization_id, alert_type, severity, title, acknowledged, acknowledged_by, created_at)
+                VALUES
+                    (:alert_id, NULL, 'new_gap', 'warning', 'Provenanced alert', true, :acknowledged_by, now())
+                RETURNING id
+                """
+            ),
+            {"alert_id": f"dr3-al-prov-{suffix}", "acknowledged_by": str(user_b.id)},
+        ).scalar()
+        alert_unacknowledged_id = db.session.execute(
+            text(
+                """
+                INSERT INTO monitoring_alerts
+                    (alert_id, organization_id, alert_type, severity, title, acknowledged, acknowledged_by, created_at)
+                VALUES
+                    (:alert_id, NULL, 'new_gap', 'warning', 'Unacknowledged alert', false, NULL, now())
+                RETURNING id
+                """
+            ),
+            {"alert_id": f"dr3-al-unack-{suffix}"},
+        ).scalar()
+        db.session.commit()
+
+        def _org_of(table, row_id):
+            return db.session.execute(
+                text(f"SELECT organization_id FROM {table} WHERE id = :id"), {"id": row_id}
+            ).scalar()
+
+        try:
+            stats_first = repair_layer_tenancy()
+
+            assert _org_of("monitoring_baselines", baseline_provenanced_id) == org_a.id
+            assert _org_of("monitoring_baselines", baseline_unprovenanced_id) is None
+            assert _org_of("monitoring_alerts", alert_provenanced_id) == org_b.id
+            assert _org_of("monitoring_alerts", alert_unacknowledged_id) is None
+            assert stats_first["unresolved"] == {"monitoring_alerts": 1, "monitoring_baselines": 1}
+
+            # --org-id must not sweep the unresolved rows into the named
+            # organisation: they are another tenant's data, not this
+            # operator's to assign.
+            stats_second = repair_layer_tenancy(org_id=org_a.id)
+
+            assert _org_of("monitoring_baselines", baseline_provenanced_id) == org_a.id
+            assert _org_of("monitoring_baselines", baseline_unprovenanced_id) is None
+            assert _org_of("monitoring_alerts", alert_provenanced_id) == org_b.id
+            assert _org_of("monitoring_alerts", alert_unacknowledged_id) is None
+            assert stats_second["unresolved"] == {"monitoring_alerts": 1, "monitoring_baselines": 1}
+        finally:
+            db.session.rollback()
+            db.session.execute(
+                text("DELETE FROM monitoring_baselines WHERE id = ANY(:ids)"),
+                {"ids": [baseline_provenanced_id, baseline_unprovenanced_id]},
+            )
+            db.session.execute(
+                text("DELETE FROM monitoring_alerts WHERE id = ANY(:ids)"),
+                {"ids": [alert_provenanced_id, alert_unacknowledged_id]},
+            )
+            db.session.execute(
+                text("DELETE FROM users WHERE id IN (:a, :b)"), {"a": user_a.id, "b": user_b.id}
+            )
+            db.session.execute(
+                text("DELETE FROM organizations WHERE id IN (:a, :b)"),
+                {"a": org_a.id, "b": org_b.id},
+            )
+            db.session.commit()
+            _restore_monitoring_not_null(app)
 
 
 # -------------------------------------------------------- (9) no-tenant refusal

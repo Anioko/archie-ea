@@ -99,13 +99,38 @@ _DERIVABLE_ORG = {
            AND t.organization_id IS NULL
         """,
     ],
+    # monitoring_baselines/monitoring_alerts predate TenantMixin and carry no
+    # foreign key to their owning tenant, only the id (as text) of the user
+    # who created the baseline or acknowledged the alert. Cast the integer id
+    # to text -- never the reverse, which would raise on a non-numeric value
+    # such as the literal string "system" a caller may have written before
+    # this backfill existed, and abort the whole schema deploy.
+    "monitoring_baselines": """
+        UPDATE monitoring_baselines b
+           SET organization_id = u.organization_id
+          FROM users u
+         WHERE u.id::text = b.created_by
+           AND b.organization_id IS NULL
+    """,
+    "monitoring_alerts": """
+        UPDATE monitoring_alerts a
+           SET organization_id = u.organization_id
+          FROM users u
+         WHERE u.id::text = a.acknowledged_by
+           AND a.organization_id IS NULL
+    """,
 }
 
 # Tables whose rows carry per-row provenance rather than a single owning
 # entity: a row that cannot be derived from that provenance is another
 # tenant's data, never a candidate for the single-organisation or --org-id
 # orphan assignment below.
-_PROVENANCE_ONLY = {"roadmap_tasks"}
+#
+# An alert never acknowledged, or a baseline whose created_by names no user
+# (or predates the column, or is the literal "system"), has no provenance at
+# all: it stays NULL and reported, the same as a roadmap_tasks row with no
+# linked user, work package or consolidation entry.
+_PROVENANCE_ONLY = {"roadmap_tasks", "monitoring_alerts", "monitoring_baselines"}
 
 
 def _resolve_org_id(conn, explicit):
