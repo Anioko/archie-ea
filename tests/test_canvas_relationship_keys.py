@@ -167,3 +167,124 @@ def test_association_key_absence_from_the_coarse_table_does_not_mean_invalid(svc
     than leaving it to be rediscovered as a false regression later."""
     assert ("association", "physical", "strategy") not in VALID_RELATIONSHIPS
     assert svc.is_valid("Equipment", "Capability", "association")
+
+
+# -- The picker contract: list, create, and cross-tenant refusal -------------
+
+
+def _make_user(db_session, org_id, label):
+    import uuid
+
+    from app.models.user import User
+
+    suffix = uuid.uuid4().hex[:8]
+    user = User(
+        email=f"{label.lower()}-{suffix}@example.com",
+        organization_id=org_id,
+        enterprise_role="enterprise_architect",
+        confirmed=True,
+    )
+    db_session.add(user)
+    db_session.flush()
+    return user
+
+
+class TestPickerContract:
+    def test_option_to_plan_item_association_through_the_create_route(
+        self, app, db_session, make_org, client, login_as
+    ):
+        from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship
+
+        org_a = make_org("cv0-picker-a")
+        org_b = make_org("cv0-picker-b")
+        user_a = _make_user(db_session, org_a.id, "PickerOwnerA")
+        user_b = _make_user(db_session, org_b.id, "PickerAttackerB")
+
+        option = ArchiMateElement(
+            name="Expand through partners", type="CourseOfAction",
+            layer="strategy", organization_id=org_a.id,
+        )
+        plan_item = ArchiMateElement(
+            name="Partner onboarding", type="WorkPackage",
+            layer="implementation", organization_id=org_a.id,
+        )
+        b_element = ArchiMateElement(
+            name="Org B's own option", type="CourseOfAction",
+            layer="strategy", organization_id=org_b.id,
+        )
+        db_session.add_all([option, plan_item, b_element])
+        db_session.flush()
+        option_id, plan_item_id, b_element_id = option.id, plan_item.id, b_element.id
+        # Captured now, as plain ints: db_session.expunge_all() below detaches
+        # every ORM instance still in this session, including user_a and
+        # user_b, and login_as(client, <detached User>) then raises
+        # DetachedInstanceError trying to read .id off an expired instance.
+        # login_as accepts a raw id (tests/conftest.py::_login) precisely so
+        # a caller past an expunge can still identify who to log in as.
+        user_a_id, user_b_id = user_a.id, user_b.id
+
+        login_as(client, user_a)
+
+        types_resp = client.get(
+            f"/archimate/api/valid-relationship-types?source_id={option_id}&target_id={plan_item_id}"
+        )
+        assert types_resp.status_code == 200, types_resp.get_data(as_text=True)
+        assert "association" in types_resp.get_json()["valid_types"]
+
+        create_resp = client.post("/archimate/api/relationships", json={
+            "source_element_id": option_id,
+            "target_element_id": plan_item_id,
+            "relationship_type": "association",
+        })
+        assert create_resp.status_code == 201, create_resp.get_data(as_text=True)
+
+        rows = db_session.query(ArchiMateRelationship).filter_by(
+            source_id=option_id, target_id=plan_item_id, type="association",
+        ).all()
+        assert len(rows) == 1
+
+        # Force the next db.session.get() to hit the database rather than this
+        # session's identity map (test_tenant_isolation.py::
+        # test_get_by_id_is_NOT_scoped_on_an_identity_map_hit): a single real
+        # HTTP request only ever sees one tenant on a fresh session, but this
+        # test drives two "sessions" worth of requests through the one
+        # db_session fixture keeps open, and a map hit would return org A's
+        # element to org B without ever consulting the tenant predicate —
+        # a false pass that proves nothing about the route.
+        db_session.expunge_all()
+
+        # B's session, naming A's ids: the route's own 404, nothing written.
+        login_as(client, user_b_id)
+        cross_resp = client.post("/archimate/api/relationships", json={
+            "source_element_id": option_id,
+            "target_element_id": plan_item_id,
+            "relationship_type": "association",
+        })
+        assert cross_resp.status_code == 404, cross_resp.get_data(as_text=True)
+
+        # login_as clears the cached g.current_org_id (see its docstring on
+        # db_session holding one app context for the whole test) as well as
+        # the identity cookie. Without this, the tenant filter the request
+        # above left behind (do_orm_execute -> _add_tenant_filter, keyed off
+        # that same g.current_org_id) would still be org B's when the plain
+        # query below runs, and it would silently filter A's own row out of
+        # its own count — a false "nothing changed" for the wrong reason.
+        login_as(client, user_a_id)
+        rows_after_b = db_session.query(ArchiMateRelationship).filter_by(
+            source_id=option_id, target_id=plan_item_id, type="association",
+        ).all()
+        assert len(rows_after_b) == 1  # unchanged — no second row, no row stolen
+
+        db_session.expunge_all()
+
+        # A's session, naming B's element: also the route's own 404, nothing written.
+        naming_b_resp = client.post("/archimate/api/relationships", json={
+            "source_element_id": option_id,
+            "target_element_id": b_element_id,
+            "relationship_type": "association",
+        })
+        assert naming_b_resp.status_code == 404, naming_b_resp.get_data(as_text=True)
+        rows_naming_b = db_session.query(ArchiMateRelationship).filter_by(
+            source_id=option_id, target_id=b_element_id,
+        ).all()
+        assert rows_naming_b == []
