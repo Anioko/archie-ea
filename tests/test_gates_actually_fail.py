@@ -593,8 +593,8 @@ def test_public_repo_hygiene_content_scan_still_catches_comments_and_docstrings(
     proving the narrowing above excludes code, not everything."""
     root = tmpdir.mkdir("still-fires")
     _write(root, "app/probe.py",
-           '"""per the brief, round 2"""\n'
-           "# orchestrator said so\n")
+           '"""per the brief, round 2"""\n'  # hygiene-ok: probe data for a tmpdir file this checker never scans, not a real hit
+           "# orchestrator said so\n")  # hygiene-ok: probe data for a tmpdir file this checker never scans, not a real hit
     assert _run_hygiene_checker(root, "content") >= 2
 
 
@@ -634,8 +634,92 @@ def test_public_repo_hygiene_content_scan_survives_a_file_that_does_not_tokenise
     other file in the tree is still scanned."""
     root = tmpdir.mkdir("unparseable")
     _write(root, "app/broken.py", "def broken(:\n    pass\n")
-    _write(root, "app/probe.py", "# orchestrator said so\n")
+    _write(root, "app/probe.py", "# orchestrator said so\n")  # hygiene-ok: probe data for a tmpdir file this checker never scans, not a real hit
     assert _run_hygiene_checker(root, "content") == 1
+
+
+# Every id shape and role-word form the process actually emits, one probe
+# line each: (label, relative path, file content). Each must be caught
+# (count > 0) when scanned with --rule content. "Co-authored-by:" is a
+# commit-message hit, not a content hit; it is covered by
+# test_public_repo_hygiene_commit_message_catches_co_authored_by instead.
+_FALSE_NEGATIVE_CASES = [
+    ("D2-7", "app/probe.py", "# See D2-7 for the reasoning.\n"),  # hygiene-ok: probe data for the false-negative table test, not a real hit
+    ("T4-3", "app/probe.py", "# See T4-3 for the reasoning.\n"),  # hygiene-ok: probe data for the false-negative table test, not a real hit
+    ("D-ALL-1", "app/probe.py", "# See D-ALL-1 for the reasoning.\n"),  # hygiene-ok: probe data for the false-negative table test, not a real hit
+    ("D-105-2", "app/probe.py", "# See D-105-2 for the reasoning.\n"),  # hygiene-ok: probe data for the false-negative table test, not a real hit
+    ("T-FIX-103", "app/probe.py", "# See T-FIX-103 for the reasoning.\n"),  # hygiene-ok: probe data for the false-negative table test, not a real hit
+    ("T-DR-1", "app/probe.py", "# See T-DR-1 for the reasoning.\n"),  # hygiene-ok: probe data for the false-negative table test, not a real hit
+    ("T-S1", "app/probe.py", "# See T-S1 for the reasoning.\n"),  # hygiene-ok: probe data for the false-negative table test, not a real hit
+    ("Refuter's", "app/probe.py", "# Refuter's notes go here.\n"),  # hygiene-ok: probe data for the false-negative table test, not a real hit
+    ("REFUTER:", "app/probe.py", "# REFUTER: see above.\n"),  # hygiene-ok: probe data for the false-negative table test, not a real hit
+    ("(refuter)", "app/probe.py", "# fixed (refuter) noted.\n"),  # hygiene-ok: probe data for the false-negative table test, not a real hit
+    ("Round 3", "app/probe.py", "# Round 3 changes.\n"),  # hygiene-ok: probe data for the false-negative table test, not a real hit
+    ("round-3", "app/probe.py", "# round-3 changes.\n"),  # hygiene-ok: probe data for the false-negative table test, not a real hit
+    ("per the brief", "app/probe.py", "# per the brief, see above.\n"),  # hygiene-ok: probe data for the false-negative table test, not a real hit
+    ("tech lead (space)", "app/probe.py", "# tech lead approved this.\n"),  # hygiene-ok: probe data for the false-negative table test, not a real hit
+    ("qa-lead", "app/probe.py", "# qa-lead approved this.\n"),  # hygiene-ok: probe data for the false-negative table test, not a real hit
+    ("builder", "app/probe.py", "# the builder wrote this.\n"),  # hygiene-ok: probe data for the false-negative table test, not a real hit
+    ("solution-architect", "app/probe.py", "# solution-architect signed off.\n"),  # hygiene-ok: probe data for the false-negative table test, not a real hit
+    ("product-manager", "app/probe.py", "# product-manager approved.\n"),  # hygiene-ok: probe data for the false-negative table test, not a real hit
+    ("build-report", "app/probe.py", "# build-report attached.\n"),  # hygiene-ok: probe data for the false-negative table test, not a real hit
+    ("Round three", "app/probe.py", "# Round three changes.\n"),  # hygiene-ok: probe data for the false-negative table test, not a real hit
+    ("D3: bare beside a role word", "app/probe.py", "# D3: (refuter) noted.\n"),  # hygiene-ok: probe data for the false-negative table test, not a real hit
+]
+
+
+@pytest.mark.parametrize(
+    "label, relpath, content", _FALSE_NEGATIVE_CASES, ids=[c[0] for c in _FALSE_NEGATIVE_CASES]
+)
+def test_public_repo_hygiene_false_negative_table(tmpdir, label, relpath, content):
+    """Every id shape and role-word form the process emits is still caught."""
+    _write(tmpdir, relpath, content)
+    count = _run_hygiene_checker(tmpdir, "content")
+    assert count > 0, "row %r (%r) was not caught" % (label, content)
+
+
+# Business reference numbers, standards prefixes, arithmetic, regex
+# character classes and product vocabulary that must never be mistaken for
+# a review record id or a role word. Each must be clean (count == 0).
+_FALSE_POSITIVE_CASES = [
+    ("ISO-27001", "app/probe.py", "# ISO-27001 certification details.\n"),
+    ("UTF-8/RFC-6902/CVE-2024-1/SHA-256/SOC-2/GPT-4", "app/probe.py",
+     "# UTF-8, RFC-6902, CVE-2024-1, SHA-256, SOC-2, GPT-4.\n"),
+    ("class=\"mt-4 p-2\"", "templates/probe.html", '<div class="mt-4 p-2">Content</div>\n'),
+    ("E-2", "app/probe.py", "# See E-2 for the reasoning.\n"),
+    ("A-20", "app/probe.py", "# See A-20 for the reasoning.\n"),
+    ("AD-001", "app/probe.py", "# The AD-001 decision record.\n"),
+    ("x = A-1", "app/probe.py", "x = A-1\n"),
+    ("return N-1", "app/probe.py", "def _probe():\n    return N - 1\n"),
+    ("Q1-2026", "app/probe.py", "# Reported in Q1-2026.\n"),
+    ("FY-2025", "app/probe.py", "# Budget for FY-2025.\n"),
+    ("[A-Z0-9]", "app/probe.py", "# valid = bool(re.match(r'[A-Z0-9]+', token))\n"),
+    ("SA-1", "app/probe.py", "# See SA-1 for the reasoning.\n"),
+    ("US-1", "app/probe.py", "# See US-1 for the reasoning.\n"),
+    ("H-1", "app/probe.py", "# See H-1 for the reasoning.\n"),
+    ("P-1", "app/probe.py", "# See P-1 for the reasoning.\n"),
+    ("L-1", "app/probe.py", "# See L-1 for the reasoning.\n"),
+    ("B-2", "app/probe.py", "# See B-2 for the reasoning.\n"),
+    ("ID-1", "app/probe.py", "# See ID-1 for the reasoning.\n"),
+    ("IE-1", "app/probe.py", "# See IE-1 for the reasoning.\n"),
+    ("DE-3", "app/probe.py", "# See DE-3 for the reasoning.\n"),
+    ("BS-7799", "app/probe.py", "# BS-7799 certification details.\n"),
+    ("seed orchestrator", "app/probe.py", "# The seed orchestrator handles this.\n"),
+    ("the decision-brief feature", "app/probe.py",
+     '# raise ValueError("acknowledged unknown code is not present on the decision brief")\n'),
+    ("round 2 of funding", "app/probe.py", "# closed round 2 of funding this quarter.\n"),
+    ('WCAG "A-11"', "app/probe.py", "# WCAG A-11 contrast requirement.\n"),
+]
+
+
+@pytest.mark.parametrize(
+    "label, relpath, content", _FALSE_POSITIVE_CASES, ids=[c[0] for c in _FALSE_POSITIVE_CASES]
+)
+def test_public_repo_hygiene_false_positive_table(tmpdir, label, relpath, content):
+    """None of these are a review record id or a role word."""
+    _write(tmpdir, relpath, content)
+    count = _run_hygiene_checker(tmpdir, "content")
+    assert count == 0, "row %r (%r) was incorrectly flagged" % (label, content)
 
 
 def _git(root, *args):

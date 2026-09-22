@@ -111,33 +111,83 @@ ESCAPE_HATCH = "hygiene-ok:"
 
 # ---------------------------------------------------------------- rule 3: review-record-id tokens and pipeline role words
 
-# "A capital letter or two, optional digits, a dash, one to four digits" --
-# e.g. D2-7, T4-3 (the brief's own examples). See the module docstring's "Why
-# a ratchet, not zero" for why this also matches this codebase's own
-# permanent reference-number convention, and cannot be told apart from it by
-# shape.
-RECORD_ID_PATTERN = re.compile(r"\b[A-Z]{1,2}[0-9]*-[0-9]{1,4}\b")
+# The dashed shape a review record id takes: one process letter (D, T, Q or
+# F), an optional single digit, a dash, an optional short letter segment, one
+# to four digits, and an optional second dash-digits segment for a
+# multi-segment id (D2-7, T4-3, D-ALL-1, T-FIX-103, T-DR-1, D-105-2).
+# Restricting the leading letter to this four-letter set, rather than any
+# one or two capital letters, is what lets this codebase's own short
+# reference-number families (readiness findings, requirement and derived-fact
+# ids, standards prefixes) pass clean without naming each one: none of them
+# start with D, T, Q or F immediately followed by a digit or a dash. See
+# RECORD_ID_ALLOWLIST_PREFIXES below for the two families that do.
+RECORD_ID_PATTERN = re.compile(
+    r"\b(?:D|T|Q|F)[0-9]?-(?:[A-Z]{1,4}-)?[0-9]{1,4}(?:-[0-9]{1,4})?\b"
+)
+# The letter-dash-letters-digit shape with no second dash (T-S1) -- the one
+# id shape the pattern above cannot also match.
+RECORD_ID_PATTERN_SEGMENT = re.compile(r"\b(?:D|T|Q|F)-[A-Z]{1,4}[0-9]{1,2}\b")
 
-# Never actually matches RECORD_ID_PATTERN (see the module docstring) --
-# kept explicit because the brief that asked for this checker named these
-# prefixes by hand.
-RECORD_ID_ALLOWLIST_PREFIXES = ("CVE-", "RFC-", "ISO-", "IEC-", "UTF-")
+# A bare id (no dash at all -- D3, T14) is too easily an ordinary token to
+# flag on its own; it counts only when the same line also carries a role
+# word, a round<N> mention, or the word "finding".
+BARE_RECORD_ID_PATTERN = re.compile(r"\b(?:D|T|Q|F)[0-9]{1,2}\b")
+_FINDING_RE = re.compile(r"\bfinding\b", re.IGNORECASE)
 
-# Case-insensitive, whole word; "round" only when immediately followed by a
-# digit (round-1, round 2, round3), the shape a pipeline round number takes,
-# not the ordinary English word. "orchestrator" additionally requires the
-# preceding character not be a letter or underscore, so an identifier such
-# as `workflow_orchestrator_service` or a class name such as
-# `UnifiedSeedOrchestrator` never matches (a plain \b already stops at a
-# hyphen or space; the extra check is for identifier fragments \b treats as
-# a boundary only when case-folding changes the character class).
+# Prefixes this codebase allocates or cites at scale that the D/T/Q/F
+# restriction above would otherwise still match: F- (readiness findings,
+# F-01..F-50+), T-0 (task references, T-001..T-031+) and D-0 (deliverable
+# references, D-001..D-05-3, zero-padded the same way). Kept by hand --
+# app/utils/reference_numbers.py supplies "AD-" at its one call site as a
+# runtime value, not a constant, and has no list of the others; importing
+# the application package into a static-analysis script to reach it would
+# pull in Flask configuration and the database extensions for one string.
+# The remaining prefixes (standards bodies, quarter and fiscal-year
+# references, this codebase's other short reference families) are listed
+# for documentation and defence-in-depth even where the D/T/Q/F restriction
+# already excludes them by construction.
+RECORD_ID_ALLOWLIST_PREFIXES = (
+    "AD-", "F-", "S0-", "T-0", "D-0",
+    "CVE-", "RFC-", "ISO-", "IEC-", "UTF-", "SHA-", "SOC-", "GPT-", "BS-", "FY-",
+)
+_R_DIGIT_DASH_RE = re.compile(r"^R[0-9]-")
+_Q_QUARTER_DASH_RE = re.compile(r"^Q[1-4]-")
+
+
+def _is_allowlisted_record_id(token: str, line: str, start: int) -> bool:
+    """True if `token`, found at `start` in `line`, is this codebase's own
+    business-reference-number convention rather than a review record id."""
+    if any(token.startswith(p) for p in RECORD_ID_ALLOWLIST_PREFIXES):
+        return True
+    if _R_DIGIT_DASH_RE.match(token) or _Q_QUARTER_DASH_RE.match(token):
+        return True
+    if token.startswith("A-") and line[max(0, start - 6):start].rstrip().upper().endswith("WCAG"):
+        return True
+    return False
+
+# Case-insensitive, whole word. "round" matches a digit or a spelled-out
+# number one..nine (round-1, round 2, Round three), the shape a pipeline
+# round number takes, but not when followed by "of" (round of funding, a
+# round of edits -- the ordinary English sense). "build report" matches a
+# hyphen or a space. "builder" matches only its three role-shaped forms, not
+# a class or identifier name built from the word (QueryBuilder,
+# policy_builder). "orchestrator" requires the preceding character not be a
+# letter or underscore, so an identifier such as `workflow_orchestrator_service`
+# or a class name such as `UnifiedSeedOrchestrator` never matches.
 ROLE_WORDS = [
     (re.compile(r"\brefuter\b", re.IGNORECASE), "refuter"),
-    (re.compile(r"\btech-lead\b", re.IGNORECASE), "tech-lead"),
+    (re.compile(r"\btech[\s-]lead\b", re.IGNORECASE), "tech-lead"),
+    (re.compile(r"\bqa-lead\b", re.IGNORECASE), "qa-lead"),
+    (re.compile(r"\bbuilder's\b|\bthe builder\b|\bbuilder:", re.IGNORECASE), "builder"),
+    (re.compile(r"\bsolution-architect\b", re.IGNORECASE), "solution-architect"),
+    (re.compile(r"\bproduct-manager\b", re.IGNORECASE), "product-manager"),
     (re.compile(r"\b(?<![A-Za-z_])orchestrator\b", re.IGNORECASE), "orchestrator"),
     (re.compile(r"\bthe brief\b", re.IGNORECASE), "the brief"),
-    (re.compile(r"\bbuild report\b", re.IGNORECASE), "build report"),
-    (re.compile(r"\bround[\s-]?[0-9]", re.IGNORECASE), 'round<N>'),
+    (re.compile(r"\bbuild[\s-]report\b", re.IGNORECASE), "build report"),
+    (re.compile(
+        r"\bround[\s-]?(?:[0-9]|one|two|three|four|five|six|seven|eight|nine)\b(?!\s+of\b)",
+        re.IGNORECASE,
+    ), "round<N>"),
 ]
 
 # Product vocabulary that legitimately contains a role word as a substring
@@ -325,30 +375,67 @@ def _iter_content_files(root: str):
                 yield os.path.join(dirpath, name)
 
 
+def _adjacent_to_bracket(line: str, start: int, end: int) -> bool:
+    """True if the match at [start, end) sits immediately inside [ ] -- a
+    regex character class (the "Z0-9" out of "[A-Z0-9]"), not a record id."""
+    before = line[start - 1] if start > 0 else ""
+    after = line[end:end + 1]
+    return before in ("[", "]") or after in ("[", "]")
+
+
+def _record_id_matches(line: str):
+    """(start, token) for every non-allowlisted dashed record-id-shaped
+    match on `line`."""
+    for pattern in (RECORD_ID_PATTERN, RECORD_ID_PATTERN_SEGMENT):
+        for m in pattern.finditer(line):
+            token = m.group(0)
+            if _is_allowlisted_record_id(token, line, m.start()):
+                continue
+            if _adjacent_to_bracket(line, m.start(), m.end()):
+                continue
+            yield m.start(), token
+
+
+def _bare_record_id_matches(line: str):
+    """(start, token) for every bare (no-dash) record-id-shaped match on
+    `line` -- the caller filters these by same-line context."""
+    for m in BARE_RECORD_ID_PATTERN.finditer(line):
+        token = m.group(0)
+        if _adjacent_to_bracket(line, m.start(), m.end()):
+            continue
+        yield m.start(), token
+
+
 def _scan_record_ids_and_role_words(root: str) -> list[str]:
     """Rule 3, source half: review-record-id tokens and pipeline role words,
     scanned only inside comments, docstrings and string literals (never
     executable code) under app/, scripts/, tests/, templates and static JS
     -- see `_scannable_lines` for the per-extension narrowing; .md files
-    are scanned whole, being prose throughout."""
+    are scanned whole, being prose throughout. The escape hatch is checked
+    against the physical source line, not the comment/string fragment: a
+    string literal and a trailing `# hygiene-ok:` comment can share one
+    physical line as two separate tokens, and the marker still has to
+    excuse the whole line, not just the token it happens to sit in."""
     problems = []
     for path in _iter_content_files(root):
         rel = os.path.relpath(path, root).replace(os.sep, "/")
+        try:
+            with open(path, encoding="utf-8", errors="ignore") as fh:
+                raw_lines = fh.readlines()
+        except OSError:
+            raw_lines = []
         for lineno, line in _scannable_lines(path):
-            if ESCAPE_HATCH in line:
+            raw = raw_lines[lineno - 1] if 0 < lineno <= len(raw_lines) else line
+            if ESCAPE_HATCH in raw:
                 continue
-            for m in RECORD_ID_PATTERN.finditer(line):
-                token = m.group(0)
-                if any(token.startswith(p) for p in RECORD_ID_ALLOWLIST_PREFIXES):
-                    continue
-                # A token immediately inside [ ] is a regex character class
-                # (e.g. "Z0-9" out of "[A-Z0-9]"), not a record id.
-                before = line[m.start() - 1] if m.start() > 0 else ""
-                after = line[m.end():m.end() + 1]
-                if before in "[]" or after in "[]":
-                    continue
+            for _start, token in _record_id_matches(line):
                 problems.append(f"{rel}:{lineno}: looks like a review record id: '{token}'")
-            for label in _role_word_hits(line):
+            labels = _role_word_hits(line)
+            has_context = bool(labels) or bool(_FINDING_RE.search(_mask_product_terms(line)))
+            if has_context:
+                for _start, token in _bare_record_id_matches(line):
+                    problems.append(f"{rel}:{lineno}: looks like a review record id: '{token}'")
+            for label in labels:
                 problems.append(f"{rel}:{lineno}: pipeline role word '{label}'")
     return problems
 
