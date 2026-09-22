@@ -191,6 +191,34 @@ def test_backfill_prefers_work_package_provenance_over_moved_creator(db_session,
     assert "roadmap_tasks" not in stats["unresolved"]
 
 
+def test_backfill_derives_roadmap_task_org_from_consolidation_entry(db_session, make_org, app):
+    from app.commands.backfill_layer_tenancy import repair_layer_tenancy
+    from app.models.application_component_fast import ApplicationComponent
+    from app.models.consolidation_list import ConsolidationListEntry
+
+    org_a, org_b = make_org("bf-ce-a"), make_org("bf-ce-b")
+    application = ApplicationComponent(name="Consolidation-linked app", organization_id=org_b.id)
+    db_session.add(application)
+    db_session.flush()
+
+    _relax_not_null(app)
+    task_id = _insert_roadmap_task(
+        db_session, created_by=None, unified_work_package_id=None, title="consolidation-derived task"
+    )
+
+    entry = ConsolidationListEntry(application_id=application.id, roadmap_item_id=task_id)
+    db_session.add(entry)
+    db_session.flush()
+
+    stats = repair_layer_tenancy()
+
+    assert _org_id_of(db_session, task_id) == org_b.id
+    assert "roadmap_tasks" not in stats["unresolved"]
+    # org_a is unused by the derivation itself; it only establishes that a
+    # second organisation exists so a wrong-tenant assignment would show up.
+    assert org_a.id != org_b.id
+
+
 def test_backfill_leaves_unprovenanced_roadmap_task_null_with_two_orgs(app):
     """Calls repair_layer_tenancy() twice, so this cannot use the db_session
     fixture. db_session's transaction is never really committed, and
