@@ -100,18 +100,58 @@ _DERIVABLE_ORG = {
         """,
     ],
     # monitoring_baselines/monitoring_alerts predate TenantMixin and carry no
-    # foreign key to their owning tenant, only the id (as text) of the user
-    # who created the baseline or acknowledged the alert. Cast the integer id
-    # to text -- never the reverse, which would raise on a non-numeric value
-    # such as the literal string "system" a caller may have written before
-    # this backfill existed, and abort the whole schema deploy.
-    "monitoring_baselines": """
+    # foreign key to their owning tenant. Per-object provenance runs first
+    # (ADR-0007 point 1): a baseline's own snapshot_data carries the ids of the
+    # capabilities it captured, and an organisation-owned capability (not a
+    # shared reference row) names its tenant directly, which is more reliable
+    # than the creating user -- a removed user is moved to the Default
+    # organisation, so the per-user statement alone would misattribute a
+    # baseline created in a real tenant to Default once its creator is
+    # removed. The id inside each JSON array element is guarded before the
+    # cast, never a bare CAST, the same rule every other statement here
+    # follows; a malformed snapshot_data is skipped by the leading shape
+    # check rather than aborting the row. Only the first statement (or
+    # neither) can fill a given row, since both guard on organization_id IS
+    # NULL; a row the first statement resolves never reaches the second.
+    "monitoring_baselines": [
+        # 1. an organisation-owned capability referenced in the baseline's
+        # own snapshot (skip when the snapshot holds only reference rows,
+        # i.e. every referenced capability has organization_id IS NULL)
+        """
+        UPDATE monitoring_baselines b
+           SET organization_id = src.organization_id
+          FROM (
+                SELECT DISTINCT ON (mb.id) mb.id AS row_id, uc.organization_id
+                  FROM monitoring_baselines mb
+                  CROSS JOIN LATERAL jsonb_array_elements(
+                        COALESCE(mb.snapshot_data::jsonb -> 'capabilities', '[]'::jsonb)
+                      ) AS cap_elem
+                  JOIN unified_capabilities uc
+                    ON uc.id = CASE WHEN (cap_elem ->> 'id') ~ '^[0-9]+$'
+                                     THEN (cap_elem ->> 'id')::bigint END
+                 WHERE mb.organization_id IS NULL
+                   AND mb.snapshot_data ~ '^\\s*\\{'
+                   AND uc.organization_id IS NOT NULL
+                 ORDER BY mb.id, uc.organization_id
+               ) AS src
+         WHERE src.row_id = b.id
+           AND b.organization_id IS NULL
+        """,
+        # 2. the user who created the baseline; cast the integer id to text,
+        # never the reverse, which would raise on a non-numeric value such as
+        # the literal string "system" a caller may have written before this
+        # backfill existed, and abort the whole schema deploy
+        """
         UPDATE monitoring_baselines b
            SET organization_id = u.organization_id
           FROM users u
          WHERE u.id::text = b.created_by
            AND b.organization_id IS NULL
-    """,
+        """,
+    ],
+    # monitoring_alerts carries no column referencing its baseline (only gap
+    # ids in alert_metadata), so its only provenance is the acknowledging
+    # user; same cast direction as above.
     "monitoring_alerts": """
         UPDATE monitoring_alerts a
            SET organization_id = u.organization_id

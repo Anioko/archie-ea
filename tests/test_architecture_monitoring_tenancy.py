@@ -18,6 +18,7 @@ roadmap_tasks.py`` for the backfill test's shape.
 
 from __future__ import annotations
 
+import json
 import uuid
 
 import pytest
@@ -538,11 +539,18 @@ def test_backfill_derives_monitoring_provenance_and_leaves_unprovenanced_rows_nu
     One provenanced and one unprovenanced row per table: a baseline created
     by a real user and one whose ``created_by`` names no user (the literal
     string ``"system"``, predating this backfill); an alert acknowledged by a
-    real user and one never acknowledged at all.
+    real user and one never acknowledged at all. A fourth baseline proves
+    per-object precedence (ADR-0007 point 1): its creator has since moved to
+    the other organisation (a removed user is moved to the Default
+    organisation the same way in production), but its own snapshot_data
+    names an organisation-owned capability, and that must win -- a baseline
+    created in one tenant must not follow its creator to wherever they moved
+    afterwards.
     """
     from app import db
     from app.commands.backfill_layer_tenancy import repair_layer_tenancy
     from app.models.organization import Organization
+    from app.models.unified_capability import UnifiedCapability
     from app.models.user import User
 
     suffix = uuid.uuid4().hex[:10]
@@ -564,7 +572,24 @@ def test_backfill_derives_monitoring_provenance_and_leaves_unprovenanced_rows_nu
             last_name="B",
             organization_id=org_b.id,
         )
-        db.session.add_all([user_a, user_b])
+        # Created baseline_moved_creator below while a member of org_a; moved
+        # to org_b by the time the backfill runs -- org_b is a stand-in for
+        # the Default organisation a removed user is really moved to.
+        mover = User(
+            email=f"dr3-bf-mover-{suffix}@example.com",
+            first_name="Test",
+            last_name="Mover",
+            organization_id=org_b.id,
+        )
+        db.session.add_all([user_a, user_b, mover])
+        db.session.commit()
+
+        capability_a = UnifiedCapability(
+            name=f"Moved-creator capability {suffix}",
+            code=f"MV-{suffix}",
+            organization_id=org_a.id,
+        )
+        db.session.add(capability_a)
         db.session.commit()
 
         _relax_monitoring_not_null(app)
@@ -592,6 +617,22 @@ def test_backfill_derives_monitoring_provenance_and_leaves_unprovenanced_rows_nu
                 """
             ),
             {"baseline_id": f"dr3-bl-sys-{suffix}"},
+        ).scalar()
+        baseline_moved_creator_id = db.session.execute(
+            text(
+                """
+                INSERT INTO monitoring_baselines
+                    (baseline_id, organization_id, name, snapshot_data, checksum, created_by, is_active, created_at)
+                VALUES
+                    (:baseline_id, NULL, 'Moved-creator baseline', :snapshot_data, 'chk-moved', :created_by, false, now())
+                RETURNING id
+                """
+            ),
+            {
+                "baseline_id": f"dr3-bl-moved-{suffix}",
+                "snapshot_data": json.dumps({"capabilities": [{"id": capability_a.id}]}),
+                "created_by": str(mover.id),
+            },
         ).scalar()
         alert_provenanced_id = db.session.execute(
             text(
@@ -629,6 +670,9 @@ def test_backfill_derives_monitoring_provenance_and_leaves_unprovenanced_rows_nu
 
             assert _org_of("monitoring_baselines", baseline_provenanced_id) == org_a.id
             assert _org_of("monitoring_baselines", baseline_unprovenanced_id) is None
+            # The capability in snapshot_data names org_a; the creator (mover)
+            # is in org_b at backfill time. Per-object provenance must win.
+            assert _org_of("monitoring_baselines", baseline_moved_creator_id) == org_a.id
             assert _org_of("monitoring_alerts", alert_provenanced_id) == org_b.id
             assert _org_of("monitoring_alerts", alert_unacknowledged_id) is None
             assert stats_first["unresolved"] == {"monitoring_alerts": 1, "monitoring_baselines": 1}
@@ -640,6 +684,7 @@ def test_backfill_derives_monitoring_provenance_and_leaves_unprovenanced_rows_nu
 
             assert _org_of("monitoring_baselines", baseline_provenanced_id) == org_a.id
             assert _org_of("monitoring_baselines", baseline_unprovenanced_id) is None
+            assert _org_of("monitoring_baselines", baseline_moved_creator_id) == org_a.id
             assert _org_of("monitoring_alerts", alert_provenanced_id) == org_b.id
             assert _org_of("monitoring_alerts", alert_unacknowledged_id) is None
             assert stats_second["unresolved"] == {"monitoring_alerts": 1, "monitoring_baselines": 1}
@@ -647,14 +692,24 @@ def test_backfill_derives_monitoring_provenance_and_leaves_unprovenanced_rows_nu
             db.session.rollback()
             db.session.execute(
                 text("DELETE FROM monitoring_baselines WHERE id = ANY(:ids)"),
-                {"ids": [baseline_provenanced_id, baseline_unprovenanced_id]},
+                {
+                    "ids": [
+                        baseline_provenanced_id,
+                        baseline_unprovenanced_id,
+                        baseline_moved_creator_id,
+                    ]
+                },
             )
             db.session.execute(
                 text("DELETE FROM monitoring_alerts WHERE id = ANY(:ids)"),
                 {"ids": [alert_provenanced_id, alert_unacknowledged_id]},
             )
             db.session.execute(
-                text("DELETE FROM users WHERE id IN (:a, :b)"), {"a": user_a.id, "b": user_b.id}
+                text("DELETE FROM unified_capabilities WHERE id = :id"), {"id": capability_a.id}
+            )
+            db.session.execute(
+                text("DELETE FROM users WHERE id IN (:a, :b, :m)"),
+                {"a": user_a.id, "b": user_b.id, "m": mover.id},
             )
             db.session.execute(
                 text("DELETE FROM organizations WHERE id IN (:a, :b)"),
