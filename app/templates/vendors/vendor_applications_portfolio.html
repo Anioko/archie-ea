@@ -5,17 +5,29 @@
 
 {% block content %}
 <div class="max-w-7xl mx-auto">
+  {% if vendor.id == 0 %}
+  {% set page_breadcrumbs = [
+      {'label': 'Vendors', 'href': url_for('unified_applications.vendors')},
+      {'label': 'Application Mapping'}
+  ] %}
+  {% set page_actions = [
+      {'text': 'Back to Vendors', 'href': url_for('unified_applications.vendors'), 'variant': 'outline'}
+  ] %}
+  {% else %}
+  {% set page_breadcrumbs = [
+      {'label': 'Vendors', 'href': url_for('application_mgmt.vendors_dashboard')},
+      {'label': vendor.name},
+      {'label': 'Applications Portfolio'}
+  ] %}
+  {% set page_actions = [
+      {'text': 'Back to Vendor', 'href': url_for('unified_applications.vendor_detail', vendor_id=vendor.id), 'variant': 'outline'}
+  ] %}
+  {% endif %}
   {{ page_header(
       title=vendor.name,
       description="All applications deployed from this vendor's products",
-      breadcrumbs=[
-          {'label': 'Vendors', 'href': url_for('application_mgmt.vendors_dashboard')},
-          {'label': vendor.name},
-          {'label': 'Applications Portfolio'}
-      ],
-      actions=[
-          {'text': 'Back to Vendor', 'href': url_for('unified_applications.vendor_detail', vendor_id=vendor.id), 'variant': 'outline'}
-      ]
+      breadcrumbs=page_breadcrumbs,
+      actions=page_actions
   ) }}
 
   <!-- Stats Cards -->

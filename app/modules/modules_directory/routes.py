@@ -157,6 +157,9 @@ _MORE_TOOLS = [
     ("Risk Register", "risk.risk_register", "alert-triangle"),
     ("Usage Analytics", "usage_analytics.analytics_root", "bar-chart-3"),
     ("Vendor ArchiMate Analysis", "main.vendor_archimate_analysis", "building"),
+    # The vendors package's estate-wide application-to-product mapping; found
+    # here by name, not in any persona's sidebar.
+    ("Vendor Application Mapping", "unified_vendors.vendor_mapping_tool", "workflow"),
     ("Integrations", "main.integrations", "cloud"),
     ("ArchiMate Roadmap", "main.archimate_roadmap", "map"),
     ("Enterprise Dashboard", "enterprise.enterprise_dashboard", "layout-dashboard"),

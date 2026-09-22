@@ -64,3 +64,62 @@ def test_vendor_create_edit_persists_across_reload(browser, live_server, seeded)
         expect(page.get_by_role('button', name=vendor_name, exact=True)).to_have_count(0)
     finally:
         page.close()
+
+
+def test_vendor_detail_deep_links_to_application_mapping(browser, live_server, seeded):
+    """T-VEND-1: the vendor detail page must offer a way into the package's
+    one real page, the application-to-vendor mapping across all vendors.
+
+    The vendor list row's own "View" link points at the separate legacy
+    application_mgmt vendor page, not the live unified_applications one this
+    deep link lives on -- a pre-existing surface this task does not touch --
+    so the created vendor's id is read from that link's href and the live
+    detail page is opened directly, exactly as the brief names it.
+    """
+    page = browser.new_page()
+    vendor_name = f"QA Mapping Link Vendor {uuid.uuid4().hex[:8]}"
+    vendor_id = None
+    try:
+        _login(page, live_server, seeded['emails']['enterprise_architect'])
+        response = page.goto(live_server + '/applications/vendors', timeout=PAGE_TIMEOUT)
+        assert response.status == 200
+
+        page.get_by_role('button', name='Add Vendor', exact=True).click()
+        dialog = page.locator('#create-vendor')
+        expect(dialog).to_be_visible()
+        dialog.get_by_label('Vendor Name *', exact=True).fill(vendor_name)
+        dialog.locator('#cv-type').select_option('software_vendor')
+        dialog.get_by_role('button', name='Create Vendor', exact=True).click()
+        expect(dialog).not_to_be_visible(timeout=PAGE_TIMEOUT)
+        page.wait_for_timeout(1200)
+        page.reload(timeout=PAGE_TIMEOUT)
+        row_name_button = page.get_by_role('button', name=vendor_name, exact=True)
+        expect(row_name_button).to_be_visible(timeout=PAGE_TIMEOUT)
+
+        row = page.locator('tr', has=row_name_button)
+        view_link = row.get_by_role('link', name='View vendor details')
+        href = view_link.get_attribute('href')
+        vendor_id = int(href.rstrip('/').rsplit('/', 1)[-1])
+
+        response = page.goto(live_server + f'/applications/vendors/{vendor_id}', timeout=PAGE_TIMEOUT)
+        assert response.status == 200
+
+        link = page.get_by_test_id('vendor-application-mapping-link')
+        expect(link).to_be_visible()
+        expect(link).to_have_text('Application mapping across all vendors')
+
+        with page.expect_navigation(timeout=PAGE_TIMEOUT) as navigation:
+            link.click()
+        assert navigation.value.status == 200
+        expect(page.get_by_role('heading', level=1, name='All Vendors', exact=True)).to_be_visible()
+    finally:
+        page.close()
+        if vendor_id is not None:
+            from app import create_app, db
+
+            cleanup_app = create_app('testing')
+            with cleanup_app.app_context():
+                from app.models.vendor_organization import VendorOrganization
+
+                VendorOrganization.query.filter_by(id=vendor_id).delete(synchronize_session=False)
+                db.session.commit()

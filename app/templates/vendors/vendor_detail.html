@@ -420,15 +420,23 @@
             {% call card_header() %}
                 <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                     <h2 class="text-lg font-semibold leading-none tracking-tight">Deployed Applications</h2>
-                    {% if vendor.products %}
-                    <button type="button"
-                            data-modal-open="deployProductModal"
-                            class="inline-flex items-center justify-center gap-2 h-9 px-3 rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
-                            aria-label="Deploy Product as Application">
-                        <i data-lucide="rocket" class="w-4 h-4" aria-hidden="true"></i>
-                        Deploy Product as Application
-                    </button>
-                    {% endif %}
+                    <div class="flex items-center gap-2">
+                        <a href="{{ url_for('unified_vendors.vendor_mapping_tool') }}"
+                           data-testid="vendor-application-mapping-link"
+                           class="inline-flex items-center justify-center h-9 px-3 rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors">
+                            <i data-lucide="workflow" class="w-4 h-4 mr-1.5" aria-hidden="true"></i>
+                            Application mapping across all vendors
+                        </a>
+                        {% if vendor.products %}
+                        <button type="button"
+                                data-modal-open="deployProductModal"
+                                class="inline-flex items-center justify-center gap-2 h-9 px-3 rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+                                aria-label="Deploy Product as Application">
+                            <i data-lucide="rocket" class="w-4 h-4" aria-hidden="true"></i>
+                            Deploy Product as Application
+                        </button>
+                        {% endif %}
+                    </div>
                 </div>
             {% endcall %}
             {% call card_content() %}
