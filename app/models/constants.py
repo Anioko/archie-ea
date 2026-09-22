@@ -212,6 +212,26 @@ class ArchiMateLayer:
 
     ALL = [STRATEGY, BUSINESS, APPLICATION, TECHNOLOGY, PHYSICAL, IMPLEMENTATION, MOTIVATION]
 
+    @classmethod
+    def canonical(cls, value):
+        """Resolve a stored ``archimate_elements.layer`` value onto this
+        class's vocabulary.
+
+        Casing on newly written rows is already handled by the column type
+        in ``app/models/models.py``; this only folds the one legacy word
+        ``"implementation"`` onto ``IMPLEMENTATION``
+        (``"implementation_migration"``). Every other string is returned
+        stripped and lower-cased, unchanged otherwise, and a non-string is
+        returned untouched. This is deliberately not a general-purpose
+        layer normaliser.
+        """
+        if not isinstance(value, str):
+            return value
+        stripped = value.strip().lower()
+        if stripped == "implementation":
+            return cls.IMPLEMENTATION
+        return stripped
+
 
 class ArchiMateRelationshipType:
     """ArchiMate 3.2 relationship types"""

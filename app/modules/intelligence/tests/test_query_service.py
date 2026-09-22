@@ -693,13 +693,25 @@ def test_explicit_row_carries_null_derived_id_and_engine_version(app, db_session
 
 
 def test_cross_layer_impact_through_motivation_layer_element(app, db_session, make_org):
+    """The layer= filter keeps a row when EITHER of its two endpoints is on
+    the named layer (query_service.py:364), so the root itself -- always on
+    the layer under test here -- makes every row one hop from it pass
+    regardless of the far end. Proving the filter genuinely excludes
+    something needs an element the filter's own logic can actually drop: one
+    two hops away, reached only through an intermediate that is ALSO off the
+    filtered layer, so neither endpoint of that specific edge is a match.
+    """
     from app.modules.intelligence.services.query_service import IntelligenceQueryService
 
     org = make_org("qs-layer-motivation")
     a = _element(db_session, org.id, "Stakeholder-A", layer="motivation", type_="Stakeholder")
     b = _element(db_session, org.id, "Driver-B", layer="motivation", type_="Driver")
     c = _element(db_session, org.id, "Assessment-C", layer="motivation", type_="Assessment")
+    bridge = _element(db_session, org.id, "Bridge-D", layer="application", type_="ApplicationComponent")
+    excluded = _element(db_session, org.id, "Excluded-E", layer="application", type_="ApplicationComponent")
     _relationship(db_session, org.id, a, b, type_="Influence")
+    _relationship(db_session, org.id, a, bridge, type_="Association")
+    _relationship(db_session, org.id, bridge, excluded, type_="Association")
     _derived(db_session, org.id, a, c, rule_id="MOTIVATION-1")
     db_session.commit()
 
@@ -716,20 +728,31 @@ def test_cross_layer_impact_through_motivation_layer_element(app, db_session, ma
 
     unfiltered_kinds = {r["relation"]["kind"] for r in unfiltered["rows"]}
     assert unfiltered_kinds == {"explicit", "derived"}
+    unfiltered_ids = {r["element_id"] for r in unfiltered["rows"]}
+    assert excluded.id in unfiltered_ids
 
     filtered_ids = {r["element_id"] for r in filtered["rows"]}
     assert b.id in filtered_ids
     assert c.id in filtered_ids
+    assert excluded.id not in filtered_ids
 
 
 def test_cross_layer_impact_through_strategy_layer_element(app, db_session, make_org):
+    """See test_cross_layer_impact_through_motivation_layer_element's
+    docstring for why the excluded element sits two hops behind an
+    off-layer bridge rather than one hop from the root.
+    """
     from app.modules.intelligence.services.query_service import IntelligenceQueryService
 
     org = make_org("qs-layer-strategy")
     a = _element(db_session, org.id, "Resource-A", layer="strategy", type_="Resource")
     b = _element(db_session, org.id, "Capability-B", layer="strategy", type_="Capability")
     c = _element(db_session, org.id, "CourseOfAction-C", layer="strategy", type_="CourseOfAction")
+    bridge = _element(db_session, org.id, "Bridge-D", layer="application", type_="ApplicationComponent")
+    excluded = _element(db_session, org.id, "Excluded-E", layer="application", type_="ApplicationComponent")
     _relationship(db_session, org.id, a, b, type_="Serving")
+    _relationship(db_session, org.id, a, bridge, type_="Association")
+    _relationship(db_session, org.id, bridge, excluded, type_="Association")
     _derived(db_session, org.id, a, c, rule_id="STRATEGY-1")
     db_session.commit()
 
@@ -746,20 +769,31 @@ def test_cross_layer_impact_through_strategy_layer_element(app, db_session, make
 
     unfiltered_kinds = {r["relation"]["kind"] for r in unfiltered["rows"]}
     assert unfiltered_kinds == {"explicit", "derived"}
+    unfiltered_ids = {r["element_id"] for r in unfiltered["rows"]}
+    assert excluded.id in unfiltered_ids
 
     filtered_ids = {r["element_id"] for r in filtered["rows"]}
     assert b.id in filtered_ids
     assert c.id in filtered_ids
+    assert excluded.id not in filtered_ids
 
 
 def test_cross_layer_impact_through_implementation_and_migration_layer_element(app, db_session, make_org):
+    """See test_cross_layer_impact_through_motivation_layer_element's
+    docstring for why the excluded element sits two hops behind an
+    off-layer bridge rather than one hop from the root.
+    """
     from app.modules.intelligence.services.query_service import IntelligenceQueryService
 
     org = make_org("qs-layer-impl-migration")
     a = _element(db_session, org.id, "WorkPackage-A", layer="implementation_migration", type_="WorkPackage")
     b = _element(db_session, org.id, "Deliverable-B", layer="implementation_migration", type_="Deliverable")
     c = _element(db_session, org.id, "Gap-C", layer="implementation_migration", type_="Gap")
+    bridge = _element(db_session, org.id, "Bridge-D", layer="application", type_="ApplicationComponent")
+    excluded = _element(db_session, org.id, "Excluded-E", layer="application", type_="ApplicationComponent")
     _relationship(db_session, org.id, a, b, type_="Serving")
+    _relationship(db_session, org.id, a, bridge, type_="Association")
+    _relationship(db_session, org.id, bridge, excluded, type_="Association")
     _derived(db_session, org.id, a, c, rule_id="IMPL-MIGRATION-1")
     db_session.commit()
 
@@ -776,20 +810,31 @@ def test_cross_layer_impact_through_implementation_and_migration_layer_element(a
 
     unfiltered_kinds = {r["relation"]["kind"] for r in unfiltered["rows"]}
     assert unfiltered_kinds == {"explicit", "derived"}
+    unfiltered_ids = {r["element_id"] for r in unfiltered["rows"]}
+    assert excluded.id in unfiltered_ids
 
     filtered_ids = {r["element_id"] for r in filtered["rows"]}
     assert b.id in filtered_ids
     assert c.id in filtered_ids
+    assert excluded.id not in filtered_ids
 
 
 def test_cross_layer_impact_through_physical_layer_element(app, db_session, make_org):
+    """See test_cross_layer_impact_through_motivation_layer_element's
+    docstring for why the excluded element sits two hops behind an
+    off-layer bridge rather than one hop from the root.
+    """
     from app.modules.intelligence.services.query_service import IntelligenceQueryService
 
     org = make_org("qs-layer-physical")
     a = _element(db_session, org.id, "Equipment-A", layer="physical", type_="Equipment")
     b = _element(db_session, org.id, "Facility-B", layer="physical", type_="Facility")
     c = _element(db_session, org.id, "Material-C", layer="physical", type_="Material")
+    bridge = _element(db_session, org.id, "Bridge-D", layer="application", type_="ApplicationComponent")
+    excluded = _element(db_session, org.id, "Excluded-E", layer="application", type_="ApplicationComponent")
     _relationship(db_session, org.id, a, b, type_="Serving")
+    _relationship(db_session, org.id, a, bridge, type_="Association")
+    _relationship(db_session, org.id, bridge, excluded, type_="Association")
     _derived(db_session, org.id, a, c, rule_id="PHYSICAL-1")
     db_session.commit()
 
@@ -806,10 +851,13 @@ def test_cross_layer_impact_through_physical_layer_element(app, db_session, make
 
     unfiltered_kinds = {r["relation"]["kind"] for r in unfiltered["rows"]}
     assert unfiltered_kinds == {"explicit", "derived"}
+    unfiltered_ids = {r["element_id"] for r in unfiltered["rows"]}
+    assert excluded.id in unfiltered_ids
 
     filtered_ids = {r["element_id"] for r in filtered["rows"]}
     assert b.id in filtered_ids
     assert c.id in filtered_ids
+    assert excluded.id not in filtered_ids
 
 
 def test_cross_layer_impact_chain_crosses_at_least_four_layers_end_to_end(app, db_session, make_org):

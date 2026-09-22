@@ -188,14 +188,21 @@ def test_derivation_result_shape_with_a_populated_model(app, db_session, make_or
     assert len(result.derived[0]["relationship_chain"]) == 2
 
 
-# --- Four-layer proof: the runner loads every element/relationship for the
-# tenant with no layer filter (derivation_runner.py has none), so a chain
-# through Motivation, Strategy, Implementation & Migration or Physical
-# elements must derive exactly the same way the existing application-layer
-# tests above already prove it does.
+# --- Layer invariance, not four independent proofs: the runner loads every
+# element/relationship for the tenant with no layer filter at all
+# (derivation_runner.py has none), so the five tests below establish ONE
+# fact -- that a chain derives identically regardless of which ArchiMate
+# layer its elements are on -- shown on four single-layer chains and one
+# chain crossing four layers. Each uses "Serving" or "Influence", the
+# capitalised relationship-type spelling app/services/archimate_derivation_service.py's
+# tables are written in; the product's create route stores the lower-case
+# form, which the same engine derives differently (build-report-v2.md).
 
 
 def test_derivation_through_a_motivation_layer_element(app, db_session, make_org):
+    """One instance of the layer-invariance fact above, on Motivation
+    elements. Uses "Influence", the capitalised relationship-type spelling.
+    """
     from app.modules.intelligence.services.derivation_runner import DerivationRunner
 
     org = make_org("layer-motivation")
@@ -220,6 +227,9 @@ def test_derivation_through_a_motivation_layer_element(app, db_session, make_org
 
 
 def test_derivation_through_a_strategy_layer_element(app, db_session, make_org):
+    """One instance of the layer-invariance fact above, on Strategy
+    elements. Uses "Serving", the capitalised relationship-type spelling.
+    """
     from app.modules.intelligence.services.derivation_runner import DerivationRunner
 
     org = make_org("layer-strategy")
@@ -242,6 +252,10 @@ def test_derivation_through_a_strategy_layer_element(app, db_session, make_org):
 
 
 def test_derivation_through_an_implementation_and_migration_layer_element(app, db_session, make_org):
+    """One instance of the layer-invariance fact above, on Implementation &
+    Migration elements. Uses "Serving", the capitalised relationship-type
+    spelling.
+    """
     from app.modules.intelligence.services.derivation_runner import DerivationRunner
 
     org = make_org("layer-impl-migration")
@@ -264,6 +278,9 @@ def test_derivation_through_an_implementation_and_migration_layer_element(app, d
 
 
 def test_derivation_through_a_physical_layer_element(app, db_session, make_org):
+    """One instance of the layer-invariance fact above, on Physical
+    elements. Uses "Serving", the capitalised relationship-type spelling.
+    """
     from app.modules.intelligence.services.derivation_runner import DerivationRunner
 
     org = make_org("layer-physical")
@@ -286,11 +303,12 @@ def test_derivation_through_a_physical_layer_element(app, db_session, make_org):
 
 
 def test_derivation_chain_crosses_at_least_four_layers_end_to_end(app, db_session, make_org):
-    """One chain, four elements, each on a different ArchiMate layer
-    (Motivation -> Strategy -> Implementation & Migration -> Physical):
-    derivation must produce every shortcut across the whole chain, exactly
-    as it does for a same-layer chain, because the engine carries no layer
-    filter at all.
+    """The layer-invariance fact above, extended to a single chain of four
+    elements each on a different ArchiMate layer (Motivation -> Strategy ->
+    Implementation & Migration -> Physical): derivation must produce every
+    shortcut across the whole chain, exactly as it does for a same-layer
+    chain, because the engine carries no layer filter at all. Uses
+    "Serving", the capitalised relationship-type spelling.
     """
     from app.modules.intelligence.services.derivation_runner import DerivationRunner
 

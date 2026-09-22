@@ -309,8 +309,10 @@ VALID_RELATIONSHIPS = {
 
 # Layer classification for element types. Canonical layer string per type:
 # app/models/archimate_element_types.py's ArchiMateElementTypes is the single
-# authority (ElementTypeDefinition.layer) -- this dict must agree with it.
-# Pinned by tests/test_archimate_layer_taxonomy.py.
+# authority (ElementTypeDefinition.layer) -- this dict must agree with it. Its
+# values are exactly the seven names in app.models.constants.ArchiMateLayer.ALL,
+# and VALID_RELATIONSHIPS above is keyed in that same vocabulary. Pinned by
+# tests/test_archimate_layer_taxonomy.py.
 _ELEMENT_TYPE_LAYER = {
     "business_actor": "business", "business_role": "business",
     "business_collaboration": "business", "business_interface": "business",
@@ -342,14 +344,6 @@ _ELEMENT_TYPE_LAYER = {
     "distribution_network": "physical", "material": "physical",
 }
 
-# Structural/composite element types (app/models/structural_elements.py:
-# Grouping, Junction, Location). These are not part of the 58-type,
-# 7-layer ArchiMateElementTypes registry above and are not confined to one
-# layer -- ArchiMate 3.2 allows them to relate to a concept of any type or
-# layer -- so they are intentionally absent from _ELEMENT_TYPE_LAYER rather
-# than misclassified into it.
-_STRUCTURAL_ELEMENT_TYPES = {"grouping", "junction", "location"}
-
 
 def validate_relationship(rel_type, source_type, target_type):
     """Advisory validation of ArchiMate 3.2 relationship cardinality rules.
@@ -365,21 +359,6 @@ def validate_relationship(rel_type, source_type, target_type):
     source_type_norm = (source_type or "").lower()
     target_type_norm = (target_type or "").lower()
     rel = (rel_type or "").lower()
-
-    # A Grouping, Junction or Location companion element (stored with
-    # layer="Reference") is valid to relate to a concept in any layer per
-    # ArchiMate 3.2 -- resolve this to a defined, explicit verdict rather
-    # than letting it fall into the "type not in the registry" unknown-layer
-    # skip below (which is for genuinely unrecognised types).
-    if (
-        source_type_norm in _STRUCTURAL_ELEMENT_TYPES
-        or target_type_norm in _STRUCTURAL_ELEMENT_TYPES
-    ):
-        return True, (
-            f"Valid: {rel} relationship touches a structural/composite element "
-            "(Grouping, Junction or Location), which ArchiMate 3.2 allows to "
-            "relate across any layer"
-        )
 
     source_layer = _ELEMENT_TYPE_LAYER.get(source_type_norm, "unknown")
     target_layer = _ELEMENT_TYPE_LAYER.get(target_type_norm, "unknown")
