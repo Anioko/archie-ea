@@ -589,7 +589,7 @@ def test_reuse_macro_names_ps_exact_name_exemption(tmpdir):
     _ps_sub, are exempt -- ANY other name, even one sharing the _ps_
     prefix, is counted by both RG-1 and RG-1b. A prefix-shaped exemption is
     a blanket bypass one rename away from hiding a real duplicate; the
-    exact names are the width round-1 actually measured."""
+    exact names are the width actually measured on the real tree."""
     prefix_dodge = tmpdir.mkdir("prefix_dodge")
     for i, letter in enumerate("abcd"):
         _write(prefix_dodge, "app/templates/%s/page.html" % letter,
@@ -731,13 +731,22 @@ def test_reuse_macro_definitions_rises_on_a_third_copy_while_names_stays_put(tmp
 
 def test_reuse_macro_definitions_marker_excludes_only_the_marked_definition(tmpdir):
     """RG-1b's escape hatch applies PER DEFINITION, unlike RG-1's whole-name
-    suppression: a valid marker on one non-canonical definition removes only
-    that one from the count. The canonical definition, and any other
-    unmarked sibling, still count."""
+    suppression, for a REGISTERED name: a valid marker on one non-canonical
+    definition removes only that one from the count. The canonical
+    definition, and any other unmarked sibling, still count. (A marker on
+    an UNREGISTERED name's definition is never honoured -- see
+    test_reuse_macro_definitions_marker_on_unregistered_name_never_suppresses.)"""
     root = tmpdir.mkdir("two_files")
+    _write(root, "docs/reuse-register.yml",
+           "concepts:\n"
+           "  - id: probe-concept\n"
+           "    rules: [RG-1, RG-1b]\n"
+           "    canonical:\n"
+           "      paths: [app/templates/a/canon.html]\n"
+           "      use: \"probe_n1(...) does the probe thing\"\n")
     _write(root, "app/templates/a/canon.html", "{% macro probe_n1(x) %}A{% endmacro %}\n")
     _write(root, "app/templates/b/dup.html",
-           "{% macro probe_n1(y) %}{# reuse-ok: probe deliberately accepted #}{% endmacro %}\n")
+           "{% macro probe_n1(y) %}{# reuse-ok: probe-concept deliberately accepted #}{% endmacro %}\n")
 
     assert _run_reuse_checker("RG-1", root) == 0, (
         "the only non-canonical definition carries a valid marker, so RG-1's "
@@ -761,13 +770,22 @@ def test_reuse_macro_definitions_marker_excludes_only_the_marked_definition(tmpd
     )
 
 
-def test_reuse_macro_definitions_finding_carries_the_sibling_shape(tmpdir):
-    """An RG-1b finding for a name with a matching register concept carries
-    the same three-line shape as RG-1 and RG-2 (what was found, an
-    'Already exists:' line, the numbered options); a name with no matching
-    concept carries the round-2 unregistered wording instead -- never a
-    bare one-liner either way."""
-    root = tmpdir.mkdir("shaped")
+def _run_rg1b_verbose(root):
+    proc = subprocess.run(
+        [sys.executable, os.path.join(SCRIPTS, "check_reuse.py"), "--rule", "RG-1b", "--root", str(root)],
+        capture_output=True, text=True, cwd=REPO,
+    )
+    return proc.stdout
+
+
+def test_reuse_macro_definitions_canonical_finding_has_its_own_wording(tmpdir):
+    """The canonical definition's own RG-1b finding must not read 'Already
+    exists' against itself -- it gets distinct wording saying it is the
+    canonical of a name with N definitions, that it counts because the
+    copies exist, and that marking THIS line has no effect. The duplicate's
+    own finding is unaffected: it still points 'Already exists' at the
+    canonical, correctly, since the canonical is a different file there."""
+    root = tmpdir.mkdir("canonical_wording")
     _write(root, "docs/reuse-register.yml",
            "concepts:\n"
            "  - id: probe-concept\n"
@@ -777,24 +795,107 @@ def test_reuse_macro_definitions_finding_carries_the_sibling_shape(tmpdir):
            "      use: \"probe_thing(...) does the probe thing\"\n")
     _write(root, "app/templates/components/probe_thing.html", "{% macro probe_thing(x) %}A{% endmacro %}\n")
     _write(root, "app/templates/macros/other.html", "{% macro probe_thing(y) %}B{% endmacro %}\n")
-    _write(root, "app/templates/macros/unregistered_a.html", "{% macro probe_unregistered(x) %}A{% endmacro %}\n")
-    _write(root, "app/templates/macros/unregistered_b.html", "{% macro probe_unregistered(y) %}B{% endmacro %}\n")
 
-    proc = subprocess.run(
-        [sys.executable, os.path.join(SCRIPTS, "check_reuse.py"), "--rule", "RG-1b", "--root", str(root)],
-        capture_output=True, text=True, cwd=REPO,
-    )
-    output = proc.stdout
+    output = _run_rg1b_verbose(root)
+    blocks = [b for b in output.split("\n\n") if b.strip().startswith("app/")]
+    canonical_block = next(b for b in blocks if b.startswith("app/templates/components/probe_thing.html:1"))
+    duplicate_block = next(b for b in blocks if b.startswith("app/templates/macros/other.html:1"))
 
-    assert "Already exists: app/templates/components/probe_thing.html" in output, (
-        "the registered name's RG-1b finding must carry the Already exists: line: %r" % output
+    assert "is the canonical definition of macro 'probe_thing'" in canonical_block, (
+        "the canonical's finding must carry its own wording, not 'Already exists': %r" % canonical_block
     )
-    assert "Do one of: (1) use the existing one" in output and "(2)" in output and "(3)" in output, (
-        "the registered name's RG-1b finding must carry the numbered options: %r" % output
+    assert "Already exists:" not in canonical_block, (
+        "the canonical's own finding must never read 'Already exists' against "
+        "itself: %r" % canonical_block
     )
-    assert "no matching entry in docs/reuse-register.yml" in output, (
-        "the unregistered name's RG-1b finding must carry the round-2 unregistered "
-        "wording, not a bare one-liner: %r" % output
+    assert "Already exists: app/templates/components/probe_thing.html -- probe_thing(...)" in duplicate_block, (
+        "the DUPLICATE's finding must still point 'Already exists' at the canonical: %r" % duplicate_block
+    )
+
+
+def test_reuse_macro_definitions_dead_marker_is_reported(tmpdir):
+    """A valid marker placed where it cannot take effect -- on the
+    canonical of a registered name, or on any definition of an
+    unregistered name -- is reported inside that definition's own finding
+    as having no effect, not silently ignored, and it still counts."""
+    registered = tmpdir.mkdir("registered_dead_marker")
+    _write(registered, "docs/reuse-register.yml",
+           "concepts:\n"
+           "  - id: probe-concept\n"
+           "    rules: [RG-1, RG-1b]\n"
+           "    canonical:\n"
+           "      paths: [app/templates/components/probe_thing.html]\n"
+           "      use: \"probe_thing(...) does the probe thing\"\n")
+    _write(registered, "app/templates/components/probe_thing.html",
+           "{% macro probe_thing(x) %}{# reuse-ok: probe-concept deliberately accepted #}{% endmacro %}\n")
+    _write(registered, "app/templates/macros/other.html", "{% macro probe_thing(y) %}B{% endmacro %}\n")
+
+    registered_output = _run_rg1b_verbose(registered)
+    assert "This line carries a reuse-ok marker, but it has no effect here" in registered_output, (
+        "a marker on the canonical must be reported as having no effect: %r" % registered_output
+    )
+    assert "it is the canonical definition" in registered_output, (
+        "the dead-marker note must say why: it is the canonical: %r" % registered_output
+    )
+
+    unregistered = tmpdir.mkdir("unregistered_dead_marker")
+    _write(unregistered, "app/templates/a/x.html",
+           "{% macro probe_dead(x) %}{# reuse-ok: probe deliberately accepted #}{% endmacro %}\n")
+    _write(unregistered, "app/templates/b/y.html", "{% macro probe_dead(y) %}B{% endmacro %}\n")
+
+    unregistered_output = _run_rg1b_verbose(unregistered)
+    assert "This line carries a reuse-ok marker, but it has no effect here" in unregistered_output, (
+        "a marker on a definition of an unregistered name must be reported as "
+        "having no effect: %r" % unregistered_output
+    )
+    assert "no matching entry in docs/reuse-register.yml, so a marker is not honoured" in unregistered_output, (
+        "the dead-marker note must say why: no matching concept: %r" % unregistered_output
+    )
+    assert _run_reuse_checker("RG-1b", unregistered) == 2, (
+        "the marked definition of an unregistered name must still count"
+    )
+
+
+def test_reuse_macro_definitions_unregistered_findings_are_distinct_and_located_at_their_own_definition(tmpdir):
+    """Every RG-1b finding for an unregistered name must report the
+    definition it is actually about, not always the same (alphabetically
+    first) file -- so N definitions produce N distinct finding texts, and a
+    removed definition is visible in the output."""
+    root = tmpdir.mkdir("distinct")
+    for letter in "abc":
+        _write(root, "app/templates/%s/page.html" % letter,
+               "{% macro probe_distinct(x) %}A{% endmacro %}\n")
+
+    output = _run_rg1b_verbose(root)
+    blocks = [b for b in output.split("\n\n") if b.strip().startswith("app/")]
+
+    assert len(blocks) == 3, "three definitions must produce three findings: %r" % output
+    assert len(set(blocks)) == 3, "the three findings must all be distinct text: %r" % blocks
+    for letter in "abc":
+        assert any(b.startswith("app/templates/%s/page.html:1" % letter) for b in blocks), (
+            "no finding located at app/templates/%s/page.html: %r" % (letter, blocks)
+        )
+
+
+def test_reuse_macro_definitions_marker_on_unregistered_name_never_suppresses(tmpdir):
+    """A marker on one definition of an unregistered name never removes it
+    from the count -- every definition of such a name counts, always, so
+    adding a further, unmarked copy raises the count by exactly one."""
+    root = tmpdir.mkdir("unregistered_marker")
+    _write(root, "app/templates/macros/x.html",
+           "{% macro probe_always(x) %}{# reuse-ok: probe deliberately accepted #}{% endmacro %}\n")
+    _write(root, "app/templates/z/y.html", "{% macro probe_always(y) %}B{% endmacro %}\n")
+
+    assert _run_reuse_checker("RG-1", root) == 1, "an unregistered name is always counted by RG-1"
+    assert _run_reuse_checker("RG-1b", root) == 2, (
+        "a marker on one definition of an unregistered name must not remove it "
+        "from RG-1b's count: both definitions still count"
+    )
+
+    _write(root, "app/templates/a/new.html", "{% macro probe_always(z) %}C{% endmacro %}\n")
+    assert _run_reuse_checker("RG-1b", root) == 3, (
+        "a further, unmarked copy of an unregistered name must raise RG-1b by "
+        "exactly one, even though an earlier copy is marked"
     )
 
 
@@ -925,6 +1026,62 @@ def test_reuse_diagram_libraries_es_module_import_grants_allowance(tmpdir):
             "a %s ES-module import of the renderer should excuse joint in the "
             "same file: got %d" % (label, count)
         )
+
+
+def test_reuse_diagram_libraries_multiline_import_grants_allowance(tmpdir):
+    """A normal multi-line named ES-module import of the renderer must
+    grant the allowance; a single-line import of the same form still does."""
+    multiline = tmpdir.mkdir("multiline_import")
+    _write(multiline, "app/static/js/probe/page.js",
+           "import {\n"
+           "  ComposerRenderer,\n"
+           "} from '../archimate/composer_renderer.js';\n"
+           'const s = "vendor/joint.min.js";\n')
+    assert _run_reuse_checker("RG-2", multiline) == 0, (
+        "a multi-line named import of the renderer should excuse joint in the same file"
+    )
+
+    single_line = tmpdir.mkdir("single_line_import")
+    _write(single_line, "app/static/js/probe/page.js",
+           "import ComposerRenderer from '../archimate/composer_renderer.js';\n"
+           'const s = "vendor/joint.min.js";\n')
+    assert _run_reuse_checker("RG-2", single_line) == 0, (
+        "a single-line named import of the renderer must still excuse joint"
+    )
+
+
+def test_reuse_diagram_libraries_js_comments_do_not_grant_allowance(tmpdir):
+    """A '//' or '/* */' comment whose text imports the renderer must not
+    grant the allowance in a .js file, matching the existing rule that a
+    template comment cannot forge it either; a real load on a line that
+    also contains 'https://' still grants it, because the guard against
+    blanking a real 'https://' string does not disable the comment check,
+    it only stops the WRONG span from being blanked."""
+    line_comment = tmpdir.mkdir("line_comment")
+    _write(line_comment, "app/static/js/probe/page.js",
+           '// TODO: import "../archimate/composer_renderer.js"\n'
+           'const s = "vendor/joint.min.js";\n')
+    assert _run_reuse_checker("RG-2", line_comment) == 1, (
+        "a // comment importing the renderer must not excuse joint in a .js file"
+    )
+
+    block_comment = tmpdir.mkdir("block_comment")
+    _write(block_comment, "app/static/js/probe/page.js",
+           '/* import "../archimate/composer_renderer.js" */\n'
+           'const s = "vendor/joint.min.js";\n')
+    assert _run_reuse_checker("RG-2", block_comment) == 1, (
+        "a /* */ comment importing the renderer must not excuse joint in a .js file"
+    )
+
+    https_guard = tmpdir.mkdir("https_guard")
+    _write(https_guard, "app/static/js/probe/page.js",
+           "const base = \"https://example.com\"; "
+           "import ComposerRenderer from \"../archimate/composer_renderer.js\";\n"
+           'const s = "vendor/joint.min.js";\n')
+    assert _run_reuse_checker("RG-2", https_guard) == 0, (
+        "a https:// string earlier on the line must not blank a real import "
+        "later on the same line"
+    )
 
 
 def test_reuse_diagram_libraries_suffix_boundary_rejects_lookalikes(tmpdir):

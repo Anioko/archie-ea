@@ -706,12 +706,16 @@ def gate_reuse_macro_definitions(baseline: int) -> Result:
     two files can gain a third, fourth or fourteenth copy for free -- the
     name count does not move. This counts every definition that belongs to
     a duplicated name (over the same map reuse-macro-names already builds),
-    so that further copy is not free either. The escape hatch applies PER
-    DEFINITION here, not per name: a definition carrying a valid marker does
-    not count, but the canonical definition and every other, unmarked
-    definition still do -- one accepted copy removes exactly one from this
-    count, however many siblings the same name still has. Static, source-
-    level, no app boot needed.
+    so that further copy is not free either. A marker is honoured here only
+    for a name with a matching register concept: the canonical for a name
+    with no concept is only ever a guess, so a marker anchored to it would
+    go live or fall dormant as files are added, and every definition of
+    such a name counts, always. For a registered name the escape hatch
+    still applies PER DEFINITION, not per name: a definition carrying a
+    valid marker does not count, but the canonical definition and every
+    other, unmarked definition still do -- one accepted copy removes
+    exactly one from this count, however many siblings the same name still
+    has. Static, source-level, no app boot needed.
     """
     proc = _run([sys.executable, "scripts/check_reuse.py", "--rule", "RG-1b", "--count"])
     try:
@@ -1809,9 +1813,10 @@ def build_gates(baseline: dict) -> list[Gate]:
              "no rise in the definitions behind an already-duplicated macro name (RG-1b)",
              "ratchet", lambda: gate_reuse_macro_definitions(baseline.get("reuse_macro_definitions", 50)),
              remediation="run scripts/check_reuse.py --rule RG-1b; use the canonical macro, "
-                         "add a register specialisation, or mark this one definition "
-                         "'reuse-ok: <concept-id> <reason>' to stop it counting -- the marker "
-                         "applies per definition here, so mark only the accepted copy",
+                         "add a register specialisation, or -- for a name that already has a "
+                         "register concept -- mark this one definition "
+                         "'reuse-ok: <concept-id> <reason>' to stop it counting; a marker on a "
+                         "name with no concept is never honoured, so register the concept first",
              tags=["static"]),
         Gate("reuse-diagram-libraries",
              "no NEW page loads a diagram library outside the canonical ArchiMate renderer (RG-2)",

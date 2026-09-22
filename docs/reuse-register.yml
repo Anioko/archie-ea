@@ -119,11 +119,18 @@ rules:
     excluded: same as RG-1
     allowed_places: []
     marker: >-
-      Applies PER DEFINITION, not per name (unlike RG-1's all-or-nothing suppression): a definition
-      carrying a valid reuse-ok marker does not count toward this rule; the canonical definition and every
-      other, unmarked definition still do. One accepted copy removes exactly one from this count, however
-      many siblings -- marked or not -- the same name still has, so an already-duplicated name cannot be
-      zeroed out by one marker the way RG-1's whole-name suppression can be.
+      Honoured only for a name that has a matching register concept: the canonical for a name with no
+      concept is only ever a guess, so a marker anchored to it would go live or fall dormant as new
+      definitions are added, breaking the one-copy-in-one-finding-out property this rule exists for. Every
+      definition of an unregistered name therefore counts, always -- add a copy, the count rises by one;
+      remove one, it falls by one. For a REGISTERED name the marker applies PER DEFINITION, not per name
+      (unlike RG-1's all-or-nothing suppression): a definition carrying a valid reuse-ok marker does not
+      count toward this rule; the canonical definition and every other, unmarked definition still do. One
+      accepted copy removes exactly one from this count, however many siblings -- marked or not -- the same
+      name still has, so an already-duplicated name cannot be zeroed out by one marker the way RG-1's
+      whole-name suppression can be. A marker sitting where it cannot take effect (on the canonical, or
+      anywhere on an unregistered name) is reported inside that definition's own finding as having no
+      effect, not silently ignored.
     baseline_key: reuse_macro_definitions
     starting_value: 50
     starting_value_is: "the measurement taken when this rule was built (see measured_at); verification_baseline.json's reuse_macro_definitions is the live baseline a gate checks against"
@@ -146,9 +153,12 @@ rules:
         src/href/filename attribute reference to archimate/composer_renderer.js, with no word or hyphen
         character before the attribute name (so data-filename= and data-src= do not qualify); or an
         ES-module import of the file, static ("import X from '...'"), bare ("import '...'") or dynamic
-        ("import('...')"). Both forms are tested with HTML (<!-- -->) and Jinja ({# #}) comments blanked
-        first, so a comment cannot forge the allowance -- that blanking applies to this test only, never to
-        the library match itself, which always reads the file's real text (see the detail line below).
+        ("import('...')"), on one line or spanning several. Both forms are tested with HTML (<!-- -->),
+        Jinja ({# #}), block (/* */) and line (//) comments all blanked first, so a comment in a template
+        OR a script cannot forge the allowance -- a `//` immediately preceded by `:` or `/` is not treated
+        as a comment, so a `https://` inside a string does not blank a real load later on the same line.
+        That blanking applies to this test only, never to the library match itself, which always reads the
+        file's real text (see the detail line below).
       - "entries under drawing.allowed_specialisations once accepted"
     baseline_key: reuse_diagram_libraries
     starting_value: 16
@@ -891,4 +901,47 @@ concepts:
     owner_role: tech-lead
     search_hints:
       - "python reuse-measure-v1.py --root . --list RG-7"
+    last_checked: *v
+
+  - id: comment-blanking
+    name: Blanking a comment before testing text for a pattern
+    plain_words: >-
+      Replace a comment's characters with spaces, keeping line breaks, so a pattern that quotes an
+      anti-pattern in its own documentation is not read as a real instance of it, or so a comment cannot
+      forge a match a rule requires for something to be allowed.
+    decision: chosen
+    decision_owner: tech-lead
+    canonical:
+      kind: pattern
+      paths: [scripts/check_broken_surfaces.py]
+      use: "_blank_comments(text, jinja=True) in check_broken_surfaces.py -- one character scan blanking {# #} (when jinja=True), /* */ and // while preserving newlines; the fullest form of the technique in the suite"
+    allowed_specialisations:
+      - path: scripts/check_reuse.py
+        reason: >-
+          Every checker in this suite is self-contained and there are no cross-imports between its eighty
+          scripts; consolidating the comment-blanking helpers into a shared module would create the first
+          cross-import in the suite, the same reason accepted for the shared macro index inside
+          check_reuse.py itself. This copy additionally blanks HTML comments, which the canonical does not
+          need.
+        accepted_by: tech-lead
+        review_by: 2026-12-31
+      - path: scripts/check_macro_kwargs.py
+        reason: Same house reason as check_reuse.py's copy -- no cross-imports between checkers, so each keeps its own.
+        accepted_by: tech-lead
+        review_by: 2026-12-31
+      - path: scripts/check_duplicate_breadcrumb.py
+        reason: Same house reason -- no cross-imports between checkers, so each keeps its own.
+        accepted_by: tech-lead
+        review_by: 2026-12-31
+    forbidden:
+      - A fifth copy of this technique added without recording, in this entry, why it could not reuse one of the four already in the tree.
+    rules: []
+    known_duplicates:
+      - {path: scripts/check_macro_kwargs.py, verdict: specialisation, converge: S}
+      - {path: scripts/check_duplicate_breadcrumb.py, verdict: specialisation, converge: S}
+      - {path: scripts/check_reuse.py, verdict: specialisation, converge: S}
+    converge_effort: S
+    owner_role: tech-lead
+    search_hints:
+      - "grep -ln \"blank_comments\\|_mask_comments\" scripts/*.py"
     last_checked: *v
