@@ -88,8 +88,13 @@
       </thead>
       <tbody>
         <template x-for="domain in (data.domains || [])" :key="domain.code ?? '__no_domain__'">
-          <tr class="border-b border-border/50 hover:bg-muted/30 cursor-pointer"
-              @click="selectedDomain = selectedDomain === domain ? null : domain">
+          <tr class="border-b border-border/50 hover:bg-muted/30 cursor-pointer focus:ring-2 focus:ring-ring"
+              tabindex="0" role="button"
+              @click="selectedDomain = selectedDomain === domain ? null : domain"
+              @keydown.enter.prevent="selectedDomain = selectedDomain === domain ? null : domain"
+              @keydown.space.prevent="selectedDomain = selectedDomain === domain ? null : domain"
+              :aria-expanded="(selectedDomain === domain).toString()"
+              :aria-label="'Show detail for ' + domain.name">
             <td class="py-2 px-3">
               <span class="font-medium text-foreground" x-text="domain.name"></span>
               <span x-show="domain.code" x-cloak class="text-muted-foreground ml-1" x-text="'(' + domain.code + ')'"></span>
@@ -119,9 +124,9 @@
                     x-text="domain.health_score !== null ? (domain.health_score + '%') : ''"></span>
               <span x-show="domain.health_score === null" x-cloak
                     class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-muted text-muted-foreground"
-                    title="Not enough recorded maturity data to compute Health">
+                    title="Health needs a recorded current and a recorded target maturity">
                 <span aria-hidden="true">—</span>
-                <span class="sr-only">Health not available: no recorded maturity data</span>
+                <span class="sr-only">Health not available: needs a recorded current and a recorded target maturity</span>
               </span>
             </td>
             <td class="text-center py-2 px-3 text-muted-foreground" x-text="domain.total_capabilities"></td>
@@ -186,9 +191,9 @@
            x-show="selectedDomain?.health_score !== null" x-cloak
            x-text="selectedDomain?.health_score !== null && selectedDomain?.health_score !== undefined ? (selectedDomain.health_score + '%') : ''"></p>
         <p class="text-lg font-bold text-muted-foreground" x-show="selectedDomain?.health_score === null" x-cloak
-           title="Not enough recorded maturity data to compute Health">
+           title="Health needs a recorded current and a recorded target maturity">
           <span aria-hidden="true">—</span>
-          <span class="sr-only">Health not available: no recorded maturity data</span>
+          <span class="sr-only">Health not available: needs a recorded current and a recorded target maturity</span>
         </p>
       </div>
       <div x-show="viewMode === 'investment'" x-cloak>
@@ -221,7 +226,7 @@
     {# Capabilities by maturity level #}
     <div class="mt-4">
       <h4 class="text-sm font-medium text-foreground mb-2">Capabilities by Maturity Level</h4>
-      <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
+      <div class="grid grid-cols-3 md:grid-cols-6 gap-2">
         <template x-for="level in [1,2,3,4,5]" :key="level">
           <div class="text-center">
             <p class="text-xs font-medium text-muted-foreground mb-1" x-text="'Level ' + level"></p>

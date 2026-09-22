@@ -80,6 +80,12 @@ class CapabilityHeatmapService:
         {"level": 5, "label": "Optimizing", "color": "#22c55e"},
     ]
 
+    @classmethod
+    def _legend(cls) -> List[Dict[str, Any]]:
+        """A fresh copy every call, so a caller mutating the returned list or
+        one of its entries cannot corrupt every later response in the process."""
+        return [dict(item) for item in cls._LEGEND]
+
     def get_maturity_heatmap(self) -> Dict[str, Any]:
         """
         Build maturity heatmap data: domains (rows) x maturity levels 1 - 5 (columns).
@@ -95,9 +101,12 @@ class CapabilityHeatmapService:
         silently dropped.
 
         Returns:
-            Dict with domains list, legend, and summary stats. See
-            ``tasks/T-008a-capability-heat-honesty.md`` Deliverable 1 for the
-            exact contract.
+            Dict with a ``domains`` list (each with counts, names, averages and
+            a denominator per average), a ``legend``, an ``unassessed_legend``,
+            summary totals, ``capabilities_without_domain``, and a
+            ``tenant_reason_code`` that is ``None`` for a normal, tenant-scoped
+            result or ``"no_tenant_context"`` for the fail-closed empty result
+            below.
         """
         from app.modules.intelligence.services.reason_codes import validate_reason_code
         from app.utils.tenant_sql import current_org_id
@@ -110,10 +119,10 @@ class CapabilityHeatmapService:
             organization_id = current_org_id()
             if organization_id is None:
                 # Fail closed: no resolvable tenant means no tenant's rows,
-                # not every tenant's rows (Constraint 6).
+                # not every tenant's rows.
                 return {
                     "domains": [],
-                    "legend": self._LEGEND,
+                    "legend": self._legend(),
                     "total_capabilities": 0,
                     "total_domains": 0,
                     "capabilities_without_domain": 0,
@@ -140,8 +149,10 @@ class CapabilityHeatmapService:
             )
 
             # Fallback: if UnifiedCapability is empty, try BusinessCapability.
-            # Left untouched by this task (T-008 owns removing it) — it is a
-            # TenantMixin model, already scoped by its own listener.
+            # Left in place: removing it is a larger, separate change (it would
+            # alter visible content for any deployment still populating
+            # capabilities through BusinessCapability). It is a TenantMixin
+            # model, already scoped by its own listener.
             if not capabilities:
                 try:
                     from app.models.business_capabilities import BusinessCapability
@@ -181,9 +192,10 @@ class CapabilityHeatmapService:
                     # Unrecorded: never counted or rendered as Level 1.
                     entry["unassessed"].append({"id": cap.id, "name": cap.name})
                 else:
-                    # The out-of-range clamp is unchanged (T-008's constraints
-                    # own correcting it) — it is only reached for a value that
-                    # was actually recorded.
+                    # The clamp below folds a recorded out-of-range level into
+                    # a valid bucket; it is a separate, pre-existing concern
+                    # from an unrecorded value, and is only reached here for a
+                    # value that was actually recorded.
                     maturity = max(1, min(5, raw_maturity))
                     entry["capabilities_by_maturity"][maturity].append(
                         {"id": cap.id, "name": cap.name}
@@ -207,7 +219,7 @@ class CapabilityHeatmapService:
 
             result = {
                 "domains": domains,
-                "legend": self._LEGEND,
+                "legend": self._legend(),
                 "total_capabilities": len(capabilities),
                 "total_domains": len([d for d in domains if d["has_domain"]]),
                 "capabilities_without_domain": capabilities_without_domain,

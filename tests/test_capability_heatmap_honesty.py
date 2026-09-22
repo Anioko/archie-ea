@@ -1,4 +1,4 @@
-"""T-008a: ``CapabilityHeatmapService.get_maturity_heatmap`` must never invent a
+"""``CapabilityHeatmapService.get_maturity_heatmap`` must never invent a
 maturity level, must never silently drop a capability with no domain, and must
 scope its population read explicitly to the caller's organisation.
 
@@ -101,7 +101,7 @@ def _all_capability_names(result):
 
 
 # ---------------------------------------------------------------------------
-# AC2 / AC13(a): an unrecorded current level is never Level 1
+# An unrecorded current level is never Level 1
 # ---------------------------------------------------------------------------
 
 
@@ -128,7 +128,7 @@ def test_missing_current_maturity_is_unassessed_not_level_one(db_session, make_o
 
 
 # ---------------------------------------------------------------------------
-# AC2 / AC13(b): an unrecorded target contributes to no target figure
+# An unrecorded target contributes to no target figure
 # ---------------------------------------------------------------------------
 
 
@@ -152,7 +152,7 @@ def test_missing_target_contributes_to_no_target_figure(db_session, make_org, te
 
 
 # ---------------------------------------------------------------------------
-# AC3: recorded current levels 1-5 land in their own bucket, and nowhere else
+# Recorded current levels 1-5 land in their own bucket, and nowhere else
 # ---------------------------------------------------------------------------
 
 
@@ -185,7 +185,7 @@ def test_recorded_current_levels_land_in_their_own_bucket(db_session, make_org, 
 
 
 # ---------------------------------------------------------------------------
-# AC4 / AC13(c): a capability with no domain is kept, grouped, ordered last
+# A capability with no domain is kept, grouped, ordered last
 # ---------------------------------------------------------------------------
 
 
@@ -210,7 +210,12 @@ def test_missing_domain_capability_grouped_separately_and_ordered_last(db_sessio
     assert no_domain_row["code"] is None
     assert orphan_cap.name in no_domain_row["capability_names"][4]
     assert real_cap.name not in no_domain_row["capability_names"][4]
-    assert result["capabilities_without_domain"] == no_domain_row["total_capabilities"] == 1
+    # Not a hardcoded count: a shared-reference row with no domain, from
+    # seed data or another session, would legitimately add to this group
+    # too, so assert the relationship and that our own row is in it rather
+    # than assuming the database holds only what this test created.
+    assert result["capabilities_without_domain"] == no_domain_row["total_capabilities"]
+    assert no_domain_row["total_capabilities"] >= 1
     # total_domains excludes the no-domain group.
     assert result["total_domains"] == len(result["domains"]) - 1
 
@@ -220,28 +225,47 @@ def test_missing_domain_capability_grouped_separately_and_ordered_last(db_sessio
 
 
 # ---------------------------------------------------------------------------
-# AC3 (empty tenant) / AC6: an empty tenant never sees another tenant's rows
+# An empty tenant never sees another tenant's rows
 # ---------------------------------------------------------------------------
 
 
 def test_tenant_with_no_capabilities_sees_none_of_a_sibling_tenants_rows(db_session, make_org, tenant_ctx):
+    from app.models.business_capabilities import BusinessCapability
+
     org_empty = make_org("no-caps")
     org_other = make_org("has-caps")
     domain = _domain(db_session, "empty-check")
     other_cap = _capability(
         db_session, org_other, domain=domain, current=3, target=4, name="Other tenant's capability"
     )
+    # A BusinessCapability row too, owned by the other tenant. When the
+    # empty tenant's UnifiedCapability population comes back with zero rows,
+    # get_maturity_heatmap falls back to BusinessCapability.query.all() --
+    # if that fallback's own tenant scoping were absent or mis-keyed, this
+    # row would leak onto the empty tenant's grid and this test would still
+    # pass if it only checked for the UnifiedCapability row by name.
+    other_business_cap = BusinessCapability(
+        name="Other tenant's business capability",
+        code=f"BC-{uuid.uuid4().hex[:8]}",
+        organization_id=org_other.id,
+        business_domain=domain.name,
+    )
+    db_session.add(other_business_cap)
+    db_session.flush()
 
     with tenant_ctx(org_empty.id):
         result = CapabilityHeatmapService().get_maturity_heatmap()
 
+    assert result["domains"] == []
+    assert result["total_capabilities"] == 0
     assert other_cap.name not in _all_capability_names(result)
+    assert other_business_cap.name not in _all_capability_names(result)
     assert result["tenant_reason_code"] is None
 
 
 # ---------------------------------------------------------------------------
-# AC6 / AC13(d): reference rows are shared, unclassified null rows are not,
-# and two tenants cannot see each other's rows
+# Reference rows are shared, unclassified null rows are not, and two
+# tenants cannot see each other's rows
 # ---------------------------------------------------------------------------
 
 
@@ -255,10 +279,9 @@ def test_reference_shared_unclassified_null_hidden_tenants_isolated(db_session, 
     reference_cap = _capability(
         db_session, None, domain=domain, current=5, scope="reference", name="Reference capability"
     )
-    # An organisation-null row that is NOT an explicit reference row -- the
-    # "unclassified legacy row" constraint 6 says must not be treated as
-    # shared. Relying on the ambient listener alone (mutation d) would leak
-    # this into both tenants below.
+    # An organisation-null row that is NOT an explicit reference row must not
+    # be treated as shared. Relying on the ambient listener alone (the fourth
+    # mutation below) would leak this into both tenants.
     unclassified_cap = UnifiedCapability(
         name="Unclassified null-org capability",
         code=f"CAP-{uuid.uuid4().hex[:8]}",
@@ -290,8 +313,36 @@ def test_reference_shared_unclassified_null_hidden_tenants_isolated(db_session, 
     assert unclassified_cap.name not in names_b
 
 
+def test_seeded_catalogue_row_is_hidden_from_every_tenant_until_classified(db_session, make_org, tenant_ctx):
+    """The bulk capability seeder writes ``organization_id`` NULL with no
+    ``scope`` set; a row in that exact shape only becomes a shared reference
+    row once a later classification step sets ``scope='reference'`` on it.
+    Until that has run, this row is real, deployed data that the strict
+    predicate correctly hides from every tenant -- a real operational state,
+    not a hypothetical one, and worth its own named regression separate from
+    the general reference/unclassified-visibility case above."""
+    org = make_org("pre-classification")
+    domain = _domain(db_session, "pre-classification")
+    seeded_row = UnifiedCapability(
+        name="Seeded catalogue capability, not yet classified",
+        code=f"SEED-{uuid.uuid4().hex[:8]}",
+        level=1,
+        scope=None,
+        organization_id=None,
+        domain_id=domain.id,
+        current_maturity_level=3,
+    )
+    db_session.add(seeded_row)
+    db_session.flush()
+
+    with tenant_ctx(org.id):
+        result = CapabilityHeatmapService().get_maturity_heatmap()
+
+    assert seeded_row.name not in _all_capability_names(result)
+
+
 # ---------------------------------------------------------------------------
-# AC6: no resolvable organisation fails closed
+# No resolvable organisation fails closed
 # ---------------------------------------------------------------------------
 
 
@@ -311,16 +362,17 @@ def test_no_tenant_context_fails_closed(db_session, make_org):
 
 
 # ---------------------------------------------------------------------------
-# AC7: get_domain_health / get_gap_alerts are untouched by this task
+# get_domain_health / get_gap_alerts are untouched
 # ---------------------------------------------------------------------------
 
 
 def test_get_domain_health_still_carries_its_own_pre_existing_defect(db_session, make_org, tenant_ctx):
-    """Out of scope for this task (see brief's Deliberate exclusions).
+    """``get_domain_health`` still invents a maturity level for an unassessed
+    capability -- unlike ``get_maturity_heatmap``, it was not changed here.
 
     Pinning the old, still-present behaviour here means a future change to
-    ``get_domain_health`` is a deliberate, tracked decision (T-008), not an
-    accidental side effect of this one.
+    ``get_domain_health`` is a deliberate decision, not an accidental side
+    effect of this one.
     """
     org = make_org("domain-health-untouched")
     domain = _domain(db_session, "domain-health-untouched")
@@ -347,7 +399,7 @@ def test_get_gap_alerts_still_reachable_and_unchanged_in_shape(db_session, make_
 
 
 # ---------------------------------------------------------------------------
-# AC9: the population read is one query, and the query count does not grow
+# The population read is one query, and the query count does not grow
 # with the number of capabilities (measured further at 50/1,000 -- see the
 # build report for the larger-scale run).
 # ---------------------------------------------------------------------------
@@ -395,7 +447,7 @@ def test_population_query_count_does_not_grow_with_capability_count(db_session, 
 
 
 # ---------------------------------------------------------------------------
-# AC7: all four direct callers answer with a valid body
+# All four direct callers answer with a valid body
 # ---------------------------------------------------------------------------
 
 
@@ -444,7 +496,7 @@ def test_all_four_direct_callers_return_a_valid_body(app, db_session, make_org):
 
 
 # ---------------------------------------------------------------------------
-# AC7: the four compatibility re-export shims still import the same class
+# The four compatibility re-export shims still import the same class
 # ---------------------------------------------------------------------------
 
 
@@ -478,7 +530,7 @@ def test_reexport_shims_still_import_the_same_service_class():
 
 
 # ---------------------------------------------------------------------------
-# AC8: the no-domain group carries no fabricated investment figure
+# The no-domain group carries no fabricated investment figure
 # ---------------------------------------------------------------------------
 
 
@@ -514,7 +566,7 @@ def test_investment_guard_leaves_no_domain_group_unset_and_real_domain_unchanged
 
     solution = Solution(
         name=f"Investment solution {uuid.uuid4().hex[:8]}",
-        description="T-008a investment guard fixture",
+        description="Investment guard test fixture",
         organization_id=org.id,
         created_by_id=actor.id,
         governance_status="draft",
@@ -545,7 +597,7 @@ def test_investment_guard_leaves_no_domain_group_unset_and_real_domain_unchanged
 
 
 # ---------------------------------------------------------------------------
-# AC1 / AC10: the page renders the new column and legend entry server-side
+# The page renders the new column and legend entry server-side
 # ---------------------------------------------------------------------------
 
 
@@ -560,18 +612,6 @@ def test_page_renders_not_assessed_column_and_legend(app, client, login_as, db_s
     assert "Not assessed" in html
 
 
-# ---------------------------------------------------------------------------
-# AC12: the module runs green alone, twice in a row, and leaves no rows
-# behind (db_session rolls everything back; this test just documents intent).
-# ---------------------------------------------------------------------------
-
-
-def test_module_creates_rows_only_inside_the_rollback_session(db_session, make_org):
-    """Every fixture in this module uses ``db_session`` (rolled back at
-    teardown) and ``make_org`` (collision-free names) -- there is nothing
-    left for a second run, or a run of this module alone, to collide with."""
-    org = make_org("rollback-proof")
-    domain = _domain(db_session, "rollback-proof")
-    cap = _capability(db_session, org, domain=domain, current=1, name="Rollback-proof capability")
-    assert cap.id is not None
-    assert domain.id is not None
+# Every test above uses db_session (rolled back at teardown) and make_org
+# (collision-free names); the module's own repeated green runs, logged in
+# the build report, are the actual evidence that this leaves no row behind.
