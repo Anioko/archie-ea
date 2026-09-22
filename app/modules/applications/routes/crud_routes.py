@@ -73,9 +73,12 @@ from app.utils.duplicate_guard import (
 
 from . import unified_applications_bp
 from ._helpers import (  # dead-code-ok
+    _can_assign_owners,
     _cleanup_application_relationships,
+    _current_picker_value,
     _delete_mirror_archimate_element,
     _soft_delete_mirror_archimate_element,
+    _sync_owner_role,
 )
 
 logger = logging.getLogger(__name__)
@@ -1352,86 +1355,6 @@ def accept_capability_suggestion(id):
 # recorded primary-owner row for permission.
 # ─────────────────────────────────────────────────────────────────────────
 
-def _can_assign_owners(app_obj):
-    """True when the signed-in person may add or remove an owner on ``app_obj``.
-
-    An organisation admin always may; otherwise only the person recorded as
-    the application's own primary owner may. Used by both write routes below
-    and by the Owners section to decide whether to show its controls.
-    """
-    if not getattr(current_user, "is_authenticated", False):
-        return False
-    if current_user.is_org_admin:
-        return True
-    return ApplicationOwner.query.filter_by(
-        application_id=app_obj.id,
-        user_id=current_user.id,
-        ownership_type="primary",
-    ).first() is not None
-
-
-def _sync_owner_role(app_obj, ownership_type, raw_user_id):
-    """Make ``app_obj``'s ``ownership_type`` role match one submitted user id.
-
-    Used by the create/edit page pickers (decision D), where the picker's
-    hidden field carries a chosen person's id rather than the free-text name
-    the business_owner/technical_owner columns held. ``app_obj`` must already
-    have an id. An empty or missing ``raw_user_id`` clears the role; a
-    resubmitted, unchanged id is left alone; a different id replaces whoever
-    held it. An id outside the acting organisation is dropped rather than
-    attached — the same tenant rule the add-owner route enforces.
-    """
-    existing_rows = ApplicationOwner.query.filter_by(
-        application_id=app_obj.id, ownership_type=ownership_type
-    ).all()
-
-    is_valid, user_id, _error = validate_integer(
-        raw_user_id, field_name=f"{ownership_type}_owner_user_id"
-    )
-    if not is_valid or user_id is None:
-        for row in existing_rows:
-            db.session.delete(row)
-        return
-
-    if any(row.user_id == user_id for row in existing_rows):
-        for row in existing_rows:
-            if row.user_id != user_id:
-                db.session.delete(row)
-        return
-
-    if User.query.filter_by(
-        id=user_id, organization_id=current_user.organization_id
-    ).first() is None:
-        return
-
-    for row in existing_rows:
-        db.session.delete(row)
-    db.session.add(
-        ApplicationOwner(
-            application_id=app_obj.id,
-            user_id=user_id,
-            ownership_type=ownership_type,
-            assigned_by=current_user.id,
-        )
-    )
-
-
-def _current_picker_value(app_obj, ownership_type):
-    """(user id, display label) the create/edit picker pre-fills for one
-    role, or ("", "") when the role is unrecorded.
-
-    Pre-filling is what keeps a plain re-save from wiping an existing
-    assignment: the picker posts back exactly what it showed unless the
-    person searching changes it.
-    """
-    row = ApplicationOwner.query.filter_by(
-        application_id=app_obj.id, ownership_type=ownership_type
-    ).first()
-    if row is None or row.user is None:
-        return "", ""
-    return str(row.user_id), (row.user.full_name() or row.user.email or "")
-
-
 def _owner_picker_context(app_obj):
     """Pre-fill kwargs for the edit page's business/technical owner pickers."""
     business_id, business_label = _current_picker_value(app_obj, "business")
@@ -1441,52 +1364,6 @@ def _owner_picker_context(app_obj):
         "business_owner_current_label": business_label,
         "technical_owner_current_id": technical_id,
         "technical_owner_current_label": technical_label,
-    }
-
-
-def owners_section_context(app_obj):
-    """Everything the Owners section partial needs, computed once per render
-    of the application record (decision C). Called from
-    app.application_mgmt.routes.render_application_detail.
-    """
-    org_id = current_user.organization_id
-    rows = ApplicationOwner.get_owners_for_application(app_obj.id, org_id)
-    owners_by_type = {t: [] for t in ApplicationOwner.OWNERSHIP_TYPES}
-    for row in rows:
-        owners_by_type.setdefault(row.ownership_type, []).append(row)
-
-    # Each text column maps to exactly one role. A person recorded for that
-    # role always wins; the text itself is never rewritten from here (no
-    # automatic backfill — the confirm control below is the only path from
-    # text to a person, and only a signed-in person clicking it takes it).
-    text_role_map = {
-        "business": app_obj.business_owner,
-        "technical": app_obj.technical_owner,
-        "primary": app_obj.application_owner,
-    }
-    org_users = None
-    text_owners = {}
-    for ownership_type, text_value in text_role_map.items():
-        text_value = (text_value or "").strip()
-        if not text_value or owners_by_type.get(ownership_type):
-            continue
-        if org_users is None:
-            org_users = User.query.filter_by(organization_id=org_id).all()
-        needle = text_value.lower()
-        matches = [
-            u for u in org_users
-            if (u.full_name() or "").strip().lower() == needle
-            or (u.email and u.email.lower() in needle)
-        ]
-        text_owners[ownership_type] = {
-            "text": text_value,
-            "match": matches[0] if len(matches) == 1 else None,
-        }
-
-    return {
-        "owners_by_type": owners_by_type,
-        "text_owners": text_owners,
-        "can_assign_owners": _can_assign_owners(app_obj),
     }
 
 

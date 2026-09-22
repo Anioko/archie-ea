@@ -399,33 +399,28 @@
         </div>
       </div>
 
-      {# Ownership #}
+      {# Team -- who runs this application day to day. Who owns it lives in
+         the Owners section below, on ApplicationOwner rows, not here. #}
       <div data-slot="card" class="rounded-xl border bg-card shadow-sm">
         <div class="flex flex-col space-y-1.5 p-6 pb-3">
-          <h3 class="text-lg font-semibold">Ownership</h3>
+          <h3 class="text-lg font-semibold">Team</h3>
         </div>
         <div class="p-6 pt-0 space-y-3 text-sm">
           {% if edit_mode %}
-          {{ detail_row('Application Owner', app.application_owner) }}
-          {{ edit_row('Business Owner', 'businessOwner', app.business_owner) }}
-          {{ detail_row('Technical Owner', app.technical_owner) }}
           {{ edit_row('Technical Lead', 'techOwner', app.technical_lead) }}
           {{ detail_row('Product Manager', app.product_manager) }}
           {{ edit_row('Development Team', 'devTeam', app.development_team) }}
           {{ edit_row('Support Team', 'supportLevel', app.support_team) }}
           {% else %}
-          {% set has_any_owner = app.application_owner or app.business_owner or app.technical_owner or app.technical_lead or app.product_manager or app.development_team or app.support_team %}
-          {% if has_any_owner %}
-          {{ detail_row('Application Owner', app.application_owner) }}
-          {{ detail_row('Business Owner', app.business_owner) }}
-          {{ detail_row('Technical Owner', app.technical_owner) }}
+          {% set has_any_team_member = app.technical_lead or app.product_manager or app.development_team or app.support_team %}
+          {% if has_any_team_member %}
           {{ detail_row('Technical Lead', app.technical_lead) }}
           {{ detail_row('Product Manager', app.product_manager) }}
           {{ detail_row('Development Team', app.development_team) }}
           {{ detail_row('Support Team', app.support_team) }}
           {% else %}
           <div class="py-3 text-center">
-            <p class="text-sm text-muted-foreground">No ownership data</p>
+            <p class="text-sm text-muted-foreground">No team data</p>
             <a href="{{ url_for('unified_applications.application_edit', id=app.id) }}"
                class="text-xs text-primary hover:underline mt-1 inline-block">Add via Edit page</a>
           </div>
@@ -517,6 +512,11 @@
     {% endif %}
 
     {% if edit_mode %}</form>{% endif %}
+
+    {# Owners -- a sibling card, not nested in the edit form above: its
+       add/remove/confirm controls are their own POST forms, and a <form>
+       cannot nest inside another <form>. #}
+    {% include 'application_mgmt/partials/_owners_section.html' %}
   </div>
   {% endcall %}{# /tab_panel overview #}
 

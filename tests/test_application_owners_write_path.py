@@ -80,19 +80,23 @@ def _make_owner_row(db_session, app_row, user, ownership_type, **extra):
 def _render_owners_section(app, app_row, viewer):
     """Render the Owners partial as ``viewer`` would see it.
 
-    Decision C's per-role list, "Recorded as text" line and confirm control
-    are all rendered server-side (not by client JS), which is what makes
-    them directly assertable here without a browser.
+    The per-role list, "Recorded as text" line and confirm control are all
+    computed server-side, in Python, and rendered server-side (not by
+    client JS), which is what makes them directly assertable here without
+    a browser.
     """
+    from app.modules.applications.routes._helpers import owners_section_context
+
     with app.test_request_context("/"):
         login_user(viewer)
         g.current_org_id = viewer.organization_id
+        context = owners_section_context(app_row)
         return render_template(
-            "application_mgmt/partials/_owners_section.html", app=app_row
+            "application_mgmt/partials/_owners_section.html", app=app_row, **context
         )
 
 
-# ─────────────────────────────────────────────────────── decision A: the model
+# ─────────────────────────────────────────────────────────── the model
 
 
 def test_model_is_tenant_mixin_with_no_explicit_org_column():
