@@ -165,9 +165,9 @@ class TestVendorsRouteCount:
     """Test that route counts match expectations for key blueprints."""
 
     def test_vendor_management_route_count(self):
-        """vendor_management_bp: six routes remain after T-VEND-1 retired the
-        four page-rendering duplicates (vendor_dashboard, search_vendors,
-        vendor_analytics, import_vendors) that nothing linked to."""
+        """vendor_management_bp: six routes remain after the unlinked page
+        duplicates were retired: vendor_dashboard, search_vendors,
+        vendor_analytics, import_vendors."""
         from app.modules.vendors.routes.vendor_management_routes import vendor_management_bp
 
         count = len(vendor_management_bp.deferred_functions)
@@ -203,8 +203,8 @@ class TestVendorsRouteCount:
         )
 
     def test_unified_vendors_route_count(self):
-        """unified_vendors_bp: ten routes remain after T-VEND-1 retired the
-        eighteen page-rendering duplicates that nothing linked to."""
+        """unified_vendors_bp: ten routes remain after the eighteen unlinked
+        page duplicates were retired."""
         from app.modules.vendors.routes.unified_vendor_views import unified_vendors_bp
 
         count = len(unified_vendors_bp.deferred_functions)

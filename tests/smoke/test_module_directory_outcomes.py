@@ -40,9 +40,9 @@ def test_module_filter_empty_clear_and_destination(browser, live_server, seeded)
 
 
 def test_vendor_application_mapping_is_findable_and_opens(browser, live_server, seeded):
-    """T-VEND-1: the vendors package's one honest page has no sidebar link;
-    it must be findable from the module directory by name and open the real
-    all-vendors application mapping, not the per-vendor page."""
+    """The vendors package's one honest page has no sidebar link; it must be
+    findable from the module directory by name and open the real all-vendors
+    application mapping, not the per-vendor page."""
     page = browser.new_page()
     try:
         _login(page, live_server, seeded["emails"]["platform_admin"])
@@ -59,6 +59,8 @@ def test_vendor_application_mapping_is_findable_and_opens(browser, live_server, 
         assert navigation.value.status == 200
         assert page.url.endswith("/vendors/integration/mapping"), page.url
         expect(page.get_by_role("heading", level=1, name="All Vendors", exact=True)).to_be_visible()
-        expect(page.get_by_role("link", name="Back to Vendors", exact=True)).to_be_visible()
+        back_link = page.get_by_role("link", name="Back to Vendors", exact=True)
+        expect(back_link).to_be_visible()
+        expect(back_link).to_have_attribute("href", "/applications/vendors")
     finally:
         page.close()

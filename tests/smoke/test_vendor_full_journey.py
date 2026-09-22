@@ -67,14 +67,14 @@ def test_vendor_create_edit_persists_across_reload(browser, live_server, seeded)
 
 
 def test_vendor_detail_deep_links_to_application_mapping(browser, live_server, seeded):
-    """T-VEND-1: the vendor detail page must offer a way into the package's
-    one real page, the application-to-vendor mapping across all vendors.
+    """The vendor detail page must offer a way into the package's one real
+    page, the application-to-vendor mapping across all vendors.
 
     The vendor list row's own "View" link points at the separate legacy
     application_mgmt vendor page, not the live unified_applications one this
     deep link lives on -- a pre-existing surface this task does not touch --
     so the created vendor's id is read from that link's href and the live
-    detail page is opened directly, exactly as the brief names it.
+    detail page is opened directly.
     """
     page = browser.new_page()
     vendor_name = f"QA Mapping Link Vendor {uuid.uuid4().hex[:8]}"

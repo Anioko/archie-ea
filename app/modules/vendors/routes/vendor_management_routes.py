@@ -24,10 +24,6 @@ from app.utils.pagination import safe_int_arg
 # Allowlist for vendor updates (security: prevent mass assignment)
 VENDOR_UPDATE_ALLOWLIST = ["name", "vendor_type", "country", "description", "website"]
 
-# Import configuration
-MAX_IMPORT_FILE_SIZE = 10 * 1024 * 1024  # 10MB
-ALLOWED_IMPORT_FORMATS = {".csv", ".xlsx", ".xls"}
-
 
 vendor_management_bp = Blueprint(
     "vendor_management",
