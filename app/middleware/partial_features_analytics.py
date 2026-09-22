@@ -64,7 +64,12 @@ class PartialFeaturesAnalytics:
         return bool(current_user.get_notification_preference("analytics_opt_out"))
 
     def _before_request(self):
-        """Record a page-view event for a request to a directory endpoint."""
+        """Note which directory endpoint this request is for, and start a
+        timer. No write and no session write happen here: an anonymous
+        visitor, or a request that turns out to be denied, must never cause
+        a row or a session cookie before anyone has consented to anything
+        (`_eligible` below, checked once the response exists, is what
+        decides whether a write happens at all)."""
         if not current_app.config.get('ENABLE_USAGE_ANALYTICS', False):
             return
 
@@ -72,11 +77,6 @@ class PartialFeaturesAnalytics:
         if request.path.startswith("/static/") or request.path == "/favicon.ico":
             return
 
-        # Generate or get session ID
-        if 'analytics_session_id' not in session:
-            session['analytics_session_id'] = str(uuid.uuid4())
-
-        g.analytics_session_id = session.get('analytics_session_id')
         # request.environ has no 'REQUEST_TIME' key (that is not a WSGI
         # standard key Flask/Werkzeug populate); reading it always returned
         # the 0 default, so the "elapsed" time below was actually
@@ -86,64 +86,92 @@ class PartialFeaturesAnalytics:
         g.analytics_feature_name = (
             request.endpoint if request.endpoint in self._directory_endpoints else None
         )
-        g.analytics_user_id = current_user.id if current_user.is_authenticated else None
 
-        if not g.analytics_feature_name or self._opted_out():
-            return
+    def _eligible(self, status_code):
+        """True only for a request this tracker should record: a directory
+        endpoint, a signed-in user (an anonymous request is not usage of the
+        product by anyone who could have consented to being counted), a
+        response that was not denied or an error (a 403/404/5xx is not a
+        successful page view), the flag on, and no opt-out."""
+        if not current_app.config.get('ENABLE_USAGE_ANALYTICS', False):
+            return False
+        if not g.get('analytics_feature_name'):
+            return False
+        if not current_user.is_authenticated:
+            return False
+        if status_code >= 400:
+            return False
+        return not self._opted_out()
 
-        # No `request=` argument — the event carries only the endpoint name,
-        # the route path, and the session/user ids above.
-        UsageAnalytics.track_event(
-            event_type='page_view',
-            feature_name=g.analytics_feature_name,
-            route_path=request.path,
-            user_id=g.analytics_user_id,
-            session_id=g.analytics_session_id,
-        )
+    def _session_id(self):
+        """The analytics session id, minted only at the moment a write is
+        about to happen — never for a request that will not be recorded, so
+        an anonymous or denied request never gets this cookie key set."""
+        if 'analytics_session_id' not in session:
+            session['analytics_session_id'] = str(uuid.uuid4())
+        return session['analytics_session_id']
 
     def _after_request(self, response):
-        """Track successful write interactions on a directory endpoint."""
-        if not current_app.config.get('ENABLE_USAGE_ANALYTICS', False):
+        """The single place this middleware writes: at most one event, and
+        at most one `track_event` call (so at most one commit), per
+        request — a page view for a read, a feature interaction for a
+        successful write."""
+        if not self._eligible(response.status_code):
             return response
 
-        if (g.get('analytics_feature_name') and
-            not self._opted_out() and
-            request.method in ['POST', 'PUT', 'PATCH', 'DELETE'] and
-            response.status_code < 400):
+        event_type = (
+            'feature_interaction'
+            if request.method in ('POST', 'PUT', 'PATCH', 'DELETE')
+            else 'page_view'
+        )
+        metadata = None
+        if event_type == 'feature_interaction':
+            metadata = {
+                'method': request.method,
+                'status_code': response.status_code,
+                'response_time_ms': self._calculate_response_time(),
+            }
 
-            UsageAnalytics.track_event(
-                event_type='feature_interaction',
-                feature_name=g.analytics_feature_name,
-                route_path=request.path,
-                user_id=g.analytics_user_id,
-                session_id=g.analytics_session_id,
-                event_metadata={
-                    'method': request.method,
-                    'status_code': response.status_code,
-                    'response_time_ms': self._calculate_response_time()
-                },
-            )
+        UsageAnalytics.track_event(
+            event_type=event_type,
+            feature_name=g.analytics_feature_name,
+            route_path=request.path,
+            user_id=current_user.id,
+            session_id=self._session_id(),
+            event_metadata=metadata,
+        )
 
         return response
 
     def _teardown_request(self, exception):
-        """Track an unhandled error on a directory endpoint."""
+        """Track an unhandled error on a directory endpoint — only when a
+        response was never produced (a real exception, not a 4xx/5xx that an
+        error handler turned into a response; `_after_request` already
+        decided not to write for those). Same eligibility as any other
+        event: signed-in, opted in, flag on."""
+        if not exception:
+            return
         if not current_app.config.get('ENABLE_USAGE_ANALYTICS', False):
             return
+        if not g.get('analytics_feature_name'):
+            return
+        if not current_user.is_authenticated:
+            return
+        if self._opted_out():
+            return
 
-        if exception and g.get('analytics_feature_name') and not self._opted_out():
-            UsageAnalytics.track_event(
-                event_type='error_occurred',
-                feature_name=g.analytics_feature_name,
-                route_path=request.path,
-                user_id=g.analytics_user_id,
-                session_id=g.analytics_session_id,
-                event_metadata={
-                    'error_type': type(exception).__name__,
-                    'error_message': str(exception),
-                    'method': request.method
-                },
-            )
+        UsageAnalytics.track_event(
+            event_type='error_occurred',
+            feature_name=g.analytics_feature_name,
+            route_path=request.path,
+            user_id=current_user.id,
+            session_id=self._session_id(),
+            event_metadata={
+                'error_type': type(exception).__name__,
+                'error_message': str(exception),
+                'method': request.method
+            },
+        )
 
     def _calculate_response_time(self):
         """Calculate response time in milliseconds."""

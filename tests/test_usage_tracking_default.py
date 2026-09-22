@@ -101,6 +101,64 @@ def test_flag_off_writes_nothing(db_session, make_org, client, login_as, app):
         app.config["ENABLE_USAGE_ANALYTICS"] = original
 
 
+def test_anonymous_request_writes_nothing(db_session, make_org, client, analytics_on):
+    """An anonymous visitor is not usage anyone consented to being counted
+    as; the redirect to login must not write a row or mint a session id."""
+    before = UsageAnalytics.query.count()
+    resp = client.get("/usage-analytics/dashboard")
+    assert resp.status_code in (302, 401)
+
+    after = UsageAnalytics.query.count()
+    assert after == before
+
+
+def test_denied_response_writes_nothing(db_session, make_org, client, login_as, analytics_on):
+    """A signed-in but unauthorised request (403) is a denial, not a page
+    view. main.settings is a directory link and @admin_required; this user
+    holds no role, so it 403s."""
+    org = make_org("usage-denied")
+    user = _user(org, "denied")  # no role, not an admin
+    login_as(client, user)
+
+    before = UsageAnalytics.query.count()
+    resp = client.get("/settings")
+    assert resp.status_code == 403
+
+    after = UsageAnalytics.query.count()
+    assert after == before
+
+
+def test_api_events_does_not_return_session_id_or_exception_text(
+    db_session, make_org, client, login_as, analytics_on
+):
+    org = make_org("usage-events-sanitised")
+    user = _user(org, "events-sanitised")
+
+    UsageAnalytics.track_event(
+        event_type="error_occurred",
+        feature_name="usage_analytics.analytics_root",
+        route_path="/usage-analytics/",
+        user_id=user.id,
+        session_id="a-session-id-that-must-not-leak",
+        event_metadata={
+            "error_type": "ValueError",
+            "error_message": "a stack-trace-derived exception message",
+            "method": "GET",
+        },
+    )
+    db.session.flush()
+
+    login_as(client, user)
+    resp = client.get("/usage-analytics/api/events")
+    assert resp.status_code == 200
+    events = resp.get_json()
+    assert events, "expected at least the seeded event back"
+    for event in events:
+        assert "session_id" not in event
+        metadata = event.get("event_metadata") or {}
+        assert "error_message" not in metadata
+
+
 def test_config_flag_defaults():
     from config import Config, TestingConfig
 
