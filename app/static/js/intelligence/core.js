@@ -15,6 +15,7 @@
     var SEARCH_URL = '/archimate/api/elements/search';
     var IMPACT_URL = '/api/v1/intelligence/impact/';
     var RISK_URL = '/api/v1/intelligence/risk/';
+    var PORTFOLIO_URL = '/api/v1/intelligence/portfolio/';
     var RECOMPUTE_URL = '/api/v1/intelligence/derivation/recompute';
 
     var ERROR_LINE = 'We could not answer that just now.';
@@ -101,6 +102,17 @@
 
     function buildRisks(payload) {
         return (payload.risks || []).map(riskModel);
+    }
+
+    /* L3: resolves an element to its ApplicationComponent id, the one fact
+       ask.js needs to build the rationalization-planning deep link. See
+       app/api/v1/intelligence/routes/api.py:portfolio_component_for_element
+       for what "reasons" can carry (element_not_found, no_tenant_context,
+       no_application_component). */
+    function fetchPortfolioComponent(elementId) {
+        return Platform.fetch.get(PORTFOLIO_URL + elementId, {}, { silent: true }).then(function (resp) {
+            return resp && resp.data ? resp.data : {};
+        });
     }
 
     // ── small helpers ─────────────────────────────────────────────────────
@@ -329,6 +341,7 @@
         fetchImpact: fetchImpact,
         fetchRisk: fetchRisk,
         buildRisks: buildRisks,
+        fetchPortfolioComponent: fetchPortfolioComponent,
         recompute: recompute,
         timeText: timeText,
         refreshIcons: refreshIcons,

@@ -18,12 +18,17 @@
 
 {% block content %}
 {% set home_url = url_for('dashboard.overview') if 'dashboard.overview' in flask.current_app.view_functions else none %}
-{# L3/L6 (2026-09-21): risk added, answering L6 of intelligence-lenses-v1.md.
-   Portfolio (L3) stays out of this accordion -- it answers with deep links
-   to existing pages, not an inline result, and gets its own follow-up. #}
+{# L3/L6 (2026-09-21): risk (L6) answers inline; portfolio (L3) answers
+   with ONE deep link (rationalization planning) rather than an inline
+   result -- duplicate-detection and TCO history were checked against
+   this same brief and found to have no per-application HTML page today
+   (both are JSON-only API endpoints), so this deliberately links to only
+   what genuinely exists; see IntelligenceQueryService.
+   portfolio_component_for_element's docstring for the full check. #}
 {% set questions = [
     {'key': 'impact', 'before': 'What breaks if', 'blank': '___', 'after': 'fails or is under-resourced?'},
-    {'key': 'risk', 'before': 'What could hurt', 'blank': '___', 'after': 'and what does it touch?'}
+    {'key': 'risk', 'before': 'What could hurt', 'blank': '___', 'after': 'and what does it touch?'},
+    {'key': 'portfolio', 'before': 'What is the rationalization status of', 'blank': '___', 'after': '?'}
 ] %}
 {% macro _ps_actions() %}
 <a href="{{ url_for('intelligence_ui.twin_map') }}"
@@ -31,7 +36,8 @@
     <i data-lucide="network" class="mr-2 h-4 w-4" aria-hidden="true"></i>Twin map
 </a>
 {% endmacro %}
-<div class="p-6 space-y-6" x-data="askSurface()" data-twin-map-url="{{ url_for('intelligence_ui.twin_map') }}">
+<div class="p-6 space-y-6" x-data="askSurface()" data-twin-map-url="{{ url_for('intelligence_ui.twin_map') }}"
+     data-rationalization-planning-url-base="{{ url_for('unified_applications.rationalization_planning', app_id=0) }}">
     {{ page_shell(
         title='Ask',
         subtitle='Ask a plain business question about what you depend on and what could go wrong.',
@@ -117,6 +123,24 @@
                 </li>
             </template>
         </ul>
+    </div>
+
+    {# L3: not an inline answer -- a deep link, once the element resolves to
+       an ApplicationComponent. See the service method's own docstring for
+       why duplicate-detection and TCO are not offered here (neither has a
+       per-application HTML page today). #}
+    <div id="ask-portfolio-results" aria-busy="false" :aria-busy="portfolioBusy ? 'true' : 'false'" x-show="answeredKey === 'portfolio' && portfolioState !== 'idle'" x-cloak class="space-y-4">
+        <h2 id="ask-portfolio-results-heading" x-ref="portfolioResultsHeading" tabindex="-1" class="text-lg font-semibold text-foreground focus:outline-none">Results</h2>
+        <div x-show="portfolioState === 'loading'" x-cloak role="status" aria-label="Loading" class="h-16 animate-pulse rounded-lg border border-border bg-muted/30"></div>
+        <p x-show="portfolioState === 'empty'" x-cloak class="text-sm text-muted-foreground">This is not something the rationalization view tracks.</p>
+        <p x-show="portfolioState === 'error'" x-cloak class="text-sm text-destructive">Could not look that up just now.</p>
+        <div x-show="portfolioState === 'ready'" x-cloak class="rounded-lg border border-border bg-card p-4" data-ask-portfolio-card>
+            <p class="text-sm text-muted-foreground">Rationalization status, cost and ownership for this application.</p>
+            <a :href="portfolioPlanningHref()"
+               class="mt-3 inline-flex h-9 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background">
+                Open rationalization planning
+            </a>
+        </div>
     </div>
 
     {{ provenance_drawer() }}

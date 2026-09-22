@@ -4,6 +4,7 @@
   GET  /api/v1/intelligence/derived/<derived_id>
   GET  /api/v1/intelligence/impact/<element_id>
   GET  /api/v1/intelligence/risk/<element_id>
+  GET  /api/v1/intelligence/portfolio/<element_id>
   GET  /api/v1/intelligence/yield
 
 Each new route was added to this EXISTING blueprint rather than a new
@@ -400,6 +401,47 @@ def risk_for_element(element_id: int):
             "risks": result["risks"],
             "reasons": result.get("reasons") or [],
             "elements": result.get("elements") or {},
+        }
+    )
+
+
+@intelligence_api.route("/portfolio/<int:element_id>", methods=["GET"])
+@login_required
+def portfolio_component_for_element(element_id: int):
+    """L3: resolves an element to its ApplicationComponent, the only fact
+    the frontend needs to build the one genuine deep link that exists today
+    (rationalization planning). No inline rows or cost figures -- see
+    ``IntelligenceQueryService.portfolio_component_for_element`` for why
+    duplicate-detection and TCO history are not offered here.
+    """
+    organization_id = _current_organization_id()
+    if organization_id is None:
+        return error_response(
+            "no tenant context for this request",
+            code="NO_TENANT_CONTEXT",
+            details={"reason": _NO_TENANT_CONTEXT_REASON},
+            status_code=400,
+        )
+
+    from app.models import ArchiMateElement
+
+    element = ArchiMateElement.query.filter_by(id=element_id).first()
+    if element is None:
+        return error_response(
+            "Element not found",
+            code="NOT_FOUND",
+            details={"reason": _ELEMENT_NOT_FOUND_REASON},
+            status_code=404,
+        )
+
+    from app.modules.intelligence.services.query_service import IntelligenceQueryService
+
+    result = IntelligenceQueryService.portfolio_component_for_element(element_id)
+
+    return success_response(
+        {
+            "application_component_id": result.get("application_component_id"),
+            "reasons": result.get("reasons") or [],
         }
     )
 

@@ -1,7 +1,9 @@
 """Cross-layer intelligence queries. ``cross_layer_impact`` (L1, "if this
-fails, what stops and who owns it") and ``risk_for_element`` (L6, "what
-could hurt this, and what does it touch" -- reuses the same traversal per
-risk seed). Value-streams-at-risk / coverage remain unbuilt.
+fails, what stops and who owns it"), ``risk_for_element`` (L6, "what could
+hurt this, and what does it touch" -- reuses the same traversal per risk
+seed) and ``portfolio_component_for_element`` (L3, resolves an element to
+its ApplicationComponent for the one existing deep link). Value-streams-
+at-risk / coverage remain unbuilt.
 """
 
 from __future__ import annotations
@@ -22,6 +24,7 @@ NO_TENANT_CONTEXT_REASON = validate_reason_code("no_tenant_context")
 ELEMENT_NOT_FOUND_REASON = validate_reason_code("element_not_found")
 DERIVATION_NOT_COMPUTED_REASON = validate_reason_code("derivation_not_computed")
 NO_RISK_RECORDED_REASON = validate_reason_code("no_risk_recorded")
+NO_APPLICATION_COMPONENT_REASON = validate_reason_code("no_application_component")
 
 # T-005 (D1): the NFR-5 measurement point is this exact, PINNED series --
 # never widened, never aggregated across label values.
@@ -796,6 +799,54 @@ class IntelligenceQueryService:
                 )
 
         return {"risks": risk_payloads, "reasons": [], "elements": all_elements}
+
+    @staticmethod
+    def portfolio_component_for_element(element_id: int) -> Dict[str, Any]:
+        """L3, "what do we run, what does it cost, who owns it, what's
+        duplicated?": resolves an element to the ``ApplicationComponent``
+        row the rationalization/duplicate/TCO pages are keyed on, so the
+        caller can build the ONE genuine deep link that exists today
+        (``unified_applications.rationalization_planning``).
+
+        No query of its own beyond that resolution -- reuses the exact
+        dual-lookup already established in
+        ``app/modules/solutions_strategic/v2/routes/strategic_routes.py``
+        (the element's own ``application_component_id`` FK first, the
+        reverse ``ApplicationComponent.archimate_element_id`` lookup for
+        legacy rows second) rather than inventing a second answer to the
+        same question.
+
+        Duplicate-detection and TCO history were checked against this same
+        brief and found to have NO per-application HTML page today (both
+        are JSON-only API endpoints, `GET .../enterprise/analysis/<id>` and
+        `GET /api/advanced-tco/history` keyed by `vendor_product_id` not an
+        element/app id) -- so this method, deliberately, resolves only what
+        the one real page needs. Linking to a JSON response would not be a
+        deep link a person can read; not built.
+        """
+        from app.models import ArchiMateElement
+        from app.models.application_portfolio import ApplicationComponent
+
+        org_id = current_org_id()
+        if org_id is None:
+            return {"application_component_id": None, "reasons": [NO_TENANT_CONTEXT_REASON]}
+
+        element = db.session.execute(
+            db.select(ArchiMateElement).where(ArchiMateElement.id == element_id)
+        ).scalar_one_or_none()
+        if element is None:
+            return {"application_component_id": None, "reasons": [ELEMENT_NOT_FOUND_REASON]}
+
+        component = None
+        if getattr(element, "application_component_id", None):
+            component = db.session.get(ApplicationComponent, element.application_component_id)
+        if component is None and (element.type or "") == "ApplicationComponent":
+            component = ApplicationComponent.query.filter_by(archimate_element_id=element.id).first()
+
+        if component is None:
+            return {"application_component_id": None, "reasons": [NO_APPLICATION_COMPONENT_REASON]}
+
+        return {"application_component_id": component.id, "reasons": []}
 
 
 __all__ = ["IntelligenceQueryService"]
