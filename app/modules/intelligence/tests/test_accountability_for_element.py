@@ -30,10 +30,12 @@ def _component(db_session, org_id, element, name="A App"):
     return component
 
 
-def _unit(db_session, *, name="Finance", unit_type="Department", head_of_unit=None):
+def _unit(db_session, organization_id, *, name="Finance", unit_type="Department", head_of_unit=None):
     from app.models.enterprise_intelligence import OrganizationUnit
 
-    unit = OrganizationUnit(name=name, unit_type=unit_type, head_of_unit=head_of_unit)
+    unit = OrganizationUnit(
+        organization_id=organization_id, name=name, unit_type=unit_type, head_of_unit=head_of_unit
+    )
     db_session.add(unit)
     db_session.flush()
     return unit
@@ -45,9 +47,14 @@ def _ownership(db_session, component, unit, *, ownership_type="Business Owner",
     # organization_unit_id is NOT NULL on this model -- every real ownership
     # row names a unit. The "no unit" case tested below is an orphaned FK
     # (the unit row was later deleted), not a row created without one.
+    # organization_id is the component's own -- an ownership row's tenant is
+    # its application's tenant (same rule the backfill derivation uses); it
+    # is deliberately NOT the unit's organization_id, so a test can name a
+    # unit belonging to a different organisation than the ownership row.
     from app.models.enterprise_intelligence import ApplicationOwnership
 
     ownership = ApplicationOwnership(
+        organization_id=component.organization_id,
         application_id=component.id,
         organization_unit_id=unit.id,
         ownership_type=ownership_type,
@@ -141,7 +148,7 @@ def test_owner_with_organization_unit_renders_honestly(app, db_session, make_org
     org = make_org("accountability-lens-owner")
     a = _element(db_session, org.id, "A")
     component = _component(db_session, org.id, a)
-    unit = _unit(db_session, name="Finance", head_of_unit="Pat Head")
+    unit = _unit(db_session, org.id, name="Finance", head_of_unit="Pat Head")
     _ownership(
         db_session, component, unit=unit, ownership_type="Business Owner",
         primary_contact="Jordan Owner", contact_email="jordan@example.com",
@@ -173,7 +180,7 @@ def test_capacity_not_available_is_present_even_on_a_successful_answer(app, db_s
     org = make_org("accountability-lens-capacity-always")
     a = _element(db_session, org.id, "A")
     component = _component(db_session, org.id, a)
-    unit = _unit(db_session)
+    unit = _unit(db_session, org.id)
     _ownership(db_session, component, unit)
     db_session.commit()
 
@@ -194,7 +201,7 @@ def test_multiple_owners_on_one_component_each_get_their_own_row(app, db_session
     org = make_org("accountability-lens-multi")
     a = _element(db_session, org.id, "A")
     component = _component(db_session, org.id, a)
-    unit = _unit(db_session)
+    unit = _unit(db_session, org.id)
     _ownership(db_session, component, unit, ownership_type="Business Owner")
     _ownership(db_session, component, unit, ownership_type="Technical Owner")
     db_session.commit()
@@ -219,7 +226,7 @@ def test_expired_ownership_row_is_excluded(app, db_session, make_org):
     org = make_org("accountability-lens-expired")
     a = _element(db_session, org.id, "A")
     component = _component(db_session, org.id, a)
-    unit = _unit(db_session, name="Legacy Unit")
+    unit = _unit(db_session, org.id, name="Legacy Unit")
     _ownership(
         db_session, component, unit=unit, ownership_type="Business Owner",
         end_date=date.today() - timedelta(days=1),
@@ -244,7 +251,7 @@ def test_ownership_row_with_no_end_date_or_future_end_date_is_current(app, db_se
     org = make_org("accountability-lens-current")
     a = _element(db_session, org.id, "A")
     component = _component(db_session, org.id, a)
-    unit = _unit(db_session, name="Active Unit")
+    unit = _unit(db_session, org.id, name="Active Unit")
     _ownership(db_session, component, unit=unit, ownership_type="Business Owner")
     _ownership(
         db_session, component, unit=unit, ownership_type="Technical Owner",
@@ -265,24 +272,17 @@ def test_ownership_row_with_no_end_date_or_future_end_date_is_current(app, db_se
     }
 
 
-def test_unit_hidden_when_component_tenant_check_fails(app, db_session, make_org, monkeypatch):
-    """SEC-09 belt-and-braces companion to
-    test_query_service.py::test_sec09_tenant_check_blocks_real_cross_tenant_resolution:
-    accountability_for_element must not read OrganizationUnit off an
-    ownership row's application_id alone -- it re-checks the resolved
-    component's own organization_id against the caller's tenant first, the
-    same assertion _resolve_owners_batch already applies before it will
-    trust an owner/unit chain.
+def test_unit_from_another_organisation_is_hidden_not_leaked(app, db_session, make_org):
+    """The report's cross-tenant scenario: org B's own element, org B's own
+    component, an ApplicationOwnership row on that component naming a unit
+    that belongs to org A. OrganizationUnit now carries TenantMixin, so that
+    unit is simply not visible to org B's session -- the same
+    do_orm_execute tenant listener every other mixin read relies on, no
+    application-level re-check needed and no monkeypatch.
 
-    Positive control first: an ordinary, unpatched request for org B's own
-    element returns org B's own unit. Then current_org_id() (what the new
-    assertion reads) is made to diverge from g.current_org_id (what the ORM
-    tenant filter reads) -- the same drift the precedent test above
-    constructs, the only way to reach the assertion with real, unmodified
-    resolution logic, since both sources read the same value in any single
-    live request today.
+    Positive control follows: an ownership row naming org B's own unit
+    still returns it.
     """
-    from app.modules.intelligence.services import query_service
     from app.modules.intelligence.services.query_service import IntelligenceQueryService
 
     org_a = make_org("accountability-lens-tenancy-a")
@@ -290,20 +290,10 @@ def test_unit_hidden_when_component_tenant_check_fails(app, db_session, make_org
 
     b_element = _element(db_session, org_b.id, "B App")
     b_component = _component(db_session, org_b.id, b_element, name="B App Component")
-    b_unit = _unit(db_session, name="OrgB-Finance", head_of_unit="Blair Head")
-    _ownership(db_session, b_component, unit=b_unit, ownership_type="Business Owner")
+    a_unit = _unit(db_session, org_a.id, name="OrgA-Finance", head_of_unit="Alex Head")
+    _ownership(db_session, b_component, unit=a_unit, ownership_type="Business Owner")
     db_session.commit()
 
-    with app.test_request_context("/"):
-        from flask import g
-
-        g.current_org_id = org_b.id
-        control = IntelligenceQueryService.accountability_for_element(b_element.id)
-
-    assert len(control["owners"]) == 1
-    assert control["owners"][0]["organization_unit"]["name"] == "OrgB-Finance"
-
-    monkeypatch.setattr(query_service, "current_org_id", lambda: org_a.id)
     with app.test_request_context("/"):
         from flask import g
 
@@ -312,8 +302,24 @@ def test_unit_hidden_when_component_tenant_check_fails(app, db_session, make_org
 
     assert len(leaked["owners"]) == 1
     assert leaked["owners"][0]["organization_unit"] is None
-    assert "OrgB-Finance" not in str(leaked)
-    assert "Blair Head" not in str(leaked)
+    assert "OrgA-Finance" not in str(leaked)
+    assert "Alex Head" not in str(leaked)
+
+    # Positive control: org B's own element, own component, own unit.
+    b_element2 = _element(db_session, org_b.id, "B App 2")
+    b_component2 = _component(db_session, org_b.id, b_element2, name="B App 2 Component")
+    b_unit = _unit(db_session, org_b.id, name="OrgB-Finance", head_of_unit="Blair Head")
+    _ownership(db_session, b_component2, unit=b_unit, ownership_type="Business Owner")
+    db_session.commit()
+
+    with app.test_request_context("/"):
+        from flask import g
+
+        g.current_org_id = org_b.id
+        control = IntelligenceQueryService.accountability_for_element(b_element2.id)
+
+    assert len(control["owners"]) == 1
+    assert control["owners"][0]["organization_unit"]["name"] == "OrgB-Finance"
 
 
 def test_no_second_element_resolution_implementation(app, db_session, make_org):

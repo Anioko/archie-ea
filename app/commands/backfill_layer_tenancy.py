@@ -47,6 +47,12 @@ from app import db
 # assigned to one operator-chosen org).
 # tenancy-ok: this backfill is what gives the column its values; it derives the
 # tenant from the joined row rather than assuming one.
+#
+# Ordering is load-bearing: _tenant_tables() sorts alphabetically, and
+# "application_ownership" < "organization_units", so application_ownership's
+# organization_id is always derived (or left NULL) before organization_units'
+# derivation reads it. If that alphabetical relationship ever changes, the
+# organization_units entry below must still run after application_ownership's.
 _DERIVABLE_ORG = {
     "vendor_product_capabilities": """
         UPDATE vendor_product_capabilities v
@@ -55,6 +61,35 @@ _DERIVABLE_ORG = {
          WHERE v.business_capability_id = b.id
            AND v.organization_id IS NULL
            AND b.organization_id IS NOT NULL
+    """,
+    # An ownership row's tenant is its application's tenant — every production
+    # row resolves this way (nothing in app/ writes this table independently
+    # of a component; see the ownership register decision).
+    "application_ownership": """
+        UPDATE application_ownership o
+           SET organization_id = c.organization_id
+          FROM application_components c
+         WHERE o.application_id = c.id
+           AND o.organization_id IS NULL
+           AND c.organization_id IS NOT NULL
+    """,
+    # A unit's tenant is derived from its own ownership rows, never guessed: a
+    # unit referenced by exactly one organisation's ownership rows takes that
+    # organisation; a unit referenced by more than one, or by none at all,
+    # stays NULL here and is reported like every other residual — never
+    # assigned, with or without --org-id (ADR-0007 point 3).
+    "organization_units": """
+        UPDATE organization_units u
+           SET organization_id = s.org_id
+          FROM (
+                SELECT organization_unit_id, MIN(organization_id) AS org_id
+                  FROM application_ownership
+                 WHERE organization_id IS NOT NULL
+                 GROUP BY organization_unit_id
+                HAVING COUNT(DISTINCT organization_id) = 1
+               ) s
+         WHERE u.id = s.organization_unit_id
+           AND u.organization_id IS NULL
     """,
 }
 

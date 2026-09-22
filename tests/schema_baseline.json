@@ -5604,6 +5604,10 @@
     "has_default": false,
     "nullable": true
    },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
+   },
    "organization_unit_id": {
     "has_default": false,
     "nullable": false
@@ -30564,6 +30568,10 @@
    },
    "name": {
     "has_default": false,
+    "nullable": false
+   },
+   "organization_id": {
+    "has_default": true,
     "nullable": false
    },
    "parent_unit_id": {

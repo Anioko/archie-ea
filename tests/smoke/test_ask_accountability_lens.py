@@ -58,11 +58,12 @@ def _seed_accountability_graph(org_id):
         db.session.add(gateway_component)
         db.session.flush()
 
-        unit = OrganizationUnit(name="%s Finance" % noun, unit_type="Department")
+        unit = OrganizationUnit(organization_id=org_id, name="%s Finance" % noun, unit_type="Department")
         db.session.add(unit)
         db.session.flush()
 
         db.session.add(ApplicationOwnership(
+            organization_id=org_id,
             application_id=service_component.id,
             organization_unit_id=unit.id,
             ownership_type="Business Owner",
