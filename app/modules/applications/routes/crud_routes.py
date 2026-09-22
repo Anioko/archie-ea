@@ -296,15 +296,17 @@ def application_create():
         db.session.add(app)
         db.session.commit()
 
-        # Business/technical owner: the create form's picker posts a chosen
-        # person's id, not a name string. Only someone who could already
-        # assign an owner on an existing application may do so here too --
-        # the same rule application_edit applies; a caller who cannot is
-        # silently ignored rather than 403ed, since the application itself
-        # was just created successfully.
+        # Business/technical owner: the create form's picker (and the live
+        # create modal, which posts JSON) send a chosen person's id, not a
+        # name string; `data` already abstracts the JSON/form-encoded
+        # difference for every other field read above, so it does here too.
+        # Only someone who could already assign an owner on an existing
+        # application may do so here too -- the same rule application_edit
+        # applies; a caller who cannot is silently ignored rather than
+        # 403ed, since the application itself was just created successfully.
         if _can_assign_owners(app):
-            _sync_owner_role(app, "business", request.form.get("business_owner_user_id"))
-            _sync_owner_role(app, "technical", request.form.get("technical_owner_user_id"))
+            _sync_owner_role(app, "business", data.get("business_owner_user_id"))
+            _sync_owner_role(app, "technical", data.get("technical_owner_user_id"))
         db.session.commit()
 
         if is_json:
