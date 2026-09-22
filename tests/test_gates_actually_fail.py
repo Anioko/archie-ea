@@ -1121,3 +1121,107 @@ def test_canonical_route_ignores_the_methods_werkzeug_invents():
     # One endpoint, several methods. Werkzeug adds HEAD and OPTIONS on top.
     app.add_url_rule("/thing", "only", lambda: "", methods=["GET", "POST"])
     assert module.collisions(list(app.url_map.iter_rules())) == []
+
+
+# --------------------------------------------------------------------------
+# check_smoke_coverage_on_change.resolve_base_ref: like check_canonical_route
+# above, this reads real git state relative to a fixed REPO_ROOT rather than
+# a `--root` argument, so a synthetic tree cannot drive it. Its own `_run`
+# helper is the one seam it exposes, monkeypatched here to hand back a fixed
+# answer for each git command it would otherwise run for real, matching the
+# scheme this module's own docstring already describes for `_changed_files`.
+# --------------------------------------------------------------------------
+
+
+def _load_smoke_coverage_module():
+    import importlib.util
+
+    checker = os.path.join(SCRIPTS, "check_smoke_coverage_on_change.py")
+    spec = importlib.util.spec_from_file_location("_smoke_coverage_resolver", checker)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_resolve_base_ref_non_strict_prefers_the_merge_base(monkeypatch):
+    """Non-strict mode (this script's own use): the merge-base with
+    origin/main wins when it resolves, so a long-lived branch is not
+    blamed for files main already changed elsewhere."""
+    module = _load_smoke_coverage_module()
+    monkeypatch.setattr(
+        module, "_run",
+        lambda cmd: "deadbeef" if cmd == ["git", "merge-base", "HEAD", "origin/main"] else "",
+    )
+    ref, reason = module.resolve_base_ref(strict=False)
+    assert ref == "deadbeef"
+    assert reason == ""
+
+
+def test_resolve_base_ref_non_strict_falls_back_to_origin_main(monkeypatch):
+    """No merge-base (e.g. an unrelated history) but origin/main itself
+    resolves: falls back to it directly."""
+    module = _load_smoke_coverage_module()
+
+    def fake_run(cmd):
+        if cmd == ["git", "merge-base", "HEAD", "origin/main"]:
+            return ""
+        if cmd == ["git", "rev-parse", "--verify", "origin/main"]:
+            return "cafefeed"
+        return ""
+
+    monkeypatch.setattr(module, "_run", fake_run)
+    ref, reason = module.resolve_base_ref(strict=False)
+    assert ref == "origin/main"
+    assert reason == ""
+
+
+def test_resolve_base_ref_non_strict_falls_back_to_head_minus_one(monkeypatch):
+    """Neither a merge-base nor origin/main resolves (a fresh clone, or an
+    offline sandbox with no fetched origin at all): non-strict mode still
+    resolves to something, HEAD~1, rather than reporting nothing."""
+    module = _load_smoke_coverage_module()
+    monkeypatch.setattr(module, "_run", lambda cmd: "")
+    ref, reason = module.resolve_base_ref(strict=False)
+    assert ref == "HEAD~1"
+    assert reason == ""
+
+
+def test_resolve_base_ref_strict_prefers_github_base_ref(monkeypatch):
+    """Strict mode inside a pull request: the PR's own base branch, not
+    origin/main, is the range under review."""
+    module = _load_smoke_coverage_module()
+    monkeypatch.setenv("GITHUB_BASE_REF", "release/9.2")
+    monkeypatch.setattr(
+        module, "_run",
+        lambda cmd: "abc123" if cmd == ["git", "rev-parse", "--verify", "--quiet", "origin/release/9.2"] else "",
+    )
+    ref, reason = module.resolve_base_ref(strict=True)
+    assert ref == "origin/release/9.2"
+    assert reason == ""
+
+
+def test_resolve_base_ref_strict_falls_back_to_origin_main_outside_a_pull_request(monkeypatch):
+    """Strict mode with no GITHUB_BASE_REF set (a push, or a local run):
+    origin/main is the range under review."""
+    module = _load_smoke_coverage_module()
+    monkeypatch.delenv("GITHUB_BASE_REF", raising=False)
+    monkeypatch.setattr(
+        module, "_run",
+        lambda cmd: "abc123" if cmd == ["git", "rev-parse", "--verify", "--quiet", "origin/main"] else "",
+    )
+    ref, reason = module.resolve_base_ref(strict=True)
+    assert ref == "origin/main"
+    assert reason == ""
+
+
+def test_resolve_base_ref_strict_never_falls_back_to_head_minus_one(monkeypatch):
+    """Strict mode's whole point: when nothing resolves (a shallow clone,
+    or no matching remote-tracking branch) it reports None and a reason --
+    never HEAD~1, which would silently narrow "the commits under review"
+    to one commit instead of skipping."""
+    module = _load_smoke_coverage_module()
+    monkeypatch.delenv("GITHUB_BASE_REF", raising=False)
+    monkeypatch.setattr(module, "_run", lambda cmd: "")
+    ref, reason = module.resolve_base_ref(strict=True)
+    assert ref is None
+    assert "origin/main" in reason

@@ -51,6 +51,17 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import urlparse
 
+# scripts/ itself, not the repository root: this script is standalone (run
+# directly as `python scripts/verify.py`), so its own directory is not
+# guaranteed to already be on sys.path the way it is for the interpreter's
+# own entry-point script. Needed to import a sibling scripts/check_*.py
+# module directly below, rather than running it as a subprocess, so its
+# return value (not just its process exit code) is usable here.
+_SCRIPTS_DIR = str(Path(__file__).resolve().parent)
+if _SCRIPTS_DIR not in sys.path:
+    sys.path.insert(0, _SCRIPTS_DIR)
+from check_smoke_coverage_on_change import resolve_base_ref as _resolve_smoke_coverage_base_ref
+
 def _force_utf8_console() -> None:
     """Make this script's own output survive a non-UTF-8 Windows console.
 
@@ -898,19 +909,16 @@ def _resolve_hygiene_commit_range() -> tuple[str | None, str]:
     nothing (HEAD already is the just-merged commit), so the gate passes on zero
     commits by construction -- correct, because the default branch is not what a
     review is over.
+
+    The base ref itself is resolved by the strict mode of
+    ``check_smoke_coverage_on_change.resolve_base_ref`` (imported above, not
+    run as a subprocess): one resolver, two modes, rather than two
+    independent implementations of "what ref does this diff run against"
+    drifting apart -- see that function's own docstring for both.
     """
-    base_ref = os.environ.get("GITHUB_BASE_REF")
-    base = f"origin/{base_ref}" if base_ref else "origin/main"
-    check = subprocess.run(
-        ["git", "-C", str(REPO_ROOT), "rev-parse", "--verify", "--quiet", base],
-        capture_output=True, encoding="utf-8", errors="replace",
-    )
-    if check.returncode != 0:
-        return None, (
-            f"{base} does not resolve in this clone (shallow clone, or no "
-            f"matching remote-tracking branch) -- cannot determine which "
-            f"commits are under review"
-        )
+    base, reason = _resolve_smoke_coverage_base_ref(strict=True)
+    if base is None:
+        return None, reason
     return f"{base}..HEAD", ""
 
 
