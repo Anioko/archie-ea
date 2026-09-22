@@ -5,17 +5,24 @@ discovered via app/modules/intelligence/tests/conftest.py's own import of
 tests.conftest -- no import needed here, matching test_impact_route.py's
 own pattern.
 
-Test-id mapping to the brief's acceptance criteria:
+Test-id mapping to the acceptance criteria, current after a correction pass
+that fixed a per-mapping-row counting defect, a stage/tenancy join defect,
+an untested no-tenant-context branch, a missing explicit predicate on the
+not-found resolver, untested value_stream_id narrowing, and an inexact
+"byte-identical" claim:
 
   1  -> test_capability_below_threshold_is_at_risk
   2  -> test_null_maturity_is_neutral_and_counted
   3  -> test_shared_catalogue_capability_contributes_mapping_not_maturity
   4  -> test_tenant_with_no_value_streams_gets_reason_and_empty_rows
   5  -> test_value_stream_with_no_mapping_gets_no_capability_linked
-  6  -> test_route_foreign_and_missing_value_stream_id_are_byte_identical
+  6  -> test_route_foreign_and_missing_value_stream_id_are_indistinguishable (renamed
+        from "...are_byte_identical", which cannot be literally true)
   7  -> test_cross_tenant_value_stream_is_invisible,
         test_cross_tenant_mapping_row_invisible_and_mutation_proof,
-        test_cross_tenant_stage_makes_mapping_unreachable,
+        test_stage_belonging_to_another_tenants_value_stream_is_nulled_not_leaked (was
+          test_cross_tenant_stage_makes_mapping_unreachable -- the old assertion was
+          itself the defect the join shape below now corrects),
         test_cross_tenant_owned_capability_invisible,
         test_foreign_tenants_own_answer_unaffected_by_request
   8  -> test_route_threshold_and_value_stream_id_validation
@@ -26,9 +33,31 @@ Test-id mapping to the brief's acceptance criteria:
   13 -> test_mutation_proof_foreign_vs_missing_message_diverges
   14 -> test_invented_reason_code_is_rejected_not_emitted,
         test_every_reason_string_in_a_realistic_payload_is_a_closed_vocabulary_member
-  18 -> test_dependency_object_exact_key_set_and_no_forbidden_keys,
+  18 -> test_dependency_object_exact_key_set_and_no_forbidden_keys (now eight keys:
+          stage_criticality, assessed_by and assessed_at joined the original five),
+        test_dependency_object_reports_assessment_fields_honestly,
         test_route_ignores_graph_only_parameters
   19 -> test_four_batched_selects_regardless_of_row_count
+
+Additional coverage from the correction pass, grouped by scenario:
+
+  distinct-capability counting -> test_capability_on_two_stages_counted_once,
+          test_capability_on_two_value_streams_counted_once_in_summary,
+          test_demo_data_counts_three_below_threshold
+  stage/tenancy join shape -> test_null_owner_stage_is_populated_at_method_level,
+          test_stage_belonging_to_another_tenants_value_stream_is_nulled_not_leaked,
+          test_stage_of_a_different_own_value_stream_is_nulled,
+          test_route_null_owner_stage_is_listed_and_counted
+  no-tenant-context branch -> test_route_no_tenant_context_returns_400,
+          test_route_anonymous_is_redirected_to_login
+  not-found resolver predicate -> test_resolver_carries_explicit_tenant_predicate
+  value_stream_id narrowing -> test_value_stream_id_narrows_to_that_stream,
+          test_route_value_stream_id_narrows
+  dependency object fields -> test_dependency_object_exact_key_set_and_no_forbidden_keys,
+          test_dependency_object_reports_assessment_fields_honestly
+  statement count by context -> test_four_batched_selects_regardless_of_row_count
+          (no request context), test_statement_count_constant_inside_tenant_context
+          (inside one)
 """
 
 from __future__ import annotations
@@ -135,6 +164,26 @@ def _without_latency(payload):
     return out
 
 
+def _relax_not_null(db_session, table: str, column: str) -> None:
+    """Drop a ``NOT NULL`` constraint for the rest of THIS test's own
+    transaction only -- rolled back at teardown along with everything else
+    ``db_session`` touches, per the fixture's own rollback contract, since
+    PostgreSQL DDL is transactional.
+
+    A fresh ``db.create_all()`` schema always applies the model's current
+    ``nullable=False`` (``TenantMixin.organization_id``, `User.organization_id`);
+    the "legacy null-owner stage" and "user with no organisation" scenarios
+    tested below are both about a REAL, already-deployed database that
+    predates that constraint (or an un-hardened migration), which cannot
+    otherwise be constructed against a schema built from the current models.
+    This recreates exactly that shape for one test, not a schema change that
+    survives it.
+    """
+    from app.extensions import db
+
+    db_session.execute(db.text(f"ALTER TABLE {table} ALTER COLUMN {column} DROP NOT NULL"))
+
+
 # --- Acceptance item 1 ----------------------------------------------------------
 
 
@@ -159,6 +208,111 @@ def test_capability_below_threshold_is_at_risk(app, db_session, make_org):
     assert cap_row["current_maturity"] == 2
     assert result["summary"]["value_streams_at_risk"] == 1
     assert result["summary"]["capabilities_below_threshold"] == 1
+
+
+# --- Counts are per distinct capability, not per mapping row -------------------
+
+
+def test_capability_on_two_stages_counted_once(app, db_session, make_org):
+    """One capability mapped to two stages of ONE value stream: the row's
+    ``at_risk_capability_count`` is 1 (one distinct capability), not 2, even
+    though ``capabilities[]`` correctly holds two entries -- one per mapping
+    row, DA-S1 rule 5's own requirement that each stage's dependency
+    statement travels with its own row."""
+    from app.modules.intelligence.services.query_service import IntelligenceQueryService
+
+    org = make_org("vsr-d1-twostages")
+    vs = _value_stream(db_session, org.id, "VS", f"VSR-D1-TWOSTAGES-{_org_suffix()}")
+    stage_a = _stage(db_session, org.id, vs.id, "Stage A", 1)
+    stage_b = _stage(db_session, org.id, vs.id, "Stage B", 2)
+    cap = _capability(
+        db_session, org.id, "Cap", f"VSR-D1-TWOSTAGES-CAP-{_org_suffix()}", current=2, target=4
+    )
+    _mapping(db_session, org.id, cap.id, vs.id, stage_a.id, support_type="primary")
+    _mapping(db_session, org.id, cap.id, vs.id, stage_b.id, support_type="secondary")
+    db_session.commit()
+
+    result = IntelligenceQueryService.value_streams_at_risk(org.id, threshold=3)
+
+    row = result["rows"][0]
+    assert row["at_risk_capability_count"] == 1
+    assert len(row["capabilities"]) == 2
+    ids = {c["id"] for c in row["capabilities"]}
+    assert ids == {cap.id}
+    for c in row["capabilities"]:
+        assert c["at_risk"] is True
+        assert c["current_maturity"] == 2
+    assert result["summary"]["capabilities_below_threshold"] == 1
+
+
+def test_capability_on_two_value_streams_counted_once_in_summary(app, db_session, make_org):
+    """One capability mapped on two DIFFERENT value streams: each row's own
+    ``at_risk_capability_count`` is 1, and the summary's
+    ``capabilities_below_threshold`` is also 1 -- the same capability at
+    risk on two streams counts once in the whole-tenant total."""
+    from app.modules.intelligence.services.query_service import IntelligenceQueryService
+
+    org = make_org("vsr-d1-twostreams")
+    vs1 = _value_stream(db_session, org.id, "VS1", f"VSR-D1-TWOSTREAMS-1-{_org_suffix()}")
+    vs2 = _value_stream(db_session, org.id, "VS2", f"VSR-D1-TWOSTREAMS-2-{_org_suffix()}")
+    stage1 = _stage(db_session, org.id, vs1.id, "Stage 1", 1)
+    stage2 = _stage(db_session, org.id, vs2.id, "Stage 2", 1)
+    cap = _capability(
+        db_session, org.id, "Cap", f"VSR-D1-TWOSTREAMS-CAP-{_org_suffix()}", current=1, target=3
+    )
+    _mapping(db_session, org.id, cap.id, vs1.id, stage1.id)
+    _mapping(db_session, org.id, cap.id, vs2.id, stage2.id)
+    db_session.commit()
+
+    result = IntelligenceQueryService.value_streams_at_risk(org.id, threshold=3)
+
+    for row in result["rows"]:
+        assert row["at_risk_capability_count"] == 1
+    assert result["summary"]["capabilities_below_threshold"] == 1
+    assert result["summary"]["capabilities_considered"] == 1
+
+
+def test_demo_data_counts_three_below_threshold(app, db_session, make_org):
+    """The headline scenario this counting fix targets: the shipped
+    demonstration data has three capabilities below the default threshold of
+    3 (Order Capture 2, Delivery Scheduling 1, Knowledge Base 2), not four --
+    the old per-mapping-row count double-counted Knowledge Base, which is
+    mapped on both stages of the Service stream.
+    """
+    from app.commands.seed_strategic_demo import seed_strategic_demo
+    from app.modules.intelligence.services.query_service import IntelligenceQueryService
+
+    org = make_org("vsr-d1-demodata")
+    org_id = org.id
+    db_session.commit()
+
+    seed_strategic_demo(org_id)
+
+    result = IntelligenceQueryService.value_streams_at_risk(org_id)
+
+    assert result["summary"]["capabilities_below_threshold"] == 3
+    assert result["summary"]["capabilities_considered"] == 6
+    assert (
+        result["summary"]["capabilities_below_threshold"]
+        + result["summary"]["capabilities_with_no_maturity"]
+        <= result["summary"]["capabilities_considered"]
+    )
+
+    service_row = next(
+        r for r in result["rows"] if r["value_stream"]["code"] == "DEMO-VSR-SERVICE"
+    )
+    assert service_row["at_risk_capability_count"] == 1
+    assert len(service_row["capabilities"]) == 4
+    knowledge_base_entries = [
+        c for c in service_row["capabilities"] if c["code"] == "DEMO-CAP-KNOWLEDGE-BASE"
+    ]
+    assert len(knowledge_base_entries) == 2
+    assert knowledge_base_entries[0]["at_risk"] == knowledge_base_entries[1]["at_risk"] is True
+    assert (
+        knowledge_base_entries[0]["current_maturity"]
+        == knowledge_base_entries[1]["current_maturity"]
+        == 2
+    )
 
 
 # --- Acceptance item 2 ----------------------------------------------------------
@@ -250,9 +404,17 @@ def test_value_stream_with_no_mapping_gets_no_capability_linked(app, db_session,
 # --- Acceptance item 6 ------------------------------------------------------------
 
 
-def test_route_foreign_and_missing_value_stream_id_are_byte_identical(
+def test_route_foreign_and_missing_value_stream_id_are_indistinguishable(
     app, db_session, make_org, client, login_as
 ):
+    """"Byte-identical" cannot be literally true -- the envelope's
+    ``meta.request_id`` and ``meta.timestamp`` differ on every request by
+    construction. What this compares, and what "indistinguishable" actually
+    requires: the status code and the ``error`` object (``code``,
+    ``message``, ``details``) are identical between a foreign id and a
+    never-existed id; request id and timestamp are excluded because they
+    are expected to differ.
+    """
     org_a = make_org("vsr-ac6-a")
     org_b = make_org("vsr-ac6-b")
     user = _user(db_session, org_a.id)
@@ -273,6 +435,115 @@ def test_route_foreign_and_missing_value_stream_id_are_byte_identical(
     assert resp_missing.status_code == 404
     assert resp_foreign.get_json()["error"] == resp_missing.get_json()["error"]
     assert resp_foreign.get_json()["error"]["code"] == "VALUE_STREAM_NOT_FOUND"
+
+
+# --- The not-found resolver carries the explicit predicate too -----------------
+
+
+def test_resolver_carries_explicit_tenant_predicate(app, db_session, make_org, tenant_ctx, monkeypatch):
+    """`_value_stream_or_404_response` takes
+    `organization_id` and applies `_value_stream_tenant_predicate` on top of
+    whatever the ambient tenant-isolation listener already does, so a
+    foreign value stream cannot resolve even if the listener's ambient
+    organisation (`g.current_org_id`, e.g. set inside `tenant_ctx`) and the
+    caller-resolved `organization_id` argument were ever to diverge.
+
+    Reuses the SAME seam as the item-10 proof
+    (`IntelligenceQueryService._value_stream_tenant_predicate`), so
+    neutering it here demonstrates this resolver carries that predicate
+    too, not only the method.
+    """
+    from app.modules.intelligence.routes.api import _value_stream_or_404_response
+    from app.modules.intelligence.services.query_service import IntelligenceQueryService
+
+    org_a = make_org("vsr-d7-a")
+    org_b = make_org("vsr-d7-b")
+    vs_b = _value_stream(db_session, org_b.id, "VS B", f"VSR-D7-{_org_suffix()}")
+    db_session.commit()
+
+    with tenant_ctx(org_b.id):
+        # Control: the listener's ambient context is org_b (it alone WOULD
+        # find vs_b), but the caller-resolved organisation is org_a -- the
+        # explicit predicate must still say not-found.
+        value_stream, err = _value_stream_or_404_response(vs_b.id, org_a.id)
+        assert value_stream is None
+        assert err is not None
+
+        # Mutation: neuter the shared predicate seam -- the select now
+        # relies solely on the ambient listener, which matches org_b, so
+        # the foreign value stream resolves.
+        from sqlalchemy import true as sa_true
+
+        monkeypatch.setattr(
+            IntelligenceQueryService,
+            "_value_stream_tenant_predicate",
+            staticmethod(lambda model, organization_id: sa_true()),
+        )
+        with pytest.raises(AssertionError):
+            mutated_vs, _mutated_err = _value_stream_or_404_response(vs_b.id, org_a.id)
+            assert mutated_vs is None
+
+        monkeypatch.undo()
+        restored_vs, _restored_err = _value_stream_or_404_response(vs_b.id, org_a.id)
+        assert restored_vs is None
+
+
+# --- Narrowing by value_stream_id ------------------------------------------------
+
+
+def test_value_stream_id_narrows_to_that_stream(app, db_session, make_org):
+    """This is the test that would fail if the ``value_stream_id`` ``where``
+    were dropped -- mutation-proved once (comment out the ``where``, confirm
+    this goes red, restore, confirm green), recorded in the build report."""
+    from app.modules.intelligence.services.query_service import IntelligenceQueryService
+
+    org = make_org("vsr-d10")
+    vs1 = _value_stream(db_session, org.id, "VS1", f"VSR-D10-1-{_org_suffix()}")
+    vs2 = _value_stream(db_session, org.id, "VS2", f"VSR-D10-2-{_org_suffix()}")
+    stage1 = _stage(db_session, org.id, vs1.id, "Stage 1", 1)
+    stage2 = _stage(db_session, org.id, vs2.id, "Stage 2", 1)
+    cap1 = _capability(db_session, org.id, "Cap1", f"VSR-D10-CAP1-{_org_suffix()}", current=1, target=3)
+    cap2 = _capability(db_session, org.id, "Cap2", f"VSR-D10-CAP2-{_org_suffix()}", current=1, target=3)
+    _mapping(db_session, org.id, cap1.id, vs1.id, stage1.id)
+    _mapping(db_session, org.id, cap2.id, vs2.id, stage2.id)
+    db_session.commit()
+
+    result = IntelligenceQueryService.value_streams_at_risk(org.id, value_stream_id=vs1.id)
+
+    assert len(result["rows"]) == 1
+    assert result["rows"][0]["value_stream"]["id"] == vs1.id
+    assert result["summary"]["value_streams_considered"] == 1
+    assert result["summary"]["capabilities_considered"] == 1
+    ids_in_answer = {c["id"] for row in result["rows"] for c in row["capabilities"]}
+    assert cap2.id not in ids_in_answer
+
+
+def test_route_value_stream_id_narrows(app, db_session, make_org, client, login_as):
+    """Route-level variant of the above, through the real client."""
+    org = make_org("vsr-d10-route")
+    user = _user(db_session, org.id)
+    vs1 = _value_stream(db_session, org.id, "VS1", f"VSR-D10ROUTE-1-{_org_suffix()}")
+    vs2 = _value_stream(db_session, org.id, "VS2", f"VSR-D10ROUTE-2-{_org_suffix()}")
+    stage1 = _stage(db_session, org.id, vs1.id, "Stage 1", 1)
+    stage2 = _stage(db_session, org.id, vs2.id, "Stage 2", 1)
+    cap1 = _capability(
+        db_session, org.id, "Cap1", f"VSR-D10ROUTE-CAP1-{_org_suffix()}", current=1, target=3
+    )
+    cap2 = _capability(
+        db_session, org.id, "Cap2", f"VSR-D10ROUTE-CAP2-{_org_suffix()}", current=1, target=3
+    )
+    _mapping(db_session, org.id, cap1.id, vs1.id, stage1.id)
+    _mapping(db_session, org.id, cap2.id, vs2.id, stage2.id)
+    db_session.commit()
+
+    login_as(client, user)
+    resp = client.get(f"/api/v1/intelligence/value-streams-at-risk?value_stream_id={vs1.id}")
+
+    assert resp.status_code == 200
+    data = resp.get_json()["data"]
+    assert len(data["rows"]) == 1
+    assert data["rows"][0]["value_stream"]["id"] == vs1.id
+    assert data["summary"]["value_streams_considered"] == 1
 
 
 # --- Acceptance item 7, table 1: foreign value_streams row ----------------------
@@ -340,26 +611,151 @@ def test_cross_tenant_mapping_row_invisible_and_mutation_proof(app, db_session, 
 # --- Acceptance item 7, table 3: foreign unified_value_stream_stages row --------
 
 
-def test_cross_tenant_stage_makes_mapping_unreachable(app, db_session, make_org):
+def test_stage_belonging_to_another_tenants_value_stream_is_nulled_not_leaked(
+    app, db_session, make_org
+):
+    """A mapping row whose stage does not survive the join is listed and
+    counted with ``stage: null`` -- never dropped, and never leaking the
+    unrelated stage's own name. This satisfies acceptance item 7's "foreign
+    unified_value_stream_stages row invisible" case.
+
+    Superseded by this rewrite: the old version of this test
+    (`test_cross_tenant_stage_makes_mapping_unreachable`) asserted the
+    mapping vanished from the answer entirely under a strict, inner-joined
+    stage predicate -- that behaviour was itself the defect (a recorded
+    dependency reported as an absence), so the join shape was corrected;
+    this is the corrected scenario and the corrected assertion.
+    """
     from app.modules.intelligence.services.query_service import IntelligenceQueryService
 
     org_a = make_org("vsr-ac7stage-a")
     org_b = make_org("vsr-ac7stage-b")
     vs_a = _value_stream(db_session, org_a.id, "VS A", f"VSR-AC7STAGE-{_org_suffix()}")
-    # A data anomaly: a stage owned by another tenant, attached to org_a's
-    # own value stream.
-    foreign_stage = _stage(db_session, org_b.id, vs_a.id, "Foreign Stage", 1)
+    # A different tenant's OWN value stream and OWN stage -- not vs_a's.
+    vs_b = _value_stream(db_session, org_b.id, "VS B", f"VSR-AC7STAGE-VSB-{_org_suffix()}")
+    foreign_stage = _stage(db_session, org_b.id, vs_b.id, "Foreign Stage", 1)
     cap = _capability(
         db_session, org_a.id, "Cap", f"VSR-AC7STAGE-CAP-{_org_suffix()}", current=1, target=3
     )
+    # A data anomaly: org_a's own mapping row, on its own value stream,
+    # whose value_stream_stage_id names a stage that belongs to org_b's
+    # value stream instead of its own.
     _mapping(db_session, org_a.id, cap.id, vs_a.id, foreign_stage.id)
     db_session.commit()
 
     result = IntelligenceQueryService.value_streams_at_risk(org_a.id)
 
     row = next(r for r in result["rows"] if r["value_stream"]["id"] == vs_a.id)
-    assert row["capabilities"] == []
-    assert row["reason"] == "no_capability_linked"
+    assert row["reason"] is None, "a recorded dependency must never read as an absence"
+    cap_row = row["capabilities"][0]
+    assert cap_row["id"] == cap.id
+    assert cap_row["dependency"]["stage"] is None
+    assert row["at_risk_capability_count"] == 1
+
+    import json
+
+    serialised = json.dumps(result)
+    assert "Foreign Stage" not in serialised
+
+
+def test_stage_of_a_different_own_value_stream_is_nulled(app, db_session, make_org):
+    """A mapping pointing at a stage of a *different own* value stream --
+    same tenant, wrong stream -- also fails the join's ``value_stream_id``
+    equality and is nulled, exactly like the cross-tenant case. The join
+    checks stream membership, not ownership.
+    """
+    from app.modules.intelligence.services.query_service import IntelligenceQueryService
+
+    org = make_org("vsr-ac4c")
+    vs_a = _value_stream(db_session, org.id, "VS A", f"VSR-AC4C-A-{_org_suffix()}")
+    vs_b = _value_stream(db_session, org.id, "VS B", f"VSR-AC4C-B-{_org_suffix()}")
+    other_stream_stage = _stage(db_session, org.id, vs_b.id, "Stage of B", 1)
+    cap = _capability(
+        db_session, org.id, "Cap", f"VSR-AC4C-CAP-{_org_suffix()}", current=1, target=3
+    )
+    _mapping(db_session, org.id, cap.id, vs_a.id, other_stream_stage.id)
+    db_session.commit()
+
+    result = IntelligenceQueryService.value_streams_at_risk(org.id)
+
+    row = next(r for r in result["rows"] if r["value_stream"]["id"] == vs_a.id)
+    assert row["reason"] is None
+    cap_row = row["capabilities"][0]
+    assert cap_row["dependency"]["stage"] is None
+    assert row["at_risk_capability_count"] == 1
+
+
+def test_null_owner_stage_is_populated_at_method_level(app, db_session, make_org):
+    """A tenant's own mapping on a stage whose
+    ``organization_id`` is null (the legacy shape the tenancy backfill
+    exists to repair) is listed, counted, and -- called with no ambient
+    request context, so no listener adds an organisation criterion to the
+    outer join's ``ON`` clause -- its stage is populated, because the join's
+    only real fence, the stage's own ``value_stream_id``, is satisfied.
+    """
+    from app.models.unified_capability import ValueStreamStage
+    from app.modules.intelligence.services.query_service import IntelligenceQueryService
+
+    org = make_org("vsr-ac4a")
+    vs = _value_stream(db_session, org.id, "VS", f"VSR-AC4A-{_org_suffix()}")
+    _relax_not_null(db_session, "unified_value_stream_stages", "organization_id")
+    null_owner_stage = ValueStreamStage(
+        name="Null Owner Stage", value_stream_id=vs.id, stage_order=1, organization_id=None,
+    )
+    db_session.add(null_owner_stage)
+    db_session.flush()
+    cap = _capability(
+        db_session, org.id, "Cap", f"VSR-AC4A-CAP-{_org_suffix()}", current=1, target=3
+    )
+    _mapping(db_session, org.id, cap.id, vs.id, null_owner_stage.id)
+    db_session.commit()
+
+    result = IntelligenceQueryService.value_streams_at_risk(org.id)
+
+    row = next(r for r in result["rows"] if r["value_stream"]["id"] == vs.id)
+    assert row["reason"] is None
+    cap_row = row["capabilities"][0]
+    assert row["at_risk_capability_count"] == 1
+    assert cap_row["dependency"]["stage"] == {
+        "id": null_owner_stage.id, "name": "Null Owner Stage",
+    }
+
+
+def test_route_null_owner_stage_is_listed_and_counted(app, db_session, make_org, client, login_as):
+    """The route-level variant of the null-owner-stage case above. Inside a
+    real request the tenant-isolation listener adds its own organisation
+    criterion to the outer join's ``ON`` clause for ``ValueStreamStage`` (a
+    ``TenantMixin`` model), so whether the null-owner stage's name survives
+    depends on the listener, not on this method -- the capability is listed
+    and counted either way, and ``stage`` is a dict or ``None``.
+    """
+    from app.models.unified_capability import ValueStreamStage
+
+    org = make_org("vsr-ac4d")
+    user = _user(db_session, org.id)
+    vs = _value_stream(db_session, org.id, "VS", f"VSR-AC4D-{_org_suffix()}")
+    _relax_not_null(db_session, "unified_value_stream_stages", "organization_id")
+    null_owner_stage = ValueStreamStage(
+        name="Route Null Owner Stage", value_stream_id=vs.id, stage_order=1, organization_id=None,
+    )
+    db_session.add(null_owner_stage)
+    db_session.flush()
+    cap = _capability(
+        db_session, org.id, "Cap", f"VSR-AC4D-CAP-{_org_suffix()}", current=1, target=3
+    )
+    _mapping(db_session, org.id, cap.id, vs.id, null_owner_stage.id)
+    db_session.commit()
+
+    login_as(client, user)
+    resp = client.get("/api/v1/intelligence/value-streams-at-risk")
+    assert resp.status_code == 200
+    data = resp.get_json()["data"]
+
+    row = next(r for r in data["rows"] if r["value_stream"]["id"] == vs.id)
+    assert row["reason"] is None
+    cap_row = row["capabilities"][0]
+    assert row["at_risk_capability_count"] == 1
+    assert cap_row["dependency"]["stage"] is None or isinstance(cap_row["dependency"]["stage"], dict)
 
 
 # --- Acceptance item 7, table 4: foreign tenant-owned unified_capabilities ------
@@ -433,10 +829,51 @@ def test_route_threshold_and_value_stream_id_validation(app, db_session, make_or
         assert resp.get_json()["error"]["code"] == "INVALID_PARAMETER"
 
 
-def test_route_no_tenant_context_returns_400(app):
+def test_route_no_tenant_context_returns_400(app, db_session, make_org, client, login_as):
+    """A LOGGED-IN user whose organisation is ``None`` gets
+    the real 400 ``NO_TENANT_CONTEXT`` branch, distinct from the anonymous
+    ``@login_required`` redirect this test used to conflate with it (see
+    ``test_route_anonymous_is_redirected_to_login`` for that case).
+
+    ``User.organization_id`` is ``NOT NULL`` at the schema level and
+    ``_assign_default_organization``'s ``before_insert`` listener fills in a
+    fallback whenever it is left unset, so a persisted user can never
+    genuinely hold a null organisation through the ORM as-is. ``_relax_not_null``
+    reproduces the real, already-deployed shape this scenario needs (see its
+    own docstring) for the rest of this test's transaction only, so the
+    organisation-less user is genuinely persisted -- flask-login's loader then
+    reads it back exactly like a real request would, no identity-map trick or
+    in-memory-only mutation required.
+    """
+    from app.modules.intelligence.routes.api import _NO_TENANT_CONTEXT_REASON
+
+    org = make_org("vsr-ac6-notenant")
+    user = _user(db_session, org.id)
+    db_session.flush()
+
+    login_as(client, user)
+
+    _relax_not_null(db_session, "users", "organization_id")
+    user.organization_id = None
+    db_session.flush()
+
+    resp = client.get("/api/v1/intelligence/value-streams-at-risk")
+
+    assert resp.status_code == 400
+    body = resp.get_json()
+    assert body["error"]["code"] == "NO_TENANT_CONTEXT"
+    assert body["error"]["details"]["reason"] == _NO_TENANT_CONTEXT_REASON
+
+
+def test_route_anonymous_is_redirected_to_login(app):
+    """The anonymous case, kept as its own test asserting only what it
+    tests: ``@login_required`` stops the request before it ever reaches the
+    tenant-context check, so this is a login redirect (or a 401), never the
+    400 ``NO_TENANT_CONTEXT`` body -- see
+    ``test_route_no_tenant_context_returns_400`` for that branch."""
     client = app.test_client()
     resp = client.get("/api/v1/intelligence/value-streams-at-risk")
-    assert resp.status_code in (302, 401, 400)
+    assert resp.status_code in (302, 401)
 
 
 # --- Acceptance item 9 ------------------------------------------------------------
@@ -621,7 +1058,7 @@ def test_mutation_proof_foreign_vs_missing_message_diverges(
     # Control: identical.
     assert _get_error(foreign_vs.id) == _get_error(never_existed_id)
 
-    def _diverging(value_stream_id):
+    def _diverging(value_stream_id, organization_id):
         from app.extensions import db
         from app.models.unified_capability import ValueStream
         from app.utils.api_response import error_response
@@ -700,6 +1137,12 @@ def test_every_reason_string_in_a_realistic_payload_is_a_closed_vocabulary_membe
 
 
 def test_dependency_object_exact_key_set_and_no_forbidden_keys(app, db_session, make_org):
+    """The dependency object carries eight keys, not five --
+    ``stage_criticality`` (previously dropped without a recorded reason) plus
+    ``assessed_by`` / ``assessed_at`` (so a later reader can tell a column
+    default from a real assessment without re-deriving it). Still none of
+    the graph-path keys.
+    """
     from app.modules.intelligence.services.query_service import IntelligenceQueryService
 
     org = make_org("vsr-ac18")
@@ -721,7 +1164,8 @@ def test_dependency_object_exact_key_set_and_no_forbidden_keys(app, db_session, 
 
     dependency = row["capabilities"][0]["dependency"]
     assert set(dependency.keys()) == {
-        "link_kind", "support_type", "support_level", "impact_level", "stage",
+        "link_kind", "support_type", "support_level", "impact_level",
+        "stage_criticality", "assessed_by", "assessed_at", "stage",
     }
     forbidden = {
         "relation_type", "depth", "chain", "chain_elements",
@@ -730,6 +1174,60 @@ def test_dependency_object_exact_key_set_and_no_forbidden_keys(app, db_session, 
     assert forbidden.isdisjoint(dependency.keys())
     assert dependency["link_kind"] == "curated"
     assert dependency["stage"] == {"id": stage.id, "name": stage.name}
+
+
+def test_dependency_object_reports_assessment_fields_honestly(app, db_session, make_org):
+    """`assessed_by` / `assessed_at` are whatever the
+    mapping row actually carries -- `mapping.assessor` and
+    `mapping.last_assessed` serialised as ISO-8601 -- never fabricated.
+
+    `assessor` carries no column default, so a mapping row nobody assessed
+    reports `assessed_by: null` -- genuinely absent, not a placeholder.
+    `last_assessed` DOES carry a column default (`default=datetime.utcnow`),
+    so it is never null on an inserted row regardless of assessment intent;
+    this test proves the serialised value is the row's REAL stored value
+    (an explicit later assessment date), not a re-derived or rounded one.
+    """
+    from datetime import datetime
+
+    from app.modules.intelligence.services.query_service import IntelligenceQueryService
+
+    org = make_org("vsr-ac14-assessed")
+    vs = _value_stream(db_session, org.id, "VS", f"VSR-AC14ASSESSED-{_org_suffix()}")
+    stage = _stage(db_session, org.id, vs.id, "Stage", 1)
+    cap = _capability(
+        db_session, org.id, "Cap", f"VSR-AC14ASSESSED-CAP-{_org_suffix()}", current=2, target=4
+    )
+    mapping = _mapping(db_session, org.id, cap.id, vs.id, stage.id)
+    assessed_at = datetime(2026, 1, 15, 12, 30, 0)
+    mapping.assessor = "Jane Assessor"
+    mapping.last_assessed = assessed_at
+    db_session.flush()
+    db_session.commit()
+
+    result = IntelligenceQueryService.value_streams_at_risk(org.id)
+    dependency = result["rows"][0]["capabilities"][0]["dependency"]
+    assert dependency["assessed_by"] == "Jane Assessor"
+    assert dependency["assessed_at"] == assessed_at.isoformat()
+
+    # A second mapping row whose assessor was never set reports assessed_by
+    # null -- assessed_at still carries the column's own default timestamp,
+    # since that field (unlike assessor) is never genuinely unset.
+    stage2 = _stage(db_session, org.id, vs.id, "Stage 2", 2)
+    cap2 = _capability(
+        db_session, org.id, "Cap 2", f"VSR-AC14ASSESSED-CAP2-{_org_suffix()}", current=2, target=4
+    )
+    mapping2 = _mapping(db_session, org.id, cap2.id, vs.id, stage2.id)
+    db_session.commit()
+
+    result2 = IntelligenceQueryService.value_streams_at_risk(org.id)
+    dep2 = next(
+        c["dependency"]
+        for c in result2["rows"][0]["capabilities"]
+        if c["id"] == cap2.id
+    )
+    assert dep2["assessed_by"] is None
+    assert dep2["assessed_at"] == mapping2.last_assessed.isoformat()
 
 
 def test_route_ignores_graph_only_parameters(app, db_session, make_org, client, login_as):
@@ -776,6 +1274,15 @@ def select_counter(app):
 
 
 def test_four_batched_selects_regardless_of_row_count(app, db_session, make_org, select_counter):
+    """This measures the method called with NO request
+    context (no ``g.current_org_id``, no ``tenant_ctx``) -- the shape a CLI
+    command or a job sees, where the tenant-isolation listener's own
+    ``set_config`` statement never fires. See
+    ``test_statement_count_constant_inside_tenant_context`` for the same
+    growth assertion measured INSIDE a request context, where that extra
+    statement per execute is present and the count is correspondingly
+    higher but still constant under row growth.
+    """
     from app.modules.intelligence.services.query_service import IntelligenceQueryService
 
     org = make_org("vsr-ac19")
@@ -818,3 +1325,56 @@ def test_four_batched_selects_regardless_of_row_count(app, db_session, make_org,
 
     assert small_count == 4, select_counter.statements
     assert big_count == small_count, select_counter.statements
+
+
+def test_statement_count_constant_inside_tenant_context(
+    app, db_session, make_org, select_counter, tenant_ctx
+):
+    """The same growth assertion, measured INSIDE a real
+    request-like tenant context. The tenant-isolation listener issues its
+    own ``SELECT set_config(...)`` once per ORM execute while
+    ``g.current_org_id`` is set, so the count observed here is higher than
+    the no-context measurement above -- but it is still constant under row
+    growth, which is the property this test actually proves.
+    """
+    from app.modules.intelligence.services.query_service import IntelligenceQueryService
+
+    org = make_org("vsr-ac19-ctx")
+    org_id = org.id
+    vs1 = _value_stream(db_session, org_id, "VS Small", f"VSR-AC19CTX-SMALL-{_org_suffix()}")
+    stage1 = _stage(db_session, org_id, vs1.id, "Stage 1", 1)
+    small_caps = [
+        _capability(
+            db_session, org_id, f"Cap {i}", f"VSR-AC19CTX-CAP-{i}-{_org_suffix()}",
+            current=2, target=4,
+        )
+        for i in range(6)
+    ]
+    for cap in small_caps:
+        _mapping(db_session, org_id, cap.id, vs1.id, stage1.id)
+    db_session.commit()
+
+    with tenant_ctx(org_id):
+        select_counter.statements.clear()
+        IntelligenceQueryService.value_streams_at_risk(org_id)
+        small_count_in_context = len(select_counter.statements)
+
+    vs2 = _value_stream(db_session, org_id, "VS Big", f"VSR-AC19CTX-BIG-{_org_suffix()}")
+    stage2 = _stage(db_session, org_id, vs2.id, "Stage 2", 1)
+    more_caps = [
+        _capability(
+            db_session, org_id, f"Cap Extra {i}", f"VSR-AC19CTX-EXTRA-{i}-{_org_suffix()}",
+            current=1, target=5,
+        )
+        for i in range(4)
+    ]
+    for cap in more_caps:
+        _mapping(db_session, org_id, cap.id, vs2.id, stage2.id)
+    db_session.commit()
+
+    with tenant_ctx(org_id):
+        select_counter.statements.clear()
+        IntelligenceQueryService.value_streams_at_risk(org_id)
+        big_count_in_context = len(select_counter.statements)
+
+    assert big_count_in_context == small_count_in_context, select_counter.statements

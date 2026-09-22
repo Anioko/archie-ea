@@ -332,10 +332,10 @@ def test_expanded_chain_marks_an_unresolved_link_instead_of_dropping_it(
     assert "source_id" not in expanded[1]
 
 
-def test_module_registers_exactly_seven_routes(app):
-    """The impact, risk, portfolio, programme and yield routes all mount on
-    this same existing blueprint rather than a new one each. Still exactly
-    one blueprint, now seven routes on it.
+def test_module_registers_exactly_eight_routes(app):
+    """The impact, risk, portfolio, programme, yield and value-streams-at-risk
+    routes all mount on this same existing blueprint rather than a new one
+    each. Still exactly one blueprint, now eight routes on it.
     """
     rules = [
         rule for rule in app.url_map.iter_rules() if rule.endpoint.startswith("intelligence_api.")
@@ -344,6 +344,7 @@ def test_module_registers_exactly_seven_routes(app):
     assert endpoints == {
         "intelligence_api.recompute_derivation",
         "intelligence_api.get_derived_fact_provenance",
+        "intelligence_api.value_streams_at_risk",
         "intelligence_api.cross_layer_impact",
         "intelligence_api.risk_for_element",
         "intelligence_api.portfolio_component_for_element",

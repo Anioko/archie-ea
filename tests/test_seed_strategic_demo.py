@@ -255,3 +255,69 @@ def test_cli_command_requires_org_id(app):
 def test_cli_command_rejects_unknown_organisation(app):
     result = app.test_cli_runner().invoke(args=["seed-strategic-demo", "--org-id", "999999999"])
     assert result.exit_code != 0
+
+
+# --- --dry-run on an ALREADY-SEEDED organisation --------------------------------
+
+
+def test_dry_run_on_seeded_organisation_reports_nothing_to_create(db_session, make_org):
+    """The mapping section used to short-circuit on
+    ``dry_run`` before the existing-mapping lookup, so a dry-run against an
+    already-seeded organisation reported "would create 8 mapping rows" it
+    would not actually create. Seed for real first, then dry-run the SAME
+    organisation: every created count is 0, every row is already present,
+    and nothing changes.
+    """
+    org = make_org("strategic-demo-dryrun-seeded")
+    org_id = org.id
+    db_session.commit()
+
+    seed_strategic_demo(org_id)
+    before = _counts_for_org(org_id)
+
+    stats = seed_strategic_demo(org_id, dry_run=True)
+
+    assert stats["value_streams_created"] == 0
+    assert stats["stages_created"] == 0
+    assert stats["capabilities_created"] == 0
+    assert stats["mappings_created"] == 0
+    assert stats["already_present"] == 20
+    assert _counts_for_org(org_id) == before, "dry run on a seeded organisation changed rows"
+
+
+# --- Two organisations seeded on one database -----------------------------------
+
+
+def test_two_organisations_seed_independently_on_one_database(db_session, make_org):
+    """The seed looks up by ``(organization_id, code)``, so
+    on a database whose per-organisation unique index was never applied a
+    second organisation's seed still creates its own rows with the same
+    codes -- intended, and untested until now. Each organisation ends up
+    with exactly its own 2 value streams, 6 capabilities and 8 mappings, and
+    each answer's capability id set is disjoint from the other's.
+    """
+    from app.modules.intelligence.services.query_service import IntelligenceQueryService
+
+    org_a = make_org("strategic-demo-d18-a")
+    org_b = make_org("strategic-demo-d18-b")
+    org_a_id, org_b_id = org_a.id, org_b.id
+    db_session.commit()
+
+    seed_strategic_demo(org_a_id)
+    seed_strategic_demo(org_b_id)
+
+    assert _counts_for_org(org_a_id) == {
+        "value_streams": 2, "stages": 4, "capabilities": 6, "mappings": 8,
+    }
+    assert _counts_for_org(org_b_id) == {
+        "value_streams": 2, "stages": 4, "capabilities": 6, "mappings": 8,
+    }
+
+    result_a = IntelligenceQueryService.value_streams_at_risk(org_a_id)
+    result_b = IntelligenceQueryService.value_streams_at_risk(org_b_id)
+    assert result_a["summary"]["capabilities_considered"] == 6
+    assert result_b["summary"]["capabilities_considered"] == 6
+
+    ids_a = {c["id"] for row in result_a["rows"] for c in row["capabilities"]}
+    ids_b = {c["id"] for row in result_b["rows"] for c in row["capabilities"]}
+    assert ids_a.isdisjoint(ids_b)

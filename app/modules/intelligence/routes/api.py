@@ -230,25 +230,45 @@ def _parse_bool_param(raw: str | None, *, default: bool, param_name: str):
     )
 
 
-def _value_stream_or_404_response(value_stream_id: int):
-    """Resolve *value_stream_id* within the caller's tenant scope, or the
-    not-found error response for it.
+def _value_stream_or_404_response(value_stream_id: int, organization_id: int):
+    """Resolve *value_stream_id* within *organization_id*'s tenant scope, or
+    the not-found error response for it.
 
-    One call site, one predicate: ``ValueStream`` carries ``TenantMixin``, so
-    the ``do_orm_execute`` tenant-isolation listener has already made "does
-    not exist" and "belongs to another tenant" indistinguishable before this
-    function is ever reached -- the same shape ``cross_layer_impact`` uses
-    for ``element_id`` below. Isolated as its own seam, the same pattern as
-    ``_parse_bool_param`` above, so the byte-identical mutation-proof test
-    (T-S1 acceptance item 13) can monkeypatch exactly this function to
-    diverge the message between the two cases and confirm the byte-identical
-    test goes red, without editing source under test.
+    Two predicates, not one: ``ValueStream`` carries ``TenantMixin``, so the
+    ``do_orm_execute`` tenant-isolation listener already fences this select
+    inside a request -- the same shape ``cross_layer_impact`` uses for
+    ``element_id`` below. The explicit
+    ``IntelligenceQueryService._value_stream_tenant_predicate`` carried on
+    top of that is what keeps "does not exist" and
+    "belongs to another tenant" indistinguishable even if the listener's
+    ambient organisation and the caller-resolved *organization_id* were ever
+    to diverge -- without it, a foreign id could return 200 with empty rows
+    (via the listener) while a never-existed id 404s here (this resolver),
+    an existence oracle. Reusing the same seam ``value_streams_at_risk``
+    itself uses also means the item-10 mutation proof, which neuters that
+    one function, now covers all three predicate call sites on this path,
+    not just two of them.
+
+    Isolated as its own seam, the same pattern as ``_parse_bool_param``
+    above, so the indistinguishability mutation-proof test (T-S1 acceptance
+    item 13) can monkeypatch exactly this function to diverge the message
+    between the two cases and confirm the named test goes red, without
+    editing source under test.
 
     Returns ``(value_stream, error_response_or_None)``.
     """
+    from app.extensions import db
+    from app.modules.intelligence.services.query_service import IntelligenceQueryService
     from app.models.unified_capability import ValueStream
 
-    value_stream = ValueStream.query.filter_by(id=value_stream_id).first()
+    value_stream = db.session.execute(
+        db.select(ValueStream).where(
+            ValueStream.id == value_stream_id,
+            IntelligenceQueryService._value_stream_tenant_predicate(
+                ValueStream, organization_id
+            ),
+        )
+    ).scalar_one_or_none()
     if value_stream is not None:
         return value_stream, None
     return None, error_response(
@@ -315,7 +335,9 @@ def value_streams_at_risk():
         )
 
     if value_stream_id is not None:
-        _value_stream, not_found_err = _value_stream_or_404_response(value_stream_id)
+        _value_stream, not_found_err = _value_stream_or_404_response(
+            value_stream_id, organization_id
+        )
         if not_found_err is not None:
             return not_found_err
 
