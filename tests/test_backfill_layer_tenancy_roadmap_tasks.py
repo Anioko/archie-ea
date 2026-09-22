@@ -2,10 +2,13 @@
 
 roadmap_tasks predates TenantMixin and carries no single foreign key to its
 owning tenant. The canonical backfill command derives the organisation from
-whichever provenance a row actually has -- the creating user, the work
-package's creator, or the consolidation entry's application, in that order --
-and a row with none of those is left NULL and reported rather than handed to
+whichever provenance a row actually has -- the work package's creator, the
+consolidation entry's application, or the creating user, in that order -- and
+a row with none of those is left NULL and reported rather than handed to
 whichever organisation happens to be picked for every other orphaned table.
+The creating user is checked last because that user's own organisation can
+change after the task was created; the other two links do not move the same
+way.
 
 There is no existing test of ``repair_layer_tenancy``/``_DERIVABLE_ORG`` on
 this branch's base to extend, so this is a new module.
@@ -146,6 +149,45 @@ def test_backfill_derives_roadmap_task_org_from_work_package_creator(db_session,
     stats = repair_layer_tenancy()
 
     assert _org_id_of(db_session, task_id) == org_b.id
+    assert "roadmap_tasks" not in stats["unresolved"]
+
+
+def test_backfill_prefers_work_package_provenance_over_moved_creator(db_session, make_org, app):
+    """A task's own creator can be moved to another organisation after the
+    task was created -- the admin route that reassigns a removed user's
+    account does exactly this. The work package the task belongs to was
+    created by a different, unmoved user, so the per-object provenance
+    statement must run before the creating-user statement, or the moved
+    user's *current* organisation would win instead of the one the task was
+    actually created in.
+    """
+    from app.commands.backfill_layer_tenancy import repair_layer_tenancy
+    from app.models.unified_work_package import UnifiedWorkPackage
+
+    org_a, org_b = make_org("bf-mv-a"), make_org("bf-mv-b")
+    wp_creator = _make_user(db_session, org_a.id, "WPC")  # stays in org A
+    task_creator = _make_user(db_session, org_a.id, "TC")  # created the task in org A
+
+    wp = UnifiedWorkPackage(
+        name="Migrate CRM",
+        business_capability="Sales",
+        created_by=wp_creator.id,
+    )
+    db_session.add(wp)
+    db_session.flush()
+
+    _relax_not_null(app)
+    task_id = _insert_roadmap_task(
+        db_session, created_by=task_creator.id, unified_work_package_id=wp.id, title="moved-creator task"
+    )
+
+    # the task's own creator is later moved to another organisation
+    task_creator.organization_id = org_b.id
+    db_session.flush()
+
+    stats = repair_layer_tenancy()
+
+    assert _org_id_of(db_session, task_id) == org_a.id
     assert "roadmap_tasks" not in stats["unresolved"]
 
 
