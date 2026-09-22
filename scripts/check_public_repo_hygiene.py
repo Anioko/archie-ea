@@ -100,6 +100,7 @@ import os
 import re
 import subprocess
 import sys
+import tokenize
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -124,15 +125,51 @@ RECORD_ID_ALLOWLIST_PREFIXES = ("CVE-", "RFC-", "ISO-", "IEC-", "UTF-")
 
 # Case-insensitive, whole word; "round" only when immediately followed by a
 # digit (round-1, round 2, round3), the shape a pipeline round number takes,
-# not the ordinary English word.
+# not the ordinary English word. "orchestrator" additionally requires the
+# preceding character not be a letter or underscore, so an identifier such
+# as `workflow_orchestrator_service` or a class name such as
+# `UnifiedSeedOrchestrator` never matches (a plain \b already stops at a
+# hyphen or space; the extra check is for identifier fragments \b treats as
+# a boundary only when case-folding changes the character class).
 ROLE_WORDS = [
     (re.compile(r"\brefuter\b", re.IGNORECASE), "refuter"),
     (re.compile(r"\btech-lead\b", re.IGNORECASE), "tech-lead"),
-    (re.compile(r"\borchestrator\b", re.IGNORECASE), "orchestrator"),
+    (re.compile(r"\b(?<![A-Za-z_])orchestrator\b", re.IGNORECASE), "orchestrator"),
     (re.compile(r"\bthe brief\b", re.IGNORECASE), "the brief"),
     (re.compile(r"\bbuild report\b", re.IGNORECASE), "build report"),
     (re.compile(r"\bround[\s-]?[0-9]", re.IGNORECASE), 'round<N>'),
 ]
+
+# Product vocabulary that legitimately contains a role word as a substring
+# (e.g. "orchestrator" inside "seed orchestrator") -- checked, and masked
+# out of the line, before ROLE_WORDS runs against it.
+PRODUCT_TERMS = (
+    "seed orchestrator",
+    "workflow orchestrator",
+    "dual-agent orchestrator",
+    "orchestration",
+    "decision brief",
+    "codegen brief",
+)
+_PRODUCT_TERM_RE = re.compile(
+    "|".join(re.escape(term) for term in PRODUCT_TERMS), re.IGNORECASE
+)
+
+
+def _mask_product_terms(text: str) -> str:
+    """Replace each PRODUCT_TERMS occurrence with spaces of the same
+    length, so a role word matching only inside one of these phrases is
+    never counted; length-preserving keeps every other match's column
+    position in `text` correct."""
+    return _PRODUCT_TERM_RE.sub(lambda m: " " * len(m.group(0)), text)
+
+
+def _role_word_hits(text: str) -> list[str]:
+    """Labels of every ROLE_WORDS pattern that matches `text`, after
+    masking PRODUCT_TERMS."""
+    masked = _mask_product_terms(text)
+    return [label for pattern, label in ROLE_WORDS if pattern.search(masked)]
+
 
 COMMIT_MESSAGE_PATTERNS = ROLE_WORDS + [
     (re.compile(r"co-authored-by", re.IGNORECASE), "Co-Authored-By"),
@@ -145,6 +182,93 @@ COMMIT_MESSAGE_PATTERNS = ROLE_WORDS + [
 CONTENT_EXTENSIONS = (".py", ".html", ".j2", ".md", ".js")
 CONTENT_SKIP_DIRNAMES = {"__pycache__", "node_modules", ".git", "vendor", "bundles"}
 CONTENT_SKIP_SUFFIXES = (".min.js",)
+
+# ---------------------------------------------------------------- rule 3: narrowing the source scan to comments, docstrings and string literals
+
+_HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
+_JINJA_COMMENT_RE = re.compile(r"\{#.*?#\}", re.DOTALL)
+_JS_BLOCK_COMMENT_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
+_JS_LINE_COMMENT_RE = re.compile(r"//[^\r\n]*")
+
+
+def _spans_to_lines(text: str, spans: list[tuple[int, str]]):
+    """(lineno, text) for every physical line inside each `(start_offset,
+    matched_text)` span, so a match inside a multi-line span still reports
+    the line it is actually on."""
+    for start, matched in spans:
+        start_line = text.count("\n", 0, start) + 1
+        for offset, line_text in enumerate(matched.split("\n")):
+            yield start_line + offset, line_text
+
+
+def _python_comment_and_string_lines(path: str):
+    """(lineno, text) for every COMMENT and STRING token -- a docstring is
+    a STRING token, so this covers both without a separate case. A file
+    that fails to tokenise (a syntax error) yields nothing rather than
+    falling back to a whole-file scan."""
+    try:
+        with open(path, "rb") as fh:
+            tokens = list(tokenize.tokenize(fh.readline))
+    except (tokenize.TokenError, SyntaxError, IndentationError, OSError, UnicodeDecodeError):
+        return
+    for tok in tokens:
+        if tok.type not in (tokenize.COMMENT, tokenize.STRING):
+            continue
+        start_line = tok.start[0]
+        for offset, line_text in enumerate(tok.string.split("\n")):
+            yield start_line + offset, line_text
+
+
+def _markup_comment_lines(path: str):
+    """(lineno, text) for every `{# #}` and `<!-- -->` block, .html/.j2."""
+    try:
+        with open(path, encoding="utf-8", errors="ignore") as fh:
+            text = fh.read()
+    except OSError:
+        return
+    spans = [(m.start(), m.group(0)) for m in _HTML_COMMENT_RE.finditer(text)]
+    spans += [(m.start(), m.group(0)) for m in _JINJA_COMMENT_RE.finditer(text)]
+    yield from _spans_to_lines(text, spans)
+
+
+def _js_comment_lines(path: str):
+    """(lineno, text) for every `//` and `/* */` comment, .js. A `//`
+    already inside a matched `/* */` block is not counted a second time."""
+    try:
+        with open(path, encoding="utf-8", errors="ignore") as fh:
+            text = fh.read()
+    except OSError:
+        return
+    blocks = [(m.start(), m.end(), m.group(0)) for m in _JS_BLOCK_COMMENT_RE.finditer(text)]
+    spans = [(start, matched) for start, _end, matched in blocks]
+    for m in _JS_LINE_COMMENT_RE.finditer(text):
+        if any(start <= m.start() < end for start, end, _ in blocks):
+            continue
+        spans.append((m.start(), m.group(0)))
+    yield from _spans_to_lines(text, spans)
+
+
+def _whole_file_lines(path: str):
+    """(lineno, text) for every line, .md -- a documentation file is prose
+    throughout, so there is no code to exclude."""
+    try:
+        with open(path, encoding="utf-8", errors="ignore") as fh:
+            lines = fh.readlines()
+    except OSError:
+        return
+    yield from enumerate(lines, start=1)
+
+
+def _scannable_lines(path: str):
+    """Dispatch to the extension-appropriate narrowing above."""
+    if path.endswith(".py"):
+        yield from _python_comment_and_string_lines(path)
+    elif path.endswith((".html", ".j2")):
+        yield from _markup_comment_lines(path)
+    elif path.endswith(".js"):
+        yield from _js_comment_lines(path)
+    elif path.endswith(".md"):
+        yield from _whole_file_lines(path)
 
 
 def _tracked_bucket_paths(root: str) -> list[str]:
@@ -202,28 +326,30 @@ def _iter_content_files(root: str):
 
 
 def _scan_record_ids_and_role_words(root: str) -> list[str]:
-    """Rule 3, source half: review-record-id tokens and pipeline role words
-    in comments, docstrings and string literals under app/, scripts/,
-    tests/, templates and static JS."""
+    """Rule 3, source half: review-record-id tokens and pipeline role words,
+    scanned only inside comments, docstrings and string literals (never
+    executable code) under app/, scripts/, tests/, templates and static JS
+    -- see `_scannable_lines` for the per-extension narrowing; .md files
+    are scanned whole, being prose throughout."""
     problems = []
     for path in _iter_content_files(root):
-        try:
-            with open(path, encoding="utf-8", errors="ignore") as fh:
-                lines = fh.readlines()
-        except OSError:
-            continue
         rel = os.path.relpath(path, root).replace(os.sep, "/")
-        for lineno, line in enumerate(lines, start=1):
+        for lineno, line in _scannable_lines(path):
             if ESCAPE_HATCH in line:
                 continue
             for m in RECORD_ID_PATTERN.finditer(line):
                 token = m.group(0)
                 if any(token.startswith(p) for p in RECORD_ID_ALLOWLIST_PREFIXES):
                     continue
+                # A token immediately inside [ ] is a regex character class
+                # (e.g. "Z0-9" out of "[A-Z0-9]"), not a record id.
+                before = line[m.start() - 1] if m.start() > 0 else ""
+                after = line[m.end():m.end() + 1]
+                if before in "[]" or after in "[]":
+                    continue
                 problems.append(f"{rel}:{lineno}: looks like a review record id: '{token}'")
-            for word_pattern, label in ROLE_WORDS:
-                if word_pattern.search(line):
-                    problems.append(f"{rel}:{lineno}: pipeline role word '{label}'")
+            for label in _role_word_hits(line):
+                problems.append(f"{rel}:{lineno}: pipeline role word '{label}'")
     return problems
 
 

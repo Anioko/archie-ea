@@ -579,6 +579,65 @@ def test_public_repo_hygiene_role_word_round_needs_a_digit(tmpdir):
     assert _run_hygiene_checker(root, "content") == 0
 
 
+def test_public_repo_hygiene_content_scan_ignores_executable_code(tmpdir):
+    """The content scan is narrowed to comments, docstrings and string
+    literals -- an identifier that happens to spell out a role word in
+    executable code (not a comment, not a string) must not fire."""
+    root = tmpdir.mkdir("code")
+    _write(root, "app/probe.py", "x = orchestrator_service()\n")
+    assert _run_hygiene_checker(root, "content") == 0
+
+
+def test_public_repo_hygiene_content_scan_still_catches_comments_and_docstrings(tmpdir):
+    """The same probes, moved into a comment and a docstring, still fire --
+    proving the narrowing above excludes code, not everything."""
+    root = tmpdir.mkdir("still-fires")
+    _write(root, "app/probe.py",
+           '"""per the brief, round 2"""\n'
+           "# orchestrator said so\n")
+    assert _run_hygiene_checker(root, "content") >= 2
+
+
+def test_public_repo_hygiene_record_id_ignores_regex_character_class(tmpdir):
+    """A record-id-shaped token immediately inside [ ] is a regex character
+    class, not a review record id."""
+    root = tmpdir.mkdir("charclass")
+    _write(root, "app/probe.py", "# valid = bool(re.match(r'[A-Z0-9]+', token))\n")
+    assert _run_hygiene_checker(root, "content") == 0
+
+
+def test_public_repo_hygiene_orchestrator_word_ignores_identifiers(tmpdir):
+    """'orchestrator' as a fragment of an identifier or class name (a
+    product-code shape) must not fire, even inside a docstring/comment."""
+    root = tmpdir.mkdir("orchestrator-identifiers")
+    _write(root, "app/probe.py",
+           '"""Wraps UnifiedSeedOrchestrator and workflow_orchestrator_service '
+           'and dual_agent_orchestrator."""\n')
+    assert _run_hygiene_checker(root, "content") == 0
+
+
+def test_public_repo_hygiene_product_terms_allowlisted(tmpdir):
+    """PRODUCT_TERMS phrases are masked before the role-word check runs, so
+    the product's own vocabulary for the orchestration feature and the
+    decision-brief / codegen-brief feature never fires."""
+    root = tmpdir.mkdir("product-terms")
+    _write(root, "app/probe.py",
+           '# The seed orchestrator and the workflow orchestrator both call\n'
+           '# the dual-agent orchestrator; orchestration is the shared term.\n'
+           '# The decision brief and the codegen brief render from the same data.\n')
+    assert _run_hygiene_checker(root, "content") == 0
+
+
+def test_public_repo_hygiene_content_scan_survives_a_file_that_does_not_tokenise(tmpdir):
+    """A .py file with a syntax error must not crash the checker -- it
+    contributes no hits (nothing to tokenise into COMMENT/STRING), and every
+    other file in the tree is still scanned."""
+    root = tmpdir.mkdir("unparseable")
+    _write(root, "app/broken.py", "def broken(:\n    pass\n")
+    _write(root, "app/probe.py", "# orchestrator said so\n")
+    assert _run_hygiene_checker(root, "content") == 1
+
+
 def _git(root, *args):
     proc = subprocess.run(["git", "-C", str(root)] + list(args), capture_output=True, text=True)
     assert proc.returncode == 0, "git %s failed: %s" % (" ".join(args), proc.stderr)
