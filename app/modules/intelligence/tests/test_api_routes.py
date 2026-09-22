@@ -332,10 +332,10 @@ def test_expanded_chain_marks_an_unresolved_link_instead_of_dropping_it(
     assert "source_id" not in expanded[1]
 
 
-def test_module_registers_exactly_seven_routes(app):
-    """The impact, risk, portfolio, programme and yield routes all mount on
-    this same existing blueprint rather than a new one each. Still exactly
-    one blueprint, now seven routes on it.
+def test_module_registers_exactly_eight_routes(app):
+    """The impact, risk, portfolio, programme, strategy and yield routes all
+    mount on this same existing blueprint rather than a new one each. Still
+    exactly one blueprint, now eight routes on it.
     """
     rules = [
         rule for rule in app.url_map.iter_rules() if rule.endpoint.startswith("intelligence_api.")
@@ -348,6 +348,7 @@ def test_module_registers_exactly_seven_routes(app):
         "intelligence_api.risk_for_element",
         "intelligence_api.portfolio_component_for_element",
         "intelligence_api.programme_for_element",
+        "intelligence_api.strategy_for_element",
         "intelligence_api.derivation_yield",
     }
 
@@ -639,5 +640,93 @@ def test_programme_endpoint_cross_tenant_element_is_404_not_leak(
 
     login_as(client, user_b)
     resp = client.get(f"/api/v1/intelligence/programme/{a.id}")
+    assert resp.status_code == 404
+    assert resp.get_json()["error"]["details"]["reason"] == "element_not_found"
+
+
+def test_strategy_endpoint_requires_login(client):
+    resp = client.get("/api/v1/intelligence/strategy/1")
+    assert resp.status_code in (302, 401)
+
+
+def test_strategy_endpoint_unknown_element_is_404(app, db_session, make_org, client, login_as):
+    org = make_org("strategy-route-404")
+    user = _make_user(db_session, org)
+    db_session.commit()
+
+    login_as(client, user)
+    resp = client.get("/api/v1/intelligence/strategy/999999999")
+    assert resp.status_code == 404
+    assert resp.get_json()["error"]["details"]["reason"] == "element_not_found"
+
+
+def test_strategy_endpoint_element_with_no_initiative_returns_honest_empty(
+    app, db_session, make_org, client, login_as
+):
+    org = make_org("strategy-route-empty")
+    user = _make_user(db_session, org)
+    a = _make_element(db_session, org.id, "A")
+    db_session.commit()
+
+    login_as(client, user)
+    resp = client.get(f"/api/v1/intelligence/strategy/{a.id}")
+    assert resp.status_code == 200
+    data = resp.get_json()["data"]
+    assert data["initiatives"] == []
+    assert data["reasons"] == ["no_initiative_linked"]
+
+
+def test_strategy_endpoint_returns_initiative_with_its_own_blast_radius(
+    app, db_session, make_org, client, login_as
+):
+    from app.models.enterprise_intelligence import PortfolioInitiative
+
+    org = make_org("strategy-route-blast")
+    user = _make_user(db_session, org)
+    a = _make_element(db_session, org.id, "A")
+    b = _make_element(db_session, org.id, "B")
+    _make_relationship(db_session, org.id, a, b, "Serving")
+    initiative = PortfolioInitiative(
+        name="Transform A",
+        archimate_element_id=a.id,
+        status="Active",
+        completion_percentage=25,
+        total_budget=50000.0,
+        spent_to_date=45000.0,
+    )
+    db_session.add(initiative)
+    db_session.commit()
+
+    login_as(client, user)
+    resp = client.get(f"/api/v1/intelligence/strategy/{a.id}?include_derived=true")
+    assert resp.status_code == 200
+    data = resp.get_json()["data"]
+    assert data["reasons"] == []
+    assert len(data["initiatives"]) == 1
+    row = data["initiatives"][0]
+    assert row["name"] == "Transform A"
+    assert row["budget_reason"] is None
+    assert round(row["budget_variance_pct"], 2) == -10.0
+    assert len(row["affected_rows"]) == 1
+    assert row["affected_rows"][0]["element_id"] == b.id
+
+
+def test_strategy_endpoint_cross_tenant_element_is_404_not_leak(
+    app, db_session, make_org, client, login_as
+):
+    from app.models.enterprise_intelligence import PortfolioInitiative
+
+    org_a = make_org("strategy-route-tenant-a")
+    org_b = make_org("strategy-route-tenant-b")
+    user_b = _make_user(db_session, org_b)
+    a = _make_element(db_session, org_a.id, "A")
+    initiative = PortfolioInitiative(
+        name="Tenant A's initiative", archimate_element_id=a.id, status="Active",
+    )
+    db_session.add(initiative)
+    db_session.commit()
+
+    login_as(client, user_b)
+    resp = client.get(f"/api/v1/intelligence/strategy/{a.id}")
     assert resp.status_code == 404
     assert resp.get_json()["error"]["details"]["reason"] == "element_not_found"

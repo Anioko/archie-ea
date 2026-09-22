@@ -58,6 +58,16 @@ REASON_CODES = frozenset(
         # it, not that the figure failed to load.
         "no_work_package_recorded",
         "not_costed",
+        # L2 brief (2026-09-22) addition: Ask's Strategy lens seeds from
+        # PortfolioInitiative rows linked to the picked element (the
+        # existing "no_initiative_linked" member above covers that honest
+        # absence). A real initiative with no total_budget is a distinct
+        # fact from "unknown" -- nobody budgeted it -- the same distinction
+        # L5's not_costed draws for a different field pair
+        # (UnifiedWorkPackage.estimated_cost/actual_cost); not_costed
+        # itself is not reused here so each code stays tied to one field
+        # pair's own absence condition.
+        "no_budget_recorded",
     }
 )
 
