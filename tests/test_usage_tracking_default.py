@@ -105,3 +105,44 @@ def test_config_flag_defaults():
 
     assert Config.ENABLE_USAGE_ANALYTICS is True
     assert TestingConfig.ENABLE_USAGE_ANALYTICS is False
+
+
+def test_opted_out_user_writes_nothing(
+    db_session, make_org, client, login_as, analytics_on
+):
+    org = make_org("usage-opt-out")
+    user = _user(org, "optout")
+    user.notification_preferences = {"analytics_opt_out": True}
+    db.session.add(user)
+    db.session.flush()
+    login_as(client, user)
+
+    before = UsageAnalytics.query.count()
+    resp = client.get("/usage-analytics/")
+    assert resp.status_code in (200, 302)
+
+    after = UsageAnalytics.query.count()
+    assert after == before
+
+
+def test_summary_api_counts_rows_by_feature_name(
+    db_session, make_org, client, login_as, analytics_on
+):
+    org = make_org("usage-summary")
+    user = _user(org, "summary")
+    login_as(client, user)
+
+    client.get("/usage-analytics/")
+    client.get("/usage-analytics/")
+
+    resp = client.get("/usage-analytics/api/summary")
+    assert resp.status_code == 200
+    summary = resp.get_json()
+    assert summary["usage_analytics.analytics_root"]["total_events"] >= 2
+
+
+def test_dashboard_requires_login(client):
+    resp = client.get("/usage-analytics/dashboard")
+    assert resp.status_code in (302, 401)
+    if resp.status_code == 302:
+        assert "login" in resp.headers.get("Location", "").lower()

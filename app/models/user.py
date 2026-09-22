@@ -387,6 +387,10 @@ class User(UserMixin, db.Model):
         "assignment_changes": True,
         "weekly_digest": True,
         "mention_notifications": True,
+        # Usage-analytics opt-out (Settings > Enable Analytics, unchecked).
+        # Defaults to False (tracked) to match ENABLE_USAGE_ANALYTICS being on
+        # by default.
+        "analytics_opt_out": False,
     }
 
     def get_notification_preference(self, key):  # model-safety-ok

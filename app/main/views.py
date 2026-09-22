@@ -394,6 +394,13 @@ def get_system_settings():
                 return v
 
         result = {row[0]: _parse(row[1]) for row in rows}
+        # "Enable Analytics" is a per-user opt-out stored on the signed-in
+        # user (see save_system_settings below), not a row in this global
+        # table, so every user's own page must reflect their own choice
+        # rather than one shared value.
+        result["analytics"] = not current_user.get_notification_preference(
+            "analytics_opt_out"
+        )
         return jsonify({"settings": result, "status": "ok"})
     except Exception as e:
         current_app.logger.exception(f"Error loading system settings: {e}")
@@ -430,6 +437,16 @@ def save_system_settings():
             }), 400
 
         for key, value in settings_data.items():
+            if key == "analytics":
+                # Per-user opt-out, stored on the signed-in user
+                # (User.notification_preferences), not this global table —
+                # see get_system_settings above. Merge in place so this save
+                # never drops the user's other stored preferences.
+                prefs = dict(current_user.notification_preferences or {})
+                prefs["analytics_opt_out"] = not bool(value)
+                current_user.notification_preferences = prefs
+                db.session.add(current_user)
+                continue
             db.session.execute(
                 db.text(
                     "INSERT INTO system_settings (key, value, updated_at) "
