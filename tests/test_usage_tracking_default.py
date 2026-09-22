@@ -212,6 +212,32 @@ def test_analytics_opt_out_route_available_to_any_signed_in_user(
     assert user.get_notification_preference("analytics_opt_out") is False
 
 
+def test_notification_preferences_save_preserves_analytics_opt_out(db_session, make_org):
+    """account_routes.py's save_notification_preferences (both the v1 and v2
+    blueprints) always rebuilds its own five-key dict and calls this same
+    setter -- it must not silently turn tracking back on for a user who
+    opted out through Settings. Exercised directly against the model, since
+    both account routes share this one setter; proving the setter preserves
+    the key proves both callers do too."""
+    org = make_org("usage-preserve")
+    user = _user(org, "preserve")
+    user.set_notification_preferences({"analytics_opt_out": True})
+    db.session.flush()
+
+    # The account page's own save: five keys, no knowledge of analytics_opt_out.
+    user.set_notification_preferences({
+        "arb_decisions": False,
+        "solution_updates": True,
+        "assignment_changes": True,
+        "weekly_digest": True,
+        "mention_notifications": True,
+    })
+    db.session.flush()
+
+    assert user.get_notification_preference("analytics_opt_out") is True
+    assert user.get_notification_preference("arb_decisions") is False
+
+
 def test_summary_api_counts_rows_by_feature_name(
     db_session, make_org, client, login_as, analytics_on
 ):
