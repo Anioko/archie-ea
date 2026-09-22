@@ -188,3 +188,40 @@ def test_dashboard_requires_login(client):
     assert resp.status_code in (302, 401)
     if resp.status_code == 302:
         assert "login" in resp.headers.get("Location", "").lower()
+
+
+def test_directory_endpoints_computed_from_directory_module(app):
+    """`_compute_directory_endpoints` is what `init_app` calls once, at
+    install time; calling it standalone here (not `init_app`, which would
+    register a second set of hooks on the shared session app) proves it
+    reads the real directory rather than a copy."""
+    from app.middleware.partial_features_analytics import PartialFeaturesAnalytics
+
+    mw = PartialFeaturesAnalytics()
+    assert mw._directory_endpoints == frozenset()  # nothing computed before install
+
+    with app.app_context():
+        endpoints = mw._compute_directory_endpoints()
+    assert isinstance(endpoints, frozenset)
+    assert "usage_analytics.analytics_root" in endpoints
+
+
+def test_response_time_is_a_real_duration_not_epoch_time():
+    """g.analytics_start_time used to be read from a WSGI environ key Flask
+    never sets ('REQUEST_TIME'), so the "elapsed" time was actually
+    time.time() - 0: the epoch in milliseconds, roughly 1.7 trillion. This
+    pins that a real short interval now comes out as a real short interval."""
+    import time as time_module
+
+    from flask import g
+
+    from app.middleware.partial_features_analytics import PartialFeaturesAnalytics
+
+    mw = PartialFeaturesAnalytics()
+    from flask import Flask
+
+    scratch_app = Flask(__name__)
+    with scratch_app.test_request_context("/"):
+        g.analytics_start_time = time_module.time() - 0.05
+        elapsed_ms = mw._calculate_response_time()
+    assert 0 <= elapsed_ms < 5000
