@@ -1477,14 +1477,23 @@ def api_create_relationship():
     # the composer validator (api_composer_validate) already use — so a
     # client that never called the picker cannot write a relationship no
     # picker would ever have offered.
-    from app.services.archimate_validity_service import ArchimateValidityService
+    from app.config.archimate_relationship_matrix import (
+        RelationshipValidator,
+        get_valid_relationships as get_matrix_valid_relationships,
+        normalize_element_type,
+    )
 
-    if not ArchimateValidityService().is_valid(source_el.type or "", target_el.type or "", rel_type):
-        return api_error(
+    source_pascal = normalize_element_type(source_el.type or "")
+    target_pascal = normalize_element_type(target_el.type or "")
+    if not RelationshipValidator().validate(source_pascal, target_pascal, rel_type):
+        message = (
             "Invalid " + rel_type + " from " + (source_el.name or "") + " (" + (source_el.type or "")
-            + ") to " + (target_el.name or "") + " (" + (target_el.type or "") + ")",
-            400,
+            + ") to " + (target_el.name or "") + " (" + (target_el.type or "") + ")"
         )
+        permitted = get_matrix_valid_relationships(source_pascal, target_pascal)
+        if permitted:
+            message += ". Valid relationships are: " + ", ".join(permitted)
+        return api_error(message, 400)
 
     # solution_id from the client maps to architecture_id on the model
     arch_id = data.get("solution_id")
