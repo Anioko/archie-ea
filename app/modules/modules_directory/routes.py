@@ -189,6 +189,8 @@ _NOT_RENDERED = {
     "dashboard.index": "302 -> Dashboard Overview",
     "unified_duplicate.enterprise_dashboard": "302 -> Duplicate Detection",
     "architect_ui.roadmap_builder": "302 -> Roadmaps",
+    "roadmap_outcome.product_roadmap_page": "302 -> Roadmaps",
+    "main.archimate_roadmap": "302 -> Roadmaps",
 }
 
 # Real, working pages, still reachable by their own URL only, that no
@@ -235,7 +237,7 @@ def all_module_links():
     source of truth for both this directory page and global search (P-10:
     search indexed none of the modules that live only here or in a zone) —
     a module added to either list becomes searchable automatically instead
-    of needing a third hand-maintained list.
+    # of needing a third hand-maintained list.
     """
     seen: dict[str, dict] = {}
     for zones in SIDEBAR_ZONES.values():
@@ -276,8 +278,8 @@ def _grouped_zone_sections():
                     continue
                 bucket.setdefault(link["endpoint"], link)
 
-    # A handful of endpoints (arb.dashboard as both "ARB Dashboard" and "Review
-    # Board", dashboard.health_scorecard, etc.) are assigned to more than one
+    # A handful of endpoints (arb.dashboard as both "ARB Dashboard" and "Review Board",
+    # dashboard.health_scorecard, etc.) are assigned to more than one
     # zone across different roles - each bucket dedupes its own endpoints, but
     # nothing previously stopped the same endpoint appearing again in a
     # different zone's bucket. Keep the first (highest-priority, per
