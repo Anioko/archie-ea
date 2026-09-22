@@ -197,9 +197,13 @@ def test_workspace_cards_match_my_work_zone(app, db_session, make_org):
     from app.models.business_capabilities import BusinessCapability
     from app.utils.role_access import get_sidebar_zones
 
-    # solution_architect, not platform_admin: the workspace-cards block is
-    # omitted entirely for platform_admin (its my_work zone duplicates the
-    # sidebar's own Admin zone -- see the template's own comment).
+    # solution_architect, not platform_admin: this test's fixture setup
+    # doesn't touch the platform_admin-specific question at all --
+    # test_workspace_cards_render_for_platform_admin below covers that role
+    # directly, now that dashboard-platform-admin-workspace-gap-brief-v1's
+    # fix (2026-09-22) restored this section for it. This test only proves
+    # the zone-vs-cards data agreement described in its own docstring, for
+    # any role.
     user, org = _make_user(db_session, make_org, "workspace", enterprise_role="solution_architect", admin=False)
 
     # Force data mode (>=5 applications and >=1 capability mapping), same
@@ -266,6 +270,95 @@ def test_workspace_cards_match_my_work_zone(app, db_session, make_org):
             f"Your Workspace cards missing my_work zone link {label!r} -- "
             "the cards must render from get_sidebar_zones(), not a "
             "hand-maintained parallel list"
+        )
+
+
+def test_workspace_cards_render_for_platform_admin(app, db_session, make_org):
+    """dashboard-platform-admin-workspace-gap-brief-v1 (2026-09-22): the
+    "Your Workspace" section used to be skipped entirely for platform_admin
+    on a stale comment -- read directly against role_access.py, the four
+    admin-zone links the comment named were never actually in this role's
+    my_work zone, so there was nothing to deduplicate. platform_admin is
+    "the default enterprise_role for every user who has not picked one"
+    (role_access.py's own comment), so this hid Ask -- and every other
+    my_work card -- from most real accounts. This pins the fix: a
+    platform_admin now sees their own my_work zone's cards, the same way
+    every other role already did."""
+    from sqlalchemy import insert
+
+    from app.models.application_capability import ApplicationCapabilityMapping
+    from app.models.application_portfolio import ApplicationComponent
+    from app.models.archimate_core import ArchiMateElement
+    from app.models.business_capabilities import BusinessCapability
+    from app.utils.role_access import get_sidebar_zones
+
+    user, org = _make_user(db_session, make_org, "workspace-admin", enterprise_role="platform_admin", admin=True)
+
+    from flask import g
+
+    g.current_org_id = org.id
+
+    apps = []
+    for i in range(6):
+        app_component = ApplicationComponent(
+            name=f"Admin Test App {i}-{uuid.uuid4().hex[:6]}",
+            organization_id=org.id,
+        )
+        db_session.add(app_component)
+        apps.append(app_component)
+    db_session.flush()
+
+    cap_name = f"Admin Test Capability {uuid.uuid4().hex[:6]}"
+    elem_id = db_session.execute(
+        insert(ArchiMateElement.__table__).values(
+            name=cap_name, type="Capability", layer="Strategy", organization_id=org.id
+        )
+    ).inserted_primary_key[0]
+    db_session.flush()
+
+    capability = BusinessCapability(
+        name=cap_name,
+        level=1,
+        organization_id=org.id,
+        archimate_element_id=elem_id,
+    )
+    db_session.add(capability)
+    db_session.flush()
+
+    mapping = ApplicationCapabilityMapping(
+        application_component_id=apps[0].id,
+        business_capability_id=capability.id,
+        organization_id=org.id,
+    )
+    db_session.add(mapping)
+    db_session.flush()
+
+    expected_labels = [
+        link["label"]
+        for zone in get_sidebar_zones(user)
+        if zone["zone"] == "my_work"
+        for link in zone["links"]
+    ]
+    assert expected_labels, "platform_admin's my_work zone must not be empty"
+    assert "Ask a question" in expected_labels, (
+        "platform_admin's my_work zone should carry the shared Ask link, "
+        "same as every other role"
+    )
+
+    client = app.test_client()
+    _login(client, user.id)
+
+    resp = client.get("/dashboard/overview")
+    assert resp.status_code == 200, resp.get_data(as_text=True)[:2000]
+    html = resp.get_data(as_text=True)
+
+    assert 'data-testid="health-score-value"' in html, "expected data mode, not guided mode"
+
+    for label in expected_labels:
+        assert html.count(label) >= 1, (
+            f"Your Workspace cards missing my_work zone link {label!r} for "
+            "platform_admin -- the section must render for this role too, "
+            "not only every other one"
         )
 
 
