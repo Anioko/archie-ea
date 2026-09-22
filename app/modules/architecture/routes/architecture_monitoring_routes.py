@@ -1,7 +1,6 @@
 """
-DEPRECATED: This file is migrated to app/modules/architecture/.
-Registration is now centralized via app.modules.architecture.register().
-Do NOT modify -- kept as fallback until Phase 6 cleanup.
+This blueprint is mounted only when ARCHITECTURE_MONITORING_API_ENABLED is on.
+Off by default; mounted when configured.
 
 Architecture Monitoring API Routes
 
@@ -36,6 +35,8 @@ Endpoints:
   - DELETE /api/architecture-monitoring/alerts/acknowledged - Clear acknowledged alerts
 """
 
+import os
+
 from flask import Blueprint, jsonify, request
 from flask_login import current_user, login_required
 
@@ -46,6 +47,13 @@ from app.utils.pagination import safe_int_arg
 architecture_monitoring_bp = Blueprint(
     "architecture_monitoring", __name__, url_prefix="/api/architecture-monitoring"
 )
+
+
+def monitoring_api_enabled(app) -> bool:
+    """True when the monitoring API should be mounted: app config or the environment says so."""
+    if app.config.get("ARCHITECTURE_MONITORING_API_ENABLED"):
+        return True
+    return os.environ.get("ARCHITECTURE_MONITORING_API_ENABLED", "").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _get_service() -> ArchitectureMonitoringService:

@@ -98,7 +98,7 @@ class TestArchitectureModuleImports:
 class TestArchitectureModuleRegistration:
     """Test that the module registers all blueprints correctly."""
 
-    def test_all_13_blueprints_registered(self, app):
+    def test_all_12_default_blueprints_registered(self, app):
         bp_names = list(app.blueprints.keys())
         expected = [
             "archimate_crud",
@@ -109,7 +109,6 @@ class TestArchitectureModuleRegistration:
             "architecture_assistant",
             "archimate_export",
             "architect_ui",
-            "architecture_monitoring",
             "arb",
             "arb_workflow",
             "adm_kanban_view",
@@ -151,8 +150,30 @@ class TestArchitectureRouteParity:
         must_have = [
             "archimate_crud.dashboard",
             "arb.dashboard",
-            "architecture_monitoring.get_monitoring_status",
             "adm_kanban.update_card",
         ]
         for ep in must_have:
             assert ep in endpoints, f"Missing endpoint: {ep}"
+
+
+class TestArchitectureMonitoringApiFlag:
+    """The architecture monitoring API is off by default and mounted when configured."""
+
+    def test_not_mounted_by_default(self, app):
+        assert "architecture_monitoring" not in app.blueprints
+        assert not any(
+            r.rule.startswith("/api/architecture-monitoring") for r in app.url_map.iter_rules()
+        )
+
+    def test_mounted_when_flag_enabled(self, monkeypatch):
+        monkeypatch.setenv("ARCHITECTURE_MONITORING_API_ENABLED", "true")
+        from app import create_app
+
+        flagged_app = create_app()
+        assert "architecture_monitoring" in flagged_app.blueprints
+        assert "architecture_monitoring.get_monitoring_status" in flagged_app.view_functions
+        rule_count = sum(
+            r.rule.startswith("/api/architecture-monitoring")
+            for r in flagged_app.url_map.iter_rules()
+        )
+        assert rule_count == 17
