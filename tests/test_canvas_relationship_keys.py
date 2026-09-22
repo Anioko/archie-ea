@@ -288,3 +288,80 @@ class TestPickerContract:
             source_id=option_id, target_id=b_element_id,
         ).all()
         assert rows_naming_b == []
+
+
+# -- Hardening: the create route now refuses what the validity service ------
+# -- rejects, after its existing checks --------------------------------------
+
+
+class TestCreateRelationshipHardening:
+    def test_create_relationship_refuses_a_type_the_validity_service_rejects(
+        self, app, db_session, make_org, client, login_as
+    ):
+        from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship
+
+        org = make_org("cv0-hardening")
+        user = _make_user(db_session, org.id, "HardeningOwner")
+
+        business_el = ArchiMateElement(
+            name="Claims Handling", type="BusinessProcess",
+            layer="business", organization_id=org.id,
+        )
+        tech_el = ArchiMateElement(
+            name="Claims Database", type="Node",
+            layer="technology", organization_id=org.id,
+        )
+        db_session.add_all([business_el, tech_el])
+        db_session.flush()
+        business_id, tech_id = business_el.id, tech_el.id
+
+        login_as(client, user)
+        resp = client.post("/archimate/api/relationships", json={
+            "source_element_id": business_id,
+            "target_element_id": tech_id,
+            "relationship_type": "composition",
+        })
+        assert resp.status_code == 400, resp.get_data(as_text=True)
+        body = resp.get_json()
+        assert body["success"] is False
+
+        rows = db_session.query(ArchiMateRelationship).filter_by(
+            source_id=business_id, target_id=tech_id, type="composition",
+        ).all()
+        assert rows == []
+
+    def test_create_relationship_still_accepts_a_type_the_validity_service_allows(
+        self, app, db_session, make_org, client, login_as
+    ):
+        """The hardening refuses the invalid pair without breaking the valid
+        one — a control so a validator that rejected everything would not
+        pass silently."""
+        from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship
+
+        org = make_org("cv0-hardening-control")
+        user = _make_user(db_session, org.id, "HardeningControlOwner")
+
+        option = ArchiMateElement(
+            name="Renegotiate supplier terms", type="CourseOfAction",
+            layer="strategy", organization_id=org.id,
+        )
+        plan_item = ArchiMateElement(
+            name="Supplier negotiation", type="WorkPackage",
+            layer="implementation", organization_id=org.id,
+        )
+        db_session.add_all([option, plan_item])
+        db_session.flush()
+        option_id, plan_item_id = option.id, plan_item.id
+
+        login_as(client, user)
+        resp = client.post("/archimate/api/relationships", json={
+            "source_element_id": option_id,
+            "target_element_id": plan_item_id,
+            "relationship_type": "association",
+        })
+        assert resp.status_code == 201, resp.get_data(as_text=True)
+
+        rows = db_session.query(ArchiMateRelationship).filter_by(
+            source_id=option_id, target_id=plan_item_id, type="association",
+        ).all()
+        assert len(rows) == 1
