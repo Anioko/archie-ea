@@ -715,6 +715,8 @@ _FALSE_POSITIVE_CASES = [
      '# raise ValueError("acknowledged unknown code is not present on the decision brief")\n'),
     ("round 2 of funding", "app/probe.py", "# closed round 2 of funding this quarter.\n"),
     ('WCAG "A-11"', "app/probe.py", "# WCAG A-11 contrast requirement.\n"),
+    ("DEL-D-001", "app/probe.py", '    "deliverable_code": "DEL-D-001",\n'),
+    ("DEL-F-001", "app/probe.py", '    "DEL-D-001", "DEL-E-001", "DEL-F-001", "DEL-G-001",\n'),
 ]
 
 
@@ -726,6 +728,28 @@ def test_public_repo_hygiene_false_positive_table(tmpdir, label, relpath, conten
     _write(tmpdir, relpath, content)
     count = _run_hygiene_checker(tmpdir, "content")
     assert count == 0, "row %r (%r) was incorrectly flagged" % (label, content)
+
+
+# Bare task, finding and deliverable references -- this programme's own
+# record-id-shaped ids, not prefixed by "DEL-" -- must be caught, not
+# allowlisted away: a prior, broader form of RECORD_ID_ALLOWLIST_PREFIXES
+# excluded these by accident, alongside the genuinely different "DEL-D-"/
+# "DEL-F-" deliverable-code shape covered by the false-positive table above.
+_BARE_ID_STILL_CAUGHT_CASES = [
+    ("T-003", "app/probe.py", "T_ROUTE = 'T-003'\n"),  # hygiene-ok: probe data for the bare-id regression test, not a real hit
+    ("F-07", "app/probe.py", 'label = "F-07"\n'),  # hygiene-ok: probe data for the bare-id regression test, not a real hit
+    ("D-01", "app/probe.py", "# D-01: root cause identified below.\n"),  # hygiene-ok: probe data for the bare-id regression test, not a real hit
+]
+
+
+@pytest.mark.parametrize(
+    "label, relpath, content", _BARE_ID_STILL_CAUGHT_CASES,
+    ids=[c[0] for c in _BARE_ID_STILL_CAUGHT_CASES],
+)
+def test_public_repo_hygiene_record_id_bare_task_and_finding_refs_still_fire(tmpdir, label, relpath, content):
+    _write(tmpdir, relpath, content)
+    count = _run_hygiene_checker(tmpdir, "content")
+    assert count > 0, "row %r (%r) was not caught" % (label, content)
 
 
 def test_public_repo_hygiene_checker_passes_its_own_scan_unexempted(tmpdir):

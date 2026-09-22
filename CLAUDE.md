@@ -522,7 +522,7 @@ to reconfirm the count before trusting it:**
 | `nav-verified` | a new sidebar route with no test loading it | ratchet @ 0, carries no tags |
 | `docs-drift` | CLAUDE.md/DELIVERY_CONTRACT.md gate claims disagreeing with build_gates() | must be 0 |
 | `public-repo-hygiene` | a docs/buckets/ directory or path reference in this public repository | must be 0 |
-| `public-repo-hygiene-record-ids` | a review-record-id token or pipeline role word, in a comment, docstring or string literal under app/scripts/tests/templates/static JS | ratchet @ 416 |
+| `public-repo-hygiene-record-ids` | a review-record-id token or pipeline role word, in a comment, docstring or string literal under app/scripts/tests/templates/static JS | ratchet @ 659 |
 | `public-repo-hygiene-commit-messages` | a pipeline role word or Co-Authored-By trailer in a commit message | must be 0 over the commits under review |
 | `unregistered-checks` | a scripts/check_\*.py with no Gate(...) entry (F500-008) | ratchet @ 33 |
 

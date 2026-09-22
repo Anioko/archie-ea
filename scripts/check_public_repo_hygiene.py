@@ -88,24 +88,41 @@ RECORD_ID_PATTERN_SEGMENT = re.compile(r"\b(?:D|T|Q|F)-[A-Z]{1,4}[0-9]{1,2}\b")
 BARE_RECORD_ID_PATTERN = re.compile(r"\b(?:D|T|Q|F)[0-9]{1,2}\b")
 _FINDING_RE = re.compile(r"\bfinding\b", re.IGNORECASE)
 
-# Prefixes this codebase allocates or cites at scale that the D/T/Q/F
-# restriction above would otherwise still match: F- (readiness findings,
-# F-01..F-50+), T-0 (task references, T-001..T-031+) and D-0 (deliverable
-# references, D-001..D-05-3, zero-padded the same way). Kept by hand --
-# app/utils/reference_numbers.py supplies "AD-" at its one call site as a
-# runtime value, not a constant, and has no list of the others; importing
-# the application package into a static-analysis script to reach it would
-# pull in Flask configuration and the database extensions for one string.
-# The remaining prefixes (standards bodies, quarter and fiscal-year
+# A prior version of this list also carried three broader prefixes on the  # hygiene-ok: describes the allowlist's own history, not a real hit
+# theory that they were exclusively this codebase's own business-reference-
+# number families. They are not: this codebase's task references and its
+# readiness-finding references share exactly that shape, one and two digits  # hygiene-ok: describes the allowlist's own history, not a real hit
+# after the leading letter and a dash, so the three broad prefixes were
+# hiding review-record ids of the same letter-and-digit form, not just
+# business references. Only three families
+# actually need an exact-prefix entry here: "AD-" (architecture-decision
+# references; never reaches this check anyway -- see the comment below),
+# "DEL-D-" and (by the same construction, see the context check below)
+# "DEL-F-" (ADM deliverable codes, one per phase letter; two of the eight
+# phase letters happen to be D and F), and "F500-" (readiness-matrix finding
+# numbers, also never reaches this check -- its digit run after "F" is never
+# followed directly by a dash, so RECORD_ID_PATTERN never matches it at
+# all). app/utils/reference_numbers.py supplies "AD-" at its one call site
+# as a runtime value, not a constant, and has no list of the others;
+# importing the application package into a static-analysis script to reach
+# it would pull in Flask configuration and the database extensions for one
+# string. The remaining prefixes (standards bodies, quarter and fiscal-year
 # references, this codebase's other short reference families) are listed
 # for documentation and defence-in-depth even where the D/T/Q/F restriction
 # already excludes them by construction.
 RECORD_ID_ALLOWLIST_PREFIXES = (
-    "AD-", "F-", "S0-", "T-0", "D-0",
+    "AD-", "DEL-D-", "F500-", "S0-",
     "CVE-", "RFC-", "ISO-", "IEC-", "UTF-", "SHA-", "SOC-", "GPT-", "BS-", "FY-",
 )
 _R_DIGIT_DASH_RE = re.compile(r"^R[0-9]-")
 _Q_QUARTER_DASH_RE = re.compile(r"^Q[1-4]-")
+# A deliverable code's own dash after the three-letter prefix is itself a  # hygiene-ok: describes the DEL- check's own reasoning, not a real hit
+# word-boundary in the record-id pattern's terms, so the match it finds  # hygiene-ok: describes the DEL- check's own reasoning, not a real hit
+# starts after that dash, never at the three-letter prefix -- which is why a
+# plain prefix-of-token check (above) cannot exclude it. Checked against the four
+# characters immediately before the match instead, the same way the WCAG
+# "A-" check below reads its own preceding context rather than the token.
+_DEL_DELIVERABLE_PREFIX_LEN = len("DEL-")
 
 
 def _is_allowlisted_record_id(token: str, line: str, start: int) -> bool:
@@ -116,6 +133,10 @@ def _is_allowlisted_record_id(token: str, line: str, start: int) -> bool:
     if _R_DIGIT_DASH_RE.match(token) or _Q_QUARTER_DASH_RE.match(token):
         return True
     if token.startswith("A-") and line[max(0, start - 6):start].rstrip().upper().endswith("WCAG"):
+        return True
+    if (token.startswith("D-") or token.startswith("F-")) and (
+        line[max(0, start - _DEL_DELIVERABLE_PREFIX_LEN):start].upper() == "DEL-"
+    ):
         return True
     return False
 
