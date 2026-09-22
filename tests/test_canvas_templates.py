@@ -17,14 +17,45 @@ from __future__ import annotations
 
 import copy
 import re
+import uuid
 
 import pytest
+from bs4 import BeautifulSoup
 
 from app.config.archimate_viewpoints import (
     CANVAS_PROFILE_OPTIONS_BY_TYPE,
     CANVAS_TEMPLATES,
     validate_canvas_templates,
 )
+
+
+def _make_user(db_session, org_id, label):
+    from app.models.user import User
+
+    suffix = uuid.uuid4().hex[:8]
+    user = User(
+        email=f"{label.lower()}-{suffix}@example.com",
+        organization_id=org_id,
+        enterprise_role="enterprise_architect",
+        confirmed=True,
+    )
+    db_session.add(user)
+    db_session.flush()
+    return user
+
+
+def _content_root(soup, factory):
+    """The Alpine component's own wrapper div — scopes a text search to the
+    canvas page's own markup, not the surrounding admin shell/sidebar, which
+    may carry its own digits. Strips <style>/<script> tags first: their
+    source text (CSS pixel/rem values, JS numeric literals) is not content a
+    reader sees, and .get_text() would otherwise count a plain "0" inside
+    one as if it were a rendered digit."""
+    root = soup.find(lambda tag: tag.name == "div" and tag.get("x-data", "").startswith(factory + "("))
+    assert root is not None, f"no {factory}(...) x-data root found"
+    for tag in root.find_all(["style", "script"]):
+        tag.decompose()
+    return root
 
 
 # -- Schema and the static placeholder test ----------------------------------
@@ -172,3 +203,152 @@ class TestComposerRenderShape:
         data = get_viewpoint_data("motivation")
         assert data["scope_required"] is True
         assert "zones" not in data
+
+
+# -- Both pages render for an empty tenant -----------------------------------
+
+
+class TestBothPagesRenderEmpty:
+    def test_bmc_page_shows_the_empty_hint_and_zero_unclassified(
+        self, app, db_session, make_org, client, login_as
+    ):
+        from app.models.business_model import BusinessModelCanvas
+
+        org = make_org("canvas-bmc-empty")
+        user = _make_user(db_session, org.id, "BmcEmptyOwner")
+        canvas = BusinessModelCanvas(name="Empty Canvas", organization_id=org.id)
+        db_session.add(canvas)
+        db_session.flush()
+        canvas_id = canvas.id
+
+        login_as(client, user)
+        resp = client.get(f"/business-model/{canvas_id}")
+        assert resp.status_code == 200
+        soup = BeautifulSoup(resp.get_data(as_text=True), "html.parser")
+
+        zones = CANVAS_TEMPLATES["business_model_canvas"]["zones"]
+        headers = soup.find_all(attrs={"data-testid": re.compile(r"^canvas-box-reason-")})
+        assert len(headers) == len(zones)
+
+        for zone in zones:
+            reason = soup.find(attrs={"data-testid": f"canvas-box-reason-{zone['box_key']}"})
+            assert reason is not None, zone["box_key"]
+            assert "Nothing here yet — type to add" in reason.get_text()
+            # The hint sits outside the input: never rendered inside the
+            # existing textarea's own value/placeholder as example content.
+            textarea = soup.find(attrs={"data-testid": f"bmc-textarea-{zone['box_key']}"})
+            assert textarea is not None
+            assert (textarea.string or "") == ""
+
+        unclassified = soup.find(attrs={"data-testid": "canvas-unclassified"})
+        assert unclassified is not None
+        assert " ".join(unclassified.get_text().split()) == "0 not yet classified"
+
+        content = _content_root(soup, "businessModelCanvas")
+        zero_tokens = re.findall(r"(?<!\d)0(?!\d)", content.get_text())
+        assert len(zero_tokens) == 1, "a literal 0 outside the unclassified count: %r" % content.get_text()
+
+    def test_business_case_page_shows_the_empty_hint_and_zero_unclassified(
+        self, app, db_session, make_org, client, login_as
+    ):
+        from app.models.business_case import BusinessCase
+
+        org = make_org("canvas-case-empty")
+        user = _make_user(db_session, org.id, "CaseEmptyOwner")
+        case = BusinessCase(title="Empty Case", organization_id=org.id)
+        db_session.add(case)
+        db_session.flush()
+        case_id = case.id
+
+        login_as(client, user)
+        resp = client.get(f"/business-case/{case_id}")
+        assert resp.status_code == 200
+        soup = BeautifulSoup(resp.get_data(as_text=True), "html.parser")
+
+        zones = CANVAS_TEMPLATES["business_case"]["zones"]
+        headers = soup.find_all(attrs={"data-testid": re.compile(r"^canvas-box-reason-")})
+        assert len(headers) == len(zones)
+
+        for zone in zones:
+            reason = soup.find(attrs={"data-testid": f"canvas-box-reason-{zone['box_key']}"})
+            assert reason is not None, zone["box_key"]
+            if zone["empty_reason"] == "canvas_box_not_derived":
+                assert "Composed from the other sections" in reason.get_text()
+            else:
+                assert "Nothing here yet — type to add" in reason.get_text()
+
+        unclassified = soup.find(attrs={"data-testid": "canvas-unclassified"})
+        assert unclassified is not None
+        assert " ".join(unclassified.get_text().split()) == "0 not yet classified"
+
+        content = _content_root(soup, "businessCaseDetail")
+        zero_tokens = re.findall(r"(?<!\d)0(?!\d)", content.get_text())
+        assert len(zero_tokens) == 1, "a literal 0 outside the unclassified count: %r" % content.get_text()
+
+    def test_case_box_order_matches_the_record_order(self, app, db_session, make_org, client, login_as):
+        """The nine box headers appear in the page source in exactly the
+        order CANVAS_TEMPLATES declares — the same order at 360px, since
+        this section is a single column at every width."""
+        from app.models.business_case import BusinessCase
+
+        org = make_org("canvas-case-order")
+        user = _make_user(db_session, org.id, "CaseOrderOwner")
+        case = BusinessCase(title="Order Case", organization_id=org.id)
+        db_session.add(case)
+        db_session.flush()
+        case_id = case.id
+
+        login_as(client, user)
+        resp = client.get(f"/business-case/{case_id}")
+        html = resp.get_data(as_text=True)
+
+        zones = sorted(CANVAS_TEMPLATES["business_case"]["zones"], key=lambda z: z["order"])
+        positions = [html.index(f'canvas-box-reason-{z["box_key"]}"') for z in zones]
+        assert positions == sorted(positions), [z["box_key"] for z in zones]
+
+
+# -- Foreign ids return the page's existing not-found bytes ------------------
+
+
+class TestForeignIdReturnsNotFoundBytes:
+    def test_foreign_canvas_id_returns_the_pages_not_found_bytes(
+        self, app, db_session, make_org, client, login_as
+    ):
+        from app.models.business_model import BusinessModelCanvas
+
+        org_a = make_org("canvas-nf-bmc-a")
+        org_b = make_org("canvas-nf-bmc-b")
+        user_b = _make_user(db_session, org_b.id, "ForeignCanvasViewer")
+        canvas = BusinessModelCanvas(name="Org A Canvas", organization_id=org_a.id)
+        db_session.add(canvas)
+        db_session.flush()
+        canvas_id = canvas.id
+
+        login_as(client, user_b)
+        own_missing = client.get("/business-model/999999999")
+        foreign = client.get(f"/business-model/{canvas_id}")
+
+        assert own_missing.status_code == 404
+        assert foreign.status_code == 404
+        assert foreign.get_data() == own_missing.get_data()
+
+    def test_foreign_business_case_id_returns_the_pages_not_found_bytes(
+        self, app, db_session, make_org, client, login_as
+    ):
+        from app.models.business_case import BusinessCase
+
+        org_a = make_org("canvas-nf-case-a")
+        org_b = make_org("canvas-nf-case-b")
+        user_b = _make_user(db_session, org_b.id, "ForeignCaseViewer")
+        case = BusinessCase(title="Org A Case", organization_id=org_a.id)
+        db_session.add(case)
+        db_session.flush()
+        case_id = case.id
+
+        login_as(client, user_b)
+        own_missing = client.get("/business-case/999999999")
+        foreign = client.get(f"/business-case/{case_id}")
+
+        assert own_missing.status_code == 404
+        assert foreign.status_code == 404
+        assert foreign.get_data() == own_missing.get_data()

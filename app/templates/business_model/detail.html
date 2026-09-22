@@ -1,20 +1,29 @@
 {% extends 'layouts/admin_base.html' %}
 {% from 'components/page_header.html' import page_header %}
 {% from 'components/modal.html' import modal %}
+{% from 'components/canvas_box.html' import canvas_box_entries, canvas_unclassified %}
 
 {% block title %}{{ canvas.name or 'Business Model Canvas' }}{% endblock %}
 
 {% block content %}
+{# Source order (and so the phone/keyboard-tab order below 640px, where the
+   grid collapses to one column) follows the design's stated Business Model
+   Canvas order word for word: Customer Segments, Value Propositions,
+   Channels, Customer Relationships, Revenue Streams, Key Activities, Key
+   Resources, Key Partnerships, Cost Structure. The desktop
+   grid-template-areas below are unchanged (the existing nine-block layout)
+   — grid-area positions a cell independently of source order, so reordering
+   this list only changes tab/phone order, never the desktop visual layout. #}
 {% set bmc_layout = [
-    {'key': 'key_partners', 'label': 'Key Partners', 'icon': 'handshake', 'area': 'kp', 'class': 'bg-card'},
+    {'key': 'customer_segments', 'label': 'Customer Segments', 'icon': 'users', 'area': 'cs', 'class': 'bg-card'},
+    {'key': 'value_propositions', 'label': 'Value Propositions', 'icon': 'gem', 'area': 'vp', 'class': 'bg-primary/5'},
+    {'key': 'channels', 'label': 'Channels', 'icon': 'radio-tower', 'area': 'ch', 'class': 'bg-card'},
+    {'key': 'customer_relationships', 'label': 'Customer Relationships', 'icon': 'heart-handshake', 'area': 'cr', 'class': 'bg-card'},
+    {'key': 'revenue_streams', 'label': 'Revenue Streams', 'icon': 'trending-up', 'area': 'rev', 'class': 'bg-muted/20'},
     {'key': 'key_activities', 'label': 'Key Activities', 'icon': 'zap', 'area': 'ka', 'class': 'bg-card'},
     {'key': 'key_resources', 'label': 'Key Resources', 'icon': 'box', 'area': 'kr', 'class': 'bg-card'},
-    {'key': 'value_propositions', 'label': 'Value Propositions', 'icon': 'gem', 'area': 'vp', 'class': 'bg-primary/5'},
-    {'key': 'customer_relationships', 'label': 'Customer Relationships', 'icon': 'heart-handshake', 'area': 'cr', 'class': 'bg-card'},
-    {'key': 'channels', 'label': 'Channels', 'icon': 'radio-tower', 'area': 'ch', 'class': 'bg-card'},
-    {'key': 'customer_segments', 'label': 'Customer Segments', 'icon': 'users', 'area': 'cs', 'class': 'bg-card'},
+    {'key': 'key_partners', 'label': 'Key Partnerships', 'icon': 'handshake', 'area': 'kp', 'class': 'bg-card'},
     {'key': 'cost_structure', 'label': 'Cost Structure', 'icon': 'trending-down', 'area': 'cost', 'class': 'bg-muted/20'},
-    {'key': 'revenue_streams', 'label': 'Revenue Streams', 'icon': 'trending-up', 'area': 'rev', 'class': 'bg-muted/20'},
 ] %}
 
 <div class="flex-1 overflow-auto" x-data='businessModelCanvas({
@@ -122,6 +131,7 @@
             <span>Draft with AI</span>
           </button>
         </div>
+        {% if b.key in canvas_zones %}{{ canvas_box_entries(canvas_zones[b.key]) }}{% endif %}
         <textarea
           x-model="blocks.{{ b.key }}"
           @blur="saveBlock('{{ b.key }}')"
@@ -139,6 +149,8 @@
       </div>
       {% endfor %}
     </div>
+
+    {{ canvas_unclassified(canvas_unclassified_count) }}
   </div>
 </div>
 
