@@ -496,6 +496,147 @@ def test_the_gate_fires_on_its_own_defect(script, builder, tmpdir):
     assert bad_count > good_count
 
 
+# --------------------------------------------------------------------------
+# check_public_repo_hygiene.py's rule-3 extensions (review-record-id tokens,
+# pipeline role words, commit messages): standalone rather than a CASES
+# entry, the same reason check_evidence_contract.py and check_canonical_route
+# are standalone (see this file's own docstring) -- the generic
+# _run_checker(script, root) invocation has no room for the extra --rule
+# flag these need, and the commit-message half needs a real git repository
+# inside tmpdir, not just files.
+# --------------------------------------------------------------------------
+
+
+def _run_hygiene_checker(root, rule):
+    proc = subprocess.run(
+        [sys.executable, os.path.join(SCRIPTS, "check_public_repo_hygiene.py"),
+         "--count", "--root", str(root), "--rule", rule],
+        capture_output=True, text=True, cwd=REPO,
+    )
+    trailing = (proc.stdout or "").strip().splitlines()
+    assert trailing, (
+        "check_public_repo_hygiene.py --rule %s produced no count for root=%s\n"
+        "stdout=%r\nstderr=%r" % (rule, root, proc.stdout, proc.stderr[:400])
+    )
+    try:
+        return int(trailing[-1])
+    except ValueError:
+        raise AssertionError(
+            "check_public_repo_hygiene.py --rule %s did not end with a count: %r "
+            "(stderr=%r)" % (rule, trailing[-1], proc.stderr[:400])
+        )
+
+
+def test_public_repo_hygiene_record_id_gate_fires_on_its_own_defect(tmpdir):
+    """A review-record-id token (D2-7 shape) committed to a tracked source file."""  # hygiene-ok: names the probe shape used below, not a real hit
+    bad = tmpdir.mkdir("bad")
+    _write(bad, "app/probe.py", '# See D2-7 for the reasoning behind this default.\n')  # hygiene-ok: deliberate probe content, written to a tmpdir this checker never scans
+    bad_count = _run_hygiene_checker(bad, "content")
+
+    good = tmpdir.mkdir("good")
+    _write(good, "app/probe.py", "# The reasoning behind this default is explained inline.\n")
+    good_count = _run_hygiene_checker(good, "content")
+
+    assert bad_count > 0, "a 'D2-7'-shaped token in a tracked .py file was not flagged"  # hygiene-ok: quoting the probe shape in the assertion message, not a real hit
+    assert good_count == 0, "the checker fired on a clean file"
+    assert bad_count > good_count
+
+
+def test_public_repo_hygiene_record_id_allowlist_excludes_standards_prefixes(tmpdir):
+    """CVE-/RFC-/ISO-/IEC-/UTF- never match the pattern in the first place
+    (three-plus-letter prefixes, the pattern caps at two) -- proving that
+    directly, not just asserting it, since a future edit to the pattern
+    could silently start matching them."""
+    root = tmpdir.mkdir("standards")
+    _write(root, "app/probe.py",
+           "# CVE-2024-12345, RFC-6902, ISO-8859, IEC-61508, UTF-8: none of these "
+           "are review record ids.\n")
+    assert _run_hygiene_checker(root, "content") == 0
+
+
+def test_public_repo_hygiene_role_word_gate_fires_on_its_own_defect(tmpdir):
+    """A pipeline role word committed to a tracked source file."""
+    bad = tmpdir.mkdir("bad")
+    _write(bad, "app/probe.py",
+           "# D-5 (refuter): fixed in round-3, per the brief and the build report.\n")  # hygiene-ok: deliberate probe content, written to a tmpdir this checker never scans
+    bad_count = _run_hygiene_checker(bad, "content")
+
+    good = tmpdir.mkdir("good")
+    _write(good, "app/probe.py", "# Fixed in the third pass, per the requirements.\n")
+    good_count = _run_hygiene_checker(good, "content")
+
+    assert bad_count > 0, "pipeline role words in a tracked .py file were not flagged"
+    assert good_count == 0, "the checker fired on a clean file"
+    assert bad_count > good_count
+
+
+def test_public_repo_hygiene_role_word_round_needs_a_digit(tmpdir):
+    """'round' alone (a table round, a review round with no number, the
+    ordinary English word) must not fire -- only round<N> does."""
+    root = tmpdir.mkdir("round")
+    _write(root, "app/probe.py",
+           "# Table is round; go another round of edits before the next round.\n")
+    assert _run_hygiene_checker(root, "content") == 0
+
+
+def _git(root, *args):
+    proc = subprocess.run(["git", "-C", str(root)] + list(args), capture_output=True, text=True)
+    assert proc.returncode == 0, "git %s failed: %s" % (" ".join(args), proc.stderr)
+    return proc.stdout
+
+
+def _init_repo_with_commit(root, message):
+    _git(root, "init", "-q")
+    _git(root, "config", "user.email", "probe@example.com")
+    _git(root, "config", "user.name", "Probe")
+    _write(root, "README.md", "probe\n")
+    _git(root, "add", "README.md")
+    _git(root, "commit", "-q", "-m", message)
+
+
+def test_public_repo_hygiene_commit_message_gate_fires_on_its_own_defect(tmpdir):
+    """A pipeline role word in a commit MESSAGE (not a file), in a real,
+    synthetic git repository -- the shape check_evidence_contract.py's own
+    git-reading half cannot be driven by --root at all; this checker can,
+    because it takes one."""
+    bad = tmpdir.mkdir("bad")
+    _init_repo_with_commit(bad, "Fix the timeout (round-1 refuter finding D4)")  # hygiene-ok: deliberate probe commit message, in a synthetic tmpdir repo this checker never scans
+    bad_count = _run_hygiene_checker(bad, "commits")
+
+    good = tmpdir.mkdir("good")
+    _init_repo_with_commit(good, "Fix the timeout on the retry path")
+    good_count = _run_hygiene_checker(good, "commits")
+
+    assert bad_count > 0, "a pipeline role word in a commit message was not flagged"
+    assert good_count == 0, "the checker fired on a clean commit message"
+    assert bad_count > good_count
+
+
+def test_public_repo_hygiene_commit_message_catches_co_authored_by(tmpdir):
+    """The Co-Authored-By trailer specifically, independent of any role word."""
+    bad = tmpdir.mkdir("bad")
+    _init_repo_with_commit(
+        bad, "Fix the timeout on the retry path\n\nCo-Authored-By: Example <e@example.com>\n"
+    )
+    good = tmpdir.mkdir("good")
+    _init_repo_with_commit(good, "Fix the timeout on the retry path")
+
+    assert _run_hygiene_checker(bad, "commits") > 0
+    assert _run_hygiene_checker(good, "commits") == 0
+
+
+def test_public_repo_hygiene_hygiene_ok_escapes_a_commit_message(tmpdir):
+    """The same hygiene-ok: escape hatch source lines use, honoured in a
+    commit message too."""
+    root = tmpdir.mkdir("escaped")
+    _init_repo_with_commit(
+        root,
+        "Fix the timeout (round-1 refuter finding D4)\n\n"  # hygiene-ok: deliberate probe content, escaped by the next line's marker at runtime
+        "hygiene-ok: quoting the original finding for the changelog\n",
+    )
+    assert _run_hygiene_checker(root, "commits") == 0
+
+
 def test_every_registered_checker_carries_its_proof():
     """A checker in the registry must document the defect it was watched on.
 

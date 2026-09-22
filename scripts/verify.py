@@ -864,6 +864,57 @@ def gate_public_repo_hygiene() -> Result:
     return Result("public-repo-hygiene", PASS if count == 0 else FAIL, detail, count, 0)
 
 
+def gate_public_repo_hygiene_record_ids(baseline: int) -> Result:
+    """Catches a review-record-id token or a pipeline role word committed to
+    app/, scripts/, tests/, templates or static JS -- see
+    scripts/check_public_repo_hygiene.py's own docstring for the exact shape
+    of each, the full allowlist reasoning, and the two previously-known
+    leaks this rule was written for.  (hygiene-ok: naming what this rule
+    catches, in the abstract, without repeating the example tokens here.)
+
+    RATCHET, not zero: that same docstring's "Why a ratchet, not zero"
+    explains why in full -- in short, the record-id shape doubles as this
+    codebase's own permanent business-reference-number convention, and one
+    of the role words doubles as this codebase's own architecture
+    vocabulary, so neither can be told apart from a real leak by pattern
+    alone. Re-checking this tree also turned up real, previously-unknown
+    leaks alongside the two already-known ones.
+    """
+    proc = _run([sys.executable, "scripts/check_public_repo_hygiene.py", "--rule", "content", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("public-repo-hygiene-record-ids", FAIL,
+                      f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    detail = ""
+    if count > baseline:
+        detail = _run([sys.executable, "scripts/check_public_repo_hygiene.py", "--rule", "content"]).stdout[-1800:]
+    return Result("public-repo-hygiene-record-ids", PASS if count <= baseline else FAIL, detail, count, baseline)
+
+
+def gate_public_repo_hygiene_commit_messages(baseline: int) -> Result:
+    """Pipeline role words and a Co-Authored-By trailer in a commit message
+    itself (not the diff), across this branch's full history.
+
+    RATCHET, and for a different reason than the record-ids gate above: a
+    commit message cannot be edited after the fact without rewriting already-
+    pushed public history, which this repository's own standing instructions
+    forbid except on a role's own not-yet-merged branch. The baseline below
+    is today's frozen count of history that predates this gate; only a
+    future commit with a bad message can raise it.
+    """
+    proc = _run([sys.executable, "scripts/check_public_repo_hygiene.py", "--rule", "commits", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("public-repo-hygiene-commit-messages", FAIL,
+                      f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    detail = ""
+    if count > baseline:
+        detail = _run([sys.executable, "scripts/check_public_repo_hygiene.py", "--rule", "commits"]).stdout[-1800:]
+    return Result("public-repo-hygiene-commit-messages", PASS if count <= baseline else FAIL, detail, count, baseline)
+
+
 def gate_unregistered_checks(baseline: int) -> Result:
     """A scripts/check_*.py file with no Gate(...) entry in build_gates() never
     runs, regardless of what any doc says it enforces. See F500-008 and
@@ -1782,6 +1833,20 @@ def build_gates(baseline: dict) -> list[Gate]:
              "zero", gate_public_repo_hygiene,
              remediation="run scripts/check_public_repo_hygiene.py; remove the "
                          "content/reference, or mark the line 'hygiene-ok: <reason>'",
+             tags=["static", "qa"]),
+        Gate("public-repo-hygiene-record-ids",
+             "no new review-record-id token or pipeline role word in app/scripts/tests/templates/static JS",
+             "ratchet",
+             lambda: gate_public_repo_hygiene_record_ids(baseline.get("public_repo_hygiene_record_ids", 1728)),
+             remediation="run scripts/check_public_repo_hygiene.py --rule content; reword the "
+                         "line, or mark it 'hygiene-ok: <reason>'",
+             tags=["static", "qa"]),
+        Gate("public-repo-hygiene-commit-messages",
+             "no new pipeline role word or Co-Authored-By trailer in a commit message",
+             "ratchet",
+             lambda: gate_public_repo_hygiene_commit_messages(baseline.get("public_repo_hygiene_commit_messages", 1031)),
+             remediation="run scripts/check_public_repo_hygiene.py --rule commits; word the next "
+                         "commit message without them (history is not rewritten to fix old ones)",
              tags=["static", "qa"]),
         Gate("unregistered-checks",
              "no scripts/check_*.py exists with no Gate(...) entry in build_gates()",
