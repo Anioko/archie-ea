@@ -1,26 +1,24 @@
 """The sixth ("model") dimension of the baseline-drift engine, and the pure
-``compare_to_baseline`` seam (ADR-OP-2).
+``compare_to_baseline`` seam.
 
 Two organisations, A and B, throughout: every group proves either that one
 tenant's model changes never appear in another tenant's comparison, or that
 the seam genuinely writes nothing while ``analyze_drift`` still persists
 exactly what it found.
 
-Deviation from the design as written (recorded in the build report, not
-repeated per-test here): ``ArchiMateElement`` carries no per-row
-modification timestamp in this codebase -- only ``ArchiMateRelationship``
-does. ``elements_changed`` can therefore only ever measure ``0`` (an
-honest zero: no element exhibits a detectable in-place edit, because no
-signal for that exists yet, not because none occurred). Groups 2 and 3 use
-the ``elements_added`` / ``relationships_added`` counters -- both real,
-id-set measurements -- for the "an edit happened / did not happen" proof
-the design describes, and additionally pin ``elements_changed`` at ``0`` in
-both directions so that this limitation is itself under test, not silently
-assumed.
+``ArchiMateElement`` carries no per-row modification timestamp in this
+codebase (only ``ArchiMateRelationship`` does), so the per-element and
+per-relationship change signal is a content hash over the fields that make
+each one what it is, not a timestamp comparison: renaming, re-typing or
+re-layering an element, or changing a relationship's own properties,
+changes its hash even though its id does not move. ``elements_changed`` /
+``relationships_changed`` are real, measured counts, distinct from
+``elements_added`` / ``elements_removed`` and their relationship
+counterparts (id-set membership, not content).
 
 Follows the ``db_session`` / ``make_org`` / ``tenant_ctx`` fixtures in
-``tests/conftest.py``, the same shape ``tests/test_architecture_monitoring_
-tenancy.py`` (T-DR-3) uses.
+``tests/conftest.py``, the same shape the baseline-drift tenancy test file
+uses.
 """
 
 from __future__ import annotations
@@ -191,6 +189,7 @@ def test_group2_edits_in_one_org_never_appear_in_the_others_comparison(
     _seed_health_bearing_capability(db_session, org_b.id, suffix)
     b1 = _element(db_session, org_b.id, suffix, "B1")
     b2 = _element(db_session, org_b.id, suffix, "B2")
+    b_rel = _relationship(db_session, org_b.id, b1, b2)
 
     with tenant_ctx(org_a.id):
         service_a = ArchitectureMonitoringService(org_a.id)
@@ -200,13 +199,17 @@ def test_group2_edits_in_one_org_never_appear_in_the_others_comparison(
 
     ArchitectureMonitoringService.reset_state(org_a.id)
 
-    # Edits happen in B only: a new element and a new relationship.
+    # Edits happen in B only: a new element, a new relationship, an existing
+    # element renamed and re-layered, and an existing relationship's own
+    # properties changed.
     with tenant_ctx(org_b.id):
         service_b = ArchitectureMonitoringService(org_b.id)
         service_b.capture_baseline(name="B baseline", created_by="tester-b")
     b3 = _element(db_session, org_b.id, suffix, "B3")
-    _relationship(db_session, org_b.id, b1, b2)
     _relationship(db_session, org_b.id, b2, b3)
+    b1.name, b1.layer = f"B1 renamed {suffix}", "Business"
+    b_rel.connection_spec = {"changed": True}
+    db_session.flush()
 
     ArchitectureMonitoringService.reset_state(org_b.id)
 
@@ -218,6 +221,7 @@ def test_group2_edits_in_one_org_never_appear_in_the_others_comparison(
     # B's edits are invisible to A: every measured count is a genuine zero.
     assert md["elements_changed"] == 0
     assert md["elements_added"] == 0
+    assert md["relationships_changed"] == 0
     assert md["relationships_added"] == 0
     assert md["changed_element_ids"] == []
     assert md["added_element_ids"] == []
@@ -238,6 +242,7 @@ def test_group3_the_same_edits_in_its_own_org_are_measured_with_ids(
     _seed_health_bearing_capability(db_session, org_a.id, suffix)
     a1 = _element(db_session, org_a.id, suffix, "A1")
     a2 = _element(db_session, org_a.id, suffix, "A2")
+    a_rel = _relationship(db_session, org_a.id, a1, a2)
 
     with tenant_ctx(org_a.id):
         service_a = ArchitectureMonitoringService(org_a.id)
@@ -246,9 +251,13 @@ def test_group3_the_same_edits_in_its_own_org_are_measured_with_ids(
         baseline_a_id = baseline_a["baseline"]["id"]
 
     # The same shape of edit as group 2, but inside A this time: one new
-    # element, one new relationship.
+    # element, one new relationship, one existing element renamed and
+    # re-layered, one existing relationship's own properties changed.
     a3 = _element(db_session, org_a.id, suffix, "A3")
     new_rel = _relationship(db_session, org_a.id, a1, a3)
+    a1.name, a1.layer = f"A1 renamed {suffix}", "Business"
+    a_rel.connection_spec = {"changed": True}
+    db_session.flush()
 
     ArchitectureMonitoringService.reset_state(org_a.id)
 
@@ -261,10 +270,13 @@ def test_group3_the_same_edits_in_its_own_org_are_measured_with_ids(
     assert md["relationships_added"] == 1
     assert md["added_element_ids"] == [str(a3.id)]
     assert md["added_relationship_ids"] == [str(new_rel.id)]
-    # No signal exists yet to tell an in-place element edit from no edit at
-    # all (see module docstring) -- this stays an honest 0, not a
-    # fabricated 1.
-    assert md["elements_changed"] == 0
+    # A rename and a re-layer of an existing element, and a properties
+    # change of an existing relationship, are both real in-place edits: the
+    # content hash differs even though the id does not move.
+    assert md["elements_changed"] == 1
+    assert md["changed_element_ids"] == [str(a1.id)]
+    assert md["relationships_changed"] == 1
+    assert md["changed_relationship_ids"] == [str(a_rel.id)]
     assert a2.id is not None  # a2 present in both snapshots, unchanged
 
 
@@ -376,6 +388,7 @@ def test_group6_compare_to_baseline_writes_nothing_analyze_drift_persists_what_i
     with tenant_ctx(org_a.id):
         service_a = ArchitectureMonitoringService(org_a.id)
         state_alerts_before = dict(service_a._state.alerts)
+        last_scan_time_before = service_a._state.last_scan_time
 
         analysis = service_a.compare_to_baseline(baseline_a_id)
         assert analysis.total_drifts >= 1, "need at least one alert for this proof to mean anything"
@@ -383,6 +396,7 @@ def test_group6_compare_to_baseline_writes_nothing_analyze_drift_persists_what_i
         alerts_after_compare = _alert_count(db_session, org_a.id)
         assert alerts_after_compare == alerts_before
         assert dict(service_a._state.alerts) == state_alerts_before
+        assert service_a._state.last_scan_time == last_scan_time_before
 
         result = service_a.analyze_drift(baseline_a_id)
         assert result["success"] is True, result
@@ -392,6 +406,9 @@ def test_group6_compare_to_baseline_writes_nothing_analyze_drift_persists_what_i
         alerts_after_analyze = _alert_count(db_session, org_a.id)
         assert alerts_after_analyze == alerts_before + new_alert_count
         assert len(service_a._state.alerts) == len(state_alerts_before) + new_alert_count
+        # analyze_drift does not touch last_scan_time either -- trigger_scan
+        # is the only caller that sets it, unchanged by this task.
+        assert service_a._state.last_scan_time == last_scan_time_before
 
 
 # ------------------------------------------------- (7) derived_recomputed
@@ -422,20 +439,19 @@ def test_group7_derived_recomputed_reflects_a_real_derivation_run(
         analysis_before = service.compare_to_baseline(baseline_id)
         assert analysis_before.model_drift["derived_recomputed"] == 0
 
-    db_session.add(
-        DerivedRelationship(
-            organization_id=org.id,
-            source_element_id=src.id,
-            target_element_id=tgt.id,
-            derived_type="realizes",
-            rule_id="op1-test-rule",
-            chain=[999999],
-            chain_element_ids=[src.id, tgt.id],
-            depth=1,
-            engine_version="op1-test-1",
-            computed_at=datetime.utcnow() + timedelta(seconds=1),
-        )
+    fact = DerivedRelationship(
+        organization_id=org.id,
+        source_element_id=src.id,
+        target_element_id=tgt.id,
+        derived_type="realizes",
+        rule_id="op1-test-rule",
+        chain=[999999],
+        chain_element_ids=[src.id, tgt.id],
+        depth=1,
+        engine_version="op1-test-1",
+        computed_at=datetime.utcnow() + timedelta(seconds=1),
     )
+    db_session.add(fact)
     db_session.flush()
 
     ArchitectureMonitoringService.reset_state(org.id)
@@ -443,7 +459,31 @@ def test_group7_derived_recomputed_reflects_a_real_derivation_run(
     with tenant_ctx(org.id):
         service = ArchitectureMonitoringService(org.id)
         analysis_after = service.compare_to_baseline(baseline_id)
-        assert analysis_after.model_drift["derived_recomputed"] == 1
+        md_after = analysis_after.model_drift
+        assert md_after["derived_recomputed"] == 1
+        assert md_after["derived_count_delta"] == 1
+        assert md_after["stale_count_delta"] == 0
+        assert md_after["newly_stale_ids"] == []
+
+    # The fact goes stale: derived_count drops back to the baseline's 0 (an
+    # unchanged delta that alone would look like nothing happened) while
+    # stale_count rises -- a bare computed_at comparison, or derived_count
+    # alone, would both miss this.
+    fact.stale = True
+    fact.stale_since = datetime.utcnow()
+    fact.stale_reason = "element_deleted"
+    db_session.flush()
+
+    ArchitectureMonitoringService.reset_state(org.id)
+
+    with tenant_ctx(org.id):
+        service = ArchitectureMonitoringService(org.id)
+        analysis_stale = service.compare_to_baseline(baseline_id)
+        md_stale = analysis_stale.model_drift
+        assert md_stale["derived_count_delta"] == 0
+        assert md_stale["stale_count_delta"] == 1
+        assert md_stale["newly_stale_ids"] == [str(fact.id)]
+        assert md_stale["resolved_stale_ids"] == []
 
 
 # ------------------------------------------------------ (8) checksum
@@ -468,8 +508,24 @@ def test_group8_checksum_changes_when_the_model_snapshot_changes(
         assert first["success"] is True, first
         checksum_1 = first["baseline"]["checksum"]
 
-    # Only the model dimension changes between the two captures: same
-    # capability catalogue, one more element.
+    # Capturing the identical, unchanged estate again must give the same
+    # checksum: captured_at (wall-clock, different on every call) sits
+    # outside the checksummed payload, so this is a real integrity proof,
+    # not one that would pass even if the whole snapshot were hashed
+    # including a value that always differs.
+    ArchitectureMonitoringService.reset_state(org.id)
+    with tenant_ctx(org.id):
+        service = ArchitectureMonitoringService(org.id)
+        repeat = service.capture_baseline(
+            name="Repeat", created_by="tester", set_as_active=False
+        )
+        assert repeat["success"] is True, repeat
+        checksum_repeat = repeat["baseline"]["checksum"]
+
+    assert checksum_repeat == checksum_1
+
+    # Only the model dimension changes between this capture and the first:
+    # same capability catalogue, one more element.
     _element(db_session, org.id, suffix, "Extra")
 
     ArchitectureMonitoringService.reset_state(org.id)
