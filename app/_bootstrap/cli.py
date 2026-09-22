@@ -398,3 +398,11 @@ def init_cli(app):
         app.logger.info("✅ Session registry purge CLI command registered")
     except Exception as e:
         app.logger.warning(f"⚠️  Failed to register session registry purge CLI: {e}")
+
+    # T-S1: strategic surface demonstration data set (value streams at risk)
+    try:
+        from app.commands import seed_strategic_demo
+        seed_strategic_demo.init_app(app)
+        app.logger.info("✅ Strategic demo seed CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"⚠️  Failed to register strategic demo seed CLI: {e}")
