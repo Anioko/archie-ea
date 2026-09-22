@@ -1271,6 +1271,69 @@ def _ensure_sso_mapping_tenant_unique_constraint(*, dry_run, existing_tables, ad
     added.append(f"constraint.{table}.{new_name} :: added, replacing {old_name}")
 
 
+def _backfill_document_chunk_organizations(*, dry_run, existing_tables, added, failed):
+    """Recover the tenant key for DocumentChunkEmbedding rows that predate
+    TenantMixin, via document_id -> ai_chat_document_uploads (already scoped).
+
+    document_id carries no FK constraint (see the model's own comment), so a
+    chunk whose document was since deleted, or whose id never matched a real
+    upload, is left NULL and reported -- not guessed.
+    """
+    from sqlalchemy import inspect, text
+
+    required = {"document_chunk_embeddings", "ai_chat_document_uploads"}
+    if not required <= existing_tables:
+        return
+    live_columns = {
+        c["name"] for c in inspect(db.engine).get_columns("document_chunk_embeddings")
+    }
+    if "organization_id" not in live_columns:
+        return
+
+    before = db.session.scalar(
+        text("SELECT count(*) FROM document_chunk_embeddings WHERE organization_id IS NULL")
+    )
+    if not before:
+        return
+    eligible = db.session.scalar(
+        text(
+            """
+            SELECT count(*)
+            FROM document_chunk_embeddings c
+            JOIN ai_chat_document_uploads d ON d.id = c.document_id
+            WHERE c.organization_id IS NULL
+              AND d.organization_id IS NOT NULL
+            """
+        )
+    )
+    updated = eligible
+    if not dry_run and eligible:
+        result = db.session.execute(
+            text(
+                """
+                UPDATE document_chunk_embeddings AS c
+                SET organization_id = d.organization_id
+                FROM ai_chat_document_uploads AS d
+                WHERE d.id = c.document_id
+                  AND c.organization_id IS NULL
+                  AND d.organization_id IS NOT NULL
+                """
+            )
+        )
+        updated = result.rowcount
+        db.session.commit()
+    unresolved = before - updated
+    added.append(
+        f"backfill.document_chunk_embeddings.organization_id :: before={before}, "
+        f"updated={updated}, unresolved={unresolved}"
+    )
+    if unresolved:
+        failed.append(
+            f"backfill.document_chunk_embeddings.organization_id: {unresolved} "
+            "row(s) whose document_id names no live ai_chat_document_uploads row"
+        )
+
+
 def _ensure_condition_evidence_canonical_document(
     *, dry_run, existing_tables, added, failed
 ):
@@ -1501,6 +1564,12 @@ def _reconcile(dry_run=False):
         failed=failed,
     )
     _ensure_sso_mapping_tenant_unique_constraint(
+        dry_run=dry_run,
+        existing_tables=existing_tables,
+        added=added,
+        failed=failed,
+    )
+    _backfill_document_chunk_organizations(
         dry_run=dry_run,
         existing_tables=existing_tables,
         added=added,
