@@ -392,12 +392,13 @@ class PolicyExemption(db.Model):
         return self.expiry_date < datetime.utcnow().date()
 
 
-class MonitoringBaseline(db.Model):
+class MonitoringBaseline(TenantMixin, db.Model):
     """
     Architecture Monitoring Baseline
 
     Persists architecture baseline snapshots so drift detection data
-    survives application restarts.
+    survives application restarts. Tenant-scoped: a baseline belongs to one
+    organisation and is never visible to another.
     """
 
     __tablename__ = "monitoring_baselines"
@@ -426,12 +427,13 @@ class MonitoringBaseline(db.Model):
         }
 
 
-class MonitoringAlert(db.Model):
+class MonitoringAlert(TenantMixin, db.Model):
     """
     Architecture Monitoring Alert
 
     Persists architecture drift alerts so alert history and acknowledgement
-    state survives application restarts.
+    state survives application restarts. Tenant-scoped: an alert belongs to
+    one organisation and is never visible to another.
     """
 
     __tablename__ = "monitoring_alerts"
