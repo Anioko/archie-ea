@@ -82,6 +82,22 @@ def _give_this_xdist_worker_its_own_database() -> None:
     calls create_app(), which is what actually reads these env vars.
     Non-xdist runs (PYTEST_XDIST_WORKER unset) are untouched: same shared
     database as today, same behaviour as before this function existed.
+
+    Correction after a real CI run of the first version of this function
+    (which issued a bare ``CREATE DATABASE``, no template): 22 tests failed,
+    most with ``relation "organizations" does not exist`` or permission
+    errors traceable to missing seed rows -- a genuinely empty database has
+    no schema, and this file's own ``_schema`` fixture (``db.create_all()``,
+    session-scoped) does not run for every test module. Its own docstring
+    says why: eight pre-existing modules hand-roll their own module-scoped
+    ``app`` fixture and pytest resolves the *closest* definition, so those
+    never reach the shared ``_schema`` fixture at all -- safe under the old
+    single-shared-database model, where the database always already had a
+    schema from CI's own "Create schema" step, but not once each worker gets
+    a database nothing has touched yet. Cloning the already-schema'd base
+    database via Postgres's ``CREATE DATABASE ... TEMPLATE`` fixes this at
+    the one place every worker's database is created, rather than chasing
+    down and fixing eight (or more) individual test modules' fixtures.
     """
     worker = os.environ.get("PYTEST_XDIST_WORKER")
     if not worker:
@@ -113,13 +129,20 @@ def _give_this_xdist_worker_its_own_database() -> None:
         try:
             with admin_conn.cursor() as cursor:
                 try:
-                    # Database identifiers cannot be bound parameters (they
-                    # aren't values); psycopg2.sql.Identifier quotes and
-                    # escapes it properly rather than hand-building the
-                    # statement string.
+                    # TEMPLATE clones the base database's full schema (CI's
+                    # own "Create schema" step already ran init-db +
+                    # reconcile-schema against it before pytest starts) so
+                    # every worker's database has every table from the
+                    # moment it exists, regardless of which fixture path any
+                    # given test module takes to reach it. Database
+                    # identifiers cannot be bound parameters (they aren't
+                    # values); psycopg2.sql.Identifier quotes and escapes
+                    # them properly rather than hand-building the statement
+                    # string.
                     cursor.execute(
-                        psycopg2_sql.SQL("CREATE DATABASE {}").format(
-                            psycopg2_sql.Identifier(worker_db_name)
+                        psycopg2_sql.SQL("CREATE DATABASE {} TEMPLATE {}").format(
+                            psycopg2_sql.Identifier(worker_db_name),
+                            psycopg2_sql.Identifier(base_db_name),
                         )
                     )
                 except psycopg2_errors.DuplicateDatabase:
