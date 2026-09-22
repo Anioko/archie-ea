@@ -129,3 +129,46 @@ class TestSeedIdempotence:
 
         seed_viewpoints()
         assert ArchiMateViewpoint.query.filter_by(viewpoint_type="canvas").count() == 3
+
+
+# -- Composer render shape ----------------------------------------------------
+
+
+class TestComposerRenderShape:
+    @pytest.mark.parametrize("key", sorted(CANVAS_TEMPLATES))
+    def test_get_viewpoint_data_carries_zones_and_entries_present_and_empty(self, key):
+        from app.services.archimate_viewpoint_service import get_viewpoint_data
+
+        data = get_viewpoint_data(key)
+        assert data["scope_required"] is False
+        assert "zones" in data and data["zones"] == []
+        assert "entries" in data and data["entries"] == []
+        assert data["elements"] == []
+        assert data["relationships"] == []
+
+    @pytest.mark.parametrize("key", sorted(CANVAS_TEMPLATES))
+    def test_template_zone_order_is_dense_and_ascending(self, key):
+        zones = CANVAS_TEMPLATES[key]["zones"]
+        orders = [z["order"] for z in zones]
+        assert orders == sorted(orders)
+        assert orders == list(range(1, len(zones) + 1))
+        assert [z["phone_order"] for z in zones] == orders
+
+    def test_get_available_viewpoints_lists_the_three_templates_as_canvas_category(self):
+        from app.services.archimate_viewpoint_service import get_available_viewpoints
+
+        entries = {v["id"]: v for v in get_available_viewpoints() if v["category"] == "canvas"}
+        assert set(entries) == set(CANVAS_TEMPLATES)
+        for key, tpl in CANVAS_TEMPLATES.items():
+            assert entries[key]["name"] == tpl["name"]
+
+    def test_a_non_canvas_key_is_unaffected(self):
+        from app.services.archimate_viewpoint_service import STANDARD_VIEWPOINTS, get_viewpoint_data
+
+        assert "zones" not in STANDARD_VIEWPOINTS["motivation"]
+        # 'motivation' has no solution_id and is not enterprise_scope, so it
+        # still asks for scope — proving the canvas short-circuit added above
+        # it did not change this existing invariant.
+        data = get_viewpoint_data("motivation")
+        assert data["scope_required"] is True
+        assert "zones" not in data
