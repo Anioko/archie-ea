@@ -90,17 +90,63 @@ def test_no_matrix_entry_either_direction_returns_no_link():
 # --- End to end, through _link_orphan_elements itself -----------------------
 
 
-def test_link_orphan_elements_end_to_end_with_raw_legacy_spelling(app, db_session, make_org):
+@pytest.mark.parametrize(
+    "org_slug, orphan_type, orphan_layer_stored, connected_type, connected_layer_stored, "
+    "bystander_type, bystander_layer_stored, expected_relationship_type",
+    [
+        pytest.param(
+            "orphan-e2e-orphan-side",
+            "WorkPackage", "Implementation",
+            "Stakeholder", "motivation",
+            "Driver", "motivation",
+            "realization",
+            id="orphan-side-fold-cross-layer-to-motivation",
+        ),
+        pytest.param(
+            "orphan-e2e-connected-side",
+            "WorkPackage", "implementation_migration",
+            "Deliverable", "Implementation",
+            "Gap", "implementation_migration",
+            "association",
+            id="connected-side-fold-same-layer",
+        ),
+    ],
+)
+def test_link_orphan_elements_end_to_end_with_raw_legacy_spelling(
+    app, db_session, make_org,
+    org_slug, orphan_type, orphan_layer_stored, connected_type, connected_layer_stored,
+    bystander_type, bystander_layer_stored, expected_relationship_type,
+):
     """Calls SolutionAIOrchestrator()._link_orphan_elements directly -- not
-    _orphan_link_choice -- with an orphan Work Package stored under the raw
-    legacy spelling "Implementation" (unlowered, exactly as
-    app/services/solution_archimate_sync_service.py writes it) and a
-    connected Motivation element. This is the only test in this file that
-    exercises the two ArchiMateLayer.canonical calls inside
-    _link_orphan_elements itself; the parametrised tests above call
-    _orphan_link_choice directly and canonicalise the stored spelling
-    themselves before doing so, so they cannot catch a regression in
-    _link_orphan_elements's own two call sites.
+    _orphan_link_choice -- so both ArchiMateLayer.canonical call sites
+    inside it are exercised for real, not merely by proxy: the parametrised
+    tests above call _orphan_link_choice directly and canonicalise the
+    stored spelling themselves before doing so, so they cannot catch a
+    regression in _link_orphan_elements's own two call sites.
+
+    The two parameter sets isolate one call site each. The stored spelling
+    reaches the function exactly as this codebase's other writers of
+    ArchiMateElement.layer would leave it in the ORM object they hold, even
+    though the column type lower-cases what is actually persisted and read
+    back -- the case survives here only because these are the same
+    in-session, already-flushed Python objects the query later returns from
+    the identity map, not a fresh read from the row. What both cases prove
+    is the WORD fold ("implementation" -> "implementation_migration"), which
+    no casing mechanism performs:
+
+    - "orphan-side-fold-cross-layer-to-motivation": the orphan is stored
+      "Implementation" and the connected element "motivation" -- a
+      genuinely cross-layer pairing, so only the orphan-side call
+      (_link_orphan_elements's own read of the orphan's layer) needs to
+      fold the word for a link to form at all; the connected-side call
+      folds "motivation" to itself either way and proves nothing extra.
+    - "connected-side-fold-same-layer": the orphan is stored already
+      canonical, "implementation_migration" (so the orphan-side call folds
+      nothing), and the connected element is stored "Implementation" -- the
+      same layer, spelled the legacy way. Only the connected-side call
+      (bucketing connected elements by their canonical layer) makes the two
+      elements land in the same bucket; reverting it alone, with the
+      orphan-side call left in place, drops the link.
     """
     from flask import g
 
@@ -110,21 +156,22 @@ def test_link_orphan_elements_end_to_end_with_raw_legacy_spelling(app, db_sessio
         SolutionAIOrchestrator,
     )
 
-    org = make_org("orphan-e2e")
+    org = make_org(org_slug)
     solution = Solution(name="Orphan E2E", organization_id=org.id)
     db_session.add(solution)
     db_session.flush()
 
     orphan = ArchiMateElement(
-        name="Orphan WorkPackage", type="WorkPackage", layer="Implementation",
+        name="Orphan", type=orphan_type, layer=orphan_layer_stored,
         organization_id=org.id,
     )
     connected = ArchiMateElement(
-        name="Connected Stakeholder", type="Stakeholder", layer="motivation",
+        name="Connected", type=connected_type, layer=connected_layer_stored,
         organization_id=org.id,
     )
     bystander = ArchiMateElement(
-        name="Bystander Driver", type="Driver", layer="motivation", organization_id=org.id,
+        name="Bystander", type=bystander_type, layer=bystander_layer_stored,
+        organization_id=org.id,
     )
     db_session.add_all([orphan, connected, bystander])
     db_session.flush()
@@ -132,7 +179,7 @@ def test_link_orphan_elements_end_to_end_with_raw_legacy_spelling(app, db_sessio
     # `connected` carries a relationship (to `bystander`, outside the
     # solution) so it is not itself an orphan; `orphan` carries none.
     db_session.add(ArchiMateRelationship(
-        type="Influence", source_id=connected.id, target_id=bystander.id,
+        type="Association", source_id=connected.id, target_id=bystander.id,
         organization_id=org.id,
     ))
     db_session.add_all([
@@ -154,7 +201,7 @@ def test_link_orphan_elements_end_to_end_with_raw_legacy_spelling(app, db_sessio
         ).first()
 
     assert new_rel is not None, (
-        "an orphan stored with the raw 'Implementation' spelling must still "
-        "link to a connected Motivation element"
+        f"an orphan stored as {orphan_layer_stored!r} must still link to a "
+        f"connected element stored as {connected_layer_stored!r}"
     )
-    assert new_rel.type == "realization"
+    assert new_rel.type == expected_relationship_type

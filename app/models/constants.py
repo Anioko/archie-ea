@@ -225,13 +225,18 @@ class ArchiMateLayer:
         returned untouched. This is deliberately not a general-purpose
         layer normaliser.
 
-        Two other normalisers elsewhere in the product fold the same pair
-        the opposite way: the ArchiMate CRUD route's layer aliases treat
+        Two other normalisers elsewhere in the product touch the same word,
+        and only one of them actually opposes this one. The ArchiMate CRUD
+        route's layer aliases fold this exact pair the other way, listing
         ``"implementation_migration"`` as one more spelling of
-        ``"implementation"``, and the architecture validation service's own
-        layer aliases fold every long-form spelling onto ``"implementation"``
-        too. Reconciling all of these onto one shared spelling is a separate,
-        already-recorded piece of work this function does not attempt.
+        ``"implementation"``. The architecture validation service's own
+        layer aliases map the long-form, punctuated spellings (``"implementation
+        & migration"`` and its ``"and"``/``"&"``/``"/"`` variants) onto
+        ``"implementation"`` too, but never list ``"implementation_migration"``
+        itself, so it passes that spelling through unchanged rather than
+        folding this pair either direction. Reconciling all of these onto one
+        shared spelling is a separate, already-recorded piece of work this
+        function does not attempt.
         """
         if not isinstance(value, str):
             return value
