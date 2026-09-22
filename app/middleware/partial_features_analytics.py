@@ -75,7 +75,7 @@ class PartialFeaturesAnalytics:
         g.analytics_feature_name = (
             request.endpoint if request.endpoint in self._directory_endpoints() else None
         )
-        g.analytics_user_id = getattr(g, 'user', None).id if hasattr(g, 'user') and g.user else None
+        g.analytics_user_id = current_user.id if current_user.is_authenticated else None
 
         if not g.analytics_feature_name or self._opted_out():
             return

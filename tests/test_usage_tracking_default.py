@@ -60,6 +60,7 @@ def test_directory_endpoint_writes_one_anonymous_row(
     row = rows[0]
     assert row.feature_name == "usage_analytics.analytics_root"
     assert row.event_type == "page_view"
+    assert row.user_id == user.id
     assert row.ip_address is None
     assert row.user_agent is None
     assert row.referrer is None
