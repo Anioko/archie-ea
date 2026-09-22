@@ -923,7 +923,8 @@ class ArchitectureMonitoringService:
 
     def analyze_drift(self, baseline_id: Optional[str] = None) -> Dict[str, Any]:
         """
-        Analyze architecture drift against a baseline.
+        Analyze architecture drift against a baseline, persisting the
+        alerts the comparison found.
 
         Args:
             baseline_id: ID of baseline to compare against (uses active if not provided)
@@ -931,81 +932,21 @@ class ArchitectureMonitoringService:
         Returns:
             Dict with drift analysis results
         """
-        target_baseline_id = baseline_id or self._state.active_baseline_id
-
-        if not target_baseline_id or target_baseline_id not in self._state.baselines:
-            return {"success": False, "error": "No valid baseline for comparison"}
-
-        baseline = self._state.baselines[target_baseline_id]
-        analysis_time = datetime.utcnow()
-
         try:
-            # Capture current state
-            current_capabilities = self._capture_capabilities_snapshot()
-            current_coverage = self._capture_coverage_snapshot()
-            current_health = self._capture_health_snapshot()
-            current_gaps = self._capture_gap_snapshot()
-            current_vendors = self._capture_vendor_snapshot()
-            current_model = self._capture_model_snapshot()
+            analysis = self.compare_to_baseline(baseline_id)
 
-            # Analyze each dimension
-            coverage_drift = self._analyze_coverage_drift(
-                baseline.coverage_snapshot, current_coverage
-            )
-
-            health_drift = self._analyze_health_drift(baseline.health_snapshot, current_health)
-
-            gap_drift = self._analyze_gap_drift(baseline.gap_snapshot, current_gaps)
-
-            vendor_drift = self._analyze_vendor_drift(baseline.vendor_snapshot, current_vendors)
-
-            capability_drift = self._analyze_capability_drift(
-                baseline.capabilities_snapshot, current_capabilities
-            )
-
-            model_drift = self._analyze_model_drift(baseline.model_snapshot, current_model)
-
-            # Generate alerts based on drift
-            alerts = self._generate_drift_alerts(
-                coverage_drift, health_drift, gap_drift, vendor_drift, capability_drift
-            )
-
-            # Store new alerts
+            # Store new alerts. compare_to_baseline returns them already
+            # flattened to plain dicts (DriftAnalysis.alerts); rebuild the
+            # ArchitectureAlert objects this cache and _persist_alert need.
+            alerts = [ArchitectureAlert(**a) for a in analysis.alerts]
             for alert in alerts:
                 self._state.alerts[alert.id] = alert
                 self._persist_alert(alert)
 
-            # Calculate totals
-            critical_count = sum(1 for a in alerts if a.severity == AlertSeverity.CRITICAL.value)
-            warning_count = sum(1 for a in alerts if a.severity == AlertSeverity.WARNING.value)
-            info_count = sum(1 for a in alerts if a.severity == AlertSeverity.INFO.value)
-
-            # Generate summary
-            summary = self._generate_drift_summary(
-                coverage_drift, health_drift, gap_drift, len(alerts)
-            )
-
-            drift_result = DriftAnalysis(
-                baseline_id=baseline.id,
-                baseline_name=baseline.name,
-                analysis_timestamp=analysis_time.isoformat(),
-                total_drifts=len(alerts),
-                critical_drifts=critical_count,
-                warning_drifts=warning_count,
-                info_drifts=info_count,
-                coverage_drift=coverage_drift,
-                health_drift=health_drift,
-                gap_drift=gap_drift,
-                vendor_drift=vendor_drift,
-                model_drift=model_drift,
-                alerts=[asdict(a) for a in alerts],
-                summary=summary,
-            )
-
             return {
                 "success": True,
-                "drift_analysis": asdict(drift_result),
-                "alerts": [asdict(a) for a in alerts],
+                "drift_analysis": asdict(analysis),
+                "alerts": analysis.alerts,
             }
 
         except Exception as e:
