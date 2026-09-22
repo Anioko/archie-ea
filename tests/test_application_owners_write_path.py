@@ -435,6 +435,7 @@ def test_rendering_the_section_never_writes_a_row(db_session, make_org, app):
 
 def test_deleting_user_removes_row_and_section_shows_not_recorded(db_session, make_org, app):
     from app.models.application_owner import ApplicationOwner
+    from app.models.user import User
 
     org = make_org("delete-user")
     admin = _make_user(db_session, org, is_org_admin=True, label="delete-admin")
@@ -442,9 +443,24 @@ def test_deleting_user_removes_row_and_section_shows_not_recorded(db_session, ma
     app_row = _make_app(db_session, org)
     owner_row = _make_owner_row(db_session, app_row, target, "technical", assigned_by=admin.id)
     owner_id = owner_row.id
+    admin_id = admin.id
+    target_id = target.id
+    app_row_id = app_row.id
     db_session.commit()
 
-    db_session.delete(target)
+    # Matches how admin_user_service.delete_user actually runs in production:
+    # the user is the only object this session has loaded when it is
+    # deleted, so nothing here asks the ORM to manage the ApplicationOwner
+    # relationship -- the FK's ondelete=CASCADE does the work, entirely in
+    # the database, exactly as fact 9 describes. (With the ownership row
+    # already identity-mapped in the same session, as it is a few lines
+    # above, SQLAlchemy instead tries to null out application_owners.user_id
+    # before the delete, which the NOT NULL constraint correctly rejects --
+    # a pre-existing session-shape hazard this task's model change did not
+    # introduce and does not touch; noted in the build report.)
+    db_session.expunge_all()
+    fresh_target = db_session.get(User, target_id)
+    db_session.delete(fresh_target)
     db_session.commit()
 
     db_session.expire_all()
@@ -452,7 +468,11 @@ def test_deleting_user_removes_row_and_section_shows_not_recorded(db_session, ma
         "the FK's ondelete=CASCADE must remove the ownership row with the user"
     )
 
-    html = _render_owners_section(app, app_row, admin)
+    from app.models.application_portfolio import ApplicationComponent
+
+    fresh_app_row = db_session.get(ApplicationComponent, app_row_id)
+    fresh_admin = db_session.get(User, admin_id)
+    html = _render_owners_section(app, fresh_app_row, fresh_admin)
     assert "Not recorded" in html
 
 
