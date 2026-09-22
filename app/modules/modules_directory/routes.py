@@ -78,6 +78,14 @@ def _link_visible(endpoint: str, requires: str | None = None) -> bool:
 # drill-downs (those are covered by the single "ArchiMate Elements" library
 # link) — see the review comment on scripts task-3 fix round.
 _MORE_TOOLS = [
+    # A-20 (readiness table 5.1, 2026-09-22): Ask already has a real sidebar
+    # link in every persona's My-work zone (role_access.py's _ASK_LINK), so
+    # it needs no entry here -- the directory already unions every zone's
+    # links. Twin map deliberately has no sidebar link of its own (its own
+    # code comment: reached from an Ask result, kept out of the sidebar
+    # budget) -- this is its one findable home. "network" matches the icon
+    # already used for the Twin map button inside ask.html.
+    ("Twin Map", "intelligence_ui.twin_map", "network"),
     ("Stakeholder Map", "stakeholder_map.stakeholder_map_page", "users"),
     ("Capability Health", "strategic.capability_health", "heart-pulse"),
     ("Impact Analysis", "strategic.impact_analysis", "target"),
