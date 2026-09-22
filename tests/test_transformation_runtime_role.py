@@ -3327,12 +3327,39 @@ def test_membership_cleanup_preserves_unrelated_inbound_role_grant_provenance(
 
 
 @pytest.mark.parametrize("reported_result", ["false", "missing", "wrong_pid"])
-def test_every_requested_session_termination_requires_exact_true_result(
+def test_a_surviving_session_is_not_accepted_by_a_false_or_mismatched_termination_result(
     guarded_runtime_database,
     monkeypatch,
     reported_result,
 ):
-    """Catches false or mismatched results hidden by a session exiting itself."""
+    """A false, missing or wrong-pid direct termination result must not be
+    accepted as proof: only the fresh-connection poll's independent absence
+    check may clear a runtime-capable session, and it must not clear one
+    that is still genuinely connected.
+
+    Before 18 Sep 2026 this function treated a False/missing/wrong-pid
+    result from `pg_terminate_backend` itself as immediately fatal. That
+    was removed after it aborted a real production deploy on a benign race
+    (a pooled connection that had already disconnected on its own between
+    the initial SELECT and the terminate call) -- the session was
+    genuinely gone, just not via a `True` return from that one call, and
+    the poll loop's independent fresh-connection proof already covered it
+    correctly. `configure_roles.py`'s own comment on
+    `_terminate_runtime_capable_sessions` documents this.
+
+    This test's predecessor (same name, before this fix) exercised only
+    that already-fixed case: it closed the attacker connection itself
+    inside `override_result()`, so the poll loop's fresh query always
+    found the session genuinely absent and the old `pytest.raises` was
+    therefore asserting on a return-value contract the implementation
+    deliberately no longer honours -- it was failing CI over a scenario
+    the source comment explains is not a defect. This version instead
+    leaves the attacker session connected throughout, so the poll loop's
+    fresh query keeps finding it present, the deadline genuinely expires,
+    and the resulting RuntimeError is the real absence-proof failure this
+    function is supposed to raise when a session cannot be shown gone --
+    not a return-value formality.
+    """
     import scripts.database.configure_roles as roles
 
     role_database = guarded_runtime_database
@@ -3352,11 +3379,14 @@ def test_every_requested_session_termination_requires_exact_true_result(
     override_used = False
 
     def override_result():
+        # Deliberately does NOT close `attacker` -- the whole point of this
+        # version of the test is that the session stays genuinely present,
+        # so a false/missing/wrong-pid direct result cannot be allowed to
+        # bypass the independent fresh-connection absence proof.
         nonlocal override_used
         if override_used:
             return None
         override_used = True
-        attacker.close()
         if reported_result == "false":
             return ((attacker_pid, False),)
         if reported_result == "wrong_pid":
@@ -3370,16 +3400,22 @@ def test_every_requested_session_termination_requires_exact_true_result(
         return connection
 
     monkeypatch.setattr(roles.psycopg2, "connect", intercepted_connect)
-    with pytest.raises(RuntimeError, match="termination result"):
-        roles.configure_database_roles(
-            admin_url=_maintenance_url(),
-            database_names=(role_database.database_name,),
-            deploy_password=role_database.deploy_password,
-            runtime_password=role_database.runtime_password,
-            deploy_role=role_database.deploy_role,
-            runtime_role=role_database.runtime_role,
-        )
-    assert override_used
+    try:
+        with pytest.raises(RuntimeError, match="could not be proven"):
+            roles.configure_database_roles(
+                admin_url=_maintenance_url(),
+                database_names=(role_database.database_name,),
+                deploy_password=role_database.deploy_password,
+                runtime_password=role_database.runtime_password,
+                deploy_role=role_database.deploy_role,
+                runtime_role=role_database.runtime_role,
+            )
+        assert override_used
+    finally:
+        # The test owns the attacker connection's lifecycle now that
+        # override_result() no longer closes it -- must not leak a
+        # runtime-capable session into later tests sharing this database.
+        attacker.close()
 
     maintenance = real_connect(_maintenance_url())
     try:
