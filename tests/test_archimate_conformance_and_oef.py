@@ -172,8 +172,11 @@ def exported_model(db_session, make_org):
 
     Function-scoped (was module-scoped): every row this creates now lives
     inside ``db_session``'s per-test savepoint, which is always rolled back,
-    so nothing needs manual deletion. ``service.export_to_xml`` reads through
-    the same session, so the export sees the flushed-but-uncommitted rows.
+    so nothing needs manual deletion. The ``db_session.commit()`` below is not
+    a real commit — ``join_transaction_mode="create_savepoint"``
+    (tests/conftest.py) turns it into a SAVEPOINT release inside that outer,
+    rolled-back transaction. ``service.export_to_xml`` reads through the same
+    session, so the export sees those rows regardless.
     """
     import xml.etree.ElementTree as ET
 
@@ -241,16 +244,15 @@ def exported_model(db_session, make_org):
     )
     db_session.commit()
 
-    created = {"model": model.id, "diagram": diagram.id}
     xml = service.export_to_xml(model.id)
 
-    return ET.fromstring(xml), xml, created
+    return ET.fromstring(xml), xml
 
 
 class TestOpenExchangeExport:
     def test_child_order_matches_the_schema(self, exported_model):
         """The schema fixes the sequence; right data in the wrong order is rejected."""
-        root, _, _ = exported_model
+        root, _ = exported_model
         assert [child.tag.replace(NS, "") for child in root] == [
             "name",
             "elements",
@@ -261,13 +263,13 @@ class TestOpenExchangeExport:
         ]
 
     def test_elements_and_relationships_present(self, exported_model):
-        root, _, _ = exported_model
+        root, _ = exported_model
         assert len(root.findall(f"{NS}elements/{NS}element")) == 2
         assert len(root.findall(f"{NS}relationships/{NS}relationship")) == 1
 
     def test_custom_properties_survive_the_export(self, exported_model):
         """Previously dropped entirely — this is most of the enterprise metadata."""
-        root, _, _ = exported_model
+        root, _ = exported_model
         declared = {
             n.text
             for n in root.findall(f"{NS}propertyDefinitions/{NS}propertyDefinition/{NS}name")
@@ -287,7 +289,7 @@ class TestOpenExchangeExport:
 
     def test_organizations_group_elements_by_layer(self, exported_model):
         """Without this an importing tool shows one flat folder."""
-        root, _, _ = exported_model
+        root, _ = exported_model
         labels = [x.text for x in root.findall(f"{NS}organizations/{NS}item/{NS}label")]
         assert "Application" in labels and "Business" in labels
 
@@ -300,7 +302,7 @@ class TestOpenExchangeExport:
 
     def test_views_carry_diagram_geometry(self, exported_model):
         """The whole point of OEF over CSV: layout round-trips."""
-        root, _, _ = exported_model
+        root, _ = exported_model
         nodes = root.findall(f"{NS}views/{NS}diagrams/{NS}view/{NS}node")
         assert len(nodes) == 2
 
@@ -313,7 +315,7 @@ class TestOpenExchangeExport:
 
     def test_view_references_resolve(self, exported_model):
         """A dangling ref makes the file unopenable, which is worse than omitting views."""
-        root, _, _ = exported_model
+        root, _ = exported_model
         element_ids = {e.get("identifier") for e in root.findall(f"{NS}elements/{NS}element")}
         rel_ids = {
             r.get("identifier") for r in root.findall(f"{NS}relationships/{NS}relationship")
@@ -333,7 +335,7 @@ class TestOpenExchangeExport:
             assert conn.get("target") in node_ids
 
     def test_declares_the_open_group_namespace(self, exported_model):
-        _, xml, _ = exported_model
+        _, xml = exported_model
         assert "http://www.opengroup.org/xsd/archimate/3.0/" in xml
 
     def test_export_of_an_empty_model_is_still_well_formed(self, app):
