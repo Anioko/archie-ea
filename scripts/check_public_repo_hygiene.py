@@ -314,7 +314,45 @@ def _scan_for_references(root: str) -> list[str]:
     return problems
 
 
+def _tracked_content_paths(root: str) -> list[str] | None:
+    """Relative paths (forward slashes) of every git-tracked file under
+    SCAN_DIRS, via `git ls-files`, so an untracked local file is never
+    scanned as if it were already committed source. Returns None when
+    `root` is not a git working tree or git is unavailable -- the caller
+    falls back to a directory walk and says so."""
+    try:
+        proc = subprocess.run(
+            ["git", "-C", root, "ls-files", "-z", "--", *SCAN_DIRS],
+            capture_output=True, timeout=120,
+            encoding="utf-8", errors="replace",
+        )
+    except OSError:
+        return None
+    if proc.returncode != 0:
+        return None
+    return [p for p in (proc.stdout or "").split("\x00") if p]
+
+
 def _iter_content_files(root: str):
+    tracked = _tracked_content_paths(root)
+    if tracked is not None:
+        for rel in tracked:
+            parts = rel.split("/")  # git ls-files always uses forward slashes
+            name = parts[-1]
+            if name == SELF_NAME:
+                continue
+            if not name.endswith(CONTENT_EXTENSIONS):
+                continue
+            if name.endswith(CONTENT_SKIP_SUFFIXES):
+                continue
+            if any(part in CONTENT_SKIP_DIRNAMES for part in parts[:-1]):
+                continue
+            yield os.path.join(root, *parts)
+        return
+
+    print(f"note: {root} is not a git working tree (or git is unavailable) -- "
+          f"falling back to a directory walk, which may include untracked files",
+          file=sys.stderr)
     for scan_dir in SCAN_DIRS:
         base = os.path.join(root, scan_dir)
         if not os.path.isdir(base):
@@ -396,10 +434,14 @@ def _scan_record_ids_and_role_words(root: str) -> list[str]:
     return problems
 
 
-def _iter_commit_messages(root: str, rev_range: str | None):
+def _iter_commit_messages(root: str, rev_range: str | None) -> list[tuple[str, str]] | None:
     """(sha, full message) for every commit `git -C root log` can reach,
     oldest first. Uses ASCII unit/record separators (not present in any
-    real commit message) to split reliably on multi-line messages."""
+    real commit message) to split reliably on multi-line messages.
+
+    Returns None, not an empty list, when git itself could not be run or
+    failed -- the caller must not treat that the same as a clean history
+    with nothing to report; see _scan_commit_messages and main() below."""
     args = ["git", "-C", root, "log", "--format=%H%x1f%B%x1e"]
     if rev_range:
         args.append(rev_range)
@@ -415,10 +457,13 @@ def _iter_commit_messages(root: str, rev_range: str | None):
             args, capture_output=True, timeout=120,
             encoding="utf-8", errors="replace",
         )
-    except OSError:
-        return []
+    except OSError as exc:
+        print(f"error: could not run git: {exc}", file=sys.stderr)
+        return None
     if proc.returncode != 0:
-        return []
+        print(f"error: git log failed (exit {proc.returncode}): {proc.stderr.strip()}",
+              file=sys.stderr)
+        return None
     records = [r for r in (proc.stdout or "").split("\x1e") if r.strip()]
     result = []
     for rec in records:
@@ -429,7 +474,7 @@ def _iter_commit_messages(root: str, rev_range: str | None):
     return result
 
 
-def _scan_commit_messages(root: str, rev_range: str | None = None) -> list[str]:
+def _scan_commit_messages(root: str, rev_range: str | None = None) -> list[str] | None:
     """Rule 3, commit-message half: pipeline role words and a
     Co-Authored-By trailer in the commit message itself -- not the diff.
     The escape hatch excuses only the physical line it sits on, not the
@@ -437,9 +482,15 @@ def _scan_commit_messages(root: str, rev_range: str | None = None) -> list[str]:
     and is never excused by it, marker or not. Zero tolerance, scoped to
     the commits under review -- see verify.py's
     ``gate_public_repo_hygiene_commit_messages`` for why a full-history
-    count cannot be a stable measurement here."""
+    count cannot be a stable measurement here.
+
+    Returns None when the underlying git read failed -- never an empty
+    list, which a caller could otherwise mistake for zero hits."""
+    messages = _iter_commit_messages(root, rev_range)
+    if messages is None:
+        return None
     problems = []
-    for sha, message in _iter_commit_messages(root, rev_range):
+    for sha, message in messages:
         for line in message.splitlines():
             if _TRAILER_RE.search(line):
                 problems.append(f"{sha[:8]}: 'Co-Authored-By' in the commit message")
@@ -479,7 +530,15 @@ def main() -> int:
     if "content" in rules:
         problems += _scan_record_ids_and_role_words(root)
     if "commits" in rules:
-        problems += _scan_commit_messages(root, args.rev_range)
+        commit_problems = _scan_commit_messages(root, args.rev_range)
+        if commit_problems is None:
+            # Do not print a count at all: a caller parsing the last stdout
+            # line as an integer (scripts/verify.py's gate) must fail to
+            # parse it and report FAIL, not read an absent problem as zero.
+            print("error: could not read commit history for --rule commits "
+                  "-- see stderr above", file=sys.stderr)
+            return 2
+        problems += commit_problems
 
     if not args.count:
         for line in problems:

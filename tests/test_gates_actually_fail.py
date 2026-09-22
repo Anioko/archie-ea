@@ -507,12 +507,18 @@ def test_the_gate_fires_on_its_own_defect(script, builder, tmpdir):
 # --------------------------------------------------------------------------
 
 
-def _run_hygiene_checker(root, rule, rev_range=None):
+def _run_hygiene_checker_raw(root, rule, rev_range=None):
+    """The unparsed subprocess result, for a test that needs to inspect
+    the return code or stderr directly rather than assert a count exists."""
     cmd = [sys.executable, os.path.join(SCRIPTS, "check_public_repo_hygiene.py"),
            "--count", "--root", str(root), "--rule", rule]
     if rev_range:
         cmd += ["--range", rev_range]
-    proc = subprocess.run(cmd, capture_output=True, text=True, cwd=REPO)
+    return subprocess.run(cmd, capture_output=True, text=True, cwd=REPO)
+
+
+def _run_hygiene_checker(root, rule, rev_range=None):
+    proc = _run_hygiene_checker_raw(root, rule, rev_range=rev_range)
     trailing = (proc.stdout or "").strip().splitlines()
     assert trailing, (
         "check_public_repo_hygiene.py --rule %s produced no count for root=%s\n"
@@ -836,6 +842,46 @@ def test_public_repo_hygiene_commit_message_trailer_cannot_be_escaped(tmpdir):
         "Co-Authored-By: Example <e@example.com>  # hygiene-ok: attribution is required here\n",
     )
     assert _run_hygiene_checker(root, "commits") > 0
+
+
+def test_public_repo_hygiene_commit_message_gate_fails_not_passes_when_git_unavailable(tmpdir):
+    """A directory that is not a git repository at all (git log fails) must
+    report a failure, never a silent zero-count pass."""
+    root = tmpdir.mkdir("not-a-repo")
+    proc = _run_hygiene_checker_raw(root, "commits")
+    assert proc.returncode != 0, (
+        "expected a non-zero exit when git history could not be read, got 0\n"
+        "stdout=%r\nstderr=%r" % (proc.stdout, proc.stderr)
+    )
+    trailing = (proc.stdout or "").strip().splitlines()
+    parsed_as_zero = bool(trailing) and trailing[-1].strip() == "0"
+    assert not parsed_as_zero, (
+        "the checker printed a count of 0 for an unreadable history; a caller "
+        "parsing stdout would treat this as a clean pass instead of a failure"
+    )
+
+
+def test_public_repo_hygiene_content_scan_only_reads_tracked_files(tmpdir):
+    """An untracked file in a real git working tree is not scanned -- only
+    `git ls-files` output is, so a local scratch file never inflates the
+    count (or hides a real hit some other run would catch)."""
+    root = tmpdir.mkdir("tracked-only")
+    _init_repo_with_commit(root, "Initial commit")
+    _write(root, "app/tracked.py", "# clean\n")
+    _git(root, "add", "app/tracked.py")
+    _git(root, "commit", "-q", "-m", "Add tracked.py")
+    _write(root, "app/untracked.py", "# orchestrator said so\n")  # hygiene-ok: deliberate probe content, deliberately left untracked and never committed
+    assert _run_hygiene_checker(root, "content") == 0
+
+
+def test_public_repo_hygiene_content_scan_falls_back_when_git_unavailable(tmpdir):
+    """A tree that is not a git working tree still gets scanned, via a
+    directory walk, and the fallback is noted rather than silent."""
+    root = tmpdir.mkdir("no-git")
+    _write(root, "app/probe.py", "# orchestrator said so\n")  # hygiene-ok: deliberate probe content, in a synthetic tmpdir repo this checker never scans
+    proc = _run_hygiene_checker_raw(root, "content")
+    assert proc.stdout.strip().splitlines()[-1] == "1"
+    assert "falling back to a directory walk" in proc.stderr
 
 
 def test_every_registered_checker_carries_its_proof():
