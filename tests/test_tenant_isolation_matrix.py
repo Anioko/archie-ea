@@ -50,7 +50,6 @@ INTENTIONALLY_GLOBAL = {
     "ApplicationVersioning": "reached via ApplicationComponent, which is scoped",
     "DeploymentPipeline": "reached via ApplicationComponent, which is scoped",
     "ApplicationPerformanceMetrics": "reached via ApplicationComponent, which is scoped",
-    "ApplicationOwner": "queried by user_id, which already implies one tenant",
     "ApplicationDocument": "reached via ApplicationComponent; handlers verify ownership",
     "ContractApplication": "join row between two scoped parents",
     # VendorProductCapability was listed here on the reasoning that the vendor
