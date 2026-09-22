@@ -990,20 +990,31 @@ class IntelligenceQueryService:
 
     @staticmethod
     def _value_stream_tenant_predicate(model, organization_id: int):
-        """The explicit ``organization_id ==`` predicate ``ValueStream``,
-        ``CapabilityValueStreamMapping`` and ``ValueStreamStage`` each carry
-        on this path, isolated as its own seam -- the same pattern as
+        """The explicit ``organization_id ==`` predicate applied at three
+        call sites on this path -- the tenant's own ``ValueStream`` select,
+        the ``CapabilityValueStreamMapping`` select, and the not-found
+        resolver's ``ValueStream`` select in ``routes/api.py`` -- isolated
+        as its own seam -- the same pattern as
         ``derived_facts._apply_default_staleness_filter`` -- so the
         cross-tenant mutation-proof test can monkeypatch exactly this one
         function to a no-op and confirm the named test goes red, without
         editing source under test or inlining the predicate separately at
-        each of the three call sites.
+        each call site.
 
-        All three models already carry ``TenantMixin``, so this predicate is
-        defence in depth inside a request and is what keeps the method
-        correct when called with no ambient request context (a job, a CLI
-        command, a test looping tenants in one session), where the ORM
-        listener would otherwise no-op entirely.
+        ``ValueStreamStage`` deliberately carries NO predicate of its own: it
+        is scoped through its parent instead, reachable only via a
+        tenant-owned mapping on a tenant-owned value stream, and its join is
+        checked by stream membership (``ValueStreamStage.value_stream_id ==
+        CapabilityValueStreamMapping.value_stream_id``), not by calling this
+        function a fourth time. See ``value_streams_at_risk``'s own
+        docstring for why.
+
+        All three models this function is actually called with already carry
+        ``TenantMixin``, so this predicate is defence in depth inside a
+        request and is what keeps a caller correct when called with no
+        ambient request context (a job, a CLI command, a test looping
+        tenants in one session), where the ORM listener would otherwise
+        no-op entirely.
         """
         return model.organization_id == organization_id
 
