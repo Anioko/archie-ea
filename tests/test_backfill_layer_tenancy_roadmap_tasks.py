@@ -1,0 +1,227 @@
+"""``flask backfill-layer-tenancy`` deriving roadmap_tasks.organization_id.
+
+roadmap_tasks predates TenantMixin and carries no single foreign key to its
+owning tenant. The canonical backfill command derives the organisation from
+whichever provenance a row actually has -- the creating user, the work
+package's creator, or the consolidation entry's application, in that order --
+and a row with none of those is left NULL and reported rather than handed to
+whichever organisation happens to be picked for every other orphaned table.
+
+There is no existing test of ``repair_layer_tenancy``/``_DERIVABLE_ORG`` on
+this branch's base to extend, so this is a new module.
+"""
+
+from __future__ import annotations
+
+import pytest
+from sqlalchemy import text
+
+# No module-level `usefixtures("db_session")`: test_backfill_leaves_unprovenanced_
+# roadmap_task_null_with_two_orgs below calls repair_layer_tenancy() twice and
+# needs real commits between the two calls, so it deliberately does not take
+# db_session. Every other test in this module requests it directly instead.
+
+
+def _make_user(db_session, org_id, label):
+    """Same three-line construction tests/test_arb_ea_tenant_isolation.py uses.
+
+    There is no shared user-factory fixture on this branch's base; each module
+    that needs one still builds its own inline.
+    """
+    from app.models.user import User
+    import uuid
+
+    suffix = uuid.uuid4().hex[:10]
+    user = User(
+        email=f"{label}-{suffix}@example.com",
+        first_name="Test",
+        last_name=label,
+        organization_id=org_id,
+    )
+    db_session.add(user)
+    db_session.flush()
+    return user
+
+
+def _relax_not_null(app):
+    """Allow NULL organization_id inserts, committed on a connection of its own.
+
+    There is no shared "relax not null" fixture on this branch's base, and it
+    cannot be done on db_session's own connection: that fixture's transaction
+    is never really committed until the whole test rolls back, so the ACCESS
+    EXCLUSIVE lock an ALTER TABLE takes would still be held when
+    repair_layer_tenancy reflects roadmap_tasks's columns on a second,
+    independent connection a moment later (NullPool -- schema reflection is
+    engine-bound, not session-bound, so it never reuses db_session's
+    connection) -- same process, same thread, so it deadlocks against itself.
+    Doing the ALTER on its own autocommitting connection commits and releases
+    the lock immediately; the module-scoped fixture below puts the constraint
+    back once every test here, and its own db_session rollback, has finished.
+    """
+    from app import db
+
+    with app.app_context():
+        with db.engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+            conn.execute(
+                text("ALTER TABLE roadmap_tasks ALTER COLUMN organization_id DROP NOT NULL")
+            )
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _restore_roadmap_tasks_not_null(app):
+    """Undo `_relax_not_null` after every test (and its db_session rollback,
+    which discards the test rows) in this module has finished."""
+    from app import db
+
+    yield
+    with app.app_context():
+        with db.engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+            conn.execute(
+                text("ALTER TABLE roadmap_tasks ALTER COLUMN organization_id SET NOT NULL")
+            )
+
+
+def _insert_roadmap_task(db_session, *, created_by=None, unified_work_package_id=None, title="task"):
+    row_id = db_session.execute(
+        text(
+            """
+            INSERT INTO roadmap_tasks
+                (title, organization_id, archimate_element_id, created_by, unified_work_package_id)
+            VALUES
+                (:title, NULL, NULL, :created_by, :unified_work_package_id)
+            RETURNING id
+            """
+        ),
+        {"title": title, "created_by": created_by, "unified_work_package_id": unified_work_package_id},
+    ).scalar()
+    db_session.flush()
+    return row_id
+
+
+def _org_id_of(db_session, task_id):
+    return db_session.execute(
+        text("SELECT organization_id FROM roadmap_tasks WHERE id = :id"), {"id": task_id}
+    ).scalar()
+
+
+def test_backfill_derives_roadmap_task_org_from_created_by(db_session, make_org, app):
+    from app.commands.backfill_layer_tenancy import repair_layer_tenancy
+
+    org_a, org_b = make_org("bf-cb-a"), make_org("bf-cb-b")
+    user_a = _make_user(db_session, org_a.id, "A")
+    user_b = _make_user(db_session, org_b.id, "B")
+
+    _relax_not_null(app)
+    task_a_id = _insert_roadmap_task(db_session, created_by=user_a.id, title="A task")
+    task_b_id = _insert_roadmap_task(db_session, created_by=user_b.id, title="B task")
+
+    stats = repair_layer_tenancy()
+
+    assert _org_id_of(db_session, task_a_id) == org_a.id
+    assert _org_id_of(db_session, task_b_id) == org_b.id
+    assert "roadmap_tasks" not in stats["unresolved"]
+
+
+def test_backfill_derives_roadmap_task_org_from_work_package_creator(db_session, make_org, app):
+    from app.commands.backfill_layer_tenancy import repair_layer_tenancy
+    from app.models.unified_work_package import UnifiedWorkPackage
+
+    org_a, org_b = make_org("bf-wp-a"), make_org("bf-wp-b")
+    _make_user(db_session, org_a.id, "A")  # a distractor in the other org
+    user_b = _make_user(db_session, org_b.id, "B")
+
+    wp = UnifiedWorkPackage(
+        name="Migrate ERP",
+        business_capability="Finance",
+        created_by=user_b.id,
+    )
+    db_session.add(wp)
+    db_session.flush()
+
+    _relax_not_null(app)
+    task_id = _insert_roadmap_task(
+        db_session, created_by=None, unified_work_package_id=wp.id, title="WP-derived task"
+    )
+
+    stats = repair_layer_tenancy()
+
+    assert _org_id_of(db_session, task_id) == org_b.id
+    assert "roadmap_tasks" not in stats["unresolved"]
+
+
+def test_backfill_leaves_unprovenanced_roadmap_task_null_with_two_orgs(app):
+    """Calls repair_layer_tenancy() twice, so this cannot use the db_session
+    fixture. db_session's transaction is never really committed, and
+    repair_layer_tenancy hardens (SET NOT NULL on) every other, unrelated,
+    already-orphan-free tenant table it visits along the way -- on the first
+    call that lock stays held (uncommitted) until the whole test rolls back,
+    so the second call's own reflection of that same table deadlocks against
+    it, the same shape of self-conflict `_relax_not_null` avoids for
+    roadmap_tasks specifically. This test commits for real instead and cleans
+    up explicitly.
+    """
+    from app import db
+    from app.commands.backfill_layer_tenancy import repair_layer_tenancy
+    from app.models.organization import Organization
+    import uuid
+
+    with app.app_context():
+        suffix = uuid.uuid4().hex[:10]
+        org_a = Organization(name=f"Test bf-np-a {suffix}", slug=f"test-bf-np-a-{suffix}")
+        org_b = Organization(name=f"Test bf-np-b {suffix}", slug=f"test-bf-np-b-{suffix}")
+        db.session.add_all([org_a, org_b])
+        db.session.commit()
+
+        _relax_not_null(app)
+        task_id = db.session.execute(
+            text(
+                """
+                INSERT INTO roadmap_tasks
+                    (title, organization_id, archimate_element_id, created_by, unified_work_package_id)
+                VALUES
+                    ('Orphan task', NULL, NULL, NULL, NULL)
+                RETURNING id
+                """
+            )
+        ).scalar()
+        db.session.commit()
+
+        try:
+            stats_no_org = repair_layer_tenancy()
+            after_first = db.session.execute(
+                text("SELECT organization_id FROM roadmap_tasks WHERE id = :id"), {"id": task_id}
+            ).scalar()
+            assert after_first is None
+            assert stats_no_org["unresolved"] == {"roadmap_tasks": 1}
+
+            stats_with_org = repair_layer_tenancy(org_id=org_a.id)
+            after_second = db.session.execute(
+                text("SELECT organization_id FROM roadmap_tasks WHERE id = :id"), {"id": task_id}
+            ).scalar()
+            assert after_second is None
+            assert stats_with_org["unresolved"] == {"roadmap_tasks": 1}
+        finally:
+            db.session.rollback()
+            db.session.execute(text("DELETE FROM roadmap_tasks WHERE id = :id"), {"id": task_id})
+            db.session.execute(
+                text("DELETE FROM organizations WHERE id IN (:a, :b)"),
+                {"a": org_a.id, "b": org_b.id},
+            )
+            db.session.commit()
+
+
+def test_backfill_dry_run_changes_nothing(db_session, make_org, app):
+    from app.commands.backfill_layer_tenancy import repair_layer_tenancy
+
+    org_a, org_b = make_org("bf-dr-a"), make_org("bf-dr-b")
+    user_a = _make_user(db_session, org_a.id, "A")
+    user_b = _make_user(db_session, org_b.id, "B")
+
+    _relax_not_null(app)
+    task_a_id = _insert_roadmap_task(db_session, created_by=user_a.id, title="A task")
+    task_b_id = _insert_roadmap_task(db_session, created_by=user_b.id, title="B task")
+
+    repair_layer_tenancy(dry_run=True)
+
+    assert _org_id_of(db_session, task_a_id) is None
+    assert _org_id_of(db_session, task_b_id) is None

@@ -56,7 +56,44 @@ _DERIVABLE_ORG = {
            AND v.organization_id IS NULL
            AND b.organization_id IS NOT NULL
     """,
+    # roadmap_tasks rows predate the tenant column and carry no single
+    # provenance link; each statement fills only NULLs, in precedence order.
+    "roadmap_tasks": [
+        # 1. the user who created the task (set by the roadmap UI route)
+        """
+        UPDATE roadmap_tasks t
+           SET organization_id = u.organization_id
+          FROM users u
+         WHERE u.id = t.created_by
+           AND t.organization_id IS NULL
+        """,
+        # 2. the creator of the work package the task belongs to
+        """
+        UPDATE roadmap_tasks t
+           SET organization_id = u.organization_id
+          FROM unified_work_packages w
+          JOIN users u ON u.id = w.created_by
+         WHERE w.id = t.unified_work_package_id
+           AND t.organization_id IS NULL
+        """,
+        # 3. the application whose consolidation entry created the task
+        """
+        UPDATE roadmap_tasks t
+           SET organization_id = a.organization_id
+          FROM consolidation_list_entries e
+          JOIN application_components a ON a.id = e.application_id
+         WHERE e.roadmap_item_id = t.id
+           AND t.organization_id IS NULL
+           AND a.organization_id IS NOT NULL
+        """,
+    ],
 }
+
+# Tables whose rows carry per-row provenance rather than a single owning
+# entity: a row that cannot be derived from that provenance is another
+# tenant's data, never a candidate for the single-organisation or --org-id
+# orphan assignment below.
+_PROVENANCE_ONLY = {"roadmap_tasks"}
 
 
 def _resolve_org_id(conn, explicit):
@@ -113,7 +150,8 @@ def _tenant_tables():
 def repair_layer_tenancy(org_id=None, dry_run=False):
     """Repair organization_id on every TenantMixin table that needs it.
 
-    Returns {"repaired": [...], "skipped_healthy": n, "absent": [...]}.
+    Returns {"repaired": [...], "skipped_healthy": n, "absent": [...],
+    "unresolved": {table: count}}.
     """
     from sqlalchemy import inspect, text
 
@@ -124,6 +162,7 @@ def repair_layer_tenancy(org_id=None, dry_run=False):
     repaired, absent = [], []
     healthy = 0
     resolved_org = None
+    unresolved = {}
 
     for t in _tenant_tables():
         if t not in live:
@@ -150,7 +189,9 @@ def repair_layer_tenancy(org_id=None, dry_run=False):
         # A table that can state its own tenant does so first, so those rows
         # never reach the guess-based orphan pass below.
         if not dry_run and t in _DERIVABLE_ORG:
-            derived = conn.execute(text(_DERIVABLE_ORG[t])).rowcount
+            stmts = _DERIVABLE_ORG[t]
+            stmts = [stmts] if isinstance(stmts, str) else stmts
+            derived = sum(conn.execute(text(s)).rowcount for s in stmts)
             if derived:
                 click.echo(f"  + {t}: derived org for {derived} row(s) from the linked entity")
 
@@ -162,7 +203,30 @@ def repair_layer_tenancy(org_id=None, dry_run=False):
             healthy += 1
             continue
 
-        if orphans:
+        # roadmap_tasks (and any other per-row-provenance table) never hands
+        # an orphan to an operator-chosen organisation: with several tenants
+        # in the database an unresolved row is another tenant's plan, not a
+        # guess this command is allowed to make. With exactly one tenant
+        # there is no other organisation it could belong to, so the ordinary
+        # single-organisation rule still applies.
+        deferred = False
+        if orphans and t in _PROVENANCE_ONLY:
+            org_count = conn.execute(text("SELECT count(*) FROM organizations")).scalar()
+            if org_count != 1:
+                deferred = True
+                unresolved[t] = orphans
+                if dry_run:
+                    click.echo(
+                        f"  - {t}: {orphans} row(s) have no tenant provenance; "
+                        "would leave NULL and report, not assigned"
+                    )
+                else:
+                    click.echo(
+                        f"  ! {t}: {orphans} row(s) have no tenant provenance; "
+                        "left NULL and reported, not assigned"
+                    )
+
+        if orphans and not deferred:
             if resolved_org is None:
                 resolved_org = _resolve_org_id(conn, org_id)
             if dry_run:
@@ -180,16 +244,21 @@ def repair_layer_tenancy(org_id=None, dry_run=False):
             repaired.append(t)
             continue
 
-        # Index before NOT NULL, both idempotent; reconcile-schema adds neither.
-        for ddl, label in (
-            (f'CREATE INDEX IF NOT EXISTS {wanted_index} ON "{t}" (organization_id)', "index"),
-            (f'ALTER TABLE "{t}" ALTER COLUMN organization_id SET NOT NULL', "not-null"),
-        ):
+        # Index before NOT NULL, both idempotent; reconcile-schema adds
+        # neither. A deferred table (unresolved provenance rows still NULL)
+        # gets the index but not the NOT NULL constraint, which would only
+        # fail; that is reported explicitly instead of via the try/except.
+        ddls = [(f'CREATE INDEX IF NOT EXISTS {wanted_index} ON "{t}" (organization_id)', "index")]
+        if deferred:
+            click.echo(f"  ! {t}: not-null deferred: {orphans} unresolved row(s)")
+        else:
+            ddls.append((f'ALTER TABLE "{t}" ALTER COLUMN organization_id SET NOT NULL', "not-null"))
+        for ddl, label in ddls:
             try:
                 conn.execute(text(ddl))
             except Exception as exc:  # noqa: BLE001 — report, keep repairing other tables
                 click.echo(f"  ! {t}: {label} skipped ({str(exc)[:100]})")
-        click.echo(f"  + {t}: hardened (index, NOT NULL)")
+        click.echo(f"  + {t}: hardened (index{'' if deferred else ', NOT NULL'})")
         repaired.append(t)
 
     if dry_run:
@@ -197,7 +266,12 @@ def repair_layer_tenancy(org_id=None, dry_run=False):
     else:
         db.session.commit()
 
-    return {"repaired": repaired, "skipped_healthy": healthy, "absent": absent}
+    return {
+        "repaired": repaired,
+        "skipped_healthy": healthy,
+        "absent": absent,
+        "unresolved": unresolved,
+    }
 
 
 @click.command("backfill-layer-tenancy")
@@ -214,6 +288,8 @@ def backfill_layer_tenancy(dry_run, org_id):
         f"  {'would repair' if dry_run else 'repaired'} {len(stats['repaired'])} table(s); "
         f"{stats['skipped_healthy']} already healthy."
     )
+    for table, count in stats.get("unresolved", {}).items():
+        click.echo(f"  {table}: {count} row(s) left without a tenant; no provenance found")
 
 
 def init_app(app):
