@@ -1,5 +1,6 @@
 {% extends 'layouts/admin_base.html' %}
 {% from 'macros/page_shell.html' import page_shell %}
+{% from 'macros/_user_picker.html' import user_picker_script %}
 
 {% block title %}Application Rationalization{% endblock %}
 
@@ -2658,6 +2659,7 @@
 {% endblock %}
 
 {% block extra_head_js %}
+{{ user_picker_script() }}
 <script>
   window.__APP_CONFIG__ = window.__APP_CONFIG__ || {};
   Object.assign(window.__APP_CONFIG__, {
@@ -2674,28 +2676,10 @@
     appSearchUrl: '/api/enterprise/applications',
   });
 
-  // User-search autocomplete widget — reusable across owner/reviewer fields.
-  function userSearchWidget(getVal, setVal) {
-    return {
-      ures: [], ushow: false, uErrorShown: false,
-      async usearch() {
-        const q = getVal();
-        if (!q || q.length < 2) { this.ures = []; this.ushow = false; return; }
-        try {
-          const d = await Platform.fetch('/api/users', { silent: true });
-          if (d.success) { const lq = q.toLowerCase(); this.ures = d.users.filter(u => u.name.toLowerCase().includes(lq) || u.email.toLowerCase().includes(lq)).slice(0, 5); this.ushow = this.ures.length > 0; }
-          this.uErrorShown = false;
-        } catch (e) {
-          // Debounced on every keystroke — toast once per outage, not on every retry.
-          if (!this.uErrorShown) {
-            this.uErrorShown = true;
-            if (window.Platform && Platform.toast) Platform.toast.error('User search failed.');
-          }
-        }
-      },
-      uselect(u) { setVal(u.name); this.ushow = false; this.ures = []; }
-    };
-  }
+  // userSearchWidget is now defined once, in macros/_user_picker.html
+  // (reused by the application create/edit forms and the application
+  // record's Owners section too) — see the {{ user_picker_script() }}
+  // call above this block.
 
   // RAT-111: Review workflow Alpine component for the Options Analysis panel.
   // Loads the current review state for the selected application and provides

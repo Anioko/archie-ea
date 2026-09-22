@@ -86,23 +86,6 @@
                     </select>
                 </div>
 
-                <div>
-                    <label for="business_owner" class="block text-sm font-medium text-foreground mb-1">Business Owner</label>
-                    <input type="text"
-                           id="business_owner"
-                           name="business_owner"
-                           value="{{ app.business_owner or '' }}"
-                           class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
-                </div>
-
-                <div>
-                    <label for="technical_owner" class="block text-sm font-medium text-foreground mb-1">Technical Owner</label>
-                    <input type="text"
-                           id="technical_owner"
-                           name="technical_owner"
-                           value="{{ app.technical_owner or '' }}"
-                           class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
-                </div>
             </div>
 
             <div>
@@ -126,6 +109,12 @@
             </div>
         </form>
     </div>
+
+    {# ── Owners ──
+       A sibling card, not nested in the form above: its add/remove controls
+       are their own POST forms (decision B), and a <form> cannot nest
+       inside another <form>. #}
+    {% include 'application_mgmt/partials/_owners_section.html' %}
 
     {% else %}
 

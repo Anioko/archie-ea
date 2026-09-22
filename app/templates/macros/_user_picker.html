@@ -1,0 +1,83 @@
+{#
+  Organisation-scoped user search picker.
+
+  The search-and-select behaviour already existed once, inline, in
+  applications/rationalization.html (`userSearchWidget`, a free-text-name
+  autocomplete over GET /api/users). This file is that same behaviour
+  lifted into one shared definition so every caller — the rationalization
+  workbench, the application create/edit forms, and the Owners section —
+  uses it instead of a fourth reimplementation. Existing callers that only
+  ever wanted the typed name (rationalization.html) keep exactly that
+  behaviour; `user_picker` additionally captures the matched person's id
+  in a hidden field for callers that need to submit one.
+#}
+
+{% macro user_picker_script() %}
+<script>
+  // User-search autocomplete widget — reusable across owner/reviewer fields.
+  // getVal()/setVal(v) read and write the field shown to the person
+  // searching (a free-text name, by default). Pass onSelect(user) to do
+  // something else with the match instead of the default `setVal(u.name)` —
+  // user_picker() below uses it to also fill a hidden user id field.
+  function userSearchWidget(getVal, setVal, onSelect) {
+    return {
+      ures: [], ushow: false, uErrorShown: false,
+      async usearch() {
+        const q = getVal();
+        if (!q || q.length < 2) { this.ures = []; this.ushow = false; return; }
+        try {
+          const d = await Platform.fetch('/api/users', { silent: true });
+          if (d.success) { const lq = q.toLowerCase(); this.ures = d.users.filter(u => u.name.toLowerCase().includes(lq) || u.email.toLowerCase().includes(lq)).slice(0, 5); this.ushow = this.ures.length > 0; }
+          this.uErrorShown = false;
+        } catch (e) {
+          // Debounced on every keystroke — toast once per outage, not on every retry.
+          if (!this.uErrorShown) {
+            this.uErrorShown = true;
+            if (window.Platform && Platform.toast) Platform.toast.error('User search failed.');
+          }
+        }
+      },
+      uselect(u) {
+        if (onSelect) { onSelect(u); } else { setVal(u.name); }
+        this.ushow = false; this.ures = [];
+      }
+    };
+  }
+</script>
+{% endmacro %}
+
+{% macro user_picker(field_id, hidden_id_name, initial_id='', initial_label='', placeholder='Search by name or email...') %}
+{#
+  One search-and-select instance that captures a user id.
+
+  `hidden_id_name` is the form field the chosen person's id posts under.
+  The outer x-data owns the two plain values (the typed/matched name, the
+  id); the inner one is userSearchWidget itself, referencing them as bare
+  identifiers the same way the original rationalization.html callers
+  reference their own ancestor scope's `reviewerName` — no different from
+  the pre-existing, working pattern, just with its own state instead of a
+  page-level one.
+#}
+<div x-data="{ pickerText: {{ initial_label|tojson }}, pickerId: {{ (initial_id|string)|tojson }} }">
+  <input type="hidden" name="{{ hidden_id_name }}" :value="pickerId">
+  <div x-data="userSearchWidget(
+          () => pickerText,
+          v => { pickerText = v; pickerId = ''; },
+          u => { pickerText = u.name; pickerId = String(u.id); }
+        )" @click.outside="ushow = false" class="relative">
+    <input type="text" id="{{ field_id }}" autocomplete="off"
+           x-model="pickerText"
+           @input.debounce.300ms="usearch()" @focus="usearch()"
+           placeholder="{{ placeholder }}"
+           class="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+    <div x-show="ushow" x-cloak class="absolute z-20 mt-1 w-full bg-popover border border-border rounded-md shadow-lg max-h-40 overflow-y-auto">
+      <template x-for="u in ures" :key="u.id">
+        <button type="button" @click="uselect(u)" class="w-full px-3 py-1.5 text-left text-sm hover:bg-muted flex items-center justify-between">
+          <span x-text="u.name" class="font-medium"></span>
+          <span x-text="u.email" class="text-xs text-muted-foreground"></span>
+        </button>
+      </template>
+    </div>
+  </div>
+</div>
+{% endmacro %}
