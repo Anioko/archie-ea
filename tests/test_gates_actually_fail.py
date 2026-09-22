@@ -1038,6 +1038,33 @@ def test_public_repo_hygiene_content_scan_falls_back_when_git_unavailable(tmpdir
     assert "falling back to a directory walk" in proc.stderr
 
 
+def test_public_repo_hygiene_content_scan_fails_on_zero_tracked_files_under_an_existing_dir(tmpdir):
+    """`git ls-files` succeeding with zero files under a scan directory
+    that exists on disk is a broken read (wrong cwd, a detached or partial
+    checkout), not an empty repository -- report a failure, never a silent
+    0 a caller could mistake for a clean scan."""
+    root = tmpdir.mkdir("zero-tracked")
+    _init_repo_with_commit(root, "Initial commit")
+    os.makedirs(str(root.join("app")))
+    _write(root, "app/untracked.py", "# never committed\n")
+    # app/ exists on disk, but nothing under it was ever `git add`ed, so
+    # `git ls-files -- app scripts tests templates` reports zero files
+    # while this real git repository's own ls-files call succeeds cleanly.
+    proc = _run_hygiene_checker_raw(root, "content")
+    assert proc.returncode == 2, (
+        "expected a non-zero exit when git ls-files reported zero tracked files "
+        "under an existing scan directory, got %d\nstdout=%r\nstderr=%r"
+        % (proc.returncode, proc.stdout, proc.stderr)
+    )
+    trailing = (proc.stdout or "").strip().splitlines()
+    parsed_as_zero = bool(trailing) and trailing[-1].strip() == "0"
+    assert not parsed_as_zero, (
+        "the checker printed a count of 0 for an untrusted zero-file read; a "
+        "caller parsing stdout would treat this as a clean pass instead of a failure"
+    )
+    assert "zero tracked files" in proc.stderr
+
+
 def test_every_registered_checker_carries_its_proof():
     """A checker in the registry must document the defect it was watched on.
 

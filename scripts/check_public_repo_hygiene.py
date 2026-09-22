@@ -429,9 +429,35 @@ def _tracked_content_paths(root: str) -> list[str] | None:
     return [p for p in (proc.stdout or "").split("\x00") if p]
 
 
+class _UntrustedZeroFileCount(Exception):
+    """`git ls-files` ran cleanly and reported zero tracked files under a
+    scan directory that exists on disk -- see `_iter_content_files`. Not a
+    subclass of a git-related error: this is not a git failure, it is a git
+    success this checker refuses to trust."""
+
+
 def _iter_content_files(root: str):
     tracked = _tracked_content_paths(root)
     if tracked is not None:
+        if not tracked and any(os.path.isdir(os.path.join(root, d)) for d in SCAN_DIRS):
+            # `git ls-files` exiting 0 with no output normally means "nothing
+            # tracked here" -- correct for a scan directory that doesn't
+            # exist. It does not mean that when the directory exists on disk:
+            # a real, populated app/scripts/tests/templates tree with git
+            # reporting zero tracked files under any of them is a broken
+            # read (wrong cwd, a detached or partial checkout, a `-C root`
+            # pointed somewhere git does not expect), not an empty
+            # repository, and reporting a clean scan of zero files would be
+            # exactly the silent-pass this checker's own commit-message half
+            # already refuses to allow on a git failure.
+            print(
+                f"error: `git ls-files` reported zero tracked files under "
+                f"{', '.join(SCAN_DIRS)} in {root}, although at least one of "
+                f"those directories exists on disk -- refusing to report a "
+                f"clean scan of zero files",
+                file=sys.stderr,
+            )
+            raise _UntrustedZeroFileCount()
         for rel in tracked:
             parts = rel.split("/")  # git ls-files always uses forward slashes
             name = parts[-1]
@@ -496,7 +522,7 @@ def _bare_record_id_matches(line: str):
         yield m.start(), token
 
 
-def _scan_record_ids_and_role_words(root: str) -> list[str]:
+def _scan_record_ids_and_role_words(root: str) -> list[str] | None:
     """Rule 3, source half: review-record-id tokens and pipeline role words,
     scanned only inside comments, docstrings and string literals (never
     executable code) under app/, scripts/, tests/, templates and static JS
@@ -505,28 +531,36 @@ def _scan_record_ids_and_role_words(root: str) -> list[str]:
     against the physical source line, not the comment/string fragment: a
     string literal and a trailing `# hygiene-ok:` comment can share one
     physical line as two separate tokens, and the marker still has to
-    excuse the whole line, not just the token it happens to sit in."""
+    excuse the whole line, not just the token it happens to sit in.
+
+    Returns None, not an empty list, when the file list itself could not be
+    trusted -- `git ls-files` reporting zero tracked files under a scan
+    directory that exists on disk; see `_iter_content_files`. A caller must
+    not read that the same as a clean scan with nothing to report."""
     problems = []
-    for path in _iter_content_files(root):
-        rel = os.path.relpath(path, root).replace(os.sep, "/")
-        try:
-            with open(path, encoding="utf-8", errors="ignore") as fh:
-                raw_lines = fh.readlines()
-        except OSError:
-            raw_lines = []
-        for lineno, line in _scannable_lines(path):
-            raw = raw_lines[lineno - 1] if 0 < lineno <= len(raw_lines) else line
-            if ESCAPE_HATCH in raw:
-                continue
-            for _start, token in _record_id_matches(line):
-                problems.append(f"{rel}:{lineno}: looks like a review record id: '{token}'")
-            labels = _role_word_hits(line)
-            has_context = bool(labels) or bool(_FINDING_RE.search(_mask_product_terms(line)))
-            if has_context:
-                for _start, token in _bare_record_id_matches(line):
+    try:
+        for path in _iter_content_files(root):
+            rel = os.path.relpath(path, root).replace(os.sep, "/")
+            try:
+                with open(path, encoding="utf-8", errors="ignore") as fh:
+                    raw_lines = fh.readlines()
+            except OSError:
+                raw_lines = []
+            for lineno, line in _scannable_lines(path):
+                raw = raw_lines[lineno - 1] if 0 < lineno <= len(raw_lines) else line
+                if ESCAPE_HATCH in raw:
+                    continue
+                for _start, token in _record_id_matches(line):
                     problems.append(f"{rel}:{lineno}: looks like a review record id: '{token}'")
-            for label in labels:
-                problems.append(f"{rel}:{lineno}: pipeline role word '{label}'")
+                labels = _role_word_hits(line)
+                has_context = bool(labels) or bool(_FINDING_RE.search(_mask_product_terms(line)))
+                if has_context:
+                    for _start, token in _bare_record_id_matches(line):
+                        problems.append(f"{rel}:{lineno}: looks like a review record id: '{token}'")
+                for label in labels:
+                    problems.append(f"{rel}:{lineno}: pipeline role word '{label}'")
+    except _UntrustedZeroFileCount:
+        return None
     return problems
 
 
@@ -632,7 +666,15 @@ def main() -> int:
     if "buckets" in rules:
         problems += scan(root)
     if "content" in rules:
-        problems += _scan_record_ids_and_role_words(root)
+        content_problems = _scan_record_ids_and_role_words(root)
+        if content_problems is None:
+            # Same reasoning as the commits branch below: no count printed
+            # at all, so a caller parsing the last stdout line as an
+            # integer fails to parse it and reports FAIL, not zero.
+            print("error: could not read the tracked file list for --rule "
+                  "content -- see stderr above", file=sys.stderr)
+            return 2
+        problems += content_problems
     if "commits" in rules:
         commit_problems = _scan_commit_messages(root, args.rev_range)
         if commit_problems is None:
