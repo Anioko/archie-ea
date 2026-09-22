@@ -1243,6 +1243,46 @@ def test_dependency_object_exact_key_set_and_no_forbidden_keys(app, db_session, 
     assert dependency["stage"] == {"id": stage.id, "name": stage.name}
 
 
+def test_capability_row_and_summary_exact_key_sets(app, db_session, make_org):
+    """The dependency object's key set was already pinned above; this
+    pins the three key sets that wrap it -- a capability entry (twelve
+    keys, the original eight plus T-S4's archimate_element_id, initiatives
+    and initiatives_reason), a row (six keys, T-S1's four plus T-S4's
+    value_stream_initiatives and value_stream_initiatives_reason) and the
+    top-level summary (the seven counters plus latency_ms, added once after
+    every row is built)."""
+    from app.modules.intelligence.services.query_service import IntelligenceQueryService
+
+    org = make_org("vsr-ts4-keysets")
+    vs = _value_stream(db_session, org.id, "VS", f"VSR-TS4KEYSETS-{_org_suffix()}")
+    stage = _stage(db_session, org.id, vs.id, "Stage", 1)
+    cap = _capability(db_session, org.id, "Cap", f"VSR-TS4KEYSETS-CAP-{_org_suffix()}", current=2, target=4)
+    _mapping(db_session, org.id, cap.id, vs.id, stage.id)
+    db_session.commit()
+
+    result = IntelligenceQueryService.value_streams_at_risk(org.id)
+
+    row = result["rows"][0]
+    assert set(row.keys()) == {
+        "value_stream", "at_risk_capability_count", "capabilities", "reason",
+        "value_stream_initiatives", "value_stream_initiatives_reason",
+    }
+    assert set(row["value_stream"].keys()) == {"id", "name", "code", "archimate_element_id"}
+
+    cap_row = row["capabilities"][0]
+    assert set(cap_row.keys()) == {
+        "id", "name", "code", "archimate_element_id", "current_maturity",
+        "target_maturity", "maturity_source", "at_risk", "dependency", "reason",
+        "initiatives", "initiatives_reason",
+    }
+
+    assert set(result["summary"].keys()) == {
+        "value_streams_considered", "value_streams_at_risk", "capabilities_considered",
+        "capabilities_below_threshold", "capabilities_with_no_maturity",
+        "value_streams_not_linked_to_model", "initiative_link_basis", "latency_ms",
+    }
+
+
 def test_dependency_object_reports_assessment_fields_honestly(app, db_session, make_org):
     """`assessed_by` / `assessed_at` are whatever the
     mapping row actually carries -- `mapping.assessor` and
@@ -1685,8 +1725,13 @@ def test_initiative_on_another_tenants_element_never_appears_and_mutation_proof(
     list: (a) tenant A's own mapping names a SHARED catalogue capability
     (``organization_id`` null) whose ``archimate_element_id`` is tenant B's
     own element; (b) A's own capability, by data anomaly, names B's element
-    directly. Both must be invisible, and B's initiative's name, code and
-    its metric's name absent from the serialised payload.
+    directly. Both must be invisible: B's initiative's name, code and its
+    metric's name absent from the serialised payload, and the raw
+    foreign element id itself never echoed either -- the identity select's
+    own OUTER JOIN carries the same tenant predicate, so both capability
+    entries serialise ``archimate_element_id: null`` and, since the element
+    is therefore null rather than merely empty of initiatives, both report
+    ``capability_not_linked_to_model`` rather than ``no_initiative_linked``.
 
     Then, inside ``pytest.raises(AssertionError)``, neuter the shared
     ``_value_stream_tenant_predicate`` seam and show the same assertion
@@ -1738,10 +1783,16 @@ def test_initiative_on_another_tenants_element_never_appears_and_mutation_proof(
     shared_entry = next(c for c in row["capabilities"] if c["id"] == shared_cap.id)
     own_entry = next(c for c in row["capabilities"] if c["id"] == own_cap.id)
 
+    # The identity select's own OUTER JOIN carries the same tenant
+    # predicate, so a stored archimate_element_id that does not resolve
+    # inside the fence comes back null -- never a foreign integer, even
+    # though it never carried a name or record either.
+    assert shared_entry["archimate_element_id"] is None
+    assert own_entry["archimate_element_id"] is None
     assert shared_entry["initiatives"] == []
-    assert shared_entry["initiatives_reason"] == "no_initiative_linked"
+    assert shared_entry["initiatives_reason"] == "capability_not_linked_to_model"
     assert own_entry["initiatives"] == []
-    assert own_entry["initiatives_reason"] == "no_initiative_linked"
+    assert own_entry["initiatives_reason"] == "capability_not_linked_to_model"
     assert "Demonstration: B's Initiative" not in serialised
     assert b_initiative.code not in serialised
     assert "B's Metric" not in serialised
@@ -1791,6 +1842,13 @@ def test_metric_of_foreign_initiative_never_appears(app, db_session, make_org):
     serialised = json.dumps(result)
     assert "B's Own Metric" not in serialised
 
+    # cap_a's stored archimate_element_id names org B's element, which
+    # does not resolve inside org A's fence -- the identity select's own
+    # OUTER JOIN nulls it, so it never reaches element_ids at all.
+    cap_row = result["rows"][0]["capabilities"][0]
+    assert cap_row["archimate_element_id"] is None
+    assert cap_row["initiatives_reason"] == "capability_not_linked_to_model"
+
 
 def test_path_c_statements_are_inner_joins_from_the_fenced_element(app, db_session, make_org, select_counter):
     from app.modules.intelligence.services.query_service import IntelligenceQueryService
@@ -1828,6 +1886,12 @@ def test_path_c_statements_are_inner_joins_from_the_fenced_element(app, db_sessi
 
     metric_stmt = next(s for s in path_c_statements if "initiative_success_metrics" in s.lower())
     assert "JOIN INITIATIVE_SUCCESS_METRICS" in metric_stmt.upper()
+    # Pin the narrowing WHERE clause itself -- dropping
+    # `PortfolioInitiative.id.in_(initiative_ids)` from the metric select
+    # would still compile and still join through the fenced element, but
+    # would then return every fenced initiative's metrics, not only the
+    # ones select 5 actually found.
+    assert "PORTFOLIO_INITIATIVES.ID IN" in metric_stmt.upper(), metric_stmt
 
 
 def test_initiative_without_element_is_absent_and_uncounted(app, db_session, make_org):
@@ -1909,6 +1973,11 @@ def test_query_path_issues_no_write(app, db_session, make_org, all_statement_cou
 
     all_statement_counter.statements.clear()
     IntelligenceQueryService.value_streams_at_risk(org.id)
+
+    # An empty capture (e.g. the listener silently swallowing every
+    # statement) would pass the write-free assertion below vacuously --
+    # pin that the call actually issued statements to inspect.
+    assert all_statement_counter.statements, "expected at least one SELECT to be captured"
 
     write_verbs = ("INSERT", "UPDATE", "DELETE")
     writes = [

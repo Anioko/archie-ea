@@ -990,15 +990,16 @@ class IntelligenceQueryService:
 
     @staticmethod
     def _value_stream_tenant_predicate(model, organization_id: int):
-        """The explicit ``organization_id ==`` predicate applied at five
+        """The explicit ``organization_id ==`` predicate applied at six
         call sites on this path -- the tenant's own ``ValueStream`` select,
         the ``CapabilityValueStreamMapping`` select, the not-found resolver's
-        ``ValueStream`` select in ``routes/api.py``, and Path C's two
+        ``ValueStream`` select in ``routes/api.py``, Path C's two
         ``ArchiMateElement`` selects (the initiative select and the metric
-        select, T-S4) -- isolated as its own seam -- the same pattern as
-        ``derived_facts._apply_default_staleness_filter`` -- so the
-        cross-tenant mutation-proof test can monkeypatch exactly this one
-        function to a no-op and confirm the named test goes red, without
+        select, T-S4), and the capability identity select's OUTER JOIN back
+        to ``ArchiMateElement`` -- isolated as its own seam -- the
+        same pattern as ``derived_facts._apply_default_staleness_filter`` --
+        so the cross-tenant mutation-proof test can monkeypatch exactly this
+        one function to a no-op and confirm the named test goes red, without
         editing source under test or inlining the predicate separately at
         each call site.
 
@@ -1059,8 +1060,11 @@ class IntelligenceQueryService:
         when given); mapping rows for those value-stream ids, joined to
         ``ValueStreamStage`` for the stage id and name; capability identity
         for the distinct capability ids, now also reading
-        ``archimate_element_id`` as a fourth column; maturity through the
-        accessor. Never one select per row.
+        ``archimate_element_id`` as a fourth column -- through an OUTER JOIN
+        back to ``ArchiMateElement`` carrying the same tenant predicate Path C
+        uses, so a stored element id that does not resolve inside the
+        fence comes back null rather than echoing a foreign or deleted
+        integer; maturity through the accessor. Never one select per row.
 
         Tenancy (design § 3.2, § 9): ``ValueStream`` and
         ``CapabilityValueStreamMapping`` carry the strict, explicit predicate
@@ -1156,11 +1160,20 @@ class IntelligenceQueryService:
         stream's ``archimate_element_id`` is null; otherwise
         ``no_initiative_linked`` when nothing joined; otherwise ``null``. For
         an initiative: ``no_success_metric_recorded`` when its metrics list
-        is empty; otherwise ``null``. An element id that does not resolve
-        inside the tenant's fence (another tenant's element, a deleted
-        element) yields ``no_initiative_linked``, deliberately
-        indistinguishable from an element that has no initiative -- the
-        fence is not an existence oracle. Each initiatives list carries its
+        is empty; otherwise ``null``. "Null" for a capability entry already
+        covers a stored element id that does not resolve inside the tenant's
+        fence (another organisation's element, a deleted one) -- the
+        identity select's own OUTER JOIN carries the same predicate,
+        so that case is folded into ``capability_not_linked_to_model`` at the
+        source rather than surfacing a foreign integer and reaching
+        ``no_initiative_linked`` instead; a value stream's own element is
+        always this tenant's, created by its own insert listener, so the
+        equivalent case never arises for a row. ``no_initiative_linked``
+        itself stays reserved for an element that DOES resolve but has
+        nothing joined to it -- deliberately indistinguishable from a
+        foreign or deleted element id reaching Path C's own two selects by
+        some other route, since the fence there is not an existence oracle
+        either. Each initiatives list carries its
         own reason beside it (``capabilities[].initiatives_reason``,
         ``rows[].value_stream_initiatives_reason``,
         ``initiatives[].success_metrics_reason``): T-S1's ``reason`` key
@@ -1240,20 +1253,45 @@ class IntelligenceQueryService:
 
                 identity_by_id: Dict[int, Dict[str, Any]] = {}
                 if capability_ids:
-                    identity_stmt = db.select(
-                        UnifiedCapability.id,
-                        UnifiedCapability.name,
-                        UnifiedCapability.code,
-                        UnifiedCapability.archimate_element_id,
-                    ).where(
-                        UnifiedCapability.id.in_(capability_ids),
-                        # Permissive predicate, written out in full (§ 3.2):
-                        # a tenant's own mapping row may name a shared
-                        # catalogue capability, and that mapping is honoured.
-                        db.or_(
-                            UnifiedCapability.organization_id == organization_id,
-                            UnifiedCapability.organization_id.is_(None),
-                        ),
+                    # archimate_element_id is read through an OUTER
+                    # JOIN back to ArchiMateElement carrying the same tenant
+                    # predicate Path C uses, not off the raw column. A shared
+                    # catalogue capability's stored archimate_element_id can
+                    # point at another organisation's element (or a deleted
+                    # one); echoing that raw integer would leak that SOME
+                    # element with that id exists, even though no name or
+                    # record ever does. When the join does not resolve under
+                    # the fence -- absent, foreign or deleted, indistinguishable
+                    # on purpose -- ArchiMateElement.id comes back null, and
+                    # this capability serialises archimate_element_id: null,
+                    # the same as a capability with no element at all.
+                    identity_stmt = (
+                        db.select(
+                            UnifiedCapability.id,
+                            UnifiedCapability.name,
+                            UnifiedCapability.code,
+                            ArchiMateElement.id,
+                        )
+                        .select_from(UnifiedCapability)
+                        .outerjoin(
+                            ArchiMateElement,
+                            db.and_(
+                                UnifiedCapability.archimate_element_id == ArchiMateElement.id,
+                                IntelligenceQueryService._value_stream_tenant_predicate(
+                                    ArchiMateElement, organization_id
+                                ),
+                            ),
+                        )
+                        .where(
+                            UnifiedCapability.id.in_(capability_ids),
+                            # Permissive predicate, written out in full (§ 3.2):
+                            # a tenant's own mapping row may name a shared
+                            # catalogue capability, and that mapping is honoured.
+                            db.or_(
+                                UnifiedCapability.organization_id == organization_id,
+                                UnifiedCapability.organization_id.is_(None),
+                            ),
+                        )
                     )
                     for cap_id, name, code, cap_element_id in db.session.execute(identity_stmt).all():
                         identity_by_id[cap_id] = {

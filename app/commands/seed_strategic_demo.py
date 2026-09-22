@@ -34,11 +34,13 @@ Writes, for one organisation only:
 It creates no capability it did not create itself, never touches a row whose
 ``organization_id`` is null, and never touches another organisation's row.
 Neither ``PortfolioInitiative`` nor ``InitiativeSuccessMetric`` carries a
-tenant column at all (DA-S3), so nothing here sets one; an existing
-initiative code that resolves to a different element than this run just
-resolved aborts the whole run before any further write, naming the code --
-the seed never touches a row it does not own. All names are plainly
-invented, prefixed ``Demonstration:`` like the rest of this fixture.
+tenant column at all (DA-S3), so the three initiative codes this run would
+use are looked up FIRST, before any writer below runs at all: an existing
+row whose ``archimate_element_id`` does not resolve to an ``ArchiMateElement``
+this organisation owns aborts the whole run before a single value stream,
+stage, capability or mapping is written, naming the code -- the seed never
+touches a row it does not own. All names are plainly invented, prefixed
+``Demonstration:`` like the rest of this fixture.
 
 Idempotent: re-running it creates nothing new and changes nothing. A mapping
 row present with different values from a previous run counts as
@@ -244,12 +246,21 @@ def seed_strategic_demo(org_id: int, dry_run: bool = False) -> dict:
     the element ids this same run just resolved, in memory, never by a
     fresh lookup that could cross a tenant boundary.
 
-    An existing initiative row whose code matches but whose
-    ``archimate_element_id`` does not match the element this run resolved
-    aborts the WHOLE run (an exception, raised before any further write)
-    rather than touching a row it does not own -- everything this run
-    flushed but did not commit is discarded by ``tenant_scope``'s own
-    rollback on the way out.
+    The three initiative codes this run would use are looked up FIRST,
+    before the value-stream section (or any other writer) runs at all,
+    against exactly the element its own spec's capability or value stream
+    already resolves to (a fresh lookup by code, not this run's own
+    in-memory dict, since nothing has been created yet): an existing row
+    whose ``archimate_element_id`` does not match that -- including a
+    capability or value stream with no element of its own yet, which no
+    successful prior run would ever leave behind -- aborts the WHOLE run
+    (an exception, raised genuinely before any write) rather than touching
+    a row it does not own. Value-stream, stage and mapping creation each
+    commit internally (``value_stream_service``'s own writers), so checking
+    this only once the initiatives section was reached left a half-seeded
+    organisation behind on abort; the pre-flight guard below is what keeps
+    this true. Everything this run flushed but did not commit is discarded
+    by ``tenant_scope``'s own rollback on the way out.
     """
     from app.jobs.tenant_safe_job import tenant_scope
     from app.models import ArchiMateElement
@@ -275,6 +286,45 @@ def seed_strategic_demo(org_id: int, dry_run: bool = False) -> dict:
     }
 
     with tenant_scope(org_id):
+        # -- pre-flight guard --------------------------------------------------
+        # Look up the three initiative codes this run would use BEFORE any
+        # writer below runs -- not merely before the initiatives section's
+        # own write. Each code's own spec names a capability or a value
+        # stream; a fresh lookup by that code (not this run's own in-memory
+        # dict, since nothing has been created yet) resolves the element it
+        # already has, if any. An existing initiative row is a conflict
+        # unless its archimate_element_id exactly matches that -- a
+        # capability or value stream with no element of its own yet is
+        # itself a conflict too, since no successful prior run would ever
+        # leave an initiative behind without also giving its own target an
+        # element. Checked here, before a single value stream, stage,
+        # capability or mapping is written, so an abort never leaves an
+        # organisation half-seeded.
+        for ini_spec in _INITIATIVES:
+            code = f"{ini_spec['code_prefix']}-{org_id}"
+            existing_initiative = PortfolioInitiative.query.filter_by(code=code).first()
+            if existing_initiative is None:
+                continue
+            if "capability_code" in ini_spec:
+                target = UnifiedCapability.query.filter_by(
+                    organization_id=org_id, code=ini_spec["capability_code"]
+                ).first()
+            else:
+                target = ValueStream.query.filter_by(
+                    organization_id=org_id, code=ini_spec["value_stream_code"]
+                ).first()
+            target_element_id = target.archimate_element_id if target is not None else None
+            if (
+                target_element_id is None
+                or existing_initiative.archimate_element_id != target_element_id
+            ):
+                raise RuntimeError(
+                    f"seed-strategic-demo: existing initiative code {code!r} points "
+                    f"at a different element than this organisation's own capability "
+                    f"or value stream resolves to -- refusing to touch a row it does "
+                    f"not own, before any write"
+                )
+
         # -- value streams -------------------------------------------------
         vs_by_code = {}
         for vs_spec in _VALUE_STREAMS:
@@ -467,18 +517,12 @@ def seed_strategic_demo(org_id: int, dry_run: bool = False) -> dict:
                 initiative_by_code[code] = None
                 continue
 
+            # The pre-flight guard above already confirmed, before any writer
+            # ran, that an existing row for this code (if any) points at
+            # exactly this element -- so a row found here is always the
+            # already-present case, never a conflict to re-check.
             existing_initiative = PortfolioInitiative.query.filter_by(code=code).first()
             if existing_initiative is not None:
-                if existing_initiative.archimate_element_id != element_id:
-                    # The seed never touches a row it does not own: abort
-                    # the whole run before any further write. Nothing this
-                    # run has flushed so far is committed yet -- tenant_scope's
-                    # own rollback on the way out discards it.
-                    raise RuntimeError(
-                        f"seed-strategic-demo: existing initiative code {code!r} "
-                        f"points at a different element than this run resolved -- "
-                        f"refusing to touch a row it does not own"
-                    )
                 initiative_by_code[code] = existing_initiative
                 stats["already_present"] += 1
                 continue

@@ -229,24 +229,28 @@ def test_seeded_two_organisations_have_disjoint_initiative_ids(db_session, make_
     assert ids_a.isdisjoint(ids_b)
 
 
-def test_existing_initiative_code_pointing_at_a_different_element_aborts_before_any_write(
+def test_existing_initiative_code_pointing_at_another_organisations_element_aborts_before_any_write(
     db_session, make_org
 ):
     """An existing ``PortfolioInitiative`` row whose code the seed's own spec
-    would reuse, but whose ``archimate_element_id`` resolves to a DIFFERENT
-    element than this run just resolved, aborts the whole run rather than
-    silently repointing a row the seed does not own -- and the abort happens
-    on the first spec in iteration order, before either of the other two
-    named initiatives is ever attempted."""
+    would reuse, but whose ``archimate_element_id`` resolves to ANOTHER
+    organisation's element, aborts the whole run rather than silently
+    repointing a row the seed does not own. The pre-flight guard looks the
+    three codes up before any writer runs at all, so this
+    organisation is left with NOTHING written -- all seven counts (the four
+    curated ones and the three T-S4 ones), not merely the conflicting row
+    and the later initiatives left untouched."""
     from app.models import ArchiMateElement
     from app.models.enterprise_intelligence import PortfolioInitiative
 
     org = make_org("strategic-demo-ts4-abort")
+    other_org = make_org("strategic-demo-ts4-abort-other")
     org_id = org.id
     db_session.commit()
 
     foreign_element = ArchiMateElement(
-        name="Foreign Element", type="Capability", layer="Strategy", organization_id=org_id
+        name="Foreign Element", type="Capability", layer="Strategy",
+        organization_id=other_org.id,
     )
     db_session.add(foreign_element)
     db_session.flush()
@@ -275,10 +279,79 @@ def test_existing_initiative_code_pointing_at_a_different_element_aborts_before_
     ).count()
     assert remaining == 0, "the abort on the first spec must stop before the later ones"
 
+    assert _counts_for_org(org_id) == {
+        "value_streams": 0, "stages": 0, "capabilities": 0, "mappings": 0,
+    }, "the pre-flight guard must abort before value streams, stages, capabilities or mappings are written"
+    assert _ts4_counts_for_org(org_id) == {
+        "capability_elements": 0, "initiatives": 0, "metrics": 0,
+    }, "the pre-flight guard must abort before any T-S4 writer too"
+
+
+def test_existing_initiative_code_pointing_at_this_organisations_own_wrong_element_aborts_before_any_write(
+    db_session, make_org
+):
+    """The pre-flight guard resolves exactly the element its own spec's
+    capability points to (a fresh lookup by code), not merely whether the
+    existing initiative's element belongs to this organisation at all --
+    an existing row pointing at a DIFFERENT element this SAME organisation
+    owns is caught just as early, before a single value stream, stage,
+    capability or mapping is written."""
+    from app.models import ArchiMateElement
+    from app.models.enterprise_intelligence import PortfolioInitiative
+    from app.models.unified_capability import UnifiedCapability
+
+    org = make_org("strategic-demo-ts4-abort-own-wrong")
+    org_id = org.id
+    db_session.commit()
+
+    correct_element = ArchiMateElement(
+        name="Order Capture Element", type="Capability", layer="Strategy",
+        organization_id=org_id,
+    )
+    wrong_element = ArchiMateElement(
+        name="Some Other Element", type="Capability", layer="Strategy",
+        organization_id=org_id,
+    )
+    db_session.add_all([correct_element, wrong_element])
+    db_session.flush()
+    cap = UnifiedCapability(
+        name="Demonstration: Order Capture",
+        code="DEMO-CAP-ORDER-CAPTURE",
+        organization_id=org_id,
+        scope="tenant",
+        level=1,
+        current_maturity_level=2,
+        target_maturity_level=4,
+        archimate_element_id=correct_element.id,
+    )
+    db_session.add(cap)
+    db_session.flush()
+    conflicting = PortfolioInitiative(
+        name="Pre-existing conflicting initiative",
+        code=f"DEMO-INI-ORDER-{org_id}",
+        archimate_element_id=wrong_element.id,
+    )
+    db_session.add(conflicting)
+    db_session.flush()
+    conflicting_id = conflicting.id
+    wrong_element_id = wrong_element.id
+    db_session.commit()
+
+    with pytest.raises(RuntimeError):
+        seed_strategic_demo(org_id)
+
+    refreshed = PortfolioInitiative.query.filter_by(id=conflicting_id).first()
+    assert refreshed.archimate_element_id == wrong_element_id, (
+        "the seed must never repoint a row it does not own"
+    )
+    assert _counts_for_org(org_id) == {
+        "value_streams": 0, "stages": 0, "capabilities": 1, "mappings": 0,
+    }, "the pre-flight guard must abort before any value stream, stage or mapping is written"
+
 
 def test_reseeding_a_changed_mapping_reports_mappings_updated_not_created(db_session, make_org):
-    """D2-7: a mapping row present with DIFFERENT values from the current
-    spec counts as ``mappings_updated``, never folded into
+    """A mapping row present with DIFFERENT values from the current spec
+    counts as ``mappings_updated``, never folded into
     ``mappings_created``."""
     from app.models.unified_capability import CapabilityValueStreamMapping
 
@@ -502,14 +575,20 @@ def test_dry_run_on_seeded_organisation_reports_nothing_to_create(db_session, ma
     seed_strategic_demo(org_id)
     before = _counts_for_org(org_id)
 
+    before_ts4 = _ts4_counts_for_org(org_id)
+
     stats = seed_strategic_demo(org_id, dry_run=True)
 
     assert stats["value_streams_created"] == 0
     assert stats["stages_created"] == 0
     assert stats["capabilities_created"] == 0
     assert stats["mappings_created"] == 0
+    assert stats["elements_created"] == 0
+    assert stats["initiatives_created"] == 0
+    assert stats["metrics_created"] == 0
     assert stats["already_present"] == 30
     assert _counts_for_org(org_id) == before, "dry run on a seeded organisation changed rows"
+    assert _ts4_counts_for_org(org_id) == before_ts4, "dry run on a seeded organisation changed T-S4 rows"
 
 
 # --- Two organisations seeded on one database -----------------------------------
