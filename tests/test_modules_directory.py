@@ -97,6 +97,20 @@ def test_modules_directory_includes_curated_more_tools(app, db_session, make_org
     assert "Chief Architect Synthesis" in html
 
 
+def test_modules_directory_includes_twin_map(app, db_session, make_org):
+    """A-20 (readiness table 5.1, 2026-09-22): the Twin map has no sidebar
+    link in any persona's zone by design (role_access.py's own comment --
+    reached only from an Ask result, kept out of the 31-link sidebar
+    budget), confirmed absent from every SIDEBAR_ZONES list the same way
+    "Chief Architect Synthesis" above is -- so its More-tools row is this
+    page's only findable home for it, not a dedup-hidden duplicate of a
+    zone link."""
+    client = _make_logged_in_client(app, db_session, make_org)
+    html = client.get("/modules").get_data(as_text=True)
+    assert "Twin Map" in html
+    assert "/intelligence/twin-map" in html
+
+
 def test_modules_directory_composer_link_carries_viewpoint_query_param(app, db_session, make_org):
     """D3 regression guard: /modules re-uses the same SIDEBAR_ZONES link data
     as the real sidebar, but its own _resolve() dropped query_params entirely
