@@ -5,7 +5,6 @@ Extracted from app/routes/unified_applications_routes.py
 (lines 211-216, 371-587, 590-642, 3561-3688, 3045-3113, 8381-8398).
 
 Routes:
-    - test_simple()              GET "/test-simple"
     - application_list()         GET "/"
     - application_roadmap()      GET "/roadmap"
     - api_list()                 GET "/api/list"
