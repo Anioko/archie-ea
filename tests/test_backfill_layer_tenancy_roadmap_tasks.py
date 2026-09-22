@@ -340,27 +340,118 @@ def test_backfill_leaves_unprovenanced_roadmap_task_null_with_two_orgs(app):
             db.session.commit()
 
 
-def test_backfill_dry_run_changes_nothing(db_session, make_org, app):
+def test_backfill_dry_run_changes_nothing(app):
     """Also proves the dry-run "no provenance" count is accurate: with two
     derivable rows and one truly unprovenanced row in the same pass,
     ``unresolved`` must count only the unprovenanced one, not all three --
     which is what it did before the derivation statements ran in dry-run
     too.
+
+    Does not use the db_session fixture: repair_layer_tenancy(dry_run=True)
+    ends with ``db.session.rollback()`` on the same connection db_session
+    hands out, so it would discard this test's own INSERTs along with the
+    dry run's own changes -- a row rolled back away and a row genuinely
+    left unassigned both read back as ``organization_id IS NULL``, so the
+    three is-None assertions below would pass either way, proving nothing.
+    Commits the three rows for real instead, the same pattern
+    test_backfill_leaves_unprovenanced_roadmap_task_null_with_two_orgs
+    above uses, so a row count taken straight after the dry run can tell
+    "left alone" from "no longer there".
     """
+    from app import db
     from app.commands.backfill_layer_tenancy import repair_layer_tenancy
+    from app.models.organization import Organization
+    from app.models.user import User
+    import uuid
 
-    org_a, org_b = make_org("bf-dr-a"), make_org("bf-dr-b")
-    user_a = _make_user(db_session, org_a.id, "A")
-    user_b = _make_user(db_session, org_b.id, "B")
+    with app.app_context():
+        suffix = uuid.uuid4().hex[:10]
+        org_a = Organization(name=f"Test bf-dr-a {suffix}", slug=f"test-bf-dr-a-{suffix}")
+        org_b = Organization(name=f"Test bf-dr-b {suffix}", slug=f"test-bf-dr-b-{suffix}")
+        db.session.add_all([org_a, org_b])
+        db.session.commit()
 
-    _relax_not_null(app)
-    task_a_id = _insert_roadmap_task(db_session, created_by=user_a.id, title="A task")
-    task_b_id = _insert_roadmap_task(db_session, created_by=user_b.id, title="B task")
-    orphan_task_id = _insert_roadmap_task(db_session, title="orphan task")
+        user_a = User(
+            email=f"bf-dr-a-{suffix}@example.com",
+            first_name="Test",
+            last_name="A",
+            organization_id=org_a.id,
+        )
+        user_b = User(
+            email=f"bf-dr-b-{suffix}@example.com",
+            first_name="Test",
+            last_name="B",
+            organization_id=org_b.id,
+        )
+        db.session.add_all([user_a, user_b])
+        db.session.commit()
 
-    stats = repair_layer_tenancy(dry_run=True)
+        _relax_not_null(app)
+        task_a_id = db.session.execute(
+            text(
+                """
+                INSERT INTO roadmap_tasks
+                    (title, organization_id, archimate_element_id, created_by, unified_work_package_id)
+                VALUES
+                    ('A task', NULL, NULL, :created_by, NULL)
+                RETURNING id
+                """
+            ),
+            {"created_by": user_a.id},
+        ).scalar()
+        task_b_id = db.session.execute(
+            text(
+                """
+                INSERT INTO roadmap_tasks
+                    (title, organization_id, archimate_element_id, created_by, unified_work_package_id)
+                VALUES
+                    ('B task', NULL, NULL, :created_by, NULL)
+                RETURNING id
+                """
+            ),
+            {"created_by": user_b.id},
+        ).scalar()
+        orphan_task_id = db.session.execute(
+            text(
+                """
+                INSERT INTO roadmap_tasks
+                    (title, organization_id, archimate_element_id, created_by, unified_work_package_id)
+                VALUES
+                    ('orphan task', NULL, NULL, NULL, NULL)
+                RETURNING id
+                """
+            )
+        ).scalar()
+        db.session.commit()
+        task_ids = [task_a_id, task_b_id, orphan_task_id]
 
-    assert _org_id_of(db_session, task_a_id) is None
-    assert _org_id_of(db_session, task_b_id) is None
-    assert _org_id_of(db_session, orphan_task_id) is None
-    assert stats["unresolved"] == {"roadmap_tasks": 1}
+        try:
+            stats = repair_layer_tenancy(dry_run=True)
+
+            row_count = db.session.execute(
+                text("SELECT count(*) FROM roadmap_tasks WHERE id = ANY(:ids)"), {"ids": task_ids}
+            ).scalar()
+            assert row_count == 3
+
+            def _org_of(task_id):
+                return db.session.execute(
+                    text("SELECT organization_id FROM roadmap_tasks WHERE id = :id"), {"id": task_id}
+                ).scalar()
+
+            assert _org_of(task_a_id) is None
+            assert _org_of(task_b_id) is None
+            assert _org_of(orphan_task_id) is None
+            assert stats["unresolved"] == {"roadmap_tasks": 1}
+        finally:
+            db.session.rollback()
+            db.session.execute(
+                text("DELETE FROM roadmap_tasks WHERE id = ANY(:ids)"), {"ids": task_ids}
+            )
+            db.session.execute(
+                text("DELETE FROM users WHERE id IN (:a, :b)"), {"a": user_a.id, "b": user_b.id}
+            )
+            db.session.execute(
+                text("DELETE FROM organizations WHERE id IN (:a, :b)"),
+                {"a": org_a.id, "b": org_b.id},
+            )
+            db.session.commit()
