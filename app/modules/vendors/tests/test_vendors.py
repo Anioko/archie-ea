@@ -272,7 +272,7 @@ class TestVendorsModuleRegistration:
             f"Expected >= 50 vendor URL rules, found {len(vendor_rules)}"
         )
 
-    def test_all_13_blueprints_present(self, app):
+    def test_all_9_blueprints_present(self, app):
         """Exactly 9 vendor-related blueprints should be present."""
         vendor_bp_names = [
             "vendors_api",
