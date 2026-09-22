@@ -40,7 +40,7 @@ from flask import Blueprint, jsonify, request
 from flask_login import current_user, login_required
 
 from app.decorators import audit_log, require_roles
-from app.services.architecture_monitoring_service import ArchitectureMonitoringService
+from app.modules.architecture.services.architecture_monitoring_service import ArchitectureMonitoringService
 from app.utils.pagination import safe_int_arg
 
 architecture_monitoring_bp = Blueprint(
