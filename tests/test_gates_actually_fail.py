@@ -584,28 +584,35 @@ def test_reuse_macro_names_escape_hatch_excludes_the_marked_line(tmpdir):
     )
 
 
-def test_reuse_macro_names_ps_prefix_exclusion_is_narrow(tmpdir):
-    """Only the page-shell _ps_ protocol prefix is excluded -- a duplicate
-    renamed to dodge the rule under any OTHER leading underscore is still
-    counted, and a genuine _ps_ name stays excluded."""
-    renamed_dodge = tmpdir.mkdir("renamed_dodge")
-    _write(renamed_dodge, "app/templates/a/x.html", "{% macro _empty_state(x) %}A{% endmacro %}\n")
-    _write(renamed_dodge, "app/templates/b/y.html", "{% macro _empty_state(y) %}B{% endmacro %}\n")
+def test_reuse_macro_names_ps_exact_name_exemption(tmpdir):
+    """Only the two exact page-shell protocol names, _ps_actions and
+    _ps_sub, are exempt -- ANY other name, even one sharing the _ps_
+    prefix, is counted by both RG-1 and RG-1b. A prefix-shaped exemption is
+    a blanket bypass one rename away from hiding a real duplicate; the
+    exact names are the width round-1 actually measured."""
+    prefix_dodge = tmpdir.mkdir("prefix_dodge")
+    for i, letter in enumerate("abcd"):
+        _write(prefix_dodge, "app/templates/%s/page.html" % letter,
+               "{%% macro _ps_empty_state(x) %%}%d{%% endmacro %%}\n" % i)
 
     protocol = tmpdir.mkdir("protocol")
     _write(protocol, "app/templates/a/x.html", "{% macro _ps_actions(x) %}A{% endmacro %}\n")
     _write(protocol, "app/templates/b/y.html", "{% macro _ps_actions(y) %}B{% endmacro %}\n")
+    _write(protocol, "app/templates/c/z.html", "{% macro _ps_sub(x) %}A{% endmacro %}\n")
+    _write(protocol, "app/templates/d/w.html", "{% macro _ps_sub(y) %}B{% endmacro %}\n")
 
-    dodge_count = _run_reuse_checker("RG-1", renamed_dodge)
-    protocol_count = _run_reuse_checker("RG-1", protocol)
-
-    assert dodge_count == 1, (
-        "a duplicate renamed with a leading underscore that is not the _ps_ "
-        "protocol reported %d, not 1 -- the old blanket exclusion is back" % dodge_count
+    assert _run_reuse_checker("RG-1", prefix_dodge) == 1, (
+        "_ps_empty_state in four files, sharing the _ps_ prefix but not one of "
+        "the two exact exempt names, must be counted as one duplicated name"
     )
-    assert protocol_count == 0, (
-        "the page-shell per-page protocol's own _ps_actions, one intentional "
-        "definition per page, reported %d instead of staying excluded" % protocol_count
+    assert _run_reuse_checker("RG-1b", prefix_dodge) == 4, (
+        "_ps_empty_state in four files must be counted as four definitions by RG-1b"
+    )
+    assert _run_reuse_checker("RG-1", protocol) == 0, (
+        "the two exact page-shell protocol names must stay exempt on RG-1"
+    )
+    assert _run_reuse_checker("RG-1b", protocol) == 0, (
+        "the two exact page-shell protocol names must stay exempt on RG-1b too"
     )
 
 
@@ -659,9 +666,40 @@ def test_reuse_macro_names_malformed_marker_does_not_suppress(tmpdir):
     well_formed = tmpdir.mkdir("well_formed")
     _write(well_formed, "app/templates/a/canon.html", "{% macro probe_shape(x) %}A{% endmacro %}\n")
     _write(well_formed, "app/templates/b/dup.html",
-           "{% macro probe_shape(y) %}{# reuse-ok: probe a real two-word reason #}{% endmacro %}\n")
+           "{% macro probe_shape(y) %}{# reuse-ok: probe deliberately accepted #}{% endmacro %}\n")
     assert _run_reuse_checker("RG-1", well_formed) == 0, (
-        "a marker with an identifier-shaped id and a multi-word reason should suppress"
+        "a marker with an identifier-shaped id and a real reason should suppress"
+    )
+
+
+def test_reuse_macro_names_marker_reason_needs_two_letters_per_token(tmpdir):
+    """'reuse-ok: q 1 2' and 'reuse-ok: zzz ... ,,,' must not suppress --
+    no token in the reason carries two or more letters. A genuine reason
+    of real words still does."""
+    single_char_tokens = tmpdir.mkdir("single_char_tokens")
+    _write(single_char_tokens, "app/templates/a/canon.html", "{% macro probe_n5(x) %}A{% endmacro %}\n")
+    _write(single_char_tokens, "app/templates/b/dup.html",
+           "{% macro probe_n5(y) %}{# reuse-ok: q 1 2 #}{% endmacro %}\n")
+    assert _run_reuse_checker("RG-1", single_char_tokens) == 1, (
+        "'reuse-ok: q 1 2' has no reason token with two or more letters and "
+        "must not suppress"
+    )
+
+    punctuation_tokens = tmpdir.mkdir("punctuation_tokens")
+    _write(punctuation_tokens, "app/templates/a/canon.html", "{% macro probe_n5b(x) %}A{% endmacro %}\n")
+    _write(punctuation_tokens, "app/templates/b/dup.html",
+           "{% macro probe_n5b(y) %}{# reuse-ok: zzz ... ,,, #}{% endmacro %}\n")
+    assert _run_reuse_checker("RG-1", punctuation_tokens) == 1, (
+        "'reuse-ok: zzz ... ,,,' has 'zzz' as the concept id and no reason "
+        "token with two or more letters, and must not suppress"
+    )
+
+    real_reason = tmpdir.mkdir("real_reason")
+    _write(real_reason, "app/templates/a/canon.html", "{% macro probe_n5c(x) %}A{% endmacro %}\n")
+    _write(real_reason, "app/templates/b/dup.html",
+           "{% macro probe_n5c(y) %}{# reuse-ok: probe deliberately accepted #}{% endmacro %}\n")
+    assert _run_reuse_checker("RG-1", real_reason) == 0, (
+        "a genuine reason, every token carrying two or more letters, should still suppress"
     )
 
 
@@ -688,6 +726,75 @@ def test_reuse_macro_definitions_rises_on_a_third_copy_while_names_stays_put(tmp
     assert defs_after == defs_before + 1, (
         "RG-1b counts DEFINITIONS behind a duplicated name; a third copy must "
         "raise it by exactly one: before=%d after=%d" % (defs_before, defs_after)
+    )
+
+
+def test_reuse_macro_definitions_marker_excludes_only_the_marked_definition(tmpdir):
+    """RG-1b's escape hatch applies PER DEFINITION, unlike RG-1's whole-name
+    suppression: a valid marker on one non-canonical definition removes only
+    that one from the count. The canonical definition, and any other
+    unmarked sibling, still count."""
+    root = tmpdir.mkdir("two_files")
+    _write(root, "app/templates/a/canon.html", "{% macro probe_n1(x) %}A{% endmacro %}\n")
+    _write(root, "app/templates/b/dup.html",
+           "{% macro probe_n1(y) %}{# reuse-ok: probe deliberately accepted #}{% endmacro %}\n")
+
+    assert _run_reuse_checker("RG-1", root) == 0, (
+        "the only non-canonical definition carries a valid marker, so RG-1's "
+        "whole-name suppression should fire"
+    )
+    assert _run_reuse_checker("RG-1b", root) == 1, (
+        "RG-1b must still count the canonical definition even though the "
+        "duplicate is marked: expected 1 (the canonical), not 0 or 2"
+    )
+
+    _write(root, "app/templates/c/third.html", "{% macro probe_n1(z) %}C{% endmacro %}\n")
+
+    assert _run_reuse_checker("RG-1", root) == 1, (
+        "the new, unmarked third definition means not every non-canonical "
+        "definition is marked any more, so RG-1 must flag the name again"
+    )
+    assert _run_reuse_checker("RG-1b", root) == 2, (
+        "the marked duplicate still does not count, but the new unmarked "
+        "third definition raises RG-1b by exactly one: expected 2 (canonical "
+        "+ third), not 3"
+    )
+
+
+def test_reuse_macro_definitions_finding_carries_the_sibling_shape(tmpdir):
+    """An RG-1b finding for a name with a matching register concept carries
+    the same three-line shape as RG-1 and RG-2 (what was found, an
+    'Already exists:' line, the numbered options); a name with no matching
+    concept carries the round-2 unregistered wording instead -- never a
+    bare one-liner either way."""
+    root = tmpdir.mkdir("shaped")
+    _write(root, "docs/reuse-register.yml",
+           "concepts:\n"
+           "  - id: probe-concept\n"
+           "    rules: [RG-1, RG-1b]\n"
+           "    canonical:\n"
+           "      paths: [app/templates/components/probe_thing.html]\n"
+           "      use: \"probe_thing(...) does the probe thing\"\n")
+    _write(root, "app/templates/components/probe_thing.html", "{% macro probe_thing(x) %}A{% endmacro %}\n")
+    _write(root, "app/templates/macros/other.html", "{% macro probe_thing(y) %}B{% endmacro %}\n")
+    _write(root, "app/templates/macros/unregistered_a.html", "{% macro probe_unregistered(x) %}A{% endmacro %}\n")
+    _write(root, "app/templates/macros/unregistered_b.html", "{% macro probe_unregistered(y) %}B{% endmacro %}\n")
+
+    proc = subprocess.run(
+        [sys.executable, os.path.join(SCRIPTS, "check_reuse.py"), "--rule", "RG-1b", "--root", str(root)],
+        capture_output=True, text=True, cwd=REPO,
+    )
+    output = proc.stdout
+
+    assert "Already exists: app/templates/components/probe_thing.html" in output, (
+        "the registered name's RG-1b finding must carry the Already exists: line: %r" % output
+    )
+    assert "Do one of: (1) use the existing one" in output and "(2)" in output and "(3)" in output, (
+        "the registered name's RG-1b finding must carry the numbered options: %r" % output
+    )
+    assert "no matching entry in docs/reuse-register.yml" in output, (
+        "the unregistered name's RG-1b finding must carry the round-2 unregistered "
+        "wording, not a bare one-liner: %r" % output
     )
 
 
@@ -760,6 +867,90 @@ def test_reuse_diagram_libraries_comment_only_composer_mention_does_not_excuse(t
     assert count == 1, (
         "a comment merely mentioning the renderer file should not excuse "
         "joint on the same page: got %d" % count
+    )
+
+
+def test_reuse_diagram_libraries_comment_with_a_real_looking_src_does_not_grant_allowance(tmpdir):
+    """An HTML or Jinja comment that CONTAINS an attribute-shaped
+    src="...composer_renderer.js" reference -- not just a bare mention --
+    must not grant the allowance either: the whole comment body is blanked
+    before this test runs."""
+    html_comment = tmpdir.mkdir("html_comment")
+    _write(html_comment, "app/templates/probe/page.html",
+           '<!-- disabled: <script src="archimate/composer_renderer.js"></script> -->\n'
+           '<script src="/static/vendor/joint.min.js"></script>\n')
+    assert _run_reuse_checker("RG-2", html_comment) == 1, (
+        "an HTML comment containing an attribute-shaped composer_renderer.js "
+        "reference must not excuse joint on the same page"
+    )
+
+    jinja_comment = tmpdir.mkdir("jinja_comment")
+    _write(jinja_comment, "app/templates/probe/page.html",
+           '{# disabled: src="archimate/composer_renderer.js" #}\n'
+           '<script src="/static/vendor/joint.min.js"></script>\n')
+    assert _run_reuse_checker("RG-2", jinja_comment) == 1, (
+        "a Jinja comment containing an attribute-shaped composer_renderer.js "
+        "reference must not excuse joint on the same page"
+    )
+
+
+def test_reuse_diagram_libraries_data_filename_does_not_grant_allowance(tmpdir):
+    """data-filename= (or data-src=) on an inert element must not grant the
+    allowance -- the attribute name must have no word or hyphen character
+    before it."""
+    root = tmpdir.mkdir("data_filename")
+    _write(root, "app/templates/probe/page.html",
+           '<div data-filename="archimate/composer_renderer.js"></div>\n'
+           '<script src="/static/vendor/joint.min.js"></script>\n')
+    assert _run_reuse_checker("RG-2", root) == 1, (
+        "data-filename= on an inert element must not excuse joint on the same page"
+    )
+
+
+def test_reuse_diagram_libraries_es_module_import_grants_allowance(tmpdir):
+    """A genuine ES-module import of the renderer -- static, bare or
+    dynamic -- must grant the allowance; the old, attribute-only pattern
+    saw none of these forms."""
+    forms = {
+        "static": "import ComposerRenderer from '../archimate/composer_renderer.js';",
+        "bare": "import '../archimate/composer_renderer.js';",
+        "dynamic": "const mod = await import('../archimate/composer_renderer.js');",
+    }
+    for label, statement in forms.items():
+        root = tmpdir.mkdir("import_%s" % label)
+        _write(root, "app/static/js/probe/page.js",
+               statement + '\nconst s = "vendor/joint.min.js";\n')
+        count = _run_reuse_checker("RG-2", root)
+        assert count == 0, (
+            "a %s ES-module import of the renderer should excuse joint in the "
+            "same file: got %d" % (label, count)
+        )
+
+
+def test_reuse_diagram_libraries_suffix_boundary_rejects_lookalikes(tmpdir):
+    """The library pattern requires a real separator ('-' or '.') after the
+    base name when anything follows it -- jointly_shared.js and
+    mermaid_docs_page.js must not match, while a genuinely suffixed build
+    (d3-sankey) still does."""
+    joint_lookalike = tmpdir.mkdir("joint_lookalike")
+    _write(joint_lookalike, "app/templates/probe/page.html",
+           '<script src="/static/js/jointly_shared.js"></script>\n')
+    assert _run_reuse_checker("RG-2", joint_lookalike) == 0, (
+        "jointly_shared.js must not match the joint library pattern"
+    )
+
+    mermaid_lookalike = tmpdir.mkdir("mermaid_lookalike")
+    _write(mermaid_lookalike, "app/templates/probe/page.html",
+           '<script src="/static/js/mermaid_docs_page.js"></script>\n')
+    assert _run_reuse_checker("RG-2", mermaid_lookalike) == 0, (
+        "mermaid_docs_page.js must not match the mermaid library pattern"
+    )
+
+    suffixed = tmpdir.mkdir("suffixed")
+    _write(suffixed, "app/templates/probe/page.html",
+           '<script src="/static/vendor/d3-sankey.min.js"></script>\n')
+    assert _run_reuse_checker("RG-2", suffixed) == 1, (
+        "a genuinely suffixed build, d3-sankey.min.js, must still match"
     )
 
 
@@ -854,6 +1045,38 @@ def test_update_baseline_preserves_unrelated_top_level_keys(tmpdir, monkeypatch)
     )
 
 
+def test_update_baseline_preserves_the_bare_note_key(tmpdir, monkeypatch):
+    """save_baseline() must never overwrite an existing bare '_note' key --
+    that key holds real, hand-written, dated content in the live baseline
+    file today, and every previous version of this function unconditionally
+    replaced it with a generic 'updated <date>' stub. The routine stamp now
+    goes under its own key instead."""
+    sys.path.insert(0, SCRIPTS)
+    import verify  # noqa: E402
+
+    baseline_path = tmpdir.join("verification_baseline.json")
+    baseline_path.write_text(
+        json.dumps({"_note": "an existing hand-written, dated reason",
+                    "ratchets": {"reuse_macro_names": 19}}),
+        encoding="utf-8",
+    )
+
+    original_path = verify.BASELINE_PATH
+    monkeypatch.setattr(verify, "BASELINE_PATH", type(original_path)(str(baseline_path)))
+    try:
+        verify.save_baseline({"reuse_macro_names": 20}, "updated for this test")
+        written = json.loads(baseline_path.read_text(encoding="utf-8"))
+    finally:
+        monkeypatch.setattr(verify, "BASELINE_PATH", original_path)
+
+    assert written.get("_note") == "an existing hand-written, dated reason", (
+        "an existing bare _note key must survive save_baseline(): %r" % written
+    )
+    assert written.get("_last_baseline_update") == "updated for this test", (
+        "the routine dated stamp must be written under its own key, not '_note': %r" % written
+    )
+
+
 def test_update_baseline_reports_a_rise_as_loudly_as_a_fall():
     """_baseline_diff must surface a RISE, not only a fall -- the CLI branch
     that used to print falls and stay silent about rises."""
@@ -863,6 +1086,41 @@ def test_update_baseline_reports_a_rise_as_loudly_as_a_fall():
     lowered, raised = verify._baseline_diff({"x": 10, "y": 5}, {"x": 9, "y": 6})
     assert lowered == {"x": (10, 9)}, "a real fall must be reported: %r" % lowered
     assert raised == {"y": (5, 6)}, "a real rise must be reported, not silently accepted: %r" % raised
+
+
+def test_update_baseline_prints_a_rise_when_driven_through_main(tmpdir, monkeypatch, capsys):
+    """The rise print must be pinned by driving verify.main() itself, not by
+    calling _baseline_diff() directly -- a test that only exercises the diff
+    function leaves the print loop inside main() completely unexercised, so
+    deleting that loop would not turn any test red. BASELINE_PATH points at
+    a tmpdir file seeded with a baseline (1) far below the real measurement,
+    and only the fast reuse-macro-names gate is run, so this stays quick."""
+    sys.path.insert(0, SCRIPTS)
+    import verify  # noqa: E402
+
+    baseline_path = tmpdir.join("verification_baseline.json")
+    baseline_path.write_text(
+        json.dumps({"_note": "existing", "ratchets": {"reuse_macro_names": 1}}),
+        encoding="utf-8",
+    )
+
+    original_path = verify.BASELINE_PATH
+    monkeypatch.setattr(verify, "BASELINE_PATH", type(original_path)(str(baseline_path)))
+    try:
+        exit_code = verify.main(["--update-baseline", "--gate", "reuse-macro-names"])
+        captured = capsys.readouterr()
+        written = json.loads(baseline_path.read_text(encoding="utf-8"))
+    finally:
+        monkeypatch.setattr(verify, "BASELINE_PATH", original_path)
+
+    assert exit_code == 0, "the update-baseline path itself must exit cleanly"
+    assert "RAISED reuse_macro_names" in captured.out, (
+        "the real measurement is above the seeded baseline (1); main() must "
+        "print the rise, not stay silent about it: %r" % captured.out
+    )
+    assert written["ratchets"]["reuse_macro_names"] > 1, (
+        "the real measurement should have been written: %r" % written
+    )
 
 
 def test_canonical_route_detects_a_shadowed_endpoint():

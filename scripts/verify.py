@@ -706,8 +706,12 @@ def gate_reuse_macro_definitions(baseline: int) -> Result:
     two files can gain a third, fourth or fourteenth copy for free -- the
     name count does not move. This counts every definition that belongs to
     a duplicated name (over the same map reuse-macro-names already builds),
-    so that further copy is not free either. Static, source-level, no app
-    boot needed.
+    so that further copy is not free either. The escape hatch applies PER
+    DEFINITION here, not per name: a definition carrying a valid marker does
+    not count, but the canonical definition and every other, unmarked
+    definition still do -- one accepted copy removes exactly one from this
+    count, however many siblings the same name still has. Static, source-
+    level, no app boot needed.
     """
     proc = _run([sys.executable, "scripts/check_reuse.py", "--rule", "RG-1b", "--count"])
     try:
@@ -1805,7 +1809,9 @@ def build_gates(baseline: dict) -> list[Gate]:
              "no rise in the definitions behind an already-duplicated macro name (RG-1b)",
              "ratchet", lambda: gate_reuse_macro_definitions(baseline.get("reuse_macro_definitions", 50)),
              remediation="run scripts/check_reuse.py --rule RG-1b; use the canonical macro, "
-                         "add a register specialisation, or mark 'reuse-ok: <concept-id> <reason>'",
+                         "add a register specialisation, or mark this one definition "
+                         "'reuse-ok: <concept-id> <reason>' to stop it counting -- the marker "
+                         "applies per definition here, so mark only the accepted copy",
              tags=["static"]),
         Gate("reuse-diagram-libraries",
              "no NEW page loads a diagram library outside the canonical ArchiMate renderer (RG-2)",
@@ -2002,15 +2008,18 @@ def load_baseline() -> dict:
 
 
 def save_baseline(ratchets: dict, note: str) -> None:
-    """Write verification_baseline.json, keeping every existing top-level key.
+    """Write verification_baseline.json, keeping every existing top-level key
+    -- including ``_note`` itself.
 
-    Previously this wrote a fixed ``{_comment, _note, ratchets}`` object, which
-    silently deleted any OTHER top-level key on the very next
-    ``--update-baseline`` run -- including a dated, hand-written reason for a
-    specific baseline change, the exact evidence a reviewer needs to tell a
-    corrected measurement from a quietly raised one. A key survives here
-    unless this call itself replaces it (``_note`` and ``ratchets``, which it
-    always sets; ``_comment`` only if the file did not already have one).
+    Previously this wrote a fixed ``{_comment, _note, ratchets}`` object,
+    which silently deleted any OTHER top-level key on the very next
+    ``--update-baseline`` run. That was fixed for ``_note2``, ``_note3`` and
+    friends, but ``_note`` (no number) is itself a real, hand-written, dated
+    key in the live file today -- and this function still unconditionally
+    overwrote exactly that one. An existing ``_note`` is never touched here;
+    the routine dated stamp this call itself wants to leave goes under its
+    own key, ``_last_baseline_update``, so it can never collide with a
+    hand-written reason.
     """
     existing: dict = {}
     if BASELINE_PATH.exists():
@@ -2025,7 +2034,7 @@ def save_baseline(ratchets: dict, note: str) -> None:
         "(run --update-baseline after a cleanup). Raising one is a deliberate "
         "regression and must be justified in review.",
     )
-    payload["_note"] = note
+    payload["_last_baseline_update"] = note
     payload["ratchets"] = ratchets
     BASELINE_PATH.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 

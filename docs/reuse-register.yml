@@ -91,7 +91,7 @@ rules:
       \{%-?\s*macro\s+([A-Za-z_]\w*)\s*\(
     scope: ["app/**/*.html", "app/**/*.j2", "app/**/*.jinja"]
     excluded:
-      - "the page-shell per-page protocol prefix _ps_ only (each page defines its own _ps_actions and siblings by design); no other leading-underscore name is excluded"
+      - "the exact names _ps_actions and _ps_sub only (the page-shell per-page protocol requires one definition of each per page, by design); no other name, and no prefix, is excluded -- a new page-shell protocol name is added here by its own exact name, as a line a reviewer sees"
       - "app/modules/solutions_product/templates/ (generated code for customers)"
       - "node_modules, vendor, bundles"
     allowed_places: []
@@ -118,6 +118,12 @@ rules:
     scope: same as RG-1
     excluded: same as RG-1
     allowed_places: []
+    marker: >-
+      Applies PER DEFINITION, not per name (unlike RG-1's all-or-nothing suppression): a definition
+      carrying a valid reuse-ok marker does not count toward this rule; the canonical definition and every
+      other, unmarked definition still do. One accepted copy removes exactly one from this count, however
+      many siblings -- marked or not -- the same name still has, so an already-duplicated name cannot be
+      zeroed out by one marker the way RG-1's whole-name suppression can be.
     baseline_key: reuse_macro_definitions
     starting_value: 50
     starting_value_is: "the measurement taken when this rule was built (see measured_at); verification_baseline.json's reuse_macro_definitions is the live baseline a gate checks against"
@@ -131,11 +137,18 @@ rules:
     concepts: [drawing]
     checks: A template or script carrying a text reference to a diagram-drawing library outside the pages that actually load the canonical renderer.
     pattern: |-
-      (?:^|["'/])(joint|d3|dagre|mermaid|cytoscape|drawflow)[\w.\-]*?(?:\.min)?\.js\b
+      (?:^|["'/])(joint|d3|dagre|mermaid|cytoscape|drawflow)(?:[-.][\w.\-]*)?(?:\.min)?\.js\b
     scope: ["app/**/*.html (not app/static/)", "app/**/*.j2", "app/**/*.jinja", "app/static/js/**/*.js", "app/modules/**/static/**/*.js"]
     excluded: ["vendor", "bundles", "solutions_product"]
     allowed_places:
-      - "a page that actually loads the renderer -- a real src/href/filename reference to archimate/composer_renderer.js, not a comment merely mentioning it -- may load joint and dagre"
+      - >-
+        a page that actually loads the renderer may load joint and dagre. "Actually loads" means: a real
+        src/href/filename attribute reference to archimate/composer_renderer.js, with no word or hyphen
+        character before the attribute name (so data-filename= and data-src= do not qualify); or an
+        ES-module import of the file, static ("import X from '...'"), bare ("import '...'") or dynamic
+        ("import('...')"). Both forms are tested with HTML (<!-- -->) and Jinja ({# #}) comments blanked
+        first, so a comment cannot forge the allowance -- that blanking applies to this test only, never to
+        the library match itself, which always reads the file's real text (see the detail line below).
       - "entries under drawing.allowed_specialisations once accepted"
     baseline_key: reuse_diagram_libraries
     starting_value: 16
@@ -143,12 +156,18 @@ rules:
     measured_at: {commit: bce929aa51eb2d682156d5cf667b3b361f2997e5, date: 2026-09-22}
     detail: >-
       one finding per (file, base library name) pair, 15 files, counting a suffixed build (d3-sankey,
-      dagre-d3) under its base name and a copy outside vendor/ as well as inside it. Counts a page-level
-      TEXT reference, including one that sits inside a comment -- a comment mentioning a library the page
-      does not otherwise load still counts, because rewording the comment to make the pattern miss it would
-      lower this number without paying any of the debt it represents. What this rule does not, and cannot,
-      see: a JavaScript file that draws using a library tag already loaded on the page by something else --
-      that is a second drawing engine this count is blind to (a later rule, not this one, would catch it).
+      dagre-d3) under its base name and a copy outside vendor/ as well as inside it -- bounded so that a
+      suffix must start with '-' or '.' (jointly_shared.js and mermaid_docs_page.js do not match; a bare
+      /docs/d3.js does). A reference by name counts regardless of the context it appears in -- a
+      documentation link, a dead comment and a live script tag are the same finding, because deciding
+      whether to delete, keep or register it is a human call this rule cannot make from the text alone;
+      excluding any of them would lower the count without paying the debt it represents. Counts a
+      page-level TEXT reference, including one that sits inside a comment -- a comment mentioning a library
+      the page does not otherwise load still counts, because rewording the comment to make the pattern miss
+      it would lower this number without paying any of the debt it represents. What this rule does not, and
+      cannot, see: a JavaScript file that draws using a library tag already loaded on the page by something
+      else -- that is a second drawing engine this count is blind to (a later rule, not this one, would
+      catch it).
     status: built; enforced by scripts/check_reuse.py and scripts/verify.py
 
   RG-3a:
