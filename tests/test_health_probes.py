@@ -9,8 +9,8 @@ behaviour, CSRF exemption) or a single ``checks.llm_providers`` field.
 
 These three tests carry over the assertions the now-retired
 ``app/modules/monitoring`` health tests made that the live surface still
-satisfies (see the bucket's disposition record): an anonymous JSON body with a
-top-level status, a database check, and no redirect to login.
+satisfies: an anonymous JSON body with a top-level status, a database check,
+and no redirect to login.
 """
 
 from __future__ import annotations
