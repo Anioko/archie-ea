@@ -156,6 +156,21 @@ _MORE_TOOLS = [
     ("Integrations", "main.integrations", "cloud"),
     ("ArchiMate Roadmap", "main.archimate_roadmap", "map"),
     ("Enterprise Dashboard", "enterprise.enterprise_dashboard", "layout-dashboard"),
+    # Sidebar diet (22 Sep 2026): the eight endpoints _DARK (below) names.
+    # Real rows, with their real labels, the same shape as every other row in
+    # this list -- not synthesized elsewhere from the reason text, which is
+    # for a human reading _DARK, not for display. _link_visible (below)
+    # suppresses every one of these from rendering here and from search,
+    # exactly the way it already suppresses _NOT_RENDERED; restoring one to
+    # view is deleting its entry from _DARK, nothing here.
+    ("Architecture Journey", "architecture_journey.index", "compass"),
+    ("Hybrid Mapping Dashboard", "main.hybrid_mapping_dashboard", "map"),
+    ("Data Architecture", "data_architecture.data_architecture_dashboard", "database"),
+    ("Data Lineage", "data_architecture.data_lineage_view", "git-fork"),
+    ("Tech Radar", "tech_radar.index", "radar"),
+    ("EA Workflows", "main.ea_workflows_dashboard", "git-merge"),
+    ("Model Registry", "dynamic_dashboards.model_registry_index", "database"),
+    ("Usage Analytics", "usage_analytics.analytics_root", "bar-chart-3"),
 ]
 
 # Endpoints present in _MORE_TOOLS / SIDEBAR_ZONES that must never be rendered
@@ -176,17 +191,19 @@ _NOT_RENDERED = {
     "architect_ui.roadmap_builder": "302 -> Roadmaps",
 }
 
-# Real, working pages, still reachable by their own URL, that no persona's
-# sidebar zone and no row on this page currently point at, because no
-# segment's day-to-day work asks the question they answer today. Reachable by
-# URL only -- no other page in the product links to one of these; a claimed
-# in-app deep link belongs in its own brief once one is actually built, not
-# in this reason string. A later change can put one back in a zone or in
-# _MORE_TOOLS; nothing about the route, template or data behind it changes
-# here. Each is still returned by `all_module_links()` below, so the same
-# discoverability check that watches `_MORE_TOOLS` and every zone keeps
-# knowing these routes exist; only `visible_module_links()` — and so this
-# page and search — drops them, the same way it already drops `_NOT_RENDERED`.
+# Real, working pages, still reachable by their own URL only, that no
+# persona's sidebar zone points at any more, because no segment's day-to-day
+# work asks the question they answer today. Reachable by URL only -- no other
+# page in the product links to one of these; a claimed in-app deep link
+# belongs in its own brief once one is actually built, not in this reason
+# string. Each still has a real row, under its real label, in _MORE_TOOLS
+# above (see the comment there); `_link_visible` (below) is what actually
+# suppresses that row from rendering and from search, the same way it
+# already suppresses `_NOT_RENDERED` — so `all_module_links()` keeps knowing
+# every one of these routes exists (the discoverability audit and the
+# URL-map cross-check both read it), while `visible_module_links()` -- and so
+# this page and search -- drops them. A later change can put one back in a
+# zone; nothing about the route, template or data behind it changes here.
 _DARK = {
     "architecture_journey.index": "a second guided front door; onboarding already covers that job",
     "main.hybrid_mapping_dashboard": "capability-vendor-application mapping statistics nobody asks for today",
@@ -227,11 +244,6 @@ def all_module_links():
                 seen.setdefault(link["endpoint"], link)
     for label, endpoint, icon in _MORE_TOOLS:
         seen.setdefault(endpoint, {"label": label, "endpoint": endpoint, "icon": icon})
-    # _DARK entries carry no zone or _MORE_TOOLS row any more (that is the
-    # point), so without this they would drop out of the one list the
-    # discoverability audit and the URL-map cross-check both read.
-    for endpoint, reason in _DARK.items():
-        seen.setdefault(endpoint, {"label": reason, "endpoint": endpoint, "icon": "eye-off"})
     return list(seen.values())
 
 
