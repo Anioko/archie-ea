@@ -35,6 +35,7 @@ from uuid import uuid4
 from sqlalchemy import or_
 
 from app import db
+from app.models.application_portfolio import ApplicationComponent
 from app.models.unified_application_capability_mapping import UnifiedApplicationCapabilityMapping
 from app.models.unified_capability import UnifiedCapability
 
@@ -1047,10 +1048,25 @@ class ArchitectureMonitoringService:
             snapshot = []
 
             for cap in capabilities:
-                # Get mapping count
-                mapping_count = UnifiedApplicationCapabilityMapping.query.filter_by(
-                    unified_capability_id=cap.id, is_active=True
-                ).count()
+                # Get mapping count. UnifiedApplicationCapabilityMapping carries no
+                # organization_id (no listener fences it), and a reference
+                # capability (organization_id IS NULL, admitted above by
+                # _tenant_capability_filter) can be mapped by another tenant's
+                # ApplicationComponent -- so the predicate goes on the component,
+                # not the capability.
+                mapping_count = (
+                    UnifiedApplicationCapabilityMapping.query.join(
+                        ApplicationComponent,
+                        ApplicationComponent.id
+                        == UnifiedApplicationCapabilityMapping.application_component_id,
+                    )
+                    .filter(
+                        UnifiedApplicationCapabilityMapping.unified_capability_id == cap.id,
+                        UnifiedApplicationCapabilityMapping.is_active.is_(True),
+                        ApplicationComponent.organization_id == self.organization_id,
+                    )
+                    .count()
+                )
 
                 snapshot.append(
                     {
@@ -1093,9 +1109,23 @@ class ArchitectureMonitoringService:
             coverage_by_domain = defaultdict(lambda: {"total": 0, "covered": 0})
 
             for cap in capabilities:
-                mappings = UnifiedApplicationCapabilityMapping.query.filter_by(
-                    unified_capability_id=cap.id, is_active=True
-                ).all()
+                # Same predicate-on-the-component reasoning as
+                # _capture_capabilities_snapshot above: a reference capability's
+                # mapping count/coverage must not include another tenant's
+                # ApplicationComponent.
+                mappings = (
+                    UnifiedApplicationCapabilityMapping.query.join(
+                        ApplicationComponent,
+                        ApplicationComponent.id
+                        == UnifiedApplicationCapabilityMapping.application_component_id,
+                    )
+                    .filter(
+                        UnifiedApplicationCapabilityMapping.unified_capability_id == cap.id,
+                        UnifiedApplicationCapabilityMapping.is_active.is_(True),
+                        ApplicationComponent.organization_id == self.organization_id,
+                    )
+                    .all()
+                )
 
                 if mappings:
                     avg_coverage = sum(m.coverage_percentage or 0 for m in mappings) / len(mappings)

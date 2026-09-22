@@ -309,6 +309,61 @@ def test_capability_snapshot_includes_own_and_reference_rows_excludes_other_org(
     assert foreign.id not in ids
 
 
+def test_reference_capability_mapping_count_and_coverage_exclude_other_orgs_component(
+    db_session, make_org
+):
+    """UnifiedApplicationCapabilityMapping carries no organization_id, so no
+    listener fences it; _tenant_capability_filter deliberately admits a
+    reference capability (organization_id IS NULL) into every tenant's
+    snapshot. Before the ApplicationComponent join and predicate, a mapping
+    from ANY organisation's component to that shared reference capability
+    counted towards every other tenant's mapping_count and coverage -- org
+    B's own component mapped to a shared reference capability showed up as
+    org A's coverage.
+    """
+    from app.models.application_portfolio import ApplicationComponent
+    from app.models.unified_application_capability_mapping import (
+        UnifiedApplicationCapabilityMapping,
+    )
+    from app.models.unified_capability import UnifiedCapability
+    from app.modules.architecture.services.architecture_monitoring_service import (
+        ArchitectureMonitoringService,
+    )
+
+    org_a, org_b = make_org("dr3-refmap-a"), make_org("dr3-refmap-b")
+    suffix = uuid.uuid4().hex[:10]
+
+    reference = UnifiedCapability(
+        name=f"Shared reference {suffix}", code=f"SHREF-{suffix}", organization_id=None
+    )
+    db_session.add(reference)
+    db_session.flush()
+
+    component_b = ApplicationComponent(name=f"Org B component {suffix}", organization_id=org_b.id)
+    db_session.add(component_b)
+    db_session.flush()
+
+    mapping_b = UnifiedApplicationCapabilityMapping(
+        unified_capability_id=reference.id,
+        application_component_id=component_b.id,
+        is_active=True,
+        coverage_percentage=80,
+    )
+    db_session.add(mapping_b)
+    db_session.flush()
+
+    service_a = ArchitectureMonitoringService(org_a.id)
+
+    capabilities = service_a._capture_capabilities_snapshot()
+    reference_row = next(row for row in capabilities if row["id"] == reference.id)
+    assert reference_row["mapping_count"] == 0
+
+    coverage = service_a._capture_coverage_snapshot()
+    assert coverage["covered_capabilities"] == 0
+    assert coverage["uncovered_capabilities"] == 1
+    assert coverage["average_coverage"] == 0
+
+
 # ----------------------------------------------------------- (6) vendor snapshot
 
 
