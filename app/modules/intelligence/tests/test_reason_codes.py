@@ -38,7 +38,7 @@ from app.modules.intelligence.services.reason_codes import (
 
 # sdd-v2.md § API-8's original sixteen, T-004's two additions, T-005's one
 # addition (p95_above_highest_bucket, D3), the L2/L3/L5 additions, and the
-# baseline-drift engine's model-dimension addition (T-OP-1).
+# baseline-drift engine's model-dimension addition.
 _EXPECTED = {
     "no_ownership_recorded",
     "no_maturity_recorded",
