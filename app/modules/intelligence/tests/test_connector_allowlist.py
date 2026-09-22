@@ -97,15 +97,16 @@ def test_refused_call_reaches_no_writer(app):
 
 def test_module_docstring_names_crosswalk_write_and_disclaims_configuration():
     """This module claims exactly the crosswalk-write boundary. Its own
-    documentation must name that boundary, and must not assert that the
+    documentation must name that boundary, and must state that scoping the
     connector-configuration boundary (the endpoint that accepts
-    connector_type/credentials at setup time) is covered by this gate --
-    only that it is a separate, unfenced surface."""
+    connector_type/credentials at setup time) through this same gate is a
+    deliberate choice, not scope creep -- the allowlist closes both
+    boundaries rather than leaving configuration unfenced."""
     doc = " ".join((gate_module.__doc__ or "").lower().split())
     assert "crosswalk write" in doc
-    assert "it does not gate" in doc
+    assert "not scope creep" in doc
     assert "configur" in doc
-    assert "unfenced" in doc
+    assert "closes it before the crosswalk boundary" in doc
 
 
 def test_assert_connector_permitted_has_no_configuration_side_effect(app):
