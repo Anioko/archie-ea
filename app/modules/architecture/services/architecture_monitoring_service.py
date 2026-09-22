@@ -614,14 +614,22 @@ class ArchitectureMonitoringService:
             # derived-fact aggregates (the sixth dimension).
             model_snapshot = self._capture_model_snapshot()
 
-            # Calculate checksum for integrity
+            # Calculate checksum for integrity. model_snapshot's captured_at
+            # is excluded: it is wall-clock time, not estate content, and
+            # including it would give an unchanged estate a new checksum on
+            # every single capture -- the same reason none of the other five
+            # snapshots carry a capture timestamp inside their own hashed
+            # content either.
+            model_snapshot_for_checksum = {
+                k: v for k, v in model_snapshot.items() if k != "captured_at"
+            }
             checksum = self._calculate_baseline_checksum(
                 capabilities_snapshot,
                 coverage_snapshot,
                 health_snapshot,
                 gap_snapshot,
                 vendor_snapshot,
-                model_snapshot,
+                model_snapshot_for_checksum,
             )
 
             baseline = ArchitectureBaseline(
@@ -850,8 +858,8 @@ class ArchitectureMonitoringService:
     def compare_to_baseline(self, baseline_id: Optional[str] = None) -> DriftAnalysis:
         """Pure comparison: capture the current state, diff it against a
         baseline, and return the result. Writes nothing -- no alert
-        persistence, no cache mutation, no ``_last_scan_time`` update
-        (ADR-OP-2). A GET through this seam never writes.
+        persistence, no cache mutation, no ``_last_scan_time`` update. A GET
+        through this seam never writes.
 
         Raises:
             LookupError: no baseline id was given and none is active, or the
@@ -1337,26 +1345,63 @@ class ArchitectureMonitoringService:
             logger.warning(f"Could not capture vendor snapshot: {e}")
             return []
 
+    @staticmethod
+    def _element_content_hash(el) -> str:
+        """A one-way digest of what makes this element itself: name, type,
+        layer, its typed-property JSON, and documentation.
+
+        ArchiMateElement carries no per-row modification timestamp in this
+        schema (only deleted_at); a rename or a re-layer is otherwise
+        invisible to a snapshot restricted to ids and never shows up as a
+        change. The hash lets a comparison detect that edit without storing
+        the name (or any other field) itself in the snapshot -- only the
+        digest is kept, which does not reveal what it was taken over.
+        """
+        payload = json.dumps(
+            {
+                "name": el.name,
+                "type": el.type,
+                "layer": el.layer,
+                "custom_properties": el.custom_properties,
+                "documentation": el.documentation,
+            },
+            sort_keys=True,
+            default=str,
+        )
+        return hashlib.sha256(payload.encode()).hexdigest()
+
+    @staticmethod
+    def _relationship_content_hash(rel) -> str:
+        """A one-way digest of what makes this relationship itself: type,
+        source, target, and its connection-spec properties. Same reasoning
+        as _element_content_hash: only the digest is kept.
+        """
+        payload = json.dumps(
+            {
+                "type": rel.type,
+                "source_id": rel.source_id,
+                "target_id": rel.target_id,
+                "connection_spec": rel.connection_spec,
+            },
+            sort_keys=True,
+            default=str,
+        )
+        return hashlib.sha256(payload.encode()).hexdigest()
+
     def _capture_model_snapshot(self) -> Dict[str, Any]:
         """Capture the model's own drift surface: this tenant's element and
-        relationship ids, plus the derived-fact aggregates -- so a
-        comparison can say whether the model itself moved since the
-        baseline, not only the intelligence built on it (UC-S2-06).
+        relationship ids with a content hash each, plus the derived-fact
+        aggregates -- so a comparison can say whether the modelled estate
+        moved since the baseline, not only the intelligence built on it.
 
-        Ids and timestamps only (SDD S9); no element or relationship names,
-        descriptions or other properties. Reads with the explicit
-        organisation predicate ``detect_model_drift`` uses
+        Ids and content hashes only, never the fields the hash is taken
+        over: no element or relationship name, description or other
+        property leaves this method. Reads with the explicit organisation
+        predicate the genome drift detector uses
         (app/modules/genome/services/drift_detector.py), so a call with no
         Flask request on the stack -- a job, or this service's own callers
         outside a request -- is scoped too, not relying only on the
-        request-scoped ``do_orm_execute`` filter.
-
-        ArchiMateElement carries no per-row modification timestamp in this
-        schema (deleted_at, but no updated_at or created_at); only
-        ArchiMateRelationship does. Every element's value here is therefore
-        None rather than a fabricated time -- adding a column is out of
-        this task's scope (Constraints item 2). See _analyze_model_drift
-        for what that means for elements_changed.
+        request-scoped tenant filter.
         """
         from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship
         from app.modules.intelligence.services.derived_facts import derived_fact_aggregates
@@ -1365,32 +1410,58 @@ class ArchitectureMonitoringService:
             ArchiMateElement.organization_id == self.organization_id,
             ArchiMateElement.deleted_at.is_(None),
         ).all()
-        # ArchiMateRelationship has no soft-delete column (detect_model_drift
-        # filters it by organization_id only, the same predicate here).
+        # ArchiMateRelationship has no soft-delete column (the genome drift
+        # detector filters it by organization_id only, the same predicate
+        # here).
         relationships = ArchiMateRelationship.query.filter(
             ArchiMateRelationship.organization_id == self.organization_id,
         ).all()
 
         derived = derived_fact_aggregates(self.organization_id)
         computed_at = derived.get("computed_at")
+        stale_ids = sorted(
+            str(rid)
+            for rid in self._stale_derived_relationship_ids(self.organization_id)
+        )
 
         return {
-            "elements": {str(el.id): None for el in elements},
+            "elements": {str(el.id): self._element_content_hash(el) for el in elements},
             "relationships": {
-                str(rel.id): {
-                    "type": rel.type,
-                    "source_id": rel.source_id,
-                    "target_id": rel.target_id,
-                }
-                for rel in relationships
+                str(rel.id): self._relationship_content_hash(rel) for rel in relationships
             },
             "derived": {
                 "derived_count": derived.get("derived_count"),
                 "stale_count": derived.get("stale_count"),
                 "computed_at": computed_at.isoformat() if computed_at else None,
+                "stale_ids": stale_ids,
             },
+            # Outside the checksummed payload (_calculate_baseline_checksum
+            # is called on capabilities/coverage/health/gaps/vendors/model,
+            # and this key changes on every capture regardless of the
+            # estate) -- capture_baseline reads it back out before hashing,
+            # so two baselines over an identical estate get identical
+            # checksums.
             "captured_at": datetime.utcnow().isoformat(),
         }
+
+    @staticmethod
+    def _stale_derived_relationship_ids(organization_id: int) -> List[int]:
+        """This tenant's stale DerivedRelationship ids, explicitly scoped.
+
+        derived_fact_aggregates(organization_id) returns stale_count (a
+        number) but not which rows -- the model dimension needs the set
+        itself so a comparison can tell "the same facts are stale" from "a
+        different fact went stale", not only that the count held steady.
+        """
+        from app.modules.intelligence.models.derived_relationship import DerivedRelationship
+
+        rows = db.session.execute(
+            db.select(DerivedRelationship.id).where(
+                DerivedRelationship.organization_id == organization_id,
+                DerivedRelationship.stale.is_(True),
+            )
+        ).scalars().all()
+        return list(rows)
 
     def _calculate_baseline_checksum(self, *snapshots) -> str:
         """Calculate checksum of baseline data for integrity."""
@@ -1531,8 +1602,8 @@ class ArchitectureMonitoringService:
         current_model: Dict[str, Any],
     ) -> Dict[str, Any]:
         """Analyze drift in the model itself: which element/relationship ids
-        were added or removed, which elements changed in place, and whether
-        derivation has recomputed since the baseline.
+        were added, removed or changed in place, and what happened to
+        derivation since the baseline.
 
         A baseline captured before this dimension existed carries no
         "model" key in its persisted snapshot (``_ensure_loaded`` reads it
@@ -1560,19 +1631,15 @@ class ArchitectureMonitoringService:
         baseline_element_ids = set(baseline_elements)
         current_element_ids = set(current_elements)
 
-        # ArchiMateElement carries no per-row modification timestamp in
-        # this schema (see _capture_model_snapshot), so every value here is
-        # None and this can never find a "later updated_at" -- it stays an
-        # honest, always-zero measurement of a signal that does not exist
-        # yet, not a fabricated one. elements_added/elements_removed are
-        # real, id-set measurements.
+        # Ids present on both sides whose content hash differs are a real,
+        # in-place edit (a rename, a re-layer, a property change) -- not
+        # merely present/absent, which the id-set alone already covers via
+        # added/removed below.
         common_element_ids = baseline_element_ids & current_element_ids
         changed_element_ids = sorted(
             eid
             for eid in common_element_ids
-            if baseline_elements.get(eid) is not None
-            and current_elements.get(eid) is not None
-            and current_elements[eid] > baseline_elements[eid]
+            if baseline_elements.get(eid) != current_elements.get(eid)
         )
         added_element_ids = sorted(current_element_ids - baseline_element_ids)
         removed_element_ids = sorted(baseline_element_ids - current_element_ids)
@@ -1581,11 +1648,25 @@ class ArchitectureMonitoringService:
         current_relationships = current_model.get("relationships", {}) or {}
         baseline_relationship_ids = set(baseline_relationships)
         current_relationship_ids = set(current_relationships)
+        common_relationship_ids = baseline_relationship_ids & current_relationship_ids
+        changed_relationship_ids = sorted(
+            rid
+            for rid in common_relationship_ids
+            if baseline_relationships.get(rid) != current_relationships.get(rid)
+        )
         added_relationship_ids = sorted(current_relationship_ids - baseline_relationship_ids)
         removed_relationship_ids = sorted(baseline_relationship_ids - current_relationship_ids)
 
         baseline_derived = baseline_model.get("derived", {}) or {}
         current_derived = current_model.get("derived", {}) or {}
+        baseline_derived_count = baseline_derived.get("derived_count")
+        current_derived_count = current_derived.get("derived_count")
+        baseline_stale_count = baseline_derived.get("stale_count")
+        current_stale_count = current_derived.get("stale_count")
+        baseline_stale_ids = set(baseline_derived.get("stale_ids") or [])
+        current_stale_ids = set(current_derived.get("stale_ids") or [])
+        newly_stale_ids = sorted(current_stale_ids - baseline_stale_ids)
+        resolved_stale_ids = sorted(baseline_stale_ids - current_stale_ids)
         baseline_computed_at = baseline_derived.get("computed_at")
         current_computed_at = current_derived.get("computed_at")
         derived_recomputed = (
@@ -1599,9 +1680,26 @@ class ArchitectureMonitoringService:
             "elements_changed": len(changed_element_ids),
             "elements_added": len(added_element_ids),
             "elements_removed": len(removed_element_ids),
+            "relationships_changed": len(changed_relationship_ids),
             "relationships_added": len(added_relationship_ids),
             "relationships_removed": len(removed_relationship_ids),
             "derived_recomputed": derived_recomputed,
+            # derived_count/stale_count deltas plus the stale set itself: two
+            # snapshots can carry the same stale_count while a different
+            # fact went stale and another recovered, which a bare count
+            # cannot show.
+            "derived_count_delta": (
+                None
+                if baseline_derived_count is None or current_derived_count is None
+                else current_derived_count - baseline_derived_count
+            ),
+            "stale_count_delta": (
+                None
+                if baseline_stale_count is None or current_stale_count is None
+                else current_stale_count - baseline_stale_count
+            ),
+            "newly_stale_ids": newly_stale_ids,
+            "resolved_stale_ids": resolved_stale_ids,
             "derived_computed_at": {
                 "baseline": baseline_computed_at,
                 "current": current_computed_at,
@@ -1609,6 +1707,7 @@ class ArchitectureMonitoringService:
             "changed_element_ids": changed_element_ids,
             "added_element_ids": added_element_ids,
             "removed_element_ids": removed_element_ids,
+            "changed_relationship_ids": changed_relationship_ids,
             "added_relationship_ids": added_relationship_ids,
             "removed_relationship_ids": removed_relationship_ids,
         }
