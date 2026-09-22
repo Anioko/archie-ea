@@ -115,27 +115,24 @@ def register(app: Flask) -> None:
         app.logger.warning(f"[BLUEPRINT] Failed to register Architect UI routes: {e}")
 
     # --- 9. Architecture Monitoring API ---
-    from app.modules.architecture.routes.architecture_monitoring_routes import (
-        monitoring_api_enabled,
-    )
+    try:
+        from app.modules.architecture.routes.architecture_monitoring_routes import (
+            architecture_monitoring_bp,
+            monitoring_api_enabled,
+        )
 
-    if monitoring_api_enabled(app):
-        try:
-            from app.modules.architecture.routes.architecture_monitoring_routes import (
-                architecture_monitoring_bp,
-            )
-
+        if monitoring_api_enabled(app):
             app.register_blueprint(architecture_monitoring_bp)
             app.logger.info(
                 "[BLUEPRINT] Architecture Monitoring API registered at /api/architecture-monitoring"
             )
-        except Exception as e:
-            app.logger.warning(
-                f"[BLUEPRINT] Failed to register Architecture Monitoring routes: {e}"
+        else:
+            app.logger.info(
+                "[BLUEPRINT] Architecture Monitoring API not mounted (ARCHITECTURE_MONITORING_API_ENABLED off)"
             )
-    else:
-        app.logger.info(
-            "[BLUEPRINT] Architecture Monitoring API not mounted (ARCHITECTURE_MONITORING_API_ENABLED off)"
+    except Exception as e:
+        app.logger.warning(
+            f"[BLUEPRINT] Failed to register Architecture Monitoring routes: {e}"
         )
 
     # --- 10. ARB (Architecture Review Board) ---
