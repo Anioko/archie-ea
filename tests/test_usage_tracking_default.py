@@ -254,6 +254,31 @@ def test_summary_api_counts_rows_by_feature_name(
     assert summary["usage_analytics.analytics_root"]["total_events"] >= 2
 
 
+def test_two_organisations_share_one_untenanted_summary(
+    db_session, make_org, client, login_as, analytics_on
+):
+    """UsageAnalytics carries no organization_id column, so the summary API
+    is not tenant-scoped: it reports across every organisation, not just the
+    caller's own. Two real organisations, two real signed-in users, pin that
+    plainly rather than leaving it as an assertion about @login_required
+    alone. Per-organisation counts are a later change, tracked separately."""
+    org_a = make_org("usage-org-a")
+    org_b = make_org("usage-org-b")
+    user_a = _user(org_a, "org-a")
+    user_b = _user(org_b, "org-b")
+
+    login_as(client, user_a)
+    client.get("/usage-analytics/")
+    login_as(client, user_b)
+    client.get("/usage-analytics/")
+
+    resp = client.get("/usage-analytics/api/summary")
+    assert resp.status_code == 200
+    root = resp.get_json()["usage_analytics.analytics_root"]
+    assert root["total_events"] >= 2
+    assert root["unique_users"] >= 2
+
+
 def test_dashboard_renders_privacy_sentence(db_session, make_org, client, login_as):
     org = make_org("usage-privacy-sentence")
     user = _user(org, "privacy-sentence")
