@@ -6,6 +6,7 @@
   "_note4": "updated 2026-09-21: an Impact Analysis My-work link (fix/t104-impact-sidebar) was added for solution_architect and business_architect, matching enterprise_architect's existing one. business_architect now also measures 28, tying platform_admin rather than trailing it -- _note3's \"platform_admin (the worst case)\" no longer names the only worst case. sidebar_links stays 28 (no ratchet change); this note only corrects which role(s) that number describes.",
   "_note5": "updated 2026-09-22: sidebar_links 28 -> 27 (lowered, routine): four pages came out of every persona zone that carried them, and platform_admin -- the persona this number has always tracked -- renders one fewer.",
   "_note6": "updated 2026-09-22, round two: corrected _note5, which had claimed data_architecture.data_lineage_view and tech_radar.index stayed reachable from an enterprise twin map deep link. No such link exists anywhere in the product (checked directly); both are reachable by URL only, which is what the underlying product decision actually intends. A deep link into either, if wanted, is a separate, later piece of work.",
+  "_note7": "updated 2026-09-22, round two: nav_coverage 1 -> 0 (a ratchet only falls). scripts/ba_output_audit.py now treats an endpoint app/modules/modules_directory/routes.py's _DARK names as intentionally unlinked rather than an S-11-style navigation regression -- exactly what the sidebar_links change above already is by written product decision. Measured directly by python scripts/ba_output_audit.py --count.",
   "ratchets": {
     "undefined_names": 0,
     "redefinitions": 0,
@@ -20,7 +21,7 @@
     "dynamic_link_prefixes": 0,
     "fetch_guards": 0,
     "sidebar_links": 27,
-    "nav_coverage": 1,
+    "nav_coverage": 0,
     "shell_conformance": 3,
     "raw_fetch_sites": 0,
     "composer_url_params": 0,
