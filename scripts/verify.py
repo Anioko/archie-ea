@@ -842,15 +842,10 @@ def gate_docs_drift() -> Result:
 
 
 def gate_public_repo_hygiene() -> Result:
-    """No private-planning-bucket directory or path reference in this public
-    repository (see scripts/check_public_repo_hygiene.py's own docstring
-    for the exact pattern). Gated at ZERO.
-
-    21 Sep 2026: found 82 tracked files (17,550 lines) of the orchestrator
-    repository's private planning artifacts committed directly here, plus
-    scattered path references to that structure in comments and docstrings
-    across the tree that survived even after the files themselves were
-    removed. See scripts/check_public_repo_hygiene.py.
+    """No private-planning-path directory tracked in this repository, and
+    no tracked source file contains a reference to that path structure --
+    see scripts/check_public_repo_hygiene.py's own docstring (PATTERN) for
+    the exact string matched. Zero tolerance.
     """
     proc = _run([sys.executable, "scripts/check_public_repo_hygiene.py", "--count"])
     try:
@@ -865,20 +860,17 @@ def gate_public_repo_hygiene() -> Result:
 
 
 def gate_public_repo_hygiene_record_ids(baseline: int) -> Result:
-    """Catches a review-record-id token or a pipeline role word committed to
-    app/, scripts/, tests/, templates or static JS -- see
-    scripts/check_public_repo_hygiene.py's own docstring for the exact shape
-    of each, the full allowlist reasoning, and the two previously-known
-    leaks this rule was written for.  (hygiene-ok: naming what this rule
-    catches, in the abstract, without repeating the example tokens here.)
+    """Catches a review-record-id token or a process word in a comment,
+    docstring or string literal under app/, scripts/, tests/, templates or
+    static JS -- see scripts/check_public_repo_hygiene.py's own docstring
+    and RECORD_ID_PATTERN/ROLE_WORDS comments for the exact shape of each
+    and the full allowlist reasoning.
 
-    RATCHET, not zero: that same docstring's "Why a ratchet, not zero"
-    explains why in full -- in short, the record-id shape doubles as this
-    codebase's own permanent business-reference-number convention, and one
-    of the role words doubles as this codebase's own architecture
-    vocabulary, so neither can be told apart from a real leak by pattern
-    alone. Re-checking this tree also turned up real, previously-unknown
-    leaks alongside the two already-known ones.
+    RATCHET, not zero: the record-id shape cannot always be told apart from
+    this codebase's own permanent business-reference-number conventions by
+    pattern alone, and "orchestrator" is also this codebase's own
+    architecture vocabulary beyond the specific phrases PRODUCT_TERMS
+    allowlists -- see scripts/check_public_repo_hygiene.py's docstring.
     """
     proc = _run([sys.executable, "scripts/check_public_repo_hygiene.py", "--rule", "content", "--count"])
     try:
@@ -1872,7 +1864,7 @@ def build_gates(baseline: dict) -> list[Gate]:
         Gate("public-repo-hygiene-record-ids",
              "no new review-record-id token or pipeline role word in app/scripts/tests/templates/static JS",
              "ratchet",
-             lambda: gate_public_repo_hygiene_record_ids(baseline.get("public_repo_hygiene_record_ids", 1728)),
+             lambda: gate_public_repo_hygiene_record_ids(baseline.get("public_repo_hygiene_record_ids", 416)),
              remediation="run scripts/check_public_repo_hygiene.py --rule content; reword the "
                          "line, or mark it 'hygiene-ok: <reason>'",
              tags=["static", "qa"]),

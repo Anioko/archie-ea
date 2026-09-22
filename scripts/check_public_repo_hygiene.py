@@ -1,96 +1,50 @@
 #!/usr/bin/env python
-r"""This repository is public; the orchestrator repository that plans its
-work is not. A path reference to that repository's `docs/buckets/<slug>/`
-folder structure, or a copy of that folder committed here, tells a public
-reader exactly what to go looking for and where -- and once, 82 files and
-17,550 lines of it were committed here directly (removed 21 Sep 2026).
+r"""Three checks over this repository's tracked files and commit history.
 
-This checker holds three things:
-
-1. No `docs/buckets/` directory tracked in this repository at all. (zero)
+1. No `docs/buckets/` directory tracked in this repository. (zero)
 2. No tracked source file (app/, scripts/, tests/, templates) contains the
-   literal string `docs/buckets/` -- a reference to that structure, even
-   without the files themselves, still describes it. (zero)
-3. Review-record-id tokens and pipeline role words, committed to tracked
-   source or to a commit message, name the *process* that produced a change
-   rather than the change itself -- the orchestrator repository's own bucket
-   rows, ledger ids and role names, meaningless (or worse, a map of what to
-   go looking for) to a public reader. Twice a builder wrote one of these
-   into a product file or a commit message and (1)/(2) above matched none of
-   it: `app/modules/intelligence/services/query_service.py:538` ("# D-5
-   (refuter): ...") and `app/modules/intelligence/routes/api.py:159` ("#
-   No tenant_scope() here (round-1 refuter finding D4): ..."). (ratchet --
-   see "Why a ratchet, not zero" below)
+   literal string `docs/buckets/`. (zero)
+3. No review-record-id token or process word, in a comment, docstring or
+   string literal under app/, scripts/, tests/, templates or static JS, or
+   in a commit message. A record-id token is a short letter-and-digit code
+   this shape of review uses (see RECORD_ID_PATTERN below); a process word
+   names a reviewing function rather than the change itself (see
+   ROLE_WORDS below). Neither belongs in this repository's own source or
+   history: both describe review machinery, not the product.
 
-Per-line escape hatch for rules 2 and 3 (source), per-commit for rule 3
-(commit messages): `hygiene-ok: <reason>` anywhere on the line / anywhere in
-the message, for a reference that is itself the point (this file's own
-docstring, or a test asserting the pattern is absent).
+Two allowlists keep rule 3 from matching this codebase's own conventions:
+RECORD_ID_ALLOWLIST_PREFIXES excludes this codebase's business-reference-
+number families (architecture-decision, finding, task and deliverable
+references) and the pre-existing standards-body, quarter and fiscal-year
+prefixes that share the same short letter-and-digit shape; PRODUCT_TERMS
+excludes the handful of multi-word product-feature names that legitimately
+contain one of the process words as a substring. See each constant's own
+comment for the exact reasoning.
 
-Why a ratchet, not zero (rule 3's record-id half)
---------------------------------------------------
-The brief that asked for this checker gave the shape as "a capital letter or
-two, optional digits, a dash, digits" (e.g. D2-7, T4-3) and named an
-allowlist of real identifiers to exclude: CVE-, RFC-, ISO-, IEC-, UTF-, and
-WCAG references shaped like A-11. Checked against this tree, as the same
-brief asked, before deciding anything:
+Rule 3's source half is a ratchet: see RECORD_ID_PATTERN's own comment for
+why the record-id shape cannot be told apart from a genuine business
+reference number by shape alone in every case, and unrendered_model_fields
+elsewhere in this codebase's verification suite for the same kind of
+heuristic ratchet used for the same reason. Rule 3's commit-message half is
+zero-tolerance over the range under review, not full history -- see
+verify.py's `gate_public_repo_hygiene_commit_messages` for why a full-
+history count cannot be a stable measurement.
 
-* CVE-/RFC-/ISO-/IEC-/UTF- never match RECORD_ID_PATTERN at all: each prefix
-  is three-plus letters, and the pattern's `[A-Z]{1,2}` caps at two, with no
-  `\b` boundary available mid-word to start matching later ("UTF-8" cannot
-  match starting at "U" -- next character is "T", neither digit nor dash --
-  nor at "T" or "F", neither preceded by a word boundary). Kept in
-  RECORD_ID_ALLOWLIST_PREFIXES anyway, spelled out, so a reader does not have
-  to re-derive that they are already inert.
-* No genuinely WCAG-shaped "A-11" reference exists in this tree. What DOES
-  exist under the "A-" prefix is this codebase's own readiness-table finding
-  numbers (A-01 .. A-50+, e.g. tests/test_admin_org_member_idor.py's own
-  docstring: "A-01 (S1): a tenant administrator must not be able to...").
-* The pattern's exact shape -- one or two capital letters, a dash, one to
-  four digits, optionally with digits between the letters and the dash -- is
-  ALSO this codebase's own permanent, load-bearing business-reference-number
-  convention, used at scale: AD-001 is an Architecture Decision's own unique
-  database column (app/utils/reference_numbers.py); F-06, F-07, T-001..T-006,
-  R7-1..R7-6, R2-1..R2-5, R5-1, S0-01..S0-03 and 500+ more, all pre-existing,
-  all load-bearing, none of them a leaked pipeline artifact. R7-1 through
-  R7-6 share the EXACT shape of the brief's own "D2-7" example (a single
-  digit between the letter and the dash) -- there is no regex that tells a
-  leaked review-record-id apart from this codebase's own reference-number
-  convention by shape alone, because the brief's example and this codebase's
-  real, permanent identifiers are the same shape by construction (both are
-  short business reference codes).
-
-A hard-zero rule here would fail on day one against hundreds of these, all
-of them permanent, most of them user-facing. A per-token allowlist naming
-every one is not maintainable either: this convention grows with every new
-feature area (a new AD-048, a new F-08) as a matter of course. So rule 3's
-record-id half is a ratchet, exactly the same shape as this codebase's other
-static-analysis-heuristic ratchets (see unrendered_model_fields, baselined
-at 387 for the identical reason: real findings that need triage, not 387
-confirmed defects). The role-word half of rule 3 has no such ambiguity --
-"refuter", "tech-lead", "orchestrator", "the brief" and "build report" do
-not occur in ordinary product prose -- but is measured and ratcheted
-alongside it rather than split into its own zero-tolerance rule, so that one
-`--rule content` invocation and one baseline key cover both halves of "a
-record id or a role word ended up in a product file", and a genuinely new
-role-word hit is still visible immediately in the count going up by exactly
-one, distinguishable in the listing from the record-id noise by its own
-message text.
-
-Commit messages (rule 3's other surface) are handled the same way for a
-different reason: they are immutable without rewriting already-pushed public
-history, which this repository's own standing instructions forbid doing
-except to a role's own not-yet-merged branch. The baseline is therefore a
-frozen count of today's history, not something later cleanup can lower --
-only a future bad commit can raise it.
+Per-line escape hatch for rule 2 and rule 3's source half: `hygiene-ok:
+<reason>` anywhere on the line, for a reference that is itself the point
+(this file's own comments, or a test asserting the pattern is absent).
+Rule 3's commit-message half checks the same marker per physical line of
+the message; an attribution-trailer line is never excused by it.
 
 Proven-against: a docs/buckets/ directory tracked in a synthetic tree, and
 a tracked file containing the literal string "docs/buckets/" -- both
-observed red, then green once removed (the original two rules, unchanged
-here). Rule 3: a tracked file containing "D2-7" and a file containing
-"refuter" -- both observed red, then green once removed or marked
-hygiene-ok; a commit message containing "round-1 refuter finding" observed
-red in a synthetic git repository, then green once amended.
+observed red, then green once removed. Rule 3: a tracked file containing a
+record-id-shaped token and a file containing a process word -- both
+observed red, then green once removed or marked hygiene-ok; a commit
+message containing a process word observed red in a synthetic git
+repository, then green once amended; every shape in
+tests/test_gates_actually_fail.py's parametrised false-negative and
+false-positive tables, each observed to match its expected outcome.
 """
 
 from __future__ import annotations
@@ -114,7 +68,7 @@ ESCAPE_HATCH = "hygiene-ok:"
 # The dashed shape a review record id takes: one process letter (D, T, Q or
 # F), an optional single digit, a dash, an optional short letter segment, one
 # to four digits, and an optional second dash-digits segment for a
-# multi-segment id (D2-7, T4-3, D-ALL-1, T-FIX-103, T-DR-1, D-105-2).
+# multi-segment id (D2-7, T4-3, D-ALL-1, T-FIX-103, T-DR-1, D-105-2).  # hygiene-ok: quoting this pattern's own example shapes, not a real hit
 # Restricting the leading letter to this four-letter set, rather than any
 # one or two capital letters, is what lets this codebase's own short
 # reference-number families (readiness findings, requirement and derived-fact
@@ -124,7 +78,7 @@ ESCAPE_HATCH = "hygiene-ok:"
 RECORD_ID_PATTERN = re.compile(
     r"\b(?:D|T|Q|F)[0-9]?-(?:[A-Z]{1,4}-)?[0-9]{1,4}(?:-[0-9]{1,4})?\b"
 )
-# The letter-dash-letters-digit shape with no second dash (T-S1) -- the one
+# The letter-dash-letters-digit shape with no second dash (T-S1) -- the one  # hygiene-ok: quoting this pattern's own example shape, not a real hit
 # id shape the pattern above cannot also match.
 RECORD_ID_PATTERN_SEGMENT = re.compile(r"\b(?:D|T|Q|F)-[A-Z]{1,4}[0-9]{1,2}\b")
 
@@ -166,24 +120,24 @@ def _is_allowlisted_record_id(token: str, line: str, start: int) -> bool:
     return False
 
 # Case-insensitive, whole word. "round" matches a digit or a spelled-out
-# number one..nine (round-1, round 2, Round three), the shape a pipeline
+# number one..nine (round-1, round 2, Round three), the shape a pipeline  # hygiene-ok: quoting this pattern's own example shapes, not a real hit
 # round number takes, but not when followed by "of" (round of funding, a
-# round of edits -- the ordinary English sense). "build report" matches a
-# hyphen or a space. "builder" matches only its three role-shaped forms, not
+# round of edits -- the ordinary English sense). "build report" matches a  # hygiene-ok: quoting this pattern's own label, not a real hit
+# hyphen or a space. "builder" matches only its three role-shaped forms, not  # hygiene-ok: quoting this pattern's own label, not a real hit
 # a class or identifier name built from the word (QueryBuilder,
-# policy_builder). "orchestrator" requires the preceding character not be a
+# policy_builder). "orchestrator" requires the preceding character not be a  # hygiene-ok: quoting this pattern's own label, not a real hit
 # letter or underscore, so an identifier such as `workflow_orchestrator_service`
 # or a class name such as `UnifiedSeedOrchestrator` never matches.
 ROLE_WORDS = [
-    (re.compile(r"\brefuter\b", re.IGNORECASE), "refuter"),
-    (re.compile(r"\btech[\s-]lead\b", re.IGNORECASE), "tech-lead"),
-    (re.compile(r"\bqa-lead\b", re.IGNORECASE), "qa-lead"),
-    (re.compile(r"\bbuilder's\b|\bthe builder\b|\bbuilder:", re.IGNORECASE), "builder"),
-    (re.compile(r"\bsolution-architect\b", re.IGNORECASE), "solution-architect"),
-    (re.compile(r"\bproduct-manager\b", re.IGNORECASE), "product-manager"),
-    (re.compile(r"\b(?<![A-Za-z_])orchestrator\b", re.IGNORECASE), "orchestrator"),
-    (re.compile(r"\bthe brief\b", re.IGNORECASE), "the brief"),
-    (re.compile(r"\bbuild[\s-]report\b", re.IGNORECASE), "build report"),
+    (re.compile(r"\brefuter\b", re.IGNORECASE), "refuter"),  # hygiene-ok: this pattern's own label, not a real hit
+    (re.compile(r"\btech[\s-]lead\b", re.IGNORECASE), "tech-lead"),  # hygiene-ok: this pattern's own label, not a real hit
+    (re.compile(r"\bqa-lead\b", re.IGNORECASE), "qa-lead"),  # hygiene-ok: this pattern's own label, not a real hit
+    (re.compile(r"\bbuilder's\b|\bthe builder\b|\bbuilder:", re.IGNORECASE), "builder"),  # hygiene-ok: this pattern's own label, not a real hit
+    (re.compile(r"\bsolution-architect\b", re.IGNORECASE), "solution-architect"),  # hygiene-ok: this pattern's own label, not a real hit
+    (re.compile(r"\bproduct-manager\b", re.IGNORECASE), "product-manager"),  # hygiene-ok: this pattern's own label, not a real hit
+    (re.compile(r"\b(?<![A-Za-z_])orchestrator\b", re.IGNORECASE), "orchestrator"),  # hygiene-ok: this pattern's own label, not a real hit
+    (re.compile(r"\bthe brief\b", re.IGNORECASE), "the brief"),  # hygiene-ok: this pattern's own label, not a real hit
+    (re.compile(r"\bbuild[\s-]report\b", re.IGNORECASE), "build report"),  # hygiene-ok: this pattern's own label, not a real hit
     (re.compile(
         r"\bround[\s-]?(?:[0-9]|one|two|three|four|five|six|seven|eight|nine)\b(?!\s+of\b)",
         re.IGNORECASE,
@@ -191,15 +145,15 @@ ROLE_WORDS = [
 ]
 
 # Product vocabulary that legitimately contains a role word as a substring
-# (e.g. "orchestrator" inside "seed orchestrator") -- checked, and masked
+# (e.g. "orchestrator" inside "seed orchestrator") -- checked, and masked  # hygiene-ok: quoting this comment's own example, not a real hit
 # out of the line, before ROLE_WORDS runs against it.
 PRODUCT_TERMS = (
-    "seed orchestrator",
-    "workflow orchestrator",
-    "dual-agent orchestrator",
+    "seed orchestrator",  # hygiene-ok: this allowlist's own entry, not a real hit
+    "workflow orchestrator",  # hygiene-ok: this allowlist's own entry, not a real hit
+    "dual-agent orchestrator",  # hygiene-ok: this allowlist's own entry, not a real hit
     "orchestration",
-    "decision brief",
-    "codegen brief",
+    "decision brief",  # hygiene-ok: this allowlist's own entry, not a real hit
+    "codegen brief",  # hygiene-ok: this allowlist's own entry, not a real hit
 )
 _PRODUCT_TERM_RE = re.compile(
     "|".join(re.escape(term) for term in PRODUCT_TERMS), re.IGNORECASE
@@ -533,11 +487,9 @@ def main() -> int:
         if problems:
             print()
             print(
-                "Remove the docs/buckets/ content or reference, the review-record-id\n"
-                "token, or the pipeline role word -- it belongs in the orchestrator\n"
-                "repository or the bucket working copy, not here. Mark a genuinely\n"
-                "necessary line (or commit message) with 'hygiene-ok: <reason>'\n"
-                "(e.g. this checker's own docstring)."
+                "Reword the line; keep process references out of this repository.\n"
+                "Mark a genuinely necessary line (or commit-message line) with\n"
+                "'hygiene-ok: <reason>' (e.g. this checker's own comments)."
             )
     print(len(problems))
     return 0

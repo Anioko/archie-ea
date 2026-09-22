@@ -722,6 +722,19 @@ def test_public_repo_hygiene_false_positive_table(tmpdir, label, relpath, conten
     assert count == 0, "row %r (%r) was incorrectly flagged" % (label, content)
 
 
+def test_public_repo_hygiene_checker_passes_its_own_scan_unexempted(tmpdir):
+    """The checker's own source is exempt from the content rule by
+    filename (SELF_NAME) when scanned against this repository -- copied
+    into a tree under a different filename, so that exemption does not
+    apply, it still has to come up clean on its own terms, every quoted
+    pattern shape and allowlist entry marked hygiene-ok."""
+    checker_path = os.path.join(SCRIPTS, "check_public_repo_hygiene.py")
+    with open(checker_path, encoding="utf-8") as fh:
+        source = fh.read()
+    _write(tmpdir, "app/hygiene_checker_copy.py", source)
+    assert _run_hygiene_checker(tmpdir, "content") == 0
+
+
 def _git(root, *args):
     proc = subprocess.run(["git", "-C", str(root)] + list(args), capture_output=True, text=True)
     assert proc.returncode == 0, "git %s failed: %s" % (" ".join(args), proc.stderr)
