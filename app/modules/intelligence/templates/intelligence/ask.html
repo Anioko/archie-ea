@@ -18,9 +18,12 @@
 
 {% block content %}
 {% set home_url = url_for('dashboard.overview') if 'dashboard.overview' in flask.current_app.view_functions else none %}
-{# Release 2 appends its questions here; only the impact question has an answer today. #}
+{# L3/L6 (2026-09-21): risk added, answering L6 of intelligence-lenses-v1.md.
+   Portfolio (L3) stays out of this accordion -- it answers with deep links
+   to existing pages, not an inline result, and gets its own follow-up. #}
 {% set questions = [
-    {'key': 'impact', 'before': 'What breaks if', 'blank': '___', 'after': 'fails or is under-resourced?'}
+    {'key': 'impact', 'before': 'What breaks if', 'blank': '___', 'after': 'fails or is under-resourced?'},
+    {'key': 'risk', 'before': 'What could hurt', 'blank': '___', 'after': 'and what does it touch?'}
 ] %}
 {% macro _ps_actions() %}
 <a href="{{ url_for('intelligence_ui.twin_map') }}"
@@ -41,19 +44,25 @@
     <section class="rounded-xl border border-border bg-card p-6" data-question="{{ question.key }}">
         <button type="button" id="ask-question-{{ question.key }}"
                 class="flex w-full items-center justify-between gap-3 rounded-md text-left text-lg font-medium text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-                aria-expanded="false" :aria-expanded="questionOpen ? 'true' : 'false'"
+                aria-expanded="false" :aria-expanded="openKey === '{{ question.key }}' ? 'true' : 'false'"
                 aria-controls="ask-question-panel-{{ question.key }}"
-                @click="toggleQuestion()">
+                @click="toggleQuestion('{{ question.key }}')">
             <span>{{ question.before }} <span class="font-semibold tracking-widest text-primary underline">{{ question.blank }}</span> {{ question.after }}</span>
-            <span class="inline-flex shrink-0 transition-transform" :class="questionOpen ? 'rotate-180' : ''"><i data-lucide="chevron-down" class="h-5 w-5" aria-hidden="true"></i></span>
+            <span class="inline-flex shrink-0 transition-transform" :class="openKey === '{{ question.key }}' ? 'rotate-180' : ''"><i data-lucide="chevron-down" class="h-5 w-5" aria-hidden="true"></i></span>
         </button>
-        <div id="ask-question-panel-{{ question.key }}" hidden :hidden="!questionOpen" class="mt-4">
-            {{ entity_picker('ask') }}
+        {# The picker is one shared component (fixed input id / Alpine
+           $refs.pickerInput), not one per question -- rendering it inside
+           every panel would duplicate both. It lives in whichever panel is
+           currently open; onSelect() dispatches by openKey. #}
+        <div id="ask-question-panel-{{ question.key }}" hidden :hidden="openKey !== '{{ question.key }}'" class="mt-4">
+            <template x-if="openKey === '{{ question.key }}'">
+                <div>{{ entity_picker('ask') }}</div>
+            </template>
         </div>
     </section>
     {% endfor %}
 
-    <div id="ask-results" aria-busy="false" :aria-busy="busy ? 'true' : 'false'" x-show="state !== 'idle'" x-cloak class="space-y-4">
+    <div id="ask-results" aria-busy="false" :aria-busy="busy ? 'true' : 'false'" x-show="answeredKey === 'impact' && state !== 'idle'" x-cloak class="space-y-4">
         <h2 id="ask-results-heading" x-ref="resultsHeading" tabindex="-1" class="text-lg font-semibold text-foreground focus:outline-none">Results</h2>
         {{ impact_states("state === 'loading'") }}
         <ul class="space-y-3" x-show="state === 'ready'" x-cloak>
@@ -74,6 +83,37 @@
                     </div>
                     <div class="mt-2">{{ stale_line('row.staleLine') }}</div>
                     {{ full_detail({'detail': 'row.detail', 'uid': 'row.key'}) }}
+                </li>
+            </template>
+        </ul>
+    </div>
+
+    {# L6: one card per risk seeded on the picked element, each with its own
+       blast-radius rows -- a distinct shape from L1's flat row list, so a
+       separate result block rather than overloading `rows`. #}
+    <div id="ask-risk-results" aria-busy="false" :aria-busy="riskBusy ? 'true' : 'false'" x-show="answeredKey === 'risk' && riskState !== 'idle'" x-cloak class="space-y-4">
+        <h2 id="ask-risk-results-heading" x-ref="riskResultsHeading" tabindex="-1" class="text-lg font-semibold text-foreground focus:outline-none">Results</h2>
+        {# Own loading state, not the shared impact_states() macro -- that
+           macro's not-computed/stale notices are bound to the impact
+           question's own component state and would cross-contaminate this
+           panel if reused here. #}
+        <div x-show="riskState === 'loading'" x-cloak role="status" aria-label="Loading" class="h-16 animate-pulse rounded-lg border border-border bg-muted/30"></div>
+        <p x-show="riskState === 'empty'" x-cloak class="text-sm text-muted-foreground">No risks recorded against this element.</p>
+        <p x-show="riskState === 'error'" x-cloak class="text-sm text-destructive">Could not load risks for this element.</p>
+        <ul class="space-y-3" x-show="riskState === 'ready'" x-cloak>
+            <template x-for="risk in risks" :key="risk.riskId">
+                <li class="rounded-lg border border-border bg-card p-4" data-ask-risk-row>
+                    <div class="flex flex-wrap items-start justify-between gap-x-6 gap-y-2">
+                        <h3 class="min-w-0 break-words text-base font-semibold text-foreground" x-text="risk.title"></h3>
+                        <span class="inline-flex h-6 items-center rounded-full border border-border px-2 text-xs font-medium text-foreground" x-text="risk.riskLevel"></span>
+                    </div>
+                    <p class="mt-1 text-sm text-muted-foreground">
+                        <span x-text="'Likelihood ' + risk.likelihood + ' x Impact ' + risk.impact + ' = ' + risk.riskScore"></span>
+                    </p>
+                    <p class="mt-1 text-sm text-foreground" x-show="risk.owner"><span x-text="risk.owner"></span></p>
+                    <p class="mt-1 text-sm text-muted-foreground" x-show="!risk.owner">No owner recorded</p>
+                    <p class="mt-1 text-sm text-muted-foreground" x-show="risk.mitigationPlan" x-text="risk.mitigationPlan"></p>
+                    <p class="mt-2 text-sm text-foreground" x-text="risk.affectedRows.length + ' connection' + (risk.affectedRows.length === 1 ? '' : 's') + ' reached'"></p>
                 </li>
             </template>
         </ul>

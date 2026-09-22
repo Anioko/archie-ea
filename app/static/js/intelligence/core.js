@@ -14,6 +14,7 @@
 
     var SEARCH_URL = '/archimate/api/elements/search';
     var IMPACT_URL = '/api/v1/intelligence/impact/';
+    var RISK_URL = '/api/v1/intelligence/risk/';
     var RECOMPUTE_URL = '/api/v1/intelligence/derivation/recompute';
 
     var ERROR_LINE = 'We could not answer that just now.';
@@ -63,6 +64,43 @@
 
     function recompute() {
         return Platform.fetch.post(RECOMPUTE_URL, { scope: 'tenant' }, { silent: true });
+    }
+
+    /* L6: risks seeded on an element, each with its own blast-radius rows.
+       Same request shape as fetchImpact -- see app/api/v1/intelligence/routes.
+       api.py:risk_for_element for what "reasons" can carry (element_not_found,
+       no_tenant_context, no_risk_recorded). */
+    function fetchRisk(elementId, options) {
+        return Platform.fetch.get(RISK_URL + elementId, {
+            include_derived: options && options.includeDerived ? 'true' : 'false',
+            max_depth: (options && options.maxDepth) || 3
+        }, { silent: true }).then(function (resp) {
+            return resp && resp.data ? resp.data : {};
+        });
+    }
+
+    /* One risk row's server payload turned into the flat shape ask.js's
+       template reads -- riskId/riskScore/riskLevel names avoid clashing
+       with the JS reserved-adjacent "risk_score" underscore style and match
+       the camelCase the rest of this file already uses (rowModel above). */
+    function riskModel(risk) {
+        return {
+            riskId: risk.risk_id,
+            title: risk.title,
+            status: risk.status,
+            likelihood: risk.likelihood,
+            impact: risk.impact,
+            riskScore: risk.risk_score,
+            riskLevel: risk.risk_level,
+            owner: risk.owner || null,
+            mitigationPlan: risk.mitigation_plan || null,
+            affectedRows: risk.affected_rows || [],
+            affectedSummary: risk.affected_summary || {}
+        };
+    }
+
+    function buildRisks(payload) {
+        return (payload.risks || []).map(riskModel);
     }
 
     // ── small helpers ─────────────────────────────────────────────────────
@@ -289,6 +327,8 @@
         UNPLACED_BAND: UNPLACED_BAND,
         searchElements: searchElements,
         fetchImpact: fetchImpact,
+        fetchRisk: fetchRisk,
+        buildRisks: buildRisks,
         recompute: recompute,
         timeText: timeText,
         refreshIcons: refreshIcons,
