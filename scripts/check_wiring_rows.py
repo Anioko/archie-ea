@@ -9,7 +9,11 @@ body or has a base class named `Model` / `db.Model`, and whose body assigns a `C
 `mapped_column` call to a plain attribute -- `name = db.Column(...)` -- where the attribute name matches
 `FAMILY_RE` (a maturity, cost, budget, tco, licence, contract, renewal, lifecycle, end-of-life, risk,
 compliance, sla, owner, raci, plateau, gap, score or one of the other families named in
-`docs/intelligence-wiring-register.yml`'s `pipeline_rule.statement`) is a fact-bearing column. A first
+`docs/intelligence-wiring-register.yml`'s `pipeline_rule.statement`) is a fact-bearing column. Each family
+is matched in every spelling the tree uses for it — singular, plural, past tense, agent and gerund forms,
+plus `ownership`, `critical`, `compliant`, `end_of_life`, `eos`, `retired`, `licensing` — so
+`end_of_life_date`, `last_assessed`, `key_risks`, `other_costs` and `assessor` are fact-bearing;
+`controller`, `discount`, `scorecard` and `healthy` are not. A first
 positional string argument -- `db.Column("plateau", ...)` -- is recorded as the database column name and
 tested as well as the attribute name.
 
@@ -30,26 +34,38 @@ A fact-bearing column is covered, and not flagged, when:
 Scope and disclosed limits
 ---------------------------
 Any path segment `tests` is excluded. Association tables built with `db.Table(...)` are not classes and are
-out of scope -- disclosed, not silent. A column named outside the families above is not seen at all; adding a
+out of scope — disclosed, not silent. A column named outside the families above is not seen at all; adding a
 new family is a register change (`pipeline_rule.statement`), not a checker change. Coverage is by name, not by
 semantics: a row naming `status` on a class covers every `status` column that class has, however different
-their meaning. A missing or unparseable register is a hard failure (exit 2), never a count of 0 -- silence here
-must never look like "no debt".
+their meaning. A column declared on a mixin (a class with no `Model` base and no `__tablename__`) is not
+seen; the model that inherits it is not scanned for inherited columns. A missing or unparseable register is
+a hard failure (exit 2), never a count of 0 — silence here must never look like "no debt".
 
 Usage
 -----
-    python scripts/check_wiring_rows.py                 # list findings
-    python scripts/check_wiring_rows.py --count          # trailing count only
-    python scripts/check_wiring_rows.py --list            # list findings explicitly
-    python scripts/check_wiring_rows.py --root <tree>      # scan a different tree (tests)
-    python scripts/check_wiring_rows.py --register <path>  # read a different register (tests)
+    python scripts/check_wiring_rows.py                         # list findings
+    python scripts/check_wiring_rows.py --count                  # trailing count only
+    python scripts/check_wiring_rows.py --list                    # list findings explicitly
+    python scripts/check_wiring_rows.py --root <tree>              # scan a different tree (tests)
+    python scripts/check_wiring_rows.py --register <path>          # read a different register (tests)
+    python scripts/check_wiring_rows.py --base [ref]              # list findings added since ref (default: merge-base with origin/main)
+
+Base diff
+----------
+When `--base [REF]` is given, the checker extracts the base tree's models with `git archive`, scans them
+using the **branch's** register, and compares the two finding sets keyed on `(path, class, attribute)`.
+Added findings are those present on the branch and absent at the base. Without `--count`, each added finding
+is printed by name, then a summary line and the same remediation line; with `--count`, only the integer is
+printed. Exit codes: 0 (none added), 1 (one or more added), 2 (register error), 3 (base ref unresolvable).
 
 Proven-against: tests/test_wiring_rows_gate.py -- a positive control (an unregistered fact-bearing column is
 flagged), a negative control (a register row, and separately a not_intelligence entry, suppresses it), the
-escape hatch on the column's own line and the line above (and its refusal to honour a marker whose id is not
-registered), the family boundary (`user_count`/`description` never flagged; `eol_date`/`is_baseline`/
-`rto_hours`/`owner_id` flagged), a class nested inside a function, a database-column-name match, and a missing
-register exiting 2.
+escape hatch on the column's own line and any line of a multi-line declaration (and its refusal to honour a
+marker whose id is not registered), the family boundary (`user_count`/`description` never flagged;
+`eol_date`/`is_baseline`/`rto_hours`/`owner_id` flagged), a class nested inside a function, a database-column-
+name match, a missing register exiting 2, a three-line column declaration with the marker on the closing
+paren, an `AnnAssign` column shape, a mixin column not flagged, and a `--base` diff that proves a deletion-
+plus-addition scenario.
 """
 from __future__ import annotations
 
@@ -57,8 +73,13 @@ import argparse
 import ast
 import os
 import re
+import shutil
+import subprocess
 import sys
+import tarfile
+import tempfile
 from dataclasses import dataclass, field
+from io import BytesIO
 from pathlib import Path
 
 try:
@@ -66,12 +87,18 @@ try:
 except ImportError:  # pragma: no cover
     yaml = None
 
+# Reuse the merge-base resolution from the smoke-coverage gate.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from check_smoke_coverage_on_change import _base_ref  # noqa: E402
+
 ROOT = Path(__file__).resolve().parent.parent
 
 FAMILY_RE = re.compile(
-    r"(^|_)(maturity|assessment|health|cost|budget|tco|spend|licen[cs]e|renewal|contract|vendor|lifecycle|"
-    r"eol|eos|retire(?:ment)?|decommission|risk|compliance|control|sla|availability|rto|rpo|criticality|"
-    r"owner|raci|usage|plateau|gap|roadmap|milestone|baseline|drift|score)(_|$)"
+    r"(^|_)(maturit(?:y|ies)|assess(?:ment|ments|ed|or|ors)?|health|costs?|costing|budgets?|budgeted|tco|spend(?:ing)?|"
+    r"licen[cs](?:e|es|ed|ing)|renewals?|renewed|contracts?|contracted|contracting|vendors?|lifecycle|end_of_life|eol|eos|"
+    r"retire(?:ment|d|s)?|decommission(?:ed|ing)?|risks?|risky|complian(?:ce|t)|controls?|slas?|availability|rto|rpo|"
+    r"criticality|critical|owner(?:s|ship)?|owned|raci|usage|plateaus?|gaps?|roadmaps?|milestones?|baselines?|baselined|"
+    r"drifts?|drifted|scores?|scored|scoring)(_|$)"
 )
 
 _COLUMN_CALL_NAMES = {"Column", "mapped_column"}
@@ -173,16 +200,23 @@ def _class_qualifies(cdef: ast.ClassDef) -> bool:
 
 
 def _column_assigns(cdef: ast.ClassDef):
-    """[(attr_name, db_col_name_or_None, lineno)] for each column declared directly in cdef's own body."""
+    """[(attr_name, db_col_name_or_None, lineno, end_lineno)] for each column declared directly in cdef's own body."""
     out = []
-    for stmt in cdef.body:
-        if not isinstance(stmt, ast.Assign):
-            continue
-        if len(stmt.targets) != 1 or not isinstance(stmt.targets[0], ast.Name):
-            continue
-        if not _is_column_call(stmt.value):
-            continue
-        out.append((stmt.targets[0].id, _first_positional_string(stmt.value), stmt.lineno))
+    for stmt in cdef.body:                              # Assign: name = db.Column(...)
+        if isinstance(stmt, ast.Assign):
+            if len(stmt.targets) != 1 or not isinstance(stmt.targets[0], ast.Name):
+                continue
+            if not _is_column_call(stmt.value):
+                continue
+            out.append((stmt.targets[0].id, _first_positional_string(stmt.value),
+                        stmt.lineno, stmt.end_lineno or stmt.lineno))
+        elif isinstance(stmt, ast.AnnAssign):            # AnnAssign: name: Mapped[T] = mapped_column(...)
+            if not isinstance(stmt.target, ast.Name):
+                continue
+            if stmt.value is None or not _is_column_call(stmt.value):
+                continue
+            out.append((stmt.target.id, _first_positional_string(stmt.value),
+                        stmt.lineno, stmt.end_lineno or stmt.lineno))
     return out
 
 
@@ -212,10 +246,10 @@ def _row_covers(row: dict, cls: str, names: set[str]) -> bool:
 def _not_intelligence_covers(entry: dict, cls: str, names: set[str], basename: str) -> bool:
     where = entry.get("where") or []
     text = " ".join(str(w) for w in where)
-    markers = [m for m in (cls, basename) if m and m in text]
+    markers = [m for m in (cls, basename) if m and re.search(rf"\b{re.escape(m)}\b", text)]
     if not markers:
         return False
-    pos = min(text.index(m) for m in markers)
+    pos = min(re.search(rf"\b{re.escape(m)}\b", text).start() for m in markers)
     rest = text[pos:]
     return any(re.search(rf"\b{re.escape(n)}\b", rest) for n in names)
 
@@ -233,10 +267,11 @@ def _is_covered(cls: str, attr: str, dbcol: str | None, basename: str, register:
     return False
 
 
-def _escape_marker(lines: list[str], lineno: int, column_lines: set[int]):
+def _escape_marker(lines: list[str], lineno: int, end_lineno: int, column_lines: set[int]):
     candidates = []
-    if 1 <= lineno <= len(lines):
-        candidates.append(lines[lineno - 1])
+    for ln in range(lineno, end_lineno + 1):
+        if 1 <= ln <= len(lines):
+            candidates.append(lines[ln - 1])
     above = lineno - 1
     if above >= 1 and above not in column_lines:
         candidates.append(lines[above - 1])
@@ -267,13 +302,15 @@ def _scan_file(path: Path, root: Path, register: Register) -> list[Finding]:
         if not _class_qualifies(node):
             continue
         assigns = _column_assigns(node)
-        column_lines = {lineno for _a, _d, lineno in assigns}
-        for attr, dbcol, lineno in assigns:
+        column_lines = set()
+        for _a, _d, lineno, end_lineno in assigns:
+            column_lines.update(range(lineno, end_lineno + 1))
+        for attr, dbcol, lineno, end_lineno in assigns:
             if not FAMILY_RE.search(attr):
                 continue
             if _is_covered(node.name, attr, dbcol, basename, register):
                 continue
-            marker = _escape_marker(lines, lineno, column_lines)
+            marker = _escape_marker(lines, lineno, end_lineno, column_lines)
             if marker is not None:
                 marker_id, reason = marker
                 if marker_id in register.wiring_ids and len(reason.split()) >= 2:
@@ -293,12 +330,36 @@ def scan(root: Path, register: Register) -> list[Finding]:
     return findings
 
 
+def _find_base(ref: str) -> str | None:
+    """Resolve a base ref; return None if unresolvable."""
+    proc = subprocess.run(["git", "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}"],
+                          capture_output=True, text=True, cwd=ROOT)
+    return ref if proc.returncode == 0 else None
+
+
+def _export_base(ref: str, dest: Path) -> Path | None:
+    """Export app/models and app/modules from the base ref into dest."""
+    archive_root = dest / "base"
+    archive_root.mkdir(parents=True, exist_ok=True)
+    proc = subprocess.run(
+        ["git", "archive", ref, "app/models", "app/modules"],
+        capture_output=True, cwd=ROOT,
+    )
+    if proc.returncode != 0:
+        return None
+    with tarfile.open(fileobj=BytesIO(proc.stdout), mode="r") as tar:
+        tar.extractall(path=archive_root)
+    return archive_root
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--count", action="store_true", help="print only the trailing count")
     parser.add_argument("--list", action="store_true", help="print each finding (default when --count is absent)")
     parser.add_argument("--root", default=str(ROOT), help="scan a different tree (tests)")
     parser.add_argument("--register", default=None, help="read a different register file (tests)")
+    parser.add_argument("--base", nargs="?", const="auto", default=None,
+                        help="list findings added since ref (default: merge-base with origin/main)")
     args = parser.parse_args()
 
     root = Path(args.root).resolve()
@@ -309,6 +370,42 @@ def main() -> int:
         return 2
 
     findings = scan(root, register)
+
+    if args.base is not None:
+        # Base-diff mode.
+        base_ref = _base_ref() if args.base == "auto" else args.base
+        resolved = _find_base(base_ref)
+        if resolved is None:
+            print(f"base ref {base_ref} cannot be resolved; added-findings check not run", file=sys.stderr)
+            return 3
+        tmp_dir = Path(tempfile.mkdtemp(prefix="wiring-base-"))
+        try:
+            base_root = _export_base(resolved, tmp_dir)
+            if base_root is None:
+                print(f"base ref {resolved} could not be exported; added-findings check not run", file=sys.stderr)
+                return 3
+            base_findings = scan(base_root, register)
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+        base_set = {(f.path, f.cls, f.attr) for f in base_findings}
+        added = [f for f in findings if (f.path, f.cls, f.attr) not in base_set]
+
+        if args.count:
+            print(len(added))
+            return 1 if added else 0
+
+        if added:
+            for f in added:
+                print(f.render())
+            print(f"\n{len(added)} fact-bearing column(s) added since {resolved} with no row "
+                  "in the intelligence wiring register.")
+            print("Add a row (wired, or not_intelligence with a reason) "
+                  "to docs/intelligence-wiring-register.yml, "
+                  "or mark 'wiring-ok: IW-nn <reason>' on the column line.")
+        else:
+            print(f"No fact-bearing model columns added since {resolved} with no row "
+                  "in the intelligence wiring register.")
+        return 1 if added else 0
 
     if args.count:
         print(len(findings))
