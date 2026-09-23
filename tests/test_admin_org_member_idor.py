@@ -420,6 +420,101 @@ class TestAdminUserActionRoutes:
 
         assert after_bad_resp.status_code == 200
 
+    def test_failed_delete_does_not_create_audit_entry(
+        self, app, db_session, login_as, client
+    ):
+        """A delete refused by a foreign-key constraint must not leave an
+        audit entry claiming the deletion succeeded."""
+        from app.models.audit_log import AuditLog
+        from app.models.org_role import OrgRole
+
+        org_a = _make_org(db_session, "audit-fail-a")
+        admin_a = _make_user(db_session, org_a, is_org_admin=True)
+        victim = _make_user(db_session, org_a, email=f"auditfail-{uuid.uuid4().hex[:8]}@example.com")
+        db_session.flush()
+        db_session.add(OrgRole(organization_id=org_a.id, user_id=victim.id, role="viewer"))
+        db_session.commit()
+        victim_id = victim.id
+
+        # Count audit entries before the attempt.
+        with app.app_context():
+            before = AuditLog.query.filter_by(
+                action="admin_user_delete", record_id=victim_id
+            ).count()
+
+        with app.app_context():
+            login_as(client, admin_a)
+            resp = client.post(f"/admin/user/{victim_id}/_delete", follow_redirects=True)
+
+        assert resp.status_code == 200
+        assert b"This user still owns records and cannot be deleted." in resp.data
+
+        with app.app_context():
+            after = AuditLog.query.filter_by(
+                action="admin_user_delete", record_id=victim_id
+            ).count()
+
+        assert after == before, (
+            f"Expected no new audit entry for failed deletion, "
+            f"but count went from {before} to {after}"
+        )
+
+    def test_successful_delete_flash_message_includes_user_name(
+        self, app, db_session, login_as, client
+    ):
+        """A successful deletion must flash a message containing the deleted
+        user's name, proving full_name() was captured before the object was
+        expired by commit."""
+        org_a = _make_org(db_session, "audit-ok-a")
+        admin_a = _make_user(db_session, org_a, is_org_admin=True)
+        victim = _make_user(
+            db_session, org_a,
+            email=f"auditok-{uuid.uuid4().hex[:8]}@example.com",
+        )
+        victim_name = victim.full_name()
+        victim_id = victim.id
+        db_session.commit()
+
+        with app.app_context():
+            login_as(client, admin_a)
+            resp = client.post(f"/admin/user/{victim_id}/_delete", follow_redirects=True)
+
+        assert resp.status_code == 200
+        # The flashed success message must contain the user's name.
+        assert victim_name.encode() in resp.data
+
+    def test_cross_org_role_page_post_is_refused(
+        self, app, db_session, login_as, client
+    ):
+        """A POST to another org's user role page must 404 and not change
+        the user's enterprise_role."""
+        org_a = _make_org(db_session, "role-cross-post-a")
+        org_b = _make_org(db_session, "role-cross-post-b")
+        admin_a = _make_user(db_session, org_a, is_org_admin=True)
+        victim_b = _make_user(
+            db_session, org_b,
+            email=f"rolecrosspost-{uuid.uuid4().hex[:8]}@example.com",
+        )
+        victim_b_role_before = victim_b.enterprise_role
+        victim_b_id = victim_b.id
+        db_session.commit()
+
+        with app.app_context():
+            login_as(client, admin_a)
+            resp = client.post(
+                f"/admin/user/{victim_b_id}/role",
+                data={"enterprise_role": "solution_architect"},
+            )
+
+        assert resp.status_code == 404
+
+        from app.models.user import User
+
+        with app.app_context():
+            reloaded = User.query.get(victim_b_id)
+            assert reloaded is not None
+            assert reloaded.enterprise_role == victim_b_role_before
+
 
 class TestViewerRole:
     """A-03 (engineering half): a read-only role must exist and must not be
