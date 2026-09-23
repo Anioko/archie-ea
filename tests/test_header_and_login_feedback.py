@@ -269,3 +269,111 @@ def test_ctrl_b_hint_matches_wired_handler(app, db_session, make_org):
     resp = client.get("/archimate/composer")
     assert resp.status_code == 200, resp.get_data(as_text=True)[:2000]
     _assert_ctrl_b_wired(resp.get_data(as_text=True), "composer_base.html (/archimate/composer)")
+
+
+# ── T-UI-2: search palette + dark theme ──────────────────────────────
+
+
+def test_search_trigger_does_not_pass_event_as_query(app, db_session, make_org):
+    """Clicking the search trigger must not pass the PointerEvent as the
+    prefill query. The listener must be wrapped: function(){openSearchModal();}
+    and openSearchModal must guard against non-string arguments."""
+    user, _ = _make_user(db_session, make_org, "search-trigger")
+    client = app.test_client()
+    _login(client, user.id)
+
+    resp = client.get("/dashboard/overview")
+    assert resp.status_code == 200, resp.get_data(as_text=True)[:2000]
+    html = resp.get_data(as_text=True)
+
+    # The listener registration must wrap openSearchModal, not pass it directly
+    assert "function () { openSearchModal(); }" in html, (
+        "search trigger listener must wrap openSearchModal in a function, "
+        "not pass it directly (which would pass the click event as prefillQuery)"
+    )
+    # openSearchModal must guard against non-string prefillQuery
+    assert "typeof prefillQuery === 'string'" in html, (
+        "openSearchModal must guard against non-string prefillQuery "
+        "(the click event object is truthy but not a string)"
+    )
+
+
+def test_theme_init_script_appears_once_in_head(app, db_session, make_org):
+    """The pre-paint theme script must appear exactly once, in _head.html,
+    not duplicated in composer_base.html."""
+    user, _ = _make_user(db_session, make_org, "theme-once")
+    client = app.test_client()
+    _login(client, user.id)
+
+    # admin_base page
+    resp = client.get("/dashboard/overview")
+    assert resp.status_code == 200, resp.get_data(as_text=True)[:2000]
+    html = resp.get_data(as_text=True)
+    theme_count = html.count("localStorage.getItem('theme')")
+    assert theme_count == 1, (
+        f"admin_base page: expected 1 localStorage.getItem('theme'), "
+        f"found {theme_count}"
+    )
+
+    # composer_base page
+    resp = client.get("/archimate/composer")
+    assert resp.status_code == 200, resp.get_data(as_text=True)[:2000]
+    html = resp.get_data(as_text=True)
+    theme_count = html.count("localStorage.getItem('theme')")
+    assert theme_count == 1, (
+        f"composer_base page: expected 1 localStorage.getItem('theme'), "
+        f"found {theme_count}"
+    )
+
+
+def test_theme_store_is_registered(app, db_session, make_org):
+    """Alpine.store('theme') must be registered with dark/toggle on both layouts."""
+    user, _ = _make_user(db_session, make_org, "theme-store")
+    client = app.test_client()
+    _login(client, user.id)
+
+    for url, label in [("/dashboard/overview", "admin_base"), ("/archimate/composer", "composer_base")]:
+        resp = client.get(url)
+        assert resp.status_code == 200, resp.get_data(as_text=True)[:2000]
+        html = resp.get_data(as_text=True)
+        assert "Alpine.store('theme'" in html, (
+            f"{label}: Alpine.store('theme') not found in rendered output"
+        )
+        assert "classList.contains('dark')" in html, (
+            f"{label}: theme store missing dark initializer"
+        )
+        assert "classList.toggle('dark'" in html, (
+            f"{label}: theme store missing toggle implementation"
+        )
+
+
+def test_dark_theme_switch_in_user_menu(app, db_session, make_org):
+    """The user menu must contain a 'Dark theme' menuitem with a switch bound
+    to $store.theme.dark, keyboard operable."""
+    user, _ = _make_user(db_session, make_org, "dark-switch")
+    client = app.test_client()
+    _login(client, user.id)
+
+    resp = client.get("/dashboard/overview")
+    assert resp.status_code == 200, resp.get_data(as_text=True)[:2000]
+    html = resp.get_data(as_text=True)
+
+    assert "Dark theme" in html, (
+        "user menu missing 'Dark theme' label"
+    )
+    assert '$store.theme.toggle()' in html, (
+        "dark theme switch not bound to $store.theme.toggle()"
+    )
+    assert 'role="switch"' in html, (
+        "dark theme toggle missing role='switch'"
+    )
+    assert ':aria-checked="$store.theme.dark' in html, (
+        "dark theme switch aria-checked not bound to $store.theme.dark"
+    )
+    # Keyboard operable: Enter and Space must toggle
+    assert '@keydown.enter.prevent="$store.theme.toggle()"' in html, (
+        "dark theme menuitem missing Enter key handler"
+    )
+    assert '@keydown.space.prevent="$store.theme.toggle()"' in html, (
+        "dark theme menuitem missing Space key handler"
+    )
