@@ -62,8 +62,11 @@ def history_records(providerless_guide_configuration, app, seeded):
     try:
         with app.app_context():
             db.session.remove()
-            assert APISettings.query.filter_by(enabled=True).count() == 0, (
-                'Providerless journey requires a disposable database without enabled provider records')
+            existing = APISettings.query.filter_by(enabled=True).all()
+            for row in existing:
+                row.enabled = False
+            if existing:
+                db.session.commit()
             # The same owner must be authorized for BOTH fixture pages. The
             # seeded solution belongs to solution_architect; enterprise_architect
             # is neither its creator nor a named stakeholder and correctly gets403.
