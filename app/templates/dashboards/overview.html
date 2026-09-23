@@ -117,10 +117,24 @@
        DATA MODE — established org: the data leads.
        ══════════════════════════════════════════════════════════════════════ #}
 
-    {# ── PLT-040: Your Workspace — role-based quick-access cards. Omitted for
-       platform_admin: those four links (Organizations/Users/API Settings/
-       System Health) duplicate the sidebar's Admin zone verbatim. ─────── #}
-    {% if role != 'platform_admin' %}
+    {# ── PLT-040: Your Workspace — role-based quick-access cards.
+       This section used to be skipped for platform_admin, on a comment
+       claiming its cards "duplicate the sidebar's Admin zone verbatim". Read
+       directly against role_access.py's ROLE_PLATFORM_ADMIN _MY_WORK_LINKS
+       entry (2026-09-22): it is Solutions, Portfolio, Architecture Journey,
+       plus the shared Ask link every role gets -- none of the four Admin-zone
+       links (Organizations/Users/API Settings/Governance Gates etc.) are in
+       it. The comment described the OLD, hand-maintained per-role card list
+       this section had before the Wave 2 refactor below switched it onto
+       get_sidebar_zones()'s my_work zone; the exclusion was never revisited
+       against the new data source. Since platform_admin is "the default
+       enterprise_role for every user who has not picked one" (role_access.py's
+       own comment), this stale guard hid Ask -- and every other My-work card
+       -- from most real accounts. Confirmed before removing it: across every
+       role, only one my_work/admin overlap exists at all
+       (admin.governance_gates, in security_architect's zone, already
+       rendered here unexcluded without issue) -- nothing platform_admin-
+       specific would start double-rendering. ─────── #}
     <div class="space-y-3">
         <div class="flex items-center gap-2">
             <i data-lucide="layout-grid" class="h-4 w-4 text-primary" aria-hidden="true"></i>
@@ -153,7 +167,6 @@
             {% endfor %}
         </div>
     </div>
-    {% endif %}
 
     {# ── Persona Tabs ────────────────────────────────────── #}
     <div class="flex items-center gap-1 rounded-lg border border-border bg-muted/50 p-1 w-fit">

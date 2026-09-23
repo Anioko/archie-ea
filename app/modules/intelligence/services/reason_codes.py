@@ -11,8 +11,10 @@ gate enforces this mechanically at the template layer, out of scope here).
 
 from __future__ import annotations
 
-# sdd-v2.md § API-8 — the original sixteen members, plus the two T-004
-# additions below (eighteen total), exactly, nothing invented.
+# sdd-v2.md § API-8 — the original sixteen members, the two T-004 additions,
+# the one T-005 addition, the Portfolio and Programme lenses' three
+# additions and the four T-S1 additions below (twenty-six total), exactly,
+# nothing invented.
 REASON_CODES = frozenset(
     {
         "no_ownership_recorded",
@@ -44,6 +46,31 @@ REASON_CODES = frozenset(
         # exactly the fabrication CLAUDE.md's "never invent data" rule
         # forbids.
         "p95_above_highest_bucket",
+        # L3/L6 brief (2026-09-21) addition: Ask's Portfolio lens resolves an
+        # ArchiMate element to its ApplicationComponent (the row the
+        # rationalization/duplicate/TCO pages are keyed on) before it can
+        # offer a deep link. Not every element is one -- most are not -- and
+        # that is an honest absence, not an error.
+        "no_application_component",
+        # L5 brief (2026-09-22) additions: Ask's Programme lens seeds from
+        # UnifiedWorkPackage rows linked to the picked element. Most
+        # elements have none -- an honest absence, matching L6's
+        # no_risk_recorded precedent -- and a real work package with no
+        # estimated_cost is a distinct fact from "unknown": nobody budgeted
+        # it, not that the figure failed to load.
+        "no_work_package_recorded",
+        "not_costed",
+        # T-S1 (value streams at risk, curated path) additions: absence
+        # conditions the original vocabulary has no member for. T-S1 emits
+        # the first two -- no value stream recorded for this tenant, and a
+        # value stream with no capability recorded against it by any path.
+        # The other two are reserved for T-S3, which adds the graph path
+        # (an explicit or derived dependency) this task deliberately does
+        # not read -- they are not reachable until that task lands.
+        "no_value_stream_recorded",
+        "no_capability_linked",
+        "value_stream_not_linked_to_model",
+        "dependency_direction_unknown",
     }
 )
 

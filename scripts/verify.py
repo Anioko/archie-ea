@@ -428,6 +428,36 @@ def gate_fetch_guards(baseline: int) -> Result:
                   detail, count, baseline)
 
 
+def gate_unrendered_model_fields(baseline: int) -> Result:
+    """A detail-view template that never renders a text/JSON field its own model
+    declares. RATCHET.
+
+    Found by hand first: /architecture/decisions/<id> rendered context/decision/
+    consequences/alternatives but not rationale, constraints, or the GOV-02
+    approval trail (decided_by/decided_at/approved_by/approved_at/
+    rejection_reason) -- all real columns ADRService's approve/reject workflow
+    actually writes. The page looked empty for approved and rejected decisions
+    because their most important content had nowhere to render (fixed).
+
+    A ratchet at first, not zero, because triage is judgement work: many hits
+    are a model fetched for context rather than as the page's actual subject
+    (the checker cannot tell which template variable is which), or a field
+    genuinely excluded on purpose (an export template skipping internal
+    scratch fields, a config-only column). Read scripts/check_unrendered_model_
+    fields.py's own docstring for the full disclosed scope before triaging.
+    Hatch: `unrendered-field-ok: <reason>` on the column's def line.
+    """
+    proc = _run([sys.executable, "scripts/check_unrendered_model_fields.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("unrendered-model-fields", FAIL,
+                      f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    detail = "" if count <= baseline else "run scripts/check_unrendered_model_fields.py to list them"
+    return Result("unrendered-model-fields", PASS if count <= baseline else FAIL,
+                  detail, count, baseline)
+
+
 def gate_ui_contract(baseline: int) -> Result:
     """The UI/UX audit's finish-level rules, ratcheted so they cannot regress.
 
@@ -1704,6 +1734,11 @@ def build_gates(baseline: dict) -> list[Gate]:
              "ratchet", lambda: gate_ui_contract(baseline.get("ui_contract", 1969)),
              remediation="run scripts/check_ui_contract.py; use Platform modals, Alpine @click, "
                          "add type= to buttons, and text-xs instead of text-[Npx]",
+             tags=["static", "ui"]),
+        Gate("unrendered-model-fields", "a detail-view template never rendering a real model field",
+             "ratchet", lambda: gate_unrendered_model_fields(baseline.get("unrendered_model_fields", 387)),
+             remediation="run scripts/check_unrendered_model_fields.py; render the field, "
+                         "or mark 'unrendered-field-ok: <reason>' on its column line",
              tags=["static", "ui"]),
         Gate("error-signalling", "no API error path that answers 200", "zero",
              gate_error_signalling,

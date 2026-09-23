@@ -101,20 +101,22 @@ def test_on_load_the_pane_is_at_the_top_with_the_greeting_and_no_persona_notice(
         pg.close()
 
 
-@pytest.mark.xfail(
-    reason="Known, separate bug from the one this PR fixes: app.js's deep-link handler "
-    "(?element_id=&context_type=&domain=) also calls appendSystemMessage() during the same load pass, and "
-    "the pane still opens scrolled past the greeting (measured 586-639px, not a fixed offset). Deferring the "
-    "call a frame, and separately awaiting loadDomainContext()'s promise before it, both left the scroll in "
-    "place -- something else growing the welcome content later in the load is still pushing it, not yet "
-    "root-caused. Not fixed here to avoid shipping unverified async control-flow changes to app.js's load "
-    "listener; left failing (not skipped) so the fix has a reproduction to work from.",
-    strict=True,
-)
 def test_a_deep_link_context_notice_does_not_scroll_the_pane_past_the_greeting(app, browser, client):
-    """A sibling of the bug this PR fixes: on a deep link, the same "pane opens scrolled past the
-    greeting" symptom occurs. See the xfail reason above -- this documents a known, separate defect,
-    not a false expectation."""
+    """A sibling of the bug this file's other test fixes: on a deep link, the same "pane opens
+    scrolled past the greeting" symptom occurred, plus a second one only a deep link exposes.
+
+    Root cause (two parts, both fixed in app.js/render.js/index.html):
+      1. Same as the persona-notice bug: appendSystemMessage() scrolled the pane to the bottom
+         before the welcome content above it had finished growing. Fixed the same way -- an
+         opts.noScroll flag on appendSystemMessage(), passed by both deep-link branches.
+      2. Deep-link-only: even at scrollTop 0, the ~1000px-tall #domain-welcome-grid (5 persona
+         cards + portfolio briefing + 3+3 domain cards) sat above the notice, pushing it hundreds
+         of px below the pane's visible area regardless of scroll position. A deep link already
+         knows where it's going -- it doesn't need the browse-and-pick suggestion cards -- so
+         index.html now wraps them (but not the heading) in #domain-welcome-suggestions, and the
+         deep-link handler calls the new _hideWelcomeSuggestions() to collapse just that wrapper,
+         leaving the "How can I help you today?" heading visible and the pane under ~220px tall
+         before the notice."""
     pg = _open(browser, client, _document(app, client, "solution_architect"),
                query="?element_id=7&context_type=vendor&domain=vendor_intelligence")
     try:

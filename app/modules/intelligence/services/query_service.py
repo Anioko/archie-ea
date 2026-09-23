@@ -1,6 +1,13 @@
-"""Cross-layer intelligence queries. One method -- ``cross_layer_impact``,
-"if this fails, what stops and who owns it". Value-streams-at-risk / risk
-/ coverage are Release 2 and are not added here.
+"""Cross-layer intelligence queries. ``cross_layer_impact`` (L1, "if this
+fails, what stops and who owns it"), ``risk_for_element`` (L6, "what could
+hurt this, and what does it touch" -- reuses the same traversal per risk
+seed), ``portfolio_component_for_element`` (L3, resolves an element to its
+ApplicationComponent for the one existing deep link), ``programme_for_element``
+(L5, "what are we changing, is it on time and on budget" -- reuses the same
+traversal per work-package seed) and ``value_streams_at_risk`` -- "which
+value streams depend on a capability below threshold", the curated path
+only (T-S1). Coverage over derived and explicit relationships for the
+value-stream question is reserved for a later task and is not added here.
 """
 
 from __future__ import annotations
@@ -20,6 +27,10 @@ NO_OWNERSHIP_REASON = validate_reason_code("no_ownership_recorded")
 NO_TENANT_CONTEXT_REASON = validate_reason_code("no_tenant_context")
 ELEMENT_NOT_FOUND_REASON = validate_reason_code("element_not_found")
 DERIVATION_NOT_COMPUTED_REASON = validate_reason_code("derivation_not_computed")
+NO_RISK_RECORDED_REASON = validate_reason_code("no_risk_recorded")
+NO_APPLICATION_COMPONENT_REASON = validate_reason_code("no_application_component")
+NO_WORK_PACKAGE_RECORDED_REASON = validate_reason_code("no_work_package_recorded")
+NOT_COSTED_REASON = validate_reason_code("not_costed")
 
 # T-005 (D1): the NFR-5 measurement point is this exact, PINNED series --
 # never widened, never aggregated across label values.
@@ -695,6 +706,632 @@ class IntelligenceQueryService:
 
         summary["latency_ms"] = scope.latency_ms
         return {"rows": rows, "summary": summary, "reasons": reasons, "elements": elements}
+
+    @staticmethod
+    def risk_for_element(
+        element_id: int,
+        *,
+        max_depth: int = 3,
+        include_derived: bool = True,
+    ) -> Dict[str, Any]:
+        """L6, "what could hurt <element>, and what does it touch": every
+        ``Risk`` seeded directly on this element (``Risk.archimate_element_id
+        == element_id``), each with the SAME blast-radius traversal
+        ``cross_layer_impact`` already runs for L1 -- no second traversal
+        algorithm, per the platform convention against parallel scoring
+        logic.
+
+        Scope note, not silently dropped: ``RiskEntityLink`` (a risk
+        threatening an Application/Solution/Programme with no direct
+        ``archimate_element_id`` of its own on this element) is not resolved
+        here -- none of those three models carry an ArchiMate mirror id
+        today, so there is no element to seed a traversal from. Only
+        directly-mirrored risks are answered; an indirect risk is invisible
+        to this query, not wrongly reported as "none". Tracked as a
+        follow-up, not implemented speculatively.
+
+        Score is a **display** label, not a stored fact (per
+        ``intelligence-lenses-v1.md`` L6): each risk's own
+        ``likelihood x impact`` is shown on its row; when a risk's blast
+        radius reaches other elements, the chain's aggregate score is the
+        single worst (max) risk reaching it, the conservative choice
+        documented in the L3/L6 brief, not a summed exposure figure.
+        """
+        from app.models.risk import Risk
+
+        org_id = current_org_id()
+
+        with record_query_latency("risk_for_element") as scope:
+            scope.organization_id = org_id
+
+            if org_id is None:
+                return {
+                    "risks": [],
+                    "reasons": [NO_TENANT_CONTEXT_REASON],
+                    "elements": {},
+                }
+
+            from app.models import ArchiMateElement
+
+            element = db.session.execute(
+                db.select(ArchiMateElement).where(ArchiMateElement.id == element_id)
+            ).scalar_one_or_none()
+            if element is None:
+                return {
+                    "risks": [],
+                    "reasons": [ELEMENT_NOT_FOUND_REASON],
+                    "elements": {},
+                }
+
+            seed_risks = (
+                db.session.execute(
+                    db.select(Risk).where(Risk.archimate_element_id == element_id)
+                )
+                .scalars()
+                .all()
+            )
+
+            if not seed_risks:
+                return {
+                    "risks": [],
+                    "reasons": [NO_RISK_RECORDED_REASON],
+                    "elements": {},
+                }
+
+            all_elements: Dict[str, Dict[str, Any]] = {}
+            risk_payloads: List[Dict[str, Any]] = []
+            for risk in seed_risks:
+                blast = IntelligenceQueryService.cross_layer_impact(
+                    element_id,
+                    include_derived=include_derived,
+                    max_depth=max_depth,
+                    with_owner=True,
+                )
+                all_elements.update(blast.get("elements") or {})
+                risk_payloads.append(
+                    {
+                        "risk_id": risk.id,
+                        "title": risk.title,
+                        "status": risk.status.value if risk.status else None,
+                        "likelihood": risk.likelihood,
+                        "impact": risk.impact,
+                        "risk_score": risk.risk_score,
+                        "risk_level": risk.risk_level,
+                        "owner": risk.owner,
+                        "mitigation_plan": risk.mitigation_plan,
+                        "affected_rows": blast.get("rows", []),
+                        "affected_summary": blast.get("summary", {}),
+                    }
+                )
+
+        return {"risks": risk_payloads, "reasons": [], "elements": all_elements}
+
+    @staticmethod
+    def portfolio_component_for_element(element_id: int) -> Dict[str, Any]:
+        """L3, "what do we run, what does it cost, who owns it, what's
+        duplicated?": resolves an element to the ``ApplicationComponent``
+        row the rationalization/duplicate/TCO pages are keyed on, so the
+        caller can build the ONE genuine deep link that exists today
+        (``unified_applications.rationalization_planning``).
+
+        No query of its own beyond that resolution -- reuses the exact
+        dual-lookup already established in
+        ``app/modules/solutions_strategic/v2/routes/strategic_routes.py``
+        (the element's own ``application_component_id`` FK first, the
+        reverse ``ApplicationComponent.archimate_element_id`` lookup for
+        legacy rows second) rather than inventing a second answer to the
+        same question.
+
+        Duplicate-detection and TCO history were checked against this same
+        brief and found to have NO per-application HTML page today (both
+        are JSON-only API endpoints, `GET .../enterprise/analysis/<id>` and
+        `GET /api/advanced-tco/history` keyed by `vendor_product_id` not an
+        element/app id) -- so this method, deliberately, resolves only what
+        the one real page needs. Linking to a JSON response would not be a
+        deep link a person can read; not built.
+        """
+        from app.models import ArchiMateElement
+        from app.models.application_portfolio import ApplicationComponent
+
+        org_id = current_org_id()
+        if org_id is None:
+            return {"application_component_id": None, "reasons": [NO_TENANT_CONTEXT_REASON]}
+
+        element = db.session.execute(
+            db.select(ArchiMateElement).where(ArchiMateElement.id == element_id)
+        ).scalar_one_or_none()
+        if element is None:
+            return {"application_component_id": None, "reasons": [ELEMENT_NOT_FOUND_REASON]}
+
+        component = None
+        if getattr(element, "application_component_id", None):
+            component = db.session.get(ApplicationComponent, element.application_component_id)
+        if component is None and (element.type or "") == "ApplicationComponent":
+            component = ApplicationComponent.query.filter_by(archimate_element_id=element.id).first()
+
+        if component is None:
+            return {"application_component_id": None, "reasons": [NO_APPLICATION_COMPONENT_REASON]}
+
+        return {"application_component_id": component.id, "reasons": []}
+
+    @staticmethod
+    def programme_for_element(
+        element_id: int,
+        *,
+        max_depth: int = 3,
+        include_derived: bool = True,
+    ) -> Dict[str, Any]:
+        """L5, "what are we changing, is it on time and on budget, what does
+        each change touch?": every ``UnifiedWorkPackage`` seeded directly on
+        the picked element (``archimate_element_id`` FK), each with the SAME
+        blast-radius traversal L1/L6 already run -- no second traversal
+        algorithm.
+
+        Tenant-safety note, verified not assumed: ``UnifiedWorkPackage``
+        carries no ``TenantMixin``/``organization_id`` of its own. This
+        method never lists work packages independently of an element --
+        every row it returns is filtered by ``archimate_element_id ==
+        element_id``, and ``element_id`` is only ever reached here after
+        the element itself was confirmed to belong to the caller's tenant
+        (below). A cross-tenant work package cannot share a seed element id
+        with the wrong org's element, since ``archimate_elements.id`` is a
+        real primary key each row of which belongs to exactly one tenant.
+        This does not make ``UnifiedWorkPackage`` itself tenant-safe for any
+        OTHER read path against it -- flagged as a separate, pre-existing
+        gap in the L5 brief, not fixed here.
+
+        Cost variance is read from the model's own ``estimated_cost``/
+        ``actual_cost`` fields directly, NOT via
+        ``UnifiedWorkPackage.calculate_budget_variance()`` -- that helper
+        returns a bare 0 both when there is no cost data and when the
+        package is exactly on budget, the same not-computed-vs-measured-
+        zero collision CLAUDE.md's no-fabrication rule exists to catch.
+        Variance is only reported when ``estimated_cost`` is a real
+        positive number; otherwise the row carries the honest
+        ``not_costed`` reason.
+        """
+        from app.models import ArchiMateElement
+        from app.models.unified_work_package import UnifiedWorkPackage
+
+        org_id = current_org_id()
+
+        with record_query_latency("programme_for_element") as scope:
+            scope.organization_id = org_id
+
+            if org_id is None:
+                return {
+                    "work_packages": [],
+                    "reasons": [NO_TENANT_CONTEXT_REASON],
+                    "elements": {},
+                }
+
+            element = db.session.execute(
+                db.select(ArchiMateElement).where(ArchiMateElement.id == element_id)
+            ).scalar_one_or_none()
+            if element is None:
+                return {
+                    "work_packages": [],
+                    "reasons": [ELEMENT_NOT_FOUND_REASON],
+                    "elements": {},
+                }
+
+            seed_packages = (
+                db.session.execute(
+                    db.select(UnifiedWorkPackage).where(
+                        UnifiedWorkPackage.archimate_element_id == element_id
+                    )
+                )
+                .scalars()
+                .all()
+            )
+
+            if not seed_packages:
+                return {
+                    "work_packages": [],
+                    "reasons": [NO_WORK_PACKAGE_RECORDED_REASON],
+                    "elements": {},
+                }
+
+            from app.models.user import User
+
+            owner_ids = {wp.owner_id for wp in seed_packages if wp.owner_id}
+            owners_by_id: Dict[int, str] = {}
+            if owner_ids:
+                for user in db.session.execute(
+                    db.select(User).where(User.id.in_(owner_ids))
+                ).scalars():
+                    owners_by_id[user.id] = user.full_name or user.email
+
+            all_elements: Dict[str, Dict[str, Any]] = {}
+            wp_payloads: List[Dict[str, Any]] = []
+            for wp in seed_packages:
+                blast = IntelligenceQueryService.cross_layer_impact(
+                    element_id,
+                    include_derived=include_derived,
+                    max_depth=max_depth,
+                    with_owner=True,
+                )
+                all_elements.update(blast.get("elements") or {})
+
+                if wp.estimated_cost and wp.estimated_cost > 0:
+                    cost_variance_pct = (
+                        (wp.actual_cost or 0.0) - wp.estimated_cost
+                    ) / wp.estimated_cost * 100
+                    cost_reason = None
+                else:
+                    cost_variance_pct = None
+                    cost_reason = NOT_COSTED_REASON
+
+                wp_payloads.append(
+                    {
+                        "work_package_id": wp.id,
+                        "name": wp.name,
+                        "status": wp.status,
+                        "progress_percentage": wp.progress_percentage,
+                        "start_date": wp.start_date.isoformat() if wp.start_date else None,
+                        "end_date": wp.end_date.isoformat() if wp.end_date else None,
+                        "is_overdue": wp.is_overdue(),
+                        "owner": owners_by_id.get(wp.owner_id),
+                        "cost_variance_pct": cost_variance_pct,
+                        "cost_reason": cost_reason,
+                        "affected_rows": blast.get("rows", []),
+                        "affected_summary": blast.get("summary", {}),
+                    }
+                )
+
+        return {"work_packages": wp_payloads, "reasons": [], "elements": all_elements}
+
+    # ------------------------------------------------------------------ #
+    # T-S1: value streams at risk -- the curated path (DA-S1). Helpers are
+    # staticmethods immediately above the method itself, inside the class,
+    # per the implementation plan's free-region rule for this file (plan
+    # § 5.2) -- not module-level functions near ``_not_computed_counts``.
+    # ------------------------------------------------------------------ #
+
+    @staticmethod
+    def _value_stream_tenant_predicate(model, organization_id: int):
+        """The explicit ``organization_id ==`` predicate applied at three
+        call sites on this path -- the tenant's own ``ValueStream`` select,
+        the ``CapabilityValueStreamMapping`` select, and the not-found
+        resolver's ``ValueStream`` select in ``routes/api.py`` -- isolated
+        as its own seam -- the same pattern as
+        ``derived_facts._apply_default_staleness_filter`` -- so the
+        cross-tenant mutation-proof test can monkeypatch exactly this one
+        function to a no-op and confirm the named test goes red, without
+        editing source under test or inlining the predicate separately at
+        each call site.
+
+        ``ValueStreamStage`` deliberately carries NO predicate of its own: it
+        is scoped through its parent instead, reachable only via a
+        tenant-owned mapping on a tenant-owned value stream, and its join is
+        checked by stream membership (``ValueStreamStage.value_stream_id ==
+        CapabilityValueStreamMapping.value_stream_id``), not by calling this
+        function a fourth time. See ``value_streams_at_risk``'s own
+        docstring for why.
+
+        All three models this function is actually called with already carry
+        ``TenantMixin``, so this predicate is defence in depth inside a
+        request and is what keeps a caller correct when called with no
+        ambient request context (a job, a CLI command, a test looping
+        tenants in one session), where the ORM listener would otherwise
+        no-op entirely.
+        """
+        return model.organization_id == organization_id
+
+    @staticmethod
+    def _at_risk_for_maturity(current_maturity: Optional[int], threshold: int) -> Optional[bool]:
+        """Whether a capability counts as at risk, isolated as its own seam
+        so the mutation-proof test (acceptance item 11) can monkeypatch
+        exactly this function to always return ``False`` for a null maturity
+        and confirm the null-maturity-is-neutral test goes red, without
+        editing source under test.
+
+        ``None`` in, ``None`` out -- a capability with no maturity recorded
+        is neither at risk nor safe (US-2 AC-2), never ``False``.
+        """
+        if current_maturity is None:
+            return None
+        return current_maturity < threshold
+
+    @staticmethod
+    def value_streams_at_risk(
+        organization_id: int,
+        *,
+        threshold: int = 3,
+        value_stream_id: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """T-S1 (DA-S1, ADR-S1, ADR-S2): "which value streams depend on a
+        capability below *threshold*" -- the curated path only. A person's
+        own ``capability_value_stream_mapping`` row is the whole of the
+        evidence; there is no graph read here (no derived fact, no
+        explicit-relationship walk) and no ``include_derived`` /
+        ``include_stale`` / ``max_depth`` parameter -- those belong to T-S3.
+
+        Four batched selects regardless of row count, in this order,
+        following ``_resolve_owners_batch``'s own collect-then-resolve shape:
+        value streams for the tenant (narrowed by ``value_stream_id`` when
+        given); mapping rows for those value-stream ids, joined to
+        ``ValueStreamStage`` for the stage id and name; capability identity
+        for the distinct capability ids; maturity through the accessor.
+        Never one select per row.
+
+        Tenancy (design § 3.2, § 9): ``ValueStream`` and
+        ``CapabilityValueStreamMapping`` carry the strict, explicit predicate
+        through ``_value_stream_tenant_predicate``. ``ValueStreamStage`` does
+        NOT carry its own ``organization_id`` predicate -- it is scoped
+        through its parent: a stage is reachable only through a tenant-owned
+        mapping on a tenant-owned value stream (``value_stream_id.in_(vs_ids)``,
+        where every id in ``vs_ids`` already came from the fenced value-stream
+        select). The join to it is an OUTER join whose ``ON`` clause checks
+        both the stage id AND that the stage belongs to the mapping's own
+        value stream -- a mapping pointing at a stage of a different stream
+        (this tenant's or another's) must not have that stage's name
+        attributed to a stream it is not part of. A mapping whose stage does
+        not survive the join (null-owner, another tenant's, or a different
+        own stream) is listed and counted with ``dependency.stage: null``,
+        never dropped and never reported as "nothing recorded" -- a recorded
+        dependency is not an absence. ``UnifiedCapability`` is read TWICE
+        with two deliberately different predicates -- identity uses the
+        permissive ``or_(... is_(None))``, written out in full below,
+        because a tenant's own mapping row may name a shared catalogue
+        capability and that mapping is honoured; maturity uses the strict
+        accessor (``maturity_for_capability_ids``, ``organization_id``
+        required), so a shared catalogue row contributes its mapping and
+        never its maturity -- a shared number is not this tenant's
+        assessment. Maturity is read only through the accessor; no module on
+        this path reads ``current_maturity_level`` off a row directly.
+
+        Counts -- every count in this payload is a count of
+        DISTINCT capability ids, never of mapping rows:
+
+        ================================ =====================================
+        Field                            Carries
+        ================================ =====================================
+        ``rows[].capabilities[]``        one entry per mapping row on that
+                                          value stream, ordered by mapping id;
+                                          a capability mapped on N stages
+                                          appears N times, with identical
+                                          ``id``, ``current_maturity``,
+                                          ``target_maturity``, ``at_risk`` and
+                                          ``reason`` on every entry and a
+                                          different ``dependency`` object on
+                                          each
+        ``rows[].at_risk_capability_count`` number of DISTINCT capability ids
+                                          on that row whose ``at_risk`` is
+                                          ``true``
+        ``rows[].reason``                ``no_capability_linked`` when
+                                          ``capabilities[]`` is empty;
+                                          otherwise ``null``
+        ``summary.value_streams_considered`` number of rows
+        ``summary.value_streams_at_risk`` rows whose ``at_risk_capability_count``
+                                          is above zero
+        ``summary.capabilities_considered`` distinct capability ids reached
+                                          anywhere in the answer
+        ``summary.capabilities_below_threshold`` distinct capability ids whose
+                                          ``at_risk`` is ``true`` anywhere in
+                                          the answer; a capability at risk on
+                                          two value streams counts once
+        ``summary.capabilities_with_no_maturity`` distinct capability ids
+                                          whose ``current_maturity`` is
+                                          ``null`` anywhere in the answer
+        ================================ =====================================
+
+        Invariant: ``capabilities_below_threshold + capabilities_with_no_maturity
+        <= capabilities_considered``.
+        """
+        from app.models.unified_capability import (
+            CapabilityValueStreamMapping,
+            UnifiedCapability,
+            ValueStream,
+            ValueStreamStage,
+        )
+
+        with record_query_latency("value_streams_at_risk") as scope:
+            scope.organization_id = organization_id
+
+            vs_stmt = db.select(ValueStream).where(
+                IntelligenceQueryService._value_stream_tenant_predicate(
+                    ValueStream, organization_id
+                )
+            )
+            if value_stream_id is not None:
+                vs_stmt = vs_stmt.where(ValueStream.id == value_stream_id)
+            value_streams = (
+                db.session.execute(vs_stmt.order_by(ValueStream.id)).scalars().all()
+            )
+
+            if not value_streams:
+                rows: List[Dict[str, Any]] = []
+                summary: Dict[str, Any] = {
+                    "value_streams_considered": 0,
+                    "value_streams_at_risk": 0,
+                    "capabilities_considered": 0,
+                    "capabilities_below_threshold": 0,
+                    "capabilities_with_no_maturity": 0,
+                    "value_streams_not_linked_to_model": 0,
+                }
+                reasons = [validate_reason_code("no_value_stream_recorded")]
+            else:
+                vs_ids = [vs.id for vs in value_streams]
+
+                mapping_stmt = (
+                    db.select(CapabilityValueStreamMapping, ValueStreamStage)
+                    .outerjoin(
+                        ValueStreamStage,
+                        db.and_(
+                            ValueStreamStage.id
+                            == CapabilityValueStreamMapping.value_stream_stage_id,
+                            ValueStreamStage.value_stream_id
+                            == CapabilityValueStreamMapping.value_stream_id,
+                        ),
+                    )
+                    .where(
+                        CapabilityValueStreamMapping.value_stream_id.in_(vs_ids),
+                        IntelligenceQueryService._value_stream_tenant_predicate(
+                            CapabilityValueStreamMapping, organization_id
+                        ),
+                    )
+                    .order_by(CapabilityValueStreamMapping.id)
+                )
+                mapping_rows = db.session.execute(mapping_stmt).all()
+
+                capability_ids = sorted({m.capability_id for m, _stage in mapping_rows})
+
+                identity_by_id: Dict[int, Dict[str, Any]] = {}
+                if capability_ids:
+                    identity_stmt = db.select(
+                        UnifiedCapability.id,
+                        UnifiedCapability.name,
+                        UnifiedCapability.code,
+                    ).where(
+                        UnifiedCapability.id.in_(capability_ids),
+                        # Permissive predicate, written out in full (§ 3.2):
+                        # a tenant's own mapping row may name a shared
+                        # catalogue capability, and that mapping is honoured.
+                        db.or_(
+                            UnifiedCapability.organization_id == organization_id,
+                            UnifiedCapability.organization_id.is_(None),
+                        ),
+                    )
+                    for cap_id, name, code in db.session.execute(identity_stmt).all():
+                        identity_by_id[cap_id] = {"id": cap_id, "name": name, "code": code}
+
+                # Maturity through the accessor -- never off the columns.
+                # Strict predicate, required kwarg: a shared catalogue row's
+                # maturity is never read as this tenant's own.
+                maturity_by_id = UnifiedCapability.maturity_for_capability_ids(
+                    capability_ids, organization_id=organization_id
+                )
+
+                mappings_by_vs: Dict[int, List[Tuple[Any, Any]]] = {}
+                for mapping, stage in mapping_rows:
+                    mappings_by_vs.setdefault(mapping.value_stream_id, []).append(
+                        (mapping, stage)
+                    )
+
+                rows = []
+                value_streams_at_risk_count = 0
+                # Every count below is a count of DISTINCT capability
+                # ids -- never a count of mapping rows. capability_rows[] (the
+                # serialised list) still holds one entry per mapping row, so a
+                # capability mapped on N stages appears N times there with an
+                # identical id/maturity/at_risk/reason and a different
+                # dependency object each time; these sets de-duplicate that
+                # back down to "how many distinct capabilities", which is
+                # what the summary and each row's at_risk_capability_count
+                # both promise.
+                capabilities_considered: set = set()
+                capabilities_below_threshold_ids: set = set()
+                capabilities_with_no_maturity_ids: set = set()
+                value_streams_not_linked_to_model = 0
+
+                for vs in value_streams:
+                    if vs.archimate_element_id is None:
+                        value_streams_not_linked_to_model += 1
+
+                    capability_rows: List[Dict[str, Any]] = []
+                    at_risk_ids_in_row: set = set()
+                    for mapping, stage in mappings_by_vs.get(vs.id, []):
+                        identity = identity_by_id.get(mapping.capability_id)
+                        if identity is None:
+                            # Named by this tenant's own mapping row but not
+                            # resolvable under either predicate (deleted, or
+                            # never existed) -- omitted rather than
+                            # fabricated with a placeholder name.
+                            continue
+                        capabilities_considered.add(mapping.capability_id)
+
+                        maturity = maturity_by_id.get(mapping.capability_id) or {
+                            "current_maturity_level": None,
+                            "target_maturity_level": None,
+                            "reason_code": validate_reason_code("no_maturity_recorded"),
+                        }
+                        current = maturity["current_maturity_level"]
+                        target = maturity["target_maturity_level"]
+                        at_risk = IntelligenceQueryService._at_risk_for_maturity(
+                            current, threshold
+                        )
+                        if current is None:
+                            capabilities_with_no_maturity_ids.add(mapping.capability_id)
+                            cap_reason = maturity["reason_code"]
+                        else:
+                            cap_reason = None
+                            if at_risk:
+                                at_risk_ids_in_row.add(mapping.capability_id)
+                                capabilities_below_threshold_ids.add(mapping.capability_id)
+
+                        capability_rows.append(
+                            {
+                                "id": identity["id"],
+                                "name": identity["name"],
+                                "code": identity["code"],
+                                "current_maturity": current,
+                                "target_maturity": target,
+                                "maturity_source": "unified_capabilities",
+                                "at_risk": at_risk,
+                                "dependency": {
+                                    "link_kind": "curated",
+                                    "support_type": mapping.support_type,
+                                    "support_level": mapping.support_level,
+                                    "impact_level": mapping.impact_level,
+                                    "stage_criticality": mapping.stage_criticality,
+                                    "assessed_by": mapping.assessor,
+                                    "assessed_at": (
+                                        mapping.last_assessed.isoformat()
+                                        if mapping.last_assessed is not None
+                                        else None
+                                    ),
+                                    "stage": (
+                                        {"id": stage.id, "name": stage.name}
+                                        if stage is not None
+                                        else None
+                                    ),
+                                },
+                                "reason": cap_reason,
+                            }
+                        )
+
+                    row_reason = (
+                        validate_reason_code("no_capability_linked")
+                        if not capability_rows
+                        else None
+                    )
+
+                    at_risk_count = len(at_risk_ids_in_row)
+                    rows.append(
+                        {
+                            "value_stream": {
+                                "id": vs.id,
+                                "name": vs.name,
+                                "code": vs.code,
+                                "archimate_element_id": vs.archimate_element_id,
+                            },
+                            "at_risk_capability_count": at_risk_count,
+                            "capabilities": capability_rows,
+                            "reason": row_reason,
+                        }
+                    )
+                    if at_risk_count > 0:
+                        value_streams_at_risk_count += 1
+
+                summary = {
+                    "value_streams_considered": len(value_streams),
+                    "value_streams_at_risk": value_streams_at_risk_count,
+                    "capabilities_considered": len(capabilities_considered),
+                    "capabilities_below_threshold": len(capabilities_below_threshold_ids),
+                    "capabilities_with_no_maturity": len(capabilities_with_no_maturity_ids),
+                    "value_streams_not_linked_to_model": value_streams_not_linked_to_model,
+                }
+                reasons = []
+
+        summary["latency_ms"] = scope.latency_ms
+        return {
+            "threshold": threshold,
+            "threshold_basis": "current_maturity_level < threshold",
+            "rows": rows,
+            "summary": summary,
+            "reasons": reasons,
+        }
 
 
 __all__ = ["IntelligenceQueryService"]

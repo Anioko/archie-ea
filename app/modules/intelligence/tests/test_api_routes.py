@@ -332,10 +332,10 @@ def test_expanded_chain_marks_an_unresolved_link_instead_of_dropping_it(
     assert "source_id" not in expanded[1]
 
 
-def test_module_registers_exactly_four_routes(app):
-    """The impact and yield routes both mount on this same existing
-    blueprint rather than a new one each. Still exactly one blueprint,
-    now four routes on it.
+def test_module_registers_exactly_eight_routes(app):
+    """The impact, risk, portfolio, programme, yield and value-streams-at-risk
+    routes all mount on this same existing blueprint rather than a new one
+    each. Still exactly one blueprint, now eight routes on it.
     """
     rules = [
         rule for rule in app.url_map.iter_rules() if rule.endpoint.startswith("intelligence_api.")
@@ -344,7 +344,11 @@ def test_module_registers_exactly_four_routes(app):
     assert endpoints == {
         "intelligence_api.recompute_derivation",
         "intelligence_api.get_derived_fact_provenance",
+        "intelligence_api.value_streams_at_risk",
         "intelligence_api.cross_layer_impact",
+        "intelligence_api.risk_for_element",
+        "intelligence_api.portfolio_component_for_element",
+        "intelligence_api.programme_for_element",
         "intelligence_api.derivation_yield",
     }
 
@@ -400,3 +404,241 @@ def test_impact_row_derived_id_addresses_the_provenance_endpoint(
     fact = provenance.get_json()["data"]
     assert fact["id"] == relation["derived_id"]
     assert fact["engine_version"] == relation["engine_version"]
+
+
+# --- L6: GET /api/v1/intelligence/risk/<element_id> ---------------------------
+
+
+def test_risk_endpoint_requires_login(client):
+    resp = client.get("/api/v1/intelligence/risk/1")
+    assert resp.status_code in (302, 401)
+
+
+def test_risk_endpoint_unknown_element_is_404(app, db_session, make_org, client, login_as):
+    org = make_org("risk-route-404")
+    user = _make_user(db_session, org)
+    db_session.commit()
+
+    login_as(client, user)
+    resp = client.get("/api/v1/intelligence/risk/999999999")
+    assert resp.status_code == 404
+    assert resp.get_json()["error"]["details"]["reason"] == "element_not_found"
+
+
+def test_risk_endpoint_element_with_no_risk_returns_honest_empty(
+    app, db_session, make_org, client, login_as
+):
+    org = make_org("risk-route-empty")
+    user = _make_user(db_session, org)
+    a = _make_element(db_session, org.id, "A")
+    db_session.commit()
+
+    login_as(client, user)
+    resp = client.get(f"/api/v1/intelligence/risk/{a.id}")
+    assert resp.status_code == 200
+    data = resp.get_json()["data"]
+    assert data["risks"] == []
+    assert data["reasons"] == ["no_risk_recorded"]
+
+
+def test_risk_endpoint_returns_risk_with_its_own_blast_radius(
+    app, db_session, make_org, client, login_as
+):
+    from app.models.risk import Risk
+
+    org = make_org("risk-route-blast")
+    user = _make_user(db_session, org)
+    a = _make_element(db_session, org.id, "A")
+    b = _make_element(db_session, org.id, "B")
+    _make_relationship(db_session, org.id, a, b, "Serving")
+    risk = Risk(
+        organization_id=org.id,
+        archimate_element_id=a.id,
+        title="Single point of failure",
+        likelihood=5,
+        impact=5,
+        owner="platform-team",
+    )
+    db_session.add(risk)
+    db_session.commit()
+
+    login_as(client, user)
+    resp = client.get(f"/api/v1/intelligence/risk/{a.id}?include_derived=true")
+    assert resp.status_code == 200
+    data = resp.get_json()["data"]
+    assert data["reasons"] == []
+    assert len(data["risks"]) == 1
+    row = data["risks"][0]
+    assert row["title"] == "Single point of failure"
+    assert row["risk_score"] == 25
+    assert row["risk_level"] == "critical"
+    assert row["owner"] == "platform-team"
+    assert len(row["affected_rows"]) == 1
+    assert row["affected_rows"][0]["element_id"] == b.id
+
+
+def test_risk_endpoint_cross_tenant_element_is_404_not_leak(
+    app, db_session, make_org, client, login_as
+):
+    from app.models.risk import Risk
+
+    org_a = make_org("risk-route-tenant-a")
+    org_b = make_org("risk-route-tenant-b")
+    user_b = _make_user(db_session, org_b)
+    a = _make_element(db_session, org_a.id, "A")
+    risk = Risk(organization_id=org_a.id, archimate_element_id=a.id, title="A's risk", likelihood=3, impact=3)
+    db_session.add(risk)
+    db_session.commit()
+
+    login_as(client, user_b)
+    resp = client.get(f"/api/v1/intelligence/risk/{a.id}")
+    assert resp.status_code == 404
+    assert resp.get_json()["error"]["details"]["reason"] == "element_not_found"
+
+
+# --- L3: GET /api/v1/intelligence/portfolio/<element_id> ----------------------
+
+
+def test_portfolio_endpoint_requires_login(client):
+    resp = client.get("/api/v1/intelligence/portfolio/1")
+    assert resp.status_code in (302, 401)
+
+
+def test_portfolio_endpoint_unknown_element_is_404(app, db_session, make_org, client, login_as):
+    org = make_org("portfolio-route-404")
+    user = _make_user(db_session, org)
+    db_session.commit()
+
+    login_as(client, user)
+    resp = client.get("/api/v1/intelligence/portfolio/999999999")
+    assert resp.status_code == 404
+    assert resp.get_json()["error"]["details"]["reason"] == "element_not_found"
+
+
+def test_portfolio_endpoint_non_application_element_returns_honest_reason(
+    app, db_session, make_org, client, login_as
+):
+    org = make_org("portfolio-route-none")
+    user = _make_user(db_session, org)
+    a = _make_element(db_session, org.id, "A", type_="BusinessActor")
+    db_session.commit()
+
+    login_as(client, user)
+    resp = client.get(f"/api/v1/intelligence/portfolio/{a.id}")
+    assert resp.status_code == 200
+    data = resp.get_json()["data"]
+    assert data["application_component_id"] is None
+    assert data["reasons"] == ["no_application_component"]
+
+
+def test_portfolio_endpoint_resolves_the_linked_component(
+    app, db_session, make_org, client, login_as
+):
+    from app.models.application_portfolio import ApplicationComponent
+
+    org = make_org("portfolio-route-resolved")
+    user = _make_user(db_session, org)
+    a = _make_element(db_session, org.id, "A")
+    component = ApplicationComponent(name="A App", organization_id=org.id, archimate_element_id=a.id)
+    db_session.add(component)
+    db_session.commit()
+    component_id = component.id
+
+    login_as(client, user)
+    resp = client.get(f"/api/v1/intelligence/portfolio/{a.id}")
+    assert resp.status_code == 200
+    data = resp.get_json()["data"]
+    assert data["application_component_id"] == component_id
+    assert data["reasons"] == []
+
+
+# --- L5: GET /api/v1/intelligence/programme/<element_id> --------------------
+
+
+def test_programme_endpoint_requires_login(client):
+    resp = client.get("/api/v1/intelligence/programme/1")
+    assert resp.status_code in (302, 401)
+
+
+def test_programme_endpoint_unknown_element_is_404(app, db_session, make_org, client, login_as):
+    org = make_org("programme-route-404")
+    user = _make_user(db_session, org)
+    db_session.commit()
+
+    login_as(client, user)
+    resp = client.get("/api/v1/intelligence/programme/999999999")
+    assert resp.status_code == 404
+    assert resp.get_json()["error"]["details"]["reason"] == "element_not_found"
+
+
+def test_programme_endpoint_element_with_no_work_package_returns_honest_empty(
+    app, db_session, make_org, client, login_as
+):
+    org = make_org("programme-route-empty")
+    user = _make_user(db_session, org)
+    a = _make_element(db_session, org.id, "A")
+    db_session.commit()
+
+    login_as(client, user)
+    resp = client.get(f"/api/v1/intelligence/programme/{a.id}")
+    assert resp.status_code == 200
+    data = resp.get_json()["data"]
+    assert data["work_packages"] == []
+    assert data["reasons"] == ["no_work_package_recorded"]
+
+
+def test_programme_endpoint_returns_work_package_with_its_own_blast_radius(
+    app, db_session, make_org, client, login_as
+):
+    from app.models.unified_work_package import UnifiedWorkPackage
+
+    org = make_org("programme-route-blast")
+    user = _make_user(db_session, org)
+    a = _make_element(db_session, org.id, "A")
+    b = _make_element(db_session, org.id, "B")
+    _make_relationship(db_session, org.id, a, b, "Serving")
+    wp = UnifiedWorkPackage(
+        name="Migrate A",
+        archimate_element_id=a.id,
+        business_capability="Test",
+        status="in_progress",
+        progress_percentage=25.0,
+        estimated_cost=50000.0,
+        actual_cost=45000.0,
+    )
+    db_session.add(wp)
+    db_session.commit()
+
+    login_as(client, user)
+    resp = client.get(f"/api/v1/intelligence/programme/{a.id}?include_derived=true")
+    assert resp.status_code == 200
+    data = resp.get_json()["data"]
+    assert data["reasons"] == []
+    assert len(data["work_packages"]) == 1
+    row = data["work_packages"][0]
+    assert row["name"] == "Migrate A"
+    assert row["cost_reason"] is None
+    assert round(row["cost_variance_pct"], 2) == -10.0
+    assert len(row["affected_rows"]) == 1
+    assert row["affected_rows"][0]["element_id"] == b.id
+
+
+def test_programme_endpoint_cross_tenant_element_is_404_not_leak(
+    app, db_session, make_org, client, login_as
+):
+    from app.models.unified_work_package import UnifiedWorkPackage
+
+    org_a = make_org("programme-route-tenant-a")
+    org_b = make_org("programme-route-tenant-b")
+    user_b = _make_user(db_session, org_b)
+    a = _make_element(db_session, org_a.id, "A")
+    wp = UnifiedWorkPackage(
+        name="Tenant A's work", archimate_element_id=a.id, business_capability="Test",
+    )
+    db_session.add(wp)
+    db_session.commit()
+
+    login_as(client, user_b)
+    resp = client.get(f"/api/v1/intelligence/programme/{a.id}")
+    assert resp.status_code == 404
+    assert resp.get_json()["error"]["details"]["reason"] == "element_not_found"

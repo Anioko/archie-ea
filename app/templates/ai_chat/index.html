@@ -571,6 +571,13 @@
                         <p class="text-sm text-muted-foreground max-w-md mx-auto">Just type your question below — or pick a specialist for a role-tuned partner.</p>
                     </div>
 
+                    {# Everything below the heading/subtitle is browse-and-pick content:
+                       the portfolio briefing box, the persona/domain suggestion cards, and
+                       "More suggestions" — wrapped so a deep-link arrival (already headed
+                       somewhere specific, per app.js's deep-link handler) can collapse it
+                       and leave only the heading visible, instead of the ~1000px of cards
+                       pushing a deep-link context notice hundreds of px below the fold. #}
+                    <div id="domain-welcome-suggestions">
                     {# What is actually happening in THIS tenant, from
                        /ai-chat/recommendations — an endpoint the page already
                        called, into a sidebar tab nobody opens. A copilot sitting
@@ -749,6 +756,7 @@
                                 class="text-xs font-medium text-primary hover:underline">
                             More suggestions
                         </button>
+                    </div>
                     </div>
                 </div>
             </div>

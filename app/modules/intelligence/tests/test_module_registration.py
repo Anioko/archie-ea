@@ -78,9 +78,11 @@ def test_register_mounts_exactly_the_api_and_ui_blueprints():
     # Blueprint.deferred_functions holds the registration callables, not the
     # rules directly (rules only materialise once bound to a real app); count
     # them instead, which is stable without booting a real Flask app.
-    assert len(bp.deferred_functions) == 4, (
-        "exactly four routes: POST .../recompute, GET .../derived/<id>, "
-        "GET .../impact/<element_id>, GET .../yield"
+    assert len(bp.deferred_functions) == 8, (
+        "exactly eight routes: POST .../recompute, GET .../derived/<id>, "
+        "GET .../value-streams-at-risk, GET .../impact/<element_id>, "
+        "GET .../risk/<element_id>, GET .../portfolio/<element_id>, "
+        "GET .../programme/<element_id>, GET .../yield"
     )
 
 

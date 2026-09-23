@@ -2,7 +2,11 @@
 
   POST /api/v1/intelligence/derivation/recompute
   GET  /api/v1/intelligence/derived/<derived_id>
+  GET  /api/v1/intelligence/value-streams-at-risk
   GET  /api/v1/intelligence/impact/<element_id>
+  GET  /api/v1/intelligence/risk/<element_id>
+  GET  /api/v1/intelligence/portfolio/<element_id>
+  GET  /api/v1/intelligence/programme/<element_id>
   GET  /api/v1/intelligence/yield
 
 Each new route was added to this EXISTING blueprint rather than a new
@@ -226,6 +230,128 @@ def _parse_bool_param(raw: str | None, *, default: bool, param_name: str):
     )
 
 
+def _value_stream_or_404_response(value_stream_id: int, organization_id: int):
+    """Resolve *value_stream_id* within *organization_id*'s tenant scope, or
+    the not-found error response for it.
+
+    Two predicates, not one: ``ValueStream`` carries ``TenantMixin``, so the
+    ``do_orm_execute`` tenant-isolation listener already fences this select
+    inside a request -- the same shape ``cross_layer_impact`` uses for
+    ``element_id`` below. The explicit
+    ``IntelligenceQueryService._value_stream_tenant_predicate`` carried on
+    top of that is what keeps "does not exist" and
+    "belongs to another tenant" indistinguishable even if the listener's
+    ambient organisation and the caller-resolved *organization_id* were ever
+    to diverge -- without it, a foreign id could return 200 with empty rows
+    (via the listener) while a never-existed id 404s here (this resolver),
+    an existence oracle. Reusing the same seam ``value_streams_at_risk``
+    itself uses also means the item-10 mutation proof, which neuters that
+    one function, now covers all three predicate call sites on this path,
+    not just two of them.
+
+    Isolated as its own seam, the same pattern as ``_parse_bool_param``
+    above, so the indistinguishability mutation-proof test (T-S1 acceptance
+    item 13) can monkeypatch exactly this function to diverge the message
+    between the two cases and confirm the named test goes red, without
+    editing source under test.
+
+    Returns ``(value_stream, error_response_or_None)``.
+    """
+    from app.extensions import db
+    from app.modules.intelligence.services.query_service import IntelligenceQueryService
+    from app.models.unified_capability import ValueStream
+
+    value_stream = db.session.execute(
+        db.select(ValueStream).where(
+            ValueStream.id == value_stream_id,
+            IntelligenceQueryService._value_stream_tenant_predicate(
+                ValueStream, organization_id
+            ),
+        )
+    ).scalar_one_or_none()
+    if value_stream is not None:
+        return value_stream, None
+    return None, error_response(
+        "Value stream not found",
+        code="VALUE_STREAM_NOT_FOUND",
+        status_code=404,
+    )
+
+
+@intelligence_api.route("/value-streams-at-risk", methods=["GET"])
+@login_required
+def value_streams_at_risk():
+    """T-S1 (DA-S1): US-2's "which value streams are at risk, and why" --
+    the curated path only (no graph read; that is T-S3).
+
+    Serialises ``IntelligenceQueryService.value_streams_at_risk`` through
+    ``success_response`` -- no business logic here (task 02 constraint,
+    T-S1 brief constraint 4).
+    """
+    threshold_raw = request.args.get("threshold")
+    if threshold_raw is None:
+        threshold = 3
+    else:
+        try:
+            threshold = int(threshold_raw)
+        except (TypeError, ValueError):
+            return error_response(
+                "threshold must be an integer between 1 and 5",
+                code="INVALID_PARAMETER",
+                status_code=400,
+            )
+        if not (1 <= threshold <= 5):
+            return error_response(
+                "threshold must be between 1 and 5",
+                code="INVALID_PARAMETER",
+                status_code=400,
+            )
+
+    value_stream_id_raw = request.args.get("value_stream_id")
+    value_stream_id = None
+    if value_stream_id_raw is not None:
+        try:
+            value_stream_id = int(value_stream_id_raw)
+        except (TypeError, ValueError):
+            return error_response(
+                "value_stream_id must be a positive integer",
+                code="INVALID_PARAMETER",
+                status_code=400,
+            )
+        if value_stream_id <= 0:
+            return error_response(
+                "value_stream_id must be a positive integer",
+                code="INVALID_PARAMETER",
+                status_code=400,
+            )
+
+    organization_id = _current_organization_id()
+    if organization_id is None:
+        return error_response(
+            "no tenant context for this request",
+            code="NO_TENANT_CONTEXT",
+            details={"reason": _NO_TENANT_CONTEXT_REASON},
+            status_code=400,
+        )
+
+    if value_stream_id is not None:
+        _value_stream, not_found_err = _value_stream_or_404_response(
+            value_stream_id, organization_id
+        )
+        if not_found_err is not None:
+            return not_found_err
+
+    from app.modules.intelligence.services.query_service import IntelligenceQueryService
+
+    result = IntelligenceQueryService.value_streams_at_risk(
+        organization_id,
+        threshold=threshold,
+        value_stream_id=value_stream_id,
+    )
+
+    return success_response(result)
+
+
 @intelligence_api.route("/impact/<int:element_id>", methods=["GET"])
 @login_required
 def cross_layer_impact(element_id: int):
@@ -326,6 +452,188 @@ def cross_layer_impact(element_id: int):
         {
             "rows": result["rows"],
             "summary": result["summary"],
+            "reasons": result.get("reasons") or [],
+            "elements": result.get("elements") or {},
+        }
+    )
+
+
+@intelligence_api.route("/risk/<int:element_id>", methods=["GET"])
+@login_required
+def risk_for_element(element_id: int):
+    """L6: "what could hurt <element>, and what does it touch?"
+
+    Serialises ``IntelligenceQueryService.risk_for_element`` through
+    ``success_response`` -- same shape/error-handling pattern as
+    ``cross_layer_impact`` above, no business logic here.
+    """
+    include_derived, err = _parse_bool_param(
+        request.args.get("include_derived"), default=True, param_name="include_derived"
+    )
+    if err is not None:
+        return err
+
+    max_depth_raw = request.args.get("max_depth")
+    if max_depth_raw is None:
+        max_depth = 3
+    else:
+        try:
+            max_depth = int(max_depth_raw)
+        except (TypeError, ValueError):
+            return error_response(
+                "max_depth must be an integer between 1 and 5",
+                code="INVALID_PARAMETER",
+                status_code=400,
+            )
+        if not (1 <= max_depth <= 5):
+            return error_response(
+                "max_depth must be between 1 and 5",
+                code="INVALID_PARAMETER",
+                status_code=400,
+            )
+
+    organization_id = _current_organization_id()
+    if organization_id is None:
+        return error_response(
+            "no tenant context for this request",
+            code="NO_TENANT_CONTEXT",
+            details={"reason": _NO_TENANT_CONTEXT_REASON},
+            status_code=400,
+        )
+
+    from app.models import ArchiMateElement
+
+    element = ArchiMateElement.query.filter_by(id=element_id).first()
+    if element is None:
+        return error_response(
+            "Element not found",
+            code="NOT_FOUND",
+            details={"reason": _ELEMENT_NOT_FOUND_REASON},
+            status_code=404,
+        )
+
+    from app.modules.intelligence.services.query_service import IntelligenceQueryService
+
+    result = IntelligenceQueryService.risk_for_element(
+        element_id,
+        max_depth=max_depth,
+        include_derived=include_derived,
+    )
+
+    return success_response(
+        {
+            "risks": result["risks"],
+            "reasons": result.get("reasons") or [],
+            "elements": result.get("elements") or {},
+        }
+    )
+
+
+@intelligence_api.route("/portfolio/<int:element_id>", methods=["GET"])
+@login_required
+def portfolio_component_for_element(element_id: int):
+    """L3: resolves an element to its ApplicationComponent, the only fact
+    the frontend needs to build the one genuine deep link that exists today
+    (rationalization planning). No inline rows or cost figures -- see
+    ``IntelligenceQueryService.portfolio_component_for_element`` for why
+    duplicate-detection and TCO history are not offered here.
+    """
+    organization_id = _current_organization_id()
+    if organization_id is None:
+        return error_response(
+            "no tenant context for this request",
+            code="NO_TENANT_CONTEXT",
+            details={"reason": _NO_TENANT_CONTEXT_REASON},
+            status_code=400,
+        )
+
+    from app.models import ArchiMateElement
+
+    element = ArchiMateElement.query.filter_by(id=element_id).first()
+    if element is None:
+        return error_response(
+            "Element not found",
+            code="NOT_FOUND",
+            details={"reason": _ELEMENT_NOT_FOUND_REASON},
+            status_code=404,
+        )
+
+    from app.modules.intelligence.services.query_service import IntelligenceQueryService
+
+    result = IntelligenceQueryService.portfolio_component_for_element(element_id)
+
+    return success_response(
+        {
+            "application_component_id": result.get("application_component_id"),
+            "reasons": result.get("reasons") or [],
+        }
+    )
+
+
+@intelligence_api.route("/programme/<int:element_id>", methods=["GET"])
+@login_required
+def programme_for_element(element_id: int):
+    """L5: "what are we changing, is it on time and on budget, what does it
+    touch?" Serialises ``IntelligenceQueryService.programme_for_element``
+    through ``success_response`` -- same shape/error-handling pattern as
+    ``risk_for_element`` above, no business logic here.
+    """
+    include_derived, err = _parse_bool_param(
+        request.args.get("include_derived"), default=True, param_name="include_derived"
+    )
+    if err is not None:
+        return err
+
+    max_depth_raw = request.args.get("max_depth")
+    if max_depth_raw is None:
+        max_depth = 3
+    else:
+        try:
+            max_depth = int(max_depth_raw)
+        except (TypeError, ValueError):
+            return error_response(
+                "max_depth must be an integer between 1 and 5",
+                code="INVALID_PARAMETER",
+                status_code=400,
+            )
+        if not (1 <= max_depth <= 5):
+            return error_response(
+                "max_depth must be between 1 and 5",
+                code="INVALID_PARAMETER",
+                status_code=400,
+            )
+
+    organization_id = _current_organization_id()
+    if organization_id is None:
+        return error_response(
+            "no tenant context for this request",
+            code="NO_TENANT_CONTEXT",
+            details={"reason": _NO_TENANT_CONTEXT_REASON},
+            status_code=400,
+        )
+
+    from app.models import ArchiMateElement
+
+    element = ArchiMateElement.query.filter_by(id=element_id).first()
+    if element is None:
+        return error_response(
+            "Element not found",
+            code="NOT_FOUND",
+            details={"reason": _ELEMENT_NOT_FOUND_REASON},
+            status_code=404,
+        )
+
+    from app.modules.intelligence.services.query_service import IntelligenceQueryService
+
+    result = IntelligenceQueryService.programme_for_element(
+        element_id,
+        max_depth=max_depth,
+        include_derived=include_derived,
+    )
+
+    return success_response(
+        {
+            "work_packages": result["work_packages"],
             "reasons": result.get("reasons") or [],
             "elements": result.get("elements") or {},
         }

@@ -1,7 +1,7 @@
 """T-001 acceptance criterion 13: the DE-14 reason-code vocabulary is closed.
 
 Mapping:
-    13 -> test_reason_codes_has_exactly_nineteen_members,
+    13 -> test_reason_codes_has_exactly_twenty_six_members,
           test_unknown_reason_code_is_rejected_not_passed_through
 
 T-004 (US-1) added two members -- ``no_tenant_context`` and
@@ -9,10 +9,16 @@ T-004 (US-1) added two members -- ``no_tenant_context`` and
 read path that sdd-v2.md's original sixteen do not cover. T-005 (US-5) added
 one more -- ``p95_above_highest_bucket`` (D3) -- for the yield endpoint's
 p95 bucket-edge read having no honest number to report when the 95th
-percentile falls in the histogram's +Inf overflow bucket. "Closed" means no
-endpoint may invent an absence string inline, not that the set is frozen at
-sixteen forever; the module's own docstring says a new absence condition
-adds a member here, and nowhere else. This test is updated in lockstep.
+percentile falls in the histogram's +Inf overflow bucket. Ask's Portfolio
+lens (L3) added ``no_application_component``; the Programme lens (L5) added
+two more -- ``no_work_package_recorded`` and ``not_costed``. T-S1 (value
+streams at risk, curated path) added four more -- ``no_value_stream_recorded``,
+``no_capability_linked``, ``value_stream_not_linked_to_model`` and
+``dependency_direction_unknown`` -- of which T-S1 emits only the first two;
+the other two are reserved for T-S3's graph path. "Closed" means no endpoint
+may invent an absence string inline, not that the set is frozen at sixteen
+forever; the module's own docstring says a new absence condition adds a
+member here, and nowhere else. This test is updated in lockstep.
 """
 
 from __future__ import annotations
@@ -26,8 +32,9 @@ from app.modules.intelligence.services.reason_codes import (
     validate_reason_code,
 )
 
-# sdd-v2.md § API-8's original sixteen, T-004's two additions, plus T-005's
-# one addition (p95_above_highest_bucket, D3).
+# sdd-v2.md § API-8's original sixteen, T-004's two additions, T-005's one
+# addition (p95_above_highest_bucket, D3), the Portfolio and Programme
+# lenses' three additions, plus T-S1's four additions.
 _EXPECTED = {
     "no_ownership_recorded",
     "no_maturity_recorded",
@@ -48,11 +55,18 @@ _EXPECTED = {
     "no_tenant_context",
     "element_not_found",
     "p95_above_highest_bucket",
+    "no_application_component",
+    "no_work_package_recorded",
+    "not_costed",
+    "no_value_stream_recorded",
+    "no_capability_linked",
+    "value_stream_not_linked_to_model",
+    "dependency_direction_unknown",
 }
 
 
-def test_reason_codes_has_exactly_nineteen_members():
-    assert len(REASON_CODES) == 19
+def test_reason_codes_has_exactly_twenty_six_members():
+    assert len(REASON_CODES) == 26
     assert REASON_CODES == frozenset(_EXPECTED)
 
 
