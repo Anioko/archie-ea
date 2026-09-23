@@ -9,6 +9,7 @@ ratchet baseline, not an exemption from it.
 from __future__ import annotations
 
 import os
+import subprocess
 import sys
 
 from scripts.check_raw_sql_tenancy import (
@@ -161,15 +162,24 @@ def test_writes_count_matches_the_measured_baseline_and_a_synthetic_copy_raises_
     baseline this module's Proven-against line refers to is demonstrated, not
     asserted.
 
-    Goes through scripts.verify._run -- a real subprocess, exactly the way
-    gate_raw_sql_tenancy_writes measures this -- rather than calling main()
-    in this process. In this process, tenant_tables() resolves the mapper
-    registry live (pytest.ini puts the repo root on sys.path for that);
-    invoked as a subprocess the way the gate does, it does not, and falls
-    back to the committed scripts/tenant_tables.txt cache instead. Calling
-    main() directly here would measure a different, larger table set than
-    the gate ever does, and could disagree with its own baseline for a
-    reason that has nothing to do with this rule.
+    A real subprocess, exactly the way gate_raw_sql_tenancy_writes measures
+    this, rather than calling main() in this process: in this process,
+    tenant_tables() resolves the mapper registry live (pytest.ini puts the
+    repo root on sys.path for that), and calling main() directly here would
+    measure a different, larger table set than the gate ever does, and could
+    disagree with its own baseline for a reason that has nothing to do with
+    this rule.
+
+    The database URLs are stripped from the subprocess's own environment
+    rather than left to whatever this test happened to be invoked with: a
+    database reachable at TEST_DATABASE_URL/DATABASE_URL lets that subprocess
+    resolve the mapper registry live too, the same way this process just did,
+    silently measuring the full live table set instead of the committed
+    scripts/tenant_tables.txt cache the gate actually falls back to wherever
+    it runs without one -- a fix proven by first observing this probe read
+    the live count (matching this process's own resolution) with the
+    database URLs left in place, then the committed cache count once they are
+    stripped.
 
     The synthetic statement below names business_capability, not
     roadmap_tasks: the committed cache predates roadmap_tasks (and over a
@@ -184,8 +194,12 @@ def test_writes_count_matches_the_measured_baseline_and_a_synthetic_copy_raises_
 
     def _count():
         _reset_tenant_tables_cache()
-        proc = verify._run(
-            [sys.executable, "scripts/check_raw_sql_tenancy.py", "--count", "--rule", "writes"]
+        env = {k: v for k, v in os.environ.items() if "DATABASE_URL" not in k}
+        env["PYTHONIOENCODING"] = "utf-8"
+        proc = subprocess.run(
+            [sys.executable, "scripts/check_raw_sql_tenancy.py", "--count", "--rule", "writes"],
+            cwd=REPO_ROOT, capture_output=True, text=True, encoding="utf-8",
+            errors="replace", env=env,
         )
         return int(proc.stdout.strip().splitlines()[-1])
 
