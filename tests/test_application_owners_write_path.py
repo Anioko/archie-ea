@@ -215,6 +215,7 @@ def test_add_owner_cross_tenant_application_id_is_404(db_session, make_org, clie
     target_b = _make_user(db_session, org_b, label="add-app-cross-target-b")
     app_a = _make_app(db_session, org_a)
     db_session.commit()
+    db_session.expire_all()
 
     login_as(client, admin_b)
     resp = client.post(
@@ -357,6 +358,7 @@ def test_remove_owner_cross_tenant_application_id_is_404(db_session, make_org, c
     owner_row_b = _make_owner_row(db_session, app_b, user_b, "technical")
     owner_id_b = owner_row_b.id
     db_session.commit()
+    db_session.expire_all()
 
     login_as(client, admin_b)
     resp = client.post(f"/applications/{app_a.id}/owners/{owner_id_b}/remove")

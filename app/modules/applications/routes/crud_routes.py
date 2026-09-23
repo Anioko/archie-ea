@@ -1388,7 +1388,15 @@ def _owner_picker_context(app_obj):
 def add_application_owner(id):
     """Add one ApplicationOwner row -- the one production writer this table
     has ever had; every prior construction was a test fixture."""
-    app_obj = ApplicationComponent.query.get_or_404(id)
+    # Explicit organization_id predicate, not just .get_or_404(id): a
+    # primary-key lookup like this one does not reliably carry the ORM
+    # tenant listener's WHERE clause the way a filtered query does, so a
+    # guessed id from another tenant would otherwise be found -- the same
+    # two-layer rule the model's own class methods and the remove route
+    # below already apply.
+    app_obj = ApplicationComponent.query.filter_by(
+        id=id, organization_id=current_user.organization_id
+    ).first_or_404()
 
     if not _can_assign_owners(app_obj):
         abort(403)
@@ -1439,7 +1447,12 @@ def add_application_owner(id):
 @login_required
 def remove_application_owner(id, owner_id):
     """Remove one ApplicationOwner row."""
-    app_obj = ApplicationComponent.query.get_or_404(id)
+    # Explicit organization_id predicate for the same reason add_application_owner
+    # above states it: a primary-key .get_or_404(id) does not reliably carry
+    # the ORM tenant listener's WHERE clause.
+    app_obj = ApplicationComponent.query.filter_by(
+        id=id, organization_id=current_user.organization_id
+    ).first_or_404()
 
     if not _can_assign_owners(app_obj):
         abort(403)
