@@ -62,11 +62,12 @@ _EXPECTED = {
     "no_ownership_records",
     "capacity_not_available",
     "financial_data_restricted",
+    "ownership_source_undecided",
 }
 
 
-def test_reason_codes_has_exactly_twenty_six_members():
-    assert len(REASON_CODES) == 26
+def test_reason_codes_has_exactly_twenty_seven_members():
+    assert len(REASON_CODES) == 27
     assert REASON_CODES == frozenset(_EXPECTED)
 
 

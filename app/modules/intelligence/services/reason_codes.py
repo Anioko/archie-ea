@@ -91,6 +91,16 @@ REASON_CODES = frozenset(
         # not_costed/no_budget_recorded already use for a different kind of
         # absence.
         "financial_data_restricted",
+        # PR #107 defect remediation (2026-09-23): the L4 Accountability
+        # lens's ownership read is withdrawn -- the reuse register marks
+        # the `ownership` concept decision-pending, product-manager-owned,
+        # and explicitly forbids a screen reading an owner record nothing
+        # writes; the original implementation also had a real, unreviewed
+        # tenant-isolation gap on OrganizationUnit. Every accountability
+        # response carries this reason until both the register decision and
+        # the tenant-scoping fix land -- see
+        # IntelligenceQueryService.accountability_for_element's docstring.
+        "ownership_source_undecided",
     }
 )
 
