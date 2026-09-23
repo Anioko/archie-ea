@@ -91,25 +91,53 @@ def test_association_is_permitted_between_every_ordered_pair_of_elements():
     ("Outcome", "Goal", "realization"),
     ("WorkPackage", "Outcome", "realization"),
     ("WorkPackage", "Outcome", "association"),
+    # Two realization rows the rule-based service used to grant and the
+    # config matrix regressed when it became the one authority, landed on
+    # their own §7.5 citation (strategy elements realize motivation
+    # elements): a capability realizes a requirement, a course of action
+    # realizes an outcome.
+    ("Capability", "Requirement", "realization"),
+    ("CourseOfAction", "Outcome", "realization"),
 ])
 def test_the_explicit_landings(source, target, rel):
     assert is_valid_relationship(source, target, rel), f"{source} -{rel}-> {target}"
 
 
-# -- (c) The new True set is exactly the association pass plus the two ------
-# -- explicit realization rows, nothing else ---------------------------------
+# -- (c) The new True set is exactly the association pass, the two explicit -
+# -- realization rows already pinned above, and every regressed row the ----
+# -- rule-based service used to grant that this change lands back, nothing -
+# -- else ------------------------------------------------------------------
+#
+# These counts are computed directly against the matrix, type by type, not
+# copied from a prose estimate: the "every core element ->
+# Goal/Outcome/Principle/Requirement/Constraint" pass is 39 elements x 5
+# targets = 195 new rows, and the realization total below (348) and access
+# total (21) are this computation's own numbers, not a hand count.
+_EXPECTED_NEW_COUNTS_BY_TYPE = {
+    "association": 2837,
+    "influence": 1016,
+    "serving": 613,
+    "realization": 348,
+    "triggering": 115,
+    "flow": 157,
+    "composition": 6,
+    "aggregation": 6,
+    "assignment": 2,
+    "access": 21,
+}
 
 
-def test_new_true_triples_are_exactly_the_association_pass_and_the_two_realizations(
-    main_snapshot, head_triples
-):
+def test_new_true_triples_match_the_regressed_landings_exactly(main_snapshot, head_triples):
+    from collections import Counter
+
     new_triples = head_triples - main_snapshot
-    non_association = sorted(t for t in new_triples if t[0] != "association")
-    assert non_association == [
-        ("realization", "Outcome", "Goal"),
-        ("realization", "WorkPackage", "Outcome"),
-    ], non_association
+    by_type = Counter(t[0] for t in new_triples)
+    assert dict(by_type) == _EXPECTED_NEW_COUNTS_BY_TYPE
+    assert "specialization" not in by_type
 
+
+def test_association_new_triples_are_exactly_the_derived_pass(main_snapshot, head_triples):
+    new_triples = head_triples - main_snapshot
     association_new = {t for t in new_triples if t[0] == "association"}
     expected_association_new = {
         ("association", s, u)
@@ -117,6 +145,22 @@ def test_new_true_triples_are_exactly_the_association_pass_and_the_two_realizati
         if ("association", s, u) not in main_snapshot
     }
     assert association_new == expected_association_new
+
+
+# -- The three legacy-only layer keys are narrowed away, not carried forward -
+
+
+def test_the_three_narrowed_legacy_keys_are_absent_from_the_projection():
+    """(realization, motivation, strategy), (serving, strategy, motivation)
+    and (access, application, business) used to be kept by hand in
+    ``app.models.archimate_core`` because no matrix row produced them.
+    Settled on the standard instead: gone, not replaced."""
+    narrowed = {
+        ("realization", "motivation", "strategy"),
+        ("serving", "strategy", "motivation"),
+        ("access", "application", "business"),
+    }
+    assert narrowed.isdisjoint(PROJECTED_LAYER_RELATIONSHIPS.keys())
 
 
 # -- (e) The derived layer projection is a superset of the literal it -------
@@ -176,12 +220,56 @@ def test_deleted_layer_literal_size_is_72():
     assert len(_DELETED_LAYER_LITERAL) == 72
 
 
-def test_derived_projection_is_a_superset_of_the_deleted_literal():
-    missing = sorted(_DELETED_LAYER_LITERAL - set(PROJECTED_LAYER_RELATIONSHIPS.keys()))
+# These three of the 72 were never produced by a matrix row -- they were kept
+# by hand in the now-deleted ``_LEGACY_LAYER_ONLY_KEYS`` -- and this change
+# narrows them away rather than carrying them forward (see the narrowed-keys
+# test above). The projection is a superset of the deleted literal except
+# for these three.
+_NARROWED_AWAY = {
+    ("realization", "motivation", "strategy"),
+    ("serving", "strategy", "motivation"),
+    ("access", "application", "business"),
+}
+
+
+def test_derived_projection_is_a_superset_of_the_deleted_literal_except_the_narrowed_keys():
+    expected = _DELETED_LAYER_LITERAL - _NARROWED_AWAY
+    missing = sorted(expected - set(PROJECTED_LAYER_RELATIONSHIPS.keys()))
     assert missing == [], (
         f"{len(missing)} key(s) of the old table are no longer produced by the "
         f"derived projection: {missing}"
     )
+
+
+# -- validate_relationship fails closed for Grouping, Location and Junction -
+# -- not just for a genuinely unknown type -----------------------------------
+
+
+def test_validate_relationship_gives_the_matrix_real_verdict_for_other_elements():
+    """Before this change, ``get_element_layer`` returning ``None`` for
+    Grouping/Location/Junction (they belong to no layer) took the same skip
+    path as a genuinely unrecognised type, so every relationship touching
+    one of them validated True regardless of what the matrix says.
+    Specialization between a Grouping and a layered element is the one
+    relationship the matrix's own generated pass excludes -- it must now
+    refuse, not skip-and-allow."""
+    is_valid, message = validate_relationship("specialization", "grouping", "business_process")
+    assert is_valid is False, message
+    assert "not in registry" not in message
+
+
+def test_validate_relationship_still_skips_a_genuinely_unknown_type():
+    is_valid, message = validate_relationship("association", "not_a_real_type", "business_process")
+    assert is_valid is True
+    assert "not in registry" in message
+
+
+def test_validate_relationship_grants_a_real_other_element_verdict():
+    """Grouping aggregating a business process is real per the matrix
+    (ArchiMate 3.2 §4.5.1) -- the fail-closed fix must not turn this into a
+    refusal too."""
+    is_valid, message = validate_relationship("aggregation", "grouping", "business_process")
+    assert is_valid is True, message
 
 
 # -- (d) Every adapter agrees with the matrix on one shared sample -----------
