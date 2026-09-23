@@ -1404,7 +1404,10 @@ class ArchitectureMonitoringService:
         request-scoped tenant filter.
         """
         from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship
-        from app.modules.intelligence.services.derived_facts import derived_fact_aggregates
+        from app.modules.intelligence.services.derived_facts import (
+            derived_fact_aggregates,
+            stale_derived_fact_ids,
+        )
 
         elements = ArchiMateElement.query.filter(
             ArchiMateElement.organization_id == self.organization_id,
@@ -1419,10 +1422,10 @@ class ArchitectureMonitoringService:
 
         derived = derived_fact_aggregates(self.organization_id)
         computed_at = derived.get("computed_at")
-        stale_ids = sorted(
-            str(rid)
-            for rid in self._stale_derived_relationship_ids(self.organization_id)
-        )
+        # The staleness filter lives in derived_facts.py, not re-implemented
+        # here (that module is the one read path over the derived-fact
+        # store, with the filter applied in one place).
+        stale_ids = sorted(str(rid) for rid in stale_derived_fact_ids(self.organization_id))
 
         return {
             "elements": {str(el.id): self._element_content_hash(el) for el in elements},
@@ -1443,25 +1446,6 @@ class ArchitectureMonitoringService:
             # checksums.
             "captured_at": datetime.utcnow().isoformat(),
         }
-
-    @staticmethod
-    def _stale_derived_relationship_ids(organization_id: int) -> List[int]:
-        """This tenant's stale DerivedRelationship ids, explicitly scoped.
-
-        derived_fact_aggregates(organization_id) returns stale_count (a
-        number) but not which rows -- the model dimension needs the set
-        itself so a comparison can tell "the same facts are stale" from "a
-        different fact went stale", not only that the count held steady.
-        """
-        from app.modules.intelligence.models.derived_relationship import DerivedRelationship
-
-        rows = db.session.execute(
-            db.select(DerivedRelationship.id).where(
-                DerivedRelationship.organization_id == organization_id,
-                DerivedRelationship.stale.is_(True),
-            )
-        ).scalars().all()
-        return list(rows)
 
     def _calculate_baseline_checksum(self, *snapshots) -> str:
         """Calculate checksum of baseline data for integrity."""
