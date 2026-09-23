@@ -91,6 +91,18 @@ REASON_CODES = frozenset(
         # not_costed/no_budget_recorded already use for a different kind of
         # absence.
         "financial_data_restricted",
+        # PR #107 defect remediation (2026-09-23): the L4 Accountability
+        # lens's ownership read is withdrawn -- the original implementation
+        # read ApplicationOwnership/OrganizationUnit directly with a real,
+        # unreviewed tenant-isolation gap on OrganizationUnit (no
+        # TenantMixin, no tenant predicate on the fetch), rather than reuse
+        # the existing tenant-checked _resolve_owners_batch pattern. Every
+        # accountability response carries this reason until a shared,
+        # tenant-safe reader exists -- see
+        # IntelligenceQueryService.accountability_for_element's docstring.
+        # Distinct from a "decision pending" state: the data source is
+        # already decided, only the safe reader is missing.
+        "ownership_reader_not_built",
     }
 )
 
