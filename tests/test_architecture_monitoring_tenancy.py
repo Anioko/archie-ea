@@ -722,50 +722,110 @@ def test_backfill_derives_monitoring_provenance_and_leaves_unprovenanced_rows_nu
 # -------------------------------------------------------- (9) no-tenant refusal
 
 
-def test_service_requires_organization_id_and_route_answers_404_without_tenant(
-    app, db_session, make_org, client, login_as, monkeypatch
-):
+def test_service_requires_organization_id_and_route_answers_404_without_tenant(monkeypatch):
     """A no-tenant 404 and a routing 404 (the rule not mounted at all, or the
     URL simply wrong) are the same JSON shape, so a 404 alone proves nothing:
-    this asserts the rule is actually in ``app.url_map`` under the mount flag
-    (``ARCHITECTURE_MONITORING_API_ENABLED`` -- the flag T-DR-1 makes the
-    mount opt-in on; harmless to set here ahead of that landing, since
-    nothing reads it yet and the blueprint is still registered
-    unconditionally) and proves the *same* request answers 200 with a tenant
-    present, before showing that only the no-tenant case 404s.
+    this proves the rule is actually mounted under the flag
+    (``ARCHITECTURE_MONITORING_API_ENABLED``) and that the *same* request
+    answers 200 with a tenant present, before showing that only the
+    no-tenant case 404s.
+
+    The shared session ``app`` fixture is built once, before this test ever
+    runs, so setting the flag here would do nothing to its url_map -- once
+    the mount is flag-gated (T-DR-1) rather than unconditional, the session
+    app never has the rule at all. This builds its own app with the flag
+    already set, the way
+    ``TestArchitectureMonitoringApiFlag.test_mounted_when_flag_enabled``
+    (``app/modules/architecture/tests/test_architecture.py``) does. That app
+    owns its own SQLAlchemy engine -- a real connection, not ``db_session``'s
+    rolled-back one -- so this seeds and tears down its own organisation and
+    user with real commits instead of the ``make_org``/``db_session``
+    fixtures, the same shape
+    ``test_backfill_derives_monitoring_provenance_and_leaves_unprovenanced_
+    rows_null`` above uses for the same reason.
     """
+    from app import create_app, db
+    from app.models.organization import Organization
+    from app.models.user import User
     from app.modules.architecture.services.architecture_monitoring_service import (
         ArchitectureMonitoringService,
     )
-    import app.modules.architecture.routes.architecture_monitoring_routes as routes_module
+    from tests._session_test_helpers import mint_test_sid
 
     monkeypatch.setenv("ARCHITECTURE_MONITORING_API_ENABLED", "true")
 
     with pytest.raises(ValueError):
         ArchitectureMonitoringService(None)
 
-    endpoints = {rule.endpoint for rule in app.url_map.iter_rules()}
+    flagged_app = create_app("testing")
+    flagged_app.config["TESTING"] = True
+    flagged_app.config["WTF_CSRF_ENABLED"] = False
+
+    endpoints = {rule.endpoint for rule in flagged_app.url_map.iter_rules()}
     assert "architecture_monitoring.get_monitoring_status" in endpoints
 
-    org = make_org("dr3-no-tenant")
-    user = _make_user(db_session, org.id, "NoTenant")
+    flagged_client = flagged_app.test_client()
+    suffix = uuid.uuid4().hex[:10]
+    org_id = None
+    user_id = None
 
-    login_as(client, user)
-    # With a real tenant on the request the same route answers 200 -- so the
-    # 404 asserted below is the no-tenant refusal specifically, not routing
-    # failure or an unmounted blueprint wearing the same JSON shape.
-    ok_response = client.get("/api/architecture-monitoring/status")
-    assert ok_response.status_code == 200
-    assert ok_response.get_json()["success"] is True
+    try:
+        with flagged_app.app_context():
+            org = Organization(
+                name=f"Test dr3-no-tenant {suffix}", slug=f"test-dr3-no-tenant-{suffix}"
+            )
+            db.session.add(org)
+            db.session.commit()
+            org_id = org.id
 
-    # The middleware always resolves a real, non-None organisation for a
-    # logged-in user (users.organization_id is NOT NULL); simulate the "no
-    # tenant on the request" case the routes must still refuse -- a CLI/job
-    # call, or a request the tenant middleware has not run for -- by patching
-    # the routes module's own current_org_id reference.
-    monkeypatch.setattr(routes_module, "current_org_id", lambda: None)
+            user = User(
+                email=f"NoTenant-{suffix}@example.com",
+                first_name="Test",
+                last_name="NoTenant",
+                organization_id=org_id,
+                confirmed=True,
+            )
+            db.session.add(user)
+            db.session.commit()
+            user_id = user.id
 
-    response = client.get("/api/architecture-monitoring/status")
+            sid = mint_test_sid(user_id, organization_id=org_id, app=flagged_app)
 
-    assert response.status_code == 404
-    assert response.get_json()["success"] is False
+        with flagged_client.session_transaction() as sess:
+            sess["_user_id"] = str(user_id)
+            sess["_fresh"] = True
+            sess["_sid"] = sid
+
+        # With a real tenant on the request the same route answers 200 -- so
+        # the 404 asserted below is the no-tenant refusal specifically, not
+        # routing failure or an unmounted blueprint wearing the same JSON
+        # shape.
+        ok_response = flagged_client.get("/api/architecture-monitoring/status")
+        assert ok_response.status_code == 200
+        assert ok_response.get_json()["success"] is True
+
+        # The middleware always resolves a real, non-None organisation for a
+        # logged-in user (users.organization_id is NOT NULL); simulate the
+        # "no tenant on the request" case the routes must still refuse -- a
+        # CLI/job call, or a request the tenant middleware has not run for --
+        # by patching the routes module's own current_org_id reference.
+        import app.modules.architecture.routes.architecture_monitoring_routes as routes_module
+
+        monkeypatch.setattr(routes_module, "current_org_id", lambda: None)
+
+        response = flagged_client.get("/api/architecture-monitoring/status")
+
+        assert response.status_code == 404
+        assert response.get_json()["success"] is False
+    finally:
+        with flagged_app.app_context():
+            if user_id is not None:
+                db.session.execute(
+                    text("DELETE FROM user_sessions WHERE user_id = :id"), {"id": user_id}
+                )
+                db.session.execute(text("DELETE FROM users WHERE id = :id"), {"id": user_id})
+            if org_id is not None:
+                db.session.execute(
+                    text("DELETE FROM organizations WHERE id = :id"), {"id": org_id}
+                )
+            db.session.commit()
