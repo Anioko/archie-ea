@@ -24,6 +24,28 @@ from datetime import datetime
 import pytest
 
 
+def _user(db_session, org, *, email=None):
+    from app.models.user import Role, User
+
+    admin_role = Role.query.filter_by(name="Administrator").first()
+    if admin_role is None:
+        Role.insert_roles()
+        admin_role = Role.query.filter_by(name="Administrator").first()
+
+    user = User(
+        email=email or f"op2-{uuid.uuid4().hex[:8]}@example.com",
+        first_name="Test",
+        last_name="User",
+        organization_id=org.id,
+        role=admin_role,
+        is_org_admin=True,
+        confirmed=True,
+    )
+    db_session.add(user)
+    db_session.flush()
+    return user
+
+
 def _element(db_session, org_id, name_hint, type_="ApplicationComponent", layer="application"):
     from app.models import ArchiMateElement
 
@@ -432,3 +454,72 @@ def test_group10_the_read_never_writes(app, db_session, make_org, tenant_ctx):
     after_count = MonitoringAlert.query.filter_by(organization_id=org.id).count()
     assert after_count == before_count == 0
     assert len(_STATE[org.id].alerts) == 0
+
+
+# --- (1), (11), (12) the route -----------------------------------------------
+
+
+def test_group1_cross_tenant_element_404_is_identical_to_absent_id(
+    app, db_session, make_org, client, login_as
+):
+    org_a = make_org("op2-iso-a")
+    org_b = make_org("op2-iso-b")
+    user_b = _user(db_session, org_b)
+    a = _element(db_session, org_a.id, "A")
+    db_session.commit()
+
+    login_as(client, user_b)
+    cross_tenant_resp = client.get(f"/api/v1/intelligence/operational/{a.id}")
+
+    login_as(client, user_b)
+    absent_resp = client.get("/api/v1/intelligence/operational/999999999")
+
+    assert cross_tenant_resp.status_code == 404
+    assert absent_resp.status_code == 404
+    # meta.timestamp/request_id are per-request and expected to differ --
+    # the stable, comparable part is the error body itself.
+    assert cross_tenant_resp.get_json()["error"] == absent_resp.get_json()["error"]
+    assert cross_tenant_resp.get_json()["success"] is False
+    assert absent_resp.get_json()["success"] is False
+
+
+def test_group11_include_stale_param(app, db_session, make_org, client, login_as, tenant_ctx):
+    org = make_org("op2-fab11")
+    user = _user(db_session, org)
+    a = _element(db_session, org.id, "A")
+    b = _element(db_session, org.id, "B")
+    db_session.commit()
+
+    login_as(client, user)
+    bad = client.get(f"/api/v1/intelligence/operational/{a.id}?include_stale=maybe")
+    assert bad.status_code == 400
+
+    _run_derivation(app, org.id)
+    _insert_stale_derived_row(db_session, org.id, a, b)
+    db_session.commit()
+
+    login_as(client, user)
+    resp = client.get(f"/api/v1/intelligence/operational/{a.id}?include_stale=false")
+    assert resp.status_code == 200
+    data = resp.get_json()["data"]
+    assert data["stale_derivations"]["rows"] == []
+    assert isinstance(data["stale_derivations"]["count"], int)
+    assert data["stale_derivations"]["count"] == 1
+
+
+def test_group12_latency_label_recorded(app, db_session, make_org, client, login_as, caplog):
+    import logging
+
+    org = make_org("op2-fab12")
+    user = _user(db_session, org)
+    a = _element(db_session, org.id, "A")
+    db_session.commit()
+
+    login_as(client, user)
+    with caplog.at_level(logging.INFO, logger="archie.intelligence.oa2"):
+        resp = client.get(f"/api/v1/intelligence/operational/{a.id}")
+    assert resp.status_code == 200
+    assert any(
+        "intelligence.query_latency" in message and "operational_for_element" in message
+        for message in caplog.messages
+    )
