@@ -339,13 +339,12 @@ class TestEngineMaturityReadsGoThroughTheHelper:
         "app/modules/business_case/service.py",
     ]
 
-    # The only files allowed to call the strict, capability-id-keyed
+# The only files allowed to call the strict, capability-id-keyed
     # accessor directly. This list can only shrink: query_service.py's
-    # value_streams_at_risk is repointed onto the batched helper by a later
-    # task, at which point only capability_heatmap_service.py remains.
+    # value_streams_at_risk was repointed onto the batched helper, so only
+    # capability_heatmap_service.py remains.
     ACCESSOR_CALLERS = {
         "app/modules/capabilities/services/capability_heatmap_service.py",
-        "app/modules/intelligence/services/query_service.py",
     }
 
     def test_no_engine_reads_the_authority_columns_or_the_source_accessors_directly(self):

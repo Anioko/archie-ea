@@ -16,12 +16,23 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from app.extensions import db
 from app.middleware.tenant_context import current_org_id
+from app.modules.capabilities.services.capability_heatmap_service import (
+    CapabilityHeatmapService,
+)
 from app.modules.intelligence.services.derived_facts import list_derived_facts
 from app.modules.intelligence.services.latency_probe import record_query_latency
 from app.modules.intelligence.services.plain_terms import plain_terms_sentence
 from app.modules.intelligence.services.reason_codes import validate_reason_code
 
 VALID_DIRECTIONS = {"downstream", "upstream", "both"}
+
+VALUE_STREAM_RISK_REASONS = frozenset(
+    {
+        "capability_below_threshold",
+        "capability_under_target",
+        "capability_unassessed",
+    }
+)
 
 NO_OWNERSHIP_REASON = validate_reason_code("no_ownership_recorded")
 NO_TENANT_CONTEXT_REASON = validate_reason_code("no_tenant_context")
@@ -31,6 +42,7 @@ NO_RISK_RECORDED_REASON = validate_reason_code("no_risk_recorded")
 NO_APPLICATION_COMPONENT_REASON = validate_reason_code("no_application_component")
 NO_WORK_PACKAGE_RECORDED_REASON = validate_reason_code("no_work_package_recorded")
 NOT_COSTED_REASON = validate_reason_code("not_costed")
+
 
 # T-005 (D1): the NFR-5 measurement point is this exact, PINNED series --
 # never widened, never aggregated across label values.
@@ -1047,13 +1059,13 @@ class IntelligenceQueryService:
         explicit-relationship walk) and no ``include_derived`` /
         ``include_stale`` / ``max_depth`` parameter -- those belong to T-S3.
 
-        Four batched selects regardless of row count, in this order,
+        Five batched selects regardless of row count, in this order,
         following ``_resolve_owners_batch``'s own collect-then-resolve shape:
         value streams for the tenant (narrowed by ``value_stream_id`` when
         given); mapping rows for those value-stream ids, joined to
         ``ValueStreamStage`` for the stage id and name; capability identity
-        for the distinct capability ids; maturity through the accessor.
-        Never one select per row.
+        for the distinct capability ids; maturity through the accessor;
+        the helper's own owner/element map select. Never one select per row.
 
         Tenancy (design § 3.2, § 9): ``ValueStream`` and
         ``CapabilityValueStreamMapping`` carry the strict, explicit predicate
@@ -1196,10 +1208,10 @@ class IntelligenceQueryService:
                     for cap_id, name, code in db.session.execute(identity_stmt).all():
                         identity_by_id[cap_id] = {"id": cap_id, "name": name, "code": code}
 
-                # Maturity through the accessor -- never off the columns.
+                # Maturity through the helper -- never off the columns.
                 # Strict predicate, required kwarg: a shared catalogue row's
                 # maturity is never read as this tenant's own.
-                maturity_by_id = UnifiedCapability.maturity_for_capability_ids(
+                maturity_by_id = CapabilityHeatmapService().maturity_for_capability_ids(
                     capability_ids, organization_id=organization_id
                 )
 
@@ -1242,18 +1254,22 @@ class IntelligenceQueryService:
                         capabilities_considered.add(mapping.capability_id)
 
                         maturity = maturity_by_id.get(mapping.capability_id) or {
-                            "current_maturity_level": None,
-                            "target_maturity_level": None,
-                            "reason_code": validate_reason_code("no_maturity_recorded"),
+                            "current": None,
+                            "target": None,
+                            "under_target": None,
+                            "target_gap": None,
+                            "reason": validate_reason_code("no_maturity_recorded"),
                         }
-                        current = maturity["current_maturity_level"]
-                        target = maturity["target_maturity_level"]
+                        current = maturity["current"]
+                        target = maturity["target"]
+                        under_target = maturity["under_target"]
+                        target_gap = maturity["target_gap"]
                         at_risk = IntelligenceQueryService._at_risk_for_maturity(
                             current, threshold
                         )
                         if current is None:
                             capabilities_with_no_maturity_ids.add(mapping.capability_id)
-                            cap_reason = maturity["reason_code"]
+                            cap_reason = maturity["reason"]
                         else:
                             cap_reason = None
                             if at_risk:
@@ -1267,6 +1283,8 @@ class IntelligenceQueryService:
                                 "code": identity["code"],
                                 "current_maturity": current,
                                 "target_maturity": target,
+                                "under_target": under_target,
+                                "target_gap": target_gap,
                                 "maturity_source": "unified_capabilities",
                                 "at_risk": at_risk,
                                 "dependency": {
@@ -1297,6 +1315,15 @@ class IntelligenceQueryService:
                         else None
                     )
 
+                    risk_reasons = []
+                    if at_risk_ids_in_row:
+                        risk_reasons.append("capability_below_threshold")
+                    if any(cr.get("under_target") is True for cr in capability_rows):
+                        risk_reasons.append("capability_under_target")
+                    if any(cr.get("current_maturity") is None for cr in capability_rows):
+                        risk_reasons.append("capability_unassessed")
+                    risk_reasons.sort()
+
                     at_risk_count = len(at_risk_ids_in_row)
                     rows.append(
                         {
@@ -1307,6 +1334,7 @@ class IntelligenceQueryService:
                                 "archimate_element_id": vs.archimate_element_id,
                             },
                             "at_risk_capability_count": at_risk_count,
+                            "risk_reasons": risk_reasons,
                             "capabilities": capability_rows,
                             "reason": row_reason,
                         }
@@ -1333,5 +1361,4 @@ class IntelligenceQueryService:
             "reasons": reasons,
         }
 
-
-__all__ = ["IntelligenceQueryService"]
+    __all__ = ["IntelligenceQueryService"]
