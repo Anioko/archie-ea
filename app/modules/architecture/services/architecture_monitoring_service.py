@@ -182,6 +182,13 @@ _STATE_TTL_SECONDS = 60
 # without limit, the same cap _health_metrics_cache uses.
 _STATE_CACHE_MAX_TENANTS = 256
 
+# Bound how many stale-derived-fact ids one model-snapshot capture writes
+# into the persisted baseline blob, the same shape as the cap above: a
+# tenant with a stale set past this size still gets an honest, capped id
+# list plus the true count from derived_fact_aggregates (a real SQL COUNT,
+# unaffected by this cap) -- not an ever-growing blob per capture.
+_MODEL_SNAPSHOT_STALE_ID_CAP = 1000
+
 
 def _evict_stale_state(organization_id: int) -> None:
     """Drop ``organization_id``'s entry if it has not been touched inside
@@ -1493,10 +1500,22 @@ class ArchitectureMonitoringService:
 
         derived = derived_fact_aggregates(self.organization_id)
         computed_at = derived.get("computed_at")
+        stale_count = derived.get("stale_count")
         # The staleness filter lives in derived_facts.py, not re-implemented
         # here (that module is the one read path over the derived-fact
-        # store, with the filter applied in one place).
-        stale_ids = sorted(str(rid) for rid in stale_derived_fact_ids(self.organization_id))
+        # store, with the filter applied in one place). The id query itself
+        # is capped (bounding what this capture materialises and stores),
+        # not the Python list after an unbounded fetch; stale_count above is
+        # a real SQL COUNT independent of the cap, so comparing it against
+        # how many ids came back is enough to know whether the id list below
+        # is the whole stale set or a bounded prefix of it.
+        stale_ids = sorted(
+            str(rid)
+            for rid in stale_derived_fact_ids(
+                self.organization_id, limit=_MODEL_SNAPSHOT_STALE_ID_CAP
+            )
+        )
+        stale_ids_truncated = stale_count is not None and stale_count > len(stale_ids)
 
         return {
             "elements": {str(el.id): self._element_content_hash(el) for el in elements},
@@ -1505,9 +1524,10 @@ class ArchitectureMonitoringService:
             },
             "derived": {
                 "derived_count": derived.get("derived_count"),
-                "stale_count": derived.get("stale_count"),
+                "stale_count": stale_count,
                 "computed_at": computed_at.isoformat() if computed_at else None,
                 "stale_ids": stale_ids,
+                "stale_ids_truncated": stale_ids_truncated,
             },
             # Outside the checksummed payload (_calculate_baseline_checksum
             # is called on capabilities/coverage/health/gaps/vendors/model,
@@ -1722,6 +1742,14 @@ class ArchitectureMonitoringService:
         current_stale_ids = set(current_derived.get("stale_ids") or [])
         newly_stale_ids = sorted(current_stale_ids - baseline_stale_ids)
         resolved_stale_ids = sorted(baseline_stale_ids - current_stale_ids)
+        # Either side's stale-id list can be a capped prefix of a larger
+        # true stale set (_MODEL_SNAPSHOT_STALE_ID_CAP); when it is,
+        # newly_stale_ids/resolved_stale_ids above are a lower bound, not
+        # necessarily the whole difference -- stale_count_delta below still
+        # is exact, since it comes from a real SQL COUNT on both sides.
+        stale_ids_truncated = bool(
+            baseline_derived.get("stale_ids_truncated") or current_derived.get("stale_ids_truncated")
+        )
         baseline_computed_at = baseline_derived.get("computed_at")
         current_computed_at = current_derived.get("computed_at")
         derived_recomputed = (
@@ -1755,6 +1783,7 @@ class ArchitectureMonitoringService:
             ),
             "newly_stale_ids": newly_stale_ids,
             "resolved_stale_ids": resolved_stale_ids,
+            "stale_ids_truncated": stale_ids_truncated,
             "derived_computed_at": {
                 "baseline": baseline_computed_at,
                 "current": current_computed_at,
