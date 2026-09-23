@@ -1530,3 +1530,52 @@ def test_check_broken_surfaces_blank_comments_matches_the_original_inline_patter
 
     fixture_jinja = '{# example markup #} <div>x</div> code // trailing comment'
     assert mod._blank_comments(fixture_jinja, jinja=True) == _old_blank_comments(fixture_jinja, jinja=True)
+
+
+# --------------------------------------------------------------------------
+# check_attr_quoting.py, check_macro_kwargs.py and check_alpine_await.py each
+# carried their own byte-identical (or, for check_alpine_await.py, a
+# near-identical union) copy of a hygiene_text comment/Jinja pattern, with no
+# recorded reason a sibling checker's own frozen-reference tests above
+# already established as the standard for this kind of duplication. `is`,
+# not `==`: two independently-compiled patterns with equal source text are
+# still two separate objects, so equality alone would pass whether or not
+# the import ever happened -- only identity proves the constant was actually
+# reused, not re-typed to read the same.
+# --------------------------------------------------------------------------
+
+
+def test_check_attr_quoting_imports_the_shared_jinja_patterns():
+    sys.path.insert(0, SCRIPTS)
+    import check_attr_quoting as mod
+
+    import hygiene_text
+    assert mod.JINJA_COMMENT_RE is hygiene_text.JINJA_COMMENT_RE
+    assert mod.JINJA_RE is hygiene_text.JINJA_EXPR_OR_STMT_RE
+
+
+def test_check_macro_kwargs_imports_the_shared_jinja_comment_pattern():
+    sys.path.insert(0, SCRIPTS)
+    import check_macro_kwargs as mod
+
+    import hygiene_text
+    assert mod.JINJA_COMMENT is hygiene_text.JINJA_COMMENT_RE
+
+
+def test_check_alpine_await_imports_the_shared_jinja_any_pattern():
+    sys.path.insert(0, SCRIPTS)
+    import check_alpine_await as mod
+
+    import hygiene_text
+    assert mod.JINJA_RE is hygiene_text.JINJA_ANY_RE
+
+
+def test_check_dynamic_link_prefixes_html_tag_shape_carries_a_recorded_reason():
+    """Byte-identical to hygiene_text.HTML_TAG_RE by shape (a Flask route
+    converter, not an HTML tag), not imported from it -- the file's own
+    comment records why, rather than leaving the duplication unexplained."""
+    path = os.path.join(SCRIPTS, "check_dynamic_link_prefixes.py")
+    with open(path, encoding="utf-8") as fh:
+        source = fh.read()
+    assert "not imported from it" in source
+    assert "unrelated grammar" in source

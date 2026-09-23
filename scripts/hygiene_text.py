@@ -63,6 +63,16 @@ JINJA_EXPR_OR_STMT_RE = re.compile(r"\{\{.*?\}\}|\{%.*?%\}", re.DOTALL)
 # the code/comment code around it removed.
 JINJA_STMT_OR_COMMENT_RE = re.compile(r"\{%.*?%\}|\{#.*?#\}", re.DOTALL)
 
+# `{{ ... }}` / `{% ... %}` / `{# ... #}` -- any Jinja construct at all,
+# expression, statement or comment together, for a caller that needs to mask
+# out everything Jinja renders as code before parsing what is left as the
+# surrounding attribute's own target language, not the narrower code/comment
+# split JINJA_STMT_OR_COMMENT_RE draws for a caller that wants `{{ }}`
+# output kept.
+JINJA_ANY_RE = re.compile(
+    JINJA_EXPR_OR_STMT_RE.pattern + "|" + JINJA_COMMENT_RE.pattern, re.DOTALL
+)
+
 # An HTML tag -- see the module docstring for why two shapes stay apart.
 HTML_TAG_RE = re.compile(r"<[^>]+>")
 HTML_TAG_RE_LOOSE = re.compile(r"<[^>]*>", re.DOTALL)
