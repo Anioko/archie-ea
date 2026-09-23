@@ -427,6 +427,18 @@ def test_group9_healthy_probe_baseline_no_change_is_measured(
     # nothing new.
     assert msb["relationships_added"] == 0
 
+    # No adapter is registered (module-level test_group7 covers the
+    # contract itself) -- the answer's own external block carries the
+    # absence honestly, not as an empty list standing in for "nothing
+    # happened".
+    assert data["external"] == {
+        "incidents": None,
+        "changes": None,
+        "telemetry": None,
+        "reason": "feed_not_connected",
+    }
+    assert "feed_not_connected" in data["reasons"]
+
 
 def test_group10_the_read_never_writes(app, db_session, make_org, tenant_ctx):
     from app.models.policy_monitoring import MonitoringAlert
