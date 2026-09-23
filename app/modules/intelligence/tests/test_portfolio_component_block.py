@@ -198,14 +198,26 @@ def test_cross_tenant_licence_row_never_appears_mutation_proved(app, db_session,
     # Mutation-proof: reconstruct what the answer would contain if the
     # explicit organization_id predicate decision B requires were ever
     # dropped, and confirm the assertion above is real -- it goes red
-    # against the unfiltered read, not vacuously true.
-    unfiltered_ids = set(
-        _db.session.execute(
-            _db.select(LicenseEntitlement.id).where(LicenseEntitlement.application_id == comp_a.id)
+    # against the unfiltered read, not vacuously true.  The unfiltered
+    # query must run without g.current_org_id so the ORM tenant-isolation
+    # listener does not inject its own WHERE organization_id = ... clause
+    # and mask the cross-tenant row.
+    from flask import g as _g
+
+    prior, _g.current_org_id = _g.current_org_id, None
+    try:
+        unfiltered_ids = set(
+            _db.session.execute(
+                _db.select(LicenseEntitlement.id).where(
+                    LicenseEntitlement.application_id == comp_a.id
+                )
+            )
+            .scalars()
+            .all()
         )
-        .scalars()
-        .all()
-    )
+    finally:
+        _g.current_org_id = prior
+
     assert foreign.id in unfiltered_ids
     with pytest.raises(AssertionError):
         assert foreign.id not in unfiltered_ids
