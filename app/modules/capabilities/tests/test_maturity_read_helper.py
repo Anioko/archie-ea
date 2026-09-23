@@ -490,3 +490,61 @@ def test_13_no_absence_is_ever_rendered_as_a_fabricated_zero(db_session, make_or
         assert '"current": 0' not in serialized
         assert '"target": 0' not in serialized
         assert '"gap": 0' not in serialized
+
+
+# ---------------------------------------------------------------------------
+# get_gap_alerts (14)-(16)
+# ---------------------------------------------------------------------------
+
+
+def test_14_get_gap_alerts_lists_only_the_real_two_or_more_gap(db_session, make_org, tenant_ctx):
+    org_a = make_org("mat1-gapalerts-a14")
+    domain = _domain(db_session, "gapalerts-14")
+    cap_c = _capability(db_session, org_a, domain=domain, current=2, target=4, name="Cap C 14")
+    _cap_d = _capability(db_session, org_a, domain=domain, current=3, target=4, name="Cap D 14")
+    _cap_u = _capability(db_session, org_a, domain=domain, current=None, target=4, name="Cap U 14")
+
+    with tenant_ctx(org_a.id):
+        alerts = CapabilityHeatmapService().get_gap_alerts()
+
+    names = [row["name"] for row in alerts["maturity_gaps"]]
+    assert names == [cap_c.name], names
+    assert _cap_d.name not in names
+    assert _cap_u.name not in names
+
+    row = alerts["maturity_gaps"][0]
+    assert row == {
+        "id": cap_c.id,
+        "name": cap_c.name,
+        "domain": domain.name,
+        "current": 2,
+        "target": 4,
+        "gap": 2,
+    }
+    assert alerts["summary"]["maturity_gap_count"] == 1
+    assert alerts["summary"]["maturity_gap_reason"] is None
+
+
+def test_15_get_gap_alerts_inside_b_excludes_a(db_session, make_org, tenant_ctx):
+    org_a = make_org("mat1-gapalerts-a15")
+    org_b = make_org("mat1-gapalerts-b15")
+    domain = _domain(db_session, "gapalerts-15")
+    cap_a = _capability(db_session, org_a, domain=domain, current=1, target=5, name="Cap A 15")
+
+    with tenant_ctx(org_b.id):
+        alerts = CapabilityHeatmapService().get_gap_alerts()
+
+    names = [row["name"] for row in alerts["maturity_gaps"]]
+    assert cap_a.name not in names
+
+
+def test_16_get_gap_alerts_with_no_tenant_context_fails_closed(db_session, make_org):
+    org = make_org("mat1-gapalerts-notenant-16")
+    domain = _domain(db_session, "gapalerts-notenant-16")
+    _capability(db_session, org, domain=domain, current=1, target=5, name="Should not leak 16")
+
+    # Deliberately no tenant_ctx: g.current_org_id is never set.
+    alerts = CapabilityHeatmapService().get_gap_alerts()
+
+    assert alerts["maturity_gaps"] == []
+    assert alerts["summary"]["maturity_gap_reason"] == "no_tenant_context"

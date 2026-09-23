@@ -356,38 +356,48 @@ class CapabilityHeatmapService:
                 }
             )
 
-        # 3. Critical maturity gaps (current_maturity_level < target by 2+)
-        maturity_gap_caps = (
-            db.session.query(UnifiedCapability, BusinessDomain.name)
-            .join(BusinessDomain, UnifiedCapability.domain_id == BusinessDomain.id)
-            .filter(
-                UnifiedCapability.target_maturity_level.isnot(None),
-                UnifiedCapability.current_maturity_level.isnot(None),
-                (UnifiedCapability.target_maturity_level - UnifiedCapability.current_maturity_level)
-                >= 2,
-            )
-            .order_by(
-                (
-                    UnifiedCapability.target_maturity_level
-                    - UnifiedCapability.current_maturity_level
-                ).desc()
-            )
-            .all()
-        )
+        # 3. Critical maturity gaps (current 2+ levels below target), read
+        # through maturity_for_capability_ids (ADR-MAT-1) so an absence is
+        # never rendered as a fabricated zero (ADR-MAT-2). Fails closed with
+        # no resolvable tenant, the same shape #91 gave get_maturity_heatmap:
+        # no tenant means no tenant's rows, not every tenant's rows.
+        from app.modules.intelligence.services.reason_codes import validate_reason_code
+        from app.utils.tenant_sql import current_org_id
 
-        maturity_gaps = []
-        for cap, domain_name in maturity_gap_caps:
-            gap = (cap.target_maturity_level or 0) - (cap.current_maturity_level or 0)
-            maturity_gaps.append(
-                {
-                    "id": cap.id,
-                    "name": cap.name,
-                    "domain": domain_name,
-                    "current": cap.current_maturity_level or 0,
-                    "target": cap.target_maturity_level or 0,
-                    "gap": gap,
-                }
+        organization_id = current_org_id()
+        if organization_id is None:
+            maturity_gaps = []
+            maturity_gap_reason = validate_reason_code("no_tenant_context")
+        else:
+            # Strict: a shared catalogue row cannot carry this tenant's gap.
+            gap_population = (
+                db.session.query(UnifiedCapability.id, UnifiedCapability.name, BusinessDomain.name)
+                .outerjoin(BusinessDomain, UnifiedCapability.domain_id == BusinessDomain.id)
+                .filter(UnifiedCapability.organization_id == organization_id)
+                .all()
             )
+            identity_by_id = {
+                cap_id: (cap_name, domain_name) for cap_id, cap_name, domain_name in gap_population
+            }
+            blocks = self.maturity_for_capability_ids(
+                list(identity_by_id.keys()), organization_id=organization_id
+            )
+            rows = []
+            for cap_id, block in blocks.items():
+                if block["under_target"] is True and block["target_gap"] >= 2:
+                    cap_name, domain_name = identity_by_id[cap_id]
+                    rows.append(
+                        {
+                            "id": cap_id,
+                            "name": cap_name,
+                            "domain": domain_name,
+                            "current": block["current"],
+                            "target": block["target"],
+                            "gap": block["target_gap"],
+                        }
+                    )
+            maturity_gaps = sorted(rows, key=lambda row: row["gap"], reverse=True)
+            maturity_gap_reason = None
 
         # Count critical items (strategic_importance=critical or business_criticality=mission_critical)
         critical_unmapped = sum(
@@ -405,6 +415,7 @@ class CapabilityHeatmapService:
                 "unmapped_count": len(unmapped),
                 "low_coverage_count": len(low_coverage),
                 "maturity_gap_count": len(maturity_gaps),
+                "maturity_gap_reason": maturity_gap_reason,
                 "critical_gaps": critical_unmapped,
                 "total_alerts": len(unmapped) + len(low_coverage) + len(maturity_gaps),
             },
