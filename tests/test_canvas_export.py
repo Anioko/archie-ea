@@ -235,6 +235,19 @@ class TestForeignCanvasIdExportReturnsNotFound:
         resp = client.get(f"/business-model/{canvas_id}/export?format=mermaid")
         assert resp.status_code == 404
 
+    def test_foreign_business_case_export_404s(
+        self, app, db_session, make_org, client, login_as
+    ):
+        org_a = make_org("cv5-export-nf-case-a")
+        org_b = make_org("cv5-export-nf-case-b")
+        user_b = _make_user(db_session, org_b.id, "CaseExportViewerB")
+        case = _case(db_session, org_a.id, "Org A Case")
+        case_id = case.id
+
+        login_as(client, user_b)
+        resp = client.get(f"/business-case/{case_id}/export?format=mermaid")
+        assert resp.status_code == 404
+
 
 # -- The existing in-tenant saved-diagram share -----------------------------
 
