@@ -1871,8 +1871,8 @@ def _register_tail_blueprints(app, csrf, **flags):
                 f"[BLUEPRINT] Failed to register Roadmap Builder API routes: {e}"
             )
 
-    # Architecture Monitoring — removed (empty shell page, 17 unused API routes)
-    # architecture_monitoring_bp unregistered
+    # Architecture Monitoring API: mounted by app.modules.architecture (v2 and module
+    # tiers) only when ARCHITECTURE_MONITORING_API_ENABLED is on; off by default.
 
     # Typed ARB condition evidence/verify/waive API. Canonical-only surface with
     # no legacy counterpart, so it is not gated on the legacy architecture flag.

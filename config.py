@@ -375,6 +375,10 @@ class Config:
     # this flag is explicitly enabled and an LLM provider is configured.
     AI_PAGE_GUIDE_ENABLED = _env_bool("AI_PAGE_GUIDE_ENABLED", False)
 
+    # Architecture monitoring API is off by default; mounted only when this
+    # flag is explicitly enabled.
+    ARCHITECTURE_MONITORING_API_ENABLED = _env_bool("ARCHITECTURE_MONITORING_API_ENABLED", False)
+
     # File Upload Settings
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB max file size
     ALLOWED_EXTENSIONS = {

@@ -1,10 +1,12 @@
 /* The Ask page.
  *
  * A person opens a question card, types a business noun, chooses a match and
- * gets that question's answer for it. Four questions today: impact (L1,
- * "what breaks"), risk (L6, "what could hurt"), portfolio (L3, a deep link
- * to rationalization planning) and programme (L5, "what's changing"). One
- * question is open at a time
+ * gets that question's answer for it. All six lenses of the catalogue are
+ * here now: impact (L1, "what breaks"), strategy (L2, "what are we trying
+ * to achieve"), portfolio (L3, a deep link to rationalization planning),
+ * accountability (L4, "who's accountable"), programme (L5, "what's
+ * changing") and risk (L6, "what could hurt"). One question is open at a
+ * time
  * (openKey), and one shared picker (fixed input id / $refs.pickerInput --
  * see _entity_picker.html) sits in whichever panel is open; onSelect()
  * dispatches by openKey rather than always loading the impact answer.
@@ -43,6 +45,12 @@ function askSurface() {
         programmeState: 'idle',
         programmeBusy: false,
         workPackages: [],
+        strategyState: 'idle',
+        strategyBusy: false,
+        initiatives: [],
+        accountabilityState: 'idle',
+        accountabilityBusy: false,
+        owners: [],
 
         init() {
             this.twinMapUrl = this.$el.getAttribute('data-twin-map-url') || '';
@@ -77,6 +85,10 @@ function askSurface() {
                 this.loadPortfolio(option.id);
             } else if (this.openKey === 'programme') {
                 this.loadProgramme(option.id);
+            } else if (this.openKey === 'strategy') {
+                this.loadStrategy(option.id);
+            } else if (this.openKey === 'accountability') {
+                this.loadAccountability(option.id);
             } else {
                 this.load(option.id);
             }
@@ -191,6 +203,55 @@ function askSurface() {
                 this.programmeState = 'error';
             }
             this.programmeBusy = false;
+            this.$nextTick(function () { Intelligence.refreshIcons(); });
+        },
+
+        /* L2 counterpart of loadProgramme(). No provenance-drawer sync, same
+           reasoning as risk/programme cards. budgetVariancePct/budgetReason
+           on each row already carry the not-costed distinction from the
+           server -- this method does not recompute or guess a variance. */
+        async loadStrategy(elementId) {
+            this.answeredKey = 'strategy';
+            this.strategyCentreId = elementId;
+            this._strategyLoadSeq = (this._strategyLoadSeq || 0) + 1;
+            var seq = this._strategyLoadSeq;
+            this.strategyBusy = true;
+            this.strategyState = 'loading';
+            try {
+                var payload = await Intelligence.fetchStrategy(elementId, { maxDepth: 3, includeDerived: true });
+                if (seq !== this._strategyLoadSeq) return;
+                this.initiatives = Intelligence.buildInitiatives(payload);
+                this.strategyState = this.initiatives.length ? 'ready' : 'empty';
+            } catch (err) {
+                if (seq !== this._strategyLoadSeq) return;
+                this.initiatives = [];
+                this.strategyState = 'error';
+            }
+            this.strategyBusy = false;
+            this.$nextTick(function () { Intelligence.refreshIcons(); });
+        },
+
+        /* L4 counterpart of loadStrategy(). No provenance-drawer sync, no
+           blast-radius rows -- this lens is a pure ownership lookup, not a
+           traversal, so there is nothing to sync the drawer against. */
+        async loadAccountability(elementId) {
+            this.answeredKey = 'accountability';
+            this.accountabilityCentreId = elementId;
+            this._accountabilityLoadSeq = (this._accountabilityLoadSeq || 0) + 1;
+            var seq = this._accountabilityLoadSeq;
+            this.accountabilityBusy = true;
+            this.accountabilityState = 'loading';
+            try {
+                var payload = await Intelligence.fetchAccountability(elementId);
+                if (seq !== this._accountabilityLoadSeq) return;
+                this.owners = Intelligence.buildOwners(payload);
+                this.accountabilityState = this.owners.length ? 'ready' : 'empty';
+            } catch (err) {
+                if (seq !== this._accountabilityLoadSeq) return;
+                this.owners = [];
+                this.accountabilityState = 'error';
+            }
+            this.accountabilityBusy = false;
             this.$nextTick(function () { Intelligence.refreshIcons(); });
         },
 

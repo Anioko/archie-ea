@@ -17,6 +17,8 @@
     var RISK_URL = '/api/v1/intelligence/risk/';
     var PORTFOLIO_URL = '/api/v1/intelligence/portfolio/';
     var PROGRAMME_URL = '/api/v1/intelligence/programme/';
+    var STRATEGY_URL = '/api/v1/intelligence/strategy/';
+    var ACCOUNTABILITY_URL = '/api/v1/intelligence/accountability/';
     var RECOMPUTE_URL = '/api/v1/intelligence/derivation/recompute';
 
     var ERROR_LINE = 'We could not answer that just now.';
@@ -153,6 +155,90 @@
 
     function buildWorkPackages(payload) {
         return (payload.work_packages || []).map(workPackageModel);
+    }
+
+    /* L2: initiatives seeded on an element, each with its own blast-radius.
+       Same request shape as fetchProgramme. See
+       app/modules/intelligence/routes/api.py:strategy_for_element for what
+       "reasons" can carry (element_not_found, no_tenant_context,
+       no_initiative_linked). */
+    function fetchStrategy(elementId, options) {
+        return Platform.fetch.get(STRATEGY_URL + elementId, {
+            include_derived: options && options.includeDerived ? 'true' : 'false',
+            max_depth: (options && options.maxDepth) || 3
+        }, { silent: true }).then(function (resp) {
+            return resp && resp.data ? resp.data : {};
+        });
+    }
+
+    /* One initiative's server payload turned into the flat camelCase shape
+       ask.js's template reads -- budgetVariancePct is null (not 0) when the
+       initiative was never budgeted, matching the server's own
+       no_budget_recorded reason rather than inventing a number. Success
+       metrics are nested as-is (already a small, flat list server-side). */
+    function initiativeModel(initiative) {
+        return {
+            initiativeId: initiative.initiative_id,
+            name: initiative.name,
+            status: initiative.status,
+            priority: initiative.priority,
+            healthStatus: initiative.health_status,
+            completionPercentage: initiative.completion_percentage,
+            startDate: initiative.start_date,
+            targetEndDate: initiative.target_end_date,
+            executiveSponsor: initiative.executive_sponsor || null,
+            programManager: initiative.program_manager || null,
+            budgetVariancePct: initiative.budget_variance_pct != null ? initiative.budget_variance_pct : null,
+            budgetReason: initiative.budget_reason || null,
+            successMetrics: (initiative.success_metrics || []).map(function (m) {
+                return {
+                    metricName: m.metric_name,
+                    metricType: m.metric_type,
+                    targetValue: m.target_value,
+                    actualValue: m.actual_value,
+                    status: m.status
+                };
+            }),
+            affectedRows: initiative.affected_rows || [],
+            affectedSummary: initiative.affected_summary || {}
+        };
+    }
+
+    function buildInitiatives(payload) {
+        return (payload.initiatives || []).map(initiativeModel);
+    }
+
+    /* L4: owners of the element's ApplicationComponent. Currently WITHDRAWN
+       server-side (see IntelligenceQueryService.accountability_for_element's
+       docstring) -- every response carries ownership_reader_not_built and
+       capacity_not_available regardless of element_id, no owners array
+       ever populated. No max_depth/include_derived -- this lens is a pure
+       ownership lookup, not a blast-radius traversal, unlike every other
+       lens. */
+    function fetchAccountability(elementId) {
+        return Platform.fetch.get(ACCOUNTABILITY_URL + elementId, {}, { silent: true }).then(function (resp) {
+            return resp && resp.data ? resp.data : {};
+        });
+    }
+
+    /* One ownership row's server payload turned into the flat camelCase
+       shape ask.js's template reads. organizationUnit passes through
+       as-is (already a small, flat object or null server-side). */
+    function ownerModel(owner) {
+        return {
+            ownerId: owner.owner_id,
+            ownershipType: owner.ownership_type,
+            ownershipPercentage: owner.ownership_percentage,
+            primaryContact: owner.primary_contact || null,
+            contactEmail: owner.contact_email || null,
+            startDate: owner.start_date,
+            endDate: owner.end_date,
+            organizationUnit: owner.organization_unit || null
+        };
+    }
+
+    function buildOwners(payload) {
+        return (payload.owners || []).map(ownerModel);
     }
 
     // ── small helpers ─────────────────────────────────────────────────────
@@ -384,6 +470,10 @@
         fetchPortfolioComponent: fetchPortfolioComponent,
         fetchProgramme: fetchProgramme,
         buildWorkPackages: buildWorkPackages,
+        fetchStrategy: fetchStrategy,
+        buildInitiatives: buildInitiatives,
+        fetchAccountability: fetchAccountability,
+        buildOwners: buildOwners,
         recompute: recompute,
         timeText: timeText,
         refreshIcons: refreshIcons,
