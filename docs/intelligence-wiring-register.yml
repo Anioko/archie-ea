@@ -977,7 +977,7 @@ rows:
   - value_stream.index
   - intelligence_ui.ask (strategy card)
   engines: []
-  lens: L2 Strategy (value_streams_at_risk, a separate branch; read verified in section 2, method absent from this worktree)
+  lens: L2 Strategy (value_streams_at_risk, a separate branch; read verified in section 2, method not present)
   status: wired
   proposed: null
 - id: IW-40
@@ -1209,6 +1209,24 @@ rows:
   lens: canvases (project_canvas, designed)
   status: wired
   proposed: null
+- id: IW-67
+  fact: Pricing as published on the value proposition (Revenue Streams attribute of the canvases)
+  model: ArchiMateElement
+  table: archimate_elements
+  fields:
+  - acm_properties.pricing_as_published
+  - acm_properties.revenue_model
+  data_class: A
+  writers:
+  - canvas fill-in PATCH (designed)
+  - 'company-context intake approval: a queue row a person approves (designed)'
+  pages:
+  - business_model.index (designed)
+  - the Review list partial (designed)
+  engines: []
+  lens: canvases (project_canvas attribute zone Revenue Streams, designed)
+  status: wired
+  proposed: null
 not_intelligence:
 - id: IW-50
   fact: Duplicate maturity columns outside the authority
@@ -1348,5 +1366,25 @@ not_intelligence:
   where:
   - application_component_fast.py
   reason: A boot-mode mirror of ApplicationComponent's columns, not a second store.
+- id: IW-66
+  fact: Company-context run cost and telemetry
+  where:
+  - company_context_run.py CompanyContextRun.cost_usd, cost_by_call_type, input_tokens, output_tokens, model_calls, general_knowledge_calls, calls_by_type, model_time_seconds, key_scope, plan, provider, model, bound_hit, model_pass_reason (designed)
+  reason: The product's own model spend and run telemetry, the same reason as IW-60; reported on the monthly summary by key scope and by plan, never carried by a lens.
+- id: IW-68
+  fact: Source provenance typed properties on elements approved from the company-context intake
+  where:
+  - acm_property_templates rows source_band, source_page_url, source_read_at, source_run_id seeded for every element type (designed); values in archimate_elements.acm_properties
+  reason: Provenance rendered by the badge, the drawer and every export; a label that follows the element for as long as it exists, never a lens value.
+- id: IW-69
+  fact: Organisation onboarding state from the company-context intake
+  where:
+  - 'organization.py Organization.settings[company_context]: source_url, last_read_at, last_completed_run_id, segment, segment_answered_by_id, segment_answered_at, template_family, guided_order, answers, dismissal_memory_cleared_at, demonstration, demonstration_of, demonstration_generated_at, demonstration_delete_after, demonstration_presenter_id (written only by profile.py, designed and)'
+  reason: Onboarding state of the tenant, not an estate fact; the segment orders the guided path and enters no lens; the demonstration flag is read only by the banner, the export menu, the before-the-call page, the retention job and the demonstration bounds.
+- id: IW-70
+  fact: Step-zero and connector proposals and decisions on the intake run record
+  where:
+  - company_context_run.py CompanyContextRun.step_zero, step_zero_decisions, connector_candidates, connector_decisions, candidates_returned, candidates_dropped, general_knowledge_skipped, wholesale_decision, identity_confirmed (designed)
+  reason: Suggestions on the run record until a person acts (SRS v5 section 3 truth class); no lens reads a run; a confirmed proposal takes effect only through the existing questionnaire, template choice, fill-in and connector screens.
 pipeline_rule:
   statement: 'A new fact-bearing field (any column in a model under app/models or app/modules/*/models whose name matches the fact families: maturity, assessment, health, cost, budget, tco, spend, licence, renewal, contract, vendor, lifecycle, eol, retire, decommission, risk, compliance, control, sla, availability, rto, rpo, criticality, owner, raci, usage, plateau, gap, roadmap, milestone, baseline, drift, score) is not merged without a row in this register that is either wired (lens or engine named, reason code named) or listed under not_intelligence with a reason.'
