@@ -150,12 +150,15 @@ _DERIVABLE_ORG = {
 # longer exists is deleted, idempotently, before that table's derivation or
 # count runs.
 #
-# Empty on this base. The qualifying case is document_chunk_embeddings
-# (document_id, set at its one creation site in
-# document_processing_service.py's chunk_and_embed, joining ai_chat_document_
-# uploads) -- but that table does not carry TenantMixin yet on this branch's
-# base, so it is not among _tenant_tables() and this backfill's per-table
-# loop never reaches it. Add its entry once it gains the mixin.
+# Empty on this base. document_chunk_embeddings is the qualifying case --
+# document_id is set at its one creation site (document_processing_service.py's
+# chunk_and_embed) and joins ai_chat_document_uploads, and it now carries
+# TenantMixin, so it is among _tenant_tables() and reaches this loop. Its
+# entry is not added here yet: the document-delete route still leaves its
+# chunks behind with no cascade, so a purge entry alone would just delete
+# what that route keeps creating rather than closing the leak at its source.
+# A derivation for this table also still lives in reconcile_schema.py rather
+# than here; both are one change together, not made in this one.
 _PURGE_ORPHANS = {}
 
 
