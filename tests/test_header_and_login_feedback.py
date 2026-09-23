@@ -364,8 +364,8 @@ def test_dark_theme_switch_in_user_menu(app, db_session, make_org):
     assert '$store.theme.toggle()' in html, (
         "dark theme switch not bound to $store.theme.toggle()"
     )
-    assert 'role="switch"' in html, (
-        "dark theme toggle missing role='switch'"
+    assert 'role="menuitemcheckbox"' in html, (
+        "dark theme toggle missing role='menuitemcheckbox'"
     )
     assert ':aria-checked="$store.theme.dark' in html, (
         "dark theme switch aria-checked not bound to $store.theme.dark"

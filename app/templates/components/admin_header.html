@@ -183,7 +183,8 @@
 
                     <div class="h-px bg-border my-1" role="separator"></div>
                     <button type="button"
-                            role="menuitem"
+                            role="menuitemcheckbox"
+                            :aria-checked="$store.theme.dark"
                             @click="$store.theme.toggle()"
                             @keydown.enter.prevent="$store.theme.toggle()"
                             @keydown.space.prevent="$store.theme.toggle()"
@@ -192,7 +193,7 @@
                             <i data-lucide="moon" class="h-4 w-4"></i>
                             Dark theme
                         </span>
-                        {{ switch(bind_checked="$store.theme.dark", on_click="$store.theme.toggle()") }}
+                        {{ switch(bind_checked="$store.theme.dark", span_only=true) }}
                     </button>
 
                     <div class="h-px bg-border my-1" role="separator"></div>
