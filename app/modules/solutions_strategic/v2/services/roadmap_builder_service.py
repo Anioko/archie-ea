@@ -638,8 +638,11 @@ class RoadmapBuilderService:
             node_data = {
                 "label": gap.name,
                 "gapType": gap.gap_type,
-                "impactLevel": gap.impact_level,
-                "urgency": gap.urgency,
+                # Gap has no impact_level or urgency column; impact and
+                # severity are the real fields (priority when severity is
+                # unset), the same fix as the work package fields above.
+                "impactLevel": gap.impact,
+                "urgency": gap.severity or gap.priority,
                 "status": gap.resolution_status,
                 "gapId": gap.id,
             }

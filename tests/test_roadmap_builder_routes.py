@@ -200,3 +200,47 @@ def test_timeline_group_by_assigned_to_and_invalid_value(
     resp2 = client.get("/api/roadmap-builder/timeline?group_by=to_dict")
     assert resp2.status_code == 200
     assert resp2.get_json()["data"]["group_by"] == "status"
+
+
+def test_dependency_graph_gap_node_reads_the_gap_and_scopes_to_the_caller(
+    client, login_as, db_session, make_org
+):
+    from app.models.implementation_migration import Gap
+
+    org_a = make_org("rb-gap-a")
+    org_b = make_org("rb-gap-b")
+    user_a = _make_user(db_session, org_a)
+
+    gap_a = Gap(
+        name=f"A-gap-{uuid.uuid4().hex[:8]}",
+        organization_id=org_a.id,
+        resolution_status="identified",
+        impact="high",
+        severity="critical",
+    )
+    gap_b = Gap(
+        name=f"B-gap-{uuid.uuid4().hex[:8]}",
+        organization_id=org_b.id,
+        resolution_status="identified",
+        impact="high",
+        severity="critical",
+    )
+    db_session.add_all([gap_a, gap_b])
+    db_session.flush()
+
+    login_as(client, user_a)
+    resp = client.get(
+        "/api/roadmap-builder/dependency-graph?include_plateaus=false&include_gaps=true"
+    )
+    assert resp.status_code == 200
+    data = resp.get_json()["data"]
+
+    gap_nodes = [n for n in data["nodes"] if n["type"] == "gap"]
+    gap_ids = {n["id"] for n in gap_nodes}
+    assert gap_ids == {f"gap-{gap_a.id}"}
+
+    gap_node_data = gap_nodes[0]["data"]
+    assert gap_node_data["impactLevel"] == "high"
+    assert gap_node_data["urgency"] == "critical"
+
+    assert "B-gap-" not in resp.get_data(as_text=True)
