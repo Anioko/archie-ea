@@ -16,6 +16,7 @@ this branch's base to extend, so this is a new module.
 
 from __future__ import annotations
 
+import click
 import pytest
 from sqlalchemy import text
 
@@ -315,16 +316,18 @@ def test_backfill_leaves_unprovenanced_roadmap_task_null_with_two_orgs(app):
             assert _org_of(provenanced_b_id) == org_b.id
             assert stats_no_org["unresolved"] == {"roadmap_tasks": 1}
 
-            stats_with_org = repair_layer_tenancy(org_id=org_a.id)
+            # Two active, non-default organisations exist (org_a, org_b), so
+            # --org-id is refused before any statement runs, not silently
+            # ignored: an unresolved row is another tenant's data, not a
+            # guess this command is allowed to make with or without one
+            # named explicitly. Row state is exactly what the first call
+            # already left it at.
+            with pytest.raises(click.ClickException):
+                repair_layer_tenancy(org_id=org_a.id)
 
-            # the orphan is still left NULL, never handed to the operator-
-            # chosen organisation, and the already-provenanced rows are
-            # untouched (their statements fill NULLs only, and they are no
-            # longer NULL)
             assert _org_of(orphan_task_id) is None
             assert _org_of(provenanced_a_id) == org_a.id
             assert _org_of(provenanced_b_id) == org_b.id
-            assert stats_with_org["unresolved"] == {"roadmap_tasks": 1}
         finally:
             db.session.rollback()
             db.session.execute(
