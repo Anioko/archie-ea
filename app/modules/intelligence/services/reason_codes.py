@@ -13,9 +13,9 @@ from __future__ import annotations
 
 # sdd-v2.md § API-8 — the original sixteen members, the two T-004 additions,
 # the one T-005 addition, the Portfolio and Programme lenses' three
-# additions, the four T-S1 additions, the two T-S4 additions and the
-# Strategy, Accountability and role-gating additions below (thirty-three
-# total), exactly, nothing invented.
+# additions, the four T-S1 additions, the two T-S4 additions, the
+# Strategy, Accountability and role-gating additions and the two T-WIRE-5
+# additions below (thirty-five total), exactly, nothing invented.
 REASON_CODES = frozenset(
     {
         "no_ownership_recorded",
@@ -135,6 +135,15 @@ REASON_CODES = frozenset(
         # reason code, count or key describes it anywhere.
         "capability_not_linked_to_model",
         "no_success_metric_recorded",
+        # T-WIRE-5 (strategy outcomes and importance) additions: two absence
+        # conditions the strategy lens and the value-streams-at-risk answer
+        # need that no existing member states. ``no_outcome_recorded`` is
+        # emitted when an initiative's goal set is empty or no Goal in it
+        # has an outcome row. ``no_criticality_recorded`` is emitted when a
+        # value stream or capability entry has no strategic_importance (and,
+        # for a capability, no business_criticality either) recorded.
+        "no_outcome_recorded",
+        "no_criticality_recorded",
     }
 )
 
