@@ -255,23 +255,22 @@ _MATRIX_LAYER_TO_KEY = {
 }
 
 
-# Three keys of the pre-existing hand-authored table are not reproduced by
-# any single (source type, target type) pair in the matrix: Goal realises
-# Capability, Capability serves Goal/Outcome, and an Application-layer
-# behaviour accesses a Business object are each asserted at the layer level
-# by the old table, but no specific pair in
-# app/config/archimate_relationship_matrix.py carries that relationship type
-# for that layer pairing. Kept explicitly so this projection stays a strict
-# superset of the table it replaces, as the derivation is designed to
-# produce — narrowing them would be a verdict this task did not set out to
-# change, for the one caller (the quality-score endpoint) that reads this
-# table directly. A matrix row for them, if wanted, is separate follow-up
-# work, not part of deriving this projection.
-_LEGACY_LAYER_ONLY_KEYS = {
-    ("access", "application", "business"),
-    ("realization", "motivation", "strategy"),
-    ("serving", "strategy", "motivation"),
-}
+# Three keys of the pre-existing hand-authored table used to be kept by hand
+# here (`_LEGACY_LAYER_ONLY_KEYS`) because no single (source type, target
+# type) pair in the matrix reproduced them. Settled on the standard instead
+# of carrying it forward:
+#   - ("realization", "motivation", "strategy") -- the old table's
+#     Goal -> Capability. §7.5 runs realization from strategy to motivation,
+#     not the reverse; the matrix now carries Capability -> Goal.
+#   - ("serving", "strategy", "motivation") -- the old table's
+#     Capability serves Goal/Outcome. Motivation elements are realized, not
+#     served; Capability -> Goal and -> Outcome realization are landed above.
+#   - ("access", "application", "business") -- an application behaviour
+#     reaches a business object through the data object that realizes it
+#     (§12.1), not directly.
+# A model holding a relationship of one of these three shapes now scores it
+# invalid on the quality-score endpoint, the one caller that reads this
+# projection directly, exactly as the create route already refuses it.
 
 
 def _build_layer_projection():
@@ -284,8 +283,6 @@ def _build_layer_projection():
             continue
         for rel_type in rel_types:
             projection[(rel_type, source_layer, target_layer)] = True
-    for key in _LEGACY_LAYER_ONLY_KEYS:
-        projection[key] = True
     return projection
 
 
