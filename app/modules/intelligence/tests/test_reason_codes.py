@@ -20,6 +20,11 @@ this fix -- the L3/L5 briefs each added a member to ``reason_codes.py``
 without updating this ratchet, only the two route-count ratchets. Found
 while adding the L2 brief's own ``no_budget_recorded`` member; corrected to
 the real, current set (23) rather than bumped by one on top of a stale base.
+
+The Portfolio-block brief (2026-09-23) added three more --
+``no_cost_recorded``, ``no_health_recorded`` and ``no_licence_recorded`` --
+for the component block's cost, health and licence absence conditions,
+bringing the set to 29.
 """
 
 from __future__ import annotations
@@ -62,11 +67,14 @@ _EXPECTED = {
     "no_ownership_records",
     "capacity_not_available",
     "financial_data_restricted",
+    "no_cost_recorded",
+    "no_health_recorded",
+    "no_licence_recorded",
 }
 
 
-def test_reason_codes_has_exactly_twenty_six_members():
-    assert len(REASON_CODES) == 26
+def test_reason_codes_has_exactly_twenty_nine_members():
+    assert len(REASON_CODES) == 29
     assert REASON_CODES == frozenset(_EXPECTED)
 
 

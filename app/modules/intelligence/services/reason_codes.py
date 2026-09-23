@@ -91,6 +91,18 @@ REASON_CODES = frozenset(
         # not_costed/no_budget_recorded already use for a different kind of
         # absence.
         "financial_data_restricted",
+        # Portfolio-block brief (2026-09-23): the Portfolio lens's component
+        # block adds cost, health and licence facts read from the columns
+        # already entered on the resolved ApplicationComponent (and the two
+        # tables keyed off it). Each part of that block carries its own
+        # absence condition, distinct from the pre-existing
+        # no_application_component (no component at all): a component can
+        # exist with no cost figures entered, no owner-recorded health
+        # status, no fiscal-period cost row and no licence entitlement rows,
+        # independently of one another.
+        "no_cost_recorded",
+        "no_health_recorded",
+        "no_licence_recorded",
     }
 )
 
