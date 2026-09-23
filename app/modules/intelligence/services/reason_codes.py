@@ -116,6 +116,12 @@ REASON_CODES = frozenset(
         "no_capability_linked",
         "value_stream_not_linked_to_model",
         "dependency_direction_unknown",
+        # Impact criticality and recovery objectives: absence conditions on the
+        # cross-layer impact read path that the existing vocabulary does not
+        # cover. Added here, and nowhere else, per this module's own rule that
+        # no endpoint may invent an absence string inline.
+        "no_criticality_recorded",
+        "no_recovery_objective_recorded",
     }
 )
 
