@@ -195,6 +195,12 @@ class User(UserMixin, db.Model):
     # Default: all types enabled. migration-exempt (DDL added in manage.py init_db)
     notification_preferences = db.Column(db.JSON, nullable=True)  # migration-exempt
 
+    # Plain-language display: when False (default), element types and layers use
+    # plain names (e.g. "Application" instead of "ApplicationComponent").
+    # When True, the standard ArchiMate names are shown everywhere.
+    # migration-exempt (DDL added in manage.py init_db)
+    show_archimate_names = db.Column(db.Boolean, nullable=False, default=False, server_default=db.text("false"))  # migration-exempt
+
     @staticmethod
     def normalize_email(email):
         if email is None:

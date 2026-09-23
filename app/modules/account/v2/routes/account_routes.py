@@ -407,6 +407,25 @@ def save_notification_preferences():
     return redirect(url_for("account.manage"))
 
 
+@account_bp_v2.route("/manage/display-preferences", methods=["POST"])
+@login_required
+@timed_route
+def save_display_preferences():
+    """Save display preferences (show_archimate_names) for the current user."""
+    from app import db
+
+    try:
+        current_user.show_archimate_names = (request.form.get("show_archimate_names") == "on")
+        db.session.add(current_user)
+        db.session.commit()
+        flash("Display preferences saved.", "success")
+    except Exception as exc:
+        _log.error("Failed to save display preferences for user %s: %s", current_user.id, exc)
+        db.session.rollback()
+        flash("Could not save preferences. Please try again.", "error")
+    return redirect(url_for("account.manage"))
+
+
 @account_bp_v2.route("/unconfirmed")
 @timed_route
 def unconfirmed():

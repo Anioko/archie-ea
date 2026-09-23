@@ -1844,6 +1844,114 @@ class ArchiMateElementTypes:
 
 
 # =============================================================================
+# Plain-language display names for element types
+# =============================================================================
+# Maps PascalCase ArchiMate type names to plain-language labels so a user who
+# has never heard of ArchiMate can read every screen. The "Show ArchiMate names"
+# user setting (default off) swaps every display back to the standard names.
+# Read by the |plain_name Jinja filter (app/template_helpers.py).
+
+PLAIN_LANGUAGE_NAMES: dict[str, str] = {
+    # Strategy layer
+    "Resource": "Resource",
+    "Capability": "Capability",
+    "CourseOfAction": "Option",
+    "ValueStream": "Value stream",
+    # Business layer
+    "BusinessActor": "Person or team",
+    "BusinessRole": "Role",
+    "BusinessCollaboration": "Collaboration",
+    "BusinessInterface": "Business interface",
+    "BusinessProcess": "Business process",
+    "BusinessFunction": "Business function",
+    "BusinessInteraction": "Business interaction",
+    "BusinessEvent": "Business event",
+    "BusinessService": "Business service",
+    "BusinessObject": "Business information",
+    "Contract": "Contract",
+    "Representation": "Representation",
+    "Product": "Product",
+    # Application layer
+    "ApplicationComponent": "Application",
+    "ApplicationCollaboration": "Application collaboration",
+    "ApplicationInterface": "Application interface",
+    "ApplicationFunction": "Application function",
+    "ApplicationProcess": "Application process",
+    "ApplicationInteraction": "Application interaction",
+    "ApplicationEvent": "Application event",
+    "ApplicationService": "Application service",
+    "DataObject": "Data",
+    # Technology layer
+    "Node": "Platform",
+    "Device": "Device",
+    "SystemSoftware": "Software platform",
+    "TechnologyCollaboration": "Technology collaboration",
+    "TechnologyInterface": "Technology interface",
+    "Path": "Network path",
+    "CommunicationNetwork": "Communication network",
+    "TechnologyFunction": "Technology function",
+    "TechnologyProcess": "Technology process",
+    "TechnologyInteraction": "Technology interaction",
+    "TechnologyEvent": "Technology event",
+    "TechnologyService": "Infrastructure service",
+    "Artifact": "Artifact",
+    # Physical layer
+    "Equipment": "Equipment",
+    "Facility": "Facility",
+    "DistributionNetwork": "Distribution network",
+    "Material": "Material",
+    # Motivation layer
+    "Stakeholder": "Stakeholder",
+    "Driver": "Driver",
+    "Assessment": "Finding",
+    "Goal": "Goal",
+    "Outcome": "Outcome",
+    "Principle": "Principle",
+    "Requirement": "Requirement",
+    "Constraint": "Constraint",
+    "Meaning": "Meaning",
+    "Value": "Value",
+    # Implementation & Migration layer
+    "WorkPackage": "Project",
+    "Deliverable": "Deliverable",
+    "ImplementationEvent": "Milestone",
+    "Plateau": "Stage",
+    "Gap": "Gap",
+}
+
+# Layer display names
+PLAIN_LAYER_NAMES: dict[str, str] = {
+    "strategy": "Strategy",
+    "business": "Business",
+    "application": "Applications",
+    "technology": "Technology",
+    "physical": "Physical",
+    "motivation": "Motivation",
+    "implementation": "Projects and change",
+    "implementation_migration": "Projects and change",
+    "other": "Other",
+}
+
+
+def plain_name_for(element_type: str | None) -> str:
+    """Return the plain-language display name for an ArchiMate element type.
+
+    Returns the original PascalCase name unchanged when no plain name is
+    registered (e.g. for Location, Grouping, Junction, or any future type).
+    """
+    if not element_type:
+        return "—"
+    return PLAIN_LANGUAGE_NAMES.get(element_type, element_type)
+
+
+def plain_layer_name(layer: str | None) -> str:
+    """Return the plain-language display name for an ArchiMate layer."""
+    if not layer:
+        return "—"
+    return PLAIN_LAYER_NAMES.get(layer, layer)
+
+
+# =============================================================================
 # Convenience Constants for Import
 # =============================================================================
 

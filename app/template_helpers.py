@@ -233,6 +233,58 @@ def register_template_filters(app):
         slug = re.sub(r"[\s-]+", "-", slug)
         return slug.strip("-")
 
+    @app.template_filter("plain_name")
+    def plain_name_filter(element_type, user=None):
+        """Return the plain-language display name for an ArchiMate element type.
+
+        When the current user has ``show_archimate_names`` enabled, the
+        original PascalCase name is returned unchanged. Otherwise the
+        plain-language name from PLAIN_LANGUAGE_NAMES is used.
+
+        Usage in templates:
+            {{ element.element_type | plain_name }}
+            {{ element.element_type | plain_name(current_user) }}
+
+        The ``user`` argument is optional; when omitted or None the filter
+        defaults to plain names (the default setting is off).
+        """
+        from app.models.archimate_element_types import plain_name_for
+
+        show_archimate = False
+        if user is not None:
+            try:
+                show_archimate = bool(getattr(user, "show_archimate_names", False))
+            except Exception:
+                pass
+
+        if show_archimate:
+            return element_type or "—"
+        return plain_name_for(element_type)
+
+    @app.template_filter("plain_layer")
+    def plain_layer_filter(layer, user=None):
+        """Return the plain-language display name for an ArchiMate layer.
+
+        Same behaviour as ``plain_name``: respects the user's
+        ``show_archimate_names`` setting.
+
+        Usage in templates:
+            {{ layer | plain_layer }}
+            {{ layer | plain_layer(current_user) }}
+        """
+        from app.models.archimate_element_types import plain_layer_name
+
+        show_archimate = False
+        if user is not None:
+            try:
+                show_archimate = bool(getattr(user, "show_archimate_names", False))
+            except Exception:
+                pass
+
+        if show_archimate:
+            return layer or "—"
+        return plain_layer_name(layer)
+
     # Global template functions
     @app.context_processor
     def currency_context():

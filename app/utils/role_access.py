@@ -414,7 +414,7 @@ _LIBRARY_LINKS = [
     _link("Applications", "unified_applications.application_list", "list"),
     _link("Capabilities", "capability_map.index", "map"),
     _link("Vendors", "unified_applications.vendors", "building"),
-    _link("ArchiMate Elements", "archimate_crud.dashboard", "table"),
+    _link("Architecture", "archimate_crud.dashboard", "table"),
     _link("Diagrams", "archimate.diagrams_library", "layout-panel-top"),
 ]
 
