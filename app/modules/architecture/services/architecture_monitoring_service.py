@@ -957,6 +957,12 @@ class ArchitectureMonitoringService:
                 "alerts": analysis.alerts,
             }
 
+        except LookupError as e:
+            # No baseline to compare against is a routine, expected outcome
+            # (a tenant that has never captured one), not a failure -- no
+            # ERROR log for it.
+            return {"success": False, "error": str(e)}
+
         except Exception as e:
             logger.error(f"Error analyzing drift: {e}")
             return {"success": False, "error": str(e)}
