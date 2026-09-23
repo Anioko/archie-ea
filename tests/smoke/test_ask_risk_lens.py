@@ -94,8 +94,12 @@ def _pick_by_click(page, prefix, name):
 
 
 def test_the_risk_question_shows_the_seeded_risk_with_its_blast_radius(
-    page, live_server, seeded, risk_graph
+    browser, live_server, seeded, risk_graph
 ):
+    context = browser.new_context(viewport={"width": 1440, "height": 900})
+    context.set_default_timeout(PAGE_TIMEOUT)
+    context.set_default_navigation_timeout(PAGE_TIMEOUT)
+    page = context.new_page()
     _login(page, live_server, seeded["emails"]["solution_architect"])
     page.goto(live_server + "/intelligence/ask", wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
     _ready(page, "askSurface")
@@ -114,11 +118,16 @@ def test_the_risk_question_shows_the_seeded_risk_with_its_blast_radius(
     # recomputed in the browser.
     expect(row).to_contain_text("20")
     expect(row).to_contain_text("1 connection")
+    context.close()
 
 
 def test_an_element_with_no_risk_reads_as_an_honest_empty_state(
-    page, live_server, seeded, risk_graph
+    browser, live_server, seeded, risk_graph
 ):
+    context = browser.new_context(viewport={"width": 1440, "height": 900})
+    context.set_default_timeout(PAGE_TIMEOUT)
+    context.set_default_navigation_timeout(PAGE_TIMEOUT)
+    page = context.new_page()
     _login(page, live_server, seeded["emails"]["solution_architect"])
     page.goto(live_server + "/intelligence/ask", wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
     _ready(page, "askSurface")
@@ -131,14 +140,19 @@ def test_an_element_with_no_risk_reads_as_an_honest_empty_state(
 
     expect(page.get_by_text("No risks recorded against this element.")).to_be_visible()
     assert page.locator("[data-ask-risk-row]").count() == 0
+    context.close()
 
 
 def test_switching_between_impact_and_risk_keeps_each_questions_own_answer_separate(
-    page, live_server, seeded, risk_graph
+    browser, live_server, seeded, risk_graph
 ):
     """Regression guard: both questions now share one picker component
     (see ask.js's openKey dispatch) -- opening one must not show or clobber
     the other's already-answered results."""
+    context = browser.new_context(viewport={"width": 1440, "height": 900})
+    context.set_default_timeout(PAGE_TIMEOUT)
+    context.set_default_navigation_timeout(PAGE_TIMEOUT)
+    page = context.new_page()
     _login(page, live_server, seeded["emails"]["solution_architect"])
     page.goto(live_server + "/intelligence/ask", wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
     _ready(page, "askSurface")
@@ -156,3 +170,4 @@ def test_switching_between_impact_and_risk_keeps_each_questions_own_answer_separ
     page.wait_for_selector("[data-ask-risk-row]")
     expect(page.locator("#ask-risk-results")).to_be_visible()
     expect(page.locator("#ask-results")).to_be_hidden()
+    context.close()
