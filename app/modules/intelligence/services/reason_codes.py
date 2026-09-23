@@ -68,6 +68,41 @@ REASON_CODES = frozenset(
         # itself is not reused here so each code stays tied to one field
         # pair's own absence condition.
         "no_budget_recorded",
+        # L4 brief (2026-09-22) additions: Ask's Accountability lens resolves
+        # an element to its ApplicationComponent (reusing L3's own
+        # resolution) then lists ApplicationOwnership rows for it.
+        # no_ownership_records covers the honest-empty case -- a real
+        # component with zero ownership rows -- distinct from the
+        # pre-existing no_ownership_recorded (a single element's owner
+        # field inside the L1 impact traversal, a different table and a
+        # different absence condition). capacity_not_available is not a
+        # per-request absence at all: no Workforce/Skill/Headcount model
+        # exists anywhere in this codebase, so every accountability
+        # response, success included, honestly discloses that gap rather
+        # than silently answering only half the lens's own question.
+        "no_ownership_records",
+        "capacity_not_available",
+        # Role-gating brief (2026-09-22): financial figures on the Strategy
+        # and Programme lenses (budget/cost variance) are redacted at the
+        # route layer for roles without budget authority (mirrors
+        # ROLE_SECTION_ACCESS's existing role-gating precedent, applied here
+        # per-field rather than per-page). Redaction is honest, not silent:
+        # the field is None and this reason names why, the same discipline
+        # not_costed/no_budget_recorded already use for a different kind of
+        # absence.
+        "financial_data_restricted",
+        # PR #107 defect remediation (2026-09-23): the L4 Accountability
+        # lens's ownership read is withdrawn -- the original implementation
+        # read ApplicationOwnership/OrganizationUnit directly with a real,
+        # unreviewed tenant-isolation gap on OrganizationUnit (no
+        # TenantMixin, no tenant predicate on the fetch), rather than reuse
+        # the existing tenant-checked _resolve_owners_batch pattern. Every
+        # accountability response carries this reason until a shared,
+        # tenant-safe reader exists -- see
+        # IntelligenceQueryService.accountability_for_element's docstring.
+        # Distinct from a "decision pending" state: the data source is
+        # already decided, only the safe reader is missing.
+        "ownership_reader_not_built",
     }
 )
 

@@ -18,6 +18,7 @@
     var PORTFOLIO_URL = '/api/v1/intelligence/portfolio/';
     var PROGRAMME_URL = '/api/v1/intelligence/programme/';
     var STRATEGY_URL = '/api/v1/intelligence/strategy/';
+    var ACCOUNTABILITY_URL = '/api/v1/intelligence/accountability/';
     var RECOMPUTE_URL = '/api/v1/intelligence/derivation/recompute';
 
     var ERROR_LINE = 'We could not answer that just now.';
@@ -205,6 +206,39 @@
 
     function buildInitiatives(payload) {
         return (payload.initiatives || []).map(initiativeModel);
+    }
+
+    /* L4: owners of the element's ApplicationComponent. Currently WITHDRAWN
+       server-side (see IntelligenceQueryService.accountability_for_element's
+       docstring) -- every response carries ownership_reader_not_built and
+       capacity_not_available regardless of element_id, no owners array
+       ever populated. No max_depth/include_derived -- this lens is a pure
+       ownership lookup, not a blast-radius traversal, unlike every other
+       lens. */
+    function fetchAccountability(elementId) {
+        return Platform.fetch.get(ACCOUNTABILITY_URL + elementId, {}, { silent: true }).then(function (resp) {
+            return resp && resp.data ? resp.data : {};
+        });
+    }
+
+    /* One ownership row's server payload turned into the flat camelCase
+       shape ask.js's template reads. organizationUnit passes through
+       as-is (already a small, flat object or null server-side). */
+    function ownerModel(owner) {
+        return {
+            ownerId: owner.owner_id,
+            ownershipType: owner.ownership_type,
+            ownershipPercentage: owner.ownership_percentage,
+            primaryContact: owner.primary_contact || null,
+            contactEmail: owner.contact_email || null,
+            startDate: owner.start_date,
+            endDate: owner.end_date,
+            organizationUnit: owner.organization_unit || null
+        };
+    }
+
+    function buildOwners(payload) {
+        return (payload.owners || []).map(ownerModel);
     }
 
     // ── small helpers ─────────────────────────────────────────────────────
@@ -438,6 +472,8 @@
         buildWorkPackages: buildWorkPackages,
         fetchStrategy: fetchStrategy,
         buildInitiatives: buildInitiatives,
+        fetchAccountability: fetchAccountability,
+        buildOwners: buildOwners,
         recompute: recompute,
         timeText: timeText,
         refreshIcons: refreshIcons,

@@ -4,9 +4,15 @@ hurt this, and what does it touch" -- reuses the same traversal per risk
 seed), ``portfolio_component_for_element`` (L3, resolves an element to its
 ApplicationComponent for the one existing deep link), ``programme_for_element``
 (L5, "what are we changing, is it on time and on budget" -- reuses the same
-traversal per work-package seed) and ``strategy_for_element`` (L2, "what are
+traversal per work-package seed), ``strategy_for_element`` (L2, "what are
 we trying to achieve, and how's it tracking" -- reuses the same traversal per
-initiative seed). L4 (Accountability & capacity) remains unbuilt.
+initiative seed). ``accountability_for_element`` (L4) exists as a route and
+question card but is currently WITHDRAWN -- it returns an honest
+``ownership_reader_not_built`` reason on every call: the ownership data
+source is decided, no shared tenant-safe reader for it exists yet, and a
+real tenant-scoping fix to ``OrganizationUnit`` is needed before one is
+safe to build -- see the method's own docstring. Five of six lenses in
+``intelligence-lenses-v1.md`` are currently answered.
 """
 
 from __future__ import annotations
@@ -32,6 +38,19 @@ NO_WORK_PACKAGE_RECORDED_REASON = validate_reason_code("no_work_package_recorded
 NOT_COSTED_REASON = validate_reason_code("not_costed")
 NO_INITIATIVE_LINKED_REASON = validate_reason_code("no_initiative_linked")
 NO_BUDGET_RECORDED_REASON = validate_reason_code("no_budget_recorded")
+# Distinct from NO_OWNERSHIP_REASON above ("no_ownership_recorded") -- that
+# one describes a single element's missing owner field inside the L1 impact
+# traversal; this one describes an ApplicationComponent with zero
+# ApplicationOwnership rows at all, a different absence condition on a
+# different table, for L4. Currently unused -- accountability_for_element's
+# ownership read is withdrawn (see its own docstring), so nothing produces
+# this today; kept in the closed vocabulary for whichever reader replaces
+# the withdrawn one, not removed on the strength of a temporary gap.
+NO_OWNERSHIP_RECORDS_REASON = validate_reason_code("no_ownership_records")
+CAPACITY_NOT_AVAILABLE_REASON = validate_reason_code("capacity_not_available")
+# Distinct from a "decision pending" state -- the ownership data source IS
+# decided; what doesn't exist yet is a shared, tenant-safe reader for it.
+OWNERSHIP_READER_NOT_BUILT_REASON = validate_reason_code("ownership_reader_not_built")
 
 # T-005 (D1): the NFR-5 measurement point is this exact, PINNED series --
 # never widened, never aggregated across label values.
@@ -1120,6 +1139,50 @@ class IntelligenceQueryService:
                 )
 
         return {"initiatives": initiative_payloads, "reasons": [], "elements": all_elements}
+
+    @staticmethod
+    def accountability_for_element(element_id: int) -> Dict[str, Any]:
+        """L4, "who's accountable for ___, and can they take on more?":
+        WITHDRAWN -- the ownership data source is decided, but no shared,
+        tenant-safe reader for it exists yet, and this method's own first
+        version shipped one anyway rather than using the one that already
+        existed. Not a "still undecided" state; a "not built safely yet"
+        one, and the two must not be conflated in copy or reason naming.
+
+        The original version re-implemented the element -> component ->
+        ownership -> unit chain that ``_resolve_owners_batch``/
+        ``_sec09_tenant_check`` already provide (``cross_layer_impact``'s
+        own owner field), without that function's tenant assertion. It also
+        had a real, unreviewed tenant-isolation gap of its own:
+        ``OrganizationUnit`` carries no ``TenantMixin``/``organization_id``,
+        and the original fetched it by ``organization_unit_id`` with no
+        tenant predicate at all, so a cross-tenant-seeded
+        ``organization_unit_id`` on an otherwise correctly-scoped
+        ``ApplicationOwnership`` row would have leaked another
+        organisation's unit name/type/head-of-unit -- not caught by this
+        lens's own tests, which only exercised the element-level
+        cross-tenant case. It also showed expired ownership (no
+        ``end_date`` filter) as current, and serialised PII fields
+        (``contact_email``, ``head_of_unit``, ...) nothing in the template
+        ever rendered.
+
+        Withdrawing the read entirely -- no query against either table --
+        rather than patching those in place, since the underlying gap
+        (``OrganizationUnit`` has no tenant scoping of its own) needs a
+        real, separate fix before ANY reader of it is safe, not just this
+        one. The route, question card and tests stay in place so the lens
+        is easy to re-enable once a shared, tenant-safe reader exists;
+        only the query itself is disabled.
+        """
+        # No record_query_latency wrapper -- there is no query to time, and
+        # sampling a constant into the NFR-5 latency series would only
+        # dilute it with meaningless near-zero readings.
+        del element_id  # withdrawn; kept for a stable call signature
+        return {
+            "owners": [],
+            "capacity_not_available": True,
+            "reasons": [OWNERSHIP_READER_NOT_BUILT_REASON, CAPACITY_NOT_AVAILABLE_REASON],
+        }
 
 
 __all__ = ["IntelligenceQueryService"]
