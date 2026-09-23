@@ -1366,12 +1366,22 @@ class ArchitectureMonitoringService:
         change. The hash lets a comparison detect that edit without storing
         the name (or any other field) itself in the snapshot -- only the
         digest is kept, which does not reveal what it was taken over.
+
+        ``layer`` is canonicalised before hashing: the column's own type
+        decorator (``_ArchiMateLayerType``) lower-cases it on the way back
+        out of a SELECT, but an element captured in the same session it was
+        written in has not made that round trip yet and still carries its
+        as-assigned spelling, which would otherwise hash differently from
+        the same element re-read later and register a one-off phantom
+        change.
         """
+        from app.models.models import canonical_archimate_layer
+
         payload = json.dumps(
             {
                 "name": el.name,
                 "type": el.type,
-                "layer": el.layer,
+                "layer": canonical_archimate_layer(el.layer),
                 "custom_properties": el.custom_properties,
                 "documentation": el.documentation,
             },
