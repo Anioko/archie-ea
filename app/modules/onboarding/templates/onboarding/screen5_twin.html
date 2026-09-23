@@ -28,21 +28,13 @@
             procurement: {label: 'Go to Vendor Dashboard', href: '/vendors/'},
         },
         submitting: false,
-        csrfToken() {
-            const meta = document.querySelector('meta[name=csrf-token]');
-            return (meta && meta.content) || '';
-        },
-        fetcher() {
-            return (window.Platform && window.Platform.fetch) || window.apiFetch || fetch;
-        },
         finish() {
             this.submitting = true;
-            const f = this.fetcher();
-            f('{{ url_for('onboarding.finish') }}', {
+            window.Platform.fetch('{{ url_for('onboarding.finish') }}', {
                 method: 'POST',
-                headers: {'Content-Type': 'application/json', 'X-CSRFToken': this.csrfToken()},
-                body: JSON.stringify({enterprise_role: this.selectedRole}),
-            }).then(r => r.json()).then(data => {
+                body: {enterprise_role: this.selectedRole},
+                silent: true,
+            }).then(data => {
                 const href = (data && data.data && data.data.next) || (this.primaryCTA[this.selectedRole] || {}).href || '/dashboard/overview';
                 window.location.href = href;
             }).catch(() => { window.location.href = '/dashboard/overview'; });

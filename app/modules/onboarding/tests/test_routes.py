@@ -108,3 +108,128 @@ def test_gap_action_assign_marks_the_gap_recorded(app, db_session, make_org):
     recorded = _recorded_for_org(org)
 
     assert "founder_ceo" in recorded["roles"], "an assigned gap should count as recorded"
+
+
+def test_website_field_saves_the_address_and_says_reading_is_not_available(
+    app, db_session, make_org, client, login_as
+):
+    """Screen 2's website field posts here. It must answer 200 with an honest
+    "not available yet" message and record the address on the organisation
+    profile -- never 500, never a fabricated reading."""
+    org = make_org("website")
+    user = _make_user(db_session, org)
+    login_as(client, user)
+
+    resp = client.post(
+        "/onboarding/api/website",
+        json={"source_url": "https://example.com"},
+    )
+
+    assert resp.status_code == 200, resp.get_data(as_text=True)
+    body = resp.get_json()
+    assert body["data"]["status"] == "not_available_yet"
+    from app.modules.onboarding.services import profile
+
+    db_session.refresh(org)
+    assert profile.read(org)["source_url"] == "https://example.com"
+
+
+def test_website_field_without_an_address_is_a_400_not_a_500(
+    app, db_session, make_org, client, login_as
+):
+    org = make_org("website-empty")
+    user = _make_user(db_session, org)
+    login_as(client, user)
+
+    resp = client.post("/onboarding/api/website", json={"source_url": "   "})
+
+    assert resp.status_code == 400
+
+
+def _logged_in(db_session, make_org, client, login_as, name):
+    org = make_org(name)
+    user = _make_user(db_session, org)
+    login_as(client, user)
+    return org, user
+
+
+def test_company_step_json_post_returns_the_next_screen(app, db_session, make_org, client, login_as):
+    org, _ = _logged_in(db_session, make_org, client, login_as, "company-json")
+
+    resp = client.post(
+        "/onboarding/company",
+        json={"stage": "early_revenue", "company_size": "8 people"},
+    )
+
+    assert resp.status_code == 200, resp.get_data(as_text=True)
+    assert resp.get_json()["data"]["next"].endswith("/onboarding/first-question")
+    from app.modules.onboarding.services import profile
+
+    db_session.refresh(org)
+    assert profile.read(org)["stage"] == "early_revenue"
+
+
+def test_company_step_rejects_an_unknown_stage(app, db_session, make_org, client, login_as):
+    _logged_in(db_session, make_org, client, login_as, "company-bad-stage")
+
+    resp = client.post("/onboarding/company", json={"stage": "nonsense"})
+
+    assert resp.status_code == 400
+
+
+def test_first_question_may_be_skipped_and_still_advances(app, db_session, make_org, client, login_as):
+    _logged_in(db_session, make_org, client, login_as, "first-question")
+
+    resp = client.post("/onboarding/first-question", json={"answer": ""})
+
+    assert resp.status_code == 200, resp.get_data(as_text=True)
+    assert resp.get_json()["data"]["next"].endswith("/onboarding/gaps")
+
+
+def test_a_gap_can_be_accepted_with_a_reason_and_is_recorded(app, db_session, make_org, client, login_as):
+    org, _ = _logged_in(db_session, make_org, client, login_as, "gap-accept")
+
+    resp = client.post(
+        "/onboarding/gaps/selling/action",
+        json={"action": "accept", "reason": "Planned for Q1"},
+    )
+
+    assert resp.status_code == 200, resp.get_data(as_text=True)
+    from app.modules.onboarding.services import profile
+
+    db_session.refresh(org)
+    assert profile.read(org)["accepted_gaps"]["selling"]["reason"] == "Planned for Q1"
+
+
+def test_finishing_onboarding_records_completion_once_and_returns_the_dashboard(
+    app, db_session, make_org, client, login_as
+):
+    _, user = _logged_in(db_session, make_org, client, login_as, "finish")
+    assert user.onboarding_completed_at is None
+
+    resp = client.post("/onboarding/finish", json={"enterprise_role": "cto"})
+
+    assert resp.status_code == 200, resp.get_data(as_text=True)
+    assert resp.get_json()["data"]["next"].endswith("/dashboard/overview")
+    db_session.refresh(user)
+    assert user.onboarding_completed_at is not None
+    assert user.enterprise_role == "cto"
+
+
+def test_saved_answers_with_quotes_are_escaped_into_the_page_state(
+    app, db_session, make_org, client, login_as
+):
+    """Screen 2 seeds its Alpine state from saved answers. A company size or
+    industry containing an apostrophe or double quote must not terminate the
+    x-data attribute or the JS string (which silently kills every control)."""
+    from app.modules.onboarding.services import profile
+
+    org, _ = _logged_in(db_session, make_org, client, login_as, "quotes")
+    profile.write(org, stage="growing", company_size='Bob\'s "Co"', industry="Men's wear")
+
+    resp = client.get("/onboarding/company")
+
+    html = resp.get_data(as_text=True)
+    assert resp.status_code == 200
+    assert 'companySize: &#34;Bob' in html, "value must be a JSON string, HTML-escaped for the attribute"
+    assert 'companySize: "Bob' not in html, "a raw double quote would end the x-data attribute early"

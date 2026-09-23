@@ -4,23 +4,15 @@
 
 {% block wizard_content %}
 <div x-data="{
-        answer: {{ (current.first_question_answer or '') | tojson }},
+        answer: {{ (current.first_question_answer or '') | tojson | forceescape }},
         submitting: false,
-        csrfToken() {
-            const meta = document.querySelector('meta[name=csrf-token]');
-            return (meta && meta.content) || '';
-        },
-        fetcher() {
-            return (window.Platform && window.Platform.fetch) || window.apiFetch || fetch;
-        },
         go(skip) {
             this.submitting = true;
-            const f = this.fetcher();
-            f('{{ url_for('onboarding.first_question') }}', {
+            window.Platform.fetch('{{ url_for('onboarding.first_question') }}', {
                 method: 'POST',
-                headers: {'Content-Type': 'application/json', 'X-CSRFToken': this.csrfToken()},
-                body: JSON.stringify({answer: skip ? '' : this.answer}),
-            }).then(r => r.json()).then(data => {
+                body: {answer: skip ? '' : this.answer},
+                silent: true,
+            }).then(data => {
                 this.submitting = false;
                 if (data && data.success && data.data && data.data.next) {
                     window.location.href = data.data.next;

@@ -5,25 +5,16 @@
 
 {% block wizard_content %}
 <div x-data="{
-        gaps: {{ gaps | tojson }},
+        gaps: {{ gaps | tojson | forceescape }},
         assigning: null,
         assignee: '',
         acceptReason: '',
-        csrfToken() {
-            const meta = document.querySelector('meta[name=csrf-token]');
-            return (meta && meta.content) || '';
-        },
-        fetcher() {
-            return (window.Platform && window.Platform.fetch) || window.apiFetch || fetch;
-        },
         act(gapId, action, extra) {
-            const f = this.fetcher();
             const body = Object.assign({action: action}, extra || {});
-            f('{{ url_for('onboarding.gap_action', gap_id='__ID__') }}'.replace('__ID__', encodeURIComponent(gapId)), {
+            window.Platform.fetch('{{ url_for('onboarding.gap_action', gap_id='__ID__') }}'.replace('__ID__', encodeURIComponent(gapId)), {
                 method: 'POST',
-                headers: {'Content-Type': 'application/json', 'X-CSRFToken': this.csrfToken()},
-                body: JSON.stringify(body),
-            }).then(r => r.json()).then(data => {
+                body: body,
+            }).then(data => {
                 if (data && data.success) {
                     const g = this.gaps.find(x => x.gap_id === gapId);
                     if (g) {

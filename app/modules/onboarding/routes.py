@@ -85,7 +85,7 @@ def company():
             handles_card_data_directly=bool(data.get("handles_card_data_directly")),
         )
         if request.is_json:
-            return jsonify(success_response({"next": url_for("onboarding.first_question")}))
+            return success_response({"next": url_for("onboarding.first_question")})
         return redirect(url_for("onboarding.first_question"))
 
     return render_template(
@@ -107,11 +107,11 @@ def api_website_read():
     if not source_url:
         return jsonify({"success": False, "error": "no_address"}), 400
     profile.write(org, source_url=source_url)
-    return jsonify(success_response({
+    return success_response({
         "status": "not_available_yet",
         "message": "Reading your site isn't available yet -- we've saved the address "
                     "and will use it as soon as this is ready.",
-    }))
+    })
 
 
 @onboarding_bp.route("/first-question", methods=["GET", "POST"])
@@ -123,7 +123,7 @@ def first_question():
         answer = (data.get("answer") or "").strip()[:1000]
         profile.write(org, first_question_answer=answer or None)
         if request.is_json:
-            return jsonify(success_response({"next": url_for("onboarding.gaps")}))
+            return success_response({"next": url_for("onboarding.gaps")})
         return redirect(url_for("onboarding.gaps"))
     return render_template("onboarding/screen3_first_question.html", current=profile.read(org))
 
@@ -209,7 +209,7 @@ def gap_action(gap_id: str):
         profile.write(org, assigned_gaps=assigned)
     else:
         return jsonify({"success": False, "error": "invalid_action"}), 400
-    return jsonify(success_response({"gap_id": gap_id, "action": action}))
+    return success_response({"gap_id": gap_id, "action": action})
 
 
 @onboarding_bp.route("/twin")
@@ -221,8 +221,10 @@ def twin():
 @onboarding_bp.route("/finish", methods=["POST"])
 @login_required
 def finish():
-    """Delegates to the existing completion endpoint -- onboarding_completed_at
-    stays the one place completion is recorded, not a second flag."""
+    """Record completion. Writes the same User.onboarding_completed_at (and
+    optional enterprise_role) as dashboard.api_onboarding_complete -- one
+    column, so no second "onboarding done" flag exists, but this route holds
+    its own copy of that small write rather than calling the other endpoint."""
     data = request.get_json(silent=True) or {}
     new_role = data.get("enterprise_role")
     valid_roles = {
@@ -234,4 +236,4 @@ def finish():
         current_user.enterprise_role = new_role
     current_user.onboarding_completed_at = datetime.datetime.utcnow()
     db.session.commit()
-    return jsonify(success_response({"next": url_for("dashboard.overview")}))
+    return success_response({"next": url_for("dashboard.overview")})

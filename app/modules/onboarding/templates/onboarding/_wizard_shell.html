@@ -4,6 +4,12 @@
 
 {% block title %}{{ step_title | default('Getting started') }} — A.R.C.H.I.E.{% endblock %}
 
+{# layouts/base.html does not load the platform core; the screens call
+   Platform.fetch, so load the same bundle every other signed-in layout does. #}
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/bundles/core-admin.js') }}"></script>
+{% endblock %}
+
 {% block content %}
 <div class="min-h-screen flex flex-col items-center justify-center bg-background px-4 py-10">
     <div class="w-full max-w-2xl">

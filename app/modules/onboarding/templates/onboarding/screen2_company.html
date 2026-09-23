@@ -4,31 +4,23 @@
 
 {% block wizard_content %}
 <div x-data="{
-        stage: '{{ current.stage or '' }}',
-        companySize: '{{ current.company_size or '' }}',
-        industry: '{{ current.industry or '' }}',
-        sourceUrl: '{{ current.source_url or '' }}',
+        stage: {{ (current.stage or '') | tojson | forceescape }},
+        companySize: {{ (current.company_size or '') | tojson | forceescape }},
+        industry: {{ (current.industry or '') | tojson | forceescape }},
+        sourceUrl: {{ (current.source_url or '') | tojson | forceescape }},
         regionEu: {{ (current.region_europe_or_eu_customers | default(false)) | tojson }},
         cardData: {{ (current.handles_card_data_directly | default(false)) | tojson }},
         submitting: false,
         readingMessage: '',
         readingStatus: '',
         errorMessage: '',
-        csrfToken() {
-            const meta = document.querySelector('meta[name=csrf-token]');
-            return (meta && meta.content) || '';
-        },
-        fetcher() {
-            return (window.Platform && window.Platform.fetch) || window.apiFetch || fetch;
-        },
         readSite() {
             if (!this.sourceUrl) { return; }
-            const f = this.fetcher();
-            f('{{ url_for('onboarding.api_website_read') }}', {
+            window.Platform.fetch('{{ url_for('onboarding.api_website_read') }}', {
                 method: 'POST',
-                headers: {'Content-Type': 'application/json', 'X-CSRFToken': this.csrfToken()},
-                body: JSON.stringify({source_url: this.sourceUrl}),
-            }).then(r => r.json()).then(data => {
+                body: {source_url: this.sourceUrl},
+                silent: true,
+            }).then(data => {
                 this.readingMessage = (data && data.data && data.data.message) || 'Saved.';
                 this.readingStatus = (data && data.data && data.data.status) || '';
             }).catch(() => {
@@ -39,19 +31,18 @@
             if (!this.stage) { this.errorMessage = 'Pick the stage that fits best.'; return; }
             this.submitting = true;
             this.errorMessage = '';
-            const f = this.fetcher();
-            f('{{ url_for('onboarding.company') }}', {
+            window.Platform.fetch('{{ url_for('onboarding.company') }}', {
                 method: 'POST',
-                headers: {'Content-Type': 'application/json', 'X-CSRFToken': this.csrfToken()},
-                body: JSON.stringify({
+                body: {
                     stage: this.stage,
                     company_size: this.companySize,
                     industry: this.industry,
                     source_url: this.sourceUrl,
                     region_europe_or_eu_customers: this.regionEu,
                     handles_card_data_directly: this.cardData,
-                }),
-            }).then(r => r.json()).then(data => {
+                },
+                silent: true,
+            }).then(data => {
                 this.submitting = false;
                 if (data && data.success && data.data && data.data.next) {
                     window.location.href = data.data.next;

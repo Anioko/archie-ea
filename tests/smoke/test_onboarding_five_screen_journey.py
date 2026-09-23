@@ -64,7 +64,7 @@ def _login(page, base, email):
 def test_a_new_user_is_redirected_into_onboarding_not_the_dashboard(live_server, fresh_user, browser):
     page = browser.new_page()
     try:
-        _login(page, live_server.base, fresh_user["email"])
+        _login(page, live_server, fresh_user["email"])
         page.wait_for_timeout(500)
         assert "/onboarding/welcome" in page.url, (
             "a genuinely new user with an empty workspace must land in onboarding, "
@@ -77,7 +77,7 @@ def test_a_new_user_is_redirected_into_onboarding_not_the_dashboard(live_server,
 def test_the_five_screens_walk_through_to_the_dashboard(live_server, fresh_user, browser):
     page = browser.new_page()
     try:
-        _login(page, live_server.base, fresh_user["email"])
+        _login(page, live_server, fresh_user["email"])
         page.wait_for_timeout(500)
 
         # Screen 1: Welcome
@@ -88,16 +88,16 @@ def test_the_five_screens_walk_through_to_the_dashboard(live_server, fresh_user,
         # Screen 2: Bring your company (the only mandatory step)
         page.check("input[value='early_revenue']")
         page.fill("#company_size", "8 people")
-        page.click("text=Continue")
+        page.get_by_role("button", name="Continue").click()
         page.wait_for_url(lambda url: "/onboarding/first-question" in url, timeout=PAGE_TIMEOUT)
 
         # Screen 3: First question -- skip it, it must be optional
-        page.click("text=Skip")
+        page.get_by_role("button", name="Skip", exact=True).click()
         page.wait_for_url(lambda url: "/onboarding/gaps" in url, timeout=PAGE_TIMEOUT)
 
         # Screen 4: Fill the gaps -- the review section shows its genuine empty state
         assert "Nothing to review yet" in page.inner_text("body")
-        page.click("text=Continue")
+        page.get_by_role("link", name="Continue").click()
         page.wait_for_url(lambda url: "/onboarding/twin" in url, timeout=PAGE_TIMEOUT)
 
         # Screen 5: Your twin -- finish
@@ -116,7 +116,9 @@ def test_the_website_field_is_an_honest_stub_not_a_dead_control(live_server, fre
     so rather than silently doing nothing (dead-interactions/fabricated-data)."""
     page = browser.new_page()
     try:
-        _login(page, live_server.base, fresh_user["email"])
+        _login(page, live_server, fresh_user["email"])
+        page.wait_for_timeout(500)
+        page.click("text=Let's go")
         page.wait_for_url(lambda url: "/onboarding/company" in url, timeout=PAGE_TIMEOUT)
         page.fill("#source_url", "https://example.com")
         page.click("text=Read our site")
@@ -157,7 +159,7 @@ def test_a_returning_teammate_enters_at_the_first_question(live_server, fresh_us
 
     page = browser.new_page()
     try:
-        _login(page, live_server.base, teammate_email)
+        _login(page, live_server, teammate_email)
         page.wait_for_timeout(500)
         assert "/onboarding/first-question" in page.url, (
             "an invited teammate whose org already has a stage recorded should "
