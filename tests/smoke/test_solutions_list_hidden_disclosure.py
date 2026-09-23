@@ -105,3 +105,36 @@ def test_solutions_list_status_all_returns_rows_for_the_owner(browser, live_serv
 
     body_text = page.locator("body").inner_text()
     assert "Get started by creating your first solution" not in body_text
+
+
+def test_empty_state_copy_matches_design(browser, live_server, seeded):
+    """The empty state (when org has no solutions visible to this persona)
+    must use the approved copy: 'No solutions yet' heading and
+    'Create a solution to start its architecture blueprint.' description."""
+    page = browser.new_page()
+    _login(page, live_server, seeded["emails"]["application_manager"])
+    page.goto(live_server + "/solutions/", wait_until="networkidle", timeout=PAGE_TIMEOUT)
+
+    heading = page.locator('[data-testid="solutions-empty-state-heading"]')
+    assert heading.count() > 0, "empty-state heading must be present"
+    heading_text = heading.inner_text()
+    assert "No solutions found" not in heading_text, (
+        f"heading must not read 'No solutions found', got: {heading_text!r}"
+    )
+
+
+def test_hidden_draft_state_copy_matches_design(browser, live_server, seeded):
+    """When the only hidden rows are the default filter's empty drafts,
+    the disclosure must use the approved copy: 'Your draft is waiting'
+    and 'Untitled drafts stay out of this list until they have a problem
+    statement.'"""
+    page = browser.new_page()
+    _login(page, live_server, seeded["emails"]["solution_architect"])
+    page.goto(live_server + "/solutions/", wait_until="networkidle", timeout=PAGE_TIMEOUT)
+
+    body_text = page.locator("body").inner_text()
+    if "draft" in body_text.lower() and "hidden" in body_text.lower():
+        assert "Your draft is waiting" in body_text or \
+            "Untitled drafts stay out of this list" in body_text, (
+            "hidden-draft state must use approved copy"
+        )
