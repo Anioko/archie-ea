@@ -231,7 +231,7 @@
     <div id="ask-accountability-results" aria-busy="false" :aria-busy="accountabilityBusy ? 'true' : 'false'" x-show="answeredKey === 'accountability' && accountabilityState !== 'idle'" x-cloak class="space-y-4">
         <h2 id="ask-accountability-results-heading" x-ref="accountabilityResultsHeading" tabindex="-1" class="text-lg font-semibold text-foreground focus:outline-none">Results</h2>
         <div x-show="accountabilityState === 'loading'" x-cloak role="status" aria-label="Loading" class="h-16 animate-pulse rounded-lg border border-border bg-muted/30"></div>
-        <p x-show="accountabilityState === 'empty'" x-cloak class="text-sm text-muted-foreground">Ownership data is not yet connected for any element -- awaiting a product decision on the record of truth.</p>
+        <p x-show="accountabilityState === 'empty'" x-cloak class="text-sm text-muted-foreground">Ownership data is not yet connected.</p>
         <p x-show="accountabilityState === 'error'" x-cloak class="text-sm text-destructive">Could not load ownership records for this element.</p>
         <ul class="space-y-3" x-show="accountabilityState === 'ready'" x-cloak>
             <template x-for="owner in owners" :key="owner.ownerId">

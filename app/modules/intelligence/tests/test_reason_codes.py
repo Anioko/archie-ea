@@ -62,7 +62,7 @@ _EXPECTED = {
     "no_ownership_records",
     "capacity_not_available",
     "financial_data_restricted",
-    "ownership_source_undecided",
+    "ownership_reader_not_built",
 }
 
 

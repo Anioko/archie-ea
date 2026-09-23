@@ -1,8 +1,8 @@
 """L4, "who's accountable for <element>, and can they take on more?": the
 accountability question on the Ask page, in a real browser.
 
-The ownership read is WITHDRAWN (reuse-register violation + a tenant-
-isolation gap found in external review of the original PR -- see
+The ownership read is WITHDRAWN (a tenant-isolation gap found in external
+review of the original PR -- see
 IntelligenceQueryService.accountability_for_element's docstring). These
 tests pin the withdrawn state itself, including with a real seeded ownership
 graph present, to guard against silently re-enabling the unsafe read.
@@ -113,7 +113,7 @@ def test_the_accountability_question_shows_the_withdrawn_state_not_seeded_data(
     page.locator("#ask-picker-listbox [role=option]", has_text="Service").click()
 
     expect(page.get_by_text(
-        "Ownership data is not yet connected for any element -- awaiting a product decision on the record of truth."
+        "Ownership data is not yet connected."
     )).to_be_visible()
     expect(page.get_by_text("Capacity and availability data is not yet connected.")).to_be_visible()
     assert page.locator("[data-ask-accountability-row]").count() == 0

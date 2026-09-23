@@ -838,8 +838,8 @@ def test_accountability_endpoint_unknown_element_is_404(app, db_session, make_or
 def test_accountability_endpoint_returns_the_withdrawn_reason(
     app, db_session, make_org, client, login_as
 ):
-    """The ownership read is withdrawn (reuse-register violation + tenant-
-    isolation gap found in external review of the original PR, see
+    """The ownership read is withdrawn (a tenant-isolation gap found in
+    external review of the original PR, see
     IntelligenceQueryService.accountability_for_element's docstring) --
     every real element returns this honest reason, not owner data."""
     from app.models.application_portfolio import ApplicationComponent
@@ -857,7 +857,7 @@ def test_accountability_endpoint_returns_the_withdrawn_reason(
     data = resp.get_json()["data"]
     assert data["owners"] == []
     assert data["capacity_not_available"] is True
-    assert "ownership_source_undecided" in data["reasons"]
+    assert "ownership_reader_not_built" in data["reasons"]
 
 
 def test_accountability_endpoint_never_returns_seeded_ownership_data(
@@ -892,7 +892,7 @@ def test_accountability_endpoint_never_returns_seeded_ownership_data(
     assert resp.status_code == 200
     data = resp.get_json()["data"]
     assert data["owners"] == []
-    assert data["reasons"] == ["ownership_source_undecided", "capacity_not_available"]
+    assert data["reasons"] == ["ownership_reader_not_built", "capacity_not_available"]
 
 
 def test_accountability_endpoint_cross_tenant_element_is_404_not_leak(

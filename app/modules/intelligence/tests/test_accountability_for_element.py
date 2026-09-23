@@ -1,8 +1,8 @@
 """Tests for ``IntelligenceQueryService.accountability_for_element`` (L4):
-WITHDRAWN pending a product-manager decision on the reuse register's
-``ownership`` entry, plus a real tenant-isolation fix to ``OrganizationUnit``
--- see the method's own docstring and `defect-report-PR107-v1.md` in the
-sdlc-orchestrator bucket for the external review that found this.
+WITHDRAWN -- the ownership data source is decided, but no shared,
+tenant-safe reader for it exists yet, and the original implementation had a
+real, unreviewed tenant-isolation gap on ``OrganizationUnit`` -- see the
+method's own docstring for the external review that found this.
 
 The withdrawn method deliberately does NOT look up the element, resolve a
 component, or query ApplicationOwnership/OrganizationUnit at all -- the
@@ -80,7 +80,7 @@ def test_returns_the_withdrawn_reason_for_any_element_id(app, db_session, make_o
 
     assert result["owners"] == []
     assert result["capacity_not_available"] is True
-    assert result["reasons"] == ["ownership_source_undecided", "capacity_not_available"]
+    assert result["reasons"] == ["ownership_reader_not_built", "capacity_not_available"]
 
 
 def test_returns_the_withdrawn_reason_with_no_tenant_context(app, db_session, make_org):
@@ -93,7 +93,7 @@ def test_returns_the_withdrawn_reason_with_no_tenant_context(app, db_session, ma
         result = IntelligenceQueryService.accountability_for_element(1)
 
     assert result["owners"] == []
-    assert result["reasons"] == ["ownership_source_undecided", "capacity_not_available"]
+    assert result["reasons"] == ["ownership_reader_not_built", "capacity_not_available"]
 
 
 def test_seeded_ownership_is_never_returned_the_regression_guard_that_matters(
@@ -104,9 +104,8 @@ def test_seeded_ownership_is_never_returned_the_regression_guard_that_matters(
     graph exists, exactly the shape the original (unsafe) implementation
     would have served -- and the method must still return nothing, because
     it never queries any of these tables. If this ever starts returning
-    owner rows again without the register decision and the OrganizationUnit
-    tenant-scoping fix both landing, this test is the one that should catch
-    it."""
+    owner rows again without a real, tenant-safe reader existing, this test
+    is the one that should catch it."""
     from app.modules.intelligence.services.query_service import IntelligenceQueryService
 
     org = make_org("accountability-lens-withdrawn-guard")
@@ -126,4 +125,4 @@ def test_seeded_ownership_is_never_returned_the_regression_guard_that_matters(
         result = IntelligenceQueryService.accountability_for_element(a.id)
 
     assert result["owners"] == []
-    assert result["reasons"] == ["ownership_source_undecided", "capacity_not_available"]
+    assert result["reasons"] == ["ownership_reader_not_built", "capacity_not_available"]
