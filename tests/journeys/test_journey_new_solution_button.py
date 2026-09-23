@@ -65,3 +65,81 @@ def test_new_solution_button_creates_a_real_solution(app, client):
             db.select(db.func.count(Solution.id)).filter_by(organization_id=org_id)
         ).scalar()
         assert after == before + 1
+
+
+def test_new_solution_is_the_primary_header_button(app, client):
+    """/solutions/ header must have exactly one filled primary button, and it
+    must be "New Solution" — not "Start Architecture Journey"."""
+    from app import db
+
+    with app.app_context():
+        org_id = make_org(db, "PrimaryBtn")
+        architect_id = make_user(
+            db, org_id, "primarybtn", enterprise_role="enterprise_architect",
+            role_name="Architect",
+        )
+
+    login(client, architect_id)
+    page = client.get("/solutions/")
+    assert page.status_code == 200
+    body = page.get_data(as_text=True)
+
+    # The primary (filled) button must be "New Solution"
+    assert 'data-testid="btn-new-solution"' in body
+    # "Start Architecture Journey" must NOT be the filled primary button
+    assert 'data-testid="btn-start-journey"' in body
+    # The primary button must use bg-primary (filled style)
+    # Find the btn-new-solution element and verify it has bg-primary
+    import re
+    btn_match = re.search(
+        r'data-testid="btn-new-solution"[^>]*class="([^"]*)"',
+        body
+    )
+    assert btn_match is not None, "btn-new-solution must be present"
+    btn_classes = btn_match.group(1)
+    assert "bg-primary" in btn_classes, (
+        "New Solution must be the filled primary button (bg-primary), "
+        f"got classes: {btn_classes}"
+    )
+    # "Start Architecture Journey" must be an outline button, not filled
+    journey_match = re.search(
+        r'data-testid="btn-start-journey"[^>]*class="([^"]*)"',
+        body
+    )
+    assert journey_match is not None, "btn-start-journey must be present"
+    journey_classes = journey_match.group(1)
+    assert "bg-primary" not in journey_classes, (
+        "Start Architecture Journey must not be the filled primary button, "
+        f"got classes: {journey_classes}"
+    )
+
+
+def test_empty_state_has_new_solution_as_primary(app, client):
+    """When the org has no solutions, the empty state must show "New Solution"
+    as the primary action with correct copy."""
+    from app import db
+
+    with app.app_context():
+        org_id = make_org(db, "EmptyState")
+        architect_id = make_user(
+            db, org_id, "emptystate", enterprise_role="enterprise_architect",
+            role_name="Architect",
+        )
+
+    login(client, architect_id)
+    page = client.get("/solutions/")
+    assert page.status_code == 200
+    body = page.get_data(as_text=True)
+
+    # Empty state must use the empty_state component with correct copy
+    assert "No solutions yet" in body, (
+        "empty state must read 'No solutions yet'"
+    )
+    assert "Create a solution to start its architecture blueprint." in body, (
+        "empty state description must be present"
+    )
+    # The primary action must be "New Solution"
+    assert 'data-testid="btn-new-solution"' in body
+    # "Start Architecture Journey" must not appear as the primary empty-state CTA
+    assert "Start Architecture Journey" not in body or \
+        'data-testid="btn-start-journey"' in body
