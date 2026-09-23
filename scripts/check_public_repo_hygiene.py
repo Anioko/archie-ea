@@ -68,26 +68,46 @@ ESCAPE_HATCH = "hygiene-ok:"
 # ---------------------------------------------------------------- rule 3: review-record-id tokens and pipeline role words
 
 # The dashed shape a review record id takes: one process letter (D, T, Q or
-# F), an optional single digit, a dash, an optional short letter segment, one
-# to four digits, and an optional second dash-digits segment for a
-# multi-segment id (D2-7, T4-3, D-ALL-1, T-FIX-103, T-DR-1, D-105-2).  # hygiene-ok: quoting this pattern's own example shapes, not a real hit
-# Restricting the leading letter to this four-letter set, rather than any
-# one or two capital letters, is what lets this codebase's own short
-# reference-number families (readiness findings, requirement and derived-fact
-# ids, standards prefixes) pass clean without naming each one: none of them
-# start with D, T, Q or F immediately followed by a digit or a dash. See
-# RECORD_ID_ALLOWLIST_PREFIXES below for the two families that do.
+# F), a dash, and one of four endings -- each its own alternative below, tried
+# in order, rather than one pattern with every part optional, because the
+# last of the four (the simplest: no leading digit, no letter segment, no
+# second dash-digits segment -- just letter-dash-digits) needs its OWN, extra
+# rule the other three do not: it must be at least two digits. One bare digit
+# after a bare dash (T-1, T-0, D-0) is exactly as likely to be an ordinary
+# English fraction or count as a review record id, and this codebase's own
+# prose has used it that way -- while a token with a leading digit before the
+# dash (D2-7, T4-3), a letter segment (D-ALL-1, T-FIX-103, T-DR-1) or a
+# second dash-digits segment (D-105-2) already carries enough of its own
+# structure to not need the same guard, and every one of those keeps a
+# single trailing digit. The four endings, one example each (D2-7, D-ALL-1,
+# D-105-2, F-05) # hygiene-ok: quoting this pattern's own example shapes, not a real hit
+# -- plus an optional trailing lowercase letter on every one (T-004b), for a
+# sub-task or sub-finding suffix this process also uses.
 RECORD_ID_PATTERN = re.compile(
-    r"\b(?:D|T|Q|F)[0-9]?-(?:[A-Z]{1,4}-)?[0-9]{1,4}(?:-[0-9]{1,4})?\b"
+    r"\b(?:"
+    r"(?:D|T|Q|F)[0-9]-[0-9]{1,4}(?:-[0-9]{1,4})?"        # leading digit before the dash: D2-7, T4-3
+    r"|(?:D|T|Q|F)-[A-Z]{1,4}-[0-9]{1,4}(?:-[0-9]{1,4})?"  # a letter segment: D-ALL-1, T-FIX-103, T-DR-1
+    r"|(?:D|T|Q|F)-[0-9]{1,4}-[0-9]{1,4}"                  # a second dash-digits segment: D-105-2
+    r"|(?:D|T|Q|F)-[0-9]{2,4}"                             # the bare shape: needs two digits or more, F-05, T-004
+    r")[a-z]?\b",
+    re.IGNORECASE,
 )
-# The letter-dash-letters-digit shape with no second dash (T-S1) -- the one  # hygiene-ok: quoting this pattern's own example shape, not a real hit
-# id shape the pattern above cannot also match.
-RECORD_ID_PATTERN_SEGMENT = re.compile(r"\b(?:D|T|Q|F)-[A-Z]{1,4}[0-9]{1,2}\b")
+# The letter-dash-letters-digit shape with no digits-only ending (T-S1,
+# T-S1b) -- one id shape the pattern above cannot also match, since its own
+# final segment is a letter followed by one or two digits, not a bare digit
+# run. An optional interior letter-segment-and-dash (T-CONS-R1) and an
+# optional trailing lowercase letter (T-S1b) apply here too, the same as
+# above. Matched case-insensitively, like the pattern above, so a lowercase
+# id (t-s1) is not missed for its case alone.
+RECORD_ID_PATTERN_SEGMENT = re.compile(
+    r"\b(?:D|T|Q|F)-(?:[A-Z]{1,4}-)?[A-Z]{1,4}[0-9]{1,2}[a-z]?\b", re.IGNORECASE
+)
 
 # A bare id (no dash at all -- D3, T14) is too easily an ordinary token to
 # flag on its own; it counts only when the same line also carries a role
-# word, a round<N> mention, or the word "finding".
-BARE_RECORD_ID_PATTERN = re.compile(r"\b(?:D|T|Q|F)[0-9]{1,2}\b")
+# word, a round<N> mention, or the word "finding". Case-insensitive, like
+# both dashed patterns above.
+BARE_RECORD_ID_PATTERN = re.compile(r"\b(?:D|T|Q|F)[0-9]{1,2}\b", re.IGNORECASE)
 _FINDING_RE = re.compile(r"\bfinding\b", re.IGNORECASE)
 
 # A prior version of this list also carried three broader prefixes on the  # hygiene-ok: describes the allowlist's own history, not a real hit
@@ -133,14 +153,18 @@ _DEL_DELIVERABLE_CONTEXT_RE = re.compile(r"(?<![A-Za-z0-9_])DEL-$")
 
 def _is_allowlisted_record_id(token: str, line: str, start: int) -> bool:
     """True if `token`, found at `start` in `line`, is this codebase's own
-    business-reference-number convention rather than a review record id."""
-    if any(token.startswith(p) for p in RECORD_ID_ALLOWLIST_PREFIXES):
+    business-reference-number convention rather than a review record id.
+    Compared upper-cased throughout: the record-id patterns themselves now
+    match case-insensitively, so a lowercase business reference must clear
+    the same allowlist its uppercase form would."""
+    upper = token.upper()
+    if any(upper.startswith(p) for p in RECORD_ID_ALLOWLIST_PREFIXES):
         return True
-    if _R_DIGIT_DASH_RE.match(token) or _Q_QUARTER_DASH_RE.match(token):
+    if _R_DIGIT_DASH_RE.match(upper) or _Q_QUARTER_DASH_RE.match(upper):
         return True
-    if token.startswith("A-") and line[max(0, start - 6):start].rstrip().upper().endswith("WCAG"):
+    if upper.startswith("A-") and line[max(0, start - 6):start].rstrip().upper().endswith("WCAG"):
         return True
-    if (token.startswith("D-") or token.startswith("F-")) and (
+    if (upper.startswith("D-") or upper.startswith("F-")) and (
         _DEL_DELIVERABLE_CONTEXT_RE.search(line[:start].upper())
     ):
         return True

@@ -788,6 +788,11 @@ _FALSE_NEGATIVE_CASES = [
     ("build-report", "app/probe.py", "# build-report attached.\n"),  # hygiene-ok: probe data for the false-negative table test, not a real hit
     ("Round three", "app/probe.py", "# Round three changes.\n"),  # hygiene-ok: probe data for the false-negative table test, not a real hit
     ("D3: bare beside a role word", "app/probe.py", "# D3: (refuter) noted.\n"),  # hygiene-ok: probe data for the false-negative table test, not a real hit
+    ("T-004b (trailing sub-item letter)", "app/probe.py", "# See T-004b for the reasoning.\n"),  # hygiene-ok: probe data for the false-negative table test, not a real hit
+    ("T-S1b (segment shape, trailing letter)", "app/probe.py", "# See T-S1b for the reasoning.\n"),  # hygiene-ok: probe data for the false-negative table test, not a real hit
+    ("T-CONS-R1 (interior letter segment, letter+digit ending)", "app/probe.py", "# See T-CONS-R1 for the reasoning.\n"),  # hygiene-ok: probe data for the false-negative table test, not a real hit
+    ("t-004 (lowercase)", "app/probe.py", "# See t-004 for the reasoning.\n"),  # hygiene-ok: probe data for the false-negative table test, not a real hit
+    ("d-all-1 (lowercase)", "app/probe.py", "# See d-all-1 for the reasoning.\n"),  # hygiene-ok: probe data for the false-negative table test, not a real hit
 ]
 
 
@@ -799,6 +804,27 @@ def test_public_repo_hygiene_false_negative_table(tmpdir, label, relpath, conten
     _write(tmpdir, relpath, content)
     count = _run_hygiene_checker(tmpdir, "content")
     assert count > 0, "row %r (%r) was not caught" % (label, content)
+
+
+def test_public_repo_hygiene_record_id_aircraft_designation_is_a_known_limitation(tmpdir):
+    """A two-digit letter-dash-digits shape is indistinguishable from a  # hygiene-ok: describing this test's own probe shape, not a real hit
+    genuine two-digit finding reference by shape alone -- both are one  # hygiene-ok: describing this test's own probe shape, not a real hit
+    process letter, a dash, and two digits, and nothing in the surrounding
+    text marks one as a military aircraft designation and the other as a
+    review record id. RECORD_ID_PATTERN's own comment already says this
+    shape "cannot always be told apart from a genuine business reference
+    number by shape alone"; recorded here as a known limitation, not
+    silently dropped, rather than narrowed in a way that would also stop
+    catching a real two-digit finding id."""
+    root = tmpdir.mkdir("aircraft-designation")
+    _write(root, "app/probe.py", "# F-16 and F-35 aircraft.\n")  # hygiene-ok: deliberate probe content, written to a tmpdir this checker never scans
+    count = _run_hygiene_checker(root, "content")
+    assert count == 2, (
+        "expected the aircraft-designation collision to still read as two "
+        "record-id-shaped hits (got %d) -- if a future pattern change makes "
+        "this 0, move the row to the false-positive table instead of "
+        "deleting this test" % count
+    )
 
 
 # Business reference numbers, standards prefixes, arithmetic, regex
@@ -834,6 +860,17 @@ _FALSE_POSITIVE_CASES = [
     ('WCAG "A-11"', "app/probe.py", "# WCAG A-11 contrast requirement.\n"),
     ("DEL-D-001", "app/probe.py", '    "deliverable_code": "DEL-D-001",\n'),
     ("DEL-F-001", "app/probe.py", '    "DEL-D-001", "DEL-E-001", "DEL-F-001", "DEL-G-001",\n'),
+    # A bare single digit after a bare dash, with none of the three other
+    # structural signals the false-negative table's own dashed rows above
+    # carry (a leading digit before the dash, a letter segment, or a second
+    # dash-digits segment) to mark it as an id -- an ordinary English
+    # fraction or count this codebase's own prose has used unprompted, not a
+    # review record id. This is exactly the shape that, unguarded, turned
+    # this checker's own commit history into new false positives the moment
+    # the commit-message half started running these same patterns.
+    ("T-1 (bare single digit)", "app/probe.py", "# about T-1 day later.\n"),
+    ("T-0 (bare single digit)", "app/probe.py", "# excluded T-0 from the scan.\n"),
+    ("D-0 (bare single digit)", "app/probe.py", "# excluded D-0 from the scan.\n"),
 ]
 
 
