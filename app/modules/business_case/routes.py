@@ -7,7 +7,7 @@ Index endpoint (linked from the sidebar by the orchestrator post-merge):
 
 import logging
 
-from flask import Blueprint, redirect, render_template, request, url_for
+from flask import Blueprint, g, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 
 # Destructive and mutating routes were guarded by @login_required only, so any
@@ -27,6 +27,16 @@ from . import service
 logger = logging.getLogger(__name__)
 
 business_case_bp = Blueprint("business_case", __name__, url_prefix="/business-case")
+
+
+def _current_organization_id():
+    """The plain int this request belongs to — same source and reasoning as
+    app/modules/intelligence/routes/api.py's own helper."""
+    org_id = getattr(g, "current_org_id", None)
+    if org_id is not None:
+        return int(org_id)
+    org_id = getattr(current_user, "organization_id", None)
+    return int(org_id) if org_id is not None else None
 
 
 def _link_options():
@@ -79,8 +89,21 @@ def detail(business_case_id):
         return render_template("business_case/not_found.html", business_case_id=business_case_id), 404
 
     capabilities, initiatives, solutions = _link_options()
-    # Zones in record order, keyed by box_key.
-    canvas_zones = CANVAS_TEMPLATES["business_case"]["zones"]
+
+    org_id = _current_organization_id()
+    if org_id is None:
+        canvas_zones = {z["box_key"]: z for z in CANVAS_TEMPLATES["business_case"]["zones"]}
+        unclassified_count = 0
+    else:
+        projection = service.project_canvas(
+            "business_case", business_case, organization_id=org_id
+        )
+        canvas_zones = {}
+        for z in projection["zones"]:
+            zc = dict(z)
+            zc["empty_reason"] = z["reasons"][0] if z["reasons"] else "canvas_box_empty"
+            canvas_zones[z["box_key"]] = zc
+        unclassified_count = len(projection["unclassified"])
 
     return render_template(
         "business_case/detail.html",
@@ -89,8 +112,8 @@ def detail(business_case_id):
         capabilities=capabilities,
         initiatives=initiatives,
         solutions=solutions,
-        canvas_zones={z["box_key"]: z for z in canvas_zones},
-        canvas_unclassified_count=0,
+        canvas_zones=canvas_zones,
+        canvas_unclassified_count=unclassified_count,
     )
 
 
@@ -182,6 +205,24 @@ def pull_financials(business_case_id):
 
     report = service.refresh_financials_from_links(business_case)
     return success_response({"business_case": business_case.to_dict(), "aggregation": report})
+
+
+@business_case_bp.route("/<int:business_case_id>/api/projection", methods=["GET"])
+@login_required
+def api_projection(business_case_id):
+    """The one projection read for this business case."""
+    org_id = _current_organization_id()
+    if org_id is None:
+        return error_response(
+            "no tenant context for this request", code="NO_TENANT_CONTEXT", status_code=400
+        )
+
+    business_case = service.get_business_case_or_none(business_case_id)
+    if business_case is None:
+        return not_found_response("Business Case")
+
+    payload = service.project_canvas("business_case", business_case, organization_id=org_id)
+    return success_response(payload)
 
 
 # Import AI section-draft route — adds POST /api/<id>/ai-draft-section to this

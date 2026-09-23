@@ -1271,16 +1271,23 @@ def api_viewpoint_data(viewpoint_id: str):
             shared LAYER_TYPES map -- see archimate_viewpoint_service.
             Untrusted input: allowlisted below, 400 on anything else. Never
             silently falls back to "no filter" on a bad value.
+        canvas_id (int): Optional. For a canvas key (CANVAS_TEMPLATES),
+            the BusinessModelCanvas/BusinessCase id to project -- see
+            get_viewpoint_data's own docstring. Ignored for a standard
+            viewpoint key.
     """
     from app.services.archimate_viewpoint_service import VALID_LAYER_KEYS, get_viewpoint_data
     solution_id = request.args.get("solution_id", type=int)
+    canvas_id = request.args.get("canvas_id", type=int)
     layer = request.args.get("layer", "").strip().lower() or None
     if layer is not None and layer not in VALID_LAYER_KEYS:
         return api_error(
             "Invalid layer. Must be one of: " + ", ".join(sorted(VALID_LAYER_KEYS)),
             400,
         )
-    data = get_viewpoint_data(viewpoint_id=viewpoint_id, solution_id=solution_id, layer=layer)
+    data = get_viewpoint_data(
+        viewpoint_id=viewpoint_id, solution_id=solution_id, layer=layer, canvas_id=canvas_id
+    )
     return jsonify(data)
 
 

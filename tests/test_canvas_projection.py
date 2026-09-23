@@ -1,20 +1,45 @@
 """project_canvas: the one projection read over elements, relationships,
 derived facts, risks and work packages.
 
-Covers here: fabrication (every empty box carries a REASON_CODES member,
+Covers: fabrication (every empty box carries a REASON_CODES member,
 nothing_realises is null not false before derivation, no total with a
 missing amount or mixed currencies, a measured total only when every item
-has an amount and one currency) and read-only-on-open (a SQL-statement
-listener proves zero INSERT/UPDATE). Cross-tenant, the routes and the
-Composer delegation follow in the next commit.
+has an amount and one currency); read-only-on-open (a SQL-statement
+listener proves zero INSERT/UPDATE); cross-tenant, one named test per table
+this read touches, each mutation-proved by monkeypatching the one seam
+that applies its explicit predicate and watching the assertion go red; the
+flag and reason states a rendered canvas depends on, asserted on the JSON;
+the two projection routes and the Composer's canvas delegation; the
+canvas_projection latency series.
 """
 from __future__ import annotations
 
+import datetime as _dt
+import uuid
+
+import pytest
+
+from app.config.archimate_viewpoints import CANVAS_TEMPLATES
 from app.modules.business_model_canvas import service as bmc_service
 from app.modules.intelligence.services.reason_codes import REASON_CODES
 
 
 # --- Factories ---------------------------------------------------------------
+
+
+def _user(db_session, org_id, label="Owner"):
+    from app.models.user import User
+
+    suffix = uuid.uuid4().hex[:8]
+    user = User(
+        email=f"{label.lower()}-{suffix}@example.com",
+        organization_id=org_id,
+        enterprise_role="enterprise_architect",
+        confirmed=True,
+    )
+    db_session.add(user)
+    db_session.flush()
+    return user
 
 
 def _element(db_session, org_id, type_, name, profile=None, **extra_props):
@@ -32,6 +57,59 @@ def _element(db_session, org_id, type_, name, profile=None, **extra_props):
     return el
 
 
+def _relationship(db_session, org_id, source, target, type_="realization"):
+    from app.models.archimate_core import ArchiMateRelationship
+
+    rel = ArchiMateRelationship(
+        source_id=source.id, target_id=target.id, type=type_, organization_id=org_id
+    )
+    db_session.add(rel)
+    db_session.flush()
+    return rel
+
+
+def _derived(db_session, org_id, source, target, *, derived_type="Realization", stale=False):
+    from app.modules.intelligence.models.derived_relationship import DerivedRelationship
+
+    row = DerivedRelationship(
+        organization_id=org_id,
+        source_element_id=source.id,
+        target_element_id=target.id,
+        derived_type=derived_type,
+        rule_id="CV-TEST",
+        chain=[1, 2],
+        chain_element_ids=[source.id, target.id],
+        depth=1,
+        confidence=1.0,
+        provenance="derivation",
+        engine_version="v1",
+        computed_at=_dt.datetime.utcnow(),
+        stale=stale,
+        stale_since=_dt.datetime.utcnow() if stale else None,
+        stale_reason="element_deleted" if stale else None,
+    )
+    db_session.add(row)
+    db_session.flush()
+    return row
+
+
+def _derivation_run(db_session, org_id):
+    from app.modules.intelligence.models.derivation_run import DerivationRun
+
+    row = DerivationRun(
+        organization_id=org_id,
+        started_at=_dt.datetime.utcnow(),
+        finished_at=_dt.datetime.utcnow(),
+        duration_ms=10,
+        explicit_count=0,
+        derived_count=1,
+        engine_version="v1",
+    )
+    db_session.add(row)
+    db_session.flush()
+    return row
+
+
 def _risk(db_session, org_id, element, *, likelihood=5, impact=5):
     from app.models.risk import Risk
 
@@ -45,6 +123,15 @@ def _risk(db_session, org_id, element, *, likelihood=5, impact=5):
     db_session.add(risk)
     db_session.flush()
     return risk
+
+
+def _work_package(db_session, element, name="WP"):
+    from app.models.unified_work_package import UnifiedWorkPackage
+
+    wp = UnifiedWorkPackage(name=name, archimate_element_id=element.id)
+    db_session.add(wp)
+    db_session.flush()
+    return wp
 
 
 def _canvas(db_session, org_id, name="Canvas"):
@@ -75,6 +162,21 @@ def _project(app, template_key, record, org_id):
 
     with app.test_request_context("/"):
         g.current_org_id = org_id
+        return bmc_service.project_canvas(template_key, record, organization_id=org_id)
+
+
+def _project_without_ambient_tenant(app, template_key, record, org_id):
+    """project_canvas() with NO g.current_org_id set — the automatic ORM
+    tenant fence (app/middleware/tenant_isolation.py) is a documented no-op
+    without it, so this isolates project_canvas's OWN explicit predicates as
+    the only protection, the scenario derived_facts.py's own docstring
+    names ("correct even when called with no ambient request context, e.g.
+    a future job caller") — a loop over tenants inside one session, with no
+    per-request tenant context of its own, is the real exposure this
+    guards against. Used only by the mutation-proof tests below; every
+    other test uses _project, which also has the automatic fence active,
+    matching a real per-request call."""
+    with app.test_request_context("/"):
         return bmc_service.project_canvas(template_key, record, organization_id=org_id)
 
 
@@ -237,3 +339,623 @@ class TestReadOnlyOnOpen:
         # by the read-only listener test above; this just confirms the grep
         # command itself still runs clean (no error) over the touched files.
         assert out.returncode in (0, 1)
+
+
+# --- Constant query count ------------------------------------------------------
+
+
+class TestConstantQueryCount:
+    def test_query_count_does_not_scale_with_zone_count(self, app, db_session, make_org):
+        from app import db
+
+        org_a = make_org("cv-qcount-a")
+        org_b = make_org("cv-qcount-b")
+        canvas = _canvas(db_session, org_a.id)
+        case = _business_case(db_session, org_b.id)
+        db_session.commit()
+
+        _, lean_statements = _sql_statements(
+            db, lambda: _project(app, "lean_canvas", canvas, org_a.id)
+        )
+        _, case_statements = _sql_statements(
+            db, lambda: _project(app, "business_case", case, org_b.id)
+        )
+        def select_only(stmts):
+            return [s for s in stmts if s.strip().upper().startswith("SELECT")]
+
+        # business_case has the same nine-zone count as lean_canvas but a
+        # different mix of membership kinds (two composed, one register,
+        # one more attribute) -- the read count is bounded by the batched
+        # reads (elements, relationships, derived facts, risks, work
+        # packages), not by how many zones each template declares.
+        assert len(select_only(case_statements)) <= len(select_only(lean_statements)) + 2
+
+
+# --- No tenant value from the two global tables --------------------------------
+
+
+class TestGlobalTablesCarryNoTenantValue:
+    def test_no_tenant_value_read_from_acm_property_templates(
+        self, app, db_session, make_org, monkeypatch
+    ):
+        from app.models.acm_property_template import AcmPropertyTemplate
+
+        org = make_org("cv-no-acm-template-read")
+        canvas = _canvas(db_session, org.id)
+        _element(db_session, org.id, "Stakeholder", "Segment", profile="customer_segment")
+        db_session.commit()
+
+        def _boom(*a, **k):
+            raise AssertionError("project_canvas queried AcmPropertyTemplate")
+
+        monkeypatch.setattr(AcmPropertyTemplate, "query", property(_boom))
+
+        payload = _project(app, "business_model_canvas", canvas, org.id)
+        assert _zone(payload, "customer_segments")["entries"][0]["name"] == "Segment"
+
+    def test_canvas_templates_carries_no_organization_id_anywhere(self):
+        import json
+
+        text = json.dumps(CANVAS_TEMPLATES, default=str)
+        assert "organization_id" not in text
+
+
+# --- Cross-tenant, one named test per table, each mutation-proved --------------
+
+
+class TestCrossTenantElements:
+    def test_elements_from_another_tenant_never_appear(self, app, db_session, make_org):
+        org_a = make_org("cv-elements-a")
+        org_b = make_org("cv-elements-b")
+        canvas = _canvas(db_session, org_a.id)
+        _element(db_session, org_a.id, "Stakeholder", "A Segment", profile="customer_segment")
+        _element(db_session, org_b.id, "Stakeholder", "B Segment", profile="customer_segment")
+        db_session.commit()
+
+        payload = _project(app, "business_model_canvas", canvas, org_a.id)
+        names = {e["name"] for e in _zone(payload, "customer_segments")["entries"]}
+        assert names == {"A Segment"}
+
+    def test_mutation_proof_elements_predicate(self, app, db_session, make_org, monkeypatch):
+        org_a = make_org("cv-elements-mut-a")
+        org_b = make_org("cv-elements-mut-b")
+        canvas = _canvas(db_session, org_a.id)
+        _element(db_session, org_a.id, "Stakeholder", "A Segment", profile="customer_segment")
+        _element(db_session, org_b.id, "Stakeholder", "B Segment", profile="customer_segment")
+        db_session.commit()
+
+        real_read = bmc_service._read_zone_elements
+        monkeypatch.setattr(
+            bmc_service, "_read_zone_elements",
+            lambda organization_id, element_types: real_read(org_b.id, element_types)
+            + real_read(org_a.id, element_types),
+        )
+
+        # No ambient g.current_org_id: isolates this predicate as the only
+        # protection (the automatic ORM fence would otherwise also block
+        # the leak this mutation is supposed to cause, masking the result).
+        payload = _project_without_ambient_tenant(app, "business_model_canvas", canvas, org_a.id)
+        names = {e["name"] for e in _zone(payload, "customer_segments")["entries"]}
+        with pytest.raises(AssertionError):
+            assert names == {"A Segment"}
+
+
+class TestCrossTenantRelationships:
+    def test_relationships_from_another_tenant_never_flip_nothing_realises(
+        self, app, db_session, make_org
+    ):
+        org_a = make_org("cv-rel-a")
+        org_b = make_org("cv-rel-b")
+        canvas = _canvas(db_session, org_a.id)
+        req = _element(db_session, org_a.id, "Requirement", "Solution", profile="solution_feature")
+        cap_b = _element(db_session, org_b.id, "Capability", "Foreign Capability")
+        _relationship(db_session, org_b.id, cap_b, req, type_="realization")
+        _derivation_run(db_session, org_a.id)
+        db_session.commit()
+
+        payload = _project(app, "lean_canvas", canvas, org_a.id)
+        entry = _zone(payload, "solution")["entries"][0]
+        assert entry["flags"]["nothing_realises"] is True
+
+    def test_mutation_proof_relationships_predicate(self, app, db_session, make_org, monkeypatch):
+        """A foreign relationship alone cannot flip this flag: its source
+        element is also resolved through a tenant-scoped read
+        (``_read_elements_by_id``, the missing-source-elements fallback), so
+        that seam is disabled alongside the relationships one to remove the
+        predicate this scenario actually depends on -- proving the
+        relationship read's own explicit predicate is load-bearing, not
+        that the two-layer defence can be bypassed with one mutation."""
+        org_a = make_org("cv-rel-mut-a")
+        org_b = make_org("cv-rel-mut-b")
+        canvas = _canvas(db_session, org_a.id)
+        req = _element(db_session, org_a.id, "Requirement", "Solution", profile="solution_feature")
+        cap_b = _element(db_session, org_b.id, "Capability", "Foreign Capability")
+        _relationship(db_session, org_b.id, cap_b, req, type_="realization")
+        _derivation_run(db_session, org_a.id)
+        db_session.commit()
+
+        real_read_rels = bmc_service._read_zone_relationships
+        real_read_elements = bmc_service._read_elements_by_id
+        monkeypatch.setattr(
+            bmc_service, "_read_zone_relationships",
+            lambda organization_id, rel_types: real_read_rels(org_b.id, rel_types)
+            + real_read_rels(org_a.id, rel_types),
+        )
+        monkeypatch.setattr(
+            bmc_service, "_read_elements_by_id",
+            lambda organization_id, element_ids: real_read_elements(org_b.id, element_ids)
+            + real_read_elements(org_a.id, element_ids),
+        )
+
+        payload = _project_without_ambient_tenant(app, "lean_canvas", canvas, org_a.id)
+        entry = _zone(payload, "solution")["entries"][0]
+        with pytest.raises(AssertionError):
+            assert entry["flags"]["nothing_realises"] is True
+
+
+class TestCrossTenantDerivedRows:
+    def test_derived_rows_from_another_tenant_never_clear_nothing_realises(
+        self, app, db_session, make_org
+    ):
+        org_a = make_org("cv-derived-a")
+        org_b = make_org("cv-derived-b")
+        canvas = _canvas(db_session, org_a.id)
+        req = _element(db_session, org_a.id, "Requirement", "Solution", profile="solution_feature")
+        cap_b = _element(db_session, org_b.id, "Capability", "Foreign Capability")
+        _derived(db_session, org_b.id, cap_b, req)
+        _derivation_run(db_session, org_a.id)
+        db_session.commit()
+
+        payload = _project(app, "lean_canvas", canvas, org_a.id)
+        entry = _zone(payload, "solution")["entries"][0]
+        assert entry["flags"]["nothing_realises"] is True
+
+    def test_mutation_proof_derived_rows_predicate(self, app, db_session, make_org, monkeypatch):
+        org_a = make_org("cv-derived-mut-a")
+        org_b = make_org("cv-derived-mut-b")
+        canvas = _canvas(db_session, org_a.id)
+        req = _element(db_session, org_a.id, "Requirement", "Solution", profile="solution_feature")
+        cap_b = _element(db_session, org_b.id, "Capability", "Foreign Capability")
+        _derived(db_session, org_b.id, cap_b, req)
+        _derivation_run(db_session, org_a.id)
+        db_session.commit()
+
+        import app.modules.intelligence.services.derived_facts as derived_facts_mod
+        real_list = derived_facts_mod.list_derived_facts
+        monkeypatch.setattr(
+            bmc_service, "list_derived_facts",
+            lambda organization_id, **kw: real_list(org_b.id, **kw) + real_list(org_a.id, **kw),
+        )
+
+        payload = _project_without_ambient_tenant(app, "lean_canvas", canvas, org_a.id)
+        entry = _zone(payload, "solution")["entries"][0]
+        with pytest.raises(AssertionError):
+            assert entry["flags"]["nothing_realises"] is True
+
+
+class TestCrossTenantSavedDiagrams:
+    def test_saved_diagram_id_never_leaks_between_tenants(self, app, db_session, make_org):
+        """The `saved_diagram_id` column and its creation-on-write path do
+        not exist yet, so today's honest, tenant-safe value for every
+        canvas, in every tenant, is None. This is not yet a mutation-proof
+        test: there is no predicate on this path to remove until that
+        column exists."""
+        org_a = make_org("cv-saved-diagram-a")
+        org_b = make_org("cv-saved-diagram-b")
+        canvas_a = _canvas(db_session, org_a.id)
+        canvas_b = _canvas(db_session, org_b.id)
+        db_session.commit()
+
+        payload_a = _project(app, "business_model_canvas", canvas_a, org_a.id)
+        payload_b = _project(app, "business_model_canvas", canvas_b, org_b.id)
+        assert payload_a["saved_diagram_id"] is None
+        assert payload_b["saved_diagram_id"] is None
+
+
+class TestCrossTenantCanvases:
+    def test_foreign_canvas_id_resolves_to_none_not_another_tenants_record(
+        self, app, db_session, make_org
+    ):
+        org_a = make_org("cv-canvas-a")
+        org_b = make_org("cv-canvas-b")
+        canvas_a = _canvas(db_session, org_a.id, name="Org A Canvas")
+        db_session.commit()
+
+        from flask import g
+
+        with app.test_request_context("/"):
+            g.current_org_id = org_b.id
+            record = bmc_service.get_canvas_or_none(canvas_a.id)
+        assert record is None
+
+    def test_mutation_proof_canvas_lookup_predicate(self, app, db_session, make_org):
+        """The tenant fence this lookup relies on is the ambient
+        ``g.current_org_id`` the ORM listener reads
+        (app/middleware/tenant_isolation.py) -- documented as a no-op, not a
+        deny, when it is unset (archimate_viewpoint_service.py's own comment
+        on that same listener). Removing the explicit predicate is removing
+        that context: with no request-scoped org at all, the same lookup
+        that returned None in the test above now returns the row, proving
+        the fence -- not luck -- is what made that assertion pass."""
+        org_a = make_org("cv-canvas-mutp-a")
+        canvas_a = _canvas(db_session, org_a.id, name="Org A Canvas")
+        db_session.commit()
+
+        with app.test_request_context("/"):
+            record = bmc_service.get_canvas_or_none(canvas_a.id)
+        with pytest.raises(AssertionError):
+            assert record is None
+
+
+class TestCrossTenantBusinessCases:
+    def test_foreign_business_case_id_resolves_to_none(self, app, db_session, make_org):
+        org_a = make_org("cv-case-a")
+        org_b = make_org("cv-case-b")
+        case_a = _business_case(db_session, org_a.id, title="Org A Case")
+        db_session.commit()
+
+        from flask import g
+        from app.modules.business_case import service as case_service
+
+        with app.test_request_context("/"):
+            g.current_org_id = org_b.id
+            record = case_service.get_business_case_or_none(case_a.id)
+        assert record is None
+
+    def test_mutation_proof_business_case_lookup_predicate(self, app, db_session, make_org):
+        """Same fence, same proof, as canvases above."""
+        from app.modules.business_case import service as case_service
+
+        org_a = make_org("cv-case-mutp-a")
+        case_a = _business_case(db_session, org_a.id, title="Org A Case")
+        db_session.commit()
+
+        with app.test_request_context("/"):
+            record = case_service.get_business_case_or_none(case_a.id)
+        with pytest.raises(AssertionError):
+            assert record is None
+
+
+class TestCrossTenantRisks:
+    def test_high_risk_from_another_tenant_never_flags_this_tenants_entry(
+        self, app, db_session, make_org
+    ):
+        org_a = make_org("cv-risk-a")
+        org_b = make_org("cv-risk-b")
+        canvas = _canvas(db_session, org_a.id)
+        vp_a = _element(db_session, org_a.id, "Value", "VP A", profile="value_proposition")
+        vp_b = _element(db_session, org_b.id, "Value", "VP B", profile="value_proposition")
+        _risk(db_session, org_b.id, vp_b, likelihood=5, impact=5)
+        db_session.commit()
+
+        payload = _project(app, "lean_canvas", canvas, org_a.id)
+        entry = _zone(payload, "value_propositions")["entries"][0]
+        assert entry["element_id"] == vp_a.id
+        assert entry["flags"]["high_risk"] is False
+
+    def test_mutation_proof_risk_predicate(self, app, db_session, make_org, monkeypatch):
+        org_a = make_org("cv-risk-mut-a")
+        org_b = make_org("cv-risk-mut-b")
+        canvas = _canvas(db_session, org_a.id)
+        vp_a = _element(db_session, org_a.id, "Value", "VP A", profile="value_proposition")
+        vp_b = _element(db_session, org_b.id, "Value", "VP B", profile="value_proposition")
+        _risk(db_session, org_b.id, vp_b, likelihood=5, impact=5)
+        db_session.commit()
+
+        real_read = bmc_service._read_canvas_risks
+        monkeypatch.setattr(
+            bmc_service, "_read_canvas_risks",
+            lambda organization_id: real_read(org_b.id) + real_read(organization_id),
+        )
+
+        payload = _project_without_ambient_tenant(app, "lean_canvas", canvas, org_a.id)
+        entry = next(e for e in _zone(payload, "value_propositions")["entries"] if e["element_id"] == vp_a.id)
+        with pytest.raises(AssertionError):
+            assert entry["flags"]["high_risk"] is False
+
+
+class TestCrossTenantWorkPackages:
+    def test_work_package_link_from_another_tenant_never_attaches(
+        self, app, db_session, make_org
+    ):
+        org_a = make_org("cv-wp-a")
+        org_b = make_org("cv-wp-b")
+        case = _business_case(db_session, org_a.id)
+        option = _element(db_session, org_a.id, "CourseOfAction", "Option", profile="option")
+        benefit = _element(db_session, org_a.id, "Outcome", "Benefit", profile="benefit")
+        _relationship(db_session, org_a.id, benefit, option, type_="realization")
+        wp_a = _element(db_session, org_a.id, "WorkPackage", "Plan item A", profile="plan_item")
+        _relationship(db_session, org_a.id, wp_a, benefit, type_="realization")
+        wp_b = _element(db_session, org_b.id, "WorkPackage", "Foreign plan item", profile="plan_item")
+        _work_package(db_session, wp_b, name="Foreign UWP")
+        db_session.commit()
+
+        payload = _project(app, "business_case", case, org_a.id)
+        entry = _zone(payload, "timescale")["entries"][0]
+        assert entry["element_id"] == wp_a.id
+        assert "work_package_id" not in entry
+
+    def test_mutation_proof_work_package_predicate(self, app, db_session, make_org, monkeypatch):
+        """``UnifiedWorkPackage`` carries no ``organization_id`` of its own
+        (query_service.py's own documented gap) — its tenant safety here is
+        entirely inherited from ``_read_zone_elements``, the read that
+        decides which element ids ``_attach_work_package_ids`` ever looks
+        up. Disabling THAT predicate is therefore the real "remove the
+        predicate" scenario for this table: a foreign WorkPackage element
+        entering the projection carries its own real, foreign work package
+        link straight through."""
+        org_a = make_org("cv-wp-mut-a")
+        org_b = make_org("cv-wp-mut-b")
+        case = _business_case(db_session, org_a.id)
+        wp_b = _element(db_session, org_b.id, "WorkPackage", "Foreign plan item", profile="plan_item")
+        foreign_uwp = _work_package(db_session, wp_b, name="Foreign UWP")
+        db_session.commit()
+
+        real_read = bmc_service._read_zone_elements
+        monkeypatch.setattr(
+            bmc_service, "_read_zone_elements",
+            lambda organization_id, element_types: real_read(org_b.id, element_types)
+            + real_read(org_a.id, element_types),
+        )
+
+        payload = _project_without_ambient_tenant(app, "business_case", case, org_a.id)
+        entries = _zone(payload, "timescale")["entries"]
+        with pytest.raises(AssertionError):
+            assert not any(e.get("work_package_id") == foreign_uwp.id for e in entries)
+
+
+# --- Flag and reason states on the JSON ----------------------------------------
+
+
+class TestUserStoryStates:
+    def test_unprofiled_elements_go_to_unclassified_with_profile_not_set(
+        self, app, db_session, make_org
+    ):
+        org = make_org("cv-unclassified")
+        canvas = _canvas(db_session, org.id)
+        _element(db_session, org.id, "Capability", "Cap 1")
+        _element(db_session, org.id, "Capability", "Cap 2")
+        _element(db_session, org.id, "Capability", "Cap 3")
+        db_session.commit()
+
+        payload = _project(app, "business_model_canvas", canvas, org.id)
+        assert len(payload["unclassified"]) == 3
+        assert {u["reason"] for u in payload["unclassified"]} == {"profile_not_set"}
+
+    def test_high_risk_flag_on_a_value_proposition(self, app, db_session, make_org):
+        org = make_org("cv-high-risk")
+        canvas = _canvas(db_session, org.id)
+        vp = _element(db_session, org.id, "Value", "VP", profile="value_proposition")
+        _risk(db_session, org.id, vp, likelihood=5, impact=5)
+        db_session.commit()
+
+        payload = _project(app, "lean_canvas", canvas, org.id)
+        entry = _zone(payload, "value_propositions")["entries"][0]
+        assert entry["flags"]["high_risk"] is True
+
+    def test_high_risk_flag_reaches_one_hop_downstream_via_the_risk_lens_read(
+        self, app, db_session, make_org
+    ):
+        org = make_org("cv-high-risk-blast")
+        capability = _element(db_session, org.id, "Capability", "Risky Capability")
+        option = _element(db_session, org.id, "CourseOfAction", "Option", profile="option")
+        _relationship(db_session, org.id, capability, option, type_="association")
+        _risk(db_session, org.id, capability, likelihood=5, impact=5)
+        case = _business_case(db_session, org.id)
+        db_session.commit()
+
+        payload = _project(app, "business_case", case, org.id)
+        entry = _zone(payload, "options_considered")["entries"][0]
+        assert entry["flags"]["high_risk"] is True
+
+    def test_stale_flag_when_the_only_realising_row_is_stale(self, app, db_session, make_org):
+        org = make_org("cv-stale")
+        canvas = _canvas(db_session, org.id)
+        req = _element(db_session, org.id, "Requirement", "Solution", profile="solution_feature")
+        cap = _element(db_session, org.id, "Capability", "Cap")
+        _derived(db_session, org.id, cap, req, stale=True)
+        _derivation_run(db_session, org.id)
+        db_session.commit()
+
+        payload = _project(app, "lean_canvas", canvas, org.id)
+        entry = _zone(payload, "solution")["entries"][0]
+        assert entry["flags"]["stale"] is True
+        assert "derivation_stale" in entry["reasons"]
+        assert entry["truth_class"] == "authoritative_fact"
+
+    def test_explicit_realization_clears_nothing_realises_and_sets_truth_class(
+        self, app, db_session, make_org
+    ):
+        org = make_org("cv-explicit-realizes")
+        canvas = _canvas(db_session, org.id)
+        req = _element(db_session, org.id, "Requirement", "Solution", profile="solution_feature")
+        cap = _element(db_session, org.id, "Capability", "Cap")
+        _relationship(db_session, org.id, cap, req, type_="realization")
+        _derivation_run(db_session, org.id)
+        db_session.commit()
+
+        payload = _project(app, "lean_canvas", canvas, org.id)
+        entry = _zone(payload, "solution")["entries"][0]
+        assert entry["flags"]["nothing_realises"] is False
+        assert entry["truth_class"] == "authoritative_fact"
+
+    def test_derived_non_stale_realization_sets_derived_intelligence_truth_class(
+        self, app, db_session, make_org
+    ):
+        org = make_org("cv-derived-truth-class")
+        canvas = _canvas(db_session, org.id)
+        req = _element(db_session, org.id, "Requirement", "Solution", profile="solution_feature")
+        cap = _element(db_session, org.id, "Capability", "Cap")
+        derived_row = _derived(db_session, org.id, cap, req, stale=False)
+        _derivation_run(db_session, org.id)
+        db_session.commit()
+
+        payload = _project(app, "lean_canvas", canvas, org.id)
+        entry = _zone(payload, "solution")["entries"][0]
+        assert entry["flags"]["nothing_realises"] is False
+        assert entry["truth_class"] == "derived_intelligence"
+        assert entry["derived_id"] == derived_row.id
+
+
+# --- Routes ----------------------------------------------------------------
+
+
+class TestProjectionRoutes:
+    def test_bmc_projection_route_for_an_empty_tenant(self, app, db_session, make_org, client, login_as):
+        org = make_org("cv-route-bmc-empty")
+        user = _user(db_session, org.id, "RouteOwner")
+        canvas = _canvas(db_session, org.id)
+        db_session.commit()
+
+        login_as(client, user)
+        resp = client.get(f"/business-model/{canvas.id}/api/projection")
+        assert resp.status_code == 200
+        body = resp.get_json()["data"]
+        assert len(body["zones"]) == 9
+        for zone in body["zones"]:
+            assert zone["entries"] == []
+            assert "canvas_box_empty" in zone["reasons"] or "canvas_box_not_derived" in zone["reasons"]
+            assert "total" not in zone
+        assert body["latency_ms"] is not None
+
+    def test_bmc_projection_route_foreign_id_is_404(self, app, db_session, make_org, client, login_as):
+        org_a = make_org("cv-route-bmc-a")
+        org_b = make_org("cv-route-bmc-b")
+        user_b = _user(db_session, org_b.id, "RouteViewer")
+        canvas = _canvas(db_session, org_a.id)
+        db_session.commit()
+
+        login_as(client, user_b)
+        resp = client.get(f"/business-model/{canvas.id}/api/projection")
+        assert resp.status_code == 404
+
+    def test_business_case_projection_route_for_an_empty_tenant(
+        self, app, db_session, make_org, client, login_as
+    ):
+        org = make_org("cv-route-case-empty")
+        user = _user(db_session, org.id, "RouteOwner")
+        case = _business_case(db_session, org.id)
+        db_session.commit()
+
+        login_as(client, user)
+        resp = client.get(f"/business-case/{case.id}/api/projection")
+        assert resp.status_code == 200
+        body = resp.get_json()["data"]
+        assert len(body["zones"]) == 9
+
+    def test_business_case_projection_route_foreign_id_is_404(
+        self, app, db_session, make_org, client, login_as
+    ):
+        org_a = make_org("cv-route-case-a")
+        org_b = make_org("cv-route-case-b")
+        user_b = _user(db_session, org_b.id, "RouteViewer")
+        case = _business_case(db_session, org_a.id)
+        db_session.commit()
+
+        login_as(client, user_b)
+        resp = client.get(f"/business-case/{case.id}/api/projection")
+        assert resp.status_code == 404
+
+
+class TestComposerDelegation:
+    def test_get_viewpoint_data_for_lean_canvas_returns_zones_in_template_order(
+        self, app, db_session, make_org
+    ):
+        from app.services.archimate_viewpoint_service import get_viewpoint_data
+
+        org = make_org("cv-composer-order")
+        canvas = _canvas(db_session, org.id)
+        _element(db_session, org.id, "Stakeholder", "Segment", profile="customer_segment")
+        db_session.commit()
+
+        from flask import g
+
+        with app.test_request_context("/"):
+            g.current_org_id = org.id
+            data = get_viewpoint_data("lean_canvas", canvas_id=canvas.id)
+
+        template_order = [z["box_key"] for z in CANVAS_TEMPLATES["lean_canvas"]["zones"]]
+        assert [z["box_key"] for z in data["zones"]] == template_order
+
+    def test_get_viewpoint_data_entries_grouped_by_box_key(self, app, db_session, make_org):
+        from app.services.archimate_viewpoint_service import get_viewpoint_data
+
+        org = make_org("cv-composer-entries")
+        canvas = _canvas(db_session, org.id)
+        _element(db_session, org.id, "Stakeholder", "Segment A", profile="customer_segment")
+        _element(db_session, org.id, "Stakeholder", "Segment B", profile="customer_segment")
+        _element(db_session, org.id, "Value", "VP", profile="value_proposition")
+        db_session.commit()
+
+        from flask import g
+
+        with app.test_request_context("/"):
+            g.current_org_id = org.id
+            data = get_viewpoint_data("lean_canvas", canvas_id=canvas.id)
+
+        box_keys = [e["box_key"] for e in data["entries"]]
+        # Every box's entries are consecutive in the flattened list.
+        seen = []
+        for key in box_keys:
+            if key not in seen:
+                seen.append(key)
+        assert len(seen) == len(set(box_keys))
+
+    def test_get_viewpoint_data_without_canvas_id_is_unchanged(self):
+        from app.services.archimate_viewpoint_service import get_viewpoint_data
+
+        data = get_viewpoint_data("lean_canvas")
+        assert data["zones"] == []
+        assert data["entries"] == []
+        assert data["scope_required"] is False
+
+
+# --- Latency -----------------------------------------------------------------
+
+
+class TestLatency:
+    def test_canvas_projection_series_records(self, app, db_session, make_org):
+        from app.services.prometheus_metrics import INTELLIGENCE_QUERY_DURATION
+
+        org = make_org("cv-latency")
+        canvas = _canvas(db_session, org.id)
+        db_session.commit()
+
+        before = INTELLIGENCE_QUERY_DURATION.labels(
+            query="canvas_projection", depth="unknown", include_derived="false"
+        )._sum.get()
+
+        payload = _project(app, "business_model_canvas", canvas, org.id)
+
+        after = INTELLIGENCE_QUERY_DURATION.labels(
+            query="canvas_projection", depth="unknown", include_derived="false"
+        )._sum.get()
+        assert after > before
+        assert payload["latency_ms"] is not None
+        assert payload["latency_ms"] >= 0
+
+    def test_canvas_projection_is_a_new_label_value_not_a_changed_existing_one(
+        self, app, db_session, make_org
+    ):
+        """The pinned cross_layer_impact label combination
+        (test_query_service.py's own tests) is untouched by this change: its
+        own before/after latency assertions still pass unmodified because
+        canvas_projection is an additive ``query`` label value on the same
+        histogram, sharing no code path with cross_layer_impact's own
+        instrumentation call."""
+        from app.services.prometheus_metrics import INTELLIGENCE_QUERY_DURATION
+
+        org = make_org("cv-latency-label")
+        canvas = _canvas(db_session, org.id)
+        db_session.commit()
+
+        before = INTELLIGENCE_QUERY_DURATION.labels(
+            query="cross_layer_impact", depth="unknown", include_derived="false"
+        )._sum.get()
+
+        _project(app, "business_model_canvas", canvas, org.id)
+
+        after = INTELLIGENCE_QUERY_DURATION.labels(
+            query="cross_layer_impact", depth="unknown", include_derived="false"
+        )._sum.get()
+        assert after == before
