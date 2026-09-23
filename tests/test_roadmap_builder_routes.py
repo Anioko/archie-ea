@@ -22,6 +22,10 @@ import pytest
 def _make_user(db_session, org):
     from app.models.user import Role, User
 
+    # Shared test-only password, not a per-file literal: the same constant
+    # every smoke journey test authenticates with.
+    from tests.smoke.conftest import PASSWORD
+
     role = Role.query.filter_by(name="Administrator").first()
     if role is None:
         Role.insert_roles()
@@ -37,7 +41,7 @@ def _make_user(db_session, org):
         role=role,
         confirmed=True,
     )
-    user.password = "TestPassw0rd!23"
+    user.password = PASSWORD
     db_session.add(user)
     db_session.flush()
     return user
