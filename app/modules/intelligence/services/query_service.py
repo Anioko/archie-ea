@@ -56,6 +56,8 @@ CAPACITY_NOT_AVAILABLE_REASON = validate_reason_code("capacity_not_available")
 # Distinct from a "decision pending" state -- the ownership data source IS
 # decided; what doesn't exist yet is a shared, tenant-safe reader for it.
 OWNERSHIP_READER_NOT_BUILT_REASON = validate_reason_code("ownership_reader_not_built")
+NO_OUTCOME_RECORDED_REASON = validate_reason_code("no_outcome_recorded")
+NO_CRITICALITY_RECORDED_REASON = validate_reason_code("no_criticality_recorded")
 
 # T-005 (D1): the NFR-5 measurement point is this exact, PINNED series --
 # never widened, never aggregated across label values.
@@ -1040,9 +1042,20 @@ class IntelligenceQueryService:
         measured-zero discipline still applies: variance is only reported
         when ``total_budget`` is a real positive number, else the row
         carries the honest ``no_budget_recorded`` reason.
+
+        Outcomes (T-WIRE-5): after each initiative's blast radius, the set of
+        Goal elements reached by an explicit or non-stale derived Realization
+        is collected. Two batched selects across all initiatives -- Goals by
+        archimate_element_id, then MotivationOutcome by goal_id -- attach the
+        recorded outcome rows to each initiative. When no Goal is reached, or
+        no Goal has an outcome row, ``outcomes`` is ``None`` and
+        ``outcomes_reason`` is ``"no_outcome_recorded"``. Every value is
+        carried as recorded; no status is derived and no text value is parsed.
         """
         from app.models import ArchiMateElement
+        from app.models.archimate_motivation import MotivationOutcome
         from app.models.enterprise_intelligence import PortfolioInitiative
+        from app.models.motivation import Goal
 
         org_id = current_org_id()
 
@@ -1085,6 +1098,10 @@ class IntelligenceQueryService:
 
             all_elements: Dict[str, Dict[str, Any]] = {}
             initiative_payloads: List[Dict[str, Any]] = []
+            # Per-initiative goal element ids, collected for the batched
+            # Goal-then-Outcome selects after the loop.
+            initiative_goal_element_ids: List[set] = []
+
             for initiative in seed_initiatives:
                 blast = IntelligenceQueryService.cross_layer_impact(
                     element_id,
@@ -1094,14 +1111,28 @@ class IntelligenceQueryService:
                 )
                 all_elements.update(blast.get("elements") or {})
 
+                # Decision A: Goal elements reached by an explicit Realization
+                # row or a non-stale derived one, taken from the already-resolved
+                # identity map.
+                goal_element_ids: set = set()
+                for row in blast.get("rows", []):
+                    row_element_id = row.get("element_id")
+                    if row_element_id is None:
+                        continue
+                    elem = blast.get("elements", {}).get(str(row_element_id), {})
+                    if elem.get("type") != "Goal":
+                        continue
+                    rel = row.get("relation", {})
+                    if rel.get("type") != "Realization":
+                        continue
+                    kind = rel.get("kind")
+                    if kind == "explicit":
+                        goal_element_ids.add(row_element_id)
+                    elif kind == "derived" and not rel.get("stale"):
+                        goal_element_ids.add(row_element_id)
+                initiative_goal_element_ids.append(goal_element_ids)
+
                 if initiative.total_budget and initiative.total_budget > 0:
-                    # total_budget/spent_to_date are Numeric (Decimal) columns,
-                    # unlike UnifiedWorkPackage's Float cost fields -- cast to
-                    # float before arithmetic so the response carries a plain
-                    # JSON number, not a string (Flask's JSON provider
-                    # serialises Decimal as str, which would silently break
-                    # every numeric consumer of this field, front end
-                    # included).
                     total_budget = float(initiative.total_budget)
                     spent_to_date = float(initiative.spent_to_date or 0.0)
                     budget_variance_pct = (spent_to_date - total_budget) / total_budget * 100
@@ -1142,6 +1173,81 @@ class IntelligenceQueryService:
                         "affected_summary": blast.get("summary", {}),
                     }
                 )
+
+            # Decision B: two batched selects across all initiatives.
+            all_goal_element_ids = sorted(set().union(*initiative_goal_element_ids))
+            goal_by_element_id: Dict[int, Any] = {}
+            outcomes_by_goal_id: Dict[int, List[Dict[str, Any]]] = {}
+            if all_goal_element_ids:
+                goal_rows = (
+                    db.session.execute(
+                        db.select(Goal.id, Goal.archimate_element_id, Goal.name)
+                        .where(Goal.archimate_element_id.in_(all_goal_element_ids))
+                        .order_by(Goal.id)
+                    )
+                    .all()
+                )
+                for g_id, g_el_id, g_name in goal_rows:
+                    goal_by_element_id[g_el_id] = {"id": g_id, "name": g_name}
+
+                goal_ids = sorted({g["id"] for g in goal_by_element_id.values()})
+                if goal_ids:
+                    outcome_rows = (
+                        db.session.execute(
+                            db.select(MotivationOutcome)
+                            .where(MotivationOutcome.goal_id.in_(goal_ids))
+                            .order_by(MotivationOutcome.id)
+                        )
+                        .scalars()
+                        .all()
+                    )
+                    for oc in outcome_rows:
+                        outcomes_by_goal_id.setdefault(oc.goal_id, []).append(oc)
+
+            # Decision C: attach outcomes to each initiative payload.
+            for i, payload in enumerate(initiative_payloads):
+                goal_eids = initiative_goal_element_ids[i]
+                if not goal_eids:
+                    payload["outcomes"] = None
+                    payload["outcomes_reason"] = NO_OUTCOME_RECORDED_REASON
+                    continue
+
+                # Collect outcomes for every Goal in this initiative's set,
+                # ordered by goal element id then outcome id.
+                all_outcomes: List[Dict[str, Any]] = []
+                for g_eid in sorted(goal_eids):
+                    goal = goal_by_element_id.get(g_eid)
+                    if goal is None:
+                        continue
+                    for oc in outcomes_by_goal_id.get(goal["id"], []):
+                        all_outcomes.append(
+                            {
+                                "outcome_id": oc.id,
+                                "name": oc.name,
+                                "goal_element_id": g_eid,
+                                "goal_name": goal["name"],
+                                "realization_status": oc.realization_status,
+                                "achievement_level": oc.achievement_level,
+                                "target_value": oc.target_value,
+                                "current_value": oc.current_value,
+                                "baseline_value": oc.baseline_value,
+                                "measurement_unit": oc.measurement_unit,
+                                "target_date": oc.target_date.isoformat()
+                                if oc.target_date
+                                else None,
+                                "achieved_date": oc.achieved_date.isoformat()
+                                if oc.achieved_date
+                                else None,
+                                "truth_class": "authoritative_fact",
+                            }
+                        )
+
+                if all_outcomes:
+                    payload["outcomes"] = all_outcomes
+                    payload["outcomes_reason"] = None
+                else:
+                    payload["outcomes"] = None
+                    payload["outcomes_reason"] = NO_OUTCOME_RECORDED_REASON
 
         return {"initiatives": initiative_payloads, "reasons": [], "elements": all_elements}
 
@@ -1335,6 +1441,16 @@ class IntelligenceQueryService:
         Invariant: ``capabilities_below_threshold + capabilities_with_no_maturity
         <= capabilities_considered``.
 
+        Importance (T-WIRE-5): each value-stream row gains
+        ``strategic_importance`` (as recorded on ``ValueStream``) and
+        ``importance_reason`` (``"no_criticality_recorded"`` when null).
+        Each capability entry gains ``strategic_importance`` and
+        ``business_criticality`` (as recorded on ``UnifiedCapability``) and
+        ``importance_reason`` (``"no_criticality_recorded"`` when both are
+        null). These ride on the existing selects; no new statement is added.
+        ``at_risk``, the threshold, every count and the row order are
+        unchanged.
+
         Path C (T-S4, DA-S3): initiatives and their success metrics, attached
         to each value-stream row and each capability entry through
         ``PortfolioInitiative.archimate_element_id``. Two batched selects at
@@ -1475,6 +1591,8 @@ class IntelligenceQueryService:
                             UnifiedCapability.id,
                             UnifiedCapability.name,
                             UnifiedCapability.code,
+                            UnifiedCapability.strategic_importance,
+                            UnifiedCapability.business_criticality,
                             ArchiMateElement.id,
                         )
                         .select_from(UnifiedCapability)
@@ -1498,12 +1616,14 @@ class IntelligenceQueryService:
                             ),
                         )
                     )
-                    for cap_id, name, code, cap_element_id in db.session.execute(identity_stmt).all():
+                    for cap_id, name, code, strategic_importance, business_criticality, cap_element_id in db.session.execute(identity_stmt).all():
                         identity_by_id[cap_id] = {
                             "id": cap_id,
                             "name": name,
                             "code": code,
                             "archimate_element_id": cap_element_id,
+                            "strategic_importance": strategic_importance,
+                            "business_criticality": business_criticality,
                         }
 
                 # Maturity through the accessor -- never off the columns.
@@ -1685,6 +1805,14 @@ class IntelligenceQueryService:
                             cap_element_id, "capability_not_linked_to_model"
                         )
 
+                        cap_strategic_importance = identity.get("strategic_importance")
+                        cap_business_criticality = identity.get("business_criticality")
+                        cap_importance_reason = (
+                            NO_CRITICALITY_RECORDED_REASON
+                            if cap_strategic_importance is None and cap_business_criticality is None
+                            else None
+                        )
+
                         capability_rows.append(
                             {
                                 "id": identity["id"],
@@ -1695,6 +1823,9 @@ class IntelligenceQueryService:
                                 "target_maturity": target,
                                 "maturity_source": "unified_capabilities",
                                 "at_risk": at_risk,
+                                "strategic_importance": cap_strategic_importance,
+                                "business_criticality": cap_business_criticality,
+                                "importance_reason": cap_importance_reason,
                                 "dependency": {
                                     "link_kind": "curated",
                                     "support_type": mapping.support_type,
@@ -1730,6 +1861,11 @@ class IntelligenceQueryService:
                     )
 
                     at_risk_count = len(at_risk_ids_in_row)
+                    vs_importance_reason = (
+                        NO_CRITICALITY_RECORDED_REASON
+                        if vs.strategic_importance is None
+                        else None
+                    )
                     rows.append(
                         {
                             "value_stream": {
@@ -1737,12 +1873,14 @@ class IntelligenceQueryService:
                                 "name": vs.name,
                                 "code": vs.code,
                                 "archimate_element_id": vs.archimate_element_id,
+                                "strategic_importance": vs.strategic_importance,
                             },
                             "at_risk_capability_count": at_risk_count,
                             "capabilities": capability_rows,
                             "reason": row_reason,
                             "value_stream_initiatives": vs_initiatives,
                             "value_stream_initiatives_reason": vs_initiatives_reason,
+                            "importance_reason": vs_importance_reason,
                         }
                     )
                     if at_risk_count > 0:

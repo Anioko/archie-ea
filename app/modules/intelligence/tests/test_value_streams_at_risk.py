@@ -1245,12 +1245,11 @@ def test_dependency_object_exact_key_set_and_no_forbidden_keys(app, db_session, 
 
 def test_capability_row_and_summary_exact_key_sets(app, db_session, make_org):
     """The dependency object's key set was already pinned above; this
-    pins the three key sets that wrap it -- a capability entry (twelve
-    keys, the original eight plus T-S4's archimate_element_id, initiatives
-    and initiatives_reason), a row (six keys, T-S1's four plus T-S4's
-    value_stream_initiatives and value_stream_initiatives_reason) and the
-    top-level summary (the seven counters plus latency_ms, added once after
-    every row is built)."""
+    pins the three key sets that wrap it -- a capability entry (fifteen
+    keys, the original twelve plus T-WIRE-5's strategic_importance,
+    business_criticality and importance_reason), a row (seven keys, T-S4's
+    six plus T-WIRE-5's importance_reason) and the top-level summary (the
+    seven counters plus latency_ms, added once after every row is built)."""
     from app.modules.intelligence.services.query_service import IntelligenceQueryService
 
     org = make_org("vsr-ts4-keysets")
@@ -1266,14 +1265,18 @@ def test_capability_row_and_summary_exact_key_sets(app, db_session, make_org):
     assert set(row.keys()) == {
         "value_stream", "at_risk_capability_count", "capabilities", "reason",
         "value_stream_initiatives", "value_stream_initiatives_reason",
+        "importance_reason",
     }
-    assert set(row["value_stream"].keys()) == {"id", "name", "code", "archimate_element_id"}
+    assert set(row["value_stream"].keys()) == {
+        "id", "name", "code", "archimate_element_id", "strategic_importance",
+    }
 
     cap_row = row["capabilities"][0]
     assert set(cap_row.keys()) == {
         "id", "name", "code", "archimate_element_id", "current_maturity",
         "target_maturity", "maturity_source", "at_risk", "dependency", "reason",
         "initiatives", "initiatives_reason",
+        "strategic_importance", "business_criticality", "importance_reason",
     }
 
     assert set(result["summary"].keys()) == {
@@ -2098,3 +2101,221 @@ def test_value_stream_id_narrowing_narrows_initiatives(app, db_session, make_org
     ids = {i["id"] for i in row["value_stream_initiatives"]}
     assert ids == {initiative1.id}
     assert initiative2.id not in ids
+
+
+# ---------------------------------------------------------------------------
+# T-WIRE-5: importance columns on value-stream rows and capability entries
+# ---------------------------------------------------------------------------
+
+def test_value_stream_strategic_importance_carried(app, db_session, make_org):
+    from app.modules.intelligence.services.query_service import IntelligenceQueryService
+
+    org = make_org("vsr-importance-vs")
+    vs = _value_stream(db_session, org.id, "Critical Stream",
+                       f"VSR-IMPORTANCE-VS-{_org_suffix()}")
+    vs.strategic_importance = "critical"
+    stage = _stage(db_session, org.id, vs.id, "Stage 1")
+    cap = _capability(db_session, org.id, "Cap A", f"VSR-IMPORTANCE-CAP-{_org_suffix()}")
+    _mapping(db_session, org.id, cap.id, vs.id, stage.id)
+    db_session.commit()
+
+    result = IntelligenceQueryService.value_streams_at_risk(org.id)
+    row = result["rows"][0]
+    assert row["value_stream"]["strategic_importance"] == "critical"
+    assert row["importance_reason"] is None
+
+
+def test_value_stream_null_importance_gives_reason(app, db_session, make_org):
+    from app.modules.intelligence.services.query_service import IntelligenceQueryService
+
+    org = make_org("vsr-importance-null")
+    vs = _value_stream(db_session, org.id, "Null Importance Stream",
+                       f"VSR-IMPORTANCE-NULL-{_org_suffix()}")
+    assert vs.strategic_importance is None
+    stage = _stage(db_session, org.id, vs.id, "Stage 1")
+    cap = _capability(db_session, org.id, "Cap A", f"VSR-IMPORTANCE-NULL-CAP-{_org_suffix()}")
+    _mapping(db_session, org.id, cap.id, vs.id, stage.id)
+    db_session.commit()
+
+    result = IntelligenceQueryService.value_streams_at_risk(org.id)
+    row = result["rows"][0]
+    assert row["value_stream"]["strategic_importance"] is None
+    assert row["importance_reason"] == "no_criticality_recorded"
+
+
+def test_capability_importance_both_set(app, db_session, make_org):
+    from app.modules.intelligence.services.query_service import IntelligenceQueryService
+
+    org = make_org("vsr-importance-cap-both")
+    vs = _value_stream(db_session, org.id, "Stream",
+                       f"VSR-IMPORTANCE-CAP-BOTH-{_org_suffix()}")
+    stage = _stage(db_session, org.id, vs.id, "Stage 1")
+    cap = _capability(db_session, org.id, "Cap A", f"VSR-IMPORTANCE-CAP-BOTH-CAP-{_org_suffix()}")
+    cap.strategic_importance = "high"
+    cap.business_criticality = "mission_critical"
+    _mapping(db_session, org.id, cap.id, vs.id, stage.id)
+    db_session.commit()
+
+    result = IntelligenceQueryService.value_streams_at_risk(org.id)
+    cap_entry = result["rows"][0]["capabilities"][0]
+    assert cap_entry["strategic_importance"] == "high"
+    assert cap_entry["business_criticality"] == "mission_critical"
+    assert cap_entry["importance_reason"] is None
+
+
+def test_capability_importance_one_set_one_null(app, db_session, make_org):
+    from app.modules.intelligence.services.query_service import IntelligenceQueryService
+
+    org = make_org("vsr-importance-cap-one")
+    vs = _value_stream(db_session, org.id, "Stream",
+                       f"VSR-IMPORTANCE-CAP-ONE-{_org_suffix()}")
+    stage = _stage(db_session, org.id, vs.id, "Stage 1")
+    cap = _capability(db_session, org.id, "Cap A", f"VSR-IMPORTANCE-CAP-ONE-CAP-{_org_suffix()}")
+    cap.strategic_importance = None
+    cap.business_criticality = "mission_critical"
+    _mapping(db_session, org.id, cap.id, vs.id, stage.id)
+    db_session.commit()
+
+    result = IntelligenceQueryService.value_streams_at_risk(org.id)
+    cap_entry = result["rows"][0]["capabilities"][0]
+    assert cap_entry["strategic_importance"] is None
+    assert cap_entry["business_criticality"] == "mission_critical"
+    # Only one is set, so reason is None (not both null)
+    assert cap_entry["importance_reason"] is None
+
+
+def test_capability_importance_both_null_gives_reason(app, db_session, make_org):
+    from app.modules.intelligence.services.query_service import IntelligenceQueryService
+
+    org = make_org("vsr-importance-cap-null")
+    vs = _value_stream(db_session, org.id, "Stream",
+                       f"VSR-IMPORTANCE-CAP-NULL-{_org_suffix()}")
+    stage = _stage(db_session, org.id, vs.id, "Stage 1")
+    cap = _capability(db_session, org.id, "Cap A", f"VSR-IMPORTANCE-CAP-NULL-CAP-{_org_suffix()}")
+    assert cap.strategic_importance is None
+    assert cap.business_criticality is None
+    _mapping(db_session, org.id, cap.id, vs.id, stage.id)
+    db_session.commit()
+
+    result = IntelligenceQueryService.value_streams_at_risk(org.id)
+    cap_entry = result["rows"][0]["capabilities"][0]
+    assert cap_entry["strategic_importance"] is None
+    assert cap_entry["business_criticality"] is None
+    assert cap_entry["importance_reason"] == "no_criticality_recorded"
+
+
+def test_at_risk_and_counts_unchanged_by_importance(app, db_session, make_org):
+    from app.modules.intelligence.services.query_service import IntelligenceQueryService
+
+    org = make_org("vsr-importance-unchanged")
+    vs = _value_stream(db_session, org.id, "Stream",
+                       f"VSR-IMPORTANCE-UNCHANGED-{_org_suffix()}")
+    stage = _stage(db_session, org.id, vs.id, "Stage 1")
+    cap = _capability(db_session, org.id, "Cap A",
+                      f"VSR-IMPORTANCE-UNCHANGED-CAP-{_org_suffix()}",
+                      current=2, target=4)
+    _mapping(db_session, org.id, cap.id, vs.id, stage.id)
+    db_session.commit()
+
+    # Run without importance words
+    result_without = IntelligenceQueryService.value_streams_at_risk(org.id)
+
+    # Set importance and run again
+    vs.strategic_importance = "critical"
+    cap.strategic_importance = "high"
+    cap.business_criticality = "mission_critical"
+    db_session.commit()
+
+    result_with = IntelligenceQueryService.value_streams_at_risk(org.id)
+
+    # at_risk, threshold, summary counts, row order must be identical
+    # (excluding latency_ms which varies between runs)
+    assert result_with["threshold"] == result_without["threshold"]
+    assert result_with["threshold_basis"] == result_without["threshold_basis"]
+    for key in result_with["summary"]:
+        if key == "latency_ms":
+            continue
+        assert result_with["summary"][key] == result_without["summary"][key]
+    assert len(result_with["rows"]) == len(result_without["rows"])
+    for rw, rwo in zip(result_with["rows"], result_without["rows"]):
+        assert rw["at_risk_capability_count"] == rwo["at_risk_capability_count"]
+        assert rw["reason"] == rwo["reason"]
+        assert rw["value_stream"]["id"] == rwo["value_stream"]["id"]
+        assert len(rw["capabilities"]) == len(rwo["capabilities"])
+        for cw, cwo in zip(rw["capabilities"], rwo["capabilities"]):
+            assert cw["at_risk"] == cwo["at_risk"]
+            assert cw["current_maturity"] == cwo["current_maturity"]
+            assert cw["target_maturity"] == cwo["target_maturity"]
+            assert cw["reason"] == cwo["reason"]
+
+
+def test_shared_catalogue_capability_importance_not_listed(app, db_session, make_org, monkeypatch):
+    from app.modules.intelligence.services.query_service import IntelligenceQueryService
+
+    org = make_org("vsr-importance-shared")
+    vs = _value_stream(db_session, org.id, "Stream",
+                       f"VSR-IMPORTANCE-SHARED-{_org_suffix()}")
+    stage = _stage(db_session, org.id, vs.id, "Stage 1")
+
+    # Create a shared catalogue capability (organization_id IS NULL)
+    from app.models.unified_capability import UnifiedCapability
+    shared_cap = UnifiedCapability(
+        name="Shared Cap",
+        code=f"VSR-IMPORTANCE-SHARED-CAP-{_org_suffix()}",
+        organization_id=None,
+        strategic_importance="critical",
+        business_criticality="mission_critical",
+    )
+    db_session.add(shared_cap)
+    db_session.flush()
+
+    _mapping(db_session, org.id, shared_cap.id, vs.id, stage.id)
+    db_session.commit()
+
+    result = IntelligenceQueryService.value_streams_at_risk(org.id)
+    # The shared catalogue capability should appear (permissive predicate)
+    assert len(result["rows"][0]["capabilities"]) == 1
+    cap_entry = result["rows"][0]["capabilities"][0]
+    # Its importance is carried as recorded
+    assert cap_entry["strategic_importance"] == "critical"
+    assert cap_entry["business_criticality"] == "mission_critical"
+
+
+def test_importance_keys_in_every_capability_entry(app, db_session, make_org):
+    from app.modules.intelligence.services.query_service import IntelligenceQueryService
+
+    org = make_org("vsr-importance-keys")
+    vs = _value_stream(db_session, org.id, "Stream",
+                       f"VSR-IMPORTANCE-KEYS-{_org_suffix()}")
+    stage = _stage(db_session, org.id, vs.id, "Stage 1")
+    cap = _capability(db_session, org.id, "Cap A", f"VSR-IMPORTANCE-KEYS-CAP-{_org_suffix()}")
+    _mapping(db_session, org.id, cap.id, vs.id, stage.id)
+    db_session.commit()
+
+    result = IntelligenceQueryService.value_streams_at_risk(org.id)
+    cap_entry = result["rows"][0]["capabilities"][0]
+    assert "strategic_importance" in cap_entry
+    assert "business_criticality" in cap_entry
+    assert "importance_reason" in cap_entry
+
+    row = result["rows"][0]
+    assert "strategic_importance" in row["value_stream"]
+    assert "importance_reason" in row
+
+
+def test_fabrication_no_invented_importance_word(app, db_session, make_org):
+    import json
+    from app.modules.intelligence.services.query_service import IntelligenceQueryService
+
+    org = make_org("vsr-importance-fab")
+    vs = _value_stream(db_session, org.id, "Stream",
+                       f"VSR-IMPORTANCE-FAB-{_org_suffix()}")
+    stage = _stage(db_session, org.id, vs.id, "Stage 1")
+    cap = _capability(db_session, org.id, "Cap A", f"VSR-IMPORTANCE-FAB-CAP-{_org_suffix()}")
+    _mapping(db_session, org.id, cap.id, vs.id, stage.id)
+    db_session.commit()
+
+    result = IntelligenceQueryService.value_streams_at_risk(org.id)
+    payload_str = json.dumps(result, default=str)
+    # No invented importance word for null columns
+    assert '"strategic_importance": "medium"' not in payload_str
