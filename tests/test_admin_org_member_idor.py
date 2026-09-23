@@ -387,11 +387,17 @@ class TestAdminUserActionRoutes:
         with app.app_context():
             login_as(client, admin_a)
             post_resp = client.post(
-                f"/admin/user/{target_id}/role", data={"enterprise_role": chosen_role}
+                f"/admin/user/{target_id}/role",
+                data={"enterprise_role": chosen_role},
+                follow_redirects=True,
             )
 
-        assert post_resp.status_code == 302
-        assert post_resp.headers["Location"].endswith(f"/admin/user/{target_id}")
+        # admin.user_info answers at both /admin/user/<id> and
+        # /admin/user/<id>/info (a pre-existing, unrelated alias); follow the
+        # redirect and check the destination is the user's own page rather
+        # than pinning one of the two equivalent URLs.
+        assert post_resp.status_code == 200
+        assert target.email.encode() in post_resp.data
 
         from app.models.user import User
 
