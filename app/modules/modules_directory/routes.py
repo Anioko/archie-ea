@@ -191,6 +191,7 @@ _NOT_RENDERED = {
     "architect_ui.roadmap_builder": "302 -> Roadmaps",
     "roadmap_outcome.product_roadmap_page": "302 -> Roadmaps",
     "main.archimate_roadmap": "302 -> Roadmaps",
+    "my_applications.roadmap_impact": "302 -> My Applications",
 }
 
 # Real, working pages, still reachable by their own URL only, that no

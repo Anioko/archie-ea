@@ -7,9 +7,7 @@ All queries scoped by current user's ownership records.
 ADR Reference: docs/adr/0011-application-manager-persona.md
 """
 
-from datetime import date
-
-from flask import render_template, request
+from flask import render_template, request, redirect, url_for
 from flask_login import current_user, login_required
 
 from app.decorators import requires_application_owner
@@ -182,27 +180,5 @@ def health_overview():
 @login_required
 @requires_application_owner
 def roadmap_impact():
-    """View roadmap items affecting owned applications."""
-    apps = get_owned_apps()
-
-    # Get apps with sunset dates or lifecycle changes
-    upcoming_changes = []
-    for app in apps:
-        sunset = getattr(app, 'sunset_date', None)
-        if sunset and sunset > date.today():
-            upcoming_changes.append({
-                'app': app,
-                'date': sunset,
-                'type': 'Sunset',
-            })
-
-    # Sort by date
-    upcoming_changes.sort(key=lambda x: x['date'])
-
-    return render_template(
-        "my_applications/roadmap_impact.html",
-        apps=apps,
-        upcoming_changes=upcoming_changes,
-        today=date.today(),
-        ownership_summary=get_ownership_summary(current_user.id),
-    )
+    """Roadmap Impact page moved to dashboard."""
+    return redirect(url_for("my_applications.dashboard", _anchor="roadmap"))
