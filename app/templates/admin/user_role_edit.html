@@ -12,7 +12,7 @@
             {{ page_shell(title=(user.full_name()), subtitle=(user.email), breadcrumb=[('Home', '/'), (user.full_name(), none)]) }}
         </div>
 
-        <form method="POST" action="{{ url_for('admin.update_user_role', user_id=user.id) }}">
+        <form method="POST" action="{{ url_for('user_role.update_user_role', user_id=user.id) }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
             <div class="space-y-6">
@@ -23,18 +23,7 @@
                     </p>
 
                     <div class="grid grid-cols-1 gap-3">
-                        {% set roles = [
-                            ('solution_architect', 'Solution Architect', 'Designs solutions, manages capabilities and technology decisions'),
-                            ('enterprise_architect', 'Enterprise Architect', 'Full visibility across all domains, strategic planning'),
-                            ('application_manager', 'Application Manager', 'Manages owned applications, health monitoring, roadmap impacts'),
-                            ('portfolio_manager', 'Portfolio Manager', 'Portfolio oversight, procurement access, strategic initiatives'),
-                            ('procurement', 'Procurement Manager', 'Vendor contracts, license compliance, spend analytics'),
-                            ('arb_member', 'ARB Member', 'Architecture Review Board, governance decisions'),
-                            ('cto', 'CTO', 'Executive oversight, strategic decisions'),
-                            ('platform_admin', 'Platform Admin', 'Full system access, user management'),
-                        ] %}
-
-                        {% for role_id, role_name, role_desc in roles %}
+                        {% for role_id, role_name in roles %}
                         <label class="flex items-start gap-3 p-4 rounded-lg border border-border hover:border-primary/50 cursor-pointer transition-colors
                             {% if user.enterprise_role == role_id %}bg-primary/5 border-primary{% endif %}">
                             <input type="radio" name="enterprise_role" value="{{ role_id }}"
@@ -42,7 +31,6 @@
                                    class="mt-1">
                             <div>
                                 <div class="font-medium">{{ role_name }}</div>
-                                <div class="text-sm text-muted-foreground">{{ role_desc }}</div>
                             </div>
                         </label>
                         {% endfor %}
@@ -54,7 +42,7 @@
                             class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors">
                         Save Changes
                     </button>
-                    <a href="{{ url_for('admin.users') }}"
+                    <a href="{{ url_for('admin.user_info', user_id=user.id) }}"
                        class="px-4 py-2 rounded-md border border-border hover:bg-accent transition-colors">
                         Cancel
                     </a>

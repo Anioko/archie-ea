@@ -245,6 +245,176 @@ class TestMemberIDOR:
         assert OrgRole.query.get(role_b_id) is not None
 
 
+class TestAdminUserActionRoutes:
+    """F-9 (T-RR-9): deletion by POST only, a refused delete is a flashed
+    message rather than a 500, and the role page renders with the full
+    VALID_ROLES list."""
+
+    def test_get_delete_is_refused_and_user_survives(self, app, db_session, login_as, client):
+        org_a = _make_org(db_session, "del-get-a")
+        admin_a = _make_user(db_session, org_a, is_org_admin=True)
+        victim = _make_user(db_session, org_a, email=f"getdel-{uuid.uuid4().hex[:8]}@example.com")
+        victim_id = victim.id
+        db_session.commit()
+
+        with app.app_context():
+            login_as(client, admin_a)
+            resp = client.get(f"/admin/user/{victim_id}/_delete")
+
+        assert resp.status_code == 405
+
+        from app.models.user import User
+
+        with app.app_context():
+            assert User.query.get(victim_id) is not None
+
+    def test_delete_confirmation_page_renders_a_post_form_with_csrf_token(
+        self, app, db_session, login_as, client
+    ):
+        org_a = _make_org(db_session, "del-form-a")
+        admin_a = _make_user(db_session, org_a, is_org_admin=True)
+        victim = _make_user(db_session, org_a, email=f"delform-{uuid.uuid4().hex[:8]}@example.com")
+        db_session.commit()
+
+        with app.app_context():
+            login_as(client, admin_a)
+            resp = client.get(f"/admin/user/{victim.id}/delete")
+
+        assert resp.status_code == 200
+        body = resp.data.decode()
+        assert f'action="/admin/user/{victim.id}/_delete"' in body
+        assert '<form method="POST"' in body
+        assert 'name="csrf_token"' in body
+
+    def test_post_delete_removes_unreferenced_user_and_redirects_to_list(
+        self, app, db_session, login_as, client
+    ):
+        org_a = _make_org(db_session, "del-post-a")
+        admin_a = _make_user(db_session, org_a, is_org_admin=True)
+        victim = _make_user(db_session, org_a, email=f"delpost-{uuid.uuid4().hex[:8]}@example.com")
+        victim_id = victim.id
+        db_session.commit()
+
+        with app.app_context():
+            login_as(client, admin_a)
+            resp = client.post(f"/admin/user/{victim_id}/_delete")
+
+        assert resp.status_code == 302
+        assert resp.headers["Location"].endswith("/admin/users")
+
+        from app.models.user import User
+
+        with app.app_context():
+            assert User.query.get(victim_id) is None
+
+    def test_post_delete_of_referenced_user_flashes_error_instead_of_500(
+        self, app, db_session, login_as, client
+    ):
+        from app.models.org_role import OrgRole
+
+        org_a = _make_org(db_session, "del-ref-a")
+        admin_a = _make_user(db_session, org_a, is_org_admin=True)
+        victim = _make_user(db_session, org_a, email=f"delref-{uuid.uuid4().hex[:8]}@example.com")
+        db_session.flush()
+        # A row that references the victim and is not cascade-deleted with the
+        # user: the FK refusal (IntegrityError) the fix must turn into a
+        # flashed message instead of a 500.
+        db_session.add(OrgRole(organization_id=org_a.id, user_id=victim.id, role="viewer"))
+        db_session.commit()
+        victim_id = victim.id
+
+        with app.app_context():
+            login_as(client, admin_a)
+            resp = client.post(f"/admin/user/{victim_id}/_delete", follow_redirects=True)
+
+        assert resp.status_code == 200
+        assert b"This user still owns records and cannot be deleted." in resp.data
+
+        from app.models.user import User
+
+        with app.app_context():
+            assert User.query.get(victim_id) is not None
+
+    def test_cross_org_admin_cannot_delete_or_reach_role_page_of_other_orgs_user(
+        self, app, db_session, login_as, client
+    ):
+        org_a = _make_org(db_session, "del-cross-a")
+        org_b = _make_org(db_session, "del-cross-b")
+        admin_a = _make_user(db_session, org_a, is_org_admin=True)
+        victim_b = _make_user(db_session, org_b, email=f"crossvictim-{uuid.uuid4().hex[:8]}@example.com")
+        victim_b_id = victim_b.id
+        victim_b_role_before = victim_b.enterprise_role
+        db_session.commit()
+
+        with app.app_context():
+            login_as(client, admin_a)
+            del_resp = client.post(f"/admin/user/{victim_b_id}/_delete")
+            role_resp = client.get(f"/admin/user/{victim_b_id}/role")
+
+        assert del_resp.status_code == 404
+        assert role_resp.status_code == 404
+
+        from app.models.user import User
+
+        with app.app_context():
+            reloaded = User.query.get(victim_b_id)
+            assert reloaded is not None
+            assert reloaded.enterprise_role == victim_b_role_before
+
+    def test_role_page_renders_full_role_list_and_updates_on_post(
+        self, app, db_session, login_as, client
+    ):
+        from app.models.user import VALID_ROLES
+
+        org_a = _make_org(db_session, "role-a")
+        admin_a = _make_user(db_session, org_a, is_org_admin=True)
+        target = _make_user(db_session, org_a, email=f"roletarget-{uuid.uuid4().hex[:8]}@example.com")
+        target_id = target.id
+        db_session.commit()
+
+        with app.app_context():
+            login_as(client, admin_a)
+            get_resp = client.get(f"/admin/user/{target_id}/role")
+
+        assert get_resp.status_code == 200
+        body = get_resp.data.decode()
+        assert f'action="/admin/user/{target_id}/role"' in body
+        assert body.count('name="enterprise_role"') == len(VALID_ROLES)
+        for role_id in VALID_ROLES:
+            assert f'value="{role_id}"' in body
+
+        chosen_role = VALID_ROLES[0]
+        with app.app_context():
+            login_as(client, admin_a)
+            post_resp = client.post(
+                f"/admin/user/{target_id}/role", data={"enterprise_role": chosen_role}
+            )
+
+        assert post_resp.status_code == 302
+        assert post_resp.headers["Location"].endswith(f"/admin/user/{target_id}")
+
+        from app.models.user import User
+
+        with app.app_context():
+            reloaded = User.query.get(target_id)
+            assert reloaded.enterprise_role == chosen_role
+
+        with app.app_context():
+            login_as(client, admin_a)
+            bad_resp = client.post(
+                f"/admin/user/{target_id}/role", data={"enterprise_role": "not-a-real-role"}
+            )
+
+        assert bad_resp.status_code == 302
+        assert bad_resp.headers["Location"].endswith(f"/admin/user/{target_id}/role")
+
+        with app.app_context():
+            login_as(client, admin_a)
+            after_bad_resp = client.get(f"/admin/user/{target_id}/role")
+
+        assert after_bad_resp.status_code == 200
+
+
 class TestViewerRole:
     """A-03 (engineering half): a read-only role must exist and must not be
     able to reach admin write routes. Purely additive — asserts the new

@@ -30,6 +30,7 @@ from flask import (
     url_for,
 )
 from flask_login import current_user, login_required
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import aliased, joinedload
 from app.utils.pagination import safe_int_arg
 
@@ -313,7 +314,7 @@ def delete_user_request(user_id):
     return render_template("admin/manage_user.html", user=user)
 
 
-@admin_bp.route("/user/<int:user_id>/_delete")
+@admin_bp.route("/user/<int:user_id>/_delete", methods=["POST"])
 @login_required
 @admin_required
 @audit_log("admin_user_delete")
@@ -327,8 +328,16 @@ def delete_user(user_id):
         )
     else:
         user = _svc.get_user_or_404(user_id)
-        success, message = _svc.delete_user(user)
-        flash(message, "success")
+        try:
+            success, message = _svc.delete_user(user)
+            flash(message, "success")
+        except IntegrityError:
+            db.session.rollback()
+            flash(
+                "This user still owns records and cannot be deleted.",
+                "error",
+            )
+            return redirect(url_for("admin.user_info", user_id=user_id))
     return redirect(url_for("admin.registered_users"))
 
 

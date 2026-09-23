@@ -10,7 +10,7 @@ from flask_login import login_required
 
 from app.decorators import admin_required
 from app.extensions import db
-from app.models.user import VALID_ROLES, User
+from app.models.user import ROLE_DISPLAY_NAMES, VALID_ROLES, User
 
 # Use the existing admin blueprint - this will be imported by admin_routes
 user_role_bp = Blueprint("user_role", __name__)
@@ -31,7 +31,8 @@ def edit_user_role(user_id):
     # admin_required is org-scoped admin, not platform_admin — restrict to the
     # current org (tenant-scoping-ok: fixes cross-org role-escalation IDOR).
     user = User.query.filter_by(id=user_id, organization_id=g.current_org_id).first_or_404()
-    return render_template("admin/user_role_edit.html", user=user)
+    roles = [(r, ROLE_DISPLAY_NAMES.get(r, r)) for r in VALID_ENTERPRISE_ROLES]
+    return render_template("admin/user_role_edit.html", user=user, roles=roles)
 
 
 @user_role_bp.route("/user/<int:user_id>/role", methods=["POST"])
