@@ -15,13 +15,6 @@ from app.models.user import ROLE_DISPLAY_NAMES, VALID_ROLES, User
 # Use the existing admin blueprint - this will be imported by admin_routes
 user_role_bp = Blueprint("user_role", __name__)
 
-# Derived from the model rather than restated. This list previously omitted
-# business_architect, which VALID_ROLES has always contained -- so the one role
-# the picker could not offer was one the product actively assigns, and an admin
-# had no way to grant it. Importing the source of truth means a role added to
-# the model is assignable immediately instead of silently missing here.
-VALID_ENTERPRISE_ROLES = list(VALID_ROLES)
-
 
 @user_role_bp.route("/user/<int:user_id>/role", methods=["GET"])
 @login_required
@@ -31,7 +24,7 @@ def edit_user_role(user_id):
     # admin_required is org-scoped admin, not platform_admin — restrict to the
     # current org (tenant-scoping-ok: fixes cross-org role-escalation IDOR).
     user = User.query.filter_by(id=user_id, organization_id=g.current_org_id).first_or_404()
-    roles = [(r, ROLE_DISPLAY_NAMES.get(r, r)) for r in VALID_ENTERPRISE_ROLES]
+    roles = [(r, ROLE_DISPLAY_NAMES.get(r, r)) for r in VALID_ROLES]
     return render_template("admin/user_role_edit.html", user=user, roles=roles)
 
 
@@ -46,7 +39,7 @@ def update_user_role(user_id):
 
     new_role = request.form.get("enterprise_role")
 
-    if new_role not in VALID_ENTERPRISE_ROLES:
+    if new_role not in VALID_ROLES:
         flash(f"Invalid role: {new_role}", "error")
         return redirect(url_for("user_role.edit_user_role", user_id=user_id))
 
