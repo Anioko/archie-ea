@@ -16,9 +16,9 @@ RULE 1 (reads, the original rule; still the default and the only rule
 zero-tolerance gate this file has always driven is untouched). See below.
 
 RULE 2 (writes). A backfill that assigns organization_id to a pre-existing
-row is a one-time repair, and five of them accumulated by separate decision
-before the policy in app/commands/backfill_layer_tenancy.py existed: the
-next one would be a sixth. This rule fails on any
+row is a one-time repair, and several of them accumulated by separate
+decision before the policy in app/commands/backfill_layer_tenancy.py
+existed: the next one would be another. This rule fails on any
 ``UPDATE <tenant table> ... SET organization_id`` string found outside that
 one file, in app/ or scripts/. The dedicated commands that predate the
 policy are the counted, falling ratchet baseline, not an exemption -- they
