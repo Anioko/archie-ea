@@ -15,12 +15,12 @@ sixteen forever; the module's own docstring says a new absence condition
 adds a member here, and nowhere else. This test is updated in lockstep.
 
 This ``_EXPECTED`` list drifted out of sync with reality some time before
-a fix -- the L3/L5 briefs each added a member to ``reason_codes.py``
+a fix -- three members were added to ``reason_codes.py``
 (``no_application_component``, ``no_work_package_recorded``, ``not_costed``)
 without updating this ratchet, only the two route-count ratchets. Found
-while adding the L2 brief's own ``no_budget_recorded`` member; corrected to
-the real, then-current set (23) rather than bumped by one on top of a stale
-base. The baseline-drift engine's model dimension then added
+while adding the ``no_budget_recorded`` member; corrected to the real,
+then-current set (23) rather than bumped by one on top of a stale base. The
+baseline-drift engine's model dimension then added
 ``baseline_lacks_model_snapshot`` for a baseline captured before that
 dimension existed, taking the set to 24.
 """
@@ -36,9 +36,10 @@ from app.modules.intelligence.services.reason_codes import (
     validate_reason_code,
 )
 
-# sdd-v2.md § API-8's original sixteen, T-004's two additions, T-005's one
-# addition (p95_above_highest_bucket, D3), the L2/L3/L5 additions, and the
-# baseline-drift engine's model-dimension addition.
+# The original sixteen, two additions for the cross-layer impact read
+# path, one for the yield endpoint's p95 bucket-edge case, three more for
+# the portfolio/programme/strategy lens absences, and the baseline-drift
+# engine's model-dimension addition.
 _EXPECTED = {
     "no_ownership_recorded",
     "no_maturity_recorded",
