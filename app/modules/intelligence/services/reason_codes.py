@@ -91,6 +91,15 @@ REASON_CODES = frozenset(
         # not_costed/no_budget_recorded already use for a different kind of
         # absence.
         "financial_data_restricted",
+        # Risk/control-gaps brief (2026-09-23) addition: Ask's Risk lens lists
+        # the compliance gap rows recorded against anything on the answer's
+        # own element set, beside the risks, and the resolved component's own
+        # recorded compliance tags. Most elements name no compliance
+        # requirement at all, and most components carry none of the three
+        # text columns that would evidence one -- an honest absence, the same
+        # discipline no_risk_recorded already applies to a different table on
+        # the same answer.
+        "no_compliance_mapping_recorded",
     }
 )
 

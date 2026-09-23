@@ -20,6 +20,10 @@ this fix -- the L3/L5 briefs each added a member to ``reason_codes.py``
 without updating this ratchet, only the two route-count ratchets. Found
 while adding the L2 brief's own ``no_budget_recorded`` member; corrected to
 the real, current set (23) rather than bumped by one on top of a stale base.
+
+The risk/control-gaps brief (2026-09-23) added one more --
+``no_compliance_mapping_recorded`` -- for the Risk lens's control-gap and
+compliance-tag blocks, moving the count to 27.
 """
 
 from __future__ import annotations
@@ -62,11 +66,12 @@ _EXPECTED = {
     "no_ownership_records",
     "capacity_not_available",
     "financial_data_restricted",
+    "no_compliance_mapping_recorded",
 }
 
 
-def test_reason_codes_has_exactly_twenty_six_members():
-    assert len(REASON_CODES) == 26
+def test_reason_codes_has_exactly_twenty_seven_members():
+    assert len(REASON_CODES) == 27
     assert REASON_CODES == frozenset(_EXPECTED)
 
 
