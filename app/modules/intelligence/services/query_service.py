@@ -6,10 +6,13 @@ ApplicationComponent for the one existing deep link), ``programme_for_element``
 (L5, "what are we changing, is it on time and on budget" -- reuses the same
 traversal per work-package seed), ``strategy_for_element`` (L2, "what are
 we trying to achieve, and how's it tracking" -- reuses the same traversal per
-initiative seed) and ``accountability_for_element`` (L4, "who's accountable,
-and can they take on more" -- the accountability half only; capacity is
-honestly absent, FR-13-gated). All six lenses of ``intelligence-lenses-v1.md``
-are now answered.
+initiative seed). ``accountability_for_element`` (L4) exists as a route and
+question card but is currently WITHDRAWN -- it returns an honest
+``ownership_reader_not_built`` reason on every call: the ownership data
+source is decided, no shared tenant-safe reader for it exists yet, and a
+real tenant-scoping fix to ``OrganizationUnit`` is needed before one is
+safe to build -- see the method's own docstring. Five of six lenses in
+``intelligence-lenses-v1.md`` are currently answered.
 """
 
 from __future__ import annotations
@@ -39,9 +42,15 @@ NO_BUDGET_RECORDED_REASON = validate_reason_code("no_budget_recorded")
 # one describes a single element's missing owner field inside the L1 impact
 # traversal; this one describes an ApplicationComponent with zero
 # ApplicationOwnership rows at all, a different absence condition on a
-# different table, for L4.
+# different table, for L4. Currently unused -- accountability_for_element's
+# ownership read is withdrawn (see its own docstring), so nothing produces
+# this today; kept in the closed vocabulary for whichever reader replaces
+# the withdrawn one, not removed on the strength of a temporary gap.
 NO_OWNERSHIP_RECORDS_REASON = validate_reason_code("no_ownership_records")
 CAPACITY_NOT_AVAILABLE_REASON = validate_reason_code("capacity_not_available")
+# Distinct from a "decision pending" state -- the ownership data source IS
+# decided; what doesn't exist yet is a shared, tenant-safe reader for it.
+OWNERSHIP_READER_NOT_BUILT_REASON = validate_reason_code("ownership_reader_not_built")
 
 # T-005 (D1): the NFR-5 measurement point is this exact, PINNED series --
 # never widened, never aggregated across label values.
@@ -1133,106 +1142,46 @@ class IntelligenceQueryService:
 
     @staticmethod
     def accountability_for_element(element_id: int) -> Dict[str, Any]:
-        """L4, "who's accountable for ___, and can they take on more?": the
-        accountability half only -- resolves the element to its
-        ``ApplicationComponent`` (reusing ``portfolio_component_for_element``
-        verbatim, no second resolution implementation) and lists every
-        ``ApplicationOwnership`` row for it, each with its owning
-        ``OrganizationUnit``.
+        """L4, "who's accountable for ___, and can they take on more?":
+        WITHDRAWN -- the ownership data source is decided, but no shared,
+        tenant-safe reader for it exists yet, and this method's own first
+        version shipped one anyway rather than using the one that already
+        existed. Not a "still undecided" state; a "not built safely yet"
+        one, and the two must not be conflated in copy or reason naming.
 
-        No blast-radius traversal here -- unlike every other lens, this is a
-        pure ownership lookup, not a change/risk/programme question, so
-        ``cross_layer_impact`` is not called.
+        The original version re-implemented the element -> component ->
+        ownership -> unit chain that ``_resolve_owners_batch``/
+        ``_sec09_tenant_check`` already provide (``cross_layer_impact``'s
+        own owner field), without that function's tenant assertion. It also
+        had a real, unreviewed tenant-isolation gap of its own:
+        ``OrganizationUnit`` carries no ``TenantMixin``/``organization_id``,
+        and the original fetched it by ``organization_unit_id`` with no
+        tenant predicate at all, so a cross-tenant-seeded
+        ``organization_unit_id`` on an otherwise correctly-scoped
+        ``ApplicationOwnership`` row would have leaked another
+        organisation's unit name/type/head-of-unit -- not caught by this
+        lens's own tests, which only exercised the element-level
+        cross-tenant case. It also showed expired ownership (no
+        ``end_date`` filter) as current, and serialised PII fields
+        (``contact_email``, ``head_of_unit``, ...) nothing in the template
+        ever rendered.
 
-        The capacity half of L4 ("who do we need... when") is honestly
-        absent: no ``Workforce``/``Skill``/``Headcount`` class exists
-        anywhere in ``app/models`` (checked, not assumed), and building one
-        is FR-13-gated -- an external HR-source decision, the same class of
-        gate as L2's OKR source. ``capacity_not_available`` is therefore in
-        ``reasons`` on EVERY response this method returns, success included
-        -- it is a permanent, honest disclosure of a real product gap, not
-        a per-request absence condition like every other reason code here.
-
-        Tenant-safety note, verified not assumed: neither
-        ``OrganizationUnit`` nor ``ApplicationOwnership`` carries a
-        ``TenantMixin``/``organization_id`` of its own (same gap already
-        flagged for ``UnifiedWorkPackage``, L5, and ``PortfolioInitiative``,
-        L2). This method never queries ``ApplicationOwnership`` except by an
-        ``application_id`` obtained from ``portfolio_component_for_element``,
-        which only ever resolves through an already-tenant-validated
-        ``ArchiMateElement`` -- so no independently untenanted read of
-        either table is exposed here. Not attempting to add tenant scoping
-        to either table itself -- a fourth instance of the same pre-existing
-        gap is stronger evidence it needs its own dedicated fix, not
-        stronger reason to patch it inside one more lens.
+        Withdrawing the read entirely -- no query against either table --
+        rather than patching those in place, since the underlying gap
+        (``OrganizationUnit`` has no tenant scoping of its own) needs a
+        real, separate fix before ANY reader of it is safe, not just this
+        one. The route, question card and tests stay in place so the lens
+        is easy to re-enable once a shared, tenant-safe reader exists;
+        only the query itself is disabled.
         """
-        from app.models.enterprise_intelligence import ApplicationOwnership, OrganizationUnit
-
-        with record_query_latency("accountability_for_element") as scope:
-            scope.organization_id = current_org_id()
-
-            component_result = IntelligenceQueryService.portfolio_component_for_element(element_id)
-            if component_result.get("reasons"):
-                return {
-                    "owners": [],
-                    "capacity_not_available": True,
-                    "reasons": list(component_result["reasons"]) + [CAPACITY_NOT_AVAILABLE_REASON],
-                }
-
-            application_id = component_result["application_component_id"]
-
-            ownership_rows = (
-                db.session.execute(
-                    db.select(ApplicationOwnership).where(
-                        ApplicationOwnership.application_id == application_id
-                    )
-                )
-                .scalars()
-                .all()
-            )
-
-            if not ownership_rows:
-                return {
-                    "owners": [],
-                    "capacity_not_available": True,
-                    "reasons": [NO_OWNERSHIP_RECORDS_REASON, CAPACITY_NOT_AVAILABLE_REASON],
-                }
-
-            owner_payloads: List[Dict[str, Any]] = []
-            for row in ownership_rows:
-                # organization_unit_id is NOT NULL with a real FK constraint
-                # on this table (the database itself refuses to delete a
-                # referenced OrganizationUnit), so `unit` cannot actually be
-                # None today. The defensive lookup/None-branch below is kept
-                # anyway -- same discipline every other lens's owner/user
-                # lookup uses -- in case that constraint is ever loosened;
-                # it does not currently have a reachable test case.
-                unit = db.session.get(OrganizationUnit, row.organization_unit_id)
-                owner_payloads.append(
-                    {
-                        "owner_id": row.id,
-                        "ownership_type": row.ownership_type,
-                        "ownership_percentage": row.ownership_percentage,
-                        "primary_contact": row.primary_contact,
-                        "contact_email": row.contact_email,
-                        "start_date": row.start_date.isoformat() if row.start_date else None,
-                        "end_date": row.end_date.isoformat() if row.end_date else None,
-                        "organization_unit": (
-                            {
-                                "name": unit.name,
-                                "unit_type": unit.unit_type,
-                                "head_of_unit": unit.head_of_unit,
-                            }
-                            if unit is not None
-                            else None
-                        ),
-                    }
-                )
-
+        # No record_query_latency wrapper -- there is no query to time, and
+        # sampling a constant into the NFR-5 latency series would only
+        # dilute it with meaningless near-zero readings.
+        del element_id  # withdrawn; kept for a stable call signature
         return {
-            "owners": owner_payloads,
+            "owners": [],
             "capacity_not_available": True,
-            "reasons": [CAPACITY_NOT_AVAILABLE_REASON],
+            "reasons": [OWNERSHIP_READER_NOT_BUILT_REASON, CAPACITY_NOT_AVAILABLE_REASON],
         }
 
 
