@@ -84,6 +84,15 @@ def refresh_projection(pack: dict, *, dry_run: bool = False) -> tuple[int, int]:
                     spec_data_seed=None,
                 )
                 db.session.add(row)
+                # A pack can carry more than one element with the same display
+                # name at different layers (for example a Node, a SystemSoftware
+                # and an ApplicationComponent all called "SAP Gateway"), and the
+                # projection is keyed on (vendor_key, element_name) alone. Without
+                # this, a second same-named element later in the same elements[]
+                # list would not find the row just created above and would insert
+                # a duplicate instead of updating it, leaving which row survives a
+                # later reload to query-order chance.
+                existing_by_name[name] = row
             written += 1
         else:
             if not dry_run:
