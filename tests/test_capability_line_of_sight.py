@@ -309,6 +309,10 @@ class TestTenantIsolation:
         assert f"Foreign maturity B-{suffix}" not in body
         assert f"B notes {suffix}" not in body
 
+        with client.session_transaction() as s:
+            flashes = s.get("_flashes", [])
+        assert flashes == [("error", "Capability not found")]
+
     def test_json_detail_does_not_reach_another_orgs_capability(
         self, app, db_session, make_org, tenant_ctx, login_as, client
     ):
@@ -413,6 +417,10 @@ class TestTenantIsolation:
         assert edit_resp.status_code == 302
         assert edit_resp.headers["Location"].endswith("/capability-maturity/search")
         assert f"No tenant A-{suffix}" not in edit_resp.data.decode()
+
+        with client.session_transaction() as s:
+            flashes = s.get("_flashes", [])
+        assert flashes == [("error", "Capability not found")]
 
         assert api_resp.status_code == 404
         assert api_resp.get_json() == {"error": "Capability not found"}
