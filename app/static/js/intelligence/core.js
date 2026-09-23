@@ -208,14 +208,13 @@
         return (payload.initiatives || []).map(initiativeModel);
     }
 
-    /* L4: owners of the element's ApplicationComponent. No max_depth/
-       include_derived -- this lens is a pure ownership lookup, not a
-       blast-radius traversal, unlike every other lens. See
-       app/modules/intelligence/routes/api.py:accountability_for_element for
-       what "reasons" can carry (element_not_found, no_tenant_context,
-       no_application_component, no_ownership_records,
-       capacity_not_available -- the last one is present on every response,
-       not just an absence case). */
+    /* L4: owners of the element's ApplicationComponent. Currently WITHDRAWN
+       server-side (see IntelligenceQueryService.accountability_for_element's
+       docstring) -- every response carries ownership_reader_not_built and
+       capacity_not_available regardless of element_id, no owners array
+       ever populated. No max_depth/include_derived -- this lens is a pure
+       ownership lookup, not a blast-radius traversal, unlike every other
+       lens. */
     function fetchAccountability(elementId) {
         return Platform.fetch.get(ACCOUNTABILITY_URL + elementId, {}, { silent: true }).then(function (resp) {
             return resp && resp.data ? resp.data : {};

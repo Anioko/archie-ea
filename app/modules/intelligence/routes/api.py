@@ -635,6 +635,13 @@ def accountability_for_element(element_id: int):
     other lenses, no business logic here. No max_depth/include_derived
     params: this lens is a pure ownership lookup, not a blast-radius
     traversal, unlike every other lens on this blueprint.
+
+    The ownership read itself is currently WITHDRAWN -- see the service
+    method's own docstring (a real tenant-isolation gap found in external
+    review of the original PR; no shared, tenant-safe reader exists yet).
+    This route's element/tenant pre-checks are unchanged and still real;
+    only the body of the answer is a permanent honest empty state until
+    that reader exists.
     """
     organization_id = _current_organization_id()
     if organization_id is None:
