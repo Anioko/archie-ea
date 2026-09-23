@@ -1477,6 +1477,146 @@ def _backfill_document_chunk_organizations(*, dry_run, existing_tables, added, f
         )
 
 
+def _backfill_compliance_organizations(*, dry_run, existing_tables, added, failed):
+    """Recover the tenant key for CompliancePolicy/ComplianceViolation rows that
+    predate TenantMixin.
+
+    ComplianceViolation has a trustworthy join: created_by_id -> users.organization_id.
+    CompliancePolicy has no owner/creator column at all (it predates any per-user
+    audit trail), so a policy's organization is instead recovered transitively via
+    any violation logged against it that already resolved to an org -- and, failing
+    that, left NULL and reported, never guessed.
+    """
+    from sqlalchemy import inspect, text
+
+    required = {"compliance_policies", "compliance_violations", "users"}
+    if not required <= existing_tables:
+        return
+    policy_columns = {c["name"] for c in inspect(db.engine).get_columns("compliance_policies")}
+    violation_columns = {
+        c["name"] for c in inspect(db.engine).get_columns("compliance_violations")
+    }
+    if "organization_id" not in policy_columns or "organization_id" not in violation_columns:
+        return
+
+    # Violations first: direct join via created_by_id.
+    before_v = db.session.scalar(
+        text("SELECT count(*) FROM compliance_violations WHERE organization_id IS NULL")
+    )
+    updated_v = 0
+    if before_v and not dry_run:
+        result = db.session.execute(
+            text(
+                """
+                UPDATE compliance_violations AS v
+                SET organization_id = u.organization_id
+                FROM users AS u
+                WHERE u.id = v.created_by_id
+                  AND v.organization_id IS NULL
+                  AND u.organization_id IS NOT NULL
+                """
+            )
+        )
+        updated_v = result.rowcount
+        db.session.commit()
+    unresolved_v = (before_v or 0) - updated_v
+
+    # Policies: transitively via any already-resolved violation logged against them.
+    before_p = db.session.scalar(
+        text("SELECT count(*) FROM compliance_policies WHERE organization_id IS NULL")
+    )
+    updated_p = 0
+    if before_p and not dry_run:
+        result = db.session.execute(
+            text(
+                """
+                UPDATE compliance_policies AS p
+                SET organization_id = sub.organization_id
+                FROM (
+                    SELECT DISTINCT ON (policy_id) policy_id, organization_id
+                    FROM compliance_violations
+                    WHERE organization_id IS NOT NULL
+                    ORDER BY policy_id, id
+                ) AS sub
+                WHERE sub.policy_id = p.id
+                  AND p.organization_id IS NULL
+                """
+            )
+        )
+        updated_p = result.rowcount
+        db.session.commit()
+    unresolved_p = (before_p or 0) - updated_p
+
+    if before_v:
+        added.append(
+            f"backfill.compliance_violations.organization_id :: before={before_v}, "
+            f"updated={updated_v}, unresolved={unresolved_v}"
+        )
+    if unresolved_v:
+        failed.append(
+            f"backfill.compliance_violations.organization_id: {unresolved_v} row(s) "
+            "whose created_by_id names no user, or that user has no organization_id"
+        )
+    if before_p:
+        added.append(
+            f"backfill.compliance_policies.organization_id :: before={before_p}, "
+            f"updated={updated_p}, unresolved={unresolved_p}"
+        )
+    if unresolved_p:
+        failed.append(
+            f"backfill.compliance_policies.organization_id: {unresolved_p} row(s) "
+            "with no resolved violation to recover an org from -- no owner/creator "
+            "column exists on compliance_policies to join through instead"
+        )
+
+
+def _ensure_compliance_policy_tenant_unique_constraint(*, dry_run, existing_tables, added, failed):
+    """Replace the old global UNIQUE(name) with a per-tenant one.
+
+    The single-column constraint meant two different organisations could never
+    both have a policy named e.g. "NIST" -- the same cross-tenant collision shape
+    already closed for SSOGroupRoleMapping (PR#102). Postgres treats NULL as
+    distinct for uniqueness purposes, so pre-existing un-backfilled (NULL-org)
+    rows sharing a name are unaffected by adding the composite constraint.
+    """
+    from sqlalchemy import inspect, text
+
+    table = "compliance_policies"
+    old_name = "compliance_policies_name_key"
+    new_name = "uq_compliance_policies_org_name"
+    if table not in existing_tables:
+        return
+    live_columns = {c["name"] for c in inspect(db.engine).get_columns(table)}
+    if "organization_id" not in live_columns:
+        return
+
+    existing_constraints = {
+        c["name"] for c in inspect(db.engine).get_unique_constraints(table)
+    }
+    if new_name in existing_constraints:
+        return  # already migrated
+
+    if dry_run:
+        added.append(
+            f"constraint.{table}.{new_name} :: would replace {old_name} "
+            "with a composite (organization_id, name) UNIQUE constraint"
+        )
+        return
+
+    if old_name in existing_constraints:
+        db.session.execute(
+            text(f'ALTER TABLE {table} DROP CONSTRAINT "{old_name}"')
+        )
+    db.session.execute(
+        text(
+            f'ALTER TABLE {table} ADD CONSTRAINT "{new_name}" '
+            "UNIQUE (organization_id, name)"
+        )
+    )
+    db.session.commit()
+    added.append(f"constraint.{table}.{new_name} :: added, replacing {old_name}")
+
+
 def _ensure_condition_evidence_canonical_document(
     *, dry_run, existing_tables, added, failed
 ):
@@ -1713,6 +1853,18 @@ def _reconcile(dry_run=False):
         failed=failed,
     )
     _backfill_document_chunk_organizations(
+        dry_run=dry_run,
+        existing_tables=existing_tables,
+        added=added,
+        failed=failed,
+    )
+    _backfill_compliance_organizations(
+        dry_run=dry_run,
+        existing_tables=existing_tables,
+        added=added,
+        failed=failed,
+    )
+    _ensure_compliance_policy_tenant_unique_constraint(
         dry_run=dry_run,
         existing_tables=existing_tables,
         added=added,
