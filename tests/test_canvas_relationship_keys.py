@@ -71,14 +71,15 @@ def test_new_key_is_in_both_authorities(svc, label, rel, source, target, src_lay
 # assigned to key activity", "key resource assigned to key activity" and
 # "key partnership -> resource it supplies" were the same (source type,
 # target type, relationship) combinations already covered by NEW_KEYS above,
-# mislabelled here as pre-existing. "Capability realises solution
-# requirement" and "option realises benefit/disbenefit" (CourseOfAction
-# realises Outcome) are also gone: no row anywhere in the ArchiMate 3.2
-# matrix carries realization for either pair, so a validator that answered
-# True for them was answering from a rule that granted realization across an
-# entire layer pair rather than the specific types drawn — outcome realising
-# a goal and a plan item realising the outcome it delivers are the rows this
-# change adds instead (pinned in tests/test_relationship_validity_authority.py).
+# mislabelled here as pre-existing.
+#
+# "Capability realises solution requirement" and "option realises
+# benefit/disbenefit" (CourseOfAction realises Outcome) are back: this
+# change lands Capability -> Requirement and CourseOfAction -> Outcome
+# realization on their own ArchiMate 3.2 §7.5 citation (strategy elements
+# realize motivation elements), beside the CourseOfAction -> Goal row below,
+# closing the inconsistency where CourseOfAction realised Goal and
+# Requirement but not Outcome.
 EXISTING_ROWS = [
     ("problem -> customer segment", "association", "Driver", "Stakeholder", "motivation", "motivation"),
     ("value proposition -> customer segment", "association", "Value", "Stakeholder", "motivation", "motivation"),
@@ -88,6 +89,8 @@ EXISTING_ROWS = [
     ("key activity serves value stream", "serving", "Capability", "ValueStream", "strategy", "strategy"),
     ("assessment -> driver", "association", "Assessment", "Driver", "motivation", "motivation"),
     ("option realises goal", "realization", "CourseOfAction", "Goal", "strategy", "motivation"),
+    ("option realises benefit/disbenefit", "realization", "CourseOfAction", "Outcome", "strategy", "motivation"),
+    ("capability realises solution requirement", "realization", "Capability", "Requirement", "strategy", "motivation"),
     ("option -> capability it configures", "association", "CourseOfAction", "Capability", "strategy", "strategy"),
     ("option -> resource it configures", "association", "CourseOfAction", "Resource", "strategy", "strategy"),
     ("plan item -> target plateau", "association", "WorkPackage", "Plateau", "implementation", "implementation"),
