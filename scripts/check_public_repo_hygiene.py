@@ -252,6 +252,16 @@ CONTENT_SKIP_SUFFIXES = (".min.js",)
 # element specifically) and stay local.
 _HTML_SCRIPT_BLOCK_RE = re.compile(r"<script\b[^>]*>(.*?)</script\s*>", re.DOTALL | re.IGNORECASE)
 _HTML_STYLE_BLOCK_RE = re.compile(r"<style\b[^>]*>.*?</style\s*>", re.DOTALL | re.IGNORECASE)
+# title=/alt=/placeholder=/aria-label= attribute values -- also text a user
+# reads or a screen reader announces, not markup, the same reasoning
+# check_placeholder_copy.py's own `ARIA` pattern already applies to
+# aria-label specifically. Read from whichever tags remain once comments,
+# script/style bodies and Jinja code are blanked out, so a same-shaped JS
+# assignment inside a <script> body is never read as one.
+_HTML_TEXT_ATTR_RE = re.compile(
+    r"\b(?:title|alt|placeholder|aria-label)\s*=\s*(?:\"([^\"]*)\"|'([^']*)')",
+    re.IGNORECASE,
+)
 
 
 def _spans_to_lines(text: str, spans: list[tuple[int, str]]):
@@ -320,13 +330,17 @@ def _js_comment_lines(path: str):
 def _html_script_and_text_lines(path: str):
     """(lineno, text) for an HTML/Jinja file's inline <script> body --
     scanned with the same comment rules as a .js file, because a script
-    element's content is JavaScript, not markup -- and its visible text
-    nodes: the literal text a browser actually renders between tags. A
-    <!-- --> / {# #} comment (scanned separately by _markup_comment_lines),
-    a <script> or <style> block, a `{{ }}` expression or `{% %}` statement,
-    and every tag and its attributes are none of those -- blanked out
-    (length-preserving, see hygiene_text.blank) before what is left is read
-    as the visible-text lines."""
+    element's content is JavaScript, not markup -- its title=/alt=/
+    placeholder=/aria-label= attribute values (also text a user reads or a
+    screen reader announces, not markup), and its visible text nodes: the
+    literal text a browser actually renders between tags. A <!-- --> /
+    {# #} comment (scanned separately by _markup_comment_lines), a
+    <script> or <style> block, and a `{{ }}` expression or `{% %}`
+    statement are blanked out first (length-preserving, see
+    hygiene_text.blank) -- leaving tags and their attributes intact, so the
+    four text-bearing attributes can be read off them -- and every
+    remaining tag is then itself blanked, in turn, to leave only the
+    visible-text lines."""
     try:
         with open(path, encoding="utf-8", errors="ignore") as fh:
             text = fh.read()
@@ -341,12 +355,24 @@ def _html_script_and_text_lines(path: str):
         )
     yield from _spans_to_lines(text, script_spans)
 
-    masked = text
+    pre_tag = text
     for pattern in (
         hygiene_text.HTML_COMMENT_RE, hygiene_text.JINJA_COMMENT_RE, _HTML_SCRIPT_BLOCK_RE,
-        _HTML_STYLE_BLOCK_RE, hygiene_text.JINJA_EXPR_OR_STMT_RE, hygiene_text.HTML_TAG_RE_LOOSE,
+        _HTML_STYLE_BLOCK_RE, hygiene_text.JINJA_EXPR_OR_STMT_RE,
     ):
-        masked = hygiene_text.mask(masked, pattern)
+        pre_tag = hygiene_text.mask(pre_tag, pattern)
+
+    # Read title=/alt=/placeholder=/aria-label= attribute values while the
+    # tags that carry them are still intact -- a same-shaped assignment
+    # inside a <script> body is already blanked out above by this point,
+    # so only a real HTML attribute is read here.
+    attr_spans = [
+        (m.start(1), m.group(1)) if m.group(1) is not None else (m.start(2), m.group(2))
+        for m in _HTML_TEXT_ATTR_RE.finditer(pre_tag)
+    ]
+    yield from _spans_to_lines(text, attr_spans)
+
+    masked = hygiene_text.mask(pre_tag, hygiene_text.HTML_TAG_RE_LOOSE)
     yield from enumerate(masked.split("\n"), start=1)
 
 

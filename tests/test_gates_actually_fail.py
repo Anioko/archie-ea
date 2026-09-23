@@ -641,6 +641,37 @@ def test_public_repo_hygiene_html_scans_inline_script_comments(tmpdir):
     assert _run_hygiene_checker(root, "content") >= 1
 
 
+_TEXT_ATTR_CASES = [
+    ("title", 'title="the builder wrote this"'),  # hygiene-ok: this table's own label, not a real hit
+    ("alt", 'alt="D2-7 diagram"'),  # hygiene-ok: this table's own label, not a real hit
+    ("placeholder", 'placeholder="round-3 notes"'),  # hygiene-ok: this table's own label, not a real hit
+    ("aria-label", 'aria-label="refuter note"'),  # hygiene-ok: this table's own label, not a real hit
+]
+
+
+@pytest.mark.parametrize(
+    "label, attr", _TEXT_ATTR_CASES, ids=[c[0] for c in _TEXT_ATTR_CASES],
+)
+def test_public_repo_hygiene_html_scans_text_bearing_attribute_values(tmpdir, label, attr):
+    """title=/alt=/placeholder=/aria-label= attribute values are text a
+    user reads or a screen reader announces, not markup -- scanned with the
+    same rule as a visible text node, not dropped along with the tag that
+    carries them."""
+    root = tmpdir.mkdir("attr-%s" % label.replace("-", "_"))
+    _write(root, "app/templates/probe.html", "<input %s>\n" % attr)
+    assert _run_hygiene_checker(root, "content") >= 1, "row %r (%r) was not caught" % (label, attr)
+
+
+def test_public_repo_hygiene_html_other_attribute_values_are_not_scanned(tmpdir):
+    """An attribute outside the four text-bearing ones -- href, class,
+    data-* -- is markup, not text a user reads, and stays unscanned even
+    when its value happens to be record-id- or role-word-shaped."""
+    root = tmpdir.mkdir("attr-not-text-bearing")
+    _write(root, "app/templates/probe.html",
+           '<a href="/refuter-path" class="round-3-badge" data-id="D-001">x</a>\n')  # hygiene-ok: probe data for the non-text-attribute negative control, not a real hit
+    assert _run_hygiene_checker(root, "content") == 0
+
+
 def test_public_repo_hygiene_html_scans_visible_text_nodes(tmpdir):
     """The literal text a browser renders between tags is content, not
     code -- scanned like a string literal, not dropped along with the tags
