@@ -615,7 +615,7 @@ def overview():
         guided_steps = [
             {
                 "title": "Import applications",
-                "description": "Bring your application portfolio into Archie.",
+                "description": "Bring your application portfolio into Entelim.",
                 "href": "/applications/",
                 "done": applications_count > 0,
             },
@@ -645,7 +645,7 @@ def overview():
             guided_steps.append(
                 {
                     "title": "Invite your team",
-                    "description": "Bring in the colleagues who'll use Archie with you.",
+                    "description": "Bring in the colleagues who'll use Entelim with you.",
                     "href": "/admin/users",
                     "done": org_user_count > 1,
                 }
@@ -737,7 +737,7 @@ def api_onboarding_complete():
 @timed_route
 @login_required
 def api_welcome_dismiss():
-    """Dismiss the one-line "Welcome to A.R.C.H.I.E." banner, once per user,
+    """Dismiss the one-line "Welcome to Entelim" banner, once per user,
     forever (shell-wave-1 Task 5). Deliberately separate from
     /api/onboarding-complete, which also rewrites enterprise_role -- this
     endpoint has exactly one side effect: setting the dismiss timestamp."""
