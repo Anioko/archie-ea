@@ -9,11 +9,12 @@ one table's failure cannot undo another's work.
 
 Fixtures db_session, make_org, app come from tests/conftest.py. There is no
 shared "relax a NOT NULL constraint" fixture on this branch's base yet
-(T-S4 adds one, on a branch not merged here), so the inline
-ALTER TABLE ... DROP NOT NULL tests/test_backfill_layer_tenancy_roadmap_tasks.py
-already uses is generalised below to the one other table these tests need
-it for. None of these tests need a user: the new derivation this module
-exercises reads an initiative's organisation, not a creating user's.
+(T-S4 adds one, on a branch not merged here), so a module-scoped fixture
+below relaxes strategic_roadmap_items once for every test in this module,
+the one other table it needs that for, the same way
+tests/test_backfill_layer_tenancy_roadmap_tasks.py does inline for
+roadmap_tasks. None of these tests need a user: the new derivation this
+module exercises reads an initiative's organisation, not a creating user's.
 """
 
 from __future__ import annotations
@@ -47,34 +48,54 @@ def _make_default_org(db_session, label):
     return org
 
 
-def _relax_not_null(app, table, column="organization_id"):
-    """Allow NULL {column} inserts on {table}, committed on a connection of
-    its own, released immediately -- the same reasoning and pattern
-    tests/test_backfill_layer_tenancy_roadmap_tasks.py uses for roadmap_tasks,
-    generalised to the one other table this module needs it for. Cannot be
-    done on db_session's own connection: that fixture's transaction is never
-    really committed until the whole test rolls back, so the ACCESS
-    EXCLUSIVE lock an ALTER TABLE takes would still be held when
-    repair_layer_tenancy reflects the table's columns on a second,
-    independent connection a moment later -- same process, same thread, so
-    it would block against itself.
+_ROADMAP_MEMBERSHIP_TRIGGER = "trg_transformation_membership"
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _relax_strategic_roadmap_items_for_the_module(app):
+    """Give every test in this module a table shaped like it predates
+    TenantMixin: nullable organization_id, and the live ownership-consistency
+    trigger disabled for the one table this module inserts NULL-org, linked
+    rows into.
+
+    That trigger checks a linked initiative's organisation against the row's
+    own -- a real invariant for every row the product writes today, but one
+    a still-unbackfilled historical row cannot satisfy by definition. Both
+    changes run here, once, before any test's db_session opens its own
+    transaction, and are undone here, once, after every test's rollback has
+    already released it -- not per insert: an ALTER TABLE between a test's
+    own INSERT and that same test's later reads would need the ACCESS
+    EXCLUSIVE lock db_session's still-open transaction already holds from
+    that INSERT, and block on it until the test itself finished. Committed
+    on a connection of its own, released immediately, for the same reason:
+    db_session's transaction is never really committed until the whole test
+    rolls back, so the lock an ALTER TABLE takes on that connection would
+    still be held when repair_layer_tenancy reflects the table's columns on
+    a second, independent connection a moment later -- same process, same
+    thread, so it would block against itself.
     """
     from app import db
 
     with app.app_context():
         with db.engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
-            conn.execute(text(f"ALTER TABLE {table} ALTER COLUMN {column} DROP NOT NULL"))
-
-
-@pytest.fixture(scope="module", autouse=True)
-def _restore_strategic_roadmap_items_not_null(app):
-    """Undo every _relax_not_null call in this module once every test (and
-    its db_session rollback, which discards the test rows) has finished."""
-    from app import db
-
+            conn.execute(
+                text(
+                    "ALTER TABLE strategic_roadmap_items ALTER COLUMN organization_id DROP NOT NULL"
+                )
+            )
+            conn.execute(
+                text(
+                    f"ALTER TABLE strategic_roadmap_items DISABLE TRIGGER {_ROADMAP_MEMBERSHIP_TRIGGER}"
+                )
+            )
     yield
     with app.app_context():
         with db.engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+            conn.execute(
+                text(
+                    f"ALTER TABLE strategic_roadmap_items ENABLE TRIGGER {_ROADMAP_MEMBERSHIP_TRIGGER}"
+                )
+            )
             conn.execute(
                 text("ALTER TABLE strategic_roadmap_items ALTER COLUMN organization_id SET NOT NULL")
             )
@@ -102,6 +123,13 @@ def _insert_initiative(db_session, org_id, title="initiative"):
 
 
 def _insert_roadmap_item(db_session, *, initiative_id=None, title="item"):
+    """Insert a row carrying no tenant provenance yet -- the shape a row that
+    predates TenantMixin takes, which is exactly what every test in this
+    module needs to hand to the backfill under test. The module fixture
+    above has already relaxed the column and disabled the one trigger a
+    NULL-org, initiative-linked row would otherwise fail for the whole
+    module, so this is a plain insert.
+    """
     suffix = uuid.uuid4().hex[:8]
     return db_session.execute(
         text(
@@ -132,7 +160,6 @@ def test_multi_tenant_database_derives_from_initiative_and_defers_the_rest(db_se
     _make_default_org(db_session, "mt-default")
     initiative_id = _insert_initiative(db_session, org_a.id)
 
-    _relax_not_null(app, "strategic_roadmap_items")
     linked_id = _insert_roadmap_item(db_session, initiative_id=initiative_id, title="linked")
     unlinked_id = _insert_roadmap_item(db_session, initiative_id=None, title="unlinked")
     db_session.flush()
@@ -158,7 +185,6 @@ def test_org_id_rejected_before_any_statement_on_a_multi_tenant_database(db_sess
     _make_default_org(db_session, "rej-default")
     initiative_id = _insert_initiative(db_session, org_a.id)
 
-    _relax_not_null(app, "strategic_roadmap_items")
     linked_id = _insert_roadmap_item(db_session, initiative_id=initiative_id, title="linked")
     unlinked_id = _insert_roadmap_item(db_session, initiative_id=None, title="unlinked")
     db_session.flush()
@@ -181,7 +207,6 @@ def test_single_active_organisation_receives_the_residual_rows(db_session, make_
     _make_inactive_org(db_session, "single-inactive")
     _make_default_org(db_session, "single-default")
 
-    _relax_not_null(app, "strategic_roadmap_items")
     orphan_id = _insert_roadmap_item(db_session, initiative_id=None, title="orphan")
     db_session.flush()
 
@@ -249,7 +274,6 @@ def test_a_failing_table_rolls_back_alone_and_another_tables_work_persists(
     org = make_org("iso")
     initiative_id = _insert_initiative(db_session, org.id)
 
-    _relax_not_null(app, "strategic_roadmap_items")
     item_id = _insert_roadmap_item(db_session, initiative_id=initiative_id, title="survives")
     db_session.flush()
 
