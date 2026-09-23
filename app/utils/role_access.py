@@ -753,7 +753,7 @@ _MY_WORK_LINKS = {
         _link("Data Architecture", "data_architecture.data_architecture_dashboard", "database"),
         _link("Data Lineage", "data_architecture.data_lineage_view", "git-fork"),
         _link("Data Stewardship", "solution_design.data_stewardship", "shield"),
-        _link("ArchiMate Model", "archimate_crud.dashboard", "boxes"),
+        _link("Architecture Model", "archimate_crud.dashboard", "boxes"),
         _link("Applications", "unified_applications.application_list", "list"),
         _link("Capability Map", "capability_map.index", "layers"),
         _link("Traceability Matrix", "architect_ui.traceability_matrix", "git-compare"),

@@ -27,6 +27,46 @@ def safe_url_for_with_fallback(endpoint, fallback_url="#", **values):
         return fallback_url
 
 
+def _plain_name(element_type, user=None):
+    """Return the plain-language display name for an ArchiMate element type.
+
+    Module-level helper so tests can import it directly. The Jinja filter
+    ``|plain_name`` delegates here.
+    """
+    from app.models.archimate_element_types import plain_name_for
+
+    show_archimate = False
+    if user is not None:
+        try:
+            show_archimate = bool(getattr(user, "show_archimate_names", False))
+        except Exception:
+            pass
+
+    if show_archimate:
+        return element_type or "\u2014"
+    return plain_name_for(element_type)
+
+
+def _plain_layer(layer, user=None):
+    """Return the plain-language display name for an ArchiMate layer.
+
+    Module-level helper so tests can import it directly. The Jinja filter
+    ``|plain_layer`` delegates here.
+    """
+    from app.models.archimate_element_types import plain_layer_name
+
+    show_archimate = False
+    if user is not None:
+        try:
+            show_archimate = bool(getattr(user, "show_archimate_names", False))
+        except Exception:
+            pass
+
+    if show_archimate:
+        return layer or "\u2014"
+    return plain_layer_name(layer)
+
+
 def register_template_filters(app):
     """Register all template filters with the Flask app"""
 
@@ -248,18 +288,7 @@ def register_template_filters(app):
         The ``user`` argument is optional; when omitted or None the filter
         defaults to plain names (the default setting is off).
         """
-        from app.models.archimate_element_types import plain_name_for
-
-        show_archimate = False
-        if user is not None:
-            try:
-                show_archimate = bool(getattr(user, "show_archimate_names", False))
-            except Exception:
-                pass
-
-        if show_archimate:
-            return element_type or "—"
-        return plain_name_for(element_type)
+        return _plain_name(element_type, user)
 
     @app.template_filter("plain_layer")
     def plain_layer_filter(layer, user=None):
@@ -272,18 +301,7 @@ def register_template_filters(app):
             {{ layer | plain_layer }}
             {{ layer | plain_layer(current_user) }}
         """
-        from app.models.archimate_element_types import plain_layer_name
-
-        show_archimate = False
-        if user is not None:
-            try:
-                show_archimate = bool(getattr(user, "show_archimate_names", False))
-            except Exception:
-                pass
-
-        if show_archimate:
-            return layer or "—"
-        return plain_layer_name(layer)
+        return _plain_layer(layer, user)
 
     # Global template functions
     @app.context_processor
