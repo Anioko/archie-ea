@@ -3,8 +3,8 @@
 lens): "what has changed around this element since we last checked, and is
 anything out of date?"
 
-Twelve groups, matching the task brief's own numbering. Grouped by what each
-needs, so the file grows in step with the three commits that add it:
+Twelve groups, numbered for cross-reference. Grouped by what each needs, so
+the file grows in step with the commits that add it:
 
   (7)                     the adapter contract alone -- no service, no route
   (2)-(6), (8)-(10)       the service method, called directly (no route yet)
