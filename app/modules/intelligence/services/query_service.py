@@ -871,13 +871,18 @@ class IntelligenceQueryService:
             # -- so this set is itself already tenant-fenced.
             answer_element_ids = {element_id} | {int(k) for k in all_elements}
 
+            from app.models.compliance_models import (
+                ComplianceControl,
+                ComplianceGap,
+                ComplianceRequirement,
+                RegulatoryFramework,
+            )
+
             # Resolve/validate the framework filter before the requirement
             # read, so an unknown code and a known code that simply matches
             # nothing in this answer are never conflated.
             resolved_framework: Optional[str] = None
             if framework is not None:
-                from app.models.compliance_models import RegulatoryFramework
-
                 known_code = db.session.execute(
                     db.select(RegulatoryFramework.code).where(
                         RegulatoryFramework.code == framework
@@ -891,12 +896,6 @@ class IntelligenceQueryService:
             # (and to the framework, when given) -- compliance tables carry
             # no tenant column, so the IN(...) below is the only fence a
             # foreign requirement meets.
-            from app.models.compliance_models import (
-                ComplianceControl,
-                ComplianceGap,
-                ComplianceRequirement,
-            )
-
             requirement_stmt = (
                 db.select(
                     ComplianceRequirement.id,
