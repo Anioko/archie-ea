@@ -21,6 +21,8 @@ document.addEventListener('alpine:init', () => {
     updateApiUrl: config.updateApiUrl,
     pullFinancialsApiUrl: config.pullFinancialsApiUrl,
     draftSectionApiUrl: config.draftSectionApiUrl,
+    exportApiUrl: config.exportApiUrl,
+    exportFormat: 'mermaid',
 
     savingField: null,
     savedField: null,
@@ -32,6 +34,18 @@ document.addEventListener('alpine:init', () => {
 
     csrfToken() {
       return document.querySelector('meta[name=csrf-token]')?.content || '';
+    },
+
+    get exportFileUrl() {
+      return this.exportApiUrl + '?format=' + encodeURIComponent(this.exportFormat);
+    },
+
+    // The same shared ExportManager every other page's "Export as image"
+    // button uses, over the rendered canvas content — the empty-box reason
+    // lines sit in that same DOM, so they are already part of the image.
+    async exportImage() {
+      if (!window.exportToPNG) return;
+      await window.exportToPNG('bc-canvas-content', 'business-case-' + this.businessCaseId, { scale: 2 });
     },
 
     // NPV (2 Sep 2026): a real discounted-cash-flow NPV engine existed
