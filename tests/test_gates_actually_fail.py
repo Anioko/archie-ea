@@ -672,6 +672,28 @@ def test_public_repo_hygiene_html_other_attribute_values_are_not_scanned(tmpdir)
     assert _run_hygiene_checker(root, "content") == 0
 
 
+def test_public_repo_hygiene_html_data_title_is_not_read_as_title(tmpdir):
+    """A hyphen is itself a word boundary in regex terms, so a bare
+    word-boundary anchor on "title" also matches the "title" inside
+    "data-title" -- a real, different attribute this scan must not read."""
+    root = tmpdir.mkdir("attr-data-title")
+    _write(root, "app/templates/probe.html",
+           '<button data-title="the builder wrote this">x</button>\n')  # hygiene-ok: probe data for the data-title negative control, not a real hit
+    assert _run_hygiene_checker(root, "content") == 0
+
+
+def test_public_repo_hygiene_html_attribute_shaped_text_node_counts_once(tmpdir):
+    """The attribute pattern is matched only inside a real tag's own span --
+    a visible text node that happens to contain the same `attr="value"`
+    shape, outside any tag, is read once as visible text, not a second
+    time as if it were an attribute."""
+    root = tmpdir.mkdir("attr-text-node-once")
+    _write(root, "app/templates/probe.html",
+           '<p>set title="refuter note" in config</p>\n')  # hygiene-ok: probe data for the double-count negative control, not a real hit
+    count = _run_hygiene_checker(root, "content")
+    assert count == 1, "expected exactly one hit, got %d (double-counted?)" % count
+
+
 def test_public_repo_hygiene_html_scans_visible_text_nodes(tmpdir):
     """The literal text a browser renders between tags is content, not
     code -- scanned like a string literal, not dropped along with the tags

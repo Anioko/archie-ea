@@ -265,9 +265,15 @@ _HTML_STYLE_BLOCK_RE = re.compile(r"<style\b[^>]*>.*?</style\s*>", re.DOTALL | r
 # check_placeholder_copy.py's own `ARIA` pattern already applies to
 # aria-label specifically. Read from whichever tags remain once comments,
 # script/style bodies and Jinja code are blanked out, so a same-shaped JS
-# assignment inside a <script> body is never read as one.
+# assignment inside a <script> body is never read as one. Anchored on a
+# preceding whitespace character, not a bare `\b`: a hyphen is itself a
+# word boundary in regex terms, so `\btitle\b` alone also matches the
+# "title" inside "data-title" -- a real, different attribute. Matched only
+# within each tag's own span (below), never over the surrounding text, so
+# a visible-text node that happens to contain this shape is not read as an
+# attribute and then read again as text.
 _HTML_TEXT_ATTR_RE = re.compile(
-    r"\b(?:title|alt|placeholder|aria-label)\s*=\s*(?:\"([^\"]*)\"|'([^']*)')",
+    r"(?<=\s)(?:title|alt|placeholder|aria-label)\s*=\s*(?:\"([^\"]*)\"|'([^']*)')",
     re.IGNORECASE,
 )
 
@@ -373,11 +379,20 @@ def _html_script_and_text_lines(path: str):
     # Read title=/alt=/placeholder=/aria-label= attribute values while the
     # tags that carry them are still intact -- a same-shaped assignment
     # inside a <script> body is already blanked out above by this point,
-    # so only a real HTML attribute is read here.
-    attr_spans = [
-        (m.start(1), m.group(1)) if m.group(1) is not None else (m.start(2), m.group(2))
-        for m in _HTML_TEXT_ATTR_RE.finditer(pre_tag)
-    ]
+    # so only a real HTML attribute is read here. Matched inside each
+    # tag's own span, one tag at a time, not over the whole blob: the
+    # attribute value pattern alone has no notion of "inside a tag", so
+    # run unscoped it would also match the same shape sitting in a text
+    # node between tags -- counting that node once as an "attribute" here
+    # and a second time as visible text once tags are blanked out below.
+    attr_spans: list[tuple[int, str]] = []
+    for tag_m in hygiene_text.HTML_TAG_RE_LOOSE.finditer(pre_tag):
+        tag_text, tag_start = tag_m.group(0), tag_m.start()
+        for m in _HTML_TEXT_ATTR_RE.finditer(tag_text):
+            value, value_start = (
+                (m.group(1), m.start(1)) if m.group(1) is not None else (m.group(2), m.start(2))
+            )
+            attr_spans.append((tag_start + value_start, value))
     yield from _spans_to_lines(text, attr_spans)
 
     masked = hygiene_text.mask(pre_tag, hygiene_text.HTML_TAG_RE_LOOSE)
