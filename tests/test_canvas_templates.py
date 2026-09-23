@@ -29,6 +29,13 @@ from app.config.archimate_viewpoints import (
 )
 
 
+def _without_per_request_nonce(html_text):
+    """Strip the CSP nonce every response carries — a fresh random value on
+    each request, present regardless of which id was asked for — so two
+    separate requests' bodies can be compared for anything else."""
+    return re.sub(r'nonce="[^"]*"', 'nonce="NONCE"', html_text)
+
+
 def _make_user(db_session, org_id, label):
     from app.models.user import User
 
@@ -131,10 +138,17 @@ class TestSchema:
 
 
 class TestSeedIdempotence:
-    def test_seed_canvas_templates_twice_changes_nothing_the_second_time(self, app, db_session):
+    def test_seed_canvas_templates_twice_changes_nothing_the_second_time(
+        self, app, db_session, make_org
+    ):
         from app.commands.seed_viewpoints import seed_canvas_templates
         from app.models.acm_property_template import AcmPropertyTemplate
         from app.models.archimate_viewpoint import ArchiMateViewpoint
+
+        # A single organization so the tenant column's own single-tenant
+        # fallback (app/models/mixins/core.py _default_org_id) applies
+        # outside a request context, the same way the CLI command runs.
+        make_org("canvas-seed-idempotence")
 
         profile_type_count = len(CANVAS_PROFILE_OPTIONS_BY_TYPE)
 
@@ -154,9 +168,14 @@ class TestSeedIdempotence:
         for archimate_type, options in CANVAS_PROFILE_OPTIONS_BY_TYPE.items():
             assert by_type[archimate_type] == options
 
-    def test_seed_viewpoints_calls_seed_canvas_templates(self, app, db_session):
+    def test_seed_viewpoints_calls_seed_canvas_templates(self, app, db_session, make_org):
         from app.commands.seed_viewpoints import seed_viewpoints
         from app.models.archimate_viewpoint import ArchiMateViewpoint
+
+        # Same single-tenant fallback as above: seed_viewpoints() also
+        # inserts the standard viewpoints, which carry the same tenant
+        # column.
+        make_org("canvas-seed-viewpoints")
 
         seed_viewpoints()
         assert ArchiMateViewpoint.query.filter_by(viewpoint_type="canvas").count() == 3
@@ -330,7 +349,21 @@ class TestForeignIdReturnsNotFoundBytes:
 
         assert own_missing.status_code == 404
         assert foreign.status_code == 404
-        assert foreign.get_data() == own_missing.get_data()
+        # The not-found page echoes back the id the caller typed in the URL,
+        # which differs between the two requests by design (999999999 vs the
+        # real, foreign id) and carries no information the caller didn't
+        # already have. Compare the page with that one distinguishing number
+        # normalised out, so the assertion is about the page shown -- one
+        # not-found template, never the record's own data -- not about the
+        # two numbers happening to match.
+        own_text = _without_per_request_nonce(
+            own_missing.get_data(as_text=True).replace("#999999999", "#ID")
+        )
+        foreign_text = _without_per_request_nonce(
+            foreign.get_data(as_text=True).replace(f"#{canvas_id}", "#ID")
+        )
+        assert foreign_text == own_text
+        assert "Org A Canvas" not in foreign_text
 
     def test_foreign_business_case_id_returns_the_pages_not_found_bytes(
         self, app, db_session, make_org, client, login_as
@@ -351,4 +384,14 @@ class TestForeignIdReturnsNotFoundBytes:
 
         assert own_missing.status_code == 404
         assert foreign.status_code == 404
-        assert foreign.get_data() == own_missing.get_data()
+        # Same normalisation as the canvas case above: the id the caller
+        # typed is echoed back and differs by design; the page itself must
+        # not otherwise differ.
+        own_text = _without_per_request_nonce(
+            own_missing.get_data(as_text=True).replace("#999999999", "#ID")
+        )
+        foreign_text = _without_per_request_nonce(
+            foreign.get_data(as_text=True).replace(f"#{case_id}", "#ID")
+        )
+        assert foreign_text == own_text
+        assert "Org A Case" not in foreign_text
