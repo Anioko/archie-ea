@@ -82,6 +82,10 @@ def detail(business_case_id):
     # Zones in record order, keyed by box_key.
     canvas_zones = CANVAS_TEMPLATES["business_case"]["zones"]
 
+    from app.services.composer_export_formats import resolve_canvas_saved_diagram_id
+
+    saved_diagram_id = resolve_canvas_saved_diagram_id(business_case, "business_case")
+
     return render_template(
         "business_case/detail.html",
         business_case=business_case,
@@ -91,6 +95,7 @@ def detail(business_case_id):
         solutions=solutions,
         canvas_zones={z["box_key"]: z for z in canvas_zones},
         canvas_unclassified_count=0,
+        canvas_saved_diagram_id=saved_diagram_id,
     )
 
 

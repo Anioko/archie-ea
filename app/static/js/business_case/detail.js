@@ -22,6 +22,7 @@ document.addEventListener('alpine:init', () => {
     pullFinancialsApiUrl: config.pullFinancialsApiUrl,
     draftSectionApiUrl: config.draftSectionApiUrl,
     exportApiUrl: config.exportApiUrl,
+    savedDiagramId: config.savedDiagramId || null,
     exportFormat: 'mermaid',
 
     savingField: null,
@@ -38,6 +39,14 @@ document.addEventListener('alpine:init', () => {
 
     get exportFileUrl() {
       return this.exportApiUrl + '?format=' + encodeURIComponent(this.exportFormat);
+    },
+
+    // The existing in-tenant saved-diagram share: opening this URL re-derives
+    // membership from the current elements, and a viewer outside this tenant
+    // gets the same "diagram not found" bytes as a missing id — no public or
+    // token-based link is created here.
+    get shareUrl() {
+      return this.savedDiagramId ? ('/archimate/composer?viewpoint_id=' + this.savedDiagramId) : null;
     },
 
     // The same shared ExportManager every other page's "Export as image"

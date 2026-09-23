@@ -76,6 +76,10 @@ def detail(canvas_id):
     # that template's zones, keyed by box_key.
     canvas_zones = {z["box_key"]: z for z in CANVAS_TEMPLATES["business_model_canvas"]["zones"]}
 
+    from app.services.composer_export_formats import resolve_canvas_saved_diagram_id
+
+    saved_diagram_id = resolve_canvas_saved_diagram_id(canvas, "business_model_canvas")
+
     return render_template(
         "business_model/detail.html",
         canvas=canvas,
@@ -83,6 +87,7 @@ def detail(canvas_id):
         operating_model_types=OPERATING_MODEL_TYPES,
         canvas_zones=canvas_zones,
         canvas_unclassified_count=0,
+        canvas_saved_diagram_id=saved_diagram_id,
     )
 
 

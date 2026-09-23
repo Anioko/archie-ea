@@ -1,4 +1,4 @@
-"""Canvas export.
+"""Canvas export and share.
 
 Covers: (1) the format export of an empty canvas names every box with its
 configured reason (``canvas_box_empty`` for a plain entry zone,
@@ -6,7 +6,11 @@ configured reason (``canvas_box_empty`` for a plain entry zone,
 diagram carries an entry lists it, and that zone drops out of the reasons
 list; (3) the three interchange formats (mermaid, lucid, archi) each carry
 the reasons in their own notes mechanism, and a fourth format is refused;
-(4) a foreign canvas id at the export route 404s rather than leaking.
+(4) a foreign canvas id at the export route 404s rather than leaking;
+(5) the existing in-tenant saved-diagram share returns the same missing-id
+bytes for a foreign id as for a missing one; (6) a static walk of the URL
+map proves every canvas or saved-diagram route is login-guarded and none
+sits under a public path.
 
 Export runs over the record's saved diagram when the record already carries
 a link, else the tenant's own saved diagram of that template's kind — there
@@ -16,6 +20,7 @@ flags, attribute totals or the risk register (out of scope for this file).
 """
 from __future__ import annotations
 
+import re
 import uuid
 
 from app.config.archimate_viewpoints import CANVAS_TEMPLATES
@@ -229,3 +234,82 @@ class TestForeignCanvasIdExportReturnsNotFound:
         login_as(client, user_b)
         resp = client.get(f"/business-model/{canvas_id}/export?format=mermaid")
         assert resp.status_code == 404
+
+
+# -- The existing in-tenant saved-diagram share -----------------------------
+
+
+class TestForeignSavedDiagramReturnsMissingIdBytes:
+    def test_foreign_saved_diagram_id_returns_same_bytes_as_a_missing_one(
+        self, app, db_session, make_org, client, login_as, tenant_ctx
+    ):
+        from app.models.archimate_core import SavedDiagram
+
+        org_a = make_org("cv5-share-a")
+        org_b = make_org("cv5-share-b")
+        user_b = _make_user(db_session, org_b.id, "ShareViewerB")
+
+        with tenant_ctx(org_a.id):
+            diagram = SavedDiagram(name="Org A canvas diagram", organization_id=org_a.id)
+            db_session.add(diagram)
+            db_session.flush()
+            diagram_id = diagram.id
+
+        login_as(client, user_b)
+        own_missing = client.get("/archimate/api/saved-viewpoints/999999999")
+        foreign = client.get(f"/archimate/api/saved-viewpoints/{diagram_id}")
+
+        assert own_missing.status_code == 404
+        assert foreign.status_code == 404
+        assert foreign.get_data() == own_missing.get_data()
+
+
+# -- No public or unauthenticated route serves a canvas or saved diagram ----
+
+
+_CANVAS_PATH_PREFIXES = ("/business-model", "/business-case")
+_SAVED_DIAGRAM_PATH_PREFIXES = ("/archimate/api/saved-viewpoints",)
+_SHARE_DESTINATION_PATHS = ("/archimate/composer",)
+
+
+def _matches_canvas_or_saved_diagram(path: str) -> bool:
+    if path in _SHARE_DESTINATION_PATHS:
+        return True
+    return path.startswith(_CANVAS_PATH_PREFIXES) or path.startswith(_SAVED_DIAGRAM_PATH_PREFIXES)
+
+
+def _concrete_path(rule) -> str:
+    """Substitute every ``<converter:name>`` in a Werkzeug rule with ``1`` —
+    good enough for a login-guard probe; the guard runs before any id lookup."""
+    return re.sub(r"<(?:[^:<>]+:)?([^<>]+)>", "1", str(rule))
+
+
+class TestNoPublicRoute:
+    def test_no_canvas_or_saved_diagram_route_sits_under_a_public_path(self, app):
+        offenders = []
+        for rule in app.url_map.iter_rules():
+            path = str(rule)
+            if not _matches_canvas_or_saved_diagram(path):
+                continue
+            if "/public" in path or "/share/public" in path:
+                offenders.append(path)
+        assert offenders == []
+
+    def test_every_canvas_or_saved_diagram_route_is_login_guarded(self, app, client):
+        checked = 0
+        for rule in app.url_map.iter_rules():
+            path = str(rule)
+            if not _matches_canvas_or_saved_diagram(path):
+                continue
+            if "GET" not in (rule.methods or set()):
+                continue
+            checked += 1
+            resp = client.get(_concrete_path(rule), follow_redirects=False)
+            assert resp.status_code in (302, 401, 403), (
+                f"{path} reachable without login (status {resp.status_code})"
+            )
+            if resp.status_code == 302:
+                assert "/account/login" in resp.headers.get("Location", ""), path
+        # Sanity: the walk actually found the routes this file is about —
+        # an empty loop would pass every assertion above and prove nothing.
+        assert checked >= 5, "the URL map walk matched fewer canvas/saved-diagram GET routes than expected"

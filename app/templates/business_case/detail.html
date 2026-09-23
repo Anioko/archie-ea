@@ -52,7 +52,8 @@
     updateApiUrl: {{ url_for('business_case.update', business_case_id=business_case.id) | tojson }},
     pullFinancialsApiUrl: {{ url_for('business_case.pull_financials', business_case_id=business_case.id) | tojson }},
     draftSectionApiUrl: {{ url_for('business_case.ai_draft_section', business_case_id=business_case.id) | tojson }},
-    exportApiUrl: {{ url_for('business_case.export_canvas', business_case_id=business_case.id) | tojson }}
+    exportApiUrl: {{ url_for('business_case.export_canvas', business_case_id=business_case.id) | tojson }},
+    savedDiagramId: {{ canvas_saved_diagram_id | tojson }}
   })' x-cloak>
 
   {{ page_header(
@@ -121,14 +122,15 @@
       </div>
     </div>
 
-    {# ── Export — image through the existing ExportManager over the
+    {# ── Export & share — image through the existing ExportManager over the
        rendered section content (the reason line of every empty box is
        already in that DOM, so it is already in the image); the saved-
-       viewpoint formats over the record's saved diagram. ── #}
+       viewpoint formats over the record's saved diagram; share is the
+       existing in-tenant saved-diagram link, only offered once one exists. ── #}
     <div class="rounded-lg border border-border bg-card p-4 flex flex-wrap items-center gap-3" data-testid="bc-export-share-panel">
       <div class="flex items-center gap-2 shrink-0">
         <i data-lucide="share-2" class="h-4 w-4 text-muted-foreground" aria-hidden="true"></i>
-        <span class="text-sm font-medium text-foreground">Export</span>
+        <span class="text-sm font-medium text-foreground">Export &amp; share</span>
       </div>
       <button type="button" @click="exportImage()" data-testid="bc-export-image"
         class="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 px-3 py-1.5">
@@ -144,6 +146,15 @@
         class="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 px-3 py-1.5">
         <i data-lucide="download" class="h-4 w-4 mr-1.5" aria-hidden="true"></i> Download file
       </a>
+      <template x-if="shareUrl">
+        <a :href="shareUrl" target="_blank" rel="noopener" data-testid="bc-share-link"
+          class="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 px-3 py-1.5">
+          <i data-lucide="link" class="h-4 w-4 mr-1.5" aria-hidden="true"></i> Share
+        </a>
+      </template>
+      <span x-show="!shareUrl" x-cloak class="text-xs text-muted-foreground" data-testid="bc-share-unavailable">
+        Save an entry on this canvas to get a share link.
+      </span>
     </div>
 
     {# ── The business case as a canvas: one section per box, in record
