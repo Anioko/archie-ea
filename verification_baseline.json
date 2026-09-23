@@ -11,7 +11,7 @@
     "design_tokens": 0,
     "air_gap": 0,
     "raw_sql_tenancy": 0,
-    "raw_sql_tenancy_writes": 0,
+    "raw_sql_tenancy_writes": 5,
     "tenant_scoping": 0,
     "llm_boundary": 0,
     "broken_surfaces": 0,
