@@ -224,7 +224,15 @@ _GENERATED_WITH_RE = re.compile(r"generated\s+with", re.IGNORECASE)
 # tool that shares its name -- excluded by name, the same way rule 3's
 # PRODUCT_TERMS excludes this codebase's own vocabulary from the role-word
 # check above.
-_ASSISTANT_PRODUCT_RE = re.compile(r"\b(?:claude|codex|kilo|copilot)\b", re.IGNORECASE)
+#
+# "Copilot" is deliberately absent from this list: it is this product's
+# own in-app feature name (an AI assistant surfaced throughout the
+# product, with its own service module and its own tests), not only an
+# unrelated coding tool that happens to share the word -- unlike the
+# governance-file collision above, there is no narrower shape left to
+# exclude and still catch a genuine disclosure, so the name is dropped
+# entirely rather than partially excluded.
+_ASSISTANT_PRODUCT_RE = re.compile(r"\b(?:claude|codex|kilo)\b", re.IGNORECASE)
 _GOVERNANCE_FILE_NAME_RE = re.compile(r"\bclaude\.md\b", re.IGNORECASE)
 
 

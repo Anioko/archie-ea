@@ -958,7 +958,6 @@ _ASSISTANT_PRODUCT_NAME_CASES = [
     ("Claude", "Reviewed-by: Claude\n"),
     ("Codex", "Reviewed-by: Codex\n"),
     ("Kilo", "Reviewed-by: Kilo\n"),
-    ("Copilot", "Reviewed-by: Copilot\n"),
 ]
 
 
@@ -1001,7 +1000,25 @@ def test_public_repo_hygiene_commit_message_assistant_product_name_fires_on_an_u
     comparison) apart from a disclosure by the shape of the line it sits
     on."""
     root = tmpdir.mkdir("assistant-prose-unrelated")
-    _init_repo_with_commit(root, "Disable the Copilot suggestions panel in the editor settings")
+    _init_repo_with_commit(root, "Disable the Claude review-comment bot in the editor settings")
+    assert _run_hygiene_checker(root, "commits") > 0
+
+
+def test_public_repo_hygiene_commit_message_copilot_is_this_products_own_feature_name(tmpdir):
+    """"Copilot" is this product's own in-app AI feature name, not (only)
+    an unrelated coding tool that happens to share the word -- dropped
+    from the assistant-name list entirely, so an ordinary commit about the
+    feature is not mistaken for a disclosure."""
+    root = tmpdir.mkdir("copilot-product-feature")
+    _init_repo_with_commit(root, "Fix the copilot insight ranking")
+    assert _run_hygiene_checker(root, "commits") == 0
+
+
+def test_public_repo_hygiene_commit_message_still_catches_a_real_assistant_disclosure(tmpdir):
+    """Dropping "Copilot" narrows the list; it does not weaken the check
+    for the names that stay."""
+    root = tmpdir.mkdir("copilot-dropped-others-stay")
+    _init_repo_with_commit(root, "Written with Claude Code")
     assert _run_hygiene_checker(root, "commits") > 0
 
 
