@@ -20,6 +20,11 @@ this fix -- the L3/L5 briefs each added a member to ``reason_codes.py``
 without updating this ratchet, only the two route-count ratchets. Found
 while adding the L2 brief's own ``no_budget_recorded`` member; corrected to
 the real, current set (23) rather than bumped by one on top of a stale base.
+
+The canvas projection added five more: an empty box, a box composed from
+other sections with nothing to derive yet, an attribute total that cannot
+be shown honestly for revenue or for cost, and an element carrying no
+`profile` value are each a distinct, real absence on that read path.
 """
 
 from __future__ import annotations
@@ -59,11 +64,16 @@ _EXPECTED = {
     "no_work_package_recorded",
     "not_costed",
     "no_budget_recorded",
+    "canvas_box_empty",
+    "canvas_box_not_derived",
+    "revenue_incomplete",
+    "cost_incomplete",
+    "profile_not_set",
 }
 
 
-def test_reason_codes_has_exactly_twenty_three_members():
-    assert len(REASON_CODES) == 23
+def test_reason_codes_has_exactly_twenty_eight_members():
+    assert len(REASON_CODES) == 28
     assert REASON_CODES == frozenset(_EXPECTED)
 
 

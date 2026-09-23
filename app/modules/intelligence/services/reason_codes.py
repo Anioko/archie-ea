@@ -68,6 +68,17 @@ REASON_CODES = frozenset(
         # itself is not reused here so each code stays tied to one field
         # pair's own absence condition.
         "no_budget_recorded",
+        # The canvas projection's own absence conditions. An empty canvas
+        # box, a composed box with nothing to derive, an
+        # attribute total that cannot be shown honestly, and an element
+        # carrying no `profile` value are each a distinct, real absence --
+        # not a variant of an existing member -- so each gets its own code
+        # rather than reusing one that means something else.
+        "canvas_box_empty",
+        "canvas_box_not_derived",
+        "revenue_incomplete",
+        "cost_incomplete",
+        "profile_not_set",
     }
 )
 
