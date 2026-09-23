@@ -50,29 +50,6 @@
             </div>
         </form>
     </div>
-
-    <!-- Current Access Preview -->
-    <div class="mt-6 bg-card border border-border rounded-lg p-6">
-        <h2 class="text-lg font-semibold mb-4">Current Access</h2>
-        <div class="flex flex-wrap gap-2">
-            {% set role_sections = {
-                'solution_architect': ['Solutions', 'Portfolio', 'Architecture', 'Capabilities', 'Roadmaps', 'Governance'],
-                'enterprise_architect': ['Solutions', 'Portfolio', 'Architecture', 'Capabilities', 'Roadmaps', 'Governance', 'Data Integration', 'Tools'],
-                'application_manager': ['Solutions', 'Portfolio', 'My Applications', 'Roadmaps'],
-                'portfolio_manager': ['Solutions', 'Portfolio', 'Capabilities', 'Roadmaps', 'Governance', 'Procurement'],
-                'procurement': ['Portfolio', 'Procurement'],
-                'arb_member': ['Solutions', 'Portfolio', 'Governance'],
-                'cto': ['Solutions', 'Portfolio', 'Capabilities', 'Roadmaps', 'Governance'],
-                'platform_admin': ['All Sections'],
-            } %}
-            {% set sections = role_sections.get(user.enterprise_role, ['Default']) %}
-            {% for section in sections %}
-            <span class="inline-flex items-center px-3 py-1 rounded-full text-sm bg-primary/10 text-primary">
-                {{ section }}
-            </span>
-            {% endfor %}
-        </div>
-    </div>
 </div>
 
 <script>if (typeof lucide !== 'undefined') lucide.createIcons();</script>

@@ -246,7 +246,7 @@ class TestMemberIDOR:
 
 
 class TestAdminUserActionRoutes:
-    """F-9 (T-RR-9): deletion by POST only, a refused delete is a flashed
+    """Deletion by POST only, a refused delete is a flashed
     message rather than a 500, and the role page renders with the full
     VALID_ROLES list."""
 
