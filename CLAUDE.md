@@ -455,7 +455,7 @@ counts only the families in `BANNED_FAMILIES` (`scripts/check_design_tokens.py`)
 `orange` or `cyan` class is right per DESIGN.md but moves this number by zero, and a
 line carrying a `token-migration-ok` marker is already excluded from the count.
 
-**All 62 gates, in registry order (`scripts/verify.py`, `build_gates`) — this table
+**All 63 gates, in registry order (`scripts/verify.py`, `build_gates`) — this table
 is a snapshot, not generated. Run `grep -oE '^\s*Gate\("[a-z-]+"' scripts/verify.py`
 to reconfirm the count before trusting it:**
 
@@ -493,6 +493,7 @@ to reconfirm the count before trusting it:**
 | `fetch-guards` | a `fetch()` parsed without checking the response | ratchet @ 0 |
 | `ui-contract` | a native dialog / `onclick=` / typeless button / arbitrary `px` (DESIGN.md) | ratchet @ 0 |
 | `unrendered-model-fields` | a detail-view template never rendering a real Text/JSON model field | ratchet @ 387 |
+| `wiring-rows` | a fact-bearing model column with no row in the intelligence wiring register | ratchet @ 1230 |
 | `error-signalling` | an API error path that answers `200` | must be 0 |
 | `silent-data` | a server failure returned to the caller as data | must be 0 |
 | `dead-interactions` | a control that silently does nothing | must be 0 |

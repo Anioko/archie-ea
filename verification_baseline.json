@@ -4,6 +4,7 @@
   "_note2": "updated 2026-09-17: evidence_contract 29 -> 30 for merge 424162db (PR #20, fix/model-class-deduplication). The substantive commit (9cfe2af6) carries real same-commit test coverage (tests/test_fast_init_model_tenancy.py, tests/test_outcome_tenancy.py -- 33 passed, 0 failed, red-then-green demonstrated per commit body) but used a prose 'Regression:' line instead of the literal 'Evidence:' keyword the gate scans for, and the merge commit itself (424162db) carries no trailer of its own. Rewriting already-pushed main history to fix the wording was judged not worth a force-push; accepted as one unit of debt rather than silently ignored. Future commits on this bucket's pattern should use a literal 'Evidence:' trailer to avoid tripping this gate.",
   "_note3": "updated 2026-09-20: sidebar_links 27 -> 28 is real link growth, not a corrected measurement. The Ask page has one front door, \"Ask a question\", first in every persona's My work, so platform_admin (the worst case) renders one more. The Twin map has no link of its own and is reached from the Ask page. SIDEBAR_LINK_BUDGET moves 30 -> 31 with it.",
   "_note4": "updated 2026-09-21: an Impact Analysis My-work link (fix/t104-impact-sidebar) was added for solution_architect and business_architect, matching enterprise_architect's existing one. business_architect now also measures 28, tying platform_admin rather than trailing it -- _note3's \"platform_admin (the worst case)\" no longer names the only worst case. sidebar_links stays 28 (no ratchet change); this note only corrects which role(s) that number describes.",
+  "_note5": "updated 2026-09-23: wiring_rows added at 1230, the scripts/check_wiring_rows.py --count measurement on this branch the day the gate was introduced. This is the starting debt, not a target -- it can only fall; a new fact-bearing model column with no register row raises it and fails the gate.",
   "ratchets": {
     "undefined_names": 0,
     "redefinitions": 0,
@@ -33,6 +34,7 @@
     "raw_html_escaping": 0,
     "store_agreement": 1,
     "canonical_store": 0,
-    "unrendered_model_fields": 342
+    "unrendered_model_fields": 342,
+    "wiring_rows": 1230
   }
 }

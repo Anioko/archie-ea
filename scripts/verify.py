@@ -458,6 +458,27 @@ def gate_unrendered_model_fields(baseline: int) -> Result:
                   detail, count, baseline)
 
 
+def gate_wiring_rows(baseline: int) -> Result:
+    """A fact-bearing model column (maturity, cost, licence, risk, owner, plateau, and the other families
+    docs/intelligence-wiring-register.yml's `pipeline_rule.statement` names) with no row in that register.
+    RATCHET.
+
+    A new such column reaching main with no row is exactly the gap the register exists to prevent: a fact a
+    lens or a derivation engine could read, with nobody having recorded whether it is wired, unwired, or
+    deliberately not intelligence. Read scripts/check_wiring_rows.py's own docstring for the full disclosed
+    scope before triaging. Hatch: `wiring-ok: IW-nn <reason>` on the column's def line.
+    """
+    proc = _run([sys.executable, "scripts/check_wiring_rows.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("wiring-rows", FAIL,
+                      f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    detail = "" if count <= baseline else "run scripts/check_wiring_rows.py --list to list them"
+    return Result("wiring-rows", PASS if count <= baseline else FAIL,
+                  detail, count, baseline)
+
+
 def gate_ui_contract(baseline: int) -> Result:
     """The UI/UX audit's finish-level rules, ratcheted so they cannot regress.
 
@@ -1740,6 +1761,12 @@ def build_gates(baseline: dict) -> list[Gate]:
              remediation="run scripts/check_unrendered_model_fields.py; render the field, "
                          "or mark 'unrendered-field-ok: <reason>' on its column line",
              tags=["static", "ui"]),
+        Gate("wiring-rows", "a fact-bearing model column with no row in the intelligence wiring register",
+             "ratchet", lambda: gate_wiring_rows(baseline.get("wiring_rows", 1230)),
+             remediation="run scripts/check_wiring_rows.py --list; add a row (wired, or not_intelligence "
+                         "with a reason) to docs/intelligence-wiring-register.yml, or mark "
+                         "'wiring-ok: IW-nn <reason>' on the column line",
+             tags=["static"]),
         Gate("error-signalling", "no API error path that answers 200", "zero",
              gate_error_signalling,
              remediation="run scripts/check_error_signalling.py; return an explicit "
