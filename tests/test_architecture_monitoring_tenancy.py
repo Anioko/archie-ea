@@ -34,7 +34,7 @@ from sqlalchemy import text
 def _reset_monitoring_state():
     """Clear the module-level per-tenant cache before and after every test.
 
-    ArchitectureMonitoringService._STATE lives for the life of the process,
+    architecture_monitoring_service._STATE_CACHE lives for the life of the process,
     not the life of a request, so one test's cached baselines/alerts must not
     leak into the next test's fresh service instances.
     """
@@ -241,7 +241,7 @@ def test_per_tenant_cache_is_isolated_and_state_holds_one_entry_per_org(
 ):
     from app.models.policy_monitoring import MonitoringBaseline
     from app.modules.architecture.services.architecture_monitoring_service import (
-        _STATE,
+        _STATE_CACHE,
         ArchitectureMonitoringService,
     )
 
@@ -264,11 +264,11 @@ def test_per_tenant_cache_is_isolated_and_state_holds_one_entry_per_org(
     with tenant_ctx(org_b.id):
         service_b = ArchitectureMonitoringService(org_b.id)
         # A fresh org B instance must see none of org A's rows: no shared
-        # class-level cache, only this org's entry in _STATE.
+        # class-level cache, only this org's entry in _STATE_CACHE.
         assert service_b._state.baselines == {}
 
-    assert set(_STATE.keys()) == {org_a.id, org_b.id}
-    assert _STATE[org_a.id] is not _STATE[org_b.id]
+    assert set(_STATE_CACHE.keys()) == {org_a.id, org_b.id}
+    assert _STATE_CACHE[org_a.id] is not _STATE_CACHE[org_b.id]
 
 
 # ------------------------------------------------------- (5) capability snapshot

@@ -116,7 +116,11 @@ _DERIVABLE_ORG = {
     "monitoring_baselines": [
         # 1. an organisation-owned capability referenced in the baseline's
         # own snapshot (skip when the snapshot holds only reference rows,
-        # i.e. every referenced capability has organization_id IS NULL)
+        # i.e. every referenced capability has organization_id IS NULL).
+        # Known limit: a snapshot naming capabilities from more than one
+        # organisation (ORDER BY mb.id, uc.organization_id below, kept by
+        # DISTINCT ON) is assigned the lowest of those organisations' ids --
+        # not detected or reported as an ambiguous row.
         """
         UPDATE monitoring_baselines b
            SET organization_id = src.organization_id

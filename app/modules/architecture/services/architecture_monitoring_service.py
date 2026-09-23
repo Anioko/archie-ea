@@ -141,7 +141,7 @@ class DriftAnalysis:
 class _TenantState:
     """One organisation's monitoring cache.
 
-    Lives only in the module-level ``_STATE`` map below, keyed by
+    Lives only in the module-level ``_STATE_CACHE`` map below, keyed by
     organization_id -- never as a class attribute of
     ArchitectureMonitoringService, which is what made the old cache
     process-wide and shared by every tenant's instance.
@@ -155,30 +155,50 @@ class _TenantState:
     active_baseline_id: Optional[str] = None
     db_loaded: bool = False
     # Set on every instantiation that reuses this entry and on every active-
-    # baseline change; read by _evict_stale_state's TTL check below.
+    # baseline change; read by _evict_stale_state's TTL check and by
+    # _evict_oldest_state_if_full's cap check below.
     last_touched: float = field(default_factory=time.time)
 
 
 # Per-organisation cache, one entry per tenant that has instantiated the
 # service in this process. Replaces the old class-level _baselines / _alerts /
-# _status / ... attributes, which every tenant's instance shared. Unlike
-# _health_metrics_cache (capability_health_service.py, TTL 60s, capped at 256
-# tenants) this had no eviction at all until this entry grew without bound
-# for the life of the process; it now shares that cache's TTL and is also
-# dropped the moment a tenant's active baseline changes, since that is the
-# one field most likely to be read stale by a concurrent worker process that
-# made the change.
-_STATE: Dict[int, _TenantState] = {}
+# _status / ... attributes, which every tenant's instance shared. Named to
+# match scripts/check_cache_tenancy.py's cache-name pattern (the plain
+# "_STATE" this replaces did not, so the gate never looked at it) -- shares
+# _health_metrics_cache's (capability_health_service.py) TTL and its 256-
+# tenant cap below, and is also dropped the moment a tenant's active baseline
+# changes, since that is the one field most likely to be read stale by a
+# concurrent worker process that made the change.
+_STATE_CACHE: Dict[int, _TenantState] = {}
 
 _STATE_TTL_SECONDS = 60
+# Bound the map so a long-lived process serving many tenants cannot grow it
+# without limit, the same cap _health_metrics_cache uses.
+_STATE_CACHE_MAX_TENANTS = 256
 
 
 def _evict_stale_state(organization_id: int) -> None:
     """Drop ``organization_id``'s entry if it has not been touched inside
     the TTL, so the next access reloads a fresh one from the database."""
-    entry = _STATE.get(organization_id)
+    entry = _STATE_CACHE.get(organization_id)
     if entry is not None and (time.time() - entry.last_touched) >= _STATE_TTL_SECONDS:
-        _STATE.pop(organization_id, None)
+        _STATE_CACHE.pop(organization_id, None)
+
+
+def _evict_oldest_state_if_full() -> None:
+    """Drop the least-recently-touched entry once the cache is at capacity.
+
+    Unlike the TTL eviction above, this does not depend on the evicted
+    tenant ever instantiating the service again: it runs on every
+    instantiation that is about to add a *new* organisation's entry, and
+    removes whichever organisation's entry is oldest, whether or not that
+    is the organisation being added. The same shape _health_metrics_cache
+    uses to stay bounded.
+    """
+    if len(_STATE_CACHE) < _STATE_CACHE_MAX_TENANTS:
+        return
+    oldest = min(_STATE_CACHE, key=lambda org_id: _STATE_CACHE[org_id].last_touched)
+    _STATE_CACHE.pop(oldest, None)
 
 
 def _tenant_capability_filter(organization_id: int):
@@ -228,7 +248,9 @@ class ArchitectureMonitoringService:
             raise ValueError("ArchitectureMonitoringService requires an organization_id")
         self.organization_id = organization_id
         _evict_stale_state(organization_id)
-        self._state = _STATE.setdefault(organization_id, _TenantState())
+        if organization_id not in _STATE_CACHE:
+            _evict_oldest_state_if_full()
+        self._state = _STATE_CACHE.setdefault(organization_id, _TenantState())
         self._state.last_touched = time.time()
         self._ensure_loaded()
 
@@ -241,9 +263,9 @@ class ArchitectureMonitoringService:
         this directly.
         """
         if organization_id is None:
-            _STATE.clear()
+            _STATE_CACHE.clear()
         else:
-            _STATE.pop(organization_id, None)
+            _STATE_CACHE.pop(organization_id, None)
 
     def _ensure_loaded(self):
         """Load this organisation's baselines and alerts from the database if not already loaded."""
@@ -440,7 +462,7 @@ class ArchitectureMonitoringService:
             # TTL, so the next instantiation -- in this process or, after the
             # next request lands here, any other -- reloads it from the
             # database instead of serving what this process last cached.
-            _STATE.pop(self.organization_id, None)
+            _STATE_CACHE.pop(self.organization_id, None)
         except Exception as e:
             logger.error("Failed to update active baseline in DB: %s", e)
             db.session.rollback()
@@ -1070,6 +1092,28 @@ class ArchitectureMonitoringService:
     # Internal Helper Methods - Snapshot Capture
     # =========================================================================
 
+    def _tenant_mapping_query(self, cap_id):
+        """Active mappings of ``cap_id`` onto this tenant's own components.
+
+        UnifiedApplicationCapabilityMapping carries no organization_id (no
+        listener fences it), and a reference capability (organization_id IS
+        NULL, admitted by _tenant_capability_filter) can be mapped by
+        another tenant's ApplicationComponent -- so the predicate goes on
+        the component, not the capability. Shared by the mapping count in
+        _capture_capabilities_snapshot and the coverage read in
+        _capture_coverage_snapshot below, which each call ``.count()`` or
+        ``.all()`` on the result.
+        """
+        return UnifiedApplicationCapabilityMapping.query.join(
+            ApplicationComponent,
+            ApplicationComponent.id
+            == UnifiedApplicationCapabilityMapping.application_component_id,
+        ).filter(
+            UnifiedApplicationCapabilityMapping.unified_capability_id == cap_id,
+            UnifiedApplicationCapabilityMapping.is_active.is_(True),
+            ApplicationComponent.organization_id == self.organization_id,
+        )
+
     def _capture_capabilities_snapshot(self) -> List[Dict[str, Any]]:
         """Capture snapshot of all capabilities visible to this tenant."""
         try:
@@ -1079,25 +1123,7 @@ class ArchitectureMonitoringService:
             snapshot = []
 
             for cap in capabilities:
-                # Get mapping count. UnifiedApplicationCapabilityMapping carries no
-                # organization_id (no listener fences it), and a reference
-                # capability (organization_id IS NULL, admitted above by
-                # _tenant_capability_filter) can be mapped by another tenant's
-                # ApplicationComponent -- so the predicate goes on the component,
-                # not the capability.
-                mapping_count = (
-                    UnifiedApplicationCapabilityMapping.query.join(
-                        ApplicationComponent,
-                        ApplicationComponent.id
-                        == UnifiedApplicationCapabilityMapping.application_component_id,
-                    )
-                    .filter(
-                        UnifiedApplicationCapabilityMapping.unified_capability_id == cap.id,
-                        UnifiedApplicationCapabilityMapping.is_active.is_(True),
-                        ApplicationComponent.organization_id == self.organization_id,
-                    )
-                    .count()
-                )
+                mapping_count = self._tenant_mapping_query(cap.id).count()
 
                 snapshot.append(
                     {
@@ -1140,23 +1166,7 @@ class ArchitectureMonitoringService:
             coverage_by_domain = defaultdict(lambda: {"total": 0, "covered": 0})
 
             for cap in capabilities:
-                # Same predicate-on-the-component reasoning as
-                # _capture_capabilities_snapshot above: a reference capability's
-                # mapping count/coverage must not include another tenant's
-                # ApplicationComponent.
-                mappings = (
-                    UnifiedApplicationCapabilityMapping.query.join(
-                        ApplicationComponent,
-                        ApplicationComponent.id
-                        == UnifiedApplicationCapabilityMapping.application_component_id,
-                    )
-                    .filter(
-                        UnifiedApplicationCapabilityMapping.unified_capability_id == cap.id,
-                        UnifiedApplicationCapabilityMapping.is_active.is_(True),
-                        ApplicationComponent.organization_id == self.organization_id,
-                    )
-                    .all()
-                )
+                mappings = self._tenant_mapping_query(cap.id).all()
 
                 if mappings:
                     avg_coverage = sum(m.coverage_percentage or 0 for m in mappings) / len(mappings)
