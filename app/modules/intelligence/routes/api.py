@@ -37,10 +37,41 @@ from app.utils.api_response import error_response, not_found_response, success_r
 # body of the exact 400/404 responses that ARE their real, reachable home.
 _NO_TENANT_CONTEXT_REASON = validate_reason_code("no_tenant_context")
 _ELEMENT_NOT_FOUND_REASON = validate_reason_code("element_not_found")
+_FINANCIAL_DATA_RESTRICTED_REASON = validate_reason_code("financial_data_restricted")
+
+# Roles with budget authority elsewhere in this codebase (ROLE_SECTION_ACCESS
+# already gates rationalization/TCO/procurement views to this same set) --
+# reused, not a new authority list invented for this endpoint.
+_FINANCIAL_DATA_ROLES = frozenset({"cto", "portfolio_manager", "platform_admin"})
 
 intelligence_api = Blueprint(
     "intelligence_api", __name__, url_prefix="/api/v1/intelligence"
 )
+
+
+def _redact_financial_fields(rows: list, fields: tuple[str, ...], reason_field: str) -> None:
+    """Redacts *fields* in place on every dict in *rows* for a caller without
+    budget authority (least-privilege on the one sensitive data category this
+    codebase's EA surfaces gate today -- financial figures; matches how
+    ROLE_SECTION_ACCESS already treats rationalization/TCO/procurement, per
+    field here rather than per page, since only Strategy/Programme carry
+    financial figures on an otherwise uniformly-visible lens).
+
+    Redaction is honest, not silent: each redacted field becomes ``None`` and
+    *reason_field* (e.g. ``"budget_reason"``) is set to
+    ``financial_data_restricted`` -- distinct from ``not_costed``/
+    ``no_budget_recorded``, which mean "nobody recorded this," not "you
+    can't see this." A caller with budget authority sees the real value and
+    this function is a no-op for them.
+    """
+    from app.utils.role_access import get_user_role
+
+    if get_user_role(current_user) in _FINANCIAL_DATA_ROLES:
+        return
+    for row in rows:
+        for field in fields:
+            row[field] = None
+        row[reason_field] = _FINANCIAL_DATA_RESTRICTED_REASON
 
 
 def _current_organization_id() -> int | None:
@@ -510,9 +541,12 @@ def programme_for_element(element_id: int):
         include_derived=include_derived,
     )
 
+    work_packages = result["work_packages"]
+    _redact_financial_fields(work_packages, ("cost_variance_pct",), "cost_reason")
+
     return success_response(
         {
-            "work_packages": result["work_packages"],
+            "work_packages": work_packages,
             "reasons": result.get("reasons") or [],
             "elements": result.get("elements") or {},
         }
@@ -580,9 +614,12 @@ def strategy_for_element(element_id: int):
         include_derived=include_derived,
     )
 
+    initiatives = result["initiatives"]
+    _redact_financial_fields(initiatives, ("budget_variance_pct",), "budget_reason")
+
     return success_response(
         {
-            "initiatives": result["initiatives"],
+            "initiatives": initiatives,
             "reasons": result.get("reasons") or [],
             "elements": result.get("elements") or {},
         }

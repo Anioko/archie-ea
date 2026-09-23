@@ -82,6 +82,15 @@ REASON_CODES = frozenset(
         # than silently answering only half the lens's own question.
         "no_ownership_records",
         "capacity_not_available",
+        # Role-gating brief (2026-09-22): financial figures on the Strategy
+        # and Programme lenses (budget/cost variance) are redacted at the
+        # route layer for roles without budget authority (mirrors
+        # ROLE_SECTION_ACCESS's existing role-gating precedent, applied here
+        # per-field rather than per-page). Redaction is honest, not silent:
+        # the field is None and this reason names why, the same discipline
+        # not_costed/no_budget_recorded already use for a different kind of
+        # absence.
+        "financial_data_restricted",
     }
 )
 
