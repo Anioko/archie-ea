@@ -375,6 +375,10 @@ class Config:
     # this flag is explicitly enabled and an LLM provider is configured.
     AI_PAGE_GUIDE_ENABLED = _env_bool("AI_PAGE_GUIDE_ENABLED", False)
 
+    # Server-side error aggregation into error_events; off only where a
+    # database round-trip per logged warning is pure cost.
+    ERROR_TRACKING_ENABLED = True
+
     # File Upload Settings
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB max file size
     ALLOWED_EXTENSIONS = {
@@ -460,6 +464,10 @@ class DevelopmentConfig(Config):
 class TestingConfig(Config):
     TESTING = True
     WTF_CSRF_ENABLED = False
+
+    # Under NullPool (below) every db.engine.connect() the aggregation
+    # handler makes is a fresh TCP connection; off here, unchanged elsewhere.
+    ERROR_TRACKING_ENABLED = False
     TRANSFORMATION_COMMAND_CAPABILITY_SECRET = "74" * 32
     TRANSFORMATION_COMMAND_CAPABILITY_PREVIOUS_SECRETS = ""
 
