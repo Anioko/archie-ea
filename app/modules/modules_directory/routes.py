@@ -158,7 +158,7 @@ _MORE_TOOLS = [
     ("Usage Analytics", "usage_analytics.analytics_root", "bar-chart-3"),
     ("Vendor Analysis", "main.vendor_archimate_analysis", "building"),
     ("Integrations", "main.integrations", "cloud"),
-    ("ArchiMate Roadmap", "main.archimate_roadmap", "map"),
+    ("Architecture Roadmap", "main.archimate_roadmap", "map"),
     ("Enterprise Dashboard", "enterprise.enterprise_dashboard", "layout-dashboard"),
 ]
 
