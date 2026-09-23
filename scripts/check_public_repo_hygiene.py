@@ -56,6 +56,8 @@ import subprocess
 import sys
 import tokenize
 
+import hygiene_text
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 SCAN_DIRS = ("app", "scripts", "tests", "templates")
@@ -224,14 +226,15 @@ CONTENT_SKIP_SUFFIXES = (".min.js",)
 
 # ---------------------------------------------------------------- rule 3: narrowing the source scan to comments, docstrings and string literals
 
-_HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
-_JINJA_COMMENT_RE = re.compile(r"\{#.*?#\}", re.DOTALL)
-_JS_BLOCK_COMMENT_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
-_JS_LINE_COMMENT_RE = re.compile(r"//[^\r\n]*")
+# The comment, Jinja-expression/statement and tag patterns, and the
+# length-preserving blanking primitive built on them, live in hygiene_text
+# -- shared with check_duplicate_breadcrumb.py, check_placeholder_copy.py
+# and check_broken_surfaces.py, which each needed one or more of the same
+# patterns or the same primitive. Only the two block patterns below are
+# unique to this checker (no sibling reads an HTML <script> or <style>
+# element specifically) and stay local.
 _HTML_SCRIPT_BLOCK_RE = re.compile(r"<script\b[^>]*>(.*?)</script\s*>", re.DOTALL | re.IGNORECASE)
 _HTML_STYLE_BLOCK_RE = re.compile(r"<style\b[^>]*>.*?</style\s*>", re.DOTALL | re.IGNORECASE)
-_JINJA_EXPR_OR_STMT_RE = re.compile(r"\{\{.*?\}\}|\{%.*?%\}", re.DOTALL)
-_HTML_TAG_RE = re.compile(r"<[^>]*>", re.DOTALL)
 
 
 def _spans_to_lines(text: str, spans: list[tuple[int, str]]):
@@ -282,23 +285,9 @@ def _markup_comment_lines(path: str):
             text = fh.read()
     except OSError:
         return
-    spans = [(m.start(), m.group(0)) for m in _HTML_COMMENT_RE.finditer(text)]
-    spans += [(m.start(), m.group(0)) for m in _JINJA_COMMENT_RE.finditer(text)]
+    spans = [(m.start(), m.group(0)) for m in hygiene_text.HTML_COMMENT_RE.finditer(text)]
+    spans += [(m.start(), m.group(0)) for m in hygiene_text.JINJA_COMMENT_RE.finditer(text)]
     yield from _spans_to_lines(text, spans)
-
-
-def _js_comment_spans(text: str) -> list[tuple[int, str]]:
-    """(start_offset, matched_text) for every `//` and `/* */` comment in
-    `text` -- a `//` already inside a matched `/* */` block is not counted
-    a second time. Shared by .js files and an inline <script> body in
-    .html/.j2, which is JavaScript in every way that matters here."""
-    blocks = [(m.start(), m.end(), m.group(0)) for m in _JS_BLOCK_COMMENT_RE.finditer(text)]
-    spans = [(start, matched) for start, _end, matched in blocks]
-    for m in _JS_LINE_COMMENT_RE.finditer(text):
-        if any(start <= m.start() < end for start, end, _ in blocks):
-            continue
-        spans.append((m.start(), m.group(0)))
-    return spans
 
 
 def _js_comment_lines(path: str):
@@ -308,14 +297,7 @@ def _js_comment_lines(path: str):
             text = fh.read()
     except OSError:
         return
-    yield from _spans_to_lines(text, _js_comment_spans(text))
-
-
-def _blank(segment: str) -> str:
-    """`segment`, with every character replaced by a space except a
-    newline, which stays a newline -- same length, same line breaks, so a
-    match found in the surviving text keeps its true line number."""
-    return "".join(ch if ch == "\n" else " " for ch in segment)
+    yield from _spans_to_lines(text, hygiene_text.js_comment_spans(text))
 
 
 def _html_script_and_text_lines(path: str):
@@ -326,8 +308,8 @@ def _html_script_and_text_lines(path: str):
     <!-- --> / {# #} comment (scanned separately by _markup_comment_lines),
     a <script> or <style> block, a `{{ }}` expression or `{% %}` statement,
     and every tag and its attributes are none of those -- blanked out
-    (length-preserving, see `_blank`) before what is left is read as the
-    visible-text lines."""
+    (length-preserving, see hygiene_text.blank) before what is left is read
+    as the visible-text lines."""
     try:
         with open(path, encoding="utf-8", errors="ignore") as fh:
             text = fh.read()
@@ -337,15 +319,17 @@ def _html_script_and_text_lines(path: str):
     script_spans: list[tuple[int, str]] = []
     for m in _HTML_SCRIPT_BLOCK_RE.finditer(text):
         inner, offset = m.group(1), m.start(1)
-        script_spans.extend((offset + start, matched) for start, matched in _js_comment_spans(inner))
+        script_spans.extend(
+            (offset + start, matched) for start, matched in hygiene_text.js_comment_spans(inner)
+        )
     yield from _spans_to_lines(text, script_spans)
 
     masked = text
     for pattern in (
-        _HTML_COMMENT_RE, _JINJA_COMMENT_RE, _HTML_SCRIPT_BLOCK_RE,
-        _HTML_STYLE_BLOCK_RE, _JINJA_EXPR_OR_STMT_RE, _HTML_TAG_RE,
+        hygiene_text.HTML_COMMENT_RE, hygiene_text.JINJA_COMMENT_RE, _HTML_SCRIPT_BLOCK_RE,
+        _HTML_STYLE_BLOCK_RE, hygiene_text.JINJA_EXPR_OR_STMT_RE, hygiene_text.HTML_TAG_RE_LOOSE,
     ):
-        masked = pattern.sub(lambda mo: _blank(mo.group(0)), masked)
+        masked = hygiene_text.mask(masked, pattern)
     yield from enumerate(masked.split("\n"), start=1)
 
 
