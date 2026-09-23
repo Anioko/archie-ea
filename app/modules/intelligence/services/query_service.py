@@ -1228,11 +1228,22 @@ class IntelligenceQueryService:
                 # referenced OrganizationUnit), so `unit` cannot actually be
                 # None today. The defensive lookup/None-branch below is kept
                 # anyway -- same discipline every other lens's owner/user
-                # lookup uses -- in case that constraint is ever loosened; it
-                # does not currently have a reachable test case. A unit the
-                # tenant listener filters out (a different organisation's
-                # row) produces this same None shape, not an error.
-                unit = db.session.get(OrganizationUnit, row.organization_unit_id)
+                # lookup uses -- in case that constraint is ever loosened. A
+                # unit the tenant listener filters out (a different
+                # organisation's row) produces this same None shape, not an
+                # error.
+                #
+                # Session.get() is deliberately NOT used here: it consults
+                # the session's identity map before emitting any statement,
+                # and returns an already-loaded row straight from there with
+                # no SELECT and no do_orm_execute dispatch at all, which
+                # skips the tenant listener entirely for a unit some earlier
+                # read in the same session already loaded. select()+execute()
+                # always goes through do_orm_execute, so the tenant predicate
+                # applies every time, not only on a cache miss.
+                unit = db.session.execute(
+                    db.select(OrganizationUnit).where(OrganizationUnit.id == row.organization_unit_id)
+                ).scalar_one_or_none()
                 owner_payloads.append(
                     {
                         "owner_id": row.id,
