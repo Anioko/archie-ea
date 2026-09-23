@@ -1372,3 +1372,98 @@ def test_resolve_base_ref_strict_never_falls_back_to_head_minus_one(monkeypatch)
     ref, reason = module.resolve_base_ref(strict=True)
     assert ref is None
     assert "origin/main" in reason
+
+
+# --------------------------------------------------------------------------
+# hygiene_text equivalence: three checkers each replaced an inline pattern
+# with a call into the shared module. Each reference implementation below is
+# a frozen copy of the inline code exactly as it read before that move --
+# not imported from hygiene_text or from the checker -- so a later change to
+# the shared module that silently changed behaviour diverges from this copy
+# and fails here, rather than only being caught by chance elsewhere.
+# --------------------------------------------------------------------------
+
+
+def test_check_duplicate_breadcrumb_mask_comments_matches_the_original_inline_pattern():
+    sys.path.insert(0, SCRIPTS)
+    import check_duplicate_breadcrumb as mod
+
+    import re as _re
+    _old_comment_re = _re.compile(r"\{#.*?#\}|<!--.*?-->", _re.S)
+
+    def _old_mask_comments(text):
+        def _blank(m):
+            s = m.group(0)
+            return "".join(c if c == "\n" else " " for c in s)
+        return _old_comment_re.sub(_blank, text)
+
+    fixture = (
+        "{# a second breadcrumb_nav() call used to live in a "
+        "{% block breadcrumb %} above #}\n"
+        '<nav aria-label="breadcrumb">x</nav>\n'
+        '<!-- <nav aria-label="breadcrumb">y</nav> -->\n'
+        "plain text with no comment at all"
+    )
+    assert mod._mask_comments(fixture) == _old_mask_comments(fixture)
+
+
+def test_check_placeholder_copy_visible_text_matches_the_original_inline_pattern():
+    sys.path.insert(0, SCRIPTS)
+    import check_placeholder_copy as mod
+
+    import re as _re
+    _old_tags = _re.compile(r"<[^>]+>")
+    _old_jinja = _re.compile(r"\{\{.*?\}\}|\{%.*?%\}", _re.S)
+
+    def _old_visible_text(fragment):
+        without_jinja = _old_jinja.sub("", fragment)
+        return " ".join(_old_tags.sub(" ", without_jinja).split()).strip()
+
+    fixture = '<b>{% if x %}bold{% endif %}</b> {{ value }} <i>text</i>'
+    assert mod._visible_text(fixture) == _old_visible_text(fixture)
+
+
+def test_check_broken_surfaces_blank_comments_matches_the_original_inline_pattern():
+    sys.path.insert(0, SCRIPTS)
+    import check_broken_surfaces as mod
+
+    def _old_blank_comments(text, jinja):
+        out = list(text)
+
+        def blank(a, b):
+            for k in range(a, min(b, len(out))):
+                if out[k] != "\n":
+                    out[k] = " "
+
+        spans = []
+        i, n = 0, len(text)
+        while i < n:
+            if jinja and text.startswith("{#", i):
+                j = text.find("#}", i + 2)
+                j = n if j == -1 else j + 2
+                spans.append((i, j))
+                i = j
+            elif text.startswith("/*", i):
+                j = text.find("*/", i + 2)
+                j = n if j == -1 else j + 2
+                spans.append((i, j))
+                i = j
+            elif text.startswith("//", i):
+                j = text.find("\n", i)
+                j = n if j == -1 else j
+                spans.append((i, j))
+                i = j
+            else:
+                i += 1
+        for a, b in spans:
+            blank(a, b)
+        return "".join(out)
+
+    fixture_js = (
+        "// a defensive guard against an unresolved value\n"
+        "code();\n/* block\ncomment */more();\n/* unterminated"
+    )
+    assert mod._blank_comments(fixture_js, jinja=False) == _old_blank_comments(fixture_js, jinja=False)
+
+    fixture_jinja = '{# example markup #} <div>x</div> code // trailing comment'
+    assert mod._blank_comments(fixture_jinja, jinja=True) == _old_blank_comments(fixture_jinja, jinja=True)
