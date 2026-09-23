@@ -64,10 +64,9 @@ _DERIVABLE_ORG = {
     """,
     # An ownership row's tenant is its application's tenant — every production
     # row resolves this way (nothing in app/ writes this table independently
-    # of a component; see the ownership register decision). A row whose
-    # application itself has no organization_id is per-row provenance this
-    # statement cannot resolve; see _PROVENANCE_ONLY below for what happens
-    # to it.
+    # of a component). A row whose application itself has no organization_id
+    # is per-row provenance this statement cannot resolve; see
+    # _PROVENANCE_ONLY below for what happens to it.
     "application_ownership": """
         UPDATE application_ownership o
            SET organization_id = c.organization_id
@@ -81,9 +80,9 @@ _DERIVABLE_ORG = {
     # organisation; a unit referenced by more than one, or by none at all,
     # stays NULL here. It is excluded from the residual sweep below
     # (_PROVENANCE_ONLY), so with several organisations in the database it
-    # stays NULL and is reported, never assigned, with or without --org-id
-    # (ADR-0007 point 3); with exactly one organisation the ordinary
-    # single-organisation rule still applies, same as every other table.
+    # stays NULL and is reported, never assigned, with or without --org-id;
+    # with exactly one organisation the ordinary single-organisation rule
+    # still applies, same as every other table.
     "organization_units": """
         UPDATE organization_units u
            SET organization_id = s.org_id
