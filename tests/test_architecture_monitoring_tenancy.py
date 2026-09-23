@@ -68,6 +68,35 @@ def _make_user(db_session, org_id, label):
     return user
 
 
+def test_backfill_and_test_files_carry_no_stale_document_references():
+    """backfill_layer_tenancy.py and this file used to send a reader to an
+    architecture-decision-record label for the per-object-before-per-user
+    precedence rule, and to a task-id-style parenthetical for the mount
+    flag -- neither names anything this repository actually has under that
+    name, so a reader who looked either up found nothing. Both are now
+    explained in the surrounding prose instead, with nothing to look up.
+
+    The two phrases are built from parts rather than spelled out whole, so
+    this test's own source does not itself contain the thing it checks for
+    (it is one of the two files scanned).
+    """
+    import os
+
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    checked = [
+        os.path.join(repo_root, "app", "commands", "backfill_layer_tenancy.py"),
+        os.path.join(repo_root, "tests", "test_architecture_monitoring_tenancy.py"),
+    ]
+    adr_reference = "ADR-0007" + " point 1"
+    flag_reference = "(" + "T-DR-1" + ")"
+    forbidden = (adr_reference, flag_reference)
+    for path in checked:
+        with open(path, encoding="utf-8") as fh:
+            source = fh.read()
+        for phrase in forbidden:
+            assert phrase not in source, f"{path} still contains {phrase!r}"
+
+
 # --------------------------------------------------------------- (1) baselines
 
 
@@ -540,7 +569,7 @@ def test_backfill_derives_monitoring_provenance_and_leaves_unprovenanced_rows_nu
     by a real user and one whose ``created_by`` names no user (the literal
     string ``"system"``, predating this backfill); an alert acknowledged by a
     real user and one never acknowledged at all. A fourth baseline proves
-    per-object precedence (ADR-0007 point 1): its creator has since moved to
+    per-object precedence: its creator has since moved to
     the other organisation (a removed user is moved to the Default
     organisation the same way in production), but its own snapshot_data
     names an organisation-owned capability, and that must win -- a baseline
@@ -732,7 +761,7 @@ def test_service_requires_organization_id_and_route_answers_404_without_tenant(m
 
     The shared session ``app`` fixture is built once, before this test ever
     runs, so setting the flag here would do nothing to its url_map -- once
-    the mount is flag-gated (T-DR-1) rather than unconditional, the session
+    the mount is flag-gated rather than unconditional, the session
     app never has the rule at all. This builds its own app with the flag
     already set, the way
     ``TestArchitectureMonitoringApiFlag.test_mounted_when_flag_enabled``
@@ -829,3 +858,299 @@ def test_service_requires_organization_id_and_route_answers_404_without_tenant(m
                     text("DELETE FROM organizations WHERE id = :id"), {"id": org_id}
                 )
             db.session.commit()
+
+
+# ---------------------------------------------------- (10) activation persistence
+
+
+def test_set_active_baseline_persists_to_db_and_survives_cache_clear(
+    db_session, make_org, tenant_ctx
+):
+    """set_active_baseline used to only update the in-memory state without
+    writing to the database. After the fix it calls _update_active_baseline_in_db,
+    so the active baseline survives cache eviction and re-instantiation.
+    """
+    from app.modules.architecture.services.architecture_monitoring_service import (
+        ArchitectureMonitoringService,
+    )
+
+    org = make_org("dr3-actpers")
+
+    with tenant_ctx(org.id):
+        service = ArchitectureMonitoringService(org.id)
+        result = service.capture_baseline(
+            name="Persist baseline", created_by="tester", set_as_active=True
+        )
+        assert result["success"] is True
+        baseline_id = result["baseline"]["id"]
+
+        # Create a second baseline without setting as active
+        result2 = service.capture_baseline(
+            name="Second baseline", created_by="tester", set_as_active=False
+        )
+        assert result2["success"] is True
+        second_id = result2["baseline"]["id"]
+
+        # Activate the second one via set_active_baseline
+        active_result = service.set_active_baseline(second_id)
+        assert active_result["success"] is True
+
+        # Verify the DB row is updated
+        from app.models.policy_monitoring import MonitoringBaseline
+
+        first_row = MonitoringBaseline.query.filter_by(baseline_id=baseline_id).first()
+        assert first_row.is_active is False
+
+        second_row = MonitoringBaseline.query.filter_by(baseline_id=second_id).first()
+        assert second_row.is_active is True
+
+    # Clear cache and re-create -- should still read active from DB
+    ArchitectureMonitoringService.reset_state()
+
+    with tenant_ctx(org.id):
+        service2 = ArchitectureMonitoringService(org.id)
+        listed = service2.list_baselines()
+        assert listed["active_baseline_id"] == second_id
+
+        fetched = service2.get_baseline(baseline_id)
+        assert fetched["baseline"]["is_active"] is False
+
+        fetched2 = service2.get_baseline(second_id)
+        assert fetched2["baseline"]["is_active"] is True
+
+
+# ---------------------------------------------------- (11) monitoring status survival
+
+
+def test_monitoring_status_survives_activation_write(
+    db_session, make_org, tenant_ctx
+):
+    """Status and scan_interval used to be lost when _update_active_baseline_in_db
+    popped the entire cache entry. The pop is removed, so in-memory-only fields
+    survive an activation write.
+    """
+    from app.modules.architecture.services.architecture_monitoring_service import (
+        ArchitectureMonitoringService,
+    )
+
+    org = make_org("dr3-stsurv")
+
+    with tenant_ctx(org.id):
+        service = ArchitectureMonitoringService(org.id)
+
+        # Set status to paused
+        status_result = service.set_monitoring_status("paused")
+        assert status_result["success"] is True
+        assert status_result["status"] == "paused"
+
+        # Configure scan interval
+        config_result = service.configure_monitoring(scan_interval_minutes=120)
+        assert config_result["success"] is True
+        assert config_result["configuration"]["scan_interval_minutes"] == 120
+
+        # Capture baseline and activate it -- should NOT lose status or interval
+        baseline = service.capture_baseline(name="Status test", created_by="tester")
+        assert baseline["success"] is True
+
+        status = service.get_monitoring_status()
+        assert status["status"] == "paused"
+        assert status["scan_interval_minutes"] == 120
+
+
+# ----------------------------------------- (12) backfill array guard
+
+
+def test_backfill_skips_baseline_with_non_array_capabilities(app):
+    """A monitoring baseline whose snapshot_data holds capabilities as a JSON
+    object (``{"capabilities": {}}``) must not cause ``jsonb_array_elements``
+    to raise. The ``jsonb_typeof`` guard in the subquery's WHERE skips such
+    rows before the LATERAL join, and the baseline falls through to the
+    created_by derivation or stays NULL.
+    """
+    import uuid
+
+    from app import db
+    from app.commands.backfill_layer_tenancy import repair_layer_tenancy
+    from app.models.organization import Organization
+    from app.models.user import User
+
+    suffix = uuid.uuid4().hex[:10]
+    with app.app_context():
+        org = Organization(name=f"Test dr3-array-{suffix}", slug=f"test-dr3-array-{suffix}")
+        db.session.add(org)
+        db.session.commit()
+
+        user = User(
+            email=f"dr3-array-{suffix}@example.com",
+            first_name="Test",
+            last_name="Array",
+            organization_id=org.id,
+        )
+        db.session.add(user)
+        db.session.commit()
+
+        _relax_monitoring_not_null(app)
+
+        try:
+            # Baseline with object capabilities -- must not raise
+            obj_baseline_id = db.session.execute(
+                text(
+                    """
+                    INSERT INTO monitoring_baselines
+                        (baseline_id, organization_id, name, snapshot_data, checksum, created_by, is_active, created_at)
+                    VALUES
+                        (:bid, NULL, 'Object caps baseline', :snapshot, 'chk-obj', :created_by, false, now())
+                    RETURNING id
+                    """
+                ),
+                {
+                    "bid": f"dr3-obj-{suffix}",
+                    "snapshot": '{"capabilities": {}}',
+                    "created_by": str(user.id),
+                },
+            ).scalar()
+
+            # Baseline with null capabilities key
+            null_caps_id = db.session.execute(
+                text(
+                    """
+                    INSERT INTO monitoring_baselines
+                        (baseline_id, organization_id, name, snapshot_data, checksum, created_by, is_active, created_at)
+                    VALUES
+                        (:bid, NULL, 'Null caps baseline', :snapshot, 'chk-null', :created_by, false, now())
+                    RETURNING id
+                    """
+                ),
+                {
+                    "bid": f"dr3-null-{suffix}",
+                    "snapshot": '{}',
+                    "created_by": str(user.id),
+                },
+            ).scalar()
+
+            db.session.commit()
+
+            # Must not raise -- the jsonb_typeof guard prevents the
+            # jsonb_array_elements error
+            stats = repair_layer_tenancy()
+
+            # Both should be derivable from created_by since the user exists
+            assert db.session.execute(
+                text("SELECT organization_id FROM monitoring_baselines WHERE id = :id"),
+                {"id": obj_baseline_id},
+            ).scalar() == org.id
+
+            assert db.session.execute(
+                text("SELECT organization_id FROM monitoring_baselines WHERE id = :id"),
+                {"id": null_caps_id},
+            ).scalar() == org.id
+
+        finally:
+            db.session.rollback()
+            db.session.execute(
+                text("DELETE FROM monitoring_baselines WHERE id IN (:a, :b)"),
+                {"a": obj_baseline_id, "b": null_caps_id},
+            )
+            db.session.execute(
+                text("DELETE FROM users WHERE id = :id"), {"id": user.id}
+            )
+            db.session.execute(
+                text("DELETE FROM organizations WHERE id = :id"), {"id": org.id}
+            )
+            db.session.commit()
+            _restore_monitoring_not_null(app)
+
+
+# ----------------------------------------- (13) alert derivation from capability
+
+
+def test_backfill_derives_alert_from_capability_before_acknowledging_user(app):
+    """A maturity-regression alert with affected_element_type='capability' and
+    an affected_element_id that names an organisation-owned capability should
+    derive its tenant from that capability, not from the acknowledging user
+    (who may be None or from a different org).
+    """
+    import uuid
+
+    from app import db
+    from app.commands.backfill_layer_tenancy import repair_layer_tenancy
+    from app.models.organization import Organization
+    from app.models.unified_capability import UnifiedCapability
+    from app.models.user import User
+
+    suffix = uuid.uuid4().hex[:10]
+    with app.app_context():
+        org_a = Organization(name=f"Test dr3-alcap-a {suffix}", slug=f"test-dr3-alcap-a-{suffix}")
+        org_b = Organization(name=f"Test dr3-alcap-b {suffix}", slug=f"test-dr3-alcap-b-{suffix}")
+        db.session.add_all([org_a, org_b])
+        db.session.commit()
+
+        user_b = User(
+            email=f"dr3-alcap-b-{suffix}@example.com",
+            first_name="Test",
+            last_name="B",
+            organization_id=org_b.id,
+        )
+        db.session.add(user_b)
+        db.session.commit()
+
+        # Capability owned by org_a
+        capability_a = UnifiedCapability(
+            name=f"Org A cap {suffix}", code=f"ALC-{suffix}", organization_id=org_a.id
+        )
+        db.session.add(capability_a)
+        db.session.commit()
+
+        _relax_monitoring_not_null(app)
+
+        try:
+            # Alert with capability provenance but acknowledged by a user
+            # from org_b (the per-object statement must win, not the user)
+            alert_id = db.session.execute(
+                text(
+                    """
+                    INSERT INTO monitoring_alerts
+                        (alert_id, organization_id, alert_type, severity, title,
+                         affected_element_id, affected_element_type, acknowledged, acknowledged_by, created_at)
+                    VALUES
+                        (:aid, NULL, 'maturity_regression', 'warning', 'Cap regression',
+                         :cap_id, 'capability', true, :ack_by, now())
+                    RETURNING id
+                    """
+                ),
+                {
+                    "aid": f"dr3-alcap-{suffix}",
+                    "cap_id": capability_a.id,
+                    "ack_by": str(user_b.id),
+                },
+            ).scalar()
+
+            db.session.commit()
+
+            stats = repair_layer_tenancy()
+
+            # Must derive from org_a (the capability), not org_b (the ack user)
+            result_org = db.session.execute(
+                text("SELECT organization_id FROM monitoring_alerts WHERE id = :id"),
+                {"id": alert_id},
+            ).scalar()
+            assert result_org == org_a.id, f"expected {org_a.id}, got {result_org}"
+
+        finally:
+            db.session.rollback()
+            db.session.execute(
+                text("DELETE FROM monitoring_alerts WHERE id = :id"), {"id": alert_id}
+            )
+            db.session.execute(
+                text("DELETE FROM unified_capabilities WHERE id = :id"),
+                {"id": capability_a.id},
+            )
+            db.session.execute(
+                text("DELETE FROM users WHERE id = :id"), {"id": user_b.id}
+            )
+            db.session.execute(
+                text("DELETE FROM organizations WHERE id IN (:a, :b)"),
+                {"a": org_a.id, "b": org_b.id},
+            )
+            db.session.commit()
+            _restore_monitoring_not_null(app)

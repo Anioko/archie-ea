@@ -250,7 +250,8 @@ class ArchitectureMonitoringService:
         _evict_stale_state(organization_id)
         if organization_id not in _STATE_CACHE:
             _evict_oldest_state_if_full()
-        self._state = _STATE_CACHE.setdefault(organization_id, _TenantState())
+            _STATE_CACHE[organization_id] = _TenantState()
+        self._state = _STATE_CACHE[organization_id]
         self._state.last_touched = time.time()
         self._ensure_loaded()
 
@@ -458,11 +459,9 @@ class ArchitectureMonitoringService:
             # The active baseline is the one field in this cache another
             # worker process is most likely to change concurrently (a second
             # gunicorn worker handling the same tenant's activate/delete
-            # call). Drop this tenant's entry now rather than wait out the
-            # TTL, so the next instantiation -- in this process or, after the
-            # next request lands here, any other -- reloads it from the
-            # database instead of serving what this process last cached.
-            _STATE_CACHE.pop(self.organization_id, None)
+            # call). The TTL eviction provides bounded staleness without
+            # discarding in-memory-only fields (status, scan interval, last
+            # scan time) that have no database column to reload from.
         except Exception as e:
             logger.error("Failed to update active baseline in DB: %s", e)
             db.session.rollback()
@@ -759,6 +758,7 @@ class ArchitectureMonitoringService:
 
         self._state.active_baseline_id = baseline_id
         baseline = self._state.baselines[baseline_id]
+        self._update_active_baseline_in_db()
 
         return {
             "success": True,
