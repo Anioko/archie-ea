@@ -46,6 +46,7 @@ class TestHomePage:
         assert resp.status_code == 200
         html = resp.data.decode()
         assert "Entelim" in html
+        assert "A.R.C.H.I.E" not in html
         assert "Dashboard" not in html
         assert "Enterprise Architecture Platform" not in html
 
