@@ -21,9 +21,40 @@ touched only when something is actually wrong with it —
     nullable columns with no index).
 
 Healthy tables are read and skipped, so the command is safe to run on every
-boot, which is exactly where docker-compose runs it. Orphan assignment follows
-the house refusal-to-guess rule: with one organisation the rows go to it, with
-several the command demands --org-id rather than guessing a tenant.
+boot, which is exactly where docker-compose runs it.
+
+This is the one place in the codebase allowed to write organization_id on an
+existing row; a static check fails the build on a second one. The policy per
+table, in order:
+
+  1. Purge. A row whose link to its parent is always set at creation, and
+     names a parent that no longer exists, is not unresolved provenance -- it
+     is a leftover with nowhere to belong, and is deleted before anything
+     else runs for that table.
+  2. Derive. Where a row can state its own tenant through a link it already
+     carries (a joined capability, a work package's creator, an initiative),
+     that link fills organization_id first. A derivation statement can only
+     fill a NULL; it can never move a row between tenants.
+  3. Assign or defer. What is still NULL after derivation is the true orphan
+     count. On a database with exactly one active, non-default organisation,
+     those rows go to it. On a database with more than one -- or with none --
+     no row is assigned, with or without --org-id: an unresolved row is
+     another tenant's data, or nobody's yet, never a guess this command is
+     allowed to make. Every such table is reported, not silently skipped.
+  4. Index and harden. The index is always added. The NOT NULL constraint is
+     added only when nothing was left NULL; a deferred table gets the index
+     and is reported, not the constraint, which would only fail.
+
+Each table's purge, derivation, assignment, index and hardening run in their
+own transaction, committed before the next table starts (rolled back, always,
+under --dry-run). A table whose statements raise is rolled back on its own,
+recorded, and the run continues with every other table.
+
+Exit codes: 0 whenever every statement issued here succeeded, however many
+rows were left NULL -- an unresolved row is reported, not a failure. Non-zero
+only for a real failure: a SQL error while repairing a table, a mapped table
+the database still lacks the column for after the add, or an --org-id that
+does not resolve to the one organisation eligible for it.
 
     flask --app manage backfill-layer-tenancy --dry-run
     flask --app manage backfill-layer-tenancy
@@ -99,34 +130,83 @@ _DERIVABLE_ORG = {
            AND t.organization_id IS NULL
         """,
     ],
+    # strategic_roadmap_items predates the tenant column; its one trustworthy
+    # provenance is the initiative it belongs to. Moved here from
+    # reconcile_schema.py, which now adds columns and constraints only, never
+    # organization_id values -- this is the one place that does.
+    "strategic_roadmap_items": """
+        UPDATE strategic_roadmap_items AS r
+           SET organization_id = p.organization_id
+          FROM strategic_initiatives AS p
+         WHERE r.initiative_id = p.id
+           AND r.organization_id IS NULL
+           AND p.organization_id IS NOT NULL
+    """,
 }
 
-# Tables whose rows carry per-row provenance rather than a single owning
-# entity: a row that cannot be derived from that provenance is another
-# tenant's data, never a candidate for the single-organisation or --org-id
-# orphan assignment below.
-_PROVENANCE_ONLY = {"roadmap_tasks"}
+# Tables whose link column to a parent is set at every creation site (a NULL
+# link is "no provenance", never "gone" -- it is not purged), keyed to
+# (link_column, parent_table). A row whose link names a parent that no
+# longer exists is deleted, idempotently, before that table's derivation or
+# count runs.
+#
+# Empty on this base. The qualifying case is document_chunk_embeddings
+# (document_id, set at its one creation site in
+# document_processing_service.py's chunk_and_embed, joining ai_chat_document_
+# uploads) -- but that table does not carry TenantMixin yet on this branch's
+# base, so it is not among _tenant_tables() and this backfill's per-table
+# loop never reaches it. Add its entry once it gains the mixin.
+_PURGE_ORPHANS = {}
 
 
 def _resolve_org_id(conn, explicit):
+    """The one organisation orphaned rows may be assigned to, or None.
+
+    Counts active, non-default organisations only: an inactive organisation
+    and the "default" organisation an install starts with are never a home
+    for another tenant's rows. Exactly one such organisation is the only
+    case this command assigns automatically or accepts --org-id for; zero or
+    several means no assignment happens at all, with or without --org-id --
+    an unresolved row is another tenant's data, or nobody's yet, never a
+    guess this command is allowed to make.
+    """
     from sqlalchemy import text
 
+    eligible = conn.execute(
+        text(
+            "SELECT id, name FROM organizations "
+            "WHERE COALESCE(is_active, TRUE) AND slug <> 'default' "
+            "ORDER BY id"
+        )
+    ).fetchall()
+
     if explicit is not None:
+        if len(eligible) > 1:
+            listing = ", ".join(f"{r[0]}={r[1]}" for r in eligible)
+            raise click.ClickException(
+                f"{len(eligible)} active, non-default organizations exist ({listing}); "
+                "--org-id cannot choose among them. An unresolved row is another "
+                "tenant's data, not a guess this command is allowed to make."
+            )
+        if len(eligible) == 1 and eligible[0][0] != explicit:
+            raise click.ClickException(
+                f"--org-id={explicit} does not match the one active, non-default "
+                f"organization (id={eligible[0][0]}, {eligible[0][1]})."
+            )
         row = conn.execute(text("SELECT id FROM organizations WHERE id = :i"), {"i": explicit}).first()
         if not row:
             raise click.ClickException(f"No organization with id={explicit}.")
         return explicit
-    rows = conn.execute(text("SELECT id, name FROM organizations ORDER BY id")).fetchall()
-    if len(rows) == 1:
-        click.echo(f"  single organization found: id={rows[0][0]} ({rows[0][1]}) — assigning orphans to it")
-        return rows[0][0]
-    # Refuse to guess. Picking wrongly hands one tenant's data to another,
-    # which is the exact failure this command exists to prevent.
-    listing = ", ".join(f"{r[0]}={r[1]}" for r in rows)
-    raise click.ClickException(
-        f"{len(rows)} organizations exist ({listing}). Re-run with --org-id to say which one "
-        "owns the pre-existing rows."
-    )
+
+    if len(eligible) == 1:
+        click.echo(
+            f"  single active organization found: id={eligible[0][0]} ({eligible[0][1]}) "
+            "— assigning orphans to it"
+        )
+        return eligible[0][0]
+
+    # Zero, or more than one, eligible organisation: refuse to guess.
+    return None
 
 
 def _tenant_tables():
@@ -159,94 +239,76 @@ def _tenant_tables():
     return sorted(tables)
 
 
-def repair_layer_tenancy(org_id=None, dry_run=False):
-    """Repair organization_id on every TenantMixin table that needs it.
+def _process_table(conn, insp, t, resolved_org, dry_run):
+    """Purge, derive, assign, index and harden one table.
 
-    Returns {"repaired": [...], "skipped_healthy": n, "absent": [...],
-    "unresolved": {table: count}}.
+    Returns (status, extra): status is "healthy" or "repaired"; extra is the
+    unresolved-orphan count when the table was deferred, else None.
+
+    Raises on an SQL error the caller could not have anticipated -- nothing
+    here commits or rolls back on its own; the caller does that once, around
+    the whole call, so a failure here undoes only this table's work. An
+    *expected* DDL failure (SET NOT NULL skipped for a deferred table) is
+    reported and swallowed here instead, because it is not a reason to
+    discard everything else this table did.
     """
-    from sqlalchemy import inspect, text
+    from sqlalchemy import text
 
-    insp = inspect(db.engine)
-    live = set(insp.get_table_names())
-    conn = db.session.connection()
+    if t in _PURGE_ORPHANS:
+        link, parent = _PURGE_ORPHANS[t]
+        purged = conn.execute(
+            text(
+                f'DELETE FROM "{t}" WHERE {link} IS NOT NULL '
+                f'AND {link} NOT IN (SELECT id FROM "{parent}")'
+            )
+        ).rowcount
+        if purged:
+            click.echo(f"  - {t}: purged {purged} row(s) whose parent is gone")
 
-    repaired, absent = [], []
-    healthy = 0
-    resolved_org = None
-    unresolved = {}
+    cols = {c["name"]: c for c in insp.get_columns(t)}
+    col = cols.get("organization_id")
+    indexes = {i["name"] for i in insp.get_indexes(t)}
+    wanted_index = f"ix_{t}_organization_id"
+    has_index = wanted_index in indexes or any(
+        i["column_names"] == ["organization_id"] for i in insp.get_indexes(t)
+    )
 
-    for t in _tenant_tables():
-        if t not in live:
-            absent.append(t)
-            continue
+    if col is None:
+        if dry_run:
+            click.echo(f"  - {t}: would ADD COLUMN organization_id")
+            return "repaired", None
+        conn.execute(text(f'ALTER TABLE "{t}" ADD COLUMN IF NOT EXISTS organization_id INTEGER'))
+        click.echo(f"  + {t}: added organization_id")
+        col = {"nullable": True}
 
-        cols = {c["name"]: c for c in insp.get_columns(t)}
-        col = cols.get("organization_id")
-        indexes = {i["name"] for i in insp.get_indexes(t)}
-        wanted_index = f"ix_{t}_organization_id"
-        has_index = wanted_index in indexes or any(
-            i["column_names"] == ["organization_id"] for i in insp.get_indexes(t)
-        )
+    # A table that can state its own tenant does so first, so those rows
+    # never reach the guess-based orphan pass below. Run this in dry-run
+    # too (it is rolled back with everything else this table did): the
+    # orphan count taken right after must reflect rows with no provenance at
+    # all, not rows a real run would derive a moment later, or the "would
+    # leave NULL" line below overstates how many rows actually have none.
+    if t in _DERIVABLE_ORG:
+        stmts = _DERIVABLE_ORG[t]
+        stmts = [stmts] if isinstance(stmts, str) else stmts
+        derived = sum(conn.execute(text(s)).rowcount for s in stmts)
+        if derived:
+            verb, prefix = ("would derive", "-") if dry_run else ("derived", "+")
+            click.echo(f"  {prefix} {t}: {verb} org for {derived} row(s) from the linked entity")
 
-        if col is None:
-            if dry_run:
-                click.echo(f"  - {t}: would ADD COLUMN organization_id")
-                repaired.append(t)
-                continue
-            conn.execute(text(f'ALTER TABLE "{t}" ADD COLUMN IF NOT EXISTS organization_id INTEGER'))
-            click.echo(f"  + {t}: added organization_id")
-            col = {"nullable": True}
+    orphans = conn.execute(
+        text(f'SELECT count(*) FROM "{t}" WHERE organization_id IS NULL')
+    ).scalar()
 
-        # A table that can state its own tenant does so first, so those rows
-        # never reach the guess-based orphan pass below. Run this in dry-run
-        # too (it is rolled back with everything else at the end of this
-        # function): the orphan count taken right after must reflect rows
-        # with no provenance at all, not rows a real run would derive a
-        # moment later, or the "would leave NULL" line below overstates how
-        # many rows actually have no provenance.
-        if t in _DERIVABLE_ORG:
-            stmts = _DERIVABLE_ORG[t]
-            stmts = [stmts] if isinstance(stmts, str) else stmts
-            derived = sum(conn.execute(text(s)).rowcount for s in stmts)
-            if derived:
-                verb, prefix = ("would derive", "-") if dry_run else ("derived", "+")
-                click.echo(f"  {prefix} {t}: {verb} org for {derived} row(s) from the linked entity")
+    if not orphans and col.get("nullable") is False and has_index:
+        return "healthy", None
 
-        orphans = conn.execute(
-            text(f'SELECT count(*) FROM "{t}" WHERE organization_id IS NULL')
-        ).scalar()
-
-        if not orphans and col.get("nullable") is False and has_index:
-            healthy += 1
-            continue
-
-        # roadmap_tasks (and any other per-row-provenance table) never hands
-        # an orphan to an operator-chosen organisation: with several tenants
-        # in the database an unresolved row is another tenant's plan, not a
-        # guess this command is allowed to make. With exactly one tenant
-        # there is no other organisation it could belong to, so the ordinary
-        # single-organisation rule still applies.
-        deferred = False
-        if orphans and t in _PROVENANCE_ONLY:
-            org_count = conn.execute(text("SELECT count(*) FROM organizations")).scalar()
-            if org_count != 1:
-                deferred = True
-                unresolved[t] = orphans
-                if dry_run:
-                    click.echo(
-                        f"  - {t}: {orphans} row(s) have no tenant provenance; "
-                        "would leave NULL and report, not assigned"
-                    )
-                else:
-                    click.echo(
-                        f"  ! {t}: {orphans} row(s) have no tenant provenance; "
-                        "left NULL and reported, not assigned"
-                    )
-
-        if orphans and not deferred:
-            if resolved_org is None:
-                resolved_org = _resolve_org_id(conn, org_id)
+    # Every table takes the branch #112 wrote only for roadmap_tasks: with no
+    # single active, non-default organisation to assign to, residual rows
+    # stay NULL and are reported, never guessed -- with or without --org-id,
+    # which _resolve_org_id already refused up front on such a database.
+    deferred = False
+    if orphans:
+        if resolved_org is not None:
             if dry_run:
                 click.echo(f"  - {t}: would assign {orphans} orphaned row(s) to org {resolved_org}")
             else:
@@ -255,40 +317,100 @@ def repair_layer_tenancy(org_id=None, dry_run=False):
                     {"o": resolved_org},
                 )
                 click.echo(f"  + {t}: assigned {orphans} orphaned row(s) to org {resolved_org}")
-
-        if dry_run:
-            if col.get("nullable") is not False or not has_index:
-                click.echo(f"  - {t}: would add index / SET NOT NULL as needed")
-            repaired.append(t)
-            continue
-
-        # Index before NOT NULL, both idempotent; reconcile-schema adds
-        # neither. A deferred table (unresolved provenance rows still NULL)
-        # gets the index but not the NOT NULL constraint, which would only
-        # fail; that is reported explicitly instead of via the try/except.
-        ddls = [(f'CREATE INDEX IF NOT EXISTS {wanted_index} ON "{t}" (organization_id)', "index")]
-        if deferred:
-            click.echo(f"  ! {t}: not-null deferred: {orphans} unresolved row(s)")
         else:
-            ddls.append((f'ALTER TABLE "{t}" ALTER COLUMN organization_id SET NOT NULL', "not-null"))
-        for ddl, label in ddls:
-            try:
-                conn.execute(text(ddl))
-            except Exception as exc:  # noqa: BLE001 — report, keep repairing other tables
-                click.echo(f"  ! {t}: {label} skipped ({str(exc)[:100]})")
-        click.echo(f"  + {t}: hardened (index{'' if deferred else ', NOT NULL'})")
-        repaired.append(t)
+            deferred = True
+            if dry_run:
+                click.echo(
+                    f"  - {t}: {orphans} row(s) have no tenant provenance; "
+                    "would leave NULL and report, not assigned"
+                )
+            else:
+                click.echo(
+                    f"  ! {t}: {orphans} row(s) have no tenant provenance; "
+                    "left NULL and reported, not assigned"
+                )
 
     if dry_run:
-        db.session.rollback()
+        if col.get("nullable") is not False or not has_index:
+            click.echo(f"  - {t}: would add index / SET NOT NULL as needed")
+        return "repaired", (orphans if deferred else None)
+
+    # Index before NOT NULL, both idempotent; reconcile-schema adds neither.
+    # A deferred table (unresolved provenance rows still NULL) gets the
+    # index but not the NOT NULL constraint, which would only fail; that is
+    # reported explicitly instead of via the try/except below.
+    ddls = [(f'CREATE INDEX IF NOT EXISTS {wanted_index} ON "{t}" (organization_id)', "index")]
+    if deferred:
+        click.echo(f"  ! {t}: not-null deferred: {orphans} unresolved row(s)")
     else:
-        db.session.commit()
+        ddls.append((f'ALTER TABLE "{t}" ALTER COLUMN organization_id SET NOT NULL', "not-null"))
+    for ddl, label in ddls:
+        try:
+            conn.execute(text(ddl))
+        except Exception as exc:  # noqa: BLE001 — report, keep repairing other tables
+            click.echo(f"  ! {t}: {label} skipped ({str(exc)[:100]})")
+    click.echo(f"  + {t}: hardened (index{'' if deferred else ', NOT NULL'})")
+    return "repaired", (orphans if deferred else None)
+
+
+def repair_layer_tenancy(org_id=None, dry_run=False):
+    """Repair organization_id on every TenantMixin table that needs it.
+
+    --org-id is resolved once, before any table's statements run, so a
+    database with more than one active, non-default organisation rejects it
+    up front rather than partway through the run. Each table then runs its
+    purge, derivation, assignment, index and hardening in its own
+    transaction, committed before the next table starts (rolled back, always,
+    under dry_run). A table whose statements raise is rolled back on its
+    own, recorded in "failed", and every other table still runs.
+
+    Returns {"repaired": [...], "skipped_healthy": n, "absent": [...],
+    "unresolved": {table: count}, "failed": {table: reason}}.
+    """
+    from sqlalchemy import inspect
+
+    insp = inspect(db.engine)
+    live = set(insp.get_table_names())
+
+    repaired, absent = [], []
+    healthy = 0
+    unresolved = {}
+    failed = {}
+
+    resolved_org = _resolve_org_id(db.session.connection(), org_id)
+
+    for t in _tenant_tables():
+        if t not in live:
+            absent.append(t)
+            continue
+
+        conn = db.session.connection()
+        try:
+            status, deferred_count = _process_table(conn, insp, t, resolved_org, dry_run)
+        except Exception as exc:  # noqa: BLE001 — isolate this table, keep going
+            db.session.rollback()
+            failed[t] = str(exc)[:200]
+            click.echo(f"  ! {t}: failed and rolled back ({str(exc)[:150]})")
+            continue
+
+        if dry_run:
+            db.session.rollback()
+        else:
+            db.session.commit()
+
+        if status == "healthy":
+            healthy += 1
+        else:
+            repaired.append(t)
+            if deferred_count is not None:
+                unresolved[t] = deferred_count
 
     return {
         "repaired": repaired,
         "skipped_healthy": healthy,
         "absent": absent,
         "unresolved": unresolved,
+        "failed": failed,
     }
 
 
@@ -308,6 +430,11 @@ def backfill_layer_tenancy(dry_run, org_id):
     )
     for table, count in stats.get("unresolved", {}).items():
         click.echo(f"  {table}: {count} row(s) left without a tenant; no provenance found")
+    if stats["failed"]:
+        click.echo(f"\n{len(stats['failed'])} table(s) FAILED:")
+        for table, reason in stats["failed"].items():
+            click.echo(f"  ! {table}: {reason}")
+        raise SystemExit(1)
 
 
 def init_app(app):
