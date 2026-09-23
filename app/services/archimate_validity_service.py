@@ -18,6 +18,7 @@ Reference: The Open Group ArchiMate 3.2 Specification, Appendix B.
 
 from app.config.archimate_relationship_matrix import (
     ALL_ELEMENTS,
+    LAYER_NAME_TO_KEY as _LAYER_NAME_MAP,
     RELATIONSHIP_TYPE_DEFINITIONS,
     get_element_aspect,
     get_element_layer,
@@ -33,18 +34,10 @@ from app.config.archimate_relationship_matrix import (
 # (get_practitioner_warnings' internal logic, and archimate_routes.py's
 # composer validator, which imports ``_layer`` directly) expect the
 # lowercase single-word vocabulary this service has always used
-# ("strategy", "implementation", "active"). These two maps are the only
-# translation, kept local to this adapter.
-
-_LAYER_NAME_MAP = {
-    "Strategy": "strategy",
-    "Business": "business",
-    "Application": "application",
-    "Technology": "technology",
-    "Physical": "physical",
-    "Motivation": "motivation",
-    "Implementation & Migration": "implementation",
-}
+# ("strategy", "implementation", "active"). ``_LAYER_NAME_MAP`` above is the
+# matrix module's one definition of the layer-name translation (also used by
+# app.models.archimate_core); the aspect map below has no other caller, so
+# it stays local.
 
 _ASPECT_NAME_MAP = {
     "Active Structure": "active",
