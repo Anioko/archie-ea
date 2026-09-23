@@ -50,6 +50,26 @@ def overview():
         format_health_score,
     )
 
+    # Five-screen onboarding entry point: same gating condition the retired
+    # first-login modal used (app/templates/layouts/admin_base.html), now a
+    # real redirect instead of a client-side overlay -- the overlay's own
+    # inline comments (ARCH-107/ARCH-040) record the bug class this avoids
+    # (a full-viewport modal silently eating an established user's first
+    # click). Scoped to this one landing route, not a global before_request,
+    # so no other page's navigation changes.
+    if not current_user.onboarding_completed_at:
+        from app._bootstrap.context_processors import compute_nav_counts
+
+        _counts = compute_nav_counts(g.current_org_id) if getattr(g, "current_org_id", None) else {}
+        _workspace_is_empty = not (
+            (_counts.get("applications", 0) or 0)
+            + (_counts.get("elements", 0) or 0)
+            + (_counts.get("capabilities", 0) or 0)
+            + (_counts.get("vendors", 0) or 0)
+        )
+        if _workspace_is_empty:
+            return redirect(url_for("onboarding.index"))
+
     metrics = {
         "applications": 0,
         "vendors": 0,
