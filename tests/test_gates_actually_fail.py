@@ -682,6 +682,50 @@ def test_public_repo_hygiene_html_data_title_is_not_read_as_title(tmpdir):
     assert _run_hygiene_checker(root, "content") == 0
 
 
+def test_public_repo_hygiene_html_unspaced_attribute_is_still_read(tmpdir):
+    """A whitespace-only lookbehind misses a text-bearing attribute with no
+    space before it -- a real, if unusual, shape a hand-written or
+    minified template can carry -- while `data-title` (above) must still
+    stay clean; both are exercised in the one probe."""
+    root = tmpdir.mkdir("attr-unspaced")
+    _write(root, "app/templates/probe.html",
+           '<a href="x"title="the builder wrote this" data-title="unrelated">link</a>\n')  # hygiene-ok: probe data for the unspaced-attribute test, not a real hit
+    assert _run_hygiene_checker(root, "content") >= 1
+
+
+def test_public_repo_hygiene_j2_codegen_file_is_not_scanned_as_html(tmpdir):
+    """A `.j2` template whose base name carries a non-HTML extension
+    (`.go.j2`, here) generates source in another language entirely -- its
+    `//` comment is not markup, and reading it as HTML "visible text"
+    would scan executable code line for line, contrary to this module's
+    own "never executable code" claim."""
+    root = tmpdir.mkdir("codegen-j2")
+    _write(root, "app/templates/go_chi/saga_orchestrator.go.j2",
+           "// NewOrchestrator creates a new orchestrator.\nfunc x() {}\n")  # hygiene-ok: probe data for the codegen-.j2 negative control, not a real hit
+    assert _run_hygiene_checker(root, "content") == 0
+
+
+def test_public_repo_hygiene_html_j2_template_is_still_scanned_as_html(tmpdir):
+    """A `.j2` template whose base name IS `.html` (an ordinary Jinja HTML
+    template) keeps the full visible-text and attribute scan -- the
+    codegen exclusion above is narrow, not a blanket exemption for every
+    `.j2` file."""
+    root = tmpdir.mkdir("html-j2")
+    _write(root, "app/templates/probe.html.j2",
+           '<p title="the builder wrote this">x</p>\n')  # hygiene-ok: probe data for the .html.j2 positive control, not a real hit
+    assert _run_hygiene_checker(root, "content") >= 1
+
+
+def test_public_repo_hygiene_bare_j2_fragment_is_still_scanned_as_html(tmpdir):
+    """A bare `.j2` fragment (no second extension at all) is this
+    codebase's own convention for a Jinja-only include -- still markup,
+    still scanned the same as `.html`."""
+    root = tmpdir.mkdir("bare-j2")
+    _write(root, "app/templates/probe.j2",
+           '<p title="the builder wrote this">x</p>\n')  # hygiene-ok: probe data for the bare-.j2 positive control, not a real hit
+    assert _run_hygiene_checker(root, "content") >= 1
+
+
 def test_public_repo_hygiene_html_attribute_shaped_text_node_counts_once(tmpdir):
     """The attribute pattern is matched only inside a real tag's own span --
     a visible text node that happens to contain the same `attr="value"`
@@ -751,21 +795,94 @@ def test_public_repo_hygiene_product_terms_allowlisted(tmpdir):
     assert _run_hygiene_checker(root, "content") == 0
 
 
-def test_public_repo_hygiene_content_scan_survives_a_file_that_does_not_tokenise(tmpdir):
-    """A .py file with a syntax error must not crash the checker -- it
-    contributes no hits (nothing to tokenise into COMMENT/STRING), and every
-    other file in the tree is still scanned."""
+def test_public_repo_hygiene_content_scan_fails_not_passes_on_an_unparseable_python_file(tmpdir):
+    """A .py file with a syntax error must not silently contribute zero
+    hits and let the run pass as if it had been scanned -- the exact shape
+    of gap this file's own module docstring opens with (a broken f-string,
+    `except SyntaxError`, a checker reporting 0 for a defect that was
+    present). It must fail loud instead, the same as an unreadable commit
+    history or an untrusted zero-file `git ls-files` read."""
     root = tmpdir.mkdir("unparseable")
     _write(root, "app/broken.py", "def broken(:\n    pass\n")
     _write(root, "app/probe.py", "# orchestrator said so\n")  # hygiene-ok: probe data for a tmpdir file this checker never scans, not a real hit
-    assert _run_hygiene_checker(root, "content") == 1
+    proc = _run_hygiene_checker_raw(root, "content")
+    assert proc.returncode == 2, (
+        "expected a non-zero exit when a tracked .py file could not be tokenised, "
+        "got %d\nstdout=%r\nstderr=%r" % (proc.returncode, proc.stdout, proc.stderr)
+    )
+    trailing = (proc.stdout or "").strip().splitlines()
+    parsed_as_count = bool(trailing) and trailing[-1].strip().lstrip("-").isdigit()
+    assert not parsed_as_count, (
+        "the checker printed a parseable count for a tree containing an unparseable "
+        "file; a caller parsing stdout would treat this as a clean/partial pass "
+        "instead of a failure"
+    )
+    assert "broken.py" in proc.stderr and "could not be tokenised" in proc.stderr
+
+
+# Rule 3's source half also runs the same three attribution checks the
+# commit-message half always ran (an attribution trailer, a generated-with
+# footer, a named assistant product) plus the generic, unnamed-tool
+# disclosure both halves share -- a disclosure written into a tracked
+# comment or docstring is the same disclosure as one written into the
+# commit that carried it, and the two must not drift apart on what counts.
+_SOURCE_ATTRIBUTION_CASES = [
+    ("Written with Claude Code", "app/probe.py", "# Written with Claude Code\n"),  # hygiene-ok: probe data for the source-half attribution test, not a real hit
+    ("Generated with Codex", "app/probe.py", "# Generated with Codex\n"),  # hygiene-ok: probe data for the source-half attribution test, not a real hit
+    ("Co-Authored-By: Kilo", "app/probe.py", "# Co-Authored-By: Kilo\n"),  # hygiene-ok: probe data for the source-half attribution test, not a real hit
+    ("Generated by an AI coding assistant", "app/probe.py",
+     "# Generated by an AI coding assistant.\n"),  # hygiene-ok: probe data for the source-half attribution test, not a real hit
+]
+
+
+@pytest.mark.parametrize(
+    "label, relpath, content", _SOURCE_ATTRIBUTION_CASES, ids=[c[0] for c in _SOURCE_ATTRIBUTION_CASES]
+)
+def test_public_repo_hygiene_source_half_catches_attribution_disclosures(tmpdir, label, relpath, content):
+    _write(tmpdir, relpath, content)
+    count = _run_hygiene_checker(tmpdir, "content")
+    assert count > 0, "row %r (%r) was not caught in tracked source" % (label, content)
+
+
+def test_public_repo_hygiene_source_half_assistant_name_needs_a_cue_word(tmpdir):
+    """This codebase is itself an AI-integration product that names
+    Claude/Codex-family models as ordinary first-class vocabulary in its
+    own LLM-routing code -- a bare product name with no attribution-shaped
+    cue word on the same line is not a disclosure and must stay clean,
+    unlike the commit-message half, which has no such vocabulary to
+    protect and fires on the bare name alone."""
+    root = tmpdir.mkdir("source-bare-product-name")
+    _write(root, "app/probe.py", 'DEFAULT_MODEL = "claude-3-opus"  # provider default, not a disclosure\n')
+    assert _run_hygiene_checker(root, "content") == 0
+
+
+def test_public_repo_hygiene_source_half_generic_assistant_needs_coding(tmpdir):
+    """This codebase's own domain vocabulary pairs a cue word with a bare
+    "AI"/"LLM" constantly and legitimately (content the PRODUCT generates
+    for a user), so the generic-assistant check requires "coding
+    assistant" specifically, not a bare "AI" or "LLM" mention."""
+    root = tmpdir.mkdir("source-llm-generated-product-vocabulary")
+    _write(root, "app/probe.py", '"""LLM-generated strategic recommendation with user feedback."""\n')
+    assert _run_hygiene_checker(root, "content") == 0
+
+
+def test_public_repo_hygiene_source_half_attribution_is_excusable(tmpdir):
+    """Unlike the commit-message half, the source half's escape hatch
+    reaches these three checks too -- the checker's own comments and this
+    file's own probe fixtures need a way to quote the shape without being
+    read as a real disclosure."""
+    root = tmpdir.mkdir("source-attribution-excused")
+    _write(root, "app/probe.py",
+           "# Written with Claude Code  # hygiene-ok: quoting the disclosure shape for a test\n")
+    assert _run_hygiene_checker(root, "content") == 0
 
 
 # Every id shape and role-word form the process actually emits, one probe
 # line each: (label, relative path, file content). Each must be caught
-# (count > 0) when scanned with --rule content. "Co-authored-by:" is a
-# commit-message hit, not a content hit; it is covered by
-# test_public_repo_hygiene_commit_message_catches_co_authored_by instead.
+# (count > 0) when scanned with --rule content. An attribution trailer,
+# a generated-with footer and an assistant-product mention are ALSO a
+# content hit now (see test_public_repo_hygiene_source_half_catches_attribution_disclosures
+# above); this table stays to record-ids and role words specifically.
 _FALSE_NEGATIVE_CASES = [
     ("D2-7", "app/probe.py", "# See D2-7 for the reasoning.\n"),  # hygiene-ok: probe data for the false-negative table test, not a real hit
     ("T4-3", "app/probe.py", "# See T4-3 for the reasoning.\n"),  # hygiene-ok: probe data for the false-negative table test, not a real hit
@@ -871,6 +988,16 @@ _FALSE_POSITIVE_CASES = [
     ("T-1 (bare single digit)", "app/probe.py", "# about T-1 day later.\n"),
     ("T-0 (bare single digit)", "app/probe.py", "# excluded T-0 from the scan.\n"),
     ("D-0 (bare single digit)", "app/probe.py", "# excluded D-0 from the scan.\n"),
+    # "the builder" alone is a role-word hit (see the false-negative table
+    # above); "the builder pattern" is the unrelated Gang-of-Four design
+    # pattern name, and must not be.
+    ("the builder pattern", "app/probe.py", "# Add the builder pattern for reports.\n"),
+    # A `//` immediately after `:` is a URL scheme separator, not the start
+    # of a line comment -- the whole rest of the line (including an
+    # otherwise role-word-shaped path segment) must not be read as if it
+    # sat inside a comment.
+    ("https:// url containing round-N", "app/static/probe.js",
+     'var u = "https://example.com/round-2";\n'),  # hygiene-ok: probe data for the URL-scheme false-positive test, not a real hit
 ]
 
 
@@ -944,6 +1071,19 @@ def _init_repo_with_commit(root, message):
     _git(root, "commit", "-q", "-m", message)
 
 
+def _init_repo_with_commit_authored_by(root, message, author):
+    """Same as `_init_repo_with_commit`, but with an explicit `--author`,
+    for a probe that discloses itself in the commit's author name (a
+    coding tool's own default author-name suffix) rather than the message
+    body -- see test_public_repo_hygiene_commit_message_catches_assistant_name_in_author_name."""
+    _git(root, "init", "-q")
+    _git(root, "config", "user.email", "probe@example.com")
+    _git(root, "config", "user.name", "Probe")
+    _write(root, "README.md", "probe\n")
+    _git(root, "add", "README.md")
+    _git(root, "commit", "-q", "-m", message, "--author", author)
+
+
 def test_public_repo_hygiene_commit_message_gate_fires_on_its_own_defect(tmpdir):
     """A pipeline role word in a commit MESSAGE (not a file), in a real,
     synthetic git repository -- the shape check_evidence_contract.py's own
@@ -985,10 +1125,10 @@ def test_public_repo_hygiene_commit_message_range_excludes_the_base(tmpdir):
 
 
 def test_public_repo_hygiene_commit_message_catches_co_authored_by(tmpdir):
-    """The Co-Authored-By trailer specifically, independent of any role word."""
+    """The attribution trailer specifically, independent of any role word."""
     bad = tmpdir.mkdir("bad")
     _init_repo_with_commit(
-        bad, "Fix the timeout on the retry path\n\nCo-Authored-By: Example <e@example.com>\n"
+        bad, "Fix the timeout on the retry path\n\nCo-Authored-By: Example <e@example.com>\n"  # hygiene-ok: probe data for a tmpdir git repo this checker never scans, not a real hit
     )
     good = tmpdir.mkdir("good")
     _init_repo_with_commit(good, "Fix the timeout on the retry path")
@@ -998,13 +1138,13 @@ def test_public_repo_hygiene_commit_message_catches_co_authored_by(tmpdir):
 
 
 def test_public_repo_hygiene_commit_message_catches_generated_with_footer(tmpdir):
-    """A free-text 'Generated with ...' footer line, the shape several
-    coding tools append instead of (or beside) a Co-Authored-By trailer."""
+    """A free-text 'Generated with ...' footer line, the shape several  # hygiene-ok: describing this test's own probe shape, not a real hit
+    coding tools append instead of (or beside) an attribution trailer."""
     bad = tmpdir.mkdir("bad")
     _init_repo_with_commit(
         bad,
         "Fix the timeout on the retry path\n\n"
-        "\U0001F916 Generated with [an assistant](https://example.com)\n",
+        "\U0001F916 Generated with [an assistant](https://example.com)\n",  # hygiene-ok: probe data for a tmpdir git repo this checker never scans, not a real hit
     )
     good = tmpdir.mkdir("good")
     _init_repo_with_commit(good, "Fix the timeout on the retry path")
@@ -1014,9 +1154,9 @@ def test_public_repo_hygiene_commit_message_catches_generated_with_footer(tmpdir
 
 
 _ASSISTANT_PRODUCT_NAME_CASES = [
-    ("Claude", "Reviewed-by: Claude\n"),
-    ("Codex", "Reviewed-by: Codex\n"),
-    ("Kilo", "Reviewed-by: Kilo\n"),
+    ("Claude", "Reviewed-by: Claude\n"),  # hygiene-ok: probe data for the assistant-name table test, not a real hit
+    ("Codex", "Reviewed-by: Codex\n"),  # hygiene-ok: probe data for the assistant-name table test, not a real hit
+    ("Kilo", "Reviewed-by: Kilo\n"),  # hygiene-ok: probe data for the assistant-name table test, not a real hit
 ]
 
 
@@ -1026,15 +1166,15 @@ _ASSISTANT_PRODUCT_NAME_CASES = [
 )
 def test_public_repo_hygiene_commit_message_catches_assistant_product_name_on_trailer_line(tmpdir, label, trailer_line):
     """Each assistant product name, as a whole word on its own trailer
-    line, independent of the Co-Authored-By and generated-with checks."""
+    line, independent of the attribution-trailer and generated-with checks."""
     root = tmpdir.mkdir("assistant-%s" % label.lower())
     _init_repo_with_commit(root, "Fix the timeout on the retry path\n\n" + trailer_line)
     assert _run_hygiene_checker(root, "commits") > 0, "row %r (%r) was not caught" % (label, trailer_line)
 
 
 _ASSISTANT_PRODUCT_NAME_PROSE_CASES = [
-    ("Co-authored by Claude Code", "Fix the timeout on the retry path\n\nCo-authored by Claude Code\n"),
-    ("Written with Claude Code", "Fix the timeout on the retry path\n\nWritten with Claude Code\n"),
+    ("Co-authored by Claude Code", "Fix the timeout on the retry path\n\nCo-authored by Claude Code\n"),  # hygiene-ok: probe data for the assistant-name prose test, not a real hit
+    ("Written with Claude Code", "Fix the timeout on the retry path\n\nWritten with Claude Code\n"),  # hygiene-ok: probe data for the assistant-name prose test, not a real hit
 ]
 
 
@@ -1059,7 +1199,7 @@ def test_public_repo_hygiene_commit_message_assistant_product_name_fires_on_an_u
     comparison) apart from a disclosure by the shape of the line it sits
     on."""
     root = tmpdir.mkdir("assistant-prose-unrelated")
-    _init_repo_with_commit(root, "Disable the Claude review-comment bot in the editor settings")
+    _init_repo_with_commit(root, "Disable the Claude review-comment bot in the editor settings")  # hygiene-ok: probe data for a tmpdir git repo this checker never scans, not a real hit
     assert _run_hygiene_checker(root, "commits") > 0
 
 
@@ -1077,7 +1217,7 @@ def test_public_repo_hygiene_commit_message_still_catches_a_real_assistant_discl
     """Dropping "Copilot" narrows the list; it does not weaken the check
     for the names that stay."""
     root = tmpdir.mkdir("copilot-dropped-others-stay")
-    _init_repo_with_commit(root, "Written with Claude Code")
+    _init_repo_with_commit(root, "Written with Claude Code")  # hygiene-ok: probe data for a tmpdir git repo this checker never scans, not a real hit
     assert _run_hygiene_checker(root, "commits") > 0
 
 
@@ -1096,7 +1236,7 @@ def test_public_repo_hygiene_commit_message_governance_file_name_does_not_mask_a
     line is still caught -- excluding the file name does not excuse the
     rest of the line."""
     root = tmpdir.mkdir("governance-file-name-plus-real-mention")
-    _init_repo_with_commit(root, "Reworded CLAUDE.md; Written with Claude Code")
+    _init_repo_with_commit(root, "Reworded CLAUDE.md; Written with Claude Code")  # hygiene-ok: probe data for a tmpdir git repo this checker never scans, not a real hit
     assert _run_hygiene_checker(root, "commits") > 0
 
 
@@ -1110,7 +1250,7 @@ def test_public_repo_hygiene_commit_message_ordinary_trailer_line_is_clean(tmpdi
 
 def test_public_repo_hygiene_commit_message_generated_with_footer_cannot_be_escaped(tmpdir):
     """A generated-with footer line is never excused, marker or not -- the
-    same rule the Co-Authored-By trailer already follows."""
+    same rule the attribution trailer already follows."""
     root = tmpdir.mkdir("footer-with-marker")
     _init_repo_with_commit(
         root,
@@ -1144,8 +1284,8 @@ def test_public_repo_hygiene_commit_message_hygiene_ok_does_not_reach_other_line
 
 
 def test_public_repo_hygiene_commit_message_trailer_cannot_be_escaped(tmpdir):
-    """A Co-Authored-By line is never excused, marker or not -- the trailer
-    check runs before the escape check."""
+    """An attribution-trailer line is never excused, marker or not -- the
+    trailer check runs before the escape check."""
     root = tmpdir.mkdir("trailer-with-marker")
     _init_repo_with_commit(
         root,
@@ -1196,6 +1336,68 @@ def test_public_repo_hygiene_commit_message_catches_record_ids(tmpdir, label, su
     _init_repo_with_commit(root, subject)
     count = _run_hygiene_checker(root, "commits")
     assert count > 0, "row %r (%r) was not caught" % (label, subject)
+
+
+def test_public_repo_hygiene_commit_message_catches_qa_lead_with_a_space(tmpdir):
+    """"tech lead" (space) is already caught; "qa-lead" only matched its
+    own hyphenated spelling until now -- the same free-text spacing must
+    be caught for both role words."""
+    root = tmpdir.mkdir("qa-lead-space")
+    _init_repo_with_commit(root, "Reviewed by QA lead")
+    assert _run_hygiene_checker(root, "commits") > 0
+
+
+def test_public_repo_hygiene_commit_message_catches_round_with_two_digits(tmpdir):
+    """A single-digit-only round pattern misses a double-digit round
+    number once the pipeline runs that many rounds."""
+    root = tmpdir.mkdir("round-two-digits")
+    _init_repo_with_commit(root, "Fix the timeout (round 10 refuter finding)")
+    assert _run_hygiene_checker(root, "commits") > 0
+
+
+def test_public_repo_hygiene_commit_message_catches_generic_ai_coding_assistant_disclosure(tmpdir):
+    """A disclosure that names the KIND of tool rather than one of the
+    specific listed products is still a disclosure."""
+    root = tmpdir.mkdir("generic-assistant-disclosure")
+    _init_repo_with_commit(root, "Generated by an AI coding assistant")
+    assert _run_hygiene_checker(root, "commits") > 0
+
+
+def test_public_repo_hygiene_commit_message_catches_spaced_co_authored_by(tmpdir):
+    """The attribution trailer's own free-text rendering, space-separated
+    rather than hyphenated, carries the identical disclosure."""
+    root = tmpdir.mkdir("spaced-trailer")
+    _init_repo_with_commit(root, "Co authored by GitHub Copilot")
+    assert _run_hygiene_checker(root, "commits") > 0
+
+
+def test_public_repo_hygiene_commit_message_catches_aiders_default_subject_prefix(tmpdir):
+    """A fourth coding tool's own name, the same as the three already
+    listed -- its default commit-subject prefix carries the bare word."""
+    root = tmpdir.mkdir("aider-subject-prefix")
+    _init_repo_with_commit(root, "aider: refactor the thing")
+    assert _run_hygiene_checker(root, "commits") > 0
+
+
+def test_public_repo_hygiene_commit_message_catches_assistant_name_in_author_name(tmpdir):
+    """The message body (`%B`) is not the only place a coding tool
+    discloses itself -- one tool's default author name is the ordinary git
+    user name plus a literal `(aider)` suffix, invisible to a scan that
+    reads only the message text."""
+    root = tmpdir.mkdir("aider-author-name")
+    _init_repo_with_commit_authored_by(
+        root, "Fix the timeout on the retry path", "Jane Doe (aider) <jane@example.com>"
+    )
+    assert _run_hygiene_checker(root, "commits") > 0
+
+
+def test_public_repo_hygiene_commit_message_catches_the_builder_pattern_in_a_commit_too(tmpdir):
+    """The Gang-of-Four design-pattern exclusion applies identically in a
+    commit message -- the role-word helpers are shared between both
+    halves, so a commit describing the unrelated pattern must stay clean."""
+    root = tmpdir.mkdir("commit-builder-pattern")
+    _init_repo_with_commit(root, "Add the builder pattern for reports")
+    assert _run_hygiene_checker(root, "commits") == 0
 
 
 def test_public_repo_hygiene_content_scan_only_reads_tracked_files(tmpdir):

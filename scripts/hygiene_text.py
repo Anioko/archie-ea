@@ -78,13 +78,19 @@ HTML_TAG_RE = re.compile(r"<[^>]+>")
 HTML_TAG_RE_LOOSE = re.compile(r"<[^>]*>", re.DOTALL)
 
 _JS_BLOCK_COMMENT_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
-_JS_LINE_COMMENT_RE = re.compile(r"//[^\r\n]*")
+# Not preceded by `:` -- a `//` immediately after a colon is a URL scheme
+# separator (`https://`, `ws://`), not a line comment starting; an ordinary
+# line comment after a real `:` (an object-literal key, a label) always has
+# at least a space before the `//` in practice, so this excludes the URL
+# shape without excluding a genuine comment.
+_JS_LINE_COMMENT_RE = re.compile(r"(?<!:)//[^\r\n]*")
 
 
 def js_comment_spans(text: str) -> list[tuple[int, str]]:
     """(start_offset, matched_text) for every `//` and `/* */` comment in
     `text` -- a `//` already inside a matched `/* */` block is not counted
-    a second time."""
+    a second time, and a `//` immediately after `:` (a URL scheme, not a
+    comment marker) is never matched at all."""
     blocks = [(m.start(), m.end(), m.group(0)) for m in _JS_BLOCK_COMMENT_RE.finditer(text)]
     spans = [(start, matched) for start, _end, matched in blocks]
     for m in _JS_LINE_COMMENT_RE.finditer(text):

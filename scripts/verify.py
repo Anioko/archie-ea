@@ -901,7 +901,7 @@ def _resolve_hygiene_commit_range() -> tuple[str | None, str]:
     range at all -- never a guess, never something that would pass by construction.
 
     A full-history count cannot be a ratchet here: GitHub's squash merge appends
-    its own ``Co-authored-by:`` trailers to the merge commit after every gate has
+    its own attribution trailers to the merge commit after every gate has
     already run on the pull request, so history keeps moving under a baseline
     that was never meant to describe it, and every multi-author merge would force
     the baseline up again. Scoping to the commits under review sidesteps that
@@ -923,7 +923,7 @@ def _resolve_hygiene_commit_range() -> tuple[str | None, str]:
 
 
 def gate_public_repo_hygiene_commit_messages() -> Result:
-    """A pipeline role word, a Co-Authored-By trailer, a generated-with
+    """A pipeline role word, an attribution trailer, a generated-with
     footer line, or an assistant coding tool's own product name anywhere in
     the message, in a commit message itself (not the diff), among the
     commits under review.

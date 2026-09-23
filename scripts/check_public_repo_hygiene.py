@@ -76,29 +76,29 @@ ESCAPE_HATCH = "hygiene-ok:"
 # after a bare dash (T-1, T-0, D-0) is exactly as likely to be an ordinary
 # English fraction or count as a review record id, and this codebase's own
 # prose has used it that way -- while a token with a leading digit before the
-# dash (D2-7, T4-3), a letter segment (D-ALL-1, T-FIX-103, T-DR-1) or a
-# second dash-digits segment (D-105-2) already carries enough of its own
+# dash (D2-7, T4-3), a letter segment (D-ALL-1, T-FIX-103, T-DR-1) or a  # hygiene-ok: quoting this pattern's own example shapes, not a real hit
+# second dash-digits segment (D-105-2) already carries enough of its own  # hygiene-ok: quoting this pattern's own example shapes, not a real hit
 # structure to not need the same guard, and every one of those keeps a
-# single trailing digit. The four endings, one example each (D2-7, D-ALL-1,
+# single trailing digit. The four endings, one example each (D2-7, D-ALL-1,  # hygiene-ok: quoting this pattern's own example shapes, not a real hit
 # D-105-2, F-05) # hygiene-ok: quoting this pattern's own example shapes, not a real hit
-# -- plus an optional trailing lowercase letter on every one (T-004b), for a
+# -- plus an optional trailing lowercase letter on every one (T-004b), for a  # hygiene-ok: quoting this pattern's own example shapes, not a real hit
 # sub-task or sub-finding suffix this process also uses.
 RECORD_ID_PATTERN = re.compile(
     r"\b(?:"
-    r"(?:D|T|Q|F)[0-9]-[0-9]{1,4}(?:-[0-9]{1,4})?"        # leading digit before the dash: D2-7, T4-3
-    r"|(?:D|T|Q|F)-[A-Z]{1,4}-[0-9]{1,4}(?:-[0-9]{1,4})?"  # a letter segment: D-ALL-1, T-FIX-103, T-DR-1
-    r"|(?:D|T|Q|F)-[0-9]{1,4}-[0-9]{1,4}"                  # a second dash-digits segment: D-105-2
-    r"|(?:D|T|Q|F)-[0-9]{2,4}"                             # the bare shape: needs two digits or more, F-05, T-004
+    r"(?:D|T|Q|F)[0-9]-[0-9]{1,4}(?:-[0-9]{1,4})?"        # leading digit before the dash: D2-7, T4-3  # hygiene-ok: quoting this pattern's own example shapes, not a real hit
+    r"|(?:D|T|Q|F)-[A-Z]{1,4}-[0-9]{1,4}(?:-[0-9]{1,4})?"  # a letter segment: D-ALL-1, T-FIX-103, T-DR-1  # hygiene-ok: quoting this pattern's own example shapes, not a real hit
+    r"|(?:D|T|Q|F)-[0-9]{1,4}-[0-9]{1,4}"                  # a second dash-digits segment: D-105-2  # hygiene-ok: quoting this pattern's own example shapes, not a real hit
+    r"|(?:D|T|Q|F)-[0-9]{2,4}"                             # the bare shape: needs two digits or more, F-05, T-004  # hygiene-ok: quoting this pattern's own example shapes, not a real hit
     r")[a-z]?\b",
     re.IGNORECASE,
 )
-# The letter-dash-letters-digit shape with no digits-only ending (T-S1,
-# T-S1b) -- one id shape the pattern above cannot also match, since its own
+# The letter-dash-letters-digit shape with no digits-only ending (T-S1,  # hygiene-ok: quoting this pattern's own example shapes, not a real hit
+# T-S1b) -- one id shape the pattern above cannot also match, since its own  # hygiene-ok: quoting this pattern's own example shapes, not a real hit
 # final segment is a letter followed by one or two digits, not a bare digit
-# run. An optional interior letter-segment-and-dash (T-CONS-R1) and an
-# optional trailing lowercase letter (T-S1b) apply here too, the same as
+# run. An optional interior letter-segment-and-dash (T-CONS-R1) and an  # hygiene-ok: quoting this pattern's own example shapes, not a real hit
+# optional trailing lowercase letter (T-S1b) apply here too, the same as  # hygiene-ok: quoting this pattern's own example shapes, not a real hit
 # above. Matched case-insensitively, like the pattern above, so a lowercase
-# id (t-s1) is not missed for its case alone.
+# id (t-s1) is not missed for its case alone.  # hygiene-ok: quoting this pattern's own example shapes, not a real hit
 RECORD_ID_PATTERN_SEGMENT = re.compile(
     r"\b(?:D|T|Q|F)-(?:[A-Z]{1,4}-)?[A-Z]{1,4}[0-9]{1,2}[a-z]?\b", re.IGNORECASE
 )
@@ -170,27 +170,33 @@ def _is_allowlisted_record_id(token: str, line: str, start: int) -> bool:
         return True
     return False
 
-# Case-insensitive, whole word. "round" matches a digit or a spelled-out
-# number one..nine (round-1, round 2, Round three), the shape a pipeline  # hygiene-ok: quoting this pattern's own example shapes, not a real hit
-# round number takes, but not when followed by "of" (round of funding, a
-# round of edits -- the ordinary English sense). "build report" matches a  # hygiene-ok: quoting this pattern's own label, not a real hit
-# hyphen or a space. "builder" matches only its three role-shaped forms, not  # hygiene-ok: quoting this pattern's own label, not a real hit
-# a class or identifier name built from the word (QueryBuilder,
-# policy_builder). "orchestrator" requires the preceding character not be a  # hygiene-ok: quoting this pattern's own label, not a real hit
-# letter or underscore, so an identifier such as `workflow_orchestrator_service`
-# or a class name such as `UnifiedSeedOrchestrator` never matches.
+# Case-insensitive, whole word. "round" matches one or more digits or a  # hygiene-ok: quoting this pattern's own example shapes, not a real hit
+# spelled-out number one..nine (round-1, round 2, round 10, Round three),  # hygiene-ok: quoting this pattern's own example shapes, not a real hit
+# the shape a pipeline round number takes, but not when followed by "of"
+# (round of funding, a round of edits -- the ordinary English sense).
+# "build report" matches a hyphen or a space. "qa-lead" matches a hyphen or  # hygiene-ok: quoting this pattern's own label, not a real hit
+# a space, the same as "tech lead" below it. "builder" matches only its  # hygiene-ok: quoting this pattern's own label, not a real hit
+# three role-shaped forms, not a class or identifier name built from the
+# word (QueryBuilder, policy_builder) -- and not "the builder pattern", the
+# unrelated Gang-of-Four design-pattern name, which "the builder" alone  # hygiene-ok: quoting this pattern's own label, not a real hit
+# would otherwise also match. "orchestrator" requires the preceding  # hygiene-ok: quoting this pattern's own label, not a real hit
+# character not be a letter or underscore, so an identifier such as
+# `workflow_orchestrator_service` or a class name such as
+# `UnifiedSeedOrchestrator` never matches.
 ROLE_WORDS = [
     (re.compile(r"\brefuter\b", re.IGNORECASE), "refuter"),  # hygiene-ok: this pattern's own label, not a real hit
     (re.compile(r"\btech[\s-]lead\b", re.IGNORECASE), "tech-lead"),  # hygiene-ok: this pattern's own label, not a real hit
-    (re.compile(r"\bqa-lead\b", re.IGNORECASE), "qa-lead"),  # hygiene-ok: this pattern's own label, not a real hit
-    (re.compile(r"\bbuilder's\b|\bthe builder\b|\bbuilder:", re.IGNORECASE), "builder"),  # hygiene-ok: this pattern's own label, not a real hit
+    (re.compile(r"\bqa[\s-]lead\b", re.IGNORECASE), "qa-lead"),  # hygiene-ok: this pattern's own label, not a real hit
+    (re.compile(
+        r"\bbuilder's\b|\bthe builder\b(?!\s+pattern\b)|\bbuilder:", re.IGNORECASE
+    ), "builder"),  # hygiene-ok: this pattern's own label, not a real hit
     (re.compile(r"\bsolution-architect\b", re.IGNORECASE), "solution-architect"),  # hygiene-ok: this pattern's own label, not a real hit
     (re.compile(r"\bproduct-manager\b", re.IGNORECASE), "product-manager"),  # hygiene-ok: this pattern's own label, not a real hit
     (re.compile(r"\b(?<![A-Za-z_])orchestrator\b", re.IGNORECASE), "orchestrator"),  # hygiene-ok: this pattern's own label, not a real hit
     (re.compile(r"\bthe brief\b", re.IGNORECASE), "the brief"),  # hygiene-ok: this pattern's own label, not a real hit
     (re.compile(r"\bbuild[\s-]report\b", re.IGNORECASE), "build report"),  # hygiene-ok: this pattern's own label, not a real hit
     (re.compile(
-        r"\bround[\s-]?(?:[0-9]|one|two|three|four|five|six|seven|eight|nine)\b(?!\s+of\b)",
+        r"\bround[\s-]?(?:[0-9]+|one|two|three|four|five|six|seven|eight|nine)\b(?!\s+of\b)",
         re.IGNORECASE,
     ), "round<N>"),
 ]
@@ -229,18 +235,25 @@ def _role_word_hits(text: str) -> list[str]:
 # Checked before the escape hatch, on every commit-message line, and never
 # excused by one: an attribution trailer on a line of its own is exactly
 # what the escape hatch exists to let a genuinely necessary role word or
-# record id through, not a trailer.
-_TRAILER_RE = re.compile(r"co-authored-by", re.IGNORECASE)
+# record id through, not a trailer. A space or a hyphen between each word,
+# not only the git-trailer's own hyphenated spelling: "Co authored by  # hygiene-ok: describing this pattern's own example text, not a real hit
+# GitHub Copilot", a tool's own free-text rendering of the same trailer,
+# carries the identical disclosure with none of the hyphens.
+_TRAILER_RE = re.compile(r"co[\s-]?authored[\s-]?by", re.IGNORECASE)
 # A free-text attribution footer some tools append instead of (or beside) a
-# Co-authored-by trailer -- "Generated with <tool>", with or without a
+# Co-authored-by trailer -- "Generated with <tool>", with or without a  # hygiene-ok: describing this pattern's own example text, not a real hit
 # leading emoji or a markdown link. The wording after "with" is not
 # checked; a footer disclosing generation by anything is the thing being
-# excluded here, not only a named one.
-_GENERATED_WITH_RE = re.compile(r"generated\s+with", re.IGNORECASE)
+# excluded here, not only a named one. The trailing \b matters: without it
+# this also matches "generated without", an ordinary phrase this codebase's
+# own docstrings and help text use for something that did NOT go through a
+# tool ("Show what would be generated without creating elements") -- "with"
+# is a literal prefix of "without", not a whole word inside it.
+_GENERATED_WITH_RE = re.compile(r"generated\s+with\b", re.IGNORECASE)
 # An assistant coding tool's own product name, whole word only (so this
 # never fires on an unrelated word that merely contains one of them) --
 # checked against the whole message line, not only a "Key: value" trailer
-# shape: a prose sentence naming the same tool ("co-authored by <tool>",
+# shape: a prose sentence naming the same tool ("co-authored by <tool>",  # hygiene-ok: describing this pattern's own example text, not a real hit
 # "written with <tool>") carries no trailer shape at all and discloses
 # exactly what the trailer/footer checks above exist to catch. One name
 # collides with this repository's own governance-file name, referenced
@@ -255,8 +268,11 @@ _GENERATED_WITH_RE = re.compile(r"generated\s+with", re.IGNORECASE)
 # unrelated coding tool that happens to share the word -- unlike the
 # governance-file collision above, there is no narrower shape left to
 # exclude and still catch a genuine disclosure, so the name is dropped
-# entirely rather than partially excluded.
-_ASSISTANT_PRODUCT_RE = re.compile(r"\b(?:claude|codex|kilo)\b", re.IGNORECASE)
+# entirely rather than partially excluded. "aider" is a fourth coding
+# tool's own name, checked the same way as the other three: its default
+# author-name suffix and its default commit-subject prefix both carry the
+# bare word, with nothing else marking either as a disclosure.
+_ASSISTANT_PRODUCT_RE = re.compile(r"\b(?:claude|codex|kilo|aider)\b", re.IGNORECASE)
 _GOVERNANCE_FILE_NAME_RE = re.compile(r"\bclaude\.md\b", re.IGNORECASE)
 
 
@@ -264,6 +280,58 @@ def _assistant_product_hit(line: str) -> bool:
     """True if `line` names an assistant coding tool's own product,
     outside a mention of this repository's own governance-file name."""
     return bool(_ASSISTANT_PRODUCT_RE.search(_GOVERNANCE_FILE_NAME_RE.sub("", line)))
+
+
+# A commit message is prose about a CHANGE: an assistant product name
+# appearing anywhere in it is already unusual enough to be worth a look,
+# which is why the commit-message half above fires on the bare name alone
+# (see test_public_repo_hygiene_commit_message_assistant_product_name_fires_on_an_unrelated_mention_too).
+# Tracked SOURCE is not the same kind of text: this codebase is itself an
+# AI-integration product that names Claude/Codex-family models as ordinary,
+# first-class vocabulary throughout its own LLM-routing code (provider
+# lists, default-model ids, token-limit tables), hundreds of times over,
+# and none of that is a disclosure. The source half of this same check
+# therefore also requires a co-located attribution cue -- the same word an
+# actual "written/generated/co-authored/reviewed/paired/assisted ... with
+# or by <tool>" disclosure sentence would carry -- on the same line, the
+# same shape of extra signal BARE_RECORD_ID_PATTERN already needs before it
+# counts a bare id on its own.
+_ATTRIBUTION_CUE_RE = re.compile(
+    r"\b(?:generated|written|co-?authored|reviewed|paired|assisted)\b", re.IGNORECASE
+)
+
+
+def _assistant_product_hit_in_source(line: str) -> bool:
+    """True if `line` both names an assistant product AND carries an
+    attribution-shaped cue word -- see _ATTRIBUTION_CUE_RE's own comment
+    for why the source half needs the extra signal the commit-message half
+    does not."""
+    return bool(_ATTRIBUTION_CUE_RE.search(line)) and _assistant_product_hit(line)
+
+
+# A disclosure that names the KIND of tool rather than one of the specific
+# products above ("Generated by an AI coding assistant") -- no product name  # hygiene-ok: describing this pattern's own example text, not a real hit
+# to anchor on, so this always needs the same attribution-cue co-location
+# `_assistant_product_hit_in_source` needs for tracked source, on both
+# halves. "coding" is required, not optional: this codebase is itself an
+# AI-integration product whose own domain vocabulary pairs a cue word with
+# a bare "AI"/"LLM" constantly and legitimately ("LLM-generated
+# recommendation", "AI-generated proposal" describe data the PRODUCT
+# generates for a user, not a disclosure about how the source itself was
+# written) -- "coding assistant" is specific enough not to collide with
+# any of it, where a bare "AI assistant" or "LLM" was found, on this exact
+# codebase, to collide by the dozens.
+_GENERIC_ASSISTANT_RE = re.compile(
+    r"\b(?:an?\s+)?(?:ai|artificial[\s-]intelligence)[\s-]coding[\s-]assistant\b",
+    re.IGNORECASE,
+)
+
+
+def _generic_assistant_disclosure_hit(line: str) -> bool:
+    """True if `line` carries both an attribution-shaped cue word and a
+    generic, unnamed assistant-tool phrase -- see _GENERIC_ASSISTANT_RE's
+    own comment for why the bare phrase alone is not enough."""
+    return bool(_ATTRIBUTION_CUE_RE.search(line)) and bool(_GENERIC_ASSISTANT_RE.search(line))
 
 # .js so app/static's authored JS is covered; vendor/bundles/*.min.js are
 # third-party or built output, never authored comments, and would be pure
@@ -290,14 +358,18 @@ _HTML_STYLE_BLOCK_RE = re.compile(r"<style\b[^>]*>.*?</style\s*>", re.DOTALL | r
 # aria-label specifically. Read from whichever tags remain once comments,
 # script/style bodies and Jinja code are blanked out, so a same-shaped JS
 # assignment inside a <script> body is never read as one. Anchored on a
-# preceding whitespace character, not a bare `\b`: a hyphen is itself a
-# word boundary in regex terms, so `\btitle\b` alone also matches the
-# "title" inside "data-title" -- a real, different attribute. Matched only
-# within each tag's own span (below), never over the surrounding text, so
-# a visible-text node that happens to contain this shape is not read as an
-# attribute and then read again as text.
+# preceding character that is neither a word character nor a hyphen, not a
+# bare `\b` and not a bare preceding-whitespace requirement: a hyphen is
+# itself a word boundary in regex terms, so `\btitle\b` alone also matches
+# the "title" inside "data-title" -- a real, different attribute -- and a
+# whitespace-only lookbehind misses an attribute with no space before it
+# (`<a href="x"title="y">`, a real, if unusual, shape a hand-written or
+# minified template can carry). Matched only within each tag's own span
+# (below), never over the surrounding text, so a visible-text node that
+# happens to contain this shape is not read as an attribute and then read
+# again as text.
 _HTML_TEXT_ATTR_RE = re.compile(
-    r"(?<=\s)(?:title|alt|placeholder|aria-label)\s*=\s*(?:\"([^\"]*)\"|'([^']*)')",
+    r"(?<![\w-])(?:title|alt|placeholder|aria-label)\s*=\s*(?:\"([^\"]*)\"|'([^']*)')",
     re.IGNORECASE,
 )
 
@@ -323,18 +395,34 @@ _PY_STRING_TOKEN_TYPES = (tokenize.COMMENT, tokenize.STRING) + (
 )
 
 
+class _UntrustedUnparsedFile(Exception):
+    """A tracked `.py` file could not be tokenised -- see
+    `_python_comment_and_string_lines`. Not trusted as "nothing to
+    report": a file this checker cannot read the comments and strings of
+    is a file this checker cannot vouch for, the same reasoning
+    `_UntrustedZeroFileCount` already applies to a suspiciously empty
+    tracked-file list -- yielding nothing for an unparsed file would be a
+    silent clean report on a file that was never actually scanned."""
+
+    def __init__(self, path: str, reason: str):
+        super().__init__(f"{path}: {reason}")
+        self.path = path
+        self.reason = reason
+
+
 def _python_comment_and_string_lines(path: str):
     """(lineno, text) for every COMMENT, STRING and FSTRING_MIDDLE token --
     a docstring is a STRING token, so this covers both without a separate
     case, and an f-string's literal text needs FSTRING_MIDDLE specifically
     (see above) to be scanned at all. A file that fails to tokenise (a
-    syntax error) yields nothing rather than falling back to a whole-file
-    scan."""
+    syntax error, or a decode failure) raises `_UntrustedUnparsedFile`
+    rather than silently yielding nothing -- see that exception's own
+    docstring."""
     try:
         with open(path, "rb") as fh:
             tokens = list(tokenize.tokenize(fh.readline))
-    except (tokenize.TokenError, SyntaxError, IndentationError, OSError, UnicodeDecodeError):
-        return
+    except (tokenize.TokenError, SyntaxError, IndentationError, OSError, UnicodeDecodeError) as exc:
+        raise _UntrustedUnparsedFile(path, str(exc)) from exc
     for tok in tokens:
         if tok.type not in _PY_STRING_TOKEN_TYPES:
             continue
@@ -434,13 +522,39 @@ def _whole_file_lines(path: str):
     yield from enumerate(lines, start=1)
 
 
+def _is_html_like_j2(path: str) -> bool:
+    """True for `.html`, and for a `.j2` template whose own base name is
+    itself `....html.j2` or carries no other recognisable extension at all
+    (a bare `foo.j2` fragment, an include with no second extension) --
+    the shape `_html_script_and_text_lines` is written for: real markup,
+    real tags, real attributes, real visible text between them. A `.j2`
+    template whose base name carries a DIFFERENT extension (`.go.j2`,
+    `.py.j2`, `.sql.j2`, `.sh.j2` and the rest of this codebase's own
+    multi-language code generator output under templates/go_chi and
+    templates/python_fastapi) is not markup at all -- its "visible text"
+    is executable source in another language entirely, and reading it as
+    HTML would scan that source line for line as if it were rendered
+    page text, contrary to this module's own "never executable code"
+    claim. Its Jinja comments are still read regardless, by
+    `_markup_comment_lines`: a `{# #}` comment is the templating engine's
+    own syntax, independent of what language the template renders."""
+    if path.endswith(".html"):
+        return True
+    if not path.endswith(".j2"):
+        return False
+    base = os.path.basename(path[: -len(".j2")])
+    _, ext = os.path.splitext(base)
+    return ext == "" or ext.lower() == ".html"
+
+
 def _scannable_lines(path: str):
     """Dispatch to the extension-appropriate narrowing above."""
     if path.endswith(".py"):
         yield from _python_comment_and_string_lines(path)
     elif path.endswith((".html", ".j2")):
         yield from _markup_comment_lines(path)
-        yield from _html_script_and_text_lines(path)
+        if _is_html_like_j2(path):
+            yield from _html_script_and_text_lines(path)
     elif path.endswith(".js"):
         yield from _js_comment_lines(path)
     elif path.endswith(".md"):
@@ -597,20 +711,41 @@ def _bare_record_id_matches(line: str):
 
 
 def _scan_record_ids_and_role_words(root: str) -> list[str] | None:
-    """Rule 3, source half: review-record-id tokens and pipeline role words,
-    scanned only inside comments, docstrings and string literals (never
-    executable code) under app/, scripts/, tests/, templates and static JS
-    -- see `_scannable_lines` for the per-extension narrowing; .md files
-    are scanned whole, being prose throughout. The escape hatch is checked
-    against the physical source line, not the comment/string fragment: a
-    string literal and a trailing `# hygiene-ok:` comment can share one
-    physical line as two separate tokens, and the marker still has to
-    excuse the whole line, not just the token it happens to sit in.
+    """Rule 3, source half: review-record-id tokens, pipeline role words,
+    an attribution trailer, a generated-with footer, an assistant product
+    name, and a generic (unnamed) assistant-tool disclosure, scanned only
+    inside comments, docstrings and string literals (never executable
+    code) under app/, scripts/, tests/, templates and static JS -- see
+    `_scannable_lines` for the per-extension narrowing; .md files are
+    scanned whole, being prose throughout. The trailer and generated-with
+    checks reuse `_TRAILER_RE`/`_GENERATED_WITH_RE` unchanged from the
+    commit-message half -- a disclosure written into a comment is the same
+    disclosure whether it sits in a commit message or the file it was
+    committed alongside. The two assistant-name checks do not reuse
+    `_assistant_product_hit` directly; see `_assistant_product_hit_in_source`
+    and `_generic_assistant_disclosure_hit` for why tracked source needs a
+    narrower rule than a commit message does.
+
+    Unlike the commit-message half, where none of the checks is ever
+    excused, every check here is excusable by the same per-line marker the
+    record-id and role-word checks already use: the escape hatch's own
+    documented scope is "rule 3's source half", with no carve-out, and a
+    test fixture that has to construct one of these shapes to prove this
+    checker catches it (this file's own tests included) needs a way to say
+    so without rewording the probe out of the shape being tested.
+
+    The escape hatch is checked against the physical source line, not the
+    comment/string fragment: a string literal and a trailing `#
+    hygiene-ok:` comment can share one physical line as two separate
+    tokens, and the marker still has to excuse the whole line, not just
+    the token it happens to sit in.
 
     Returns None, not an empty list, when the file list itself could not be
     trusted -- `git ls-files` reporting zero tracked files under a scan
-    directory that exists on disk; see `_iter_content_files`. A caller must
-    not read that the same as a clean scan with nothing to report."""
+    directory that exists on disk (see `_iter_content_files`), or a
+    tracked `.py` file that failed to tokenise (see
+    `_python_comment_and_string_lines` and `_UntrustedUnparsedFile`). A
+    caller must not read either as a clean scan with nothing to report."""
     problems = []
     try:
         for path in _iter_content_files(root):
@@ -624,6 +759,14 @@ def _scan_record_ids_and_role_words(root: str) -> list[str] | None:
                 raw = raw_lines[lineno - 1] if 0 < lineno <= len(raw_lines) else line
                 if ESCAPE_HATCH in raw:
                     continue
+                if _TRAILER_RE.search(line):
+                    problems.append(f"{rel}:{lineno}: an attribution trailer in tracked source")
+                if _GENERATED_WITH_RE.search(line):
+                    problems.append(f"{rel}:{lineno}: a 'generated with' footer line in tracked source")  # hygiene-ok: describing this error message's own label, not a real hit
+                if _assistant_product_hit_in_source(line):
+                    problems.append(f"{rel}:{lineno}: an assistant product name in tracked source")
+                if _generic_assistant_disclosure_hit(line):
+                    problems.append(f"{rel}:{lineno}: a generic AI-assistant disclosure in tracked source")
                 for _start, token in _record_id_matches(line):
                     problems.append(f"{rel}:{lineno}: looks like a review record id: '{token}'")
                 labels = _role_word_hits(line)
@@ -635,18 +778,31 @@ def _scan_record_ids_and_role_words(root: str) -> list[str] | None:
                     problems.append(f"{rel}:{lineno}: pipeline role word '{label}'")
     except _UntrustedZeroFileCount:
         return None
+    except _UntrustedUnparsedFile as exc:
+        print(
+            f"error: {exc.path} could not be tokenised as Python ({exc.reason}) -- "
+            f"refusing to report a clean scan that silently skipped it",
+            file=sys.stderr,
+        )
+        return None
     return problems
 
 
-def _iter_commit_messages(root: str, rev_range: str | None) -> list[tuple[str, str]] | None:
-    """(sha, full message) for every commit `git -C root log` can reach,
-    oldest first. Uses ASCII unit/record separators (not present in any
-    real commit message) to split reliably on multi-line messages.
+def _iter_commit_messages(root: str, rev_range: str | None) -> list[tuple[str, str, str, str]] | None:
+    """(sha, author name, committer name, full message) for every commit
+    `git -C root log` can reach, oldest first. Uses ASCII unit/record
+    separators (not present in any real commit message) to split reliably
+    on multi-line messages. The author and committer names are read
+    alongside the message body -- not only `%B` -- because a coding
+    tool's own disclosure is not always written into the message text: a
+    tool that signs its own commits with a name suffix (one tool's default
+    author name is the ordinary git user name plus a literal `(aider)`)
+    discloses itself there and nowhere else.
 
     Returns None, not an empty list, when git itself could not be run or
     failed -- the caller must not treat that the same as a clean history
     with nothing to report; see _scan_commit_messages and main() below."""
-    args = ["git", "-C", root, "log", "--format=%H%x1f%B%x1e"]
+    args = ["git", "-C", root, "log", "--format=%H%x1f%an%x1f%cn%x1f%B%x1e"]
     if rev_range:
         args.append(rev_range)
     try:
@@ -671,27 +827,33 @@ def _iter_commit_messages(root: str, rev_range: str | None) -> list[tuple[str, s
     records = [r for r in (proc.stdout or "").split("\x1e") if r.strip()]
     result = []
     for rec in records:
-        if "\x1f" not in rec:
+        parts = rec.split("\x1f", 3)
+        if len(parts) != 4:
             continue
-        sha, message = rec.split("\x1f", 1)
-        result.append((sha.strip(), message))
+        sha, author, committer, message = parts
+        result.append((sha.strip(), author, committer, message))
     return result
 
 
 def _scan_commit_messages(root: str, rev_range: str | None = None) -> list[str] | None:
     """Rule 3, commit-message half: review-record-id tokens, pipeline role
-    words, a Co-Authored-By trailer, a generated-with footer, and an
-    assistant product name anywhere in the message, in the commit message
-    itself -- not the diff. Record ids and role words are found with the
+    words, an attribution trailer, a generated-with footer, a named
+    assistant product, and a generic (unnamed) assistant-tool disclosure,
+    anywhere in the message, in the commit message itself (not the diff),
+    plus the same named-product check against the commit's own author and
+    committer names -- see `_iter_commit_messages` for why those two
+    fields are read at all. Record ids and role words are found with the
     same `_record_id_matches`/`_bare_record_id_matches`/`_role_word_hits`
     helpers the source half uses, so the two halves cannot drift apart on
     what counts as a hit -- only on what they scan. The escape hatch
     excuses only the physical line it sits on, not the whole message; none
-    of the three attribution checks below is ever excused by it, marker or
-    not -- each is checked, and can report, before the escape hatch is even
-    read. Zero tolerance, scoped to the commits under review -- see
-    verify.py's ``gate_public_repo_hygiene_commit_messages`` for why a
-    full-history count cannot be a stable measurement here.
+    of the attribution checks below is ever excused by it, marker or not
+    -- each is checked, and can report, before the escape hatch is even
+    read (and the author/committer name checks are never excusable at
+    all: a marker sits in the message body, never in a name field).
+    Zero tolerance, scoped to the commits under review -- see verify.py's
+    ``gate_public_repo_hygiene_commit_messages`` for why a full-history
+    count cannot be a stable measurement here.
 
     Returns None when the underlying git read failed -- never an empty
     list, which a caller could otherwise mistake for zero hits."""
@@ -699,16 +861,22 @@ def _scan_commit_messages(root: str, rev_range: str | None = None) -> list[str] 
     if messages is None:
         return None
     problems = []
-    for sha, message in messages:
+    for sha, author, committer, message in messages:
+        for who, name in (("author", author), ("committer", committer)):
+            if _assistant_product_hit(name):
+                problems.append(f"{sha[:8]}: an assistant product name in the {who} name")
         for line in message.splitlines():
             if _TRAILER_RE.search(line):
-                problems.append(f"{sha[:8]}: 'Co-Authored-By' in the commit message")
+                problems.append(f"{sha[:8]}: an attribution trailer in the commit message")
                 continue
             if _GENERATED_WITH_RE.search(line):
-                problems.append(f"{sha[:8]}: a 'generated with' footer line in the commit message")
+                problems.append(f"{sha[:8]}: a 'generated with' footer line in the commit message")  # hygiene-ok: describing this error message's own label, not a real hit
                 continue
             if _assistant_product_hit(line):
                 problems.append(f"{sha[:8]}: an assistant product name in the commit message")
+                continue
+            if _generic_assistant_disclosure_hit(line):
+                problems.append(f"{sha[:8]}: a generic AI-assistant disclosure in the commit message")
                 continue
             if ESCAPE_HATCH in line:
                 continue
