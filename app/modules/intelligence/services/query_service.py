@@ -1142,14 +1142,14 @@ class IntelligenceQueryService:
         include_stale: bool = True,
     ) -> Dict[str, Any]:
         """The Operational lens: "what has changed around this element
-        since we last checked, and is anything out of date?" -- the four
-        internal sources of sdd-v4-operational-lens.md §2, each read
-        through its own canonical accessor, none re-implemented here:
+        since we last checked, and is anything out of date?" -- four
+        internal sources, each read through its own canonical accessor,
+        none re-implemented here:
 
           * ``ArchitectureMonitoringService.compare_to_baseline`` -- the
-            pure comparison seam. Never ``analyze_drift``/``trigger_scan``
-            (both persist alerts): a GET through this method writes
-            nothing.
+            pure comparison seam. Never a method that persists alerts as a
+            side effect of running the comparison: a GET through this
+            method writes nothing.
           * ``detect_model_drift`` -- the model-consistency scan, filtered
             to findings that name this element.
           * ``list_derived_facts``/``latest_derivation_run`` -- the

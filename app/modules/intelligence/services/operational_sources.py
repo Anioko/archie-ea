@@ -1,5 +1,5 @@
 """The external half of the Operational lens: an adapter contract with no
-implementation shipped yet (ADR-OP-3).
+implementation shipped yet.
 
 Data classes, closed vocabulary:
 
@@ -24,7 +24,7 @@ against a fixed shape rather than a design step. No class in this module
 (or anywhere else) implements ``OperationalSourceAdapter`` — a "null"
 adapter that returned empty lists would make "nothing happened" and "no
 system is connected" indistinguishable, exactly the collision the
-fabrication rule exists to prevent (ADR-OP-3). When a real adapter is
+fabrication rule exists to prevent. When a real adapter is
 built, it is constructed per tenant from that tenant's own
 ``OrgConnectorConfig`` row and an allowlisted connector id (ADR-008); no
 adapter may be registered that returns empty lists in place of ``None``.
