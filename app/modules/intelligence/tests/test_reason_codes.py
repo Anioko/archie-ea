@@ -20,6 +20,11 @@ this fix -- the L3/L5 briefs each added a member to ``reason_codes.py``
 without updating this ratchet, only the two route-count ratchets. Found
 while adding the L2 brief's own ``no_budget_recorded`` member; corrected to
 the real, current set (23) rather than bumped by one on top of a stale base.
+
+The impact answer's lifecycle block added two more -- ``no_lifecycle_recorded``
+and ``no_vendor_mapping_recorded`` -- for the two absence conditions its own
+read introduces (nothing recorded on the source row; a vendor product id that
+is null or does not resolve). Twenty-six became twenty-eight.
 """
 
 from __future__ import annotations
@@ -62,11 +67,13 @@ _EXPECTED = {
     "no_ownership_records",
     "capacity_not_available",
     "financial_data_restricted",
+    "no_lifecycle_recorded",
+    "no_vendor_mapping_recorded",
 }
 
 
-def test_reason_codes_has_exactly_twenty_six_members():
-    assert len(REASON_CODES) == 26
+def test_reason_codes_has_exactly_twenty_eight_members():
+    assert len(REASON_CODES) == 28
     assert REASON_CODES == frozenset(_EXPECTED)
 
 
