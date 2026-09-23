@@ -42,6 +42,13 @@ NO_BUDGET_RECORDED_REASON = validate_reason_code("no_budget_recorded")
 # different table, for L4.
 NO_OWNERSHIP_RECORDS_REASON = validate_reason_code("no_ownership_records")
 CAPACITY_NOT_AVAILABLE_REASON = validate_reason_code("capacity_not_available")
+# Portfolio-block brief: the component block's three independent absence
+# conditions -- no cost figures entered, no owner-recorded health status, no
+# licence entitlement rows -- each distinct from NO_APPLICATION_COMPONENT_REASON
+# above (which means no component was resolved at all).
+NO_COST_RECORDED_REASON = validate_reason_code("no_cost_recorded")
+NO_HEALTH_RECORDED_REASON = validate_reason_code("no_health_recorded")
+NO_LICENCE_RECORDED_REASON = validate_reason_code("no_licence_recorded")
 
 # T-005 (D1): the NFR-5 measurement point is this exact, PINNED series --
 # never widened, never aggregated across label values.
@@ -840,19 +847,180 @@ class IntelligenceQueryService:
         element/app id) -- so this method, deliberately, resolves only what
         the one real page needs. Linking to a JSON response would not be a
         deep link a person can read; not built.
+
+        Beside ``application_component_id``, the answer carries a
+        ``component`` block: the resolved component's name, its
+        owner-recorded health, its entered cost figures, its latest
+        fiscal-period cost row and its licence entitlements -- built below
+        off the SAME ``component`` object resolved above (no second
+        component select), in exactly two more selects of its own. Every
+        early branch below returns ``component: None`` -- nothing was
+        resolved, and the branch's own reason already says why.
         """
         from app.models import ArchiMateElement
         from app.models.application_portfolio import ApplicationComponent
 
+        def _health_block(component) -> Dict[str, Any]:
+            """The ``health`` key: the owner-recorded ``health_status``
+            column carried exactly as recorded -- a recorded word, not a
+            computed health score (the reuse register's health-score
+            concept is a different, unrelated reader). ``None`` means not
+            assessed, per the model's own comment on the column; no default
+            status is ever invented.
+            """
+            status = component.health_status
+            return {
+                "status": status,
+                "reason": None if status is not None else NO_HEALTH_RECORDED_REASON,
+                "truth_class": "authoritative_fact",
+            }
+
+        def _cost_block(component) -> Dict[str, Any]:
+            """The ``cost`` key: the seven entered cost figures, read off
+            *component* -- the object the caller already holds, no select
+            of its own. ``total_cost_of_ownership`` is the entered annual
+            TCO figure exactly as recorded; nothing here sums, averages or
+            derives it from the other six. ``license_cost`` is not read
+            (superseded by ``license_cost_annual``, per the model's own
+            comment) and neither is ``roi_score`` (a self-rated column, not
+            an intelligence fact). ``implementation_cost`` is the one
+            one-time figure among the six annual ones; it is carried
+            through unmixed, never summed with the rest.
+            """
+            figures = {
+                "total_cost_of_ownership": component.total_cost_of_ownership,
+                "license_cost_annual": component.license_cost_annual,
+                "maintenance_cost": component.maintenance_cost,
+                "infrastructure_cost": component.infrastructure_cost,
+                "support_cost": component.support_cost,
+                "implementation_cost": component.implementation_cost,
+                "development_cost_annual": component.development_cost_annual,
+            }
+            all_absent = all(value is None for value in figures.values())
+            return {
+                **figures,
+                "basis": "annual_as_entered",
+                "reason": NO_COST_RECORDED_REASON if all_absent else None,
+                "access_reason": None,
+                "truth_class": "authoritative_fact",
+            }
+
+        def _cost_by_period_block(component) -> Dict[str, Any]:
+            """The ``cost_by_period`` key: the single latest
+            ``ApplicationCost`` row for *component* -- the first of this
+            method's two remaining selects, ordered newest fiscal
+            year/quarter first, one row only regardless of how many
+            periods exist. ``variance`` is the stored column, disclosed
+            only when both ``total_cost`` and ``total_budget`` on that same
+            row are themselves recorded -- nothing here recomputes it from
+            the two; a stored ``variance`` is withheld, not recalculated,
+            when either input is absent.
+            """
+            from app.models.enterprise_intelligence import ApplicationCost
+
+            row = (
+                db.session.execute(
+                    db.select(ApplicationCost)
+                    .where(ApplicationCost.application_id == component.id)
+                    .order_by(
+                        ApplicationCost.fiscal_year.desc(),
+                        ApplicationCost.fiscal_quarter.desc().nulls_last(),
+                        ApplicationCost.id.desc(),
+                    )
+                )
+                .scalars()
+                .first()
+            )
+
+            if row is None:
+                return {
+                    "fiscal_year": None,
+                    "fiscal_quarter": None,
+                    "total_cost": None,
+                    "total_budget": None,
+                    "variance": None,
+                    "reason": NO_COST_RECORDED_REASON,
+                    "access_reason": None,
+                }
+
+            total_cost = float(row.total_cost) if row.total_cost is not None else None
+            total_budget = float(row.total_budget) if row.total_budget is not None else None
+            variance = (
+                float(row.variance)
+                if row.variance is not None and total_cost is not None and total_budget is not None
+                else None
+            )
+            return {
+                "fiscal_year": row.fiscal_year,
+                "fiscal_quarter": row.fiscal_quarter,
+                "total_cost": total_cost,
+                "total_budget": total_budget,
+                "variance": variance,
+                "reason": None,
+                "access_reason": None,
+            }
+
+        def _licence_entries(component, org_id: int) -> List[Dict[str, Any]]:
+            """The ``licences`` key: every ``LicenseEntitlement`` row for
+            *component* -- this method's second remaining select,
+            explicitly scoped to the caller's own organisation on top of
+            the mixin's own tenant filter (the FK to
+            ``application_components`` carries no tenant check of its own,
+            so the explicit predicate is load-bearing here, not
+            decorative). ``under_used`` is the one honest comparison of two
+            recorded integers decision B allows: never a difference, never
+            a dollar figure for what is not deployed or not used.
+            """
+            from app.models.license_entitlement import LicenseEntitlement
+
+            rows = (
+                db.session.execute(
+                    db.select(LicenseEntitlement)
+                    .where(
+                        LicenseEntitlement.application_id == component.id,
+                        LicenseEntitlement.organization_id == org_id,
+                    )
+                    .order_by(LicenseEntitlement.id)
+                )
+                .scalars()
+                .all()
+            )
+
+            entries: List[Dict[str, Any]] = []
+            for row in rows:
+                entries.append(
+                    {
+                        "entitlement_id": row.id,
+                        "product_name": row.product_name,
+                        "license_metric": row.license_metric,
+                        "quantity_entitled": row.quantity_entitled,
+                        "quantity_deployed": row.quantity_deployed,
+                        "quantity_used": row.quantity_used,
+                        "under_used": row.quantity_used < row.quantity_entitled,
+                        "unit_cost": float(row.unit_cost) if row.unit_cost is not None else None,
+                        "compliance_status": row.compliance_status,
+                        "access_reason": None,
+                    }
+                )
+            return entries
+
         org_id = current_org_id()
         if org_id is None:
-            return {"application_component_id": None, "reasons": [NO_TENANT_CONTEXT_REASON]}
+            return {
+                "application_component_id": None,
+                "reasons": [NO_TENANT_CONTEXT_REASON],
+                "component": None,
+            }
 
         element = db.session.execute(
             db.select(ArchiMateElement).where(ArchiMateElement.id == element_id)
         ).scalar_one_or_none()
         if element is None:
-            return {"application_component_id": None, "reasons": [ELEMENT_NOT_FOUND_REASON]}
+            return {
+                "application_component_id": None,
+                "reasons": [ELEMENT_NOT_FOUND_REASON],
+                "component": None,
+            }
 
         component = None
         if getattr(element, "application_component_id", None):
@@ -861,9 +1029,27 @@ class IntelligenceQueryService:
             component = ApplicationComponent.query.filter_by(archimate_element_id=element.id).first()
 
         if component is None:
-            return {"application_component_id": None, "reasons": [NO_APPLICATION_COMPONENT_REASON]}
+            return {
+                "application_component_id": None,
+                "reasons": [NO_APPLICATION_COMPONENT_REASON],
+                "component": None,
+            }
 
-        return {"application_component_id": component.id, "reasons": []}
+        licence_entries = _licence_entries(component, org_id)
+        component_block = {
+            "name": component.name,
+            "health": _health_block(component),
+            "cost": _cost_block(component),
+            "cost_by_period": _cost_by_period_block(component),
+            "licences": licence_entries if licence_entries else None,
+            "licences_reason": None if licence_entries else NO_LICENCE_RECORDED_REASON,
+        }
+
+        return {
+            "application_component_id": component.id,
+            "reasons": [],
+            "component": component_block,
+        }
 
     @staticmethod
     def programme_for_element(
