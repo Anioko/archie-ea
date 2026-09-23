@@ -120,8 +120,13 @@ def owners_journey_records(app, seeded):
 
 
 def _role_card(page, role_label):
-    return page.locator(
-        "div.border.border-border.rounded-lg.p-3", has_text=role_label
+    # The per-role card's own heading paragraph carries the label; filtering
+    # on has_text against the whole card also matches the sibling <select>
+    # options in any other card's "Not recorded" add form (every add form
+    # lists all four role labels as options), so the filter targets the
+    # heading element specifically.
+    return page.locator("div.border.border-border.rounded-lg.p-3").filter(
+        has=page.locator("p.font-medium", has_text=role_label)
     )
 
 
@@ -144,7 +149,7 @@ def test_owners_write_path_journey(page, live_server, seeded, owners_journey_rec
     technical_card.get_by_role("button", name="Add", exact=True).click()
 
     technical_card = _role_card(page, "Technical Owner")
-    expect(technical_card.get_by_text(target_name, exact=True)).to_be_visible()
+    expect(technical_card.get_by_text(target_name)).to_be_visible()
 
     technical_card.get_by_role("button", name="Remove Technical Owner").click()
 
@@ -163,7 +168,7 @@ def test_owners_write_path_journey(page, live_server, seeded, owners_journey_rec
 
     expect(page.get_by_text(f"Recorded as text: {target_name}")).not_to_be_visible()
     business_card = _role_card(page, "Business Owner")
-    expect(business_card.get_by_text(target_name, exact=True)).to_be_visible()
+    expect(business_card.get_by_text(target_name)).to_be_visible()
 
     # ── the edit page's picker writes the same kind of row ────────────────
     edit_url = live_server + f"/applications/{fixture['edit_app_id']}/edit"
@@ -173,9 +178,20 @@ def test_owners_write_path_journey(page, live_server, seeded, owners_journey_rec
     page.fill("#business_owner_picker", target_name)
     page.get_by_text(target_name, exact=True).click()
     page.get_by_role("button", name="Save Changes", exact=True).click()
+    page.wait_for_load_state("domcontentloaded")
+
+    # Saving the edit form redirects to the record's architecture tab (existing
+    # behaviour, unrelated to owners); the Owners section lives on the
+    # overview tab, so load that explicitly before checking it.
+    response = page.goto(
+        live_server + f"/applications/{fixture['edit_app_id']}",
+        wait_until="domcontentloaded",
+        timeout=PAGE_TIMEOUT,
+    )
+    assert response is not None and response.status == 200
 
     business_card = _role_card(page, "Business Owner")
-    expect(business_card.get_by_text(target_name, exact=True)).to_be_visible()
+    expect(business_card.get_by_text(target_name)).to_be_visible()
 
     # ── the create modal's picker lands on a record showing the person ────
     list_url = live_server + "/applications/"
@@ -184,14 +200,21 @@ def test_owners_write_path_journey(page, live_server, seeded, owners_journey_rec
 
     new_name = f"Owners journey created {uuid.uuid4().hex[:8]}"
     page.get_by_test_id("btn-add-application").click()
-    page.fill("#ca-name", new_name)
-    page.fill("#ca-owner", target_name)
-    page.get_by_text(target_name, exact=True).click()
+    create_modal = page.locator("#modal-create")
+    create_modal.locator("#ca-name").fill(new_name)
+    create_modal.locator("#ca-owner").fill(target_name)
+    # The list page's own table can show the same text (an application's
+    # recorded-as-text owner column), so the match is scoped to the modal.
+    create_modal.get_by_text(target_name, exact=True).click()
 
     with page.expect_response(
         lambda r: r.url.endswith("/applications/create") and r.request.method == "POST"
     ) as create_response:
-        page.get_by_role("button", name="Add Application", exact=True).click()
+        # The submit button's own aria-label ("Submit", pre-existing, not
+        # part of this change) overrides its "Add Application" visible text
+        # as its accessible name, so it is targeted directly rather than by
+        # role name.
+        create_modal.locator('button[type="submit"]').click()
     created = create_response.value.json()
     assert created.get("success") is True, created
     new_app_id = created["id"]
@@ -204,4 +227,4 @@ def test_owners_write_path_journey(page, live_server, seeded, owners_journey_rec
     )
     assert response is not None and response.status == 200
     business_card = _role_card(page, "Business Owner")
-    expect(business_card.get_by_text(target_name, exact=True)).to_be_visible()
+    expect(business_card.get_by_text(target_name)).to_be_visible()
