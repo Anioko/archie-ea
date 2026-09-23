@@ -469,16 +469,21 @@ class RoadmapBuilderService:
             level = levels.get(wp.id, 0)
             y_offset = level_counts[level] * 150
 
+            # The work package's own roadmap serialiser is the one mapping of
+            # its fields (percent_complete, target_date, owner) to roadmap
+            # names; reuse it here instead of reading attribute names the
+            # model does not have.
+            row = wp.to_roadmap_dict()
             node_data = {
                 "label": wp.name,
                 "status": wp.status,
                 "priority": wp.priority,
-                "progress": wp.progress_percentage or 0,
-                "startDate": wp.start_date.isoformat() if wp.start_date else None,
-                "endDate": wp.end_date.isoformat() if wp.end_date else None,
-                "assignedTo": wp.assigned_to,
+                "progress": row["percent_complete"],
+                "startDate": row["start_date"],
+                "endDate": row["end_date"],
+                "assignedTo": row["owner_name"],
                 "estimatedCost": float(wp.estimated_cost) if wp.estimated_cost else 0,
-                "isOverdue": wp.is_overdue(),
+                "isOverdue": row["is_overdue"],
                 "workPackageId": wp.id,
             }
 
@@ -936,34 +941,50 @@ class RoadmapBuilderService:
             query = query.filter(
                 or_(
                     ImplementationWorkPackage.start_date >= start_date,
-                    ImplementationWorkPackage.end_date >= start_date,
+                    ImplementationWorkPackage.target_date >= start_date,
                 )
             )
         if end_date:
             query = query.filter(
                 or_(
                     ImplementationWorkPackage.start_date <= end_date,
-                    ImplementationWorkPackage.end_date <= end_date,
+                    ImplementationWorkPackage.target_date <= end_date,
                 )
             )
 
         work_packages = query.order_by(ImplementationWorkPackage.start_date.asc()).all()
 
+        # A fixed set rather than getattr on a query-string attribute name:
+        # an unrecognised value (or a bound method like "to_dict") falls back
+        # to "status" instead of grouping by it or failing in jsonify.
+        allowed_group_by = {"status", "priority", "assigned_to"}
+        effective_group_by = group_by if group_by in allowed_group_by else "status"
+
         # Group work packages
         groups = defaultdict(list)
         for wp in work_packages:
-            group_key = getattr(wp, group_by, "ungrouped") or "ungrouped"
+            # The work package's own roadmap serialiser is the one mapping of
+            # its fields (percent_complete, target_date, owner, dependencies)
+            # to roadmap names; reuse it here instead of reading attribute
+            # names the model does not have.
+            row = wp.to_roadmap_dict()
+            if effective_group_by == "assigned_to":
+                group_key = row["owner_name"] or "unassigned"
+            elif effective_group_by == "priority":
+                group_key = wp.priority or "ungrouped"
+            else:
+                group_key = wp.status or "ungrouped"
             groups[group_key].append(
                 {
                     "id": wp.id,
                     "name": wp.name,
-                    "start": wp.start_date.isoformat() if wp.start_date else None,
-                    "end": wp.end_date.isoformat() if wp.end_date else None,
-                    "progress": wp.progress_percentage or 0,
+                    "start": row["start_date"],
+                    "end": row["end_date"],
+                    "progress": row["percent_complete"],
                     "status": wp.status,
                     "priority": wp.priority,
-                    "dependencies": wp.dependencies or [],
-                    "isOverdue": wp.is_overdue(),
+                    "dependencies": row["dependencies"],
+                    "isOverdue": row["is_overdue"],
                 }
             )
 
@@ -977,7 +998,7 @@ class RoadmapBuilderService:
                 "id": p.id,
                 "name": p.name,
                 "type": p.plateau_type,
-                "start": p.target_date.isoformat() if p.target_date else None,
+                "start": p.start_date.isoformat() if p.start_date else None,
                 "end": p.end_date.isoformat() if p.end_date else None,
             }
             for p in plateaus
@@ -989,14 +1010,16 @@ class RoadmapBuilderService:
         return {
             "success": True,
             "groups": groups_array,
-            "group_by": group_by,
+            "group_by": effective_group_by,
             "total_work_packages": len(work_packages),
             "plateau_markers": plateau_markers,
             "date_range": {
                 "start": min(
                     (wp.start_date for wp in work_packages if wp.start_date), default=None
                 ),
-                "end": max((wp.end_date for wp in work_packages if wp.end_date), default=None),
+                "end": max(
+                    (wp.target_date for wp in work_packages if wp.target_date), default=None
+                ),
             },
         }
 
