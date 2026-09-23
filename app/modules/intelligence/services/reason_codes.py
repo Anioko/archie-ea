@@ -74,6 +74,12 @@ REASON_CODES = frozenset(
         # baseline captured before that dimension existed -- an honest
         # absence, not a fabricated zero-drift result.
         "baseline_lacks_model_snapshot",
+        # The Operational lens (what changed around this element, and is
+        # anything out of date) has nothing to compare the model against
+        # when the tenant has never captured a baseline at all -- distinct
+        # from baseline_lacks_model_snapshot, which names a baseline that
+        # exists but predates the model dimension.
+        "no_baseline_captured",
     }
 )
 

@@ -1,7 +1,7 @@
 """T-001 acceptance criterion 13: the DE-14 reason-code vocabulary is closed.
 
 Mapping:
-    13 -> test_reason_codes_has_exactly_twenty_four_members,
+    13 -> test_reason_codes_has_exactly_twenty_five_members,
           test_unknown_reason_code_is_rejected_not_passed_through
 
 T-004 (US-1) added two members -- ``no_tenant_context`` and
@@ -22,7 +22,9 @@ while adding the ``no_budget_recorded`` member; corrected to the real,
 then-current set (23) rather than bumped by one on top of a stale base. The
 baseline-drift engine's model dimension then added
 ``baseline_lacks_model_snapshot`` for a baseline captured before that
-dimension existed, taking the set to 24.
+dimension existed, taking the set to 24. The Operational lens then added
+``no_baseline_captured`` for a tenant with no active baseline at all,
+taking the set to 25.
 """
 
 from __future__ import annotations
@@ -38,8 +40,9 @@ from app.modules.intelligence.services.reason_codes import (
 
 # The original sixteen, two additions for the cross-layer impact read
 # path, one for the yield endpoint's p95 bucket-edge case, three more for
-# the portfolio/programme/strategy lens absences, and the baseline-drift
-# engine's model-dimension addition.
+# the portfolio/programme/strategy lens absences, the baseline-drift
+# engine's model-dimension addition, and the Operational lens's own
+# addition.
 _EXPECTED = {
     "no_ownership_recorded",
     "no_maturity_recorded",
@@ -65,11 +68,12 @@ _EXPECTED = {
     "not_costed",
     "no_budget_recorded",
     "baseline_lacks_model_snapshot",
+    "no_baseline_captured",
 }
 
 
-def test_reason_codes_has_exactly_twenty_four_members():
-    assert len(REASON_CODES) == 24
+def test_reason_codes_has_exactly_twenty_five_members():
+    assert len(REASON_CODES) == 25
     assert REASON_CODES == frozenset(_EXPECTED)
 
 
