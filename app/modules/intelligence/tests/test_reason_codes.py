@@ -39,7 +39,7 @@ from app.modules.intelligence.services.reason_codes import (
 # sdd-v2.md § API-8's original sixteen, T-004's two additions, T-005's one
 # addition (p95_above_highest_bucket, D3), the Portfolio and Programme
 # lenses' three additions, T-S1's four additions, plus the maturity read
-# helper's two additions.
+# helper's two additions, plus T-MAT-3's no_budget_recorded addition.
 _EXPECTED = {
     "no_ownership_recorded",
     "no_maturity_recorded",
@@ -69,11 +69,12 @@ _EXPECTED = {
     "dependency_direction_unknown",
     "no_maturity_target_recorded",
     "no_capability_in_chain",
+    "no_budget_recorded",
 }
 
 
-def test_reason_codes_has_exactly_twenty_eight_members():
-    assert len(REASON_CODES) == 28
+def test_reason_codes_has_exactly_twenty_nine_members():
+    assert len(REASON_CODES) == 29
     assert REASON_CODES == frozenset(_EXPECTED)
 
 

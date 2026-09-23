@@ -80,6 +80,10 @@ REASON_CODES = frozenset(
         # chain at all.
         "no_maturity_target_recorded",
         "no_capability_in_chain",
+        # L2 Strategy addition: an initiative with no recorded budget is a
+        # distinct fact from "unknown" -- nobody budgeted it, not that the
+        # figure failed to load.
+        "no_budget_recorded",
     }
 )
 

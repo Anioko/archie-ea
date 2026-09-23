@@ -42,6 +42,8 @@ NO_RISK_RECORDED_REASON = validate_reason_code("no_risk_recorded")
 NO_APPLICATION_COMPONENT_REASON = validate_reason_code("no_application_component")
 NO_WORK_PACKAGE_RECORDED_REASON = validate_reason_code("no_work_package_recorded")
 NOT_COSTED_REASON = validate_reason_code("not_costed")
+NO_INITIATIVE_LINKED_REASON = validate_reason_code("no_initiative_linked")
+NO_BUDGET_RECORDED_REASON = validate_reason_code("no_budget_recorded")
 
 
 # T-005 (D1): the NFR-5 measurement point is this exact, PINNED series --
@@ -1361,4 +1363,147 @@ class IntelligenceQueryService:
             "reasons": reasons,
         }
 
-    __all__ = ["IntelligenceQueryService"]
+    @staticmethod
+    def strategy_for_element(
+        element_id: int,
+        *,
+        max_depth: int = 3,
+        include_derived: bool = True,
+    ) -> Dict[str, Any]:
+        """L2, "what are we trying to achieve, and how's it tracking?": every
+        ``PortfolioInitiative`` seeded directly on the picked element
+        (``archimate_element_id`` FK), each with the SAME blast-radius
+        traversal L1/L5/L6 already run -- no second traversal algorithm.
+
+        Tenant-safety note, verified not assumed: ``PortfolioInitiative``
+        carries no ``TenantMixin``/``organization_id`` of its own, the same
+        gap ``UnifiedWorkPackage`` has (L5 brief). This method never lists
+        initiatives independently of an element -- every row it returns is
+        filtered by ``archimate_element_id == element_id``, and
+        ``element_id`` is only ever reached here after the element itself
+        was confirmed to belong to the caller's tenant (below). A
+        cross-tenant initiative cannot share a seed element id with the
+        wrong org's element, since ``archimate_elements.id`` is a real
+        primary key each row of which belongs to exactly one tenant.
+
+        Budget variance is read from the model's own ``total_budget``/
+        ``spent_to_date`` fields directly -- ``PortfolioInitiative`` has no
+        wrapping helper method to avoid, but the same not-computed-vs-
+        measured-zero discipline still applies: variance is only reported
+        when ``total_budget`` is a real positive number, else the row
+        carries the honest ``no_budget_recorded`` reason.
+
+        When the picked element is a Capability, each initiative row carries
+        the capability's maturity block from the T-MAT-1 helper.
+        """
+        from app.models import ArchiMateElement
+        from app.models.enterprise_intelligence import PortfolioInitiative
+
+        org_id = current_org_id()
+
+        with record_query_latency("strategy_for_element") as scope:
+            scope.organization_id = org_id
+
+            if org_id is None:
+                return {
+                    "initiatives": [],
+                    "reasons": [NO_TENANT_CONTEXT_REASON],
+                    "elements": {},
+                }
+
+            element = db.session.execute(
+                db.select(ArchiMateElement).where(ArchiMateElement.id == element_id)
+            ).scalar_one_or_none()
+            if element is None:
+                return {
+                    "initiatives": [],
+                    "reasons": [ELEMENT_NOT_FOUND_REASON],
+                    "elements": {},
+                }
+
+            seed_initiatives = (
+                db.session.execute(
+                    db.select(PortfolioInitiative).where(
+                        PortfolioInitiative.archimate_element_id == element_id
+                    )
+                )
+                .scalars()
+                .all()
+            )
+
+            if not seed_initiatives:
+                return {
+                    "initiatives": [],
+                    "reasons": [NO_INITIATIVE_LINKED_REASON],
+                    "elements": {},
+                }
+
+            # Capability maturity block: one call when the element is a Capability.
+            capability_maturity = None
+            if (element.type or "") == "Capability":
+                capability_maturity = CapabilityHeatmapService().maturity_for_elements(
+                    [element_id], organization_id=org_id
+                ).get(element_id)
+
+            all_elements: Dict[str, Dict[str, Any]] = {}
+            initiative_payloads: List[Dict[str, Any]] = []
+            for initiative in seed_initiatives:
+                blast = IntelligenceQueryService.cross_layer_impact(
+                    element_id,
+                    include_derived=include_derived,
+                    max_depth=max_depth,
+                    with_owner=True,
+                )
+                all_elements.update(blast.get("elements") or {})
+
+                if initiative.total_budget and initiative.total_budget > 0:
+                    total_budget = float(initiative.total_budget)
+                    spent_to_date = float(initiative.spent_to_date or 0.0)
+                    budget_variance_pct = (spent_to_date - total_budget) / total_budget * 100
+                    budget_reason = None
+                else:
+                    budget_variance_pct = None
+                    budget_reason = NO_BUDGET_RECORDED_REASON
+
+                payload = {
+                    "initiative_id": initiative.id,
+                    "name": initiative.name,
+                    "status": initiative.status,
+                    "priority": initiative.priority,
+                    "health_status": initiative.health_status,
+                    "completion_percentage": initiative.completion_percentage,
+                    "start_date": initiative.start_date.isoformat()
+                    if initiative.start_date
+                    else None,
+                    "target_end_date": initiative.target_end_date.isoformat()
+                    if initiative.target_end_date
+                    else None,
+                    "executive_sponsor": initiative.executive_sponsor,
+                    "program_manager": initiative.program_manager,
+                    "budget_variance_pct": budget_variance_pct,
+                    "budget_reason": budget_reason,
+                    "success_metrics": [
+                        {
+                            "metric_name": m.metric_name,
+                            "metric_type": m.metric_type,
+                            "target_value": m.target_value,
+                            "actual_value": m.actual_value,
+                            "status": m.status,
+                        }
+                        for m in initiative.success_metrics
+                    ],
+                    "affected_rows": blast.get("rows", []),
+                    "affected_summary": blast.get("summary", {}),
+                }
+                if capability_maturity is not None:
+                    payload["capability_maturity"] = capability_maturity
+                initiative_payloads.append(payload)
+
+        return {
+            "initiatives": initiative_payloads,
+            "reasons": [],
+            "elements": all_elements,
+        }
+
+
+__all__ = ["IntelligenceQueryService"]
