@@ -539,3 +539,68 @@ def test_group8_checksum_changes_when_the_model_snapshot_changes(
         checksum_2 = second["baseline"]["checksum"]
 
     assert checksum_1 != checksum_2
+
+
+# ---------------------------- (9) an edit outside the original five columns
+
+
+def test_group9_a_field_outside_the_original_columns_still_counts_as_a_change(
+    db_session, make_org, tenant_ctx
+):
+    """The content hash covers every mapped column bar identity and audit
+    provenance, not a short, hand-picked field list -- so a real edit to a
+    field the original five never looked at (an element's description, its
+    properties and status together, or which element it sits under; a
+    relationship's own label, description and access mode) is a measured
+    one, never a zero.
+    """
+    from app.modules.architecture.services.architecture_monitoring_service import (
+        ArchitectureMonitoringService,
+    )
+
+    suffix = uuid.uuid4().hex[:8]
+    org = make_org("op1-g9")
+    _seed_health_bearing_capability(db_session, org.id, suffix)
+
+    el_description = _element(db_session, org.id, suffix, "Description")
+    el_props_status = _element(db_session, org.id, suffix, "PropsStatus")
+    el_child = _element(db_session, org.id, suffix, "Child")
+    el_new_parent = _element(db_session, org.id, suffix, "NewParent")
+    rel = _relationship(db_session, org.id, el_description, el_props_status)
+
+    with tenant_ctx(org.id):
+        service = ArchitectureMonitoringService(org.id)
+        baseline = service.capture_baseline(name="G9 baseline", created_by="tester")
+        assert baseline["success"] is True, baseline
+        baseline_id = baseline["baseline"]["id"]
+
+    # Four edits, none of them name, type, layer, custom_properties,
+    # documentation, source_id, target_id or connection_spec -- the set the
+    # content hash used to be limited to.
+    el_description.description = f"Now documented {suffix}"
+    el_props_status.properties = json.dumps({"tier": "gold"})
+    el_props_status.status = "Approved"
+    el_child.parent_id = el_new_parent.id
+    rel.custom_label = f"custom {suffix}"
+    rel.description = f"relationship note {suffix}"
+    rel.access_mode = "write"
+    db_session.flush()
+
+    ArchitectureMonitoringService.reset_state(org.id)
+
+    with tenant_ctx(org.id):
+        service = ArchitectureMonitoringService(org.id)
+        analysis = service.compare_to_baseline(baseline_id)
+
+    md = analysis.model_drift
+    assert md["elements_changed"] == 3
+    assert set(md["changed_element_ids"]) == {
+        str(el_description.id),
+        str(el_props_status.id),
+        str(el_child.id),
+    }
+    assert md["relationships_changed"] == 1
+    assert md["changed_relationship_ids"] == [str(rel.id)]
+    # el_new_parent itself was not edited: it must not be swept in as changed
+    # just because another element now points at it.
+    assert str(el_new_parent.id) not in md["changed_element_ids"]

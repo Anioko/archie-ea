@@ -33,6 +33,7 @@ from enum import Enum
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
+from sqlalchemy import inspect as sa_inspect
 from sqlalchemy import or_
 
 from app import db
@@ -1361,17 +1362,73 @@ class ArchitectureMonitoringService:
             logger.warning(f"Could not capture vendor snapshot: {e}")
             return []
 
+    # Columns every element/relationship hash leaves out: the primary key and
+    # the tenant column carry no content of their own, and the rest of each
+    # set is a row's own audit trail -- who/when touched it -- not what it
+    # currently is. Excluding an audit column here does not hide an edit: a
+    # person changing what an element or relationship *is* always lands on a
+    # column outside this set, so it still moves the hash.
+    _ELEMENT_HASH_EXCLUDED_COLUMNS = frozenset(
+        {
+            "id",
+            "organization_id",
+            # The read this hash is taken over already filters deleted_at IS
+            # NULL, and deleted_by is unset for every row that reaches it;
+            # a soft delete is reported through elements_removed, not here.
+            "deleted_at",
+            "deleted_by",
+        }
+    )
+    _RELATIONSHIP_HASH_EXCLUDED_COLUMNS = frozenset(
+        {
+            "id",
+            "organization_id",
+            # created_at/updated_at/created_by_id/reviewed_at record who or
+            # when a row was touched, not the relationship's own definition;
+            # updated_at in particular is not folded back in here -- every
+            # other mapped column already is, so a real edit already moves
+            # the hash, and updated_at can also move on a save that changes
+            # nothing (a re-submit of the same values), which would register
+            # a phantom change this hash exists to avoid.
+            "created_at",
+            "updated_at",
+            "created_by_id",
+            "reviewed_at",
+        }
+    )
+
     @staticmethod
-    def _element_content_hash(el) -> str:
-        """A one-way digest of what makes this element itself: name, type,
-        layer, its typed-property JSON, and documentation.
+    def _mapped_content_columns(model, excluded) -> List[str]:
+        """Every attribute this mapper carries, minus ``excluded``.
+
+        Derived from the mapper the same way ``ArchiMateElement.to_dict`` /
+        ``ArchiMateRelationship.to_dict`` already read every column (through
+        ``mapper.get_property_by_column``, not the column's own name, since
+        an explicitly-named column like ``togaf_plateau`` maps to a DB column
+        of a different name) -- so a column added to either model later is
+        picked up here automatically instead of silently reporting no change
+        when someone edits it.
+        """
+        mapper_ = sa_inspect(model)
+        return sorted(
+            {
+                mapper_.get_property_by_column(col).key
+                for col in model.__table__.columns
+                if mapper_.get_property_by_column(col).key not in excluded
+            }
+        )
+
+    @classmethod
+    def _element_content_hash(cls, el) -> str:
+        """A one-way digest of what makes this element itself: every mapped
+        column bar identity and audit provenance (``_ELEMENT_HASH_EXCLUDED_COLUMNS``).
 
         ArchiMateElement carries no per-row modification timestamp in this
-        schema (only deleted_at); a rename or a re-layer is otherwise
-        invisible to a snapshot restricted to ids and never shows up as a
-        change. The hash lets a comparison detect that edit without storing
-        the name (or any other field) itself in the snapshot -- only the
-        digest is kept, which does not reveal what it was taken over.
+        schema (only deleted_at); an edit to any of its other columns is
+        otherwise invisible to a snapshot restricted to ids and never shows
+        up as a change. The hash lets a comparison detect that edit without
+        storing the field itself in the snapshot -- only the digest is kept,
+        which does not reveal what it was taken over.
 
         ``layer`` is canonicalised before hashing: the column's own type
         decorator (``_ArchiMateLayerType``) lower-cases it on the way back
@@ -1383,36 +1440,24 @@ class ArchitectureMonitoringService:
         """
         from app.models.models import canonical_archimate_layer
 
-        payload = json.dumps(
-            {
-                "name": el.name,
-                "type": el.type,
-                "layer": canonical_archimate_layer(el.layer),
-                "custom_properties": el.custom_properties,
-                "documentation": el.documentation,
-            },
-            sort_keys=True,
-            default=str,
-        )
-        return hashlib.sha256(payload.encode()).hexdigest()
+        payload = {}
+        for attr in cls._mapped_content_columns(type(el), cls._ELEMENT_HASH_EXCLUDED_COLUMNS):
+            value = getattr(el, attr)
+            payload[attr] = canonical_archimate_layer(value) if attr == "layer" else value
+        return hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode()).hexdigest()
 
-    @staticmethod
-    def _relationship_content_hash(rel) -> str:
-        """A one-way digest of what makes this relationship itself: type,
-        source, target, and its connection-spec properties. Same reasoning
-        as _element_content_hash: only the digest is kept.
+    @classmethod
+    def _relationship_content_hash(cls, rel) -> str:
+        """A one-way digest of what makes this relationship itself: every
+        mapped column bar identity and audit provenance
+        (``_RELATIONSHIP_HASH_EXCLUDED_COLUMNS``). Same reasoning as
+        ``_element_content_hash``.
         """
-        payload = json.dumps(
-            {
-                "type": rel.type,
-                "source_id": rel.source_id,
-                "target_id": rel.target_id,
-                "connection_spec": rel.connection_spec,
-            },
-            sort_keys=True,
-            default=str,
-        )
-        return hashlib.sha256(payload.encode()).hexdigest()
+        payload = {
+            attr: getattr(rel, attr)
+            for attr in cls._mapped_content_columns(type(rel), cls._RELATIONSHIP_HASH_EXCLUDED_COLUMNS)
+        }
+        return hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode()).hexdigest()
 
     def _capture_model_snapshot(self) -> Dict[str, Any]:
         """Capture the model's own drift surface: this tenant's element and
