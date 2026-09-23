@@ -2,9 +2,8 @@
 
 pytest's conftest.py discovery walks a test file's own directory ancestry, and
 ``app/modules/capabilities/tests/`` is not a descendant of ``tests/`` — so the
-shared ``app`` / ``db_session`` / ``make_org`` / ``tenant_ctx`` fixtures
-CLAUDE.md's testing conventions point new tests at are not automatically
-visible here. ``pytest_plugins`` is restricted to the rootdir conftest.py
+shared ``app`` / ``db_session`` / ``make_org`` / ``tenant_ctx`` fixtures are
+not automatically visible here. ``pytest_plugins`` is restricted to the rootdir conftest.py
 (there is none in this repo), so the supported way to reuse them without
 duplicating the fixture bodies is a plain import: pytest discovers a fixture
 by the name bound in a conftest.py's namespace, whether or not it is defined

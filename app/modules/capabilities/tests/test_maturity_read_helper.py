@@ -155,6 +155,48 @@ def test_2_element_id_owned_by_a_asked_for_by_b_is_not_assessed(db_session, make
     assert block["capability_id"] is None
 
 
+def test_2b_accessor_entry_is_read_by_key_name_not_position(db_session, make_org, monkeypatch):
+    """The accessor's own entry is a dict; reading it by key name must not
+    depend on the order those keys happen to be in. A positional unpack
+    would silently swap ``current`` and ``target`` (or worse, read the
+    reason code as a level) the moment that order ever changed.
+    """
+    org = make_org("mat1-keyorder-2b")
+    cap, _element, _domain = _org_capability_with_element(
+        db_session, org, "keyorder-2b", current=2, target=5
+    )
+
+    def _reordered_entry_accessor(capability_ids, *, organization_id):
+        # Same values as the row above, deliberately in a different key
+        # order than the accessor's own dict literal.
+        wanted = sorted(set(capability_ids))
+        return {
+            cid: {
+                "target_maturity_level": 5,
+                "reason_code": None,
+                "current_maturity_level": 2,
+            }
+            for cid in wanted
+        }
+
+    monkeypatch.setattr(
+        UnifiedCapability,
+        "maturity_for_capability_ids",
+        staticmethod(_reordered_entry_accessor),
+    )
+    try:
+        result = CapabilityHeatmapService().maturity_for_capability_ids(
+            [cap.id], organization_id=org.id
+        )
+    finally:
+        monkeypatch.undo()
+
+    block = result[cap.id]
+    assert block["assessed"] is True
+    assert block["current"] == 2
+    assert block["target"] == 5
+
+
 def test_3_shared_catalogue_row_never_carries_its_maturity_mutation_proof(
     db_session, make_org, monkeypatch
 ):
@@ -224,6 +266,161 @@ def test_3_shared_catalogue_row_never_carries_its_maturity_mutation_proof(
     monkeypatch.undo()
     restored = _read()
     assert restored["assessed"] is False
+
+
+def test_3b_shared_row_identity_never_leaks_from_capability_ids_own_select_mutation_proof(
+    db_session, make_org, monkeypatch
+):
+    """Test 3 mutation-proves the accessor's own predicate; it says nothing
+    about the helper's *own* second select (:meth:`_owner_rows_for_capability_ids`),
+    which answers element id and assessment date independently of whatever
+    the accessor says about maturity. A shared catalogue row's identity must
+    not leak through that second select either, even though ``assessed``
+    would still correctly read ``False`` from the (unmutated) accessor.
+    Mutation-proved the same way as test 3: loosen only this second select's
+    predicate, watch the identity assertions go red, restore.
+    """
+
+    org_a = make_org("mat1-shared-3b")
+    domain = _domain(db_session, "shared-3b")
+    # archimate_elements.organization_id is NOT NULL -- only the capability
+    # row itself carries the shared/reference organization_id IS NULL scope;
+    # the element it points at must belong to some organisation regardless.
+    element = _element(db_session, org_a.id, "Shared element 3b")
+    shared_cap = _capability(
+        db_session,
+        None,
+        domain=domain,
+        element=element,
+        current=3,
+        target=4,
+        scope="reference",
+        name="Shared cap 3b",
+        assessment_date=datetime.datetime(2026, 2, 1),
+    )
+
+    def _read():
+        result = CapabilityHeatmapService().maturity_for_capability_ids(
+            [shared_cap.id], organization_id=org_a.id
+        )
+        return result[shared_cap.id]
+
+    control = _read()
+    assert control["assessed"] is False
+    assert control["element_id"] is None
+    assert control["assessed_on"] is None
+
+    def _permissive_owner_rows_for_capability_ids(wanted, *, organization_id):
+        from sqlalchemy import or_
+
+        return (
+            UnifiedCapability.query.with_entities(
+                UnifiedCapability.id,
+                UnifiedCapability.archimate_element_id,
+                UnifiedCapability.maturity_assessment_date,
+            )
+            .filter(
+                UnifiedCapability.id.in_(wanted),
+                or_(
+                    UnifiedCapability.organization_id == organization_id,
+                    UnifiedCapability.organization_id.is_(None),
+                ),
+            )
+            .all()
+        )
+
+    monkeypatch.setattr(
+        CapabilityHeatmapService,
+        "_owner_rows_for_capability_ids",
+        staticmethod(_permissive_owner_rows_for_capability_ids),
+    )
+    mutated = _read()
+    # assessed itself stays correct (the accessor is untouched by this
+    # mutation) -- it is the identity fields that leak.
+    assert mutated["assessed"] is False
+    with pytest.raises(AssertionError):
+        assert mutated["element_id"] is None
+    with pytest.raises(AssertionError):
+        assert mutated["assessed_on"] is None
+
+    monkeypatch.undo()
+    restored = _read()
+    assert restored["element_id"] is None
+    assert restored["assessed_on"] is None
+
+
+def test_3c_shared_row_identity_never_leaks_from_elements_own_select_mutation_proof(
+    db_session, make_org, monkeypatch
+):
+    """The element-keyed counterpart of test 3b: a shared catalogue row's
+    ``capability_id`` and ``assessed_on`` must not leak into
+    ``maturity_for_elements`` through :meth:`_owner_rows_for_element_ids`
+    either, mutation-proved the same way.
+    """
+
+    org_a = make_org("mat1-shared-3c")
+    domain = _domain(db_session, "shared-3c")
+    # archimate_elements.organization_id is NOT NULL -- see test 3b's note.
+    element = _element(db_session, org_a.id, "Shared element 3c")
+    _capability(
+        db_session,
+        None,
+        domain=domain,
+        element=element,
+        current=3,
+        target=4,
+        scope="reference",
+        name="Shared cap 3c",
+        assessment_date=datetime.datetime(2026, 2, 1),
+    )
+
+    def _read():
+        result = CapabilityHeatmapService().maturity_for_elements(
+            [element.id], organization_id=org_a.id
+        )
+        return result[element.id]
+
+    control = _read()
+    assert control["assessed"] is False
+    assert control["capability_id"] is None
+    assert control["assessed_on"] is None
+
+    def _permissive_owner_rows_for_element_ids(wanted, *, organization_id):
+        from sqlalchemy import or_
+
+        return (
+            UnifiedCapability.query.with_entities(
+                UnifiedCapability.id,
+                UnifiedCapability.archimate_element_id,
+                UnifiedCapability.maturity_assessment_date,
+            )
+            .filter(
+                UnifiedCapability.archimate_element_id.in_(wanted),
+                or_(
+                    UnifiedCapability.organization_id == organization_id,
+                    UnifiedCapability.organization_id.is_(None),
+                ),
+            )
+            .order_by(UnifiedCapability.id.asc())
+            .all()
+        )
+
+    monkeypatch.setattr(
+        CapabilityHeatmapService,
+        "_owner_rows_for_element_ids",
+        staticmethod(_permissive_owner_rows_for_element_ids),
+    )
+    mutated = _read()
+    assert mutated["assessed"] is False
+    with pytest.raises(AssertionError):
+        assert mutated["capability_id"] is None
+    with pytest.raises(AssertionError):
+        assert mutated["assessed_on"] is None
+
+    monkeypatch.undo()
+    restored = _read()
+    assert restored["capability_id"] is None
+    assert restored["assessed_on"] is None
 
 
 def test_4_b_owned_row_pointed_at_a_element_fk_is_not_tenant_checked(db_session, make_org):

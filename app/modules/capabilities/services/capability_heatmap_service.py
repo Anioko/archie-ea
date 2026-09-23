@@ -462,10 +462,11 @@ class CapabilityHeatmapService:
         assessment_date,
     ) -> Dict[str, Any]:
         """One tri-state block, from one accessor entry's three values and one
-        owner row. Takes ``current``/``target``/``reason_code`` already
-        unpacked by the caller (positionally, off the accessor's own stable
-        entry shape) rather than a dict keyed by the authority's column
-        names, so this file never repeats them.
+        owner row. Takes ``current``/``target``/``reason_code`` already read
+        by the caller (a dict key read off the accessor's own returned
+        entry -- not a read of the authority's columns) and one owner row's
+        element id and assessment date, so the tri-state derivation itself
+        lives in exactly one place.
         """
 
         assessed = reason_code is None
@@ -502,27 +503,17 @@ class CapabilityHeatmapService:
             "maturity_source": "unified_capabilities",
         }
 
-    def maturity_for_capability_ids(
-        self, capability_ids: List[int], *, organization_id: int
-    ) -> Dict[int, Dict[str, Any]]:
-        """The one maturity read keyed by the authority's own id (ADR-MAT-1).
-
-        Two batched selects: (1) the strict accessor
-        ``UnifiedCapability.maturity_for_capability_ids`` for
-        current/target/assessed; (2) one select of this service's own, on the
-        same strict ``organization_id ==`` predicate, for the element id and
-        assessment date. Every id asked for is present in the result, keyed
-        by capability id; an empty input returns ``{}`` with no select.
+    @staticmethod
+    def _owner_rows_for_capability_ids(wanted: List[int], *, organization_id: int):
+        """The strict, tenant-scoped owner select behind ``maturity_for_capability_ids``:
+        element id and assessment date for each of ``wanted`` that this
+        organisation actually owns. Extracted to its own method, separate
+        from the accessor, so its own predicate can be exercised (and
+        mutation-proved) on its own -- a shared catalogue row or another
+        tenant's row must not surface its element id or assessment date here
+        either, independently of whatever the accessor itself would say.
         """
-        wanted = sorted({int(cid) for cid in capability_ids})
-        if not wanted:
-            return {}
-
-        accessor_result = UnifiedCapability.maturity_for_capability_ids(
-            wanted, organization_id=organization_id
-        )
-
-        owner_rows = (
+        return (
             db.session.query(
                 UnifiedCapability.id,
                 UnifiedCapability.archimate_element_id,
@@ -536,46 +527,16 @@ class CapabilityHeatmapService:
             )
             .all()
         )
-        owners_by_id = {cap_id: (element_id, assessed_on) for cap_id, element_id, assessed_on in owner_rows}
 
-        result: Dict[int, Dict[str, Any]] = {}
-        for cap_id in wanted:
-            element_id, assessment_date = owners_by_id.get(cap_id, (None, None))
-            # Positional, not by name -- see _maturity_block's own docstring.
-            current, target, reason_code = accessor_result[cap_id].values()
-            result[cap_id] = self._maturity_block(
-                capability_id=cap_id,
-                element_id=element_id,
-                current=current,
-                target=target,
-                reason_code=reason_code,
-                assessment_date=assessment_date,
-            )
-        return result
-
-    def maturity_for_elements(
-        self, element_ids: List[int], *, organization_id: int
-    ) -> Dict[int, Dict[str, Any]]:
-        """The one maturity read keyed by ArchiMate element id (ADR-MAT-1).
-
-        Two batched selects: (1) this service's own select of
-        ``archimate_element_id IN element_ids`` under the strict
-        ``organization_id ==`` predicate, ordered by id, ``setdefault`` so an
-        element pointed at by two rows resolves to the same first row every
-        time; (2) the strict accessor
-        ``UnifiedCapability.maturity_for_capability_ids`` over the capability
-        ids found. An element id with no owned row is present with
-        ``capability_id: None`` and the not-assessed block -- the FK from a
-        capability to its element is not tenant-checked, so a row owned by
-        another organisation never contributes its level here. Every id
-        asked for is present in the result, keyed by element id; an empty
-        input returns ``{}`` with no select.
+    @staticmethod
+    def _owner_rows_for_element_ids(wanted: List[int], *, organization_id: int):
+        """The strict, tenant-scoped owner select behind ``maturity_for_elements``:
+        capability id and assessment date for each row, among ``wanted``
+        ArchiMate element ids, that this organisation actually owns.
+        Extracted to its own method for the same reason as
+        :meth:`_owner_rows_for_capability_ids`.
         """
-        wanted = sorted({int(eid) for eid in element_ids})
-        if not wanted:
-            return {}
-
-        owner_rows = (
+        return (
             db.session.query(
                 UnifiedCapability.id,
                 UnifiedCapability.archimate_element_id,
@@ -588,6 +549,68 @@ class CapabilityHeatmapService:
             .order_by(UnifiedCapability.id.asc())
             .all()
         )
+
+    def maturity_for_capability_ids(
+        self, capability_ids: List[int], *, organization_id: int
+    ) -> Dict[int, Dict[str, Any]]:
+        """The one maturity read keyed by the authority's own id (ADR-MAT-1).
+
+        Two batched selects: (1) the strict accessor
+        ``UnifiedCapability.maturity_for_capability_ids`` for
+        current/target/assessed; (2) one select of this service's own
+        (:meth:`_owner_rows_for_capability_ids`), on the same strict
+        ``organization_id ==`` predicate, for the element id and assessment
+        date. Every id asked for is present in the result, keyed by
+        capability id; an empty input returns ``{}`` with no select.
+        """
+        wanted = sorted({int(cid) for cid in capability_ids})
+        if not wanted:
+            return {}
+
+        accessor_result = UnifiedCapability.maturity_for_capability_ids(
+            wanted, organization_id=organization_id
+        )
+
+        owner_rows = self._owner_rows_for_capability_ids(wanted, organization_id=organization_id)
+        owners_by_id = {cap_id: (element_id, assessed_on) for cap_id, element_id, assessed_on in owner_rows}
+
+        result: Dict[int, Dict[str, Any]] = {}
+        for cap_id in wanted:
+            element_id, assessment_date = owners_by_id.get(cap_id, (None, None))
+            entry = accessor_result[cap_id]
+            result[cap_id] = self._maturity_block(
+                capability_id=cap_id,
+                element_id=element_id,
+                current=entry["current_maturity_level"],
+                target=entry["target_maturity_level"],
+                reason_code=entry["reason_code"],
+                assessment_date=assessment_date,
+            )
+        return result
+
+    def maturity_for_elements(
+        self, element_ids: List[int], *, organization_id: int
+    ) -> Dict[int, Dict[str, Any]]:
+        """The one maturity read keyed by ArchiMate element id (ADR-MAT-1).
+
+        Two batched selects: (1) this service's own select of
+        ``archimate_element_id IN element_ids`` under the strict
+        ``organization_id ==`` predicate (:meth:`_owner_rows_for_element_ids`),
+        ordered by id, ``setdefault`` so an element pointed at by two rows
+        resolves to the same first row every time; (2) the strict accessor
+        ``UnifiedCapability.maturity_for_capability_ids`` over the capability
+        ids found. An element id with no owned row is present with
+        ``capability_id: None`` and the not-assessed block -- the FK from a
+        capability to its element is not tenant-checked, so a row owned by
+        another organisation never contributes its level here. Every id
+        asked for is present in the result, keyed by element id; an empty
+        input returns ``{}`` with no select.
+        """
+        wanted = sorted({int(eid) for eid in element_ids})
+        if not wanted:
+            return {}
+
+        owner_rows = self._owner_rows_for_element_ids(wanted, organization_id=organization_id)
         owner_by_element: Dict[int, Any] = {}
         for cap_id, element_id, assessed_on in owner_rows:
             owner_by_element.setdefault(element_id, (cap_id, assessed_on))
@@ -613,14 +636,13 @@ class CapabilityHeatmapService:
                 )
                 continue
             cap_id, assessment_date = owner
-            # Positional, not by name -- see _maturity_block's own docstring.
-            current, target, reason_code = accessor_result[cap_id].values()
+            entry = accessor_result[cap_id]
             result[element_id] = self._maturity_block(
                 capability_id=cap_id,
                 element_id=element_id,
-                current=current,
-                target=target,
-                reason_code=reason_code,
+                current=entry["current_maturity_level"],
+                target=entry["target_maturity_level"],
+                reason_code=entry["reason_code"],
                 assessment_date=assessment_date,
             )
         return result
