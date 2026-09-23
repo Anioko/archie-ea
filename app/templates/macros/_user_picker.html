@@ -99,7 +99,7 @@
   `data-picker-invalid` -- and the submit guard in `user_picker_script()`
   that reads it -- only fires for non-empty text with no matching id.
 #}
-<div x-data="{ pickerText: {{ initial_label|tojson }}, pickerId: {{ (initial_id|string)|tojson }}, pickerTimer: null }">
+<div x-data='{ pickerText: {{ initial_label|tojson }}, pickerId: {{ (initial_id|string)|tojson }}, pickerTimer: null }'>
   <input type="hidden" name="{{ hidden_id_name }}" :value="pickerId"
          :data-picker-invalid="(pickerText && !pickerId) ? '1' : ''">
   <div x-data="userSearchWidget(
