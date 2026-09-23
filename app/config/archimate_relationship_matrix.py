@@ -1901,6 +1901,22 @@ def can_derive_relationship(relationship_type: str) -> bool:
     return definition.can_be_derived if definition else False
 
 
+# The one definition of "Title Case layer name" -> "lowercase single-word
+# key". app.models.archimate_core's coarse layer-triple projection and
+# app.services.archimate_validity_service's practitioner-warning helpers each
+# used to carry their own copy of this same seven-entry map; both now import
+# it from here.
+LAYER_NAME_TO_KEY: Dict[str, str] = {
+    "Strategy": "strategy",
+    "Business": "business",
+    "Application": "application",
+    "Technology": "technology",
+    "Physical": "physical",
+    "Motivation": "motivation",
+    "Implementation & Migration": "implementation",
+}
+
+
 def get_element_layer(element_type: str) -> Optional[str]:
     """
     Get the ArchiMate layer for an element type.
@@ -2186,6 +2202,7 @@ __all__ = [
     "CONNECTOR_ELEMENTS",
     "LAYERED_ELEMENTS",
     "ALL_ELEMENTS",
+    "LAYER_NAME_TO_KEY",
     "ALL_ACTIVE_ELEMENTS",
     "ALL_BEHAVIOR_ELEMENTS",
     "ALL_PASSIVE_ELEMENTS",

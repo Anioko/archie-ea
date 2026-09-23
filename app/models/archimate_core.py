@@ -17,6 +17,7 @@ from sqlalchemy.orm import relationship, synonym
 
 from app.config.archimate_relationship_matrix import (
     ALL_ELEMENTS as _MATRIX_ALL_ELEMENTS,
+    LAYER_NAME_TO_KEY as _MATRIX_LAYER_TO_KEY,
     VALID_RELATIONSHIPS as _MATRIX_VALID_RELATIONSHIPS,
     get_element_layer as _matrix_get_element_layer,
     get_valid_relationships as _matrix_get_valid_relationships,
@@ -244,17 +245,9 @@ class RelationshipSuggestion(db.Model):  # migration-exempt — uses db.create_a
 # importer, the conformance check) reads the matrix itself, through
 # ArchimateValidityService or the matrix's own functions — do not add a new
 # caller here: any new relationship-validity check belongs on
-# RelationshipValidator, not on this projection.
-_MATRIX_LAYER_TO_KEY = {
-    "Strategy": "strategy",
-    "Business": "business",
-    "Application": "application",
-    "Technology": "technology",
-    "Physical": "physical",
-    "Motivation": "motivation",
-    "Implementation & Migration": "implementation",
-}
-
+# RelationshipValidator, not on this projection. ``_MATRIX_LAYER_TO_KEY`` is
+# imported above from the matrix module -- the one definition, also used by
+# app.services.archimate_validity_service.
 
 # Three keys of the pre-existing hand-authored table used to be kept by hand
 # here (`_LEGACY_LAYER_ONLY_KEYS`) because no single (source type, target
