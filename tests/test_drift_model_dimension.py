@@ -35,7 +35,7 @@ from sqlalchemy import text
 def _reset_monitoring_state():
     """Clear the module-level per-tenant cache before and after every test.
 
-    ArchitectureMonitoringService._STATE lives for the life of the process,
+    ArchitectureMonitoringService's tenant-state cache lives for the life of the process,
     not the life of a request, so one test's cached baselines/alerts must
     not leak into the next test's fresh service instances.
     """
