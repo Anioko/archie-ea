@@ -5,11 +5,13 @@
   "_note3": "updated 2026-09-20: sidebar_links 27 -> 28 is real link growth, not a corrected measurement. The Ask page has one front door, \"Ask a question\", first in every persona's My work, so platform_admin (the worst case) renders one more. The Twin map has no link of its own and is reached from the Ask page. SIDEBAR_LINK_BUDGET moves 30 -> 31 with it.",
   "_note4": "updated 2026-09-21: an Impact Analysis My-work link (fix/t104-impact-sidebar) was added for solution_architect and business_architect, matching enterprise_architect's existing one. business_architect now also measures 28, tying platform_admin rather than trailing it -- _note3's \"platform_admin (the worst case)\" no longer names the only worst case. sidebar_links stays 28 (no ratchet change); this note only corrects which role(s) that number describes.",
   "_note5": "updated 2026-09-23: wiring_rows added at 1230, the scripts/check_wiring_rows.py --count measurement on this branch the day the gate was introduced. This is the starting debt, not a target -- it can only fall; a new fact-bearing model column with no register row raises it and fails the gate.",
+  "_note6": "updated 2026-09-23: wiring_rows 1230 -> 1377 is a CORRECTED MEASUREMENT, not column growth — the family rule now matches every spelling of the statement families (plural, past tense, -or, -ing, ownership, critical, compliant, end_of_life, retired, licensing); the same columns existed on 2026-09-23 under the narrower rule. Starting debt; it can only fall.",
   "ratchets": {
     "undefined_names": 0,
     "redefinitions": 0,
     "lint_core": 0,
     "design_tokens": 0,
+    "design_tokens_extended": 0,
     "air_gap": 0,
     "raw_sql_tenancy": 0,
     "tenant_scoping": 0,
@@ -19,7 +21,6 @@
     "fetch_guards": 0,
     "sidebar_links": 28,
     "nav_coverage": 0,
-    "design_tokens_extended": 0,
     "shell_conformance": 3,
     "raw_fetch_sites": 0,
     "composer_url_params": 0,
@@ -35,6 +36,6 @@
     "store_agreement": 1,
     "canonical_store": 0,
     "unrendered_model_fields": 342,
-    "wiring_rows": 1230
+    "wiring_rows": 1377
   }
 }
