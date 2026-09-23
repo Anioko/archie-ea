@@ -1165,6 +1165,112 @@ def _backfill_roadmap_task_organizations(*, dry_run, existing_tables, added, fai
         )
 
 
+def _backfill_sso_mapping_organizations(*, dry_run, existing_tables, added, failed):
+    """Recover the tenant key for SSO group-role mappings that predate TenantMixin.
+
+    Unlike webhook_subscriptions (user_id) or roadmap items (their programme),
+    this table has NO provenance column at all -- nothing records which admin,
+    from which org, created a given mapping. Guessing is not an option. The one
+    case that is genuinely unambiguous: a single-tenant install (exactly one
+    Organization) has only one possible owner, matching the same fallback
+    `_default_org_id()` already uses for this exact situation (mixins/core.py).
+    In a real multi-tenant deployment, existing rows are left NULL and reported;
+    an admin must re-save each one via /admin/sso-settings to claim it for their
+    org (that route's INSERT path sets organization_id automatically, same as
+    any other TenantMixin create). Until then a NULL-org mapping matches no
+    org's `organization_id = :id` filter and simply stops applying -- a real,
+    visible operational consequence of closing this leak, not a silent one.
+    """
+    from sqlalchemy import inspect, text
+
+    table = "sso_group_role_mappings"
+    if table not in existing_tables or "organizations" not in existing_tables:
+        return
+    live_columns = {c["name"] for c in inspect(db.engine).get_columns(table)}
+    if "organization_id" not in live_columns:
+        return
+
+    before = db.session.scalar(
+        text(f"SELECT count(*) FROM {table} WHERE organization_id IS NULL")
+    )
+    if not before:
+        return
+    org_count = db.session.scalar(text("SELECT count(*) FROM organizations"))
+    updated = 0
+    if not dry_run and org_count == 1:
+        result = db.session.execute(
+            text(
+                f"""
+                UPDATE {table}
+                SET organization_id = (SELECT id FROM organizations LIMIT 1)
+                WHERE organization_id IS NULL
+                """
+            )
+        )
+        updated = result.rowcount
+        db.session.commit()
+    unresolved = before - updated
+    added.append(
+        f"backfill.{table}.organization_id :: before={before}, updated={updated}, "
+        f"unresolved={unresolved} (single-tenant install: {org_count == 1})"
+    )
+    if unresolved:
+        failed.append(
+            f"backfill.{table}.organization_id: {unresolved} row(s) have no "
+            "provenance column and this is a multi-tenant install -- they will "
+            "stop applying at SSO login until an admin re-saves them via "
+            "/admin/sso-settings to claim them for their org. Not a bug: "
+            "guessing which org a pre-existing mapping belongs to is worse."
+        )
+
+
+def _ensure_sso_mapping_tenant_unique_constraint(*, dry_run, existing_tables, added, failed):
+    """Replace the old global UNIQUE(sso_group_name) with a per-tenant one.
+
+    The single-column constraint meant two different organisations could never
+    both use a group named e.g. "Admins" -- a real functional bug riding along
+    with the tenant leak this whole migration closes. Postgres treats NULL as
+    distinct for uniqueness purposes, so pre-existing un-backfilled (NULL-org)
+    rows sharing a name are unaffected by adding the composite constraint.
+    """
+    from sqlalchemy import inspect, text
+
+    table = "sso_group_role_mappings"
+    old_name = "sso_group_role_mappings_sso_group_name_key"
+    new_name = "uq_sso_group_role_mappings_org_group"
+    if table not in existing_tables:
+        return
+    live_columns = {c["name"] for c in inspect(db.engine).get_columns(table)}
+    if "organization_id" not in live_columns:
+        return
+
+    existing_constraints = {
+        c["name"] for c in inspect(db.engine).get_unique_constraints(table)
+    }
+    if new_name in existing_constraints:
+        return  # already migrated
+
+    if dry_run:
+        added.append(
+            f"constraint.{table}.{new_name} :: would replace {old_name} "
+            "with a composite (organization_id, sso_group_name) UNIQUE constraint"
+        )
+        return
+
+    if old_name in existing_constraints:
+        db.session.execute(
+            text(f'ALTER TABLE {table} DROP CONSTRAINT "{old_name}"')
+        )
+    db.session.execute(
+        text(
+            f'ALTER TABLE {table} ADD CONSTRAINT "{new_name}" '
+            "UNIQUE (organization_id, sso_group_name)"
+        )
+    )
+    db.session.commit()
+    added.append(f"constraint.{table}.{new_name} :: added, replacing {old_name}")
+
+
 def _ensure_condition_evidence_canonical_document(
     *, dry_run, existing_tables, added, failed
 ):
@@ -1383,6 +1489,18 @@ def _reconcile(dry_run=False):
         failed=failed,
     )
     _backfill_roadmap_task_organizations(
+        dry_run=dry_run,
+        existing_tables=existing_tables,
+        added=added,
+        failed=failed,
+    )
+    _backfill_sso_mapping_organizations(
+        dry_run=dry_run,
+        existing_tables=existing_tables,
+        added=added,
+        failed=failed,
+    )
+    _ensure_sso_mapping_tenant_unique_constraint(
         dry_run=dry_run,
         existing_tables=existing_tables,
         added=added,
