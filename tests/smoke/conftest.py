@@ -30,7 +30,6 @@ import uuid
 import pytest
 
 pytest.importorskip("playwright", reason="playwright not installed - smoke journeys skipped")
-from playwright.sync_api import sync_playwright  # noqa: E402
 
 PASSWORD = "SmokeJourney!2026"
 BOOT_TIMEOUT = int(os.environ.get("SMOKE_BOOT_TIMEOUT", "180"))
@@ -576,18 +575,17 @@ PAGE_TIMEOUT = int(os.environ.get("SMOKE_PAGE_TIMEOUT", "90000"))
 # so the launch raises, the skip below unwinds the context, and the loop is
 # released. Adding a browser to that job would have turned it red.
 @pytest.fixture(scope="package")
-def browser():
-    with sync_playwright() as p:
-        engine, engine_name = _select_browser_engine(p, os.environ)
-        try:
-            b = engine.launch(headless=True)
-        except Exception as exc:                      # no browser binary in this env
-            message = "%s unavailable: %s" % (engine_name, str(exc)[:120])
-            if os.environ.get("SMOKE_REQUIRE_BROWSER") == "1":
-                pytest.fail(message)
-            pytest.skip(message)
-        yield b
-        b.close()
+def browser(playwright):
+    engine, engine_name = _select_browser_engine(playwright, os.environ)
+    try:
+        b = engine.launch(headless=True)
+    except Exception as exc:                      # no browser binary in this env
+        message = "%s unavailable: %s" % (engine_name, str(exc)[:120])
+        if os.environ.get("SMOKE_REQUIRE_BROWSER") == "1":
+            pytest.fail(message)
+        pytest.skip(message)
+    yield b
+    b.close()
 
 
 # Every enterprise role the product defines. The scope contract below prevents
