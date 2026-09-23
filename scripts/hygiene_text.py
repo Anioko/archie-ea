@@ -57,6 +57,12 @@ HTML_OR_JINJA_COMMENT_RE = re.compile(r"\{#.*?#\}|<!--.*?-->", re.DOTALL)
 # `{{ ... }}` / `{% ... %}` -- a Jinja expression or statement.
 JINJA_EXPR_OR_STMT_RE = re.compile(r"\{\{.*?\}\}|\{%.*?%\}", re.DOTALL)
 
+# `{% ... %}` / `{# ... #}` -- a Jinja statement or comment, deliberately
+# not an expression: a caller stripping this before reading label text
+# wants a `{{ }}` output kept (it renders real text a user reads) and only
+# the code/comment code around it removed.
+JINJA_STMT_OR_COMMENT_RE = re.compile(r"\{%.*?%\}|\{#.*?#\}", re.DOTALL)
+
 # An HTML tag -- see the module docstring for why two shapes stay apart.
 HTML_TAG_RE = re.compile(r"<[^>]+>")
 HTML_TAG_RE_LOOSE = re.compile(r"<[^>]*>", re.DOTALL)
