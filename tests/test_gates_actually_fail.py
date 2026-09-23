@@ -1135,6 +1135,32 @@ def test_public_repo_hygiene_commit_message_gate_fails_not_passes_when_git_unava
     )
 
 
+# The module docstring, the PR title and two commits all claimed the
+# commit-message half already ran the record-id patterns; it only ever ran
+# `_role_word_hits`. One probe per shape the process actually emits in a
+# commit subject -- every one of these five must be a hit (count > 0) once
+# `_scan_commit_messages` also runs `_record_id_matches`/
+# `_bare_record_id_matches`, not just role words.
+_COMMIT_MESSAGE_RECORD_ID_CASES = [
+    ("T-004", "T-004: add impact API"),  # hygiene-ok: probe data for the commit-message record-id test, not a real hit
+    ("D-ALL-1", "Fix D-ALL-1"),  # hygiene-ok: probe data for the commit-message record-id test, not a real hit
+    ("T-RR-14 with a PR number nearby", "T-RR-14 built (PR 128): rework the tenant fence"),  # hygiene-ok: probe data for the commit-message record-id test, not a real hit
+    ("F-05..F-08 list", "fix: close F-05, F-06, F-07 and F-08"),  # hygiene-ok: probe data for the commit-message record-id test, not a real hit
+    ("T-003 conventional-commit style", "feat(intelligence): T-003 derived-fact store rework"),  # hygiene-ok: probe data for the commit-message record-id test, not a real hit
+]
+
+
+@pytest.mark.parametrize(
+    "label, subject", _COMMIT_MESSAGE_RECORD_ID_CASES,
+    ids=[c[0] for c in _COMMIT_MESSAGE_RECORD_ID_CASES],
+)
+def test_public_repo_hygiene_commit_message_catches_record_ids(tmpdir, label, subject):
+    root = tmpdir.mkdir("commit-record-id")
+    _init_repo_with_commit(root, subject)
+    count = _run_hygiene_checker(root, "commits")
+    assert count > 0, "row %r (%r) was not caught" % (label, subject)
+
+
 def test_public_repo_hygiene_content_scan_only_reads_tracked_files(tmpdir):
     """An untracked file in a real git working tree is not scanned -- only
     `git ls-files` output is, so a local scratch file never inflates the

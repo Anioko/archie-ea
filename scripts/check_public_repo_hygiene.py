@@ -655,16 +655,19 @@ def _iter_commit_messages(root: str, rev_range: str | None) -> list[tuple[str, s
 
 
 def _scan_commit_messages(root: str, rev_range: str | None = None) -> list[str] | None:
-    """Rule 3, commit-message half: pipeline role words, a Co-Authored-By
-    trailer, a generated-with footer, and an assistant product name
-    anywhere in the message, in the commit message itself -- not the diff.
-    The escape hatch excuses only the physical line it sits on, not the
-    whole message; none of the three attribution checks below is ever
-    excused by it, marker or not -- each is checked, and can report, before
-    the escape hatch is even read. Zero tolerance, scoped to the commits
-    under review -- see verify.py's
-    ``gate_public_repo_hygiene_commit_messages`` for why a full-history
-    count cannot be a stable measurement here.
+    """Rule 3, commit-message half: review-record-id tokens, pipeline role
+    words, a Co-Authored-By trailer, a generated-with footer, and an
+    assistant product name anywhere in the message, in the commit message
+    itself -- not the diff. Record ids and role words are found with the
+    same `_record_id_matches`/`_bare_record_id_matches`/`_role_word_hits`
+    helpers the source half uses, so the two halves cannot drift apart on
+    what counts as a hit -- only on what they scan. The escape hatch
+    excuses only the physical line it sits on, not the whole message; none
+    of the three attribution checks below is ever excused by it, marker or
+    not -- each is checked, and can report, before the escape hatch is even
+    read. Zero tolerance, scoped to the commits under review -- see
+    verify.py's ``gate_public_repo_hygiene_commit_messages`` for why a
+    full-history count cannot be a stable measurement here.
 
     Returns None when the underlying git read failed -- never an empty
     list, which a caller could otherwise mistake for zero hits."""
@@ -685,7 +688,14 @@ def _scan_commit_messages(root: str, rev_range: str | None = None) -> list[str] 
                 continue
             if ESCAPE_HATCH in line:
                 continue
-            for label in _role_word_hits(line):
+            for _start, token in _record_id_matches(line):
+                problems.append(f"{sha[:8]}: looks like a review record id: '{token}'")
+            labels = _role_word_hits(line)
+            has_context = bool(labels) or bool(_FINDING_RE.search(_mask_product_terms(line)))
+            if has_context:
+                for _start, token in _bare_record_id_matches(line):
+                    problems.append(f"{sha[:8]}: looks like a review record id: '{token}'")
+            for label in labels:
                 problems.append(f"{sha[:8]}: '{label}' in the commit message")
     return problems
 
