@@ -13,8 +13,8 @@ from __future__ import annotations
 
 # sdd-v2.md § API-8 — the original sixteen members, the two T-004 additions,
 # the one T-005 addition, the Portfolio and Programme lenses' three
-# additions and the four T-S1 additions below (twenty-six total), exactly,
-# nothing invented.
+# additions, the four T-S1 additions and the two maturity-read-helper
+# additions below (twenty-eight total), exactly, nothing invented.
 REASON_CODES = frozenset(
     {
         "no_ownership_recorded",
@@ -71,6 +71,15 @@ REASON_CODES = frozenset(
         "no_capability_linked",
         "value_stream_not_linked_to_model",
         "dependency_direction_unknown",
+        # Maturity read helper additions: the canonical maturity surface's
+        # one batched read (CapabilityHeatmapService.maturity_for_elements /
+        # .maturity_for_capability_ids) has two absence conditions the
+        # existing "no_maturity_recorded" does not distinguish -- a current
+        # level recorded with no target to compare it against, and (reserved
+        # for a later reader) an answer with no Capability element in its
+        # chain at all.
+        "no_maturity_target_recorded",
+        "no_capability_in_chain",
     }
 )
 

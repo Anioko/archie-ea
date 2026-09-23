@@ -1,7 +1,7 @@
 """T-001 acceptance criterion 13: the DE-14 reason-code vocabulary is closed.
 
 Mapping:
-    13 -> test_reason_codes_has_exactly_twenty_six_members,
+    13 -> test_reason_codes_has_exactly_twenty_eight_members,
           test_unknown_reason_code_is_rejected_not_passed_through
 
 T-004 (US-1) added two members -- ``no_tenant_context`` and
@@ -15,10 +15,14 @@ two more -- ``no_work_package_recorded`` and ``not_costed``. T-S1 (value
 streams at risk, curated path) added four more -- ``no_value_stream_recorded``,
 ``no_capability_linked``, ``value_stream_not_linked_to_model`` and
 ``dependency_direction_unknown`` -- of which T-S1 emits only the first two;
-the other two are reserved for T-S3's graph path. "Closed" means no endpoint
-may invent an absence string inline, not that the set is frozen at sixteen
-forever; the module's own docstring says a new absence condition adds a
-member here, and nowhere else. This test is updated in lockstep.
+the other two are reserved for T-S3's graph path. The maturity read helper
+added two more -- ``no_maturity_target_recorded`` (a current level recorded
+with no target to compare it against) and ``no_capability_in_chain``
+(reserved for a later reader whose chain resolves to no Capability element
+at all). "Closed" means no endpoint may invent an absence string inline, not
+that the set is frozen at sixteen forever; the module's own docstring says a
+new absence condition adds a member here, and nowhere else. This test is
+updated in lockstep.
 """
 
 from __future__ import annotations
@@ -34,7 +38,8 @@ from app.modules.intelligence.services.reason_codes import (
 
 # sdd-v2.md § API-8's original sixteen, T-004's two additions, T-005's one
 # addition (p95_above_highest_bucket, D3), the Portfolio and Programme
-# lenses' three additions, plus T-S1's four additions.
+# lenses' three additions, T-S1's four additions, plus the maturity read
+# helper's two additions.
 _EXPECTED = {
     "no_ownership_recorded",
     "no_maturity_recorded",
@@ -62,11 +67,13 @@ _EXPECTED = {
     "no_capability_linked",
     "value_stream_not_linked_to_model",
     "dependency_direction_unknown",
+    "no_maturity_target_recorded",
+    "no_capability_in_chain",
 }
 
 
-def test_reason_codes_has_exactly_twenty_six_members():
-    assert len(REASON_CODES) == 26
+def test_reason_codes_has_exactly_twenty_eight_members():
+    assert len(REASON_CODES) == 28
     assert REASON_CODES == frozenset(_EXPECTED)
 
 
