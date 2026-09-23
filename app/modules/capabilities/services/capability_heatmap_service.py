@@ -410,6 +410,210 @@ class CapabilityHeatmapService:
             },
         }
 
+    # ------------------------------------------------------------------ #
+    # ADR-MAT-1: the one maturity read for every engine.
+    #
+    # Every reader that needs a capability's maturity -- current, target,
+    # whether it was assessed at all, whether it is under target, and by how
+    # much -- calls one of the two methods below rather than reading the
+    # authority's own current/target maturity columns off ``UnifiedCapability``
+    # directly, or either of the two source-provenance accessors. Both are
+    # batched: two SELECTs regardless of how many ids are asked for, never one
+    # per id, never a query on an empty input.
+    #
+    # The block returned per id, always exactly these ten keys:
+    #     capability_id, element_id, current, target, assessed, assessed_on,
+    #     under_target, target_gap, reason, maturity_source
+    #
+    # ``assessed`` is true only for a row of the caller's own organisation
+    # that recorded a current level (the accessor's own strict predicate --
+    # never a shared catalogue row, never another tenant's). When not
+    # assessed every numeric field is ``None`` -- never ``0`` -- and
+    # ``reason`` is ``"no_maturity_recorded"``. When assessed but no target
+    # was recorded, ``under_target``/``target_gap`` stay ``None`` and
+    # ``reason`` is ``"no_maturity_target_recorded"``. When both are
+    # recorded, ``under_target`` and ``target_gap`` are a real comparison and
+    # subtraction of the two named inputs -- zero or negative is a real,
+    # recorded fact and is never suppressed -- and ``reason`` is ``None``.
+    # ``assessed_on`` is the projection's own assessment date when present,
+    # independent of whether a level was recorded: it is never the test for
+    # ``assessed``.
+    # ------------------------------------------------------------------ #
+
+    @staticmethod
+    def _maturity_block(
+        *,
+        capability_id,
+        element_id,
+        current,
+        target,
+        reason_code,
+        assessment_date,
+    ) -> Dict[str, Any]:
+        """One tri-state block, from one accessor entry's three values and one
+        owner row. Takes ``current``/``target``/``reason_code`` already
+        unpacked by the caller (positionally, off the accessor's own stable
+        entry shape) rather than a dict keyed by the authority's column
+        names, so this file never repeats them.
+        """
+
+        assessed = reason_code is None
+        assessed_on = assessment_date.isoformat() if assessment_date is not None else None
+
+        if not assessed:
+            current = None
+            target = None
+            under_target = None
+            target_gap = None
+            reason = reason_code
+        else:
+            from app.modules.intelligence.services.reason_codes import validate_reason_code
+
+            if target is None:
+                under_target = None
+                target_gap = None
+                reason = validate_reason_code("no_maturity_target_recorded")
+            else:
+                under_target = current < target
+                target_gap = target - current
+                reason = None
+
+        return {
+            "capability_id": capability_id,
+            "element_id": element_id,
+            "current": current,
+            "target": target,
+            "assessed": assessed,
+            "assessed_on": assessed_on,
+            "under_target": under_target,
+            "target_gap": target_gap,
+            "reason": reason,
+            "maturity_source": "unified_capabilities",
+        }
+
+    def maturity_for_capability_ids(
+        self, capability_ids: List[int], *, organization_id: int
+    ) -> Dict[int, Dict[str, Any]]:
+        """The one maturity read keyed by the authority's own id (ADR-MAT-1).
+
+        Two batched selects: (1) the strict accessor
+        ``UnifiedCapability.maturity_for_capability_ids`` for
+        current/target/assessed; (2) one select of this service's own, on the
+        same strict ``organization_id ==`` predicate, for the element id and
+        assessment date. Every id asked for is present in the result, keyed
+        by capability id; an empty input returns ``{}`` with no select.
+        """
+        wanted = sorted({int(cid) for cid in capability_ids})
+        if not wanted:
+            return {}
+
+        accessor_result = UnifiedCapability.maturity_for_capability_ids(
+            wanted, organization_id=organization_id
+        )
+
+        owner_rows = (
+            db.session.query(
+                UnifiedCapability.id,
+                UnifiedCapability.archimate_element_id,
+                UnifiedCapability.maturity_assessment_date,
+            )
+            .filter(
+                UnifiedCapability.id.in_(wanted),
+                # Strict, same predicate as the accessor: a shared catalogue
+                # row's identity is not this tenant's row either.
+                UnifiedCapability.organization_id == organization_id,
+            )
+            .all()
+        )
+        owners_by_id = {cap_id: (element_id, assessed_on) for cap_id, element_id, assessed_on in owner_rows}
+
+        result: Dict[int, Dict[str, Any]] = {}
+        for cap_id in wanted:
+            element_id, assessment_date = owners_by_id.get(cap_id, (None, None))
+            # Positional, not by name -- see _maturity_block's own docstring.
+            current, target, reason_code = accessor_result[cap_id].values()
+            result[cap_id] = self._maturity_block(
+                capability_id=cap_id,
+                element_id=element_id,
+                current=current,
+                target=target,
+                reason_code=reason_code,
+                assessment_date=assessment_date,
+            )
+        return result
+
+    def maturity_for_elements(
+        self, element_ids: List[int], *, organization_id: int
+    ) -> Dict[int, Dict[str, Any]]:
+        """The one maturity read keyed by ArchiMate element id (ADR-MAT-1).
+
+        Two batched selects: (1) this service's own select of
+        ``archimate_element_id IN element_ids`` under the strict
+        ``organization_id ==`` predicate, ordered by id, ``setdefault`` so an
+        element pointed at by two rows resolves to the same first row every
+        time; (2) the strict accessor
+        ``UnifiedCapability.maturity_for_capability_ids`` over the capability
+        ids found. An element id with no owned row is present with
+        ``capability_id: None`` and the not-assessed block -- the FK from a
+        capability to its element is not tenant-checked, so a row owned by
+        another organisation never contributes its level here. Every id
+        asked for is present in the result, keyed by element id; an empty
+        input returns ``{}`` with no select.
+        """
+        wanted = sorted({int(eid) for eid in element_ids})
+        if not wanted:
+            return {}
+
+        owner_rows = (
+            db.session.query(
+                UnifiedCapability.id,
+                UnifiedCapability.archimate_element_id,
+                UnifiedCapability.maturity_assessment_date,
+            )
+            .filter(
+                UnifiedCapability.archimate_element_id.in_(wanted),
+                UnifiedCapability.organization_id == organization_id,
+            )
+            .order_by(UnifiedCapability.id.asc())
+            .all()
+        )
+        owner_by_element: Dict[int, Any] = {}
+        for cap_id, element_id, assessed_on in owner_rows:
+            owner_by_element.setdefault(element_id, (cap_id, assessed_on))
+
+        capability_ids = sorted({cap_id for cap_id, _assessed_on in owner_by_element.values()})
+        accessor_result = UnifiedCapability.maturity_for_capability_ids(
+            capability_ids, organization_id=organization_id
+        )
+
+        result: Dict[int, Dict[str, Any]] = {}
+        for element_id in wanted:
+            owner = owner_by_element.get(element_id)
+            if owner is None:
+                from app.modules.intelligence.services.reason_codes import validate_reason_code
+
+                result[element_id] = self._maturity_block(
+                    capability_id=None,
+                    element_id=element_id,
+                    current=None,
+                    target=None,
+                    reason_code=validate_reason_code("no_maturity_recorded"),
+                    assessment_date=None,
+                )
+                continue
+            cap_id, assessment_date = owner
+            # Positional, not by name -- see _maturity_block's own docstring.
+            current, target, reason_code = accessor_result[cap_id].values()
+            result[element_id] = self._maturity_block(
+                capability_id=cap_id,
+                element_id=element_id,
+                current=current,
+                target=target,
+                reason_code=reason_code,
+                assessment_date=assessment_date,
+            )
+        return result
+
     def get_domain_health(self) -> List[Dict[str, Any]]:
         """
         Calculate health score for each business domain.
