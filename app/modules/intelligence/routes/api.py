@@ -315,6 +315,25 @@ def cross_layer_impact(element_id: int):
             status_code=400,
         )
 
+    retirement_window_days_raw = request.args.get("retirement_window_days")
+    if retirement_window_days_raw is None:
+        retirement_window_days = 90
+    else:
+        try:
+            retirement_window_days = int(retirement_window_days_raw)
+        except (TypeError, ValueError):
+            return error_response(
+                "retirement_window_days must be an integer between 1 and 3650",
+                code="INVALID_PARAMETER",
+                status_code=400,
+            )
+        if not (1 <= retirement_window_days <= 3650):
+            return error_response(
+                "retirement_window_days must be between 1 and 3650",
+                code="INVALID_PARAMETER",
+                status_code=400,
+            )
+
     layer = request.args.get("layer")
 
     organization_id = _current_organization_id()
@@ -353,6 +372,7 @@ def cross_layer_impact(element_id: int):
         direction=direction,
         layer=layer,
         with_owner=with_owner,
+        retirement_window_days=retirement_window_days,
     )
 
     if result.get("rows") is None:
@@ -364,6 +384,7 @@ def cross_layer_impact(element_id: int):
             "summary": result["summary"],
             "reasons": result.get("reasons") or [],
             "elements": result.get("elements") or {},
+            "lifecycle_flags": result.get("lifecycle_flags"),
         }
     )
 
