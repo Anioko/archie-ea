@@ -69,21 +69,23 @@ def _application_component(db_session, org_id, element_id, name="App"):
     return comp
 
 
-def _ownership(db_session, component_id, unit_id, ownership_type="Business Owner"):
+def _ownership(db_session, component_id, unit_id, ownership_type="Business Owner", *,
+                organization_id=None, end_date=None):
     from app.models.enterprise_intelligence import ApplicationOwnership
 
     row = ApplicationOwnership(
-        application_id=component_id, organization_unit_id=unit_id, ownership_type=ownership_type
+        organization_id=organization_id, application_id=component_id,
+        organization_unit_id=unit_id, ownership_type=ownership_type, end_date=end_date,
     )
     db_session.add(row)
     db_session.flush()
     return row
 
 
-def _org_unit(db_session, name="Finance"):
+def _org_unit(db_session, name="Finance", *, organization_id=None):
     from app.models.enterprise_intelligence import OrganizationUnit
 
-    unit = OrganizationUnit(name=f"{name} {uuid.uuid4().hex[:6]}")
+    unit = OrganizationUnit(name=f"{name} {uuid.uuid4().hex[:6]}", organization_id=organization_id)
     db_session.add(unit)
     db_session.flush()
     return unit
@@ -173,8 +175,8 @@ def test_owner_attaches_when_chain_resolves_and_tenant_matches(app, db_session, 
     b = _element(db_session, org.id, "B")
     _relationship(db_session, org.id, a, b)
     comp = _application_component(db_session, org.id, b.id, name="Owned App")
-    unit = _org_unit(db_session, "Ops")
-    _ownership(db_session, comp.id, unit.id, ownership_type="Business Owner")
+    unit = _org_unit(db_session, "Ops", organization_id=org.id)
+    _ownership(db_session, comp.id, unit.id, ownership_type="Business Owner", organization_id=org.id)
     db_session.commit()
 
     with app.test_request_context("/"):
@@ -209,8 +211,8 @@ def test_owner_absent_is_indistinguishable_and_cross_tenant_does_not_leak(app, d
     c_cross_tenant = _element(db_session, org_a.id, "C-cross-tenant")
     _relationship(db_session, org_a.id, a, c_cross_tenant)
     other_tenant_comp = _application_component(db_session, org_b.id, c_cross_tenant.id, name="OrgB App")
-    other_unit = _org_unit(db_session, "OrgB-Secret-Unit")
-    _ownership(db_session, other_tenant_comp.id, other_unit.id)
+    other_unit = _org_unit(db_session, "OrgB-Secret-Unit", organization_id=org_b.id)
+    _ownership(db_session, other_tenant_comp.id, other_unit.id, organization_id=org_b.id)
     db_session.commit()
 
     with app.test_request_context("/"):
@@ -324,8 +326,8 @@ def test_cross_tenant_component_pointer_does_not_leak_unit_name(app, db_session,
     _relationship(db_session, org_a.id, a, target)
 
     foreign_comp = _application_component(db_session, org_b.id, target.id, name="Foreign App")
-    foreign_unit = _org_unit(db_session, "Foreign-Unit")
-    _ownership(db_session, foreign_comp.id, foreign_unit.id)
+    foreign_unit = _org_unit(db_session, "Foreign-Unit", organization_id=org_b.id)
+    _ownership(db_session, foreign_comp.id, foreign_unit.id, organization_id=org_b.id)
     db_session.commit()
 
     with app.test_request_context("/"):
@@ -528,8 +530,8 @@ def test_sec09_tenant_check_blocks_real_cross_tenant_resolution(app, db_session,
 
     target = _element(db_session, org_b.id, "Target")
     comp = _application_component(db_session, org_b.id, target.id, name="OrgB App")
-    unit = _org_unit(db_session, "OrgB-Real-Unit")
-    _ownership(db_session, comp.id, unit.id)
+    unit = _org_unit(db_session, "OrgB-Real-Unit", organization_id=org_b.id)
+    _ownership(db_session, comp.id, unit.id, organization_id=org_b.id)
     db_session.commit()
 
     with app.test_request_context("/"):
@@ -561,8 +563,8 @@ def test_mutation_proof_sec09_real_path(app, db_session, make_org, monkeypatch):
 
     target = _element(db_session, org_b.id, "Target")
     comp = _application_component(db_session, org_b.id, target.id, name="OrgB App")
-    unit = _org_unit(db_session, "OrgB-Mut-Unit")
-    _ownership(db_session, comp.id, unit.id)
+    unit = _org_unit(db_session, "OrgB-Mut-Unit", organization_id=org_b.id)
+    _ownership(db_session, comp.id, unit.id, organization_id=org_b.id)
     db_session.commit()
 
     # 1) SEC-09 intact: the guarded, real path returns no owner.
@@ -614,8 +616,8 @@ def test_duplicate_component_pointer_resolves_deterministically_not_500(app, db_
     comp2 = ApplicationComponent(name="Second", organization_id=org.id, archimate_element_id=b.id)
     db_session.add_all([comp1, comp2])
     db_session.flush()
-    unit = _org_unit(db_session, "Dup-Unit")
-    _ownership(db_session, comp1.id, unit.id, ownership_type="Business Owner")
+    unit = _org_unit(db_session, "Dup-Unit", organization_id=org.id)
+    _ownership(db_session, comp1.id, unit.id, ownership_type="Business Owner", organization_id=org.id)
     db_session.commit()
 
     with app.test_request_context("/"):
@@ -684,3 +686,122 @@ def test_explicit_row_carries_null_derived_id_and_engine_version(app, db_session
     for row in result["rows"]:
         assert row["relation"]["derived_id"] is None
         assert row["relation"]["engine_version"] is None
+
+
+# --- OrganizationUnit/ApplicationOwnership TenantMixin + end_date rule -----
+# (accountability-lens infrastructure fix: both models now carry
+# TenantMixin, so _resolve_owners_batch's unit read is fenced by the same
+# do_orm_execute listener every other mixin model uses -- SEC-09 stays as
+# defense-in-depth for the session-scoped-caller drift class, not the only
+# thing standing between a caller and another tenant's unit name.)
+
+
+def test_resolve_owners_batch_excludes_an_expired_ownership_row(app, db_session, make_org):
+    import datetime as _dt
+
+    from app.modules.intelligence.services.query_service import _resolve_owners_batch
+
+    org = make_org("qs-owner-expired")
+    a = _element(db_session, org.id, "A")
+    comp = _application_component(db_session, org.id, a.id, name="Expired App")
+    unit = _org_unit(db_session, "Expired-Unit", organization_id=org.id)
+    _ownership(
+        db_session, comp.id, unit.id, organization_id=org.id,
+        end_date=_dt.date.today() - _dt.timedelta(days=1),
+    )
+    db_session.commit()
+
+    with app.test_request_context("/"):
+        from flask import g
+
+        g.current_org_id = org.id
+        results = _resolve_owners_batch([a.id], org.id)
+
+    owner, reason = results[a.id]
+    assert owner is None
+    assert reason == "no_ownership_recorded"
+
+
+def test_resolve_owners_batch_includes_a_current_or_future_dated_row(app, db_session, make_org):
+    import datetime as _dt
+
+    from app.modules.intelligence.services.query_service import _resolve_owners_batch
+
+    org = make_org("qs-owner-current")
+    a = _element(db_session, org.id, "A")
+    comp = _application_component(db_session, org.id, a.id, name="Current App")
+    unit = _org_unit(db_session, "Current-Unit", organization_id=org.id)
+    _ownership(
+        db_session, comp.id, unit.id, organization_id=org.id,
+        end_date=_dt.date.today() + _dt.timedelta(days=30),
+    )
+    db_session.commit()
+
+    with app.test_request_context("/"):
+        from flask import g
+
+        g.current_org_id = org.id
+        results = _resolve_owners_batch([a.id], org.id)
+
+    owner, reason = results[a.id]
+    assert owner is not None
+    assert reason is None
+    assert owner["organization_unit_id"] == unit.id
+
+
+def test_resolve_owners_batch_includes_a_row_with_no_end_date(app, db_session, make_org):
+    from app.modules.intelligence.services.query_service import _resolve_owners_batch
+
+    org = make_org("qs-owner-no-end-date")
+    a = _element(db_session, org.id, "A")
+    comp = _application_component(db_session, org.id, a.id, name="Open-Ended App")
+    unit = _org_unit(db_session, "Open-Unit", organization_id=org.id)
+    _ownership(db_session, comp.id, unit.id, organization_id=org.id, end_date=None)
+    db_session.commit()
+
+    with app.test_request_context("/"):
+        from flask import g
+
+        g.current_org_id = org.id
+        results = _resolve_owners_batch([a.id], org.id)
+
+    owner, reason = results[a.id]
+    assert owner is not None
+    assert reason is None
+
+
+def test_organization_unit_from_another_tenant_is_hidden_by_the_orm_listener(
+    app, db_session, make_org
+):
+    """The real regression guard for the tenant-isolation gap the external
+    review found: OrganizationUnit now carries TenantMixin, so a unit
+    belonging to another organisation is filtered out by the same
+    do_orm_execute listener every other mixin model relies on -- not by a
+    narrow, method-local re-check. Reproduces the leak scenario directly (an
+    org's own, legitimately-visible component whose ownership row names a
+    unit seeded for a different organisation), not a simulated one."""
+    from app.modules.intelligence.services.query_service import _resolve_owners_batch
+
+    org_a = make_org("qs-unit-tenant-a")
+    org_b = make_org("qs-unit-tenant-b")
+
+    a = _element(db_session, org_a.id, "A")
+    comp = _application_component(db_session, org_a.id, a.id, name="OrgA App")
+    # A unit seeded for org B, referenced by an org A ownership row -- the
+    # exact cross-tenant-seeded-FK scenario the original defect described.
+    foreign_unit = _org_unit(db_session, "OrgB-Unit", organization_id=org_b.id)
+    _ownership(db_session, comp.id, foreign_unit.id, organization_id=org_a.id)
+    db_session.commit()
+
+    with app.test_request_context("/"):
+        from flask import g
+
+        g.current_org_id = org_a.id
+        results = _resolve_owners_batch([a.id], org_a.id)
+
+    # The ownership row itself is org A's own (visible), but the unit it
+    # names belongs to org B -- the tenant listener hides that row from the
+    # unit select, so no owner is attached, not a leaked org-B unit name.
+    owner, reason = results[a.id]
+    assert owner is None
+    assert reason == "no_ownership_recorded"
