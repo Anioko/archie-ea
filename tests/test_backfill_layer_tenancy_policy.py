@@ -8,13 +8,12 @@ with or without --org-id. Each table commits, or rolls back, on its own, so
 one table's failure cannot undo another's work.
 
 Fixtures db_session, make_org, app come from tests/conftest.py. There is no
-shared "make a test user" fixture on this branch's base (T-TEST-1 proposes
-one; not landed here), so a user is still built inline, the same three lines
-tests/test_backfill_layer_tenancy_roadmap_tasks.py uses. There is likewise no
-shared "relax a NOT NULL constraint" fixture on this base yet (T-S4 adds one
-on a branch not merged here), so the inline ALTER TABLE ... DROP NOT NULL
-that module already uses is generalised below to the one other table these
-tests need it for.
+shared "relax a NOT NULL constraint" fixture on this branch's base yet
+(T-S4 adds one, on a branch not merged here), so the inline
+ALTER TABLE ... DROP NOT NULL tests/test_backfill_layer_tenancy_roadmap_tasks.py
+already uses is generalised below to the one other table these tests need
+it for. None of these tests need a user: the new derivation this module
+exercises reads an initiative's organisation, not a creating user's.
 """
 
 from __future__ import annotations
@@ -24,21 +23,6 @@ import uuid
 import click
 import pytest
 from sqlalchemy import text
-
-
-def _make_user(db_session, org_id, label):
-    from app.models.user import User
-
-    suffix = uuid.uuid4().hex[:10]
-    user = User(
-        email=f"{label}-{suffix}@example.com",
-        first_name="Test",
-        last_name=label,
-        organization_id=org_id,
-    )
-    db_session.add(user)
-    db_session.flush()
-    return user
 
 
 def _make_inactive_org(db_session, label):
