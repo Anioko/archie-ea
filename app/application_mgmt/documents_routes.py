@@ -19,11 +19,14 @@ def download_document_file(doc_id):
     """Download a document file"""
     document = ApplicationDocument.query.get_or_404(doc_id)
 
-    # Tenant isolation: verify parent app belongs to current org
+    # Tenant isolation: verify the document belongs to the caller's organisation.
+    # ApplicationDocument is a plain db.Model (no TenantMixin), so
+    # .get_or_404() returns any tenant's row. Use the document's own
+    # organization_id rather than the parent ApplicationComponent's, because
+    # ApplicationComponent IS tenant-scoped and .query.get() returns None for
+    # another tenant's row, which would skip this guard.
     from app.middleware.tenant_files import verify_file_access
-    from app.models.application_portfolio import ApplicationComponent
-    parent_app = ApplicationComponent.query.get(document.application_component_id)
-    if parent_app and not verify_file_access(getattr(parent_app, "organization_id", None)):
+    if not verify_file_access(document.organization_id):
         flash("Access denied.", "danger")
         return redirect(url_for("unified_applications.application_list"))
 
@@ -62,19 +65,17 @@ def delete_document_file(doc_id):
     document = ApplicationDocument.query.get_or_404(doc_id)
     app_id = document.application_component_id
 
-    # Tenant isolation: verify parent app belongs to current org.
+    # Tenant isolation: verify the document belongs to the caller's organisation.
     #
     # ApplicationDocument is a plain db.Model - it carries organization_id but not
     # TenantMixin, so nothing filters this query and .get_or_404() will happily
-    # return another tenant's row. download_document_file() above performs exactly
-    # this check; the delete path did not, so any authenticated user could destroy
-    # any tenant's document - the database row AND the file on disk - by walking
-    # integer ids. Deletion is irreversible, which makes the omission worse here
-    # than on the read path that was protected.
+    # return another tenant's row. Use the document's own organization_id rather
+    # than the parent ApplicationComponent's, because ApplicationComponent IS
+    # tenant-scoped and .query.get() returns None for another tenant's row, which
+    # would skip this guard. Deletion is irreversible, which makes the omission
+    # worse here than on the read path.
     from app.middleware.tenant_files import verify_file_access
-    from app.models.application_portfolio import ApplicationComponent
-    parent_app = ApplicationComponent.query.get(app_id)
-    if parent_app and not verify_file_access(getattr(parent_app, "organization_id", None)):
+    if not verify_file_access(document.organization_id):
         flash("Access denied.", "danger")
         return redirect(url_for("unified_applications.application_list"))
 

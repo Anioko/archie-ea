@@ -254,10 +254,14 @@ def download_document_file(doc_id):
 
     doc = ApplicationDocument.query.get_or_404(doc_id)
 
-    # Tenant isolation: verify the document's parent app belongs to current org
+    # Tenant isolation: verify the document belongs to the caller's organisation.
+    # ApplicationDocument is a plain db.Model (no TenantMixin), so
+    # .get_or_404() returns any tenant's row. Use the document's own
+    # organization_id rather than the parent ApplicationComponent's, because
+    # ApplicationComponent IS tenant-scoped and .query.get() returns None for
+    # another tenant's row, which would skip this guard.
     from app.middleware.tenant_files import verify_file_access
-    parent_app = ApplicationComponent.query.get(doc.application_component_id)
-    if parent_app and not verify_file_access(getattr(parent_app, "organization_id", None)):
+    if not verify_file_access(doc.organization_id):
         flash("Access denied.", "error")
         return redirect(url_for("unified_applications.application_list"))
 
@@ -301,10 +305,13 @@ def delete_document_file(doc_id):
     doc = ApplicationDocument.query.get_or_404(doc_id)
     app_id = doc.application_component_id
 
-    # Tenant isolation: verify the parent app belongs to the caller's org.
+    # Tenant isolation: verify the document belongs to the caller's organisation.
     #
     # ApplicationDocument carries organization_id but not TenantMixin, so no filter
-    # is injected and .get_or_404() returns any tenant's row. Without this, any
+    # is injected and .get_or_404() returns any tenant's row. Use the document's
+    # own organization_id rather than the parent ApplicationComponent's, because
+    # ApplicationComponent IS tenant-scoped and .query.get() returns None for
+    # another tenant's row, which would skip this guard. Without this, any
     # authenticated user could destroy any tenant's document - the row and the file
     # on disk - by walking integer ids, and deletion is not recoverable.
     #
@@ -312,9 +319,7 @@ def delete_document_file(doc_id):
     # app/application_mgmt/documents_routes.py are registered, so the check has to
     # exist in both. Fixing only one leaves the door open under a different URL.
     from app.middleware.tenant_files import verify_file_access
-    from app.models.application_portfolio import ApplicationComponent
-    parent_app = ApplicationComponent.query.get(app_id)
-    if parent_app and not verify_file_access(getattr(parent_app, "organization_id", None)):
+    if not verify_file_access(doc.organization_id):
         flash("Access denied.", "danger")
         return redirect(url_for("unified_applications.application_list"))
 

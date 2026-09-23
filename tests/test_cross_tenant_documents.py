@@ -22,6 +22,7 @@ reason: it is the only view that sees both.
 """
 
 import inspect
+import os
 import re
 
 import pytest
@@ -56,16 +57,6 @@ OWNERSHIP_MARKERS = (
     "ApplicationComponent.query.get_or_404(",
     "ApplicationComponent.query.get(",
 )
-
-
-@pytest.fixture(scope="module")
-def app():
-    import os
-
-    os.environ.setdefault("SECRET_KEY", "x" * 32)
-    from app import create_app
-
-    return create_app("testing")
 
 
 def _unwrap(view):
@@ -133,4 +124,227 @@ def test_mutating_routes_on_unfiltered_models_scope_themselves(app):
         "%d mutating route(s) touch a model with no automatic tenant filter and "
         "do not scope by organisation:\n  %s\n\nEither add an ownership check or "
         "give the model TenantMixin." % (len(findings), "\n  ".join(sorted(findings)))
+    )
+
+
+# ---------------------------------------------------------------------------
+# Integration tests: a tenant administrator must not be able to delete or
+# download another organisation's document.
+# ---------------------------------------------------------------------------
+
+import uuid as _uuid
+
+
+def _clear_g_cache():
+    """Drop cached flask_login/tenant state from Flask's ``g``."""
+    from flask import g as _g, has_app_context as _hac
+
+    if not _hac():
+        return
+    for cached in ("_login_user", "_current_user", "current_org_id", "current_org"):
+        if hasattr(_g, cached):
+            delattr(_g, cached)
+
+
+def _login(client, user):
+    """Log a test client in as *user* (a User instance or an int id)."""
+    from tests._session_test_helpers import mint_test_sid
+
+    user_id = getattr(user, "id", user)
+    org_id = getattr(user, "organization_id", None) if hasattr(user, "id") else None
+    sid = mint_test_sid(user_id, organization_id=org_id)
+    with client.session_transaction() as sess:
+        sess["_user_id"] = str(user_id)
+        sess["_fresh"] = True
+        sess["_sid"] = sid
+    _clear_g_cache()
+
+
+@pytest.fixture
+def _two_org_fixture(app):
+    """Create two organisations, each with a user, plus an app+doc in org B.
+
+    Uses explicit commits so the data is visible to HTTP requests made through
+    the test client (the db_session fixture wraps everything in a transaction
+    that is never committed, so data created inside it is invisible to the
+    request-handling connection).
+    """
+    import os as _os
+
+    from app import db
+    from app.models.application_portfolio import ApplicationComponent
+    from app.models.miscellaneous import ApplicationDocument
+    from app.models.organization import Organization
+    from app.models.user import User
+
+    suffix = _uuid.uuid4().hex[:10]
+
+    with app.app_context():
+        org_a = Organization(
+            name=f"Test delete-a {suffix}", slug=f"test-delete-a-{suffix}"
+        )
+        org_b = Organization(
+            name=f"Test delete-b {suffix}", slug=f"test-delete-b-{suffix}"
+        )
+        db.session.add_all([org_a, org_b])
+        db.session.flush()
+
+        user_a = User(
+            email=f"delete-a-{_uuid.uuid4().hex[:8]}@example.com",
+            first_name="A",
+            last_name="Admin",
+            organization_id=org_a.id,
+            confirmed=True,
+            enterprise_role="platform_admin",
+        )
+        db.session.add(user_a)
+        db.session.flush()
+
+        app_b = ApplicationComponent(
+            name=f"App-B-{_uuid.uuid4().hex[:8]}",
+            organization_id=org_b.id,
+        )
+        db.session.add(app_b)
+        db.session.flush()
+
+        # Create a real file on disk so the delete path tries to remove it.
+        upload_dir = _os.path.join(
+            app.instance_path, "uploads", str(org_b.id), "documents"
+        )
+        _os.makedirs(upload_dir, exist_ok=True)
+        file_path = _os.path.join(upload_dir, f"test-{_uuid.uuid4().hex[:8]}.txt")
+        with open(file_path, "w") as f:
+            f.write("cross-tenant test file")
+
+        doc_b = ApplicationDocument(
+            organization_id=org_b.id,
+            application_component_id=app_b.id,
+            title="Org B Secret Document",
+            file_name="secret.txt",
+            file_extension="TXT",
+            file_path=file_path,
+            file_size=_os.path.getsize(file_path),
+            uploaded_by="b-admin",
+        )
+        db.session.add(doc_b)
+        db.session.flush()
+
+        db.session.commit()
+
+        ids = {
+            "org_a_id": org_a.id,
+            "org_b_id": org_b.id,
+            "user_a_id": user_a.id,
+            "app_b_id": app_b.id,
+            "doc_b_id": doc_b.id,
+            "file_path": file_path,
+        }
+
+    yield ids
+
+
+def _make_client(app, user_id):
+    """Create a test client logged in as the given user."""
+    from app import db
+    from app.models.user import User
+
+    client = app.test_client()
+    with app.app_context():
+        user = db.session.get(User, user_id)
+        _login(client, user)
+    return client
+
+
+def test_cross_tenant_delete_refused_legacy_route(app, _two_org_fixture):
+    """Org A's admin POSTs /dashboard/documents/<B's doc>/delete → refused."""
+    from app import db
+    from app.models.miscellaneous import ApplicationDocument
+
+    f = _two_org_fixture
+    client_a = _make_client(app, f["user_a_id"])
+
+    resp = client_a.post(f"/dashboard/documents/{f['doc_b_id']}/delete")
+    # The route redirects after delete; don't follow so we can check the
+    # redirect target separately.
+    assert resp.status_code in (302, 200), (
+        f"Unexpected status {resp.status_code}"
+    )
+
+    # Document row must still exist — this is the assertion that fails red.
+    with app.app_context():
+        doc_still = db.session.get(ApplicationDocument, f["doc_b_id"])
+        assert doc_still is not None, (
+            "Org B's document row was destroyed by Org A's delete"
+        )
+
+    # File must still exist.
+    assert os.path.exists(f["file_path"]), (
+        "Org B's document file was deleted from disk by Org A's delete"
+    )
+
+
+def test_cross_tenant_delete_refused_unified_route(app, _two_org_fixture):
+    """Org A's admin POSTs /applications/documents/<B's doc>/delete → refused."""
+    from app import db
+    from app.models.miscellaneous import ApplicationDocument
+
+    f = _two_org_fixture
+    client_a = _make_client(app, f["user_a_id"])
+
+    resp = client_a.post(
+        f"/applications/documents/{f['doc_b_id']}/delete",
+        data={"csrf_token": "test-bypass"},
+    )
+    # The route may redirect (302), return a CSRF error (403), or return an
+    # error page (200/400). Either way, the document must survive.
+    assert resp.status_code in (200, 302, 400, 403), (
+        f"Unexpected status {resp.status_code}"
+    )
+
+    with app.app_context():
+        doc_still = db.session.get(ApplicationDocument, f["doc_b_id"])
+        assert doc_still is not None, (
+            "Org B's document row was destroyed by Org A's delete"
+        )
+    assert os.path.exists(f["file_path"]), (
+        "Org B's document file was deleted from disk by Org A's delete"
+    )
+
+
+def test_cross_tenant_download_refused_legacy_route(app, _two_org_fixture):
+    """Org A's admin GETs /dashboard/documents/<B's doc>/download → refused."""
+    f = _two_org_fixture
+    client_a = _make_client(app, f["user_a_id"])
+
+    resp = client_a.get(
+        f"/dashboard/documents/{f['doc_b_id']}/download",
+        follow_redirects=True,
+    )
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+    # The file must not be served; we must see a refusal.
+    assert "cross-tenant test file" not in html, (
+        f"Org B's file content was served to Org A: {html[:500]}"
+    )
+    assert "Access denied." in html, (
+        f"Expected 'Access denied.' flash; got: {html[:500]}"
+    )
+
+
+def test_cross_tenant_download_refused_unified_route(app, _two_org_fixture):
+    """Org A's admin GETs /applications/documents/<B's doc>/download → refused."""
+    f = _two_org_fixture
+    client_a = _make_client(app, f["user_a_id"])
+
+    resp = client_a.get(
+        f"/applications/documents/{f['doc_b_id']}/download",
+        follow_redirects=True,
+    )
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+    assert "cross-tenant test file" not in html, (
+        f"Org B's file content was served to Org A: {html[:500]}"
+    )
+    assert "Access denied." in html, (
+        f"Expected 'Access denied.' flash; got: {html[:500]}"
     )
